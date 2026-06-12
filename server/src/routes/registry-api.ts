@@ -389,7 +389,11 @@ function serializeDate(value: Date | string | null | undefined): string | null {
   return value instanceof Date ? value.toISOString() : value;
 }
 
-function serializeStoryboardRunStatus(s: StoryboardStatusLike) {
+function serializeStoryboardRunStatus(
+  s: StoryboardStatusLike,
+  options: { includeDiagnostics?: boolean } = {},
+) {
+  const includeDiagnostics = options.includeDiagnostics ?? true;
   return {
     storyboard_id: s.storyboard_id,
     status: s.status,
@@ -397,17 +401,20 @@ function serializeStoryboardRunStatus(s: StoryboardStatusLike) {
     steps_total: s.steps_total,
     failure_count: s.failure_count ?? 0,
     skipped_count: s.skipped_count ?? 0,
-    first_failed_step_id: s.first_failed_step_id ?? null,
-    first_failed_step_title: s.first_failed_step_title ?? null,
-    first_failed_step_task: s.first_failed_step_task ?? null,
-    first_failure_message: s.first_failure_message ?? null,
+    first_failed_step_id: includeDiagnostics ? s.first_failed_step_id ?? null : null,
+    first_failed_step_title: includeDiagnostics ? s.first_failed_step_title ?? null : null,
+    first_failed_step_task: includeDiagnostics ? s.first_failed_step_task ?? null : null,
+    first_failure_message: includeDiagnostics ? s.first_failure_message ?? null : null,
   };
 }
 
-function serializeStoryboardStatus(s: StoryboardStatusLike) {
+function serializeStoryboardStatus(
+  s: StoryboardStatusLike,
+  options: { includeDiagnostics?: boolean } = {},
+) {
   const sb = getStoryboard(s.storyboard_id);
   return {
-    ...serializeStoryboardRunStatus(s),
+    ...serializeStoryboardRunStatus(s, options),
     requested_compliance_target: s.requested_compliance_target ?? null,
     adcp_version: s.adcp_version ?? null,
     title: sb?.title || s.storyboard_id,
@@ -5204,7 +5211,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
       const encodedUrl = encodeURIComponent(agentUrl);
       const storyboardStatusesForOwner = ownerMembership.is_owner
-        ? storyboardStatuses.map(serializeStoryboardStatus)
+        ? storyboardStatuses.map(s => serializeStoryboardStatus(s))
         : [];
 
       res.json({
@@ -5630,7 +5637,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           logger.warn({ err, agentUrl }, "Storyboard status query skipped because schema is unavailable");
         }
 
-        const enriched = statuses.map(serializeStoryboardStatus);
+        const includeDiagnostics = await canViewAgentDebugData(req, agentUrl);
+        const enriched = statuses.map(s => serializeStoryboardStatus(s, { includeDiagnostics }));
 
         res.json({
           agent_url: agentUrl,
@@ -5688,13 +5696,18 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         }
 
         const results: Record<string, any> = {};
+        const includeDiagnosticsByUrl = new Map<string, boolean>();
+        await Promise.all(nonOptedOut.map(async (url: string) => {
+          includeDiagnosticsByUrl.set(url, await canViewAgentDebugData(req, url));
+        }));
         for (const url of validUrls) {
           if (optedOut.has(url)) {
             results[url] = { status: "opted_out" };
             continue;
           }
           const statuses = statusMap.get(url) || [];
-          results[url] = statuses.map(serializeStoryboardStatus);
+          const includeDiagnostics = includeDiagnosticsByUrl.get(url) ?? false;
+          results[url] = statuses.map(s => serializeStoryboardStatus(s, { includeDiagnostics }));
         }
 
         const invalidCount = agent_urls.length - validUrls.length;

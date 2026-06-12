@@ -567,7 +567,7 @@ export function deriveStoryboardStatuses(
           agg.stepLessPhasesPassed++;
         } else {
           agg.failureCount++;
-          if (!agg.firstFailure) agg.firstFailure = summarizeStoryboardPhaseFailure(s);
+          if (!agg.firstFailure) agg.firstFailure = summarizeStoryboardPhaseFailure(s, sbId);
         }
         continue;
       }
@@ -682,19 +682,21 @@ function summarizeStoryboardStepFailure(step: {
   return { stepId, title, task, message };
 }
 
-function summarizeStoryboardPhaseFailure(phase: {
-  scenario?: unknown;
-  summary?: unknown;
-  error?: unknown;
-  details?: unknown;
-}): {
+function summarizeStoryboardPhaseFailure(
+  phase: {
+    scenario?: unknown;
+    summary?: unknown;
+    error?: unknown;
+    details?: unknown;
+  },
+  storyboardId?: string,
+): {
   stepId: string | null;
   title: string | null;
   task: string | null;
   message: string | null;
 } {
-  const storyboardId = scenarioStoryboardIdForFallback(phase.scenario);
-  const phaseId = firstString(phaseIdFromScenario(phase.scenario, storyboardId), phase.scenario, 'phase') ?? 'phase';
+  const phaseId = firstString(phaseIdFromScenario(phase.scenario, storyboardId), storyboardId, phase.scenario, 'phase') ?? 'phase';
   const rawMessage = firstString(
     phase.error,
     phase.details,

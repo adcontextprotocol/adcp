@@ -115,9 +115,12 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
       [OWNER_ORG_ID],
     );
     await pool.query(
-      `INSERT INTO organizations (workos_organization_id, name, created_at, updated_at)
-       VALUES ($1, 'Cross Org', NOW(), NOW())
-       ON CONFLICT (workos_organization_id) DO NOTHING`,
+      `INSERT INTO organizations (workos_organization_id, name, membership_tier, subscription_status, created_at, updated_at)
+       VALUES ($1, 'Cross Org', 'company_standard', 'active', NOW(), NOW())
+       ON CONFLICT (workos_organization_id) DO UPDATE
+         SET membership_tier = EXCLUDED.membership_tier,
+             subscription_status = EXCLUDED.subscription_status,
+             updated_at = NOW()`,
       [CROSS_ORG_ID],
     );
 
@@ -341,6 +344,43 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
     ]));
   });
 
+  it('owner caller can read storyboard status diagnostics', async () => {
+    currentUserId = OWNER_USER_ID;
+    const res = await request(app).get(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/storyboard-status`);
+    expect(res.status).toBe(200);
+    expect(res.body.storyboards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        storyboard_id: 'debug_storyboard',
+        failure_count: 1,
+        skipped_count: 1,
+        first_failed_step_id: 'debug_step',
+        first_failed_step_title: 'Debug step',
+        first_failed_step_task: 'get_products',
+        first_failure_message: 'debug failure',
+      }),
+    ]));
+  });
+
+  it('cross-org member sees storyboard status counts but not diagnostics', async () => {
+    currentUserId = CROSS_ORG_USER_ID;
+    const res = await request(app).get(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/storyboard-status`);
+    expect(res.status).toBe(200);
+    expect(res.body.storyboards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        storyboard_id: 'debug_storyboard',
+        status: 'failing',
+        steps_passed: 1,
+        steps_total: 2,
+        failure_count: 1,
+        skipped_count: 1,
+        first_failed_step_id: null,
+        first_failed_step_title: null,
+        first_failed_step_task: null,
+        first_failure_message: null,
+      }),
+    ]));
+  });
+
   it('static admin API key can read bulk storyboard status through real Postgres SQL', async () => {
     currentUserId = STATIC_ADMIN_USER_ID;
     const res = await request(app)
@@ -358,6 +398,29 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
         skipped_count: 1,
         first_failed_step_id: 'debug_step',
         first_failure_message: 'debug failure',
+      }),
+    ]));
+  });
+
+  it('cross-org member sees bulk storyboard status counts but not diagnostics', async () => {
+    currentUserId = CROSS_ORG_USER_ID;
+    const res = await request(app)
+      .post('/api/registry/agents/storyboard-status')
+      .send({ agent_urls: [AGENT_URL] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.agents[AGENT_URL]).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        storyboard_id: 'debug_storyboard',
+        status: 'failing',
+        steps_passed: 1,
+        steps_total: 2,
+        failure_count: 1,
+        skipped_count: 1,
+        first_failed_step_id: null,
+        first_failed_step_title: null,
+        first_failed_step_task: null,
+        first_failure_message: null,
       }),
     ]));
   });

@@ -36,4 +36,4 @@ COMMENT ON COLUMN agent_storyboard_status.first_failed_step_task IS
   'Task/tool name for the first root failing or actionable skipped step.';
 
 COMMENT ON COLUMN agent_storyboard_status.first_failure_message IS
-  'Public-safe runner error/detail text for the first root failing or actionable skipped step.';
+  'Redacted runner error/detail text for the first root failing or actionable skipped step. Owner-scoped in public API responses.';
