@@ -1,5 +1,81 @@
 # Changelog
 
+## 3.1.0-rc.13
+
+### Minor Changes
+
+- 69cb5ca: schema(brand): raise brand.json `agents[]` maxItems 20 → 200 for multi-tenant operators, and reconcile the JWKS size budget
+
+  The per-tenant JWKS pattern blessed in #5458 is one `agents[]` entry per tenant, but the `maxItems: 20` cap made a >20-tenant `brand.json` schema-invalid — below the scale the multi-tenant case is actually about. Raises the cap to 200 (additive and non-breaking — loosening a `maxItems` never invalidates an existing valid document).
+
+  Also reconciles the two JWKS size figures in L1 security so a conservative verifier can't reject a conformant shard: the 64 KiB `MAX_JWKS_BYTES` is the JWKS-specific budget (deliberately tighter than the generic 5 MB SSRF body ceiling), and per-tenant `jwks_uri` sharding is the conformant path above it — for size as well as key isolation. Closes #5445.
+
+- cb3b658: Define adagents.json discovery redirect policy and reconcile the reference implementation with it.
+
+  The initial `/.well-known/adagents.json` fetch now follows **same-registrable-domain** redirects (apex↔www, HTTPS-preserving, ≤3 hops, SSRF re-validated per hop, anchored on the originally-requested domain) so that standard apex→www managed hosting resolves instead of being silently reported unauthorized. **Cross-registrable-domain** redirects are refused — declare delegation with `authoritative_location` instead — and the `authoritative_location` dereference continues to refuse all redirects. Docs: managed-networks "Why not HTTP redirects?" and L1 security SSRF/TLS-hardening sections; new conformance vectors in `static/test-vectors/adagents-discovery-redirects.json`.
+
+- d80ee8e: Add `audio_distribution_types` discovery metadata to products, placements, and
+  `get_products.filters`, using IAB Tech Lab/OpenRTB 2.6 `audio.feed` definitions
+  with AdCP-native field names.
+- b7068f0: Tighten three universal storyboard false-failure paths: webhook-emission now explicitly requires a configured webhook receiver so unresolved runner URL templates must grade not_applicable instead of reaching the agent; security_baseline positive static-credential probes now document initialized-session dispatch rather than raw direct Bearer-only `tools/call`; and schema-validation now requires the concrete INVALID_REQUEST past-start rejection instead of a trailing branch-set contribution assertion.
+
+  Migration note: agents that currently accept a past concrete `start_time` and adjust it to a current/future flight must instead return `INVALID_REQUEST`; use `start_time: "asap"` when the buyer wants immediate activation.
+
+- f45191b: spec: allow multi-tenant seller-agent operators to publish more than 20 `brand.json` `agents[]` entries and clarify per-tenant JWKS resolution.
+
+  `brand.json` no longer caps `agents[]` at 20 entries, allowing one same-type sales-agent entry per tenant or property-scoped endpoint. The seller setup guidance now documents the A1 static-shard pattern: verifiers resolve keys from the authenticated agent URL to exactly one `agents[].url` entry, use that entry's `jwks_uri` or the default origin JWKS, and reject duplicate matching entries as ambiguous rather than selecting by agent `type` or request-payload tenant fields.
+
+- 505cb4f: feat(trusted-match): scope the world_id_nullifier TMPX token to its relying party
+
+  Register `world_id_nullifier` in the TMPX Type ID registry, and define its token as relying-party-scoped: a 16-byte digest of the proof's `relying_party_id` followed by the 32-byte nullifier.
+
+  A World ID nullifier is meaningful only within the `rp_id` it was minted for, but the `rp_id` rides the request-side `attestation`, which does not round-trip into the `tmpx` exposure token. With only the bare nullifier in the token, the out-of-band impression tracker cannot attribute an exposure to its relying party or reconstruct the `(rp_id, nullifier)` key the buyer caps on. Embedding the `rp_id` digest closes that: the tracker matches the digest against the relying parties it accepts, keys frequency state on `(rp_id, nullifier)`, and no `rp_id` cleartext crosses into the token.
+
+  Open (WG): the digest width (16 bytes proposed) and whether a digest-plus-registry lookup suffices versus carrying a registry-assigned relying-party id. `world_id_nullifier` is gated by the experimental `trusted_match.verified_identity` feature, so its token layout is not yet frozen.
+
+- 25131af: Add optional storyboard validation ids and require runners to echo them in
+  validation results for stable per-assertion diagnostics.
+
+### Patch Changes
+
+- 50bb14a: spec(creative): clarify preview URL durability for generated creative previews.
+
+  Documents that `preview_url` is the browser/MCPUI-renderable resource in AdCP 3.x and must remain dereferenceable for its advertised lifetime: until `expires_at` when present, or until explicit out-of-band revocation when omitted. Also fixes the stale Creative Protocol overview wording that said `expires_at` was always required, which contradicted the current schema and schema test for non-expiring preview URLs.
+
+  This intentionally does not add `asset_ref`, `resource_uri`, or another durable-pointer field to `PreviewRender`; that naming and buyer-visible-vs-agent-internal decision remains a working-group question in #5434.
+
+- c977acd: fix(aao): follow ads.txt redirect chains for managerdomain fallback (#5440)
+
+  Publisher domains whose `/.well-known/adagents.json` is missing can still be
+  authorized through the legacy ads.txt `MANAGERDOMAIN` fallback when the manager
+  manifest explicitly scopes the publisher. The fallback now follows normal
+  ads.txt redirect chains before parsing `MANAGERDOMAIN`, fixing managed-network
+  setups where the publisher's `/ads.txt` redirects through a canonical hostname
+  and then to a hosted ads.txt file. The adagents docs also clarify that hostname
+  redirect chains must end at a `200` JSON file when relying on direct
+  well-known deployment.
+
+- 13ff494: Use generated storyboard context values for idempotency replay keys and assert
+  declared specialisms during specialism capability discovery.
+- 80ea975: fix(compliance): require content-standards specialism discovery
+
+  Refs #5430. Adds the content-standards specialism claim to the storyboard capability discovery check and clarifies that `media_buy.content_standards` is distinct from the governance specialism declaration.
+
+- d16b2ad: fix(compliance): raise hosted full-assessment comply() budget to 600s
+
+  @adcp/sdk 9.0.0-beta.28 applies the per-call `--timeout` (default 120s) as the wall-clock budget for the _entire_ pre-flight `comply()` assessment. A full capability-rich assessment legitimately runs ~117s, so the 120s ceiling graded the most compliant agents "unreachable" with 0 steps and let registry cards go stale silently.
+
+  Adds `HOSTED_FULL_COMPLIANCE_TIMEOUT_MS = 600_000` and threads it through every hosted full-suite `comply()` call site — the compliance heartbeat job, the owner/admin registry-refresh endpoint, the `evaluate_agent_quality` member tool, and the heartbeat-mirroring diagnostic script — replacing the prior 60s/90s/SDK-default values.
+
+  The heartbeat in-progress lock TTL now tracks the worst-case serial batch (batch size × budget) so an agent late in the loop isn't re-picked by an overlapping run.
+
+  This is a hosted-side mitigation; it does not change the SDK's CLI default-timeout behavior (tracked upstream in adcontextprotocol/adcp-client#2221). Revisit the 600s budget when the SDK restores per-call timeout semantics.
+
+- a5614b4: Clarify that brand.json may contain multiple same-type `agents[]` entries when
+  they use distinct endpoint URLs, such as one sales-agent URL per publisher
+  tenant. Each entry can publish its own static `jwks_uri` shard; dynamic key
+  routing is optional rather than required.
+
 ## 3.1.0-rc.12
 
 ### Minor Changes
