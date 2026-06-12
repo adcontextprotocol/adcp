@@ -26,6 +26,7 @@ import { revokeUnsupportedPublicBadges, runBadgeFanOut } from '../../services/ba
 import { adaptAuthForSdk } from '../../services/sdk-auth-adapter.js';
 import {
   hostedComplianceTarget,
+  HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
 } from '../../services/hosted-compliance-version.js';
 
 const logger = baseLogger.child({ module: 'compliance-heartbeat' });
@@ -56,16 +57,21 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
   logger.debug({ count: agentsDue.length }, 'Agents due for compliance check');
 
   // Mark agents as in-progress to prevent concurrent pickup by overlapping runs.
-  // Use a 30-minute TTL instead of NOW() so a mid-loop process crash (OOM,
-  // Fly restart) re-queues the agent within 30 min rather than waiting the full
-  // check_interval (default 12 h). recordComplianceRun() stamps the real
-  // last_checked_at on success or failure — this is only a concurrency lock.
+  // Agents are processed serially, so the lock must outlive the worst-case batch
+  // runtime — otherwise an agent late in the loop has its lock expire before the
+  // loop reaches it and an overlapping run re-picks it (duplicate assessment,
+  // double badge fan-out). Worst case is batchSize × the full-comply budget, plus
+  // headroom for per-agent target selection. recordComplianceRun() stamps the
+  // real last_checked_at on success or failure — this is only a concurrency lock,
+  // so a mid-loop process crash re-queues the agent after this TTL rather than
+  // waiting the full check_interval (default 12 h).
   const urls = agentsDue.map(a => a.agent_url);
+  const lockSeconds = urls.length * (HOSTED_FULL_COMPLIANCE_TIMEOUT_MS / 1000) + 300;
   await query(
     `INSERT INTO agent_compliance_status (agent_url, status, last_checked_at)
-     SELECT unnest($1::text[]), 'unknown', NOW() + INTERVAL '30 minutes'
-     ON CONFLICT (agent_url) DO UPDATE SET last_checked_at = NOW() + INTERVAL '30 minutes'`,
-    [urls],
+     SELECT unnest($1::text[]), 'unknown', NOW() + make_interval(secs => $2)
+     ON CONFLICT (agent_url) DO UPDATE SET last_checked_at = NOW() + make_interval(secs => $2)`,
+    [urls, lockSeconds],
   );
 
   for (const agent of agentsDue) {
@@ -78,7 +84,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
 
       const complyOptions: ComplyOptions = {
         test_session_id: `heartbeat-${Date.now()}`,
-        timeout_ms: 60_000,
+        timeout_ms: HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
         auth: sdkAuth,
         userAgent: AAO_UA_COMPLIANCE,
       };
@@ -194,7 +200,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       const isAgentTimeout = /timed?\s*out/i.test(errorMessage);
-      const isSavedAuthConfigError = /step\.auth\.basic\.(?:username|password) must be a non-empty string/i.test(errorMessage);
+      const isSavedAuthConfigError = /step\.auth\.basic\.username must be a non-empty string/i.test(errorMessage);
       const capsError = classifyCapabilityResolutionError(error);
 
       // Classify failure. Timeouts and capability-config faults are expected
@@ -207,17 +213,17 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
       let observationSeverity: 'warning' | 'error';
       let observationMessage: string;
       if (isAgentTimeout) {
-        headline = 'Timed out: agent did not respond within 60s';
+        headline = `Timed out: assessment did not complete within ${HOSTED_FULL_COMPLIANCE_TIMEOUT_MS / 1000}s`;
         observationCategory = 'connectivity';
         observationSeverity = 'warning';
         observationMessage = headline;
         logger.warn({ agentUrl: agent.agent_url }, `Compliance check timed out for agent: ${agent.agent_url}`);
       } else if (isSavedAuthConfigError) {
-        headline = 'Saved Basic auth credentials are incomplete';
+        headline = 'Saved Basic auth credentials are malformed';
         observationCategory = 'authentication';
         observationSeverity = 'warning';
-        observationMessage = 'The saved Basic auth credentials for this agent must include both username and password.';
-        logger.warn({ agentUrl: agent.agent_url }, 'Compliance check skipped complete Basic auth due to incomplete saved credentials');
+        observationMessage = 'The saved Basic auth credentials for this agent must include a non-empty username.';
+        logger.warn({ agentUrl: agent.agent_url }, 'Compliance check skipped Basic auth due to malformed saved credentials');
       } else if (capsError) {
         const presentation = presentCapabilityResolutionError(capsError);
         headline = presentation.headline;

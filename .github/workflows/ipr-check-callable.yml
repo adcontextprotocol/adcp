@@ -73,7 +73,7 @@ jobs:
           repositories: adcp
 
       - name: Checkout central IPR ledger
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v6.0.3
         with:
           repository: adcontextprotocol/adcp
           ref: main

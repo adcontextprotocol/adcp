@@ -2805,6 +2805,10 @@ async function commitStripeCustomerUpdatePreview(
     pending.orgId,
     pending.newCustomerId,
   );
+  if (!stripe) {
+    throw new ToolError("Stripe is not configured; cannot relink the customer.");
+  }
+  const stripeClient = stripe;
   const { subscriptions, membershipPick } = preview;
 
   const actorPersonId = pending.actorWorkosUserId
@@ -2819,6 +2823,9 @@ async function commitStripeCustomerUpdatePreview(
   let subscriptionSynced = false;
   let previousCustomerId: string | null = null;
   let orgName: string | null = null;
+  const originalTargetMetadataOrgId =
+    preview.customer.metadata?.workos_organization_id ?? "";
+  let stampedTargetCustomer = false;
   try {
     await txClient.query("BEGIN");
 
@@ -2916,6 +2923,21 @@ async function commitStripeCustomerUpdatePreview(
             membership_tier: null,
           }
         : { ...beforeState, stripe_customer_id: pending.newCustomerId };
+
+    try {
+      await stripeClient.customers.update(pending.newCustomerId, {
+        metadata: { workos_organization_id: pending.orgId },
+      });
+      stampedTargetCustomer = true;
+    } catch (err) {
+      logger.warn(
+        { err, customerId: pending.newCustomerId, orgId: pending.orgId },
+        "Addie: Failed to stamp metadata on new Stripe customer before relink",
+      );
+      throw new ToolError(
+        `Could not stamp Stripe customer ${pending.newCustomerId} with org ${pending.orgId}; relink was not committed.`,
+      );
+    }
 
     await txClient.query(
       `UPDATE organizations
@@ -3032,6 +3054,23 @@ async function commitStripeCustomerUpdatePreview(
     } catch {
       // ignore rollback errors
     }
+    if (stampedTargetCustomer) {
+      try {
+        await stripeClient.customers.update(pending.newCustomerId, {
+          metadata: { workos_organization_id: originalTargetMetadataOrgId },
+        });
+      } catch (restoreErr) {
+        logger.error(
+          {
+            err: restoreErr,
+            customerId: pending.newCustomerId,
+            orgId: pending.orgId,
+            originalTargetMetadataOrgId,
+          },
+          "Addie: Failed to restore Stripe customer metadata after relink failure",
+        );
+      }
+    }
     throw txErr;
   } finally {
     txClient.release();
@@ -3041,20 +3080,9 @@ async function commitStripeCustomerUpdatePreview(
     invalidateMembershipCache(pending.orgId);
   }
 
-  try {
-    await stripe?.customers.update(pending.newCustomerId, {
-      metadata: { workos_organization_id: pending.orgId },
-    });
-  } catch (err) {
-    logger.warn(
-      { err, customerId: pending.newCustomerId, orgId: pending.orgId },
-      "Addie: Failed to stamp metadata on new Stripe customer",
-    );
-  }
-
   if (previousCustomerId) {
     try {
-      await stripe?.customers.update(previousCustomerId, {
+      await stripeClient.customers.update(previousCustomerId, {
         metadata: { workos_organization_id: "" },
       });
     } catch (err) {
@@ -3065,7 +3093,7 @@ async function commitStripeCustomerUpdatePreview(
     }
 
     try {
-      const oldSubs = await stripe?.subscriptions.list({
+      const oldSubs = await stripeClient.subscriptions.list({
         customer: previousCustomerId,
         status: "all",
         limit: 100,
@@ -3073,7 +3101,7 @@ async function commitStripeCustomerUpdatePreview(
       for (const sub of oldSubs?.data ?? []) {
         if (sub.metadata?.workos_organization_id) {
           try {
-            await stripe?.subscriptions.update(sub.id, {
+            await stripeClient.subscriptions.update(sub.id, {
               metadata: { workos_organization_id: "" },
             });
           } catch (subErr) {

@@ -63,8 +63,8 @@ For the opposite direction — failures that are **not** in this list and do hav
 
 ### Branch-set step grading (`peer_branch_taken`)
 
-- **Storyboards**: any with parallel `optional: true` phases sharing a `contributes_to:` flag — canonical example `universal/schema-validation.yaml > past_start_reject_path` + `past_start_adjust_path` (aggregation flag `past_start_handled`).
-- **Gap**: a conformant agent picks one branch (e.g., rejects past `start_time`); the other branch's assertion (e.g., `field_present: media_buy_id`) fails because the agent took the opposite behavior. Runners before the #2629 fix surfaced this as `× (unknown step)` in the summary even though the `any_of` aggregate passed — implementers debugged a branch they weren't on.
+- **Storyboards**: any with parallel `optional: true` phases sharing a `contributes_to:` flag.
+- **Gap**: a conformant agent picks one branch (for example, immediate success); the other branch's assertion (for example, `status: pending_review`) fails because the agent took the opposite behavior. Runners before the #2629 fix surfaced this as `× (unknown step)` in the summary even though the `any_of` aggregate passed — implementers debugged a branch they weren't on.
 - **Resolution**: [#2629](https://github.com/adcontextprotocol/adcp/issues/2629) — runners now grade non-chosen branch steps with skip reason `peer_branch_taken` (distinct from `not_applicable`, which is reserved for protocol/specialism coverage gaps). See `storyboard-schema.yaml` § "Per-step grading in any_of branch patterns" for the authoring rules and `runner-output-contract.yaml > skip_result.reasons.peer_branch_taken` for the canonical `detail` shape.
 - **Workaround**: if your runner reports an unexpected branch failure, check whether a peer optional phase contributed the same `contributes_to` flag. If so, you're conformant on the branch you chose — the runner needs the #2629 update.
 

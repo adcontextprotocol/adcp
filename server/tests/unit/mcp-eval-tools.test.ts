@@ -7,7 +7,11 @@
  * - Handler factories create callable handlers
  * - Auth-required tools reject anonymous callers
  */
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import * as hostnameVerification from '../../src/services/agent-hostname-verification.js';
+import { AgentContextDatabase } from '../../src/db/agent-context-db.js';
+import { MemberDatabase } from '../../src/db/member-db.js';
+import * as clientDb from '../../src/db/client.js';
 import {
   EVAL_TOOL_DEFINITIONS,
   AGENT_CONTEXT_TOOL_DEFINITIONS,
@@ -17,6 +21,40 @@ import {
   createMemberToolHandler,
   createStatelessToolHandlers,
 } from '../../src/mcp/exposed-tools.js';
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+function savedAgentContext(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'ctx_123',
+    organization_id: 'org_123',
+    agent_url: 'https://agent.example.com/mcp',
+    agent_name: null,
+    agent_type: 'unknown',
+    protocol: 'mcp',
+    has_auth_token: false,
+    auth_token_hint: null,
+    auth_type: 'bearer',
+    has_oauth_token: false,
+    has_oauth_refresh_token: false,
+    oauth_token_expires_at: null,
+    has_oauth_client: false,
+    has_oauth_client_credentials: false,
+    tools_discovered: null,
+    last_discovered_at: null,
+    last_test_scenario: null,
+    last_test_passed: null,
+    last_test_summary: null,
+    last_tested_at: null,
+    total_tests_run: 0,
+    created_at: new Date('2026-01-01T00:00:00Z'),
+    updated_at: new Date('2026-01-01T00:00:00Z'),
+    created_by: 'user_123',
+    ...overrides,
+  } as any;
+}
 
 describe('EVAL_TOOL_DEFINITIONS', () => {
   const EXPECTED = [
@@ -163,6 +201,90 @@ describe('createMemberToolHandler', () => {
     );
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('Authentication required');
+  });
+
+  it('save_agent rejects Basic credentials with a blank username before saving', async () => {
+    vi.spyOn(hostnameVerification, 'verifyAgentHostname').mockResolvedValueOnce({
+      ok: true,
+      verified_domain: 'example.com',
+      agent_hostname: 'agent.example.com',
+    });
+    const createSpy = vi.spyOn(AgentContextDatabase.prototype, 'create');
+    const saveAuthSpy = vi.spyOn(AgentContextDatabase.prototype, 'saveAuthToken');
+
+    const handler = createMemberToolHandler('save_agent');
+    const result = await handler(
+      {
+        agent_url: 'https://agent.example.com/mcp',
+        type: 'sales',
+        auth_type: 'basic',
+        auth_token: ':test-password',
+      },
+      {
+        sub: 'user_123',
+        orgId: 'org_123',
+        email: 'user@example.com',
+        isM2M: false,
+        payload: {},
+      },
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(result.content[0].text).toMatch(/non-empty username/);
+    expect(createSpy).not.toHaveBeenCalled();
+    expect(saveAuthSpy).not.toHaveBeenCalled();
+  });
+
+  it('save_agent accepts Basic credentials with a blank password and stores base64 form', async () => {
+    vi.spyOn(hostnameVerification, 'verifyAgentHostname').mockResolvedValueOnce({
+      ok: true,
+      verified_domain: 'example.com',
+      agent_hostname: 'agent.example.com',
+    });
+    vi.spyOn(AgentContextDatabase.prototype, 'getByOrgAndUrl').mockResolvedValueOnce(null);
+    vi.spyOn(AgentContextDatabase.prototype, 'create').mockResolvedValueOnce(savedAgentContext());
+    const saveAuthSpy = vi.spyOn(AgentContextDatabase.prototype, 'saveAuthToken').mockResolvedValueOnce();
+    vi.spyOn(AgentContextDatabase.prototype, 'getById').mockResolvedValueOnce(
+      savedAgentContext({
+        has_auth_token: true,
+        auth_token_hint: 'test-user:****',
+        auth_type: 'basic',
+      }),
+    );
+    vi.spyOn(MemberDatabase.prototype, 'getProfileByOrgId').mockResolvedValueOnce({
+      id: 'profile_123',
+      workos_organization_id: 'org_123',
+      display_name: 'Example Org',
+      slug: 'example-org',
+      agents: [],
+    } as any);
+    vi.spyOn(MemberDatabase.prototype, 'updateProfile').mockResolvedValueOnce({} as any);
+    vi.spyOn(clientDb, 'query').mockResolvedValueOnce({ rows: [], rowCount: 0 } as any);
+
+    const handler = createMemberToolHandler('save_agent');
+    const result = await handler(
+      {
+        agent_url: 'https://agent.example.com/mcp',
+        type: 'sales',
+        auth_type: 'basic',
+        auth_token: 'test-user:',
+      },
+      {
+        sub: 'user_123',
+        orgId: 'org_123',
+        email: 'user@example.com',
+        isM2M: false,
+        payload: {},
+      },
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(result.content[0].text).toContain('Basic auth token saved securely');
+    expect(saveAuthSpy).toHaveBeenCalledWith(
+      'ctx_123',
+      Buffer.from('test-user:', 'utf8').toString('base64'),
+      'basic',
+    );
   });
 });
 

@@ -40,7 +40,7 @@ jobs:
           repositories: adcp
 
       - name: Checkout Repo
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v6.0.3
         with:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
@@ -68,18 +68,8 @@ jobs:
             exit 0
           fi
 
-          if [ -f "dist/protocol/${VERSION}.tgz" ] && [ -f "dist/protocol/${VERSION}.tgz.sha256" ] && gh release view "${TAG}" >/dev/null 2>&1; then
-            for asset in "${VERSION}.tgz" "${VERSION}.tgz.sha256" "${VERSION}.tgz.sig" "${VERSION}.tgz.crt"; do
-              if ! gh release view "${TAG}" --json assets --jq '.assets[].name' | grep -Fxq "${asset}"; then
-                echo "relevant=true" >> "$GITHUB_OUTPUT"
-                echo "Release ${TAG} is missing ${asset}; running repair path."
-                exit 0
-              fi
-            done
-          fi
-
           echo "relevant=false" >> "$GITHUB_OUTPUT"
-          echo "No release-relevant changes or missing release assets detected; skipping release job body."
+          echo "No release-relevant changes detected; skipping release job body."
 
       - name: Install cosign
         if: steps.release-relevance.outputs.relevant == 'true'
@@ -115,27 +105,9 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
           changed_files="$(git show --format= --name-only --no-renames "${GITHUB_SHA}")"
-          if [ -f "dist/protocol/${VERSION}.tgz" ] && [ -f "dist/protocol/${VERSION}.tgz.sha256" ] && [ -d "dist/schemas/${VERSION}" ] && [ -d "dist/compliance/${VERSION}" ]; then
-            echo "has_release_artifacts=true" >> "$GITHUB_OUTPUT"
-            echo "Detected committed release artifacts for ${VERSION}."
-          elif grep -Eq "^dist/(schemas|compliance)/${VERSION}/|^dist/protocol/${VERSION}[.]" <<< "${changed_files}"; then
+          if grep -Eq "^dist/(schemas|compliance)/${VERSION}/|^dist/protocol/${VERSION}[.]" <<< "${changed_files}"; then
             echo "has_release_artifacts=true" >> "$GITHUB_OUTPUT"
             echo "Detected committed release artifact changes for ${VERSION}."
-          elif [ -f "dist/protocol/${VERSION}.tgz" ] && [ -f "dist/protocol/${VERSION}.tgz.sha256" ] && gh release view "${TAG}" >/dev/null 2>&1; then
-            missing_assets=0
-            for asset in "${VERSION}.tgz" "${VERSION}.tgz.sha256" "${VERSION}.tgz.sig" "${VERSION}.tgz.crt"; do
-              if ! gh release view "${TAG}" --json assets --jq '.assets[].name' | grep -Fxq "${asset}"; then
-                missing_assets=1
-                break
-              fi
-            done
-            if [ "${missing_assets}" -eq 1 ]; then
-              echo "has_release_artifacts=true" >> "$GITHUB_OUTPUT"
-              echo "Detected missing protocol release assets for ${VERSION}; repairing from the current tree."
-            else
-              echo "has_release_artifacts=false" >> "$GITHUB_OUTPUT"
-              echo "No committed release artifacts detected for ${VERSION}."
-            fi
           else
             echo "has_release_artifacts=false" >> "$GITHUB_OUTPUT"
             echo "No committed release artifacts detected for ${VERSION}."
@@ -224,12 +196,36 @@ jobs:
               --notes "AdCP ${VERSION}" \
               "${release_args[@]}"
           fi
-          gh release upload "${TAG}" \
-            "${TARBALL}" \
-            "${TARBALL}.sha256" \
-            "${TARBALL}.sig" \
-            "${TARBALL}.crt" \
-            --clobber
+
+          upload_asset_if_missing() {
+            local path="$1"
+            local name
+            name="$(basename "${path}")"
+            local remote_name
+            remote_name="$(gh release view "${TAG}" --json assets --jq ".assets[] | select(.name == \"${name}\") | .name" || true)"
+            local remote_digest
+            remote_digest="$(gh release view "${TAG}" --json assets --jq ".assets[] | select(.name == \"${name}\") | .digest" || true)"
+
+            if [ -n "${remote_name}" ]; then
+              if [[ "${remote_digest}" == sha256:* && "${name}" != *.sig && "${name}" != *.crt ]]; then
+                local local_digest
+                local_digest="sha256:$(shasum -a 256 "${path}" | awk '{print $1}')"
+                if [ "${local_digest}" != "${remote_digest}" ]; then
+                  echo "::error::Release asset ${name} already exists on ${TAG} with digest ${remote_digest}, but local digest is ${local_digest}. Refusing to overwrite immutable release asset."
+                  exit 1
+                fi
+              fi
+              echo "Release asset ${name} already exists on ${TAG}; leaving it untouched."
+              return 0
+            fi
+
+            gh release upload "${TAG}" "${path}"
+          }
+
+          upload_asset_if_missing "${TARBALL}"
+          upload_asset_if_missing "${TARBALL}.sha256"
+          upload_asset_if_missing "${TARBALL}.sig"
+          upload_asset_if_missing "${TARBALL}.crt"
 
       - name: Publish release artifacts to R2
         if: steps.changesets.outputs.published == 'true' || steps.release-artifacts.outputs.has_release_artifacts == 'true'

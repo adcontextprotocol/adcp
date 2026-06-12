@@ -507,6 +507,149 @@
       align-items: flex-end;
     }
 
+    .attachment-button {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      border: 1px solid var(--color-border);
+      background: var(--color-bg-card);
+      color: var(--color-text-secondary);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: border-color 0.2s, color 0.2s, background 0.2s;
+      flex-shrink: 0;
+      align-self: flex-end;
+      margin-bottom: 4px;
+    }
+
+    .attachment-button:hover:not(:disabled) {
+      border-color: var(--color-brand);
+      color: var(--color-brand);
+      background: var(--color-bg-subtle);
+    }
+
+    .attachment-button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .attachment-button svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .attachment-tray {
+      display: none;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .attachment-tray.visible {
+      display: flex;
+    }
+
+    .attachment-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      max-width: 220px;
+      padding: 6px 8px;
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      background: var(--color-bg-card);
+      color: var(--color-text);
+      font-size: 12px;
+    }
+
+    .attachment-chip-preview {
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      flex-shrink: 0;
+      background: var(--color-bg-subtle);
+      border: 1px solid var(--color-border);
+      object-fit: cover;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--color-text-muted);
+      font-size: 10px;
+      font-weight: 600;
+    }
+
+    .attachment-chip-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+
+    .attachment-chip-remove {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: none;
+      background: transparent;
+      color: var(--color-text-muted);
+      cursor: pointer;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      line-height: 1;
+    }
+
+    .attachment-chip-remove:hover {
+      background: var(--color-bg-subtle);
+      color: var(--color-text);
+    }
+
+    .message-attachments {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .message-content > .message-attachments:not(:first-child) {
+      margin-top: 8px;
+    }
+
+    .message-attachment {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      max-width: 220px;
+      padding: 6px 8px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.16);
+      font-size: 12px;
+    }
+
+    .message-attachment img {
+      width: 44px;
+      height: 44px;
+      border-radius: 6px;
+      object-fit: cover;
+      background: rgba(255, 255, 255, 0.16);
+    }
+
+    .message-attachment span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+
+    .chat-container.drag-over .chat-input-container {
+      box-shadow: inset 0 0 0 2px var(--color-brand);
+      border-radius: 12px;
+    }
+
     .chat-input {
       flex: 1;
       padding: 12px 16px;
@@ -836,6 +979,24 @@
     .copy-btn.copied {
       color: var(--color-success-600);
       border-color: var(--color-success-500);
+    }
+
+    .user-copy-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 8px;
+    }
+
+    .user-copy-actions .copy-btn {
+      color: var(--color-text-on-dark-secondary);
+      border-color: color-mix(in srgb, var(--color-text-on-dark) 35%, transparent);
+      margin-left: 0;
+    }
+
+    .user-copy-actions .copy-btn:hover {
+      background: color-mix(in srgb, var(--color-text-on-dark) 12%, transparent);
+      color: var(--color-text-on-dark);
+      border-color: color-mix(in srgb, var(--color-text-on-dark) 65%, transparent);
     }
 
     .feedback-expand {
@@ -2656,7 +2817,14 @@
       </div>
 
       <div class="chat-input-container">
+        <div class="attachment-tray" id="attachmentTray" aria-live="polite"></div>
         <div class="chat-input-wrapper">
+          <input type="file" id="attachmentInput" accept="image/png,image/jpeg,image/gif,image/webp,application/pdf" multiple hidden>
+          <button class="attachment-button" id="attachmentButton" type="button" title="Attach file" aria-label="Attach file">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21.44 11.05 12.25 20.24a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+            </svg>
+          </button>
           <textarea
             class="chat-input"
             id="chatInput"
@@ -2689,6 +2857,9 @@
       const messagesContainer = document.getElementById('messagesContainer');
       const welcomeMessage = document.getElementById('welcomeMessage');
       const chatInput = document.getElementById('chatInput');
+      const attachmentInput = document.getElementById('attachmentInput');
+      const attachmentButton = document.getElementById('attachmentButton');
+      const attachmentTray = document.getElementById('attachmentTray');
       const sendButton = document.getElementById('sendButton');
       const suggestedPrompts = document.getElementById('suggestedPrompts');
       const statusDot = document.getElementById('statusDot');
@@ -2770,6 +2941,7 @@
       let conversationId = null;
       let isLoading = false;
       let isReady = false;
+      let isReadOnly = false;
       let impersonationInfo = null;
       let isAuthenticated = false;
       let videoCallActive = false;
@@ -2789,6 +2961,20 @@
       // Tab state - persisted to localStorage
       let activeTabs = []; // [{id, title, channel, isLoading, unreadCount}]
       let currentTabId = 'home'; // 'home' or conversation_id
+
+      const ALLOWED_ATTACHMENT_TYPES = new Set([
+        'image/png',
+        'image/jpeg',
+        'image/gif',
+        'image/webp',
+        'application/pdf'
+      ]);
+      const ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024;
+      const ATTACHMENT_MAX_TOTAL_BYTES = 6 * 1024 * 1024;
+      const ATTACHMENT_MAX_COUNT = 4;
+      let pendingAttachments = [];
+      let pendingAttachmentReads = 0;
+      let attachmentGeneration = 0;
 
       // Event delegation for member card clicks (more secure than inline onclick)
       messagesContainer.addEventListener('click', function(e) {
@@ -3210,6 +3396,7 @@
         currentChannel = 'web';
         lastAssistantMessageId = null;
         clearSessionFeedbackTimer();
+        clearAttachments();
 
         // Update UI
         homeTab.classList.add('active');
@@ -3314,6 +3501,7 @@
       // Switch to a different conversation
       async function switchToConversation(newConversationId, channel = 'web') {
         if (newConversationId === conversationId && channel === currentChannel) return;
+        clearAttachments();
 
         conversationId = newConversationId;
         currentChannel = channel;
@@ -3378,8 +3566,11 @@
 
       // Set read-only mode for the chat input
       function setReadOnlyMode(readOnly, channel) {
+        isReadOnly = readOnly;
         if (readOnly) {
           chatInput.disabled = true;
+          attachmentButton.disabled = true;
+          clearAttachments();
           chatInput.placeholder = channel === 'video'
             ? 'This is a video call transcript'
             : 'This is a Slack conversation - reply in Slack to continue';
@@ -3387,9 +3578,10 @@
           sendButton.style.opacity = '0.5';
         } else {
           chatInput.disabled = false;
+          attachmentButton.disabled = false;
           chatInput.placeholder = 'Ask Addie anything...';
-          sendButton.disabled = false;
           sendButton.style.opacity = '1';
+          updateSendButton();
         }
       }
 
@@ -3401,6 +3593,7 @@
         clearCurrentTab();
         lastAssistantMessageId = null;
         clearSessionFeedbackTimer();
+        clearAttachments();
 
         // Clear messages and show home
         clearChatMessages();
@@ -3573,7 +3766,192 @@
       // Update send button state
       function updateSendButton() {
         const hasText = chatInput.value.trim().length > 0;
-        sendButton.disabled = !hasText || isLoading || !isReady;
+        const hasAttachments = pendingAttachments.length > 0;
+        sendButton.disabled = (!hasText && !hasAttachments) || pendingAttachmentReads > 0 || isLoading || !isReady || isReadOnly;
+      }
+
+      function getAttachmentKind(file) {
+        if (!file || !ALLOWED_ATTACHMENT_TYPES.has(file.type)) return null;
+        return file.type === 'application/pdf' ? 'document' : 'image';
+      }
+
+      function formatBytes(bytes) {
+        if (bytes < 1024 * 1024) return Math.ceil(bytes / 1024) + 'KB';
+        return (bytes / 1024 / 1024).toFixed(bytes % (1024 * 1024) === 0 ? 0 : 1) + 'MB';
+      }
+
+      function readFileAsBase64(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = typeof reader.result === 'string' ? reader.result : '';
+            const comma = result.indexOf(',');
+            resolve(comma >= 0 ? result.slice(comma + 1) : result);
+          };
+          reader.onerror = () => reject(reader.error || new Error('Could not read file'));
+          reader.readAsDataURL(file);
+        });
+      }
+
+      async function addAttachmentFiles(fileList) {
+        if (isReadOnly) return;
+        const files = Array.from(fileList || []);
+        if (files.length === 0) return;
+
+        const generation = attachmentGeneration;
+        pendingAttachmentReads++;
+        updateSendButton();
+        try {
+          for (const file of files) {
+            if (generation !== attachmentGeneration || isReadOnly) break;
+            const kind = getAttachmentKind(file);
+            if (!kind) {
+              showError('Unsupported file type. Use PNG, JPEG, GIF, WebP, or PDF.');
+              continue;
+            }
+            if (file.size > ATTACHMENT_MAX_BYTES) {
+              showError(`"${file.name}" is too large. Files must be under 5MB.`);
+              continue;
+            }
+            if (pendingAttachments.length >= ATTACHMENT_MAX_COUNT) {
+              showError(`Attach up to ${ATTACHMENT_MAX_COUNT} files per message.`);
+              break;
+            }
+            const totalBytes = pendingAttachments.reduce((sum, item) => sum + item.size, 0) + file.size;
+            if (totalBytes > ATTACHMENT_MAX_TOTAL_BYTES) {
+              showError('Attachments must total under 6MB.');
+              continue;
+            }
+
+            try {
+              const data = await readFileAsBase64(file);
+              if (generation !== attachmentGeneration || isReadOnly) break;
+              pendingAttachments.push({
+                id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                kind,
+                mediaType: file.type,
+                name: file.name || (kind === 'document' ? 'document.pdf' : 'image'),
+                size: file.size,
+                data,
+                previewUrl: kind === 'image' ? URL.createObjectURL(file) : null,
+              });
+            } catch {
+              showError(`Could not read "${file.name}".`);
+            }
+          }
+        } finally {
+          if (generation === attachmentGeneration) {
+            pendingAttachmentReads--;
+            renderAttachmentTray();
+            updateSendButton();
+          }
+        }
+      }
+
+      function removeAttachment(id) {
+        const attachment = pendingAttachments.find(item => item.id === id);
+        if (attachment?.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+        pendingAttachments = pendingAttachments.filter(item => item.id !== id);
+        renderAttachmentTray();
+        updateSendButton();
+      }
+
+      function clearAttachments() {
+        attachmentGeneration++;
+        pendingAttachmentReads = 0;
+        pendingAttachments.forEach(item => {
+          if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+        });
+        pendingAttachments = [];
+        renderAttachmentTray();
+        updateSendButton();
+      }
+
+      function renderAttachmentTray() {
+        attachmentTray.innerHTML = '';
+        attachmentTray.classList.toggle('visible', pendingAttachments.length > 0);
+
+        pendingAttachments.forEach((attachment) => {
+          const chip = document.createElement('div');
+          chip.className = 'attachment-chip';
+
+          if (attachment.previewUrl) {
+            const image = document.createElement('img');
+            image.className = 'attachment-chip-preview';
+            image.src = attachment.previewUrl;
+            image.alt = '';
+            chip.appendChild(image);
+          } else {
+            const preview = document.createElement('div');
+            preview.className = 'attachment-chip-preview';
+            preview.textContent = 'PDF';
+            chip.appendChild(preview);
+          }
+
+          const name = document.createElement('span');
+          name.className = 'attachment-chip-name';
+          name.textContent = `${attachment.name} (${formatBytes(attachment.size)})`;
+          chip.appendChild(name);
+
+          const remove = document.createElement('button');
+          remove.className = 'attachment-chip-remove';
+          remove.type = 'button';
+          remove.title = 'Remove attachment';
+          remove.setAttribute('aria-label', `Remove ${attachment.name}`);
+          remove.textContent = '×';
+          remove.addEventListener('click', () => removeAttachment(attachment.id));
+          chip.appendChild(remove);
+
+          attachmentTray.appendChild(chip);
+        });
+      }
+
+      function attachmentSummary(attachments) {
+        if (attachments.length === 0) return '';
+        return `${attachments.length} attachment${attachments.length === 1 ? '' : 's'}`;
+      }
+
+      function buildAttachmentPayload(attachments) {
+        return attachments.map((attachment) => ({
+          type: attachment.kind,
+          media_type: attachment.mediaType,
+          filename: attachment.name,
+          size_bytes: attachment.size,
+          data: attachment.data,
+        }));
+      }
+
+      function renderMessageAttachments(attachments) {
+        if (!attachments || attachments.length === 0) return null;
+        const container = document.createElement('div');
+        container.className = 'message-attachments';
+
+        attachments.forEach((attachment) => {
+          const item = document.createElement('div');
+          item.className = 'message-attachment';
+
+          if (attachment.previewUrl) {
+            const image = document.createElement('img');
+            image.src = attachment.previewUrl;
+            image.alt = attachment.name;
+            const revokePreviewUrl = () => URL.revokeObjectURL(attachment.previewUrl);
+            image.addEventListener('load', revokePreviewUrl, { once: true });
+            image.addEventListener('error', revokePreviewUrl, { once: true });
+            item.appendChild(image);
+          } else {
+            const preview = document.createElement('div');
+            preview.className = 'attachment-chip-preview';
+            preview.textContent = 'PDF';
+            item.appendChild(preview);
+          }
+
+          const label = document.createElement('span');
+          label.textContent = attachment.name;
+          item.appendChild(label);
+          container.appendChild(item);
+        });
+
+        return container;
       }
 
       // Track member card clicks for analytics
@@ -3787,7 +4165,7 @@
       }
 
       // Add message to chat
-      function addMessage(content, role, messageId = null) {
+      function addMessage(content, role, messageId = null, attachments = []) {
         // Switch to conversation mode
         const chatContainer = document.getElementById('chatContainer');
         if (chatContainer) chatContainer.classList.add('has-messages');
@@ -3811,13 +4189,20 @@
         const contentDiv = document.createElement('div');
         contentDiv.className = 'message-content';
         contentDiv.dir = 'auto';
-        contentDiv.innerHTML = renderMessage(content);
+        contentDiv.innerHTML = content ? renderMessage(content) : '';
         setupChatImages(contentDiv);
+        const attachmentsEl = renderMessageAttachments(attachments);
+        if (attachmentsEl) contentDiv.appendChild(attachmentsEl);
 
         // Add feedback controls for assistant messages
         if (role === 'assistant' && messageId) {
           const feedbackDiv = createFeedbackUI(messageId, content);
           contentDiv.appendChild(feedbackDiv);
+        } else if (role === 'user') {
+          const actionsDiv = document.createElement('div');
+          actionsDiv.className = 'user-copy-actions';
+          actionsDiv.appendChild(createCopyButton(content, 'Copy message'));
+          contentDiv.appendChild(actionsDiv);
         }
 
         messageDiv.appendChild(avatarDiv);
@@ -3850,6 +4235,28 @@
         } finally {
           document.body.removeChild(textarea);
         }
+      }
+
+      function createCopyButton(text, title) {
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'copy-btn';
+        copyBtn.textContent = 'Copy';
+        copyBtn.title = title;
+        copyBtn.addEventListener('click', () => {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(() => {
+              copyBtn.textContent = 'Copied!';
+              copyBtn.classList.add('copied');
+              setTimeout(() => {
+                copyBtn.textContent = 'Copy';
+                copyBtn.classList.remove('copied');
+              }, 1500);
+            }).catch(() => fallbackCopy(text, copyBtn));
+          } else {
+            fallbackCopy(text, copyBtn);
+          }
+        });
+        return copyBtn;
       }
 
       // Create feedback UI for a message
@@ -3937,25 +4344,7 @@
         });
 
         if (rawContent) {
-          const copyBtn = document.createElement('button');
-          copyBtn.className = 'copy-btn';
-          copyBtn.textContent = 'Copy';
-          copyBtn.title = 'Copy response';
-          copyBtn.addEventListener('click', () => {
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-              navigator.clipboard.writeText(rawContent).then(() => {
-                copyBtn.textContent = 'Copied!';
-                copyBtn.classList.add('copied');
-                setTimeout(() => {
-                  copyBtn.textContent = 'Copy';
-                  copyBtn.classList.remove('copied');
-                }, 1500);
-              }).catch(() => fallbackCopy(rawContent, copyBtn));
-            } else {
-              fallbackCopy(rawContent, copyBtn);
-            }
-          });
-          container.appendChild(copyBtn);
+          container.appendChild(createCopyButton(rawContent, 'Copy response'));
         }
 
         return container;
@@ -4347,7 +4736,8 @@
       // Send message with streaming
       async function sendMessage() {
         const message = chatInput.value.trim();
-        if (!message || isLoading || !isReady) {
+        const attachmentsToSend = pendingAttachments.slice();
+        if ((!message && attachmentsToSend.length === 0) || isLoading || !isReady || isReadOnly) {
           pendingMessageSource = null;
           return;
         }
@@ -4367,10 +4757,13 @@
         requestNotificationPermission();
 
         // Add user message
-        addMessage(message, 'user');
+        addMessage(message, 'user', null, attachmentsToSend);
 
         // Clear input
         chatInput.value = '';
+        pendingAttachments = [];
+        renderAttachmentTray();
+        updateSendButton();
         autoResize();
 
         // Track if this is a new conversation
@@ -4393,6 +4786,7 @@
               message,
               conversation_id: conversationId,
               message_source: messageSource,
+              attachments: buildAttachmentPayload(attachmentsToSend),
             }),
           });
 
@@ -4423,6 +4817,8 @@
           let buffer = '';
           let currentEventType = '';
           let newConversationId = null;
+          let sawDone = false;
+          let streamFailure = null;
 
           // Helper to process SSE lines (uses closure for currentEventType)
           const processLines = (lines) => {
@@ -4448,7 +4844,8 @@
 
                   // For new conversations, add to active tabs and update currentTabId
                   if (isNewConversation && newConversationId) {
-                    const title = message.slice(0, 50) + (message.length > 50 ? '...' : '');
+                    const titleSource = message || attachmentSummary(attachmentsToSend);
+                    const title = titleSource.slice(0, 50) + (titleSource.length > 50 ? '...' : '');
                     addActiveTab(newConversationId, title, 'web');
                     currentTabId = newConversationId;
                     saveCurrentTab(newConversationId);
@@ -4461,6 +4858,7 @@
                     updateTabState(conversationId, { isLoading: true });
                   }
                 } else if (currentEventType === 'done') {
+                  sawDone = true;
                   messageId = data.message_id;
                   conversationId = data.conversation_id;
 
@@ -4475,6 +4873,9 @@
                     console.log('SI agents available for CTA:', data.si_agents);
                     pendingSiAgents = data.si_agents;
                   }
+                } else if (currentEventType === 'stream_error') {
+                  streamFailure = data.reason || 'Reply interrupted';
+                  throw new Error(streamFailure);
                 } else if (currentEventType === 'error') {
                   throw new Error(data.error || 'Unknown error');
                 }
@@ -4505,6 +4906,10 @@
             buffer = lines.pop() || ''; // Keep incomplete line in buffer
 
             processLines(lines);
+          }
+
+          if (!sawDone) {
+            throw new Error(streamFailure || 'Reply did not complete');
           }
 
           // Finalize the message with feedback UI
@@ -4578,6 +4983,42 @@
         autoResize();
         updateSendButton();
         clearSessionFeedbackTimer(); // Reset idle timer when user types
+      });
+
+      attachmentButton.addEventListener('click', () => {
+        attachmentInput.click();
+      });
+
+      attachmentInput.addEventListener('change', () => {
+        addAttachmentFiles(attachmentInput.files);
+        attachmentInput.value = '';
+      });
+
+      chatInput.addEventListener('paste', (e) => {
+        const files = Array.from(e.clipboardData?.files || []);
+        if (files.some(file => getAttachmentKind(file))) {
+          e.preventDefault();
+          addAttachmentFiles(files);
+        }
+      });
+
+      ['dragenter', 'dragover'].forEach(eventName => {
+        document.addEventListener(eventName, (e) => {
+          if (Array.from(e.dataTransfer?.items || []).some(item => item.kind === 'file')) {
+            e.preventDefault();
+            document.getElementById('chatContainer')?.classList.add('drag-over');
+          }
+        });
+      });
+
+      ['dragleave', 'drop'].forEach(eventName => {
+        document.addEventListener(eventName, (e) => {
+          document.getElementById('chatContainer')?.classList.remove('drag-over');
+          if (eventName === 'drop' && e.dataTransfer?.files?.length) {
+            e.preventDefault();
+            addAttachmentFiles(e.dataTransfer.files);
+          }
+        });
       });
 
       chatInput.addEventListener('keydown', (e) => {

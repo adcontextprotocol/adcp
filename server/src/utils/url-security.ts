@@ -2,6 +2,7 @@ import dns from 'dns/promises';
 import { lookup as dnsLookup, type LookupAddress, type LookupOptions } from 'dns';
 import { isIP, type LookupFunction } from 'net';
 import { Agent, fetch as undiciFetch, type Dispatcher } from 'undici';
+import { getDomain } from 'tldts';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('url-security');
@@ -353,6 +354,17 @@ export async function safeFetch(
     body?: string | Uint8Array;
     maxRequestBytes?: number;
     signal?: AbortSignal;
+    /**
+     * Restrict redirect-following to the originally-requested registrable
+     * domain (eTLD+1), HTTPS only. Cross-registrable-domain or scheme-downgrade
+     * hops throw instead of being followed. Used for the `/.well-known/adagents.json`
+     * discovery fetch, where standard apex→www hosting redirects MUST resolve but a
+     * cross-domain hop is an unscoped delegation signal that MUST be refused — see
+     * docs/governance/property/managed-networks#why-not-http-redirects. The
+     * comparison is anchored on the original request URL at every hop, not the
+     * previous hop, so a same→cross two-hop chain cannot escape it.
+     */
+    sameSiteRedirectsOnly?: boolean;
   },
 ): Promise<Response> {
   const parsedUrl = new URL(url);
@@ -364,6 +376,23 @@ export async function safeFetch(
   const body = options?.body;
   const maxRequestBytes = options?.maxRequestBytes ?? DEFAULT_MAX_REQUEST_BYTES;
   const signal = options?.signal;
+  const sameSiteRedirectsOnly = options?.sameSiteRedirectsOnly ?? false;
+  // Same-site mode preserves HTTPS across the whole chain, including hop 0 —
+  // assert it up front so the invariant holds regardless of caller discipline.
+  if (sameSiteRedirectsOnly && parsedUrl.protocol !== 'https:') {
+    throw new Error(
+      `sameSiteRedirectsOnly requires an HTTPS origin, got ${parsedUrl.protocol}//${parsedUrl.hostname}`,
+    );
+  }
+  // Anchor the same-site check on the ORIGINAL request domain, never the
+  // previous hop — otherwise a same→cross two-hop chain bypasses the rule.
+  // allowPrivateDomains:true so the PSL PRIVATE section (github.io, pages.dev,
+  // herokuapp.com, …) is the registrant boundary; without it two unrelated
+  // tenants on shared hosting collapse to one registrable domain and a
+  // cross-tenant redirect would be wrongly trusted.
+  const originRegistrableDomain = sameSiteRedirectsOnly
+    ? getDomain(parsedUrl.hostname, { allowPrivateDomains: true })
+    : null;
   const dispatcher = buildSsrfSafeDispatcher();
 
   // POST without a body would surprise downstream agent endpoints; reject
@@ -391,7 +420,8 @@ export async function safeFetch(
   // Response body is a stream the caller consumes after this function returns;
   // closing here would tear down the underlying socket mid-stream. Connections
   // are reaped by undici's idle timeout (the same lifecycle as the global agent).
-  let response = await fetchWithDispatcher(sanitizeUrl(parsedUrl), {
+  let currentUrl = parsedUrl;
+  let response = await fetchWithDispatcher(sanitizeUrl(currentUrl), {
     method,
     headers,
     body,
@@ -405,7 +435,22 @@ export async function safeFetch(
     const location = response.headers.get('location');
     if (!location) throw new Error('Redirect with no Location header');
     // Pre-flight check on the redirect hop, then dial through the same SSRF-safe dispatcher.
-    const redirectUrl = await validateRedirectTarget(location, parsedUrl);
+    const redirectUrl = await validateRedirectTarget(location, currentUrl);
+    if (sameSiteRedirectsOnly) {
+      // HTTPS-preserving: refuse any downgrade away from HTTPS.
+      if (redirectUrl.protocol !== 'https:') {
+        throw new Error(
+          `Refused non-HTTPS redirect on same-site fetch: ${currentUrl.hostname} -> ${redirectUrl.protocol}//${redirectUrl.hostname}`,
+        );
+      }
+      // Same registrable domain (eTLD+1), anchored on the ORIGINAL request.
+      const targetRegistrableDomain = getDomain(redirectUrl.hostname, { allowPrivateDomains: true });
+      if (!originRegistrableDomain || targetRegistrableDomain !== originRegistrableDomain) {
+        throw new Error(
+          `Refused cross-registrable-domain redirect: ${currentUrl.hostname} -> ${redirectUrl.hostname}`,
+        );
+      }
+    }
     // Per RFC 7231 §6.4.4 a 303 ALWAYS rewrites to GET; for 301/302 most
     // clients also rewrite for non-idempotent verbs even though the spec
     // only mandates user confirmation. We rewrite POST→GET on 301/302/303
@@ -433,6 +478,7 @@ export async function safeFetch(
       signal,
       dispatcher,
     } as RequestInit & { dispatcher: Dispatcher });
+    currentUrl = redirectUrl;
   }
 
   return response;
@@ -481,6 +527,7 @@ export async function safeFetchAxiosLike(
     timeoutMs?: number;
     maxResponseBytes?: number;
     maxRedirects?: number;
+    sameSiteRedirectsOnly?: boolean;
   },
 ): Promise<SafeFetchAxiosLike> {
   const controller = new AbortController();
@@ -493,6 +540,7 @@ export async function safeFetchAxiosLike(
       headers: options?.headers,
       body: options?.body,
       maxRedirects: options?.maxRedirects,
+      sameSiteRedirectsOnly: options?.sameSiteRedirectsOnly,
       signal: controller.signal,
     });
 

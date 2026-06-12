@@ -15,7 +15,7 @@ import { createLogger } from '../logger.js';
 
 const logger = createLogger('logo-cdn');
 
-const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
+const BASE_URL = (process.env.BASE_URL || 'https://agenticadvertising.org').replace(/\/+$/, '');
 
 const ALLOWED_CONTENT_TYPES = new Set([
   'image/png',
@@ -31,6 +31,25 @@ const MAX_LOGO_BYTES = 5 * 1024 * 1024; // 5 MB
 const LOGO_DOWNLOAD_TIMEOUT_MS = 30_000; // 30 seconds
 
 const brandLogoDb = new BrandLogoDatabase();
+
+const CONTENT_TYPE_EXTENSIONS: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+  'image/svg+xml': 'svg',
+  'image/x-icon': 'ico',
+  'image/vnd.microsoft.icon': 'ico',
+};
+
+export function extensionForLogoContentType(contentType: string): string {
+  return CONTENT_TYPE_EXTENSIONS[contentType.toLowerCase()] ?? 'bin';
+}
+
+export function getBrandAssetUrl(domain: string, logoId: string, contentType: string): string {
+  const ext = extensionForLogoContentType(contentType);
+  return `${BASE_URL}/assets/brands/${encodeURIComponent(domain)}/${logoId}.${ext}`;
+}
 
 export function getLogoUrl(domain: string, logoId: string): string {
   return `${BASE_URL}/logos/brands/${encodeURIComponent(domain)}/${logoId}`;
@@ -135,13 +154,13 @@ export async function downloadAndCacheLogos(
       });
 
       if (inserted) {
-        updated.push({ url: getLogoUrl(domain, inserted.id), tags: logo.tags });
+        updated.push({ url: getBrandAssetUrl(domain, inserted.id, contentType), tags: logo.tags });
         logger.debug({ domain, logoId: inserted.id, bytes: data.length }, 'Logo cached');
       } else {
         // Dedup conflict — find existing logo by sha256
         const existing = await brandLogoDb.getByDomainAndSha256(domain, sha256);
         if (existing) {
-          updated.push({ url: getLogoUrl(domain, existing.id), tags: logo.tags });
+          updated.push({ url: getBrandAssetUrl(domain, existing.id, existing.content_type), tags: logo.tags });
         } else {
           updated.push(logo);
         }

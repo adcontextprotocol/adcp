@@ -30,6 +30,7 @@ import {
   withHostedComplianceRunOptions,
   type HostedComplianceTarget,
 } from '../../services/hosted-compliance-version.js';
+import { getStoryboard } from '../../services/storyboards.js';
 import { createLogger } from '../../logger.js';
 
 import type {
@@ -441,7 +442,14 @@ function effectiveRunStatus(result: ComplianceResult): {
   tracks_partial: number;
 } {
   const activeTracks = result.tracks.filter((t: TrackResult) => t.status !== 'skip');
-  const hasCoverageGapSkip = result.tracks.some(trackHasCoverageGapSkip);
+  // Only a *track-level* skip (status === 'skip') counts as a coverage gap that
+  // blocks promotion. Step-level skips inside an active (pass/silent) track —
+  // e.g. a signals-only agent skipping controller-gated media-buy pagination
+  // storyboards with `missing_test_controller` — are expected and must not
+  // degrade an otherwise all-pass run (#5429, regression of #5328).
+  const hasCoverageGapSkip = result.tracks
+    .filter((t: TrackResult) => t.status === 'skip')
+    .some(trackHasCoverageGapSkip);
   if (
     !hasCoverageGapSkip &&
     activeTracks.length > 0 &&
@@ -574,9 +582,12 @@ export function deriveStoryboardStatuses(
 
     const passed = agg.stepsPassed + agg.stepLessPhasesPassed;
     const executableTotal = agg.stepsTotal + agg.stepLessPhasesTotal;
-    const total = executableTotal === 0 && agg.controllerSkipped > 0
-      ? 0
-      : executableTotal + agg.controllerSkipped;
+    // Controller-only gaps are selected coverage gaps, not failed seller
+    // assertions. Keep them visible via tracks_json.has_coverage_gap_skip,
+    // but do not put them in the storyboard pass denominator. Otherwise a
+    // storyboard like stale_response_advisory becomes partial even though its
+    // only executable non-controller phase passed.
+    const total = executableTotal;
 
     let status: StoryboardStatusEntry['status'];
     if (total === 0) {
@@ -906,6 +917,13 @@ function capDiagnosticPayload(value: unknown): unknown {
   return capPayload(redactForDiagnostics(value));
 }
 
+function redactDiagnosticText(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const redacted = redactForDiagnostics(value);
+  const text = typeof redacted === 'string' ? redacted : '[redacted]';
+  return text.length > 1000 ? `${text.slice(0, 1000)}...` : text;
+}
+
 function stripValidationRequestResponse(value: unknown): unknown {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
   const { request: _request, response: _response, ...rest } = value as Record<string, unknown>;
@@ -913,8 +931,9 @@ function stripValidationRequestResponse(value: unknown): unknown {
 }
 
 /**
- * Walk a ComplianceResult and return one StepDiagnosticEntry per failing
- * (non-skipped) step. Raw storyboard results populate `request` and
+ * Walk a ComplianceResult and return StepDiagnosticEntry rows for failing
+ * (non-skipped) steps and for runner failure summaries that no visible failed
+ * step consumed. Raw storyboard results populate `request` and
  * `response_record` on every step where the call reached the wire. Full
  * compliance results may be flattened by the SDK into TestStepResult shape;
  * in that case we merge in `ComplianceResult.failures[]` attribution and
@@ -975,7 +994,7 @@ export function extractFailingStepDiagnostics(result: ComplianceResult): StepDia
           response_jsonb: capDiagnosticPayload(responsePayload),
           extraction_path: extraction?.path,
           extraction_note: extraction?.note,
-          error_text: typeof step.error === 'string' ? step.error : undefined,
+          error_text: redactDiagnosticText(step.error),
           adcp_error_jsonb: capDiagnosticPayload(step.adcp_error),
           failed_validations_jsonb: failedValidations && failedValidations.length > 0
             ? capDiagnosticPayload(failedValidations.map(stripValidationRequestResponse))
@@ -985,10 +1004,35 @@ export function extractFailingStepDiagnostics(result: ComplianceResult): StepDia
       }
     }
   }
+  for (const failure of remainingFailures(failureLookup)) {
+    const storyboardId = firstString(failure.storyboard_id);
+    const phaseId = firstString(phaseIdForFailure(result, failure), 'unknown');
+    const stepId = firstString(failure.step_id, slugifyStepId(failure.step_title));
+    const task = firstString(failure.task, 'unknown');
+    if (!storyboardId || !phaseId || !stepId || !task) continue;
+
+    const failedValidations = failedValidationsForStep({ validations: undefined }, failure);
+    out.push({
+      storyboard_id: storyboardId,
+      phase_id: phaseId,
+      step_id: stepId,
+      task,
+      step_passed: false,
+      error_text: redactDiagnosticText(failure.error),
+      adcp_error_jsonb: capDiagnosticPayload(failure.adcp_error),
+      failed_validations_jsonb: failedValidations && failedValidations.length > 0
+        ? capDiagnosticPayload(failedValidations.map(stripValidationRequestResponse))
+        : undefined,
+    });
+  }
   return out;
 }
 
 type ComplianceFailureSummary = NonNullable<ComplianceResult['failures']>[number];
+interface FailureLookups {
+  byStepId: Map<string, ComplianceFailureSummary[]>;
+  byTitle: Map<string, ComplianceFailureSummary[]>;
+}
 
 function firstString(...values: unknown[]): string | undefined {
   for (const value of values) {
@@ -1037,12 +1081,25 @@ function failureKey(track: unknown, stepTitle: unknown, task: unknown, error: un
   ].join('\u001f');
 }
 
-function buildFailureLookup(result: ComplianceResult): Map<string, ComplianceFailureSummary[]> {
-  const lookup = new Map<string, ComplianceFailureSummary[]>();
+function failureStepIdKey(track: unknown, stepId: unknown, task: unknown): string {
+  return [
+    typeof track === 'string' ? track : '',
+    typeof stepId === 'string' ? stepId : '',
+    typeof task === 'string' ? task : '',
+  ].join('\u001f');
+}
+
+function buildFailureLookup(result: ComplianceResult): FailureLookups {
+  const lookup: FailureLookups = {
+    byStepId: new Map<string, ComplianceFailureSummary[]>(),
+    byTitle: new Map<string, ComplianceFailureSummary[]>(),
+  };
   for (const failure of result.failures ?? []) {
-    addFailureLookupEntry(lookup, failureKey(failure.track, failure.step_title, failure.task, failure.error), failure);
-    addFailureLookupEntry(lookup, failureKey(failure.track, failure.step_title, failure.task, undefined), failure);
-    addFailureLookupEntry(lookup, failureKey(failure.track, failure.step_title, undefined, failure.error), failure);
+    addFailureLookupEntry(lookup.byStepId, failureStepIdKey(failure.track, failure.step_id, failure.task), failure);
+    addFailureLookupEntry(lookup.byStepId, failureStepIdKey(failure.track, failure.step_id, undefined), failure);
+    addFailureLookupEntry(lookup.byTitle, failureKey(failure.track, failure.step_title, failure.task, failure.error), failure);
+    addFailureLookupEntry(lookup.byTitle, failureKey(failure.track, failure.step_title, failure.task, undefined), failure);
+    addFailureLookupEntry(lookup.byTitle, failureKey(failure.track, failure.step_title, undefined, failure.error), failure);
   }
   return lookup;
 }
@@ -1058,20 +1115,34 @@ function addFailureLookupEntry(
 }
 
 function takeMatchingFailure(
-  lookup: Map<string, ComplianceFailureSummary[]>,
+  lookup: FailureLookups,
   track: unknown,
   scenario: unknown,
-  step: { step?: unknown; task?: unknown; error?: unknown },
+  step: { step?: unknown; title?: unknown; task?: unknown; error?: unknown },
 ): ComplianceFailureSummary | undefined {
-  const exact = lookup.get(failureKey(track, step.step, step.task, step.error));
+  const stepId = firstString((step as { step_id?: unknown }).step_id);
+  if (stepId) {
+    const byStepId = lookup.byStepId.get(failureStepIdKey(track, stepId, step.task));
+    const stepIdMatch = takeScenarioCompatibleFailure(byStepId, scenario);
+    if (stepIdMatch) return consumeFailure(lookup, stepIdMatch);
+
+    const byStepIdWithoutTask = lookup.byStepId.get(failureStepIdKey(track, stepId, undefined));
+    const stepIdWithoutTaskMatch = takeScenarioCompatibleFailure(byStepIdWithoutTask, scenario);
+    if (stepIdWithoutTaskMatch) return consumeFailure(lookup, stepIdWithoutTaskMatch);
+
+    return undefined;
+  }
+
+  const title = firstString(step.step, step.title);
+  const exact = lookup.byTitle.get(failureKey(track, title, step.task, step.error));
   const exactMatch = takeScenarioCompatibleFailure(exact, scenario);
   if (exactMatch) return consumeFailure(lookup, exactMatch);
 
-  const withoutError = lookup.get(failureKey(track, step.step, step.task, undefined));
+  const withoutError = lookup.byTitle.get(failureKey(track, title, step.task, undefined));
   const withoutErrorMatch = takeScenarioCompatibleFailure(withoutError, scenario);
   if (withoutErrorMatch) return consumeFailure(lookup, withoutErrorMatch);
 
-  const withoutTask = lookup.get(failureKey(track, step.step, undefined, step.error));
+  const withoutTask = lookup.byTitle.get(failureKey(track, title, undefined, step.error));
   const withoutTaskMatch = takeScenarioCompatibleFailure(withoutTask, scenario);
   if (withoutTaskMatch) return consumeFailure(lookup, withoutTaskMatch);
 
@@ -1087,19 +1158,47 @@ function takeScenarioCompatibleFailure(
 }
 
 function consumeFailure(
-  lookup: Map<string, ComplianceFailureSummary[]>,
+  lookup: FailureLookups,
   failure: ComplianceFailureSummary | undefined,
 ): ComplianceFailureSummary | undefined {
   if (!failure) return undefined;
-  for (const [key, bucket] of lookup) {
-    const filtered = bucket.filter(candidate => candidate !== failure);
-    if (filtered.length === 0) {
-      lookup.delete(key);
-    } else if (filtered.length !== bucket.length) {
-      lookup.set(key, filtered);
+  for (const map of [lookup.byStepId, lookup.byTitle]) {
+    for (const [key, bucket] of map) {
+      const filtered = bucket.filter(candidate => candidate !== failure);
+      if (filtered.length === 0) {
+        map.delete(key);
+      } else if (filtered.length !== bucket.length) {
+        map.set(key, filtered);
+      }
     }
   }
   return failure;
+}
+
+function remainingFailures(lookup: FailureLookups): ComplianceFailureSummary[] {
+  const seen = new Set<ComplianceFailureSummary>();
+  const out: ComplianceFailureSummary[] = [];
+  for (const map of [lookup.byStepId, lookup.byTitle]) {
+    for (const bucket of map.values()) {
+      for (const failure of bucket) {
+        if (seen.has(failure)) continue;
+        seen.add(failure);
+        out.push(failure);
+      }
+    }
+  }
+  return out;
+}
+
+function phaseIdForFailure(_result: ComplianceResult, failure: ComplianceFailureSummary): string | undefined {
+  const storyboard = getStoryboard(failure.storyboard_id);
+  const byId = storyboard?.phases.find(phase =>
+    phase.steps.some(step => step.id === failure.step_id),
+  )?.id;
+  if (byId) return byId;
+  return storyboard?.phases.find(phase =>
+    phase.steps.some(step => step.title === failure.step_title && step.task === failure.task),
+  )?.id;
 }
 
 function failedValidationsForStep(

@@ -7,6 +7,7 @@
 
 import { Router } from "express";
 import Stripe from "stripe";
+import type { PoolClient } from "pg";
 import { createLogger } from "../logger.js";
 import { requireAuth, requireAdmin, requireGlobalAdmin } from "../middleware/auth.js";
 import { serveHtmlWithConfig } from "../utils/html-config.js";
@@ -857,8 +858,26 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
             }
           : { ...beforeState, stripe_customer_id: customerId };
 
-      const txClient = await pool.connect();
+      const originalTargetMetadataOrgId = (customer as Stripe.Customer).metadata?.workos_organization_id ?? "";
+      let stampedTargetCustomer = false;
+      let txClient: PoolClient | null = null;
       try {
+        txClient = await pool.connect();
+
+        try {
+          await stripe.customers.update(customerId, {
+            metadata: { workos_organization_id: org_id },
+          });
+          stampedTargetCustomer = true;
+        } catch (err) {
+          const stripeError = err as { message?: string };
+          logger.warn({ err, customerId, org_id }, "Failed to stamp metadata on new Stripe customer before linking");
+          return res.status(502).json({
+            error: "Stripe metadata update failed",
+            message: stripeError.message ?? "Unable to stamp workos_organization_id on Stripe customer",
+          });
+        }
+
         await txClient.query("BEGIN");
         await txClient.query(
           "UPDATE organizations SET stripe_customer_id = $1, updated_at = NOW() WHERE workos_organization_id = $2",
@@ -945,22 +964,26 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
         );
         await txClient.query("COMMIT");
       } catch (txErr) {
-        try { await txClient.query("ROLLBACK"); } catch { /* swallow */ }
+        try { await txClient?.query("ROLLBACK"); } catch { /* swallow */ }
+        if (stampedTargetCustomer) {
+          try {
+            await stripe.customers.update(customerId, {
+              metadata: { workos_organization_id: originalTargetMetadataOrgId },
+            });
+          } catch (restoreErr) {
+            logger.error(
+              { err: restoreErr, customerId, org_id, originalTargetMetadataOrgId },
+              "Failed to restore Stripe customer metadata after local link failure",
+            );
+          }
+        }
         throw txErr;
       } finally {
-        txClient.release();
+        txClient?.release();
       }
 
       if (subscriptionSynced || previousCustomerId) {
         invalidateMembershipCache(org_id);
-      }
-
-      try {
-        await stripe.customers.update(customerId, {
-          metadata: { workos_organization_id: org_id },
-        });
-      } catch (err) {
-        logger.warn({ err, customerId, org_id }, "Failed to stamp metadata on new Stripe customer");
       }
 
       // Clear org metadata on the old Stripe customer and its subscriptions to
@@ -1349,17 +1372,55 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       }
 
       if (action === "unlink_other") {
-        // Unlink from current DB org, then link to keep_org
-        if (currentDbOrg && currentDbOrg.workos_organization_id !== keep_org_id) {
-          await orgDb.unlinkStripeCustomer(currentDbOrg.workos_organization_id);
-          logger.info(
-            { stripeCustomerId: stripe_customer_id, unlinkedFrom: currentDbOrg.workos_organization_id, adminEmail: req.user?.email },
-            "Unlinked Stripe customer from organization during conflict resolution"
-          );
+        if (!stripe) {
+          return res.status(500).json({
+            error: "Stripe not initialized",
+            message: "Cannot link customer without stamping Stripe metadata - Stripe is not configured",
+          });
         }
 
-        // Link to the keep_org (force in case of race conditions)
-        await orgDb.setStripeCustomerId(keep_org_id, stripe_customer_id, { force: true });
+        const customer = await stripe.customers.retrieve(stripe_customer_id);
+        if ("deleted" in customer && customer.deleted) {
+          return res.status(400).json({
+            error: "Stripe customer deleted",
+            message: "Cannot link a deleted Stripe customer",
+          });
+        }
+        const originalMetadataOrgId = customer.metadata?.workos_organization_id ?? "";
+        let stampedCustomer = false;
+
+        try {
+          await stripe.customers.update(stripe_customer_id, {
+            metadata: { workos_organization_id: keep_org_id },
+          });
+          stampedCustomer = true;
+
+          // Unlink from current DB org, then link to keep_org
+          if (currentDbOrg && currentDbOrg.workos_organization_id !== keep_org_id) {
+            await orgDb.unlinkStripeCustomer(currentDbOrg.workos_organization_id);
+            logger.info(
+              { stripeCustomerId: stripe_customer_id, unlinkedFrom: currentDbOrg.workos_organization_id, adminEmail: req.user?.email },
+              "Unlinked Stripe customer from organization during conflict resolution"
+            );
+          }
+
+          // Link to the keep_org (force in case of race conditions)
+          await orgDb.setStripeCustomerId(keep_org_id, stripe_customer_id, { force: true });
+        } catch (err) {
+          if (stampedCustomer) {
+            try {
+              await stripe.customers.update(stripe_customer_id, {
+                metadata: { workos_organization_id: originalMetadataOrgId },
+              });
+            } catch (restoreErr) {
+              logger.error(
+                { err: restoreErr, stripeCustomerId: stripe_customer_id, keepOrgId: keep_org_id, originalMetadataOrgId },
+                "Failed to restore Stripe customer metadata after conflict resolution failure",
+              );
+            }
+          }
+          throw err;
+        }
 
         logger.info(
           { stripeCustomerId: stripe_customer_id, linkedTo: keep_org_id, adminEmail: req.user?.email },
@@ -1635,6 +1696,15 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
         });
       }
 
+      if (action === "use_stripe_metadata" && mismatch.match_reason !== "metadata") {
+        return res.status(400).json({
+          error: "Manual review required",
+          message:
+            "Email/name matches are heuristic only; use the explicit Stripe customer link flow for this reassignment.",
+          match_reason: mismatch.match_reason,
+        });
+      }
+
       // Get activity data for both customers
       const [dbCustomerActivity, metadataCustomerActivity] = await Promise.all([
         getCustomerActivity(mismatch.db_customer_id),
@@ -1677,6 +1747,10 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       if (action === "use_db") {
         // Keep the DB customer (already linked), remove the metadata customer
         if (stripe) {
+          await stripe.customers.update(keepCustomerId, {
+            metadata: { workos_organization_id: org_id },
+          });
+
           if (delete_inactive && !removeCustomerActivity?.has_activity) {
             // Delete the inactive customer
             await stripe.customers.del(removeCustomerId);
@@ -1709,26 +1783,33 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
 
       } else if (action === "use_stripe_metadata") {
         // Switch to metadata customer, remove the DB customer
+        if (!stripe) {
+          return res.status(500).json({
+            error: "Stripe not initialized",
+            message: "Cannot use Stripe metadata customer when Stripe is not configured",
+          });
+        }
+        await stripe.customers.update(keepCustomerId, {
+          metadata: { workos_organization_id: org_id },
+        });
         await orgDb.setStripeCustomerId(org_id, keepCustomerId, { force: true });
 
-        if (stripe) {
-          if (delete_inactive && !removeCustomerActivity?.has_activity) {
-            // Delete the inactive customer
-            await stripe.customers.del(removeCustomerId);
-            logger.info(
-              { orgId: org_id, newCustomer: keepCustomerId, deletedCustomer: removeCustomerId, adminEmail: (req as any).user?.email },
-              "Resolved Stripe customer mismatch - switched to metadata customer, deleted inactive DB customer"
-            );
-          } else {
-            // Just clear the metadata
-            await stripe.customers.update(removeCustomerId, {
-              metadata: { workos_organization_id: "" },
-            });
-            logger.info(
-              { orgId: org_id, newCustomer: keepCustomerId, clearedMetadata: removeCustomerId, adminEmail: (req as any).user?.email },
-              "Resolved Stripe customer mismatch - switched to metadata customer, cleared metadata from old"
-            );
-          }
+        if (delete_inactive && !removeCustomerActivity?.has_activity) {
+          // Delete the inactive customer
+          await stripe.customers.del(removeCustomerId);
+          logger.info(
+            { orgId: org_id, newCustomer: keepCustomerId, deletedCustomer: removeCustomerId, adminEmail: (req as any).user?.email },
+            "Resolved Stripe customer mismatch - switched to metadata customer, deleted inactive DB customer"
+          );
+        } else {
+          // Just clear the metadata
+          await stripe.customers.update(removeCustomerId, {
+            metadata: { workos_organization_id: "" },
+          });
+          logger.info(
+            { orgId: org_id, newCustomer: keepCustomerId, clearedMetadata: removeCustomerId, adminEmail: (req as any).user?.email },
+            "Resolved Stripe customer mismatch - switched to metadata customer, cleared metadata from old"
+          );
         }
 
         res.json({

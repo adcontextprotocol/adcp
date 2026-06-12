@@ -255,8 +255,19 @@ function lintStoryboardIdempotency(sourceDir, schemasDir) {
   const missingSchemaRefs = [];
   const generatedKeyUses = new Map();
 
-  function isGeneratedIdempotencyKey(value) {
-    return typeof value === 'string' && value.startsWith('$generate:uuid_v4');
+  function isGeneratedIdempotencyKey(value, generatedContextNames) {
+    if (typeof value !== 'string') return false;
+    if (value.startsWith('$generate:uuid_v4')) return true;
+    const contextMatch = value.match(/^\$context\.([A-Za-z0-9_]+)$/);
+    return Boolean(contextMatch && generatedContextNames.has(contextMatch[1]));
+  }
+
+  function rememberGeneratedUuidContextOutputs(step, generatedContextNames) {
+    for (const output of step?.context_outputs ?? []) {
+      if (output?.generate === 'uuid_v4' && typeof output.name === 'string') {
+        generatedContextNames.add(output.name);
+      }
+    }
   }
 
   function lintFile(p) {
@@ -269,6 +280,7 @@ function lintStoryboardIdempotency(sourceDir, schemasDir) {
     try { doc = yaml.load(fs.readFileSync(p, 'utf8')); }
     catch { return; }
     if (!doc || typeof doc !== 'object' || !Array.isArray(doc.phases)) return;
+    const generatedContextNames = new Set();
 
     for (const phase of doc.phases) {
       if (!phase || !Array.isArray(phase.steps)) continue;
@@ -290,17 +302,23 @@ function lintStoryboardIdempotency(sourceDir, schemasDir) {
           });
         }
         const schemaRef = step.schema_ref;
-        if (!schemaRef || !mutatingRefs.has(schemaRef)) continue;
+        if (!schemaRef || !mutatingRefs.has(schemaRef)) {
+          rememberGeneratedUuidContextOutputs(step, generatedContextNames);
+          continue;
+        }
         // The missing-key negative vector explicitly suppresses both runner
         // auto-injection and this authored-sample lint.
-        if (step.omit_idempotency_key === true) continue;
+        if (step.omit_idempotency_key === true) {
+          rememberGeneratedUuidContextOutputs(step, generatedContextNames);
+          continue;
+        }
         const hasKey =
           step.sample_request &&
           typeof step.sample_request === 'object' &&
           step.sample_request.idempotency_key !== undefined;
         if (hasKey) {
           const key = step.sample_request.idempotency_key;
-          if (!isGeneratedIdempotencyKey(key)) {
+          if (!isGeneratedIdempotencyKey(key, generatedContextNames)) {
             stableKeyViolations.push({
               file: rel,
               phase: phase.id,
@@ -323,15 +341,16 @@ function lintStoryboardIdempotency(sourceDir, schemasDir) {
               generatedKeyUses.set(key, current);
             }
           }
-          continue;
+        } else {
+          violations.push({
+            file: rel,
+            phase: phase.id,
+            step: step.id,
+            task: step.task,
+            schema: schemaRef,
+          });
         }
-        violations.push({
-          file: rel,
-          phase: phase.id,
-          step: step.id,
-          task: step.task,
-          schema: schemaRef,
-        });
+        rememberGeneratedUuidContextOutputs(step, generatedContextNames);
       }
     }
   }
@@ -702,6 +721,17 @@ function main() {
     process.exit(1);
   }
 
+  // update_media_buy affected_packages lint: package-mutating update
+  // storyboards must assert full affected package state, not just package IDs.
+  try {
+    execSync('node scripts/lint-update-media-buy-affected-packages.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
   // Raw-mode-required lint: storyboards setting attestation_mode_required:
   // "raw" on an upstream_traffic check MUST declare at least one
   // payload_must_contain clause. Otherwise the raw flag has no operational
@@ -794,4 +824,5 @@ if (require.main === module) {
 module.exports = {
   buildTo,
   generateIndex,
+  lintStoryboardIdempotency,
 };

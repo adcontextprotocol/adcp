@@ -448,6 +448,11 @@
           "format": "uri",
           "description": "Primary brand URL for context and asset discovery"
         },
+        "identity_relying_parties": {
+          "type": "array",
+          "description": "Verified-identity relying parties scoped to this brand/property, for attestation provenance in TMP Identity Match. Use when a brand or property runs its own relying_party_id (per-property pseudonyms); entity-wide relying parties live on the house object. See specs/tmp-verified-identity-attestation.md.",
+          "items": { "$ref": "#/definitions/identity_relying_party" }
+        },
         "names": {
           "type": "array",
           "description": "Localized brand names. Multiple entries per language allowed for aliases.",
@@ -589,7 +594,7 @@
         },
         "agents": {
           "$ref": "#/definitions/agents",
-          "description": "Agents authorized to act on behalf of this brand. Overrides house-level agents of the same type."
+          "description": "Agents authorized to act on behalf of this brand. Consumers resolving an agent by URL use the matching brand-level entry; do not infer a type-wide override of unrelated house-level entries when multiple same-type entries exist."
         },
         "brand_agent": {
           "$ref": "#/definitions/brand_agent",
@@ -671,10 +676,41 @@
         "data_subject_contestation": {
           "$ref": "#/definitions/data_subject_contestation",
           "description": "House-level fallback contestation contact. Governance agents resolve in order: brand.data_subject_contestation → house.data_subject_contestation → missing (critical finding when human review required)."
+        },
+        "identity_relying_parties": {
+          "type": "array",
+          "description": "Verified-identity relying parties this house/entity operates, so a buyer can verify that a forwarded TMP identity attestation's relying_party_id genuinely belongs to this entity (provenance) rather than being replayed under another owner. For network-as-RP, the network publishes its own relying_party_id here. See specs/tmp-verified-identity-attestation.md.",
+          "items": { "$ref": "#/definitions/identity_relying_party" }
         }
       },
       "required": ["domain", "name"],
       "additionalProperties": true
+    },
+    "identity_relying_party": {
+      "type": "object",
+      "description": "A verified-identity relying party an entity or brand operates. Used for attestation provenance in TMP Identity Match (the buyer checks a forwarded attestation's relying_party_id against the owner's published list). Issuer-agnostic; World ID is the first issuer.",
+      "properties": {
+        "issuer": {
+          "$ref": "/schemas/core/brand-ref.json",
+          "description": "Identity issuer / attestation authority, referenced as a vendor BrandRef (e.g. {\"domain\": \"world.org\"}) — the same vendor-reference shape AdCP uses for measurement and signals vendors. The issuer's canonical domain is the anchor; it need not host a brand.json, but if it does, that is where its verifier metadata (scheme versions, verify endpoint, JWKs) lives. Issuer-agnostic: World ID, ISO 18013-5 mDL, and W3C-VC issuers all reference by domain. The relying party is namespaced by the issuer — identity is the tuple (issuer.domain, issuer.brand_id, relying_party_id), mirroring (vendor.domain, vendor.brand_id, metric_id)."
+        },
+        "scheme": {
+          "type": "string",
+          "description": "Proof scheme and version, e.g. \"world_id_v4\"."
+        },
+        "relying_party_id": {
+          "type": "string",
+          "x-entity": "identity_relying_party",
+          "description": "The relying-party id registered with the issuer (and, for on-chain issuers like World ID, with the issuer's registry). One entity may operate many relying parties (scope=entity vs scope=property); this is the attestation's audience / linkability boundary, not an entity identifier."
+        },
+        "scope": {
+          "type": "string",
+          "enum": ["entity", "property"],
+          "description": "Whether this relying_party_id is shared across the entity's properties (entity → a within-entity unique-human graph) or scoped to a single property (property → per-property pseudonyms, unlinkable across the entity)."
+        }
+      },
+      "required": ["issuer", "relying_party_id"],
+      "additionalProperties": false
     },
     "brand_agent": {
       "type": "object",
@@ -791,9 +827,8 @@
     },
     "agents": {
       "type": "array",
-      "description": "Agents declared by this brand or house. One agent per type.",
-      "items": { "$ref": "#/definitions/brand_agent_entry" },
-      "maxItems": 20
+      "description": "Agents declared by this brand or house. Multiple entries with the same type are permitted when they have distinct url values, such as one endpoint URL per tenant or property scope. Agent url values MUST be unique within this array; duplicate urls are invalid because signature verifiers resolve a signing key by matching one agent url to one agents[] entry and reject ambiguous matches.",
+      "items": { "$ref": "#/definitions/brand_agent_entry" }
     },
     "authorized_operator": {
       "type": "object",

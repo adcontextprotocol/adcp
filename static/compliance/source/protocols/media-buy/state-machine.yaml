@@ -4,6 +4,15 @@ title: "Media buy state machine lifecycle"
 category: media_buy_state_machine
 summary: "Validates media buy state transitions: create, pause, resume, cancel, and terminal state enforcement."
 track: media_buy
+
+# This storyboard drives pause/resume immediately after create_media_buy. That
+# only works for sellers that explicitly declare auto-approval; manual-review
+# sellers may legitimately remain pending until approval and should not fail
+# an active-state transition test they cannot reach through the buyer surface.
+requires_capability:
+  path: media_buy.creative_approval_mode
+  equals: auto_approve
+
 required_tools:
   - create_media_buy
   - sync_creatives
@@ -14,9 +23,10 @@ narrative: |
   paused, completed, rejected, canceled. Transitions between states must follow the spec — you cannot
   resume a canceled buy or pause a completed one.
 
-  This storyboard creates a media buy, walks it through pause/resume/cancel transitions, then
-  verifies that the agent rejects updates to a buy in a terminal state (canceled or completed).
-  It also tests package-level pause/resume independent of the media buy status.
+  This storyboard applies to sellers that declare media_buy.creative_approval_mode:
+  auto_approve. It creates a media buy, walks it through pause/resume/cancel transitions,
+  then verifies that the agent rejects updates to a buy in a terminal state (canceled or
+  completed). It also tests package-level pause/resume independent of the media buy status.
 
   The state machine is the backbone of media buy reliability. If an agent allows invalid
   transitions, buyers cannot trust the status field and automation breaks down.
@@ -211,7 +221,7 @@ phases:
           brand:
             domain: "acmeoutdoor.example"
           start_time: "asap"
-          end_time: "2026-09-30T23:59:59Z"
+          end_time: "2099-09-30T23:59:59Z"
           packages:
             - product_id: "$context.product_id"
               budget: 10000
@@ -233,6 +243,10 @@ phases:
           - check: field_present
             path: "media_buy_id"
             description: "Response includes a media_buy_id"
+          - check: field_value
+            path: "media_buy_status"
+            allowed_values: ["active"]
+            description: "Auto-approval state-machine test starts from an active media buy"
 
           - check: field_present
             path: "context"

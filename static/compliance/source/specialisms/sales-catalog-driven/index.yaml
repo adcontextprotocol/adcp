@@ -106,6 +106,14 @@ phases:
           - check: field_present
             path: "supported_protocols"
             description: "Agent declares supported protocols"
+          - check: field_contains
+            path: "supported_protocols[*]"
+            value: "media_buy"
+            description: "Agent declares media_buy protocol support"
+          - check: field_contains
+            path: "specialisms[*]"
+            value: "sales-catalog-driven"
+            description: "Agent declares sales-catalog-driven specialism"
 
           - check: field_present
             path: "context"
@@ -583,8 +591,8 @@ phases:
             brand:
               domain: "amsterdam-steakhouse.example"
             operator: "pinnacle-agency.example"
-          start_time: "2026-04-07T00:00:00Z"
-          end_time: "2026-06-30T23:59:59Z"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
           packages:
             - product_id: "local_display_dynamic"
               pricing_option_id: "cpm_standard"

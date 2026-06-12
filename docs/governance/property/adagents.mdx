@@ -91,6 +91,12 @@ https://example.com/.well-known/adagents.json
 
 Following [RFC 8615](https://datatracker.ietf.org/doc/html/rfc8615) well-known URI conventions, this location ensures consistent discoverability across publishers.
 
+<Note>
+If the publisher origin canonicalizes hostnames with HTTP redirects, deploy the file at the final resolved URL too. For example, if `https://example.com/.well-known/adagents.json` redirects to `https://www.example.com/.well-known/adagents.json`, the `www` URL must serve the JSON file with a `200` response.
+
+A redirect chain that ends in `404` means the file is missing at the canonical host; troubleshoot the terminal status and resolved URL, not only the intermediate `301` or `302`.
+</Note>
+
 ## Basic Structure
 
 The file must be valid JSON with UTF-8 encoding and return HTTP 200 status.
@@ -337,6 +343,7 @@ When `https://{publisher}/.well-known/adagents.json` returns `404`, or returns a
 1. Read `ads.txt` and parse `managerdomain` entries.
    - Accepted form: `MANAGERDOMAIN=example.com` (IAB directive form only).
    - Key matching is case-insensitive (`MANAGERDOMAIN`, `managerdomain`, etc.).
+   - Validators that support this fallback SHOULD follow a bounded HTTP redirect chain when fetching `ads.txt`, applying the same SSRF and public-host checks to each redirect hop.
 2. If one or more eligible managerdomain entries remain, use the **last** eligible entry in file order and attempt `https://{managerdomain}/.well-known/adagents.json`.
 3. If that manager file validates **and explicitly scopes authorization to the source publisher domain**, treat it as the discovered authorization source for this lookup.
 

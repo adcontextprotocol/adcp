@@ -130,6 +130,14 @@ phases:
           - check: field_present
             path: "supported_protocols"
             description: "Agent declares supported protocols"
+          - check: field_contains
+            path: "supported_protocols[*]"
+            value: "governance"
+            description: "Agent declares governance protocol support"
+          - check: field_contains
+            path: "specialisms[*]"
+            value: "governance-delivery-monitor"
+            description: "Agent declares governance-delivery-monitor specialism"
 
           - check: field_present
             path: "context"
@@ -293,8 +301,8 @@ phases:
           brand:
             domain: "acmeoutdoor.example"
           governance_context: "gov_ctx_acme_delivery_approved"
-          start_time: "2026-04-01T00:00:00Z"
-          end_time: "2026-06-30T23:59:59Z"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
           packages:
             - product_id: "outdoor_display_q2"
               budget: 20000

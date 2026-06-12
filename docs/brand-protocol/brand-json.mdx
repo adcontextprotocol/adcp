@@ -933,6 +933,47 @@ A draft ingestion record can point from a proposed logo entry back to evidence:
 
 Do not publish those candidates directly as canonical `logos[]` until a reviewer confirms the crop, assigns the correct slots/backgrounds, and replaces the candidate file with a durable HTTPS logo asset URL. If the source PDF lacks hosted assets, operator authorization, or trademark evidence, that is an ingestion warning rather than a schema gap.
 
+### Public hosted asset promotion
+
+AAO-hosted brand assets are for cases where a reviewer or verified owner has approved a private upload for public `brand.json` use. Extraction alone never publishes bytes. The private analysis artifact remains separate from the public asset row, and `brand.json` only receives the public URL after approval.
+
+Recommended flow:
+
+1. Store the uploaded or extracted file privately for analysis.
+2. Present the candidate to the operator with the exact proposed `brand.json` diff.
+3. Require explicit approval before promotion.
+4. Promote the approved bytes to a stable public HTTPS URL.
+5. Write that public URL into `logos[]`.
+
+AAO-hosted URLs use this shape:
+
+```text
+https://agenticadvertising.org/assets/brands/{domain}/{assetId}.{ext}
+```
+
+For example:
+
+```json
+{
+  "logos": [
+    {
+      "id": "primary_wordmark",
+      "url": "https://agenticadvertising.org/assets/brands/acme.example/{assetId}.png",
+      "variant": "wordmark",
+      "slots": ["logo_card_light"],
+      "width": 512,
+      "height": 128
+    }
+  ]
+}
+```
+
+Public logo promotion must preserve provenance metadata outside the published `brand.json`: original filename, uploader user and organization when known, source flow, created time, content type, dimensions, hash, and whether the path was owner-attested, delegated, or community-submitted. Moderation and owner approval state are operational metadata; consumers should not need to parse them from the public URL.
+
+Initial promotion limits are intentionally conservative: accept only image MIME types needed for logos (`image/png`, `image/jpeg`, `image/webp`, `image/gif`, and sanitized `image/svg+xml`), cap uploads at 5 MB, detect raster dimensions before publish, and either sanitize SVG aggressively or reject it until the sanitizer is enabled for the surface. Private signed URLs, file-viewer links, and analysis-only object paths must not appear in published `brand.json`.
+
+Deletion should tombstone the public asset row instead of reusing the URL for unrelated bytes. Replacement should create a new asset URL and update `brand.json` to point at it. Previously published URLs may continue to serve the old approved bytes for cache stability, redirect to the replacement when there is a one-to-one successor, or return `404` after a legal/security takedown; they must never silently serve a different asset under the same ID.
+
 ### Colorways
 
 Named color pairings that define how colors work together. Allows a creative brief to reference "use my primary colorway" without specifying every color:

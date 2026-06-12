@@ -1683,7 +1683,7 @@ Commit a previewed property import. Takes a property list (typically the output 
 
 ### `upload_brand_logo`
 
-Upload a logo file for a brand in the registry. The upload queues for moderator review (community contribution). Blocked when a brand has a verified DNS owner — only that org can change its logo, and the human must use the brand-builder UI for owner-attested uploads.
+Fetch and promote a logo file for a brand in the registry. The upload queues for moderator review (community contribution) and, when approved, receives an AAO-hosted public /assets/brands URL suitable for brand.json. Blocked when a brand has a verified DNS owner — only that org can change its logo, and the human must use the brand-builder UI for owner-attested uploads.
 
 *Source: `server/src/addie/mcp/brand-tools.ts`*
 

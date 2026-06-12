@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   checkPrerequisites: vi.fn(),
   getModuleProgress: vi.fn(),
   startModule: vi.fn(),
+  resolveEffectiveMembership: vi.fn(),
 }));
 
 vi.hoisted(() => {
@@ -38,6 +39,10 @@ vi.mock('../../src/db/bans-db.js', () => ({
     checkPlatformBanForApiKey: mocks.checkPlatformBanForApiKey,
     checkPlatformBan: mocks.checkPlatformBan,
   },
+}));
+
+vi.mock('../../src/db/org-filters.js', () => ({
+  resolveEffectiveMembership: mocks.resolveEffectiveMembership,
 }));
 
 vi.mock('../../src/utils/html-config.js', () => ({
@@ -73,6 +78,7 @@ describe('certification API-key membership gate', () => {
       },
     });
     mocks.checkPlatformBanForApiKey.mockResolvedValue({ banned: false, ban: null });
+    mocks.resolveEffectiveMembership.mockResolvedValue({ is_member: false });
     mocks.getModule.mockResolvedValue({
       id: 'paid-module',
       track_id: 'A',

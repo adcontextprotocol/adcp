@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.11/core/platform-extension-ref.json",
+  "title": "Platform Extension Reference",
+  "description": "Reference to a platform extension definition. The agent that owns the URI is authoritative for the extension's schema. Buyers fetch the definition once per content digest and cache it. Platform extensions are typically bundled in `get_products` responses under an `extensions` map keyed by `uri@digest`, eliminating the need for a separate fetch.\n\n**Within a single response**, multiple references to the same `uri` MUST carry the same `digest` — divergent digests in one response indicate producer-side error (e.g., concurrent extension revision mid-render). Buyers encountering divergent digests for the same URI MUST fail closed: treat all references to that URI as unresolved and surface a validation error rather than picking one branch silently. **Across responses**, digest divergence is normal — extension authors revise their schemas, the new digest differs, the cache key changes, and the buyer refetches. Cache by `uri@digest`, not by `uri` alone.",
+  "type": "object",
+  "required": ["uri", "digest"],
+  "properties": {
+    "uri": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://",
+      "description": "HTTPS URL identifying the extension. `https://` is mandatory — `http://`, `file://`, `data:`, and other schemes are rejected at the schema layer (defense-in-depth on top of the fetch-contract normative rules). The URI base is the owning agent's URL; the path identifies the extension within that agent. Example: 'https://creative.adcontextprotocol.org/translated/meta/extensions/meta_pixel'. The full fetch contract — SSRF allowlist, response-size cap, $ref sandbox, schema-compile bounds — is documented on `product-format-declaration.json#format_schema` and applies to ALL fetches of this reference shape regardless of whether the field is named `format_schema` (load-bearing for validation) or `platform_extensions` (informational); the *transport* rules are identical, only the *consumption* semantics differ."
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "SHA-256 content digest of the extension definition (sha256:<hex>). Used to detect drift — if the agent revises the extension, the digest changes and cached definitions become invalid."
+    }
+  },
+  "additionalProperties": true,
+  "examples": [
+    {
+      "uri": "https://creative.adcontextprotocol.org/translated/meta/extensions/meta_pixel",
+      "digest": "sha256:a3f5b7c9d8e2f1a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2"
+    }
+  ]
+}

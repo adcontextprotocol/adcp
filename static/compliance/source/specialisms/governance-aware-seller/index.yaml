@@ -133,6 +133,14 @@ phases:
           - check: field_present
             path: "supported_protocols"
             description: "Agent declares supported protocols"
+          - check: field_contains
+            path: "supported_protocols[*]"
+            value: "media_buy"
+            description: "Agent declares media_buy protocol support"
+          - check: field_contains
+            path: "specialisms[*]"
+            value: "governance-aware-seller"
+            description: "Agent declares governance-aware-seller specialism"
 
           - check: field_present
             path: "context"

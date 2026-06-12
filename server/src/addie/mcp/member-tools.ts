@@ -69,6 +69,7 @@ import { renderAllHintFixPlans } from '../services/storyboard-fix-plan.js';
 import {
   hostedComplianceTarget,
   hostedComplianceOptions,
+  HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
   hostedAuthProbeTaskForProfile,
   withHostedStoryboardRunOptions,
   withHostedTestOptions,
@@ -455,7 +456,7 @@ export async function resolveAgentAuth(
         if (savedInfo.authType === 'basic' && !isCompleteStoredBasicCredential(savedInfo.token)) {
           logger.warn(
             { agentUrl: resolvedUrl, organizationId },
-            'Addie: ignoring incomplete saved Basic auth credentials while resolving agent auth',
+            'Addie: ignoring malformed saved Basic auth credentials while resolving agent auth',
           );
         } else {
           return { authToken: savedInfo.token, authType: savedInfo.authType, source: 'saved', resolvedUrl };
@@ -1473,7 +1474,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
           description: 'What kind of agent this is. Required — ask the owner; do not guess. `brand` (brand-side intent), `rights` (rights/clearance), `measurement` (verification/attribution), `governance` (policy/compliance), `creative` (creative production/format), `sales` (publisher/sell-side inventory), `buying` (DSP/buy-side execution), `signals` (audience/signal provider).',
         },
         auth_token: { type: 'string', description: 'Static auth token (stored encrypted). Mutually exclusive with oauth_client_credentials on any given save call.' },
-        auth_type: { type: 'string', enum: ['bearer', 'basic'], description: 'How the auth_token is sent. "bearer" (default): sends Authorization: Bearer <token>. "basic": auth_token is "user:password" (the tool also accepts the base64-encoded form); stored base64-encoded and sent as Authorization: Basic <token>.' },
+        auth_type: { type: 'string', enum: ['bearer', 'basic'], description: 'How the auth_token is sent. "bearer" (default): sends Authorization: Bearer <token>. "basic": auth_token is "username:password" with a non-empty username and a password that may be empty (the tool also accepts the base64-encoded form); stored base64-encoded and sent as Authorization: Basic <token>.' },
         oauth_client_credentials: {
           type: 'object',
           description: 'OAuth 2.0 client-credentials configuration for machine-to-machine auth (RFC 6749 §4.4). The SDK exchanges at the token endpoint before every call and refreshes on 401. Use this when the agent requires a bearer token minted from a client_id/client_secret pair, not a human authorization flow.',
@@ -3928,6 +3929,7 @@ export function createMemberToolHandlers(
 
     const complyOptions: ComplyOptions = {
       test_session_id: `quality-eval-${Date.now()}`,
+      timeout_ms: HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
       auth: authOption,
     };
     if (tracks) complyOptions.tracks = tracks;
@@ -6282,10 +6284,11 @@ export function createMemberToolHandlers(
     const rawAuthType = input.auth_type as string | undefined;
     const authType: 'bearer' | 'basic' = rawAuthType === 'basic' ? 'basic' : 'bearer';
 
-    // For Basic auth, accept either raw "user:password" or the base64-encoded
-    // form and normalize to base64 for storage. Aligns with CLI
-    // (--auth user:pass), SDK (createTestClient with {username, password}),
-    // and the dashboard's connect form — all of which accept raw input.
+    // For Basic auth, accept either raw "username:password" (password may be
+    // empty) or the base64-encoded form and normalize to base64 for storage.
+    // Aligns with CLI (--auth user:pass), SDK (createTestClient with
+    // {username, password}), and the dashboard's connect form — all of which
+    // accept raw input.
     // Without normalization, save_agent was the ecosystem outlier requiring
     // users to pre-encode; a raw value silently landed in the DB and got
     // re-classified as Bearer at request time.
@@ -6293,7 +6296,7 @@ export function createMemberToolHandlers(
     if (authToken && authType === 'basic') {
       const normalized = normalizeBasicAuthForStorage(authToken);
       if (!normalized.ok) {
-        return `**Error:** Basic auth_token must be "user:password" (or the base64-encoded form of it). The value you provided doesn't decode to a user:password pair.`;
+        return `**Error:** Basic auth_token must be "username:password" with a non-empty username; the password may be empty. The base64-encoded form is also accepted.`;
       }
       storedAuthToken = normalized.stored;
     }

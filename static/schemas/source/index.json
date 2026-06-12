@@ -4,7 +4,7 @@
   "title": "AdCP Schema Registry",
   "version": "1.0.0",
   "description": "Registry of all AdCP JSON schemas for validation and discovery",
-  "adcp_version": "3.1.0-rc.10",
+  "adcp_version": "3.1.0-rc.12",
   "versioning": {
     "note": "AdCP uses path-based versioning. The schema URL path (/schemas/) indicates the version. Individual request/response schemas do NOT include adcp_version fields. Compatibility follows semantic versioning rules."
   },
@@ -971,6 +971,10 @@
         "uid-type": {
           "$ref": "/schemas/enums/uid-type.json",
           "description": "Universal ID types for user matching (rampid, id5, uid2, maid, etc.)"
+        },
+        "attestation-claim": {
+          "$ref": "/schemas/enums/attestation-claim.json",
+          "description": "Claims a verified identity attestation can establish (unique_human, age_over_13/16/18/21)"
         },
         "action-source": {
           "$ref": "/schemas/enums/action-source.json",
@@ -1973,5 +1977,5 @@
       "code": "// Use everit-org/json-schema or similar library"
     }
   ],
-  "published_version": "3.1.0-rc.10"
+  "published_version": "3.1.0-rc.12"
 }

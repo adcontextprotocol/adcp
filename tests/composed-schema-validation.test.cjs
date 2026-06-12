@@ -1167,6 +1167,34 @@ async function runTests() {
   );
   log('');
 
+  log('SignalCoverageForecast schema (top-level additionalProperties enforcement):', 'info');
+  await testSchemaValidation(
+    '/schemas/core/signal-coverage-forecast.json',
+    signalCoverageForecast,
+    'SignalCoverageForecast accepts valid forecast with presence: present and omitted signal_value'
+  );
+  await testSchemaValidation(
+    '/schemas/core/signal-coverage-forecast.json',
+    {
+      ...signalCoverageForecast,
+      scope: {
+        kind: 'inventory',
+        label: 'network price-priority inventory',
+        inventory_class: 'price_priority'
+      }
+    },
+    'SignalCoverageForecast scope accepts seller-specific extra qualifier (inventory_class)'
+  );
+  await testSchemaRejection(
+    '/schemas/core/signal-coverage-forecast.json',
+    {
+      ...signalCoverageForecast,
+      bucket_completness: 'partial'
+    },
+    'SignalCoverageForecast rejects unknown top-level field (bucket_completness typo)'
+  );
+  log('');
+
   log('SignalId compatibility during SignalRef migration:', 'info');
   await testSchemaValidation(
     '/schemas/signals/get-signals-response.json',

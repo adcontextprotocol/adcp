@@ -11,6 +11,7 @@ import { verifyWorkOSJWT, looksLikeJWT } from '../auth/workos-jwt.js';
 import { storeRefreshedSession, getRefreshedSession, cleanExpiredRefreshes } from '../db/session-refresh-db.js';
 import { getPool } from '../db/client.js';
 import { constantTimeEqual } from '../utils/constant-time-equal.js';
+import { resolveEffectiveMembership } from '../db/org-filters.js';
 
 const logger = createLogger('auth-middleware');
 
@@ -63,8 +64,15 @@ function warnOncePerSession(
   }
 }
 
+function startBackgroundCleanup(callback: () => void, intervalMs: number): void {
+  const timer = setInterval(callback, intervalMs) as ReturnType<typeof setInterval> & {
+    unref?: () => void;
+  };
+  timer.unref?.();
+}
+
 // Clean up expired cache entries periodically (every 5 minutes)
-setInterval(() => {
+startBackgroundCleanup(() => {
   const now = Date.now();
   let cleaned = 0;
   for (const [key, value] of sessionCache.entries()) {
@@ -88,7 +96,7 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 // Clean up expired DB session refresh entries (every 10 minutes)
-setInterval(() => {
+startBackgroundCleanup(() => {
   cleanExpiredRefreshes().then(cleaned => {
     if (cleaned > 0) {
       logger.debug({ cleaned }, 'Cleaned expired session refresh DB entries');
@@ -106,7 +114,7 @@ const banCache = new Map<string, CachedBanCheck>();
 const BAN_CACHE_TTL_MS = 60 * 1000;
 
 // Clean up expired ban cache entries alongside session cache
-setInterval(() => {
+startBackgroundCleanup(() => {
   const now = Date.now();
   for (const [key, value] of banCache.entries()) {
     if (value.expiresAt < now) {
@@ -216,6 +224,8 @@ export interface ValidatedApiKey {
   permissions: string[];
 }
 
+type ApiKeySyntheticUser = WorkOSUser & { isMember?: boolean };
+
 /**
  * Validate a WorkOS API key from the Authorization header
  * Returns the validated API key info or null if invalid
@@ -250,6 +260,27 @@ export async function validateWorkOSApiKey(req: Request): Promise<ValidatedApiKe
  */
 function apiKeyHasPermission(apiKey: ValidatedApiKey, permission: string): boolean {
   return apiKey.permissions.includes(permission);
+}
+
+async function buildApiKeyUser(apiKey: ValidatedApiKey): Promise<ApiKeySyntheticUser> {
+  let isMember = false;
+  try {
+    const membership = await resolveEffectiveMembership(apiKey.organizationId);
+    isMember = membership.is_member;
+  } catch (err) {
+    logger.warn({ err, apiKeyId: apiKey.id, organizationId: apiKey.organizationId }, 'Failed to resolve API key owner membership');
+  }
+
+  return {
+    id: `api_key_${apiKey.id}`,
+    email: `api-key@org-${apiKey.organizationId}`,
+    firstName: 'API',
+    lastName: apiKey.name,
+    emailVerified: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    isMember,
+  };
 }
 
 /**
@@ -762,15 +793,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   if (apiKey) {
     logger.debug({ path: req.path, apiKeyId: apiKey.id }, 'Authenticated via WorkOS API key');
     // Create a synthetic user for API key auth - the organization owns the key
-    req.user = {
-      id: `api_key_${apiKey.id}`,
-      email: `api-key@org-${apiKey.organizationId}`,
-      firstName: 'API',
-      lastName: apiKey.name,
-      emailVerified: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+    req.user = await buildApiKeyUser(apiKey);
     req.accessToken = 'workos-api-key';
     // Store API key info for permission checks
     (req as Request & { apiKey?: ValidatedApiKey }).apiKey = apiKey;
@@ -1782,15 +1805,7 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
   const apiKey = await validateWorkOSApiKey(req);
   if (apiKey) {
     logger.debug({ path: req.path, apiKeyId: apiKey.id }, 'Authenticated via WorkOS API key (optional auth)');
-    req.user = {
-      id: `api_key_${apiKey.id}`,
-      email: `api-key@org-${apiKey.organizationId}`,
-      firstName: 'API',
-      lastName: apiKey.name,
-      emailVerified: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+    req.user = await buildApiKeyUser(apiKey);
     req.accessToken = 'workos-api-key';
     (req as Request & { apiKey?: ValidatedApiKey }).apiKey = apiKey;
 

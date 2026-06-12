@@ -991,6 +991,51 @@
     .storyboard-step-meta a { color: var(--color-primary-600); text-decoration: none; }
     .storyboard-step-meta a:hover { text-decoration: underline; }
 
+    .storyboard-diagnostics {
+      margin-top: var(--space-2);
+      padding: var(--space-2);
+      border: 1px solid var(--color-error-200, #fecaca);
+      border-radius: var(--radius-sm);
+      background: var(--color-error-50, #fef2f2);
+      font-size: var(--text-xs);
+      color: var(--color-error-800, #991b1b);
+    }
+
+    .storyboard-diagnostics-title {
+      font-weight: 600;
+      margin-bottom: var(--space-1);
+    }
+
+    .storyboard-diagnostic-item + .storyboard-diagnostic-item {
+      margin-top: var(--space-2);
+      padding-top: var(--space-2);
+      border-top: 1px solid var(--color-error-200, #fecaca);
+    }
+
+    .storyboard-diagnostic-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+      color: var(--color-text-secondary);
+      margin-bottom: var(--space-1);
+    }
+
+    .storyboard-diagnostic-validation {
+      margin-top: var(--space-1);
+      display: grid;
+      grid-template-columns: minmax(84px, max-content) minmax(0, 1fr);
+      gap: 2px var(--space-2);
+    }
+
+    .storyboard-diagnostic-validation code {
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .storyboard-diagnostic-label {
+      color: var(--color-text-tertiary);
+    }
+
     .storyboard-actions {
       display: flex;
       gap: var(--space-2);
@@ -3806,7 +3851,7 @@
 
           let html = '<button class="storyboard-back-btn" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">&larr; Back to storyboards</button>';
           html += '<div style="margin-bottom:var(--space-3);"><strong>' + escapeHtml(data.storyboard.title) + '</strong> — Results</div>';
-          html += '<div style="margin-bottom:var(--space-3);font-size:var(--text-sm);color:var(--color-text-secondary);">' + escapeHtml(data.summary.headline) + ' (' + (data.total_duration_ms / 1000).toFixed(1) + 's)</div>';
+          html += '<div style="margin-bottom:var(--space-3);font-size:var(--text-sm);color:var(--color-text-secondary);">' + escapeHtml(formatStoryboardRunSummary(data.storyboard_status, data.summary?.headline)) + ' (' + (data.total_duration_ms / 1000).toFixed(1) + 's)</div>';
 
           for (const phase of data.phases) {
             html += '<div class="storyboard-phase">';
@@ -3840,6 +3885,7 @@
                   }
                 }
               }
+              html += renderStoryboardDiagnostics(data.diagnostics || [], step);
 
               html += '</div>';
             }
@@ -3974,6 +4020,106 @@
       html += '</div>';
       panel.innerHTML = html;
       panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function renderStoryboardDiagnostics(diagnostics, storyboardStep) {
+      const matches = diagnosticsForStoryboardStep(diagnostics, storyboardStep);
+      if (!matches.length) return '';
+
+      let html = '<div class="storyboard-diagnostics">';
+      html += '<div class="storyboard-diagnostics-title">Failure diagnostics</div>';
+
+      for (const diagnostic of matches) {
+        html += '<div class="storyboard-diagnostic-item">';
+        html += '<div class="storyboard-diagnostic-meta">';
+        if (diagnostic.task) html += '<span>Task: <code>' + escapeHtml(diagnostic.task) + '</code></span>';
+        if (diagnostic.step_id) html += '<span>Step: <code>' + escapeHtml(diagnostic.step_id) + '</code></span>';
+        if (diagnostic.response_status) html += '<span>HTTP: <code>' + escapeHtml(String(diagnostic.response_status)) + '</code></span>';
+        html += '</div>';
+
+        if (diagnostic.error_text) {
+          html += '<div>' + escapeHtml(String(diagnostic.error_text).substring(0, 500)) + '</div>';
+        }
+
+        const validations = Array.isArray(diagnostic.failed_validations_jsonb)
+          ? diagnostic.failed_validations_jsonb
+          : diagnostic.failed_validations_jsonb ? [diagnostic.failed_validations_jsonb] : [];
+        for (const validation of validations) {
+          html += renderDiagnosticValidation(validation);
+        }
+
+        if (diagnostic.adcp_error_jsonb) {
+          html += '<div class="storyboard-diagnostic-validation">';
+          html += '<span class="storyboard-diagnostic-label">ADCP error</span>';
+          html += '<code>' + escapeHtml(formatDiagnosticValue(diagnostic.adcp_error_jsonb)) + '</code>';
+          html += '</div>';
+        }
+        html += '</div>';
+      }
+
+      html += '</div>';
+      return html;
+    }
+
+    function diagnosticsForStoryboardStep(diagnostics, storyboardStep) {
+      if (!Array.isArray(diagnostics) || !storyboardStep?.result?.scenarios) return [];
+
+      const rawSteps = [];
+      for (const scenario of storyboardStep.result.scenarios) {
+        for (const rawStep of scenario?.steps || []) rawSteps.push(rawStep);
+      }
+
+      return diagnostics.filter((diagnostic) => {
+        return rawSteps.some((rawStep) => {
+          if (diagnostic.step_id && (rawStep.step_id === diagnostic.step_id || rawStep.id === diagnostic.step_id)) return true;
+          return !diagnostic.step_id && diagnostic.task && rawStep.task === diagnostic.task && rawStep.passed === false;
+        });
+      });
+    }
+
+    function formatStoryboardRunSummary(storyboardStatus, fallbackHeadline) {
+      if (!storyboardStatus) return fallbackHeadline || '';
+
+      const statusLabel = storyboardStatus.status === 'passing' ? 'Passing'
+        : storyboardStatus.status === 'failing' ? 'Failing'
+        : storyboardStatus.status === 'partial' ? 'Partial'
+        : 'Untested';
+      const passed = Number(storyboardStatus.steps_passed);
+      const total = Number(storyboardStatus.steps_total);
+      if (Number.isFinite(passed) && Number.isFinite(total) && total > 0) {
+        return 'Storyboard ' + statusLabel + ' (' + passed + '/' + total + ' executable steps)';
+      }
+      return 'Storyboard ' + statusLabel + ' (no executable seller assertions)';
+    }
+
+    function renderDiagnosticValidation(validation) {
+      const rows = [];
+      if (validation?.description) rows.push(['Check', validation.description]);
+      if (validation?.check) rows.push(['Type', validation.check]);
+      if (validation?.json_pointer) rows.push(['Path', validation.json_pointer]);
+      if (validation?.path) rows.push(['Path', validation.path]);
+      if (Object.prototype.hasOwnProperty.call(validation || {}, 'expected')) rows.push(['Expected', validation.expected]);
+      if (Object.prototype.hasOwnProperty.call(validation || {}, 'actual')) rows.push(['Actual', validation.actual]);
+      if (!rows.length && validation) rows.push(['Validation', validation]);
+
+      let html = '<div class="storyboard-diagnostic-validation">';
+      for (const [label, value] of rows) {
+        html += '<span class="storyboard-diagnostic-label">' + escapeHtml(label) + '</span>';
+        html += '<code>' + escapeHtml(formatDiagnosticValue(value)) + '</code>';
+      }
+      html += '</div>';
+      return html;
+    }
+
+    function formatDiagnosticValue(value) {
+      if (value === null) return 'null';
+      if (value === undefined) return '';
+      if (typeof value === 'string') return value;
+      try {
+        return JSON.stringify(value);
+      } catch {
+        return String(value);
+      }
     }
 
     function escapeHtml(str) {

@@ -276,6 +276,8 @@ export class CrawlerService {
 
     run();
     this.intervalId = setInterval(run, intervalMinutes * 60 * 1000);
+    // Background loop; never block process (or a vitest worker) exit.
+    this.intervalId?.unref();
 
     log.info({ intervalMinutes }, 'Periodic crawl started');
   }
@@ -1668,6 +1670,7 @@ export class CrawlerService {
     this.catalogCrawlIntervalId = setInterval(() => {
       this.crawlCatalogDomains();
     }, intervalMinutes * 60 * 1000);
+    this.catalogCrawlIntervalId?.unref();
 
     log.info({ intervalMinutes }, 'Periodic catalog domain crawl started');
   }
@@ -1788,6 +1791,7 @@ export class CrawlerService {
         log.error({ err }, 'Manager revalidation tick failed');
       });
     }, intervalMinutes * 60 * 1000);
+    this.managerRevalidationIntervalId?.unref();
 
     log.info({ intervalMinutes }, 'Periodic manager revalidation queue started');
   }

@@ -75,6 +75,23 @@ function loadSchema(schemaPath) {
   }
 }
 
+function findDuplicateAgentUrls(manifest) {
+  const seen = new Set();
+  const duplicates = new Set();
+
+  for (const agent of manifest.agents || []) {
+    if (!agent || typeof agent.url !== 'string') {
+      continue;
+    }
+    if (seen.has(agent.url)) {
+      duplicates.add(agent.url);
+    }
+    seen.add(agent.url);
+  }
+
+  return [...duplicates];
+}
+
 function findAllSchemas(dir) {
   const schemas = [];
   
@@ -296,7 +313,74 @@ async function runTests() {
     return validateRegistryConsistency();
   });
 
-  // Test 4B: Validate ADCP open-payload annotations
+  // Test 4A: Validate brand.json permits same-type agents for scoped endpoints
+  await test('brand.json permits more than 20 same-type agents with distinct urls', async () => {
+    const testAjv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false,
+      discriminator: true,
+      loadSchema: loadExternalSchema
+    });
+    addFormats(testAjv);
+
+    const validateBrand = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'brand.json')));
+    const manifest = {
+      $schema: '/schemas/brand.json',
+      version: '1.0',
+      agents: Array.from({ length: 25 }, (_, index) => {
+        const tenant = `tenant_${index + 1}`;
+        return {
+          type: 'sales',
+          url: `https://seller.example/mcp/${tenant}`,
+          id: `sales_${tenant}`,
+          jwks_uri: `https://seller.example/.well-known/jwks/${tenant}.json`
+        };
+      })
+    };
+
+    if (!validateBrand(manifest)) {
+      return validateBrand.errors.map(err => `${err.instancePath} ${err.message}`).join('; ');
+    }
+
+    const duplicateUrls = findDuplicateAgentUrls(manifest);
+    if (duplicateUrls.length > 0) {
+      return `Expected tenant-scoped agents to have distinct urls, found duplicates: ${duplicateUrls.join(', ')}`;
+    }
+
+    return true;
+  });
+
+  // Test 4B: Validate brand.json verifier ambiguity invariant
+  await test('brand.json duplicate agent urls are verifier-ambiguous', () => {
+    const manifest = {
+      $schema: '/schemas/brand.json',
+      version: '1.0',
+      agents: [
+        {
+          type: 'sales',
+          url: 'https://seller.example/mcp/tenant_1',
+          id: 'sales_tenant_1',
+          jwks_uri: 'https://seller.example/.well-known/jwks/tenant_1.json'
+        },
+        {
+          type: 'sales',
+          url: 'https://seller.example/mcp/tenant_1',
+          id: 'sales_tenant_1_duplicate',
+          jwks_uri: 'https://seller.example/.well-known/jwks/tenant_1_duplicate.json'
+        }
+      ]
+    };
+
+    const duplicateUrls = findDuplicateAgentUrls(manifest);
+    if (duplicateUrls.length !== 1 || duplicateUrls[0] !== 'https://seller.example/mcp/tenant_1') {
+      return `Expected duplicate agent url to be detected, got: ${duplicateUrls.join(', ') || '(none)'}`;
+    }
+
+    return true;
+  });
+
+  // Test 4C: Validate ADCP open-payload annotations
   await test('x-adcp-open-payload annotations use currently supported values', () => {
     for (const [schemaPath, schema] of schemas) {
       const occurrences = collectKeywordOccurrences(schema, 'x-adcp-open-payload', path.basename(schemaPath));

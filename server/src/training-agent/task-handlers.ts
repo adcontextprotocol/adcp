@@ -717,9 +717,9 @@ import { maybeEmitCompletionWebhook } from './webhooks.js';
 import { selectSigningCapability } from './request-signing.js';
 
 const SUPPORTED_MAJOR_VERSIONS = [3] as const;
-const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9'] as const;
+const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10'] as const;
 const DEFAULT_ADCP_VERSION = '3.0';
-const CURRENT_ADCP_VERSION = '3.1-rc.9';
+const CURRENT_ADCP_VERSION = '3.1-rc.10';
 const MAX_PACKAGES_PER_BUY = 50;
 
 interface ParsedAdcpReleaseVersion {
@@ -763,7 +763,32 @@ function compareAdcpReleaseVersions(left: ParsedAdcpReleaseVersion, right: Parse
   if (left.prerelease === right.prerelease) return 0;
   if (!left.prerelease) return 1;
   if (!right.prerelease) return -1;
-  return left.prerelease.localeCompare(right.prerelease);
+  return compareAdcpPrerelease(left.prerelease, right.prerelease);
+}
+
+function compareAdcpPrerelease(left: string, right: string): number {
+  const leftParts = left.split('.');
+  const rightParts = right.split('.');
+  const maxParts = Math.max(leftParts.length, rightParts.length);
+
+  for (let index = 0; index < maxParts; index += 1) {
+    const leftPart = leftParts[index];
+    const rightPart = rightParts[index];
+    if (leftPart === undefined) return -1;
+    if (rightPart === undefined) return 1;
+    if (leftPart === rightPart) continue;
+
+    const leftNumeric = /^\d+$/.test(leftPart);
+    const rightNumeric = /^\d+$/.test(rightPart);
+    if (leftNumeric && rightNumeric) {
+      return Number.parseInt(leftPart, 10) - Number.parseInt(rightPart, 10);
+    }
+    if (leftNumeric) return -1;
+    if (rightNumeric) return 1;
+    return leftPart.localeCompare(rightPart);
+  }
+
+  return 0;
 }
 
 const PARSED_SUPPORTED_RELEASE_VERSIONS = SUPPORTED_RELEASE_VERSIONS
@@ -4531,15 +4556,9 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   if (buyStart !== 'asap' && new Date(buyStart) >= new Date(buyEnd)) {
     return { errors: [{ code: 'INVALID_REQUEST', message: 'start_time must be before end_time' }] as TaskError[] };
   }
-  // NOTE: no past-start_time rejection. `schema_validation`'s
-  // `temporal_validation` step asserts we reject 2020-dated starts — the
-  // spec's "accept-and-adjust" branch is also conformant per the
-  // storyboard's `any_of` on `past_start_handled`. Training-agent unit
-  // tests (status derivation, delivery lookup, creative delivery)
-  // intentionally use 2020 dates to exercise derivation logic against
-  // past flights; rejecting those breaks ~6 test fixtures without a
-  // clean bypass. The storyboard step closes as not-applicable for our
-  // "accept-and-derive" branch; unit-test coverage is preserved.
+  if (buyStart !== 'asap' && new Date(buyStart) < new Date()) {
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'start_time must not be in the past' }] as TaskError[] };
+  }
 
   // Validate all packages and collect errors before returning
   const errors: TaskError[] = [];
@@ -5667,6 +5686,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   }
 
   const now = new Date().toISOString();
+  const affectedPackageIds = new Set<string>();
 
   // Increment revision once before mutations
   mb.revision += 1;
@@ -5764,6 +5784,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
         pkg.canceledAt = now;
         pkg.canceledBy = 'buyer';
         pkg.cancellationReason = (update as PackageUpdateExt).cancellation_reason;
+        affectedPackageIds.add(pkgId);
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'package_canceled', summary: `Package ${pkgId} canceled`, packageId: pkgId });
         continue;
       }
@@ -5771,6 +5792,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       // Package pause/resume
       if (update.paused !== undefined && update.paused !== pkg.paused) {
         pkg.paused = update.paused;
+        affectedPackageIds.add(pkgId);
         const action = update.paused ? 'package_paused' : 'package_resumed';
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action, summary: `Package ${pkgId} ${update.paused ? 'paused' : 'resumed'}`, packageId: pkgId });
       }
@@ -5781,6 +5803,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
         }
         const oldBudget = pkg.budget;
         pkg.budget = update.budget;
+        affectedPackageIds.add(pkgId);
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'budget_updated', summary: `Package ${pkgId} budget changed from ${oldBudget} to ${update.budget}`, packageId: pkgId });
       }
 
@@ -5789,6 +5812,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
           warnings.push(`Invalid end_time for package ${pkgId}: "${update.end_time}". Skipped.`);
         } else {
           pkg.endTime = update.end_time;
+          affectedPackageIds.add(pkgId);
         }
       }
 
@@ -5802,6 +5826,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
         pkg.targeting = targetingResult.targeting;
         const changed = JSON.stringify(before ?? null) !== JSON.stringify(pkg.targeting ?? null);
         if (changed) {
+          affectedPackageIds.add(pkgId);
           const action = pkg.targeting ? 'targeting_updated' : 'targeting_cleared';
           const summary = pkg.targeting ? `Package ${pkgId} targeting updated` : `Package ${pkgId} targeting cleared`;
           mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action, summary, packageId: pkgId });
@@ -5815,6 +5840,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       if (creativeAssignments !== undefined) {
         const creativeIds = creativeAssignments.map(a => a.creative_id);
         pkg.creativeAssignments = creativeIds;
+        affectedPackageIds.add(pkgId);
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'creative_assignments_updated', summary: `Package ${pkgId} creative assignments replaced (${creativeIds.length} creatives)`, packageId: pkgId });
       }
       if (update.creatives !== undefined) {
@@ -5827,6 +5853,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
           now,
         );
         pkg.creativeAssignments = creativeIds;
+        affectedPackageIds.add(pkgId);
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'inline_creatives_updated', summary: `Package ${pkgId} inline creatives replaced (${creativeIds.length} creatives)`, packageId: pkgId });
       }
     }
@@ -5888,6 +5915,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
         targeting: targetingResult.targeting,
       };
       mb.packages.push(newPkg);
+      affectedPackageIds.add(pkgId);
       mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'package_added', summary: `New package ${pkgId} added (product: ${productId})`, packageId: pkgId });
     }
     const updatedAllowedActions = deriveProductAllowedActionsForPackages(mb.packages, productMap);
@@ -5916,6 +5944,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       cancellation: { canceled_at: pkg.canceledAt, canceled_by: pkg.canceledBy, reason: pkg.cancellationReason },
     }),
   }));
+  const affectedPackages = updatedPackages.filter(pkg => affectedPackageIds.has(pkg.package_id));
   // `media_buy_status` is the canonical 3.1 body field (#4895); legacy
   // body `status: MediaBuyStatus` removed in 3.2 (#4906).
   const result = {
@@ -5929,7 +5958,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     ...(mb.canceledAt && {
       cancellation: { canceled_at: mb.canceledAt, canceled_by: mb.canceledBy, reason: mb.cancellationReason },
     }),
-    affected_packages: updatedPackages,
+    affected_packages: affectedPackages,
     packages: updatedPackages,
     ...(warnings.length > 0 && { warnings }),
     ...(req.context !== undefined && { context: req.context }),

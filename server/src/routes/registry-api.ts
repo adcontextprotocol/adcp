@@ -24,6 +24,7 @@ import { listStoryboards, getStoryboard, getTestKitForStoryboard } from "../serv
 import {
   hostedComplianceTarget,
   hostedComplianceOptions,
+  HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
   hostedAuthProbeTaskForProfile,
   withHostedStoryboardRunOptions,
   withHostedTestOptions,
@@ -2720,7 +2721,7 @@ registry.registerPath({
   operationId: "refreshAgent",
   summary: "Refresh agent snapshot",
   description:
-    "Re-probe the agent and update its registry health (online, tools_count, response_time_ms), capability snapshot (inferred type, discovered tools), and compliance verdict (storyboard pass/fail counts). Use after fixing your agent so the registry shows fresh data without waiting for the periodic heartbeat (~1h).\n\n**Compliance re-run:** when the caller owns the agent or is an AAO admin and the capability probe succeeds, the full storyboard suite runs (~30–90s) with a fresh test session and `agent_storyboard_status` is updated. Owner-triggered runs use `triggered_by: 'owner_test'`; admin-triggered support runs use `triggered_by: 'manual'`. Badge fan-out reissues verification badges off the new run. If the compliance call fails (timeout, OAuth wall, internal error), the capability/health portion still returns successfully — `compliance.ran` is `false` with an `error` string.\n\n**Auth:** owner of the agent, AAO admin, or static `ADMIN_API_KEY`.\n\n**Rate limits:** 60 seconds per agent URL, 30 requests per user per hour.",
+    "Re-probe the agent and update its registry health (online, tools_count, response_time_ms), capability snapshot (inferred type, discovered tools), and compliance verdict (storyboard pass/fail counts). Use after fixing your agent so the registry shows fresh data without waiting for the periodic heartbeat (~1h).\n\n**Compliance re-run:** when the caller owns the agent or is an AAO admin and the capability probe succeeds, the full storyboard suite can run for several minutes on capability-rich agents with a fresh test session, and `agent_storyboard_status` is updated. Owner-triggered runs use `triggered_by: 'owner_test'`; admin-triggered support runs use `triggered_by: 'manual'`. Badge fan-out reissues verification badges off the new run. If the compliance call fails (timeout, OAuth wall, internal error), the capability/health portion still returns successfully — `compliance.ran` is `false` with an `error` string.\n\n**Auth:** owner of the agent, AAO admin, or static `ADMIN_API_KEY`.\n\n**Rate limits:** 60 seconds per agent URL, 30 requests per user per hour.",
   tags: ["Agent Compliance"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -3147,6 +3148,7 @@ registry.registerPath({
           schema: z.object({
             domain: z.string().openapi({ example: "acmecorp.com" }),
             brand_name: z.string(),
+            brand_json: z.record(z.string(), z.any()).optional().openapi({ description: "Optional full brand.json draft to host in the registry" }),
             logo_url: z.string().optional(),
             brand_color: z.string().optional(),
           }),
@@ -3356,6 +3358,26 @@ registry.registerPath({
   },
 });
 
+const StoryboardRunStatusResponseSchema = z.object({
+  storyboard_id: z.string(),
+  status: z.enum(["passing", "failing", "partial", "untested"]),
+  steps_passed: z.number().int(),
+  steps_total: z.number().int(),
+});
+
+const StoryboardRunDiagnosticResponseSchema = z.object({
+  run_id: z.string(),
+  agent_url: z.string(),
+  storyboard_id: z.string(),
+  phase_id: z.string(),
+  step_id: z.string(),
+  task: z.string(),
+  response_status: z.number().int().nullable().optional(),
+  error_text: z.string().nullable().optional(),
+  failed_validations_jsonb: z.any().optional(),
+  adcp_error_jsonb: z.any().optional(),
+});
+
 registry.registerPath({
   method: "post",
   path: "/api/registry/agents/{encodedUrl}/storyboard/{storyboardId}/run",
@@ -3391,8 +3413,11 @@ registry.registerPath({
             requested_compliance_target: z.string(),
             badge_eligible: z.boolean(),
             badge_eligible_adcp_versions: z.array(z.string()),
+            run_id: z.string().openapi({ description: "Compliance run id written by this owner-triggered storyboard run." }),
+            storyboard_status: StoryboardRunStatusResponseSchema.openapi({ description: "Persisted storyboard verdict for this run, using the same executable-step semantics as agent_storyboard_status." }),
             phases: z.any(),
             summary: z.any(),
+            diagnostics: z.array(StoryboardRunDiagnosticResponseSchema).openapi({ description: "Owner-scoped failing-step validation summary for this run. Full request/response diagnostics remain available via /compliance/diagnostics?run_id=..." }),
             observations: z.any(),
             total_duration_ms: z.number(),
             test_kit: z.any().nullable(),
@@ -6013,10 +6038,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       // capability/health probe. Prior to #4886, /refresh probed capabilities
       // and health but left agent_storyboard_status untouched, leaving owners
       // to stare at a stale verdict for up to a full heartbeat cycle after
-      // deploying a fix. The full storyboard suite can run 30–90s; the
-      // per-agent 60s rate limit above bounds repeat-clicks. comply() failure
-      // is a soft-fail — we still return the capability/health refresh so a
-      // partially-working agent still moves the snapshot forward.
+      // deploying a fix. The full storyboard suite can run for several minutes
+      // on capability-rich agents (bounded by HOSTED_FULL_COMPLIANCE_TIMEOUT_MS).
+      // The per-agent 60s rate limit above only bounds repeat-clicks, not the
+      // duration of an in-flight run, so a second refresh of the same agent can
+      // start while the first is still running; that is acceptable for this
+      // owner/admin-gated path. comply() failure is a soft-fail — we still
+      // return the capability/health refresh so a partially-working agent still
+      // moves the snapshot forward.
       let complianceSummary: {
         ran: boolean;
         requested_compliance_target?: string;
@@ -6040,7 +6069,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           const triggeredBy = ownerOrgId ? 'owner_test' : 'manual';
           const complyOptions = {
             test_session_id: testSessionId,
-            timeout_ms: 90_000,
+            timeout_ms: HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
             userAgent: AAO_UA_COMPLIANCE,
             ...(resolvedAuth && { auth: resolvedAuth }),
           };
@@ -6326,7 +6355,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         const normalized = normalizeBasicAuthForStorage(authTokenToStore);
         if (!normalized.ok) {
           return res.status(400).json({
-            error: 'Basic auth_token must be "user:password" or base64("user:password") with non-empty username and password',
+            error: 'Basic auth_token must be "username:password" with a non-empty username; the password may be empty. The base64-encoded form is also accepted.',
           });
         }
         authTokenToStore = normalized.stored;
@@ -6927,11 +6956,17 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         // matches evaluate_agent_quality semantics: owner_test, not the legacy
         // 'manual' label.
         const metadata = await complianceDb.getRegistryMetadata(agentUrl);
-        await complianceDb.recordComplianceRun({
-          ...complianceResultToDbInput(complyResult, agentUrl, metadata?.lifecycle_stage || "development", "owner_test", [req.params.storyboardId]),
-          triggered_org_id: orgId,
-        },
+        const dbInput = complianceResultToDbInput(
+          complyResult,
+          agentUrl,
+          metadata?.lifecycle_stage || "development",
+          "owner_test",
+          [req.params.storyboardId],
         );
+        const { run } = await complianceDb.recordComplianceRun({
+          ...dbInput,
+          triggered_org_id: orgId,
+        });
 
         // Fan out badge issuance on the canonical write so an owner who
         // just fixed a single storyboard sees the badge update on their
@@ -6963,6 +6998,35 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           }
         }
 
+        const storyboardStatus = dbInput.storyboard_statuses?.find(s => s.storyboard_id === req.params.storyboardId) ?? {
+          storyboard_id: req.params.storyboardId,
+          status: 'untested' as const,
+          steps_passed: 0,
+          steps_total: 0,
+        };
+        const isControllerCoverageGapScenario = (scenario: { steps?: any[] }): boolean => {
+          const steps = Array.isArray(scenario.steps) ? scenario.steps : [];
+          return steps.length > 0 && steps.every((step) => {
+            if (!step?.skipped) return false;
+            return step.skip_reason === 'peer_branch_taken' ||
+              step.skip_reason === 'peer_substituted' ||
+              step.skip_reason === 'missing_test_controller' ||
+              (step.skip_reason === 'requirement_unmet' && step.requirement === 'controller');
+          });
+        };
+        const uiDiagnostics = (dbInput.step_diagnostics ?? []).map((diagnostic) => ({
+          run_id: run.id,
+          agent_url: agentUrl,
+          storyboard_id: diagnostic.storyboard_id,
+          phase_id: diagnostic.phase_id,
+          step_id: diagnostic.step_id,
+          task: diagnostic.task,
+          response_status: diagnostic.response_status ?? null,
+          error_text: diagnostic.error_text ?? null,
+          failed_validations_jsonb: diagnostic.failed_validations_jsonb,
+          adcp_error_jsonb: diagnostic.adcp_error_jsonb,
+        }));
+
         // Annotate storyboard phases with comply results
         const annotatedPhases = storyboard.phases.map((phase) => ({
           ...phase,
@@ -6973,9 +7037,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
                   t.scenarios.filter((s) => s.scenario === step.comply_scenario),
                 )
               : [];
+            const executableScenarios = matchingScenarios.filter((s) => !isControllerCoverageGapScenario(s));
 
-            const passed = matchingScenarios.length > 0
-              ? matchingScenarios.every((s) => s.overall_passed)
+            const passed = executableScenarios.length > 0
+              ? executableScenarios.every((s) => s.overall_passed)
               : null;
 
             return {
@@ -6983,6 +7048,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
               result: {
                 passed,
                 scenarios: matchingScenarios,
+                coverage_gap_skipped: matchingScenarios.length > 0 && executableScenarios.length === 0,
               },
             };
           }),
@@ -7004,8 +7070,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           requested_compliance_target: runTarget.requested,
           adcp_version: complyResult.adcp_version,
           ...badgeEligibilityMetadata(runBadgeEligibleVersions),
+          run_id: run.id,
+          storyboard_status: storyboardStatus,
           phases: annotatedPhases,
           summary: complyResult.summary,
+          diagnostics: uiDiagnostics,
           observations: complyResult.observations,
           total_duration_ms: complyResult.total_duration_ms,
           test_kit: testKit || null,
@@ -8530,7 +8599,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
   const setupBrandMiddleware = authMiddleware ? [authMiddleware, brandCreationRateLimiter] : [brandCreationRateLimiter];
 
   router.post("/brands/setup-my-brand", ...setupBrandMiddleware, async (req, res) => {
-    const { brand_name, logo_url, brand_color } = req.body;
+    const { brand_name, logo_url, brand_color, brand_json } = req.body;
     const rawDomain = req.body.domain as string;
 
     if (!rawDomain || typeof rawDomain !== "string") {
@@ -8538,6 +8607,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     }
     if (!brand_name || typeof brand_name !== "string") {
       return res.status(400).json({ error: "brand_name is required" });
+    }
+    if (
+      brand_json !== undefined
+      && (typeof brand_json !== "object" || brand_json === null || Array.isArray(brand_json))
+    ) {
+      return res.status(400).json({ error: "brand_json must be a JSON object" });
+    }
+    if (brand_json !== undefined && JSON.stringify(brand_json).length > 100 * 1024) {
+      return res.status(400).json({ error: "brand_json exceeds maximum size (100KB)" });
     }
 
     const domain = extractDomain(rawDomain).replace(/^www\./, "");
@@ -8563,7 +8641,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       // Verify the requested domain belongs to this org (matches a WorkOS-verified domain or subdomain).
       // Skipped in dev mode (DEV_USER_EMAIL set) since dev orgs are not in WorkOS.
       const devMode = !!(process.env.DEV_USER_EMAIL && process.env.DEV_USER_ID);
-      if (!devMode && orgId) {
+      if (!devMode && !orgId) {
+        return res.status(403).json({
+          error: 'A verified organization is required to set up a brand',
+        });
+      }
+      if (!devMode) {
         const orgDomainsResult = await query<{ domain: string }>(
           'SELECT domain FROM organization_domains WHERE workos_organization_id = $1 AND verified = true',
           [orgId]
@@ -8587,7 +8670,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         // Otherwise build a minimal entry from the request params.
         let brandJson: Record<string, unknown>;
         const manifest = discovered?.brand_manifest as Record<string, unknown> | undefined;
-        if (manifest && discovered!.review_status !== 'pending' && typeof manifest.house === 'object' && manifest.house !== null) {
+        if (brand_json) {
+          brandJson = brand_json as Record<string, unknown>;
+        } else if (manifest && discovered!.review_status !== 'pending' && typeof manifest.house === 'object' && manifest.house !== null) {
           brandJson = manifest;
         } else {
           const brandId = brand_name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');

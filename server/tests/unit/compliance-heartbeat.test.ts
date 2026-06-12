@@ -42,6 +42,7 @@ vi.mock('../../src/addie/services/compliance-testing.js', () => ({
 
 vi.mock('../../src/services/hosted-compliance-version.js', () => ({
   hostedComplianceTarget: mocks.hostedComplianceTarget,
+  HOSTED_FULL_COMPLIANCE_TIMEOUT_MS: 600_000,
 }));
 
 vi.mock('../../src/db/outbound-log-db.js', () => ({
@@ -84,22 +85,29 @@ describe('runComplianceHeartbeatJob', () => {
     mocks.recordComplianceRun.mockResolvedValue({});
   });
 
-  it('counts incomplete saved Basic auth as a checked failure', async () => {
-    mocks.comply.mockRejectedValueOnce(new Error('step.auth.basic.password must be a non-empty string'));
+  it('counts malformed saved Basic auth as a checked failure', async () => {
+    mocks.comply.mockRejectedValueOnce(new Error('step.auth.basic.username must be a non-empty string'));
 
     const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
     const result = await runComplianceHeartbeatJob({ limit: 1 });
 
     expect(result).toEqual({ checked: 1, passed: 0, failed: 1, skipped: 0 });
+    expect(mocks.comply).toHaveBeenCalledWith(
+      'https://agent.example.com/mcp',
+      expect.objectContaining({
+        timeout_ms: 600_000,
+      }),
+      target,
+    );
     expect(mocks.recordComplianceRun).toHaveBeenCalledWith(
       expect.objectContaining({
         agent_url: 'https://agent.example.com/mcp',
         overall_status: 'failing',
-        headline: 'Saved Basic auth credentials are incomplete',
+        headline: 'Saved Basic auth credentials are malformed',
         observations_json: [{
           category: 'authentication',
           severity: 'warning',
-          message: 'The saved Basic auth credentials for this agent must include both username and password.',
+          message: 'The saved Basic auth credentials for this agent must include a non-empty username.',
         }],
       }),
     );

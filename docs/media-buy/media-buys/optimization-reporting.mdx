@@ -85,6 +85,8 @@ Three rules connect the layers and prevent orphaned goals:
    - Standard only — "you owe me ≥ X," seller decides how to hit it
    - Both — optimization steers; standard backstops
 
+4. **Priority is ordinal, lowest-value-first.** When `optimization_goals[]` carry explicit `priority` values, the seller treats the goal with the **lowest** priority value as primary — even when no goal is `priority: 1` (priorities of `2` and `3` mean `2` is primary). When `priority` is omitted, sellers may use array position. Duplicate priority values are undefined.
+
 ### Worked example: Adelaide attention end-to-end
 
 A buyer wants to optimize against Adelaide's `attention_score` with a threshold of 70. Here's how the four surfaces line up:

@@ -267,10 +267,10 @@ phases:
             path: "media_buy_status"
             value: "active"
             description: "Created buy is active before available_actions mutation probes"
-          - check: field_value_or_absent
+          - check: field_value
             path: "status"
-            value: "active"
-            description: "Legacy status, when present alongside media_buy_status, mirrors active"
+            value: "completed"
+            description: "Envelope task-status is completed on synchronous success (protocol-envelope.json required: [status])"
           - check: field_contains
             path: "available_actions[*]"
             value:
@@ -399,6 +399,17 @@ phases:
             path: "media_buy_id"
             value: "$context.available_actions_media_buy_id"
             description: "Seller updates the requested media buy"
+          - check: field_present
+            path: "affected_packages"
+            description: "Package-mutating update returns affected_packages"
+          - check: field_contains
+            path: "affected_packages[*]"
+            value:
+              package_id: "$context.available_actions_package_id"
+              product_id: "available_actions_display"
+              pricing_option_id: "available_actions_cpm"
+              budget: 12000
+            description: "Update response returns the affected package with complete post-update budget state"
           - check: field_contains
             path: "available_actions[*]"
             value:

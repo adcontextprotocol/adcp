@@ -130,6 +130,14 @@ phases:
           - check: field_present
             path: "supported_protocols"
             description: "Agent declares supported protocols"
+          - check: field_contains
+            path: "supported_protocols[*]"
+            value: "media_buy"
+            description: "Agent declares media_buy protocol support"
+          - check: field_contains
+            path: "specialisms[*]"
+            value: "sales-non-guaranteed"
+            description: "Agent declares sales-non-guaranteed specialism"
 
           - check: field_present
             path: "context"
@@ -328,8 +336,8 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          start_time: "2026-04-01T00:00:00Z"
-          end_time: "2026-06-30T23:59:59Z"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
           packages:
             - product_id: "$context.first_product_id"
               budget: 10000
@@ -450,10 +458,10 @@ phases:
         comply_scenario: media_buy_lifecycle
         stateful: true
         expected: |
-          Apply the updates and return the modified media buy:
+          Apply the updates and return the modified media buy state:
           - media_buy_id: matches the existing buy
-          - status: active (still running)
-          - packages: updated line items reflecting new bids and budgets
+          - affected_packages: full post-update package objects reflecting new bids and budgets
+          - media_buy_status: active if lifecycle state is emitted
           - Changes take effect immediately for subsequent auctions
 
         sample_request:
@@ -477,6 +485,27 @@ phases:
           - check: response_schema
             description: "Response matches update-media-buy-response.json schema"
 
+          - check: field_present
+            path: "affected_packages"
+            description: "Package-mutating update returns affected_packages"
+          - check: field_contains
+            path: "affected_packages[*]"
+            value:
+              package_id: "$context.first_package_id"
+              product_id: "$context.first_product_id"
+              pricing_option_id: "$context.first_pricing_option_id"
+              bid_price: "$context.first_updated_bid_price"
+              budget: 12000
+            description: "First updated package includes complete post-update bid and budget state"
+          - check: field_contains
+            path: "affected_packages[*]"
+            value:
+              package_id: "$context.second_package_id"
+              product_id: "$context.second_product_id"
+              pricing_option_id: "$context.second_pricing_option_id"
+              bid_price: "$context.second_updated_bid_price"
+              budget: 13000
+            description: "Second updated package includes complete post-update bid and budget state"
           - check: field_present
             path: "context"
             description: "Response echoes back the context object"

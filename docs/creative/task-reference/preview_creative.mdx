@@ -339,6 +339,14 @@ If the requested quality level is not supported, the agent renders at the best q
 
 Preview responses may include an `expires_at` timestamp. When present, consumers should treat preview URLs as invalid after that time and re-generate them before reuse. When `expires_at` is omitted, the preview URLs do not expire. For generative creative, re-generating a pre-flight preview may produce different output — the same brief and context can yield different creative each time.
 
+### Preview URL durability
+
+`preview_url` is the protocol resource buyers and MCPUI hosts render. AdCP does not define a separate durable asset pointer for preview renders in 3.x; if a creative agent needs an internal asset key, resource URI, or storage object ID, it remains agent-internal unless the schema adds a future field for it.
+
+Creative agents MUST keep each `preview_url` dereferenceable until the response's `expires_at` timestamp. When `expires_at` is omitted, the URL has no protocol-level expiration and must remain dereferenceable until the agent explicitly revokes or purges it out of band. Do not back preview URLs only with pod-local `Map`/LRU state in multi-process or multi-pod deployments, because a browser fetch, later refinement call, or reviewer session may land on a different process than the one that created the preview.
+
+Durable storage does not require permanent public CDN hosting. A preview URL can resolve through the creative agent's authenticated preview route as long as the route can recover the render from shared storage, such as a database row, object store key, or shared cache tier, for the advertised lifetime.
+
 Variant previews (post-flight) depend on the agent retaining variant data. Agents are not required to retain variant data indefinitely. If you request a variant preview for a variant the agent has purged, expect a standard error response. For long-running campaigns, retrieve and archive variant previews periodically rather than assuming they will remain available.
 
 ## Examples
@@ -414,7 +422,8 @@ Preview multiple creatives for a grid layout:
 - Every render's `preview_url` returns an HTML page for iframe embedding
 - Use `output_format: "html"` for grids of 10+ previews (no iframe overhead)
 - Batch mode is 5-10x faster than individual requests
-- Preview URLs expire only when `expires_at` is present; omitted `expires_at` means no expiration
+- Preview URLs expire only when `expires_at` is present; omitted `expires_at` means no protocol-level expiration
+- Back preview URLs with storage that survives the URL's advertised lifetime; process-local maps are only appropriate for single-process demos or shorter-than-process-lifetime URLs
 - Handle partial batch failures by checking each result's `success` field
 
 ## Related Documentation

@@ -1,5 +1,61 @@
 # Changelog
 
+## 3.1.0-rc.12
+
+### Minor Changes
+
+- cdfe3ad: Add an experimental verified-identity attestation surface to TMP Identity Match, letting a publisher (or a network/issuer-as-RP) forward a **verifiable** proof about a user — proof-of-personhood and/or age — so the buyer verifies the claim cryptographically instead of trusting an assertion. Issuer-agnostic; World ID is the first scheme.
+
+  **Schema changes (additive):**
+
+  - `enums/uid-type.json` — adds `world_id_nullifier` (Sybil-resistant, rp-scoped, unlinkable pseudonym; asserts nothing on its own — trust comes from the accompanying attestation).
+  - `enums/attestation-claim.json` (new) — closed, issuer-agnostic claim set: `unique_human`, `age_over_13/16/18/21`. Age is threshold-only and resolves to eligibility, never a wire attribute.
+  - `tmp/identity-match-request.json` — adds an optional `attestation` object per `identities[]` entry (`issuer`, `scheme`, `relying_party_id`, `action`, `claims[]`, `verification_level`, `signal_binding`, `proof`, `expires_at`) and an optional top-level `sealed_credentials[]` (`{audience_kid, payload}`, TMPX envelope) for the network-as-RP carrier. `issuer` is a vendor BrandRef (`core/brand-ref.json`, canonical domain) — the same vendor-reference shape as measurement/signals vendors; the relying party is namespaced by the issuer as `(issuer.domain, issuer.brand_id, relying_party_id)`.
+
+  **Contract-bearing note:** `identity-match-request.json` is `additionalProperties: false` on purpose (the identity privacy boundary). These fields are a deliberate, reviewed widening — they carry proof _about_ the identity (identity side of the boundary), not page context. Shipped as `x-status: experimental`; not subject to deprecation cycles until 3.0.0 GA.
+
+  **Conformance invariants (normative):** verify every accepted `scheme`; treat an unverifiable attestation as "no attestation", never as asserted-true; reject on failed `signal_binding`, `relying_party_id` provenance, or `expires_at`; decrypt only `sealed_credentials` whose `audience_kid` you hold; bound attestation + sealed-credential count/size.
+
+  **Router handling of `sealed_credentials[]` (normative):** forward each entry only to the provider owning its `audience_kid` (not broadcast); fold `sealed_credentials` into the per-provider re-signature canonical bytes; include a `sealed_credentials_hash` in the dedup cache key.
+
+  relying_party_id ownership is published in `brand.json` `identity_relying_parties[]`; age jurisdiction→threshold tables live in the AdCP Policy Registry and resolve to `eligible_package_ids`. Advertised via a new `trusted_match.verified_identity` experimental feature id. Full design: `specs/tmp-verified-identity-attestation.md`.
+
+### Patch Changes
+
+- f67c0c9: Fix storyboard `field_value_or_absent(status, MediaBuyStatus)` checks that created impossible-to-satisfy constraints alongside `response_schema`.
+
+  `protocol-envelope.json` has `required: ["status"]` typed as the TaskStatus enum. Three storyboard checks across `pending_creatives_to_start.yaml` and `available_actions.yaml` were asserting MediaBuyStatus values ("pending_creatives", "pending_start"/"active", "active") at the envelope `status` key — leaving no valid response shape that could satisfy both `response_schema` and the field assertion. Replaced with `field_value(status, "completed")` matching what protocol-envelope mandates for synchronous success. Also updated two stale narrative prose references from "status: pending_creatives" to "media_buy_status: pending_creatives".
+
+  Fixes #5416.
+
+- 32d14c9: Fix two universal storyboard false failures: remove runner-only webhook URL templating from the core idempotency replay requests while preserving webhook replay side-effect coverage in the webhook-emission universal, and spell out the schema-validation past-start contribution flag for runners that do not normalize `contributes: true` shorthand before grading.
+
+## 3.1.0-rc.11
+
+### Minor Changes
+
+- 563eaf4: spec(tmp): add required `seller_agent_url` to `context_match_request`.
+
+  The context-match request now carries `seller_agent_url`, matching the identity-match request's field shape and placement (PR #3687). The resolution semantics are deliberately actor-specific, not a mirror: on the context path the **provider** resolves the active package set it has **synced** for the asking seller, whereas on the identity path the **buyer agent** resolves the set it has **registered**. When `package_ids` is omitted, evaluation runs against that seller's full active set; a `seller_agent_url` the provider has not synced packages for MUST return an empty offer set rather than fall back to another seller's set.
+
+  This reverses the prior decision (PR #3063's seller-attribution section) that kept seller identity off `context_match_request`. That section argued the provider already holds the sync-time `seller_agent` binding so the request field is redundant, and that putting seller on the context path opens a request-time filtering vector. In practice a provider serves many sellers and needs the asking seller's identity on the wire to scope its active-set resolution without a deployment-pinned constant — the same need the buyer agent has on the identity path, even though the actor and the set it resolves against differ. The decorrelation argument does not apply: `seller_agent_url` is a single stable value identifying the asking seller, identical for every user on a placement and carrying no user identity, so it adds no per-user signal that context and identity requests could be correlated on. The package-set decorrelation guarantee constrains per-user-varying data (`package_ids`), which is unchanged.
+
+  Required, consistent with identity-match. `context_match_request` is `x-status: experimental`, so the added required field is permitted pre-stable.
+
+  Files:
+
+  - `static/schemas/source/tmp/context-match-request.json` — `seller_agent_url` property (string, uri) added to `properties` and to `required`.
+  - `docs/trusted-match/specification.mdx` — §Seller Attribution "Placement rationale", the Router participant row, and the "What This Is Not" bullet rewritten so the normative text matches: both request types carry `seller_agent_url`; the package-side `seller_agent` remains attribution-only; neither may be used as a per-user filter.
+  - `docs/trusted-match/{index,buyer-guide,context-and-identity,ai-mediation}.mdx` and `docs/trusted-match/surfaces/{web,mobile,ctv,ai-assistants,retail-media}.mdx` — request examples updated with `seller_agent_url`.
+  - `tests/example-validation-simple.test.cjs` — both context-match request fixtures updated.
+
+### Patch Changes
+
+- 4e7e448: Return only mutated packages in `update_media_buy` `affected_packages` while
+  preserving full package state in the response `packages` array.
+- a512989: Fix SignalCoverageForecast schema validation to reject unknown top-level fields while preserving open scope qualifiers for seller-specific denominator metadata.
+- f37f270: Prevent the release workflow from republishing existing RC protocol assets on later release-relevant merges.
+
 ## 3.1.0-rc.10
 
 ### Minor Changes

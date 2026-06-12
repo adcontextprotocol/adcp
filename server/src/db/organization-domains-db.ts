@@ -52,6 +52,82 @@ export async function linkDomain(args: LinkDomainArgs): Promise<LinkDomainResult
   const { orgId, domain, source, verified, isPrimary = false } = args;
   const pool = getPool();
 
+  if (isPrimary) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      await client.query(
+        'SELECT 1 FROM organizations WHERE workos_organization_id = $1 FOR UPDATE',
+        [orgId],
+      );
+
+      const insertResult = await client.query<{ workos_organization_id: string }>(
+        `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
+         VALUES ($1, $2, false, $3, $4)
+         ON CONFLICT (domain) DO NOTHING
+         RETURNING workos_organization_id`,
+        [orgId, domain, verified, source],
+      );
+
+      const inserted = (insertResult.rowCount ?? 0) > 0;
+      if (!inserted) {
+        const existing = await client.query<{ workos_organization_id: string }>(
+          `SELECT workos_organization_id FROM organization_domains WHERE domain = $1 FOR UPDATE`,
+          [domain],
+        );
+        const existingOrgId = existing.rows[0]?.workos_organization_id ?? null;
+        const conflictOrgId = existingOrgId !== orgId ? existingOrgId : null;
+        if (conflictOrgId) {
+          await client.query('COMMIT');
+          logger.warn(
+            { domain, orgId, existingOrgId },
+            'linkDomain: domain conflict — left existing organization_domains row in place',
+          );
+          return { inserted: false, conflictOrgId };
+        }
+
+        await client.query(
+          `UPDATE organization_domains
+              SET verified = organization_domains.verified OR $3,
+                  source = CASE
+                    WHEN organization_domains.verified = false AND $3 = true THEN $4
+                    ELSE organization_domains.source
+                  END,
+                  updated_at = NOW()
+            WHERE workos_organization_id = $1 AND domain = $2`,
+          [orgId, domain, verified, source],
+        );
+      }
+
+      await client.query(
+        `UPDATE organization_domains SET is_primary = false, updated_at = NOW()
+          WHERE workos_organization_id = $1 AND is_primary = true AND domain != $2`,
+        [orgId, domain],
+      );
+      await client.query(
+        `UPDATE organization_domains SET is_primary = true, updated_at = NOW()
+          WHERE workos_organization_id = $1 AND domain = $2`,
+        [orgId, domain],
+      );
+      await client.query(
+        `UPDATE organizations SET email_domain = $1, updated_at = NOW()
+          WHERE workos_organization_id = $2`,
+        [domain, orgId],
+      );
+
+      await client.query('COMMIT');
+      return { inserted, conflictOrgId: null };
+    } catch (err) {
+      await client.query('ROLLBACK').catch((rbErr) => {
+        logger.error({ rbErr, orgId, domain }, 'ROLLBACK failed in linkDomain');
+      });
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
   const insertResult = await pool.query<{ workos_organization_id: string }>(
     `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
      VALUES ($1, $2, $3, $4, $5)
@@ -213,6 +289,11 @@ export async function upsertWorkosDomain(
      VALUES ($1, $2, $3, $4, 'workos')
      ON CONFLICT (domain) DO UPDATE SET
        workos_organization_id = EXCLUDED.workos_organization_id,
+       is_primary = CASE
+         WHEN organization_domains.workos_organization_id = EXCLUDED.workos_organization_id
+           THEN organization_domains.is_primary
+         ELSE false
+       END,
        verified = EXCLUDED.verified,
        source = 'workos',
        updated_at = NOW()`,

@@ -38,7 +38,7 @@ narrative: |
 
   1. First call with a fresh key is processed normally and returns the canonical response.
   2. Replay with the same key and an equivalent payload returns the cached response
-     without re-executing side effects (same media_buy_id, no new webhooks fired).
+     without re-executing resource mutations (same media_buy_id).
   3. Replay with the same key but a materially different payload is rejected with
      IDEMPOTENCY_CONFLICT. The buyer has clearly reused a key by mistake.
   4. A request with a different key is treated as a new request, even if the payload
@@ -85,6 +85,12 @@ narrative: |
   rate-limit error forever, defeating the point of `retry_after`. The
   threshold (60/300 req/sec) remains seller self-attestation pending
   operator-side tooling.
+
+  **Webhook side effects are graded separately.** A replay MUST NOT duplicate
+  outbound webhook fires, but observing that side effect requires a runner-hosted
+  webhook receiver. The webhook-specific replay assertion lives in
+  universal/webhook-emission.yaml so this core idempotency storyboard remains
+  runnable by agents and runners that do not host receiver URLs.
 
 agent:
   interaction_model: media_buy_seller
@@ -182,6 +188,10 @@ phases:
         context_outputs:
           - name: idempotency_supported
             path: "adcp.idempotency.supported"
+          - name: replay_key
+            generate: uuid_v4
+          - name: fresh_key
+            generate: uuid_v4
 
   - id: missing_key
     title: "Reject requests without idempotency_key"
@@ -228,8 +238,8 @@ phases:
             operator: "pinnacle-agency.example"
           brand:
             domain: "acmeoutdoor.example"
-          start_time: "2026-07-01T00:00:00Z"
-          end_time: "2026-09-30T23:59:59Z"
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
           packages:
             - product_id: "test-product"
               budget: 5000
@@ -267,12 +277,9 @@ phases:
          payload would break the at-most-once guarantee; silently returning the old
          response would hide a real bug in the buyer's retry logic.
 
-      Both branches share a single `$generate:uuid_v4#replay_key` placeholder. They
-      live in the same phase so the alias resolves to one UUID across all four steps
-      — the seller sees one cached idempotency entry that the conflict step probes
-      with a different body. Splitting these into separate phases would reset the
-      alias cache at the phase boundary (adcp-client#1657) and mint a fresh UUID for
-      the conflict step, defeating the test.
+      Both branches share the generated `$context.replay_key` value captured
+      during capability discovery. The seller sees one cached idempotency entry
+      that the conflict step probes with a different body.
 
     steps:
       - id: create_media_buy_initial
@@ -294,30 +301,19 @@ phases:
           canonical response that subsequent replays must match.
 
         sample_request:
-          idempotency_key: "$generate:uuid_v4#replay_key"
+          idempotency_key: "$context.replay_key"
           account:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
           brand:
             domain: "acmeoutdoor.example"
-          start_time: "2026-07-01T00:00:00Z"
-          end_time: "2026-07-31T23:59:59Z"
+          start_time: "asap"
+          end_time: "2099-07-31T23:59:59Z"
           packages:
             - product_id: "test-product"
               budget: 5000
               pricing_option_id: "test-pricing"
-          # Both the initial call and the replay below use the SAME webhook URL
-          # so the canonical payload hash matches across the two calls. A
-          # different URL between the two requests would hash differently and
-          # trip IDEMPOTENCY_CONFLICT instead of exercising replay. The URL
-          # template resolves against the runner's ephemeral webhook receiver
-          # (webhook_receiver_runner contract); runners without a receiver
-          # grade `no_duplicate_webhooks_on_replay` as not_applicable.
-          push_notification_config:
-            url: "{{runner.webhook_url:create_media_buy_initial}}"
-            operation_id: "op_idempotency_replay_initial"
-
           context:
             correlation_id: "idempotency--create_media_buy_initial"
         validations:
@@ -351,8 +347,8 @@ phases:
         narrative: |
           Re-send the exact same create_media_buy request — same idempotency_key,
           same payload, same everything. The seller MUST return the same media_buy_id
-          from the prior step. It MUST NOT create a second media buy or fire a
-          second set of webhooks. This is the whole point of idempotency_key.
+          from the prior step. It MUST NOT create a second media buy. This is
+          the whole point of idempotency_key.
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
@@ -362,38 +358,22 @@ phases:
         expected: |
           Return the cached response from the initial request:
           - media_buy_id: same as $context.initial_media_buy_id
-          - No new side effects (no duplicate webhooks, no new audit log entry)
-
-          Programmatic verification of "no duplicate webhooks" runs in the next step
-          (no_duplicate_webhooks_on_replay) when the storyboard is driven by a runner
-          that implements the webhook_receiver_runner contract. Runners without a
-          webhook receiver grade that step as not_applicable — agents MAY still claim
-          idempotency compliance, but the replay-side-effect invariant is only
-          programmatically graded when the webhook_callbacks specialism is also in
-          scope.
+          - No new side effects (no duplicate audit log entry or resource mutation)
 
         sample_request:
-          idempotency_key: "$generate:uuid_v4#replay_key"
+          idempotency_key: "$context.replay_key"
           account:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
           brand:
             domain: "acmeoutdoor.example"
-          start_time: "2026-07-01T00:00:00Z"
-          end_time: "2026-07-31T23:59:59Z"
+          start_time: "asap"
+          end_time: "2099-07-31T23:59:59Z"
           packages:
             - product_id: "test-product"
               budget: 5000
               pricing_option_id: "test-pricing"
-          # Byte-identical to the initial call above — same URL, same step id
-          # token and same explicit operation_id — so the canonical payload
-          # hash matches and the request lands on the replay branch rather
-          # than IDEMPOTENCY_CONFLICT.
-          push_notification_config:
-            url: "{{runner.webhook_url:create_media_buy_initial}}"
-            operation_id: "op_idempotency_replay_initial"
-
           context:
             correlation_id: "idempotency--create_media_buy_replay"
         validations:
@@ -419,55 +399,6 @@ phases:
             value: "idempotency--create_media_buy_replay"
             description: "Context correlation_id returned unchanged"
 
-      - id: no_duplicate_webhooks_on_replay
-        title: "No duplicate webhooks fired across initial + replay"
-        narrative: |
-          The central invariant of idempotency: replaying with the same key MUST
-          NOT produce duplicate side effects. Webhook emission is the observable
-          side effect most likely to leak if the seller re-executes on replay
-          instead of returning cached state.
-
-          This step requires the storyboard runner to implement the
-          `webhook_receiver_runner` contract at
-          `test-kits/webhook-receiver-runner.yaml`. Runners without a webhook
-          receiver skip this step with a stable not_applicable marker; the
-          replay-side-effect invariant then relies on the next phase's cached-
-          response assertions plus manual audit of the seller's webhook
-          delivery history.
-
-          When the receiver IS in scope, the runner counts webhooks arriving at
-          {{runner.webhook_url:create_media_buy_initial}} across the initial
-          call's window AND the replay call's window. A conformant seller emits
-          webhooks only on the first execution; a non-conformant seller that
-          re-executes on replay emits a second set, catchable only by live
-          observation.
-        task: expect_webhook
-        # `triggered_by` points at the initial call (not the replay) because
-        # both calls share the initial step's receiver URL and explicit
-        # operation_id. The execution-order wait still spans the replay window:
-        # this step runs after `create_media_buy_replay` in YAML order and
-        # `wait_all` drains the full `timeout_seconds` so any webhook re-fired
-        # by the replay is captured and counted against the cap below. A
-        # non-conformant seller that re-executes on replay would deliver a
-        # second webhook with a fresh idempotency_key and trip
-        # `duplicate_webhook_on_replay`.
-        triggered_by: create_media_buy_initial
-        filter:
-          body:
-            operation_id: "op_idempotency_replay_initial"
-        timeout_seconds: 30
-        expect_max_deliveries_per_logical_event: 1
-        requires_contract: webhook_receiver_runner
-        stateful: true
-        expected: |
-          At most one logical webhook event delivered for the create_media_buy
-          operation across both the initial and replay windows. If the runner
-          observes a second webhook delivery tagged with a distinct
-          idempotency_key but the same media_buy_id/operation_id, the seller is
-          re-executing on replay and the step fails with
-          duplicate_webhook_on_replay. Not_applicable when the runner does not
-          host a webhook receiver.
-
       - id: create_media_buy_conflict
         title: "Same key, different payload returns IDEMPOTENCY_CONFLICT"
         narrative: |
@@ -477,12 +408,8 @@ phases:
           IDEMPOTENCY_CONFLICT. CONFLICT is accepted as a fallback for sellers
           that haven't adopted the new error code yet.
 
-          This step shares the `$generate:uuid_v4#replay_key` alias with the
-          initial and replay steps above, so the runner injects the same UUID
-          on the wire. Lives in the same phase as those steps because the
-          runner's alias cache resets at phase boundaries (adcp-client#1657);
-          a separate phase would mint a fresh UUID and the seller would treat
-          the call as a new request rather than a conflicting key reuse.
+          This step shares `$context.replay_key` with the initial and replay
+          steps above, so the runner injects the same UUID on the wire.
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
@@ -497,15 +424,15 @@ phases:
           - recovery: correctable (buyer should use a fresh UUID v4)
 
         sample_request:
-          idempotency_key: "$generate:uuid_v4#replay_key"
+          idempotency_key: "$context.replay_key"
           account:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
           brand:
             domain: "acmeoutdoor.example"
-          start_time: "2026-07-01T00:00:00Z"
-          end_time: "2026-09-30T23:59:59Z"
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
           packages:
             - product_id: "test-product"
               budget: 25000
@@ -560,15 +487,15 @@ phases:
           This confirms the seller treats the fresh key as a new request.
 
         sample_request:
-          idempotency_key: "$generate:uuid_v4#fresh_key"
+          idempotency_key: "$context.fresh_key"
           account:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
           brand:
             domain: "acmeoutdoor.example"
-          start_time: "2026-07-01T00:00:00Z"
-          end_time: "2026-07-31T23:59:59Z"
+          start_time: "asap"
+          end_time: "2099-07-31T23:59:59Z"
           packages:
             - product_id: "test-product"
               budget: 5000
@@ -686,8 +613,8 @@ phases:
             operator: "pinnacle-agency.example"
           brand:
             domain: "acmeoutdoor.example"
-          start_time: "2026-07-01T00:00:00Z"
-          end_time: "2026-07-31T23:59:59Z"
+          start_time: "asap"
+          end_time: "2099-07-31T23:59:59Z"
           packages:
             - product_id: "test-product"
               budget: 5000
@@ -850,8 +777,8 @@ phases:
               operator: "pinnacle-agency.example"
             brand:
               domain: "acmeoutdoor.example"
-            start_time: "2026-07-01T00:00:00Z"
-            end_time: "2026-07-31T23:59:59Z"
+            start_time: "asap"
+            end_time: "2099-07-31T23:59:59Z"
             packages:
               - product_id: "test-product"
                 budget: 5000

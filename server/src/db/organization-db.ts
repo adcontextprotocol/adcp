@@ -1188,6 +1188,20 @@ export class OrganizationDatabase {
     stripe_customer_id: string,
     options?: { force?: boolean }
   ): Promise<void> {
+    const targetOrg = await this.getOrganization(workos_organization_id);
+    if (!targetOrg) {
+      throw new Error(`Organization ${workos_organization_id} not found`);
+    }
+    if (
+      targetOrg.stripe_customer_id &&
+      targetOrg.stripe_customer_id !== stripe_customer_id &&
+      !options?.force
+    ) {
+      throw new Error(
+        `Organization ${workos_organization_id} is already linked to Stripe customer ${targetOrg.stripe_customer_id}. Use force option or resolve the conflict manually.`
+      );
+    }
+
     // Check if this customer ID is already assigned to another org
     const existingOrg = await this.getOrganizationByStripeCustomerId(stripe_customer_id);
     if (existingOrg && existingOrg.workos_organization_id !== workos_organization_id) {

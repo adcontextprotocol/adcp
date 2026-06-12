@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/tmp/identity-match-request.json",
   "title": "Identity Match Request",
-  "description": "Sent by publisher to evaluate user eligibility for packages using an opaque identity token. MUST NOT contain page context. The request_id MUST NOT correlate with any context match request_id. The buyer resolves the active package set for this seller from `seller_agent_url`; if `package_ids` is provided, its composition MUST be independent of the current placement (e.g., all-active or fuzzed; see field description) to prevent set-correlation attacks. Extension fields (ext, context) are intentionally omitted to prevent data leakage across the identity privacy boundary.",
+  "description": "Sent by publisher to evaluate user eligibility for packages using an opaque identity token. MUST NOT contain page context. The request_id MUST NOT correlate with any context match request_id. The buyer resolves the active package set for this seller from `seller_agent_url`; if `package_ids` is provided, its composition MUST be independent of the current placement (e.g., all-active or fuzzed; see field description) to prevent set-correlation attacks. Extension fields (ext, context) are intentionally omitted to prevent data leakage across the identity privacy boundary. The optional `attestation` (per identity) and `sealed_credentials` (top-level) fields carry verifiable proof ABOUT the identity — on the identity side of that boundary, not page context — so they are a deliberate, reviewed widening of this otherwise-closed schema, not a leak.",
   "type": "object",
   "x-status": "experimental",
   "properties": {
@@ -54,6 +54,69 @@
           "uid_type": {
             "$ref": "/schemas/enums/uid-type.json",
             "description": "Type of the user identifier. Tells the buyer which identity graph to resolve against, avoiding trial-and-error matching."
+          },
+          "attestation": {
+            "type": "object",
+            "description": "Optional verifiable proof ABOUT this identity (e.g. World ID proof-of-personhood and/or age). The receiver MUST verify it (see conformance) and MUST treat an absent-or-unverifiable attestation as 'no attestation' — never as an asserted-true claim. Issuer-agnostic: World ID is the first scheme; mDL / VC-style issuers use the same shape. Receivers MUST bound attestation size to prevent DoS.",
+            "properties": {
+              "issuer": {
+                "$ref": "/schemas/core/brand-ref.json",
+                "description": "Attestation authority / identity issuer, referenced as a vendor BrandRef (e.g. {\"domain\": \"world.org\"}) — the same vendor-reference shape AdCP uses for measurement and signals vendors. The issuer's canonical domain is the anchor; brand.json hosting is optional. `scheme` selects the verifier version within the issuer."
+              },
+              "scheme": {
+                "type": "string",
+                "description": "Proof scheme and version, e.g. \"world_id_v4\". Selects how `proof` is verified."
+              },
+              "relying_party_id": {
+                "type": "string",
+                "x-entity": "identity_relying_party",
+                "description": "Relying-party id the proof was minted for. The receiver checks this against the relying_party_id's published owner (brand.json `identity_relying_parties[]`) so a forwarded proof cannot be replayed under a different owner."
+              },
+              "action": {
+                "type": "string",
+                "description": "Issuer action/scope the proof was bound to (e.g. \"humanity-check-for-ads\")."
+              },
+              "claims": {
+                "type": "array",
+                "description": "Claims this attestation establishes. Closed, issuer-agnostic set.",
+                "items": {
+                  "$ref": "/schemas/enums/attestation-claim.json"
+                },
+                "minItems": 1,
+                "uniqueItems": true,
+                "maxItems": 16
+              },
+              "verification_level": {
+                "type": "string",
+                "enum": [
+                  "orb",
+                  "device",
+                  "document"
+                ],
+                "description": "Credential strength (e.g. World ID Orb = biometric unique-human; Device = weaker; Document = passport/NFC)."
+              },
+              "signal_binding": {
+                "type": "string",
+                "description": "Hash of the signal the proof commits to. The receiver MUST verify it matches the context the receiver expects (e.g. a buyer-issued nonce or the request_id) and that the attestation is within its freshness window; this, plus nullifier-reuse tracking, is the replay defense."
+              },
+              "proof": {
+                "type": "object",
+                "description": "Scheme-specific verifiable proof material. Opaque to this schema; validated by the scheme's verifier. MUST carry only scheme-defined verification material — never page context or additional user identifiers.",
+                "additionalProperties": true
+              },
+              "expires_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Attestation validity horizon. Receivers MUST reject when past."
+              }
+            },
+            "required": [
+              "issuer",
+              "scheme",
+              "claims",
+              "proof"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
@@ -100,6 +163,31 @@
       "type": "string",
       "pattern": "^[A-Z]{2}$",
       "description": "ISO 3166-1 alpha-2 country code. Routing directive for the TMP Router — used to select the correct regional provider. The router MUST strip this field before forwarding the request to the buyer agent. Not an identity signal."
+    },
+    "sealed_credentials": {
+      "type": "array",
+      "description": "Optional HPKE-sealed credentials addressed to specific audiences — the network-as-RP (\"issuer-as-RP\"/Mechanism B) carrier. Each payload is opaque to the publisher, who relays it untouched; the inner plaintext is an `attestation` (see identities[].attestation) scoped to the audience's relying party. Reuses the TMPX envelope format. Router handling (normative — see docs/trusted-match/specification.mdx): the router forwards each entry only to the provider that owns its `audience_kid` (not broadcast), folds `sealed_credentials` into the per-provider re-signature canonical bytes so an injected/swapped blob breaks the signature, and includes a `sealed_credentials_hash` in the dedup cache key. Receivers decrypt only entries whose `audience_kid` they hold a key for and ignore the rest. Receivers MUST bound count and size to prevent DoS amplification.",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "properties": {
+          "audience_kid": {
+            "type": "string",
+            "maxLength": 128,
+            "description": "Key id identifying the recipient (network / relying party) whose HPKE private key opens `payload`."
+          },
+          "payload": {
+            "type": "string",
+            "maxLength": 8192,
+            "description": "HPKE-sealed attestation in the TMPX envelope format: `kid.base64url_nopad(ciphertext)` — unpadded base64url per RFC 4648 §5. Opaque pass-through for the publisher."
+          }
+        },
+        "required": [
+          "audience_kid",
+          "payload"
+        ],
+        "additionalProperties": false
+      }
     }
   },
   "required": [

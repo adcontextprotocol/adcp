@@ -8,7 +8,7 @@ import DOMPurify from 'isomorphic-dompurify';
 import sharp from 'sharp';
 import { BrandLogoDatabase, type BrandLogoSummary, type InsertBrandLogoInput } from '../db/brand-logo-db.js';
 import { BrandDatabase } from '../db/brand-db.js';
-import { getLogoUrl } from './logo-cdn.js';
+import { getBrandAssetUrl } from './logo-cdn.js';
 import { safeFetch } from '../utils/url-security.js';
 import { createLogger } from '../logger.js';
 
@@ -228,24 +228,37 @@ export async function rebuildManifestLogos(
   const finalLogos = [...higherPriority, ...keptBrandfetch];
 
   const manifestLogos = finalLogos.map(l => ({
-    url: getLogoUrl(domain, l.id),
+    url: getBrandAssetUrl(domain, l.id, l.content_type),
     tags: l.tags,
     ...(l.width ? { width: l.width } : {}),
     ...(l.height ? { height: l.height } : {}),
   }));
+  const mergeLogosIntoManifest = (manifest?: Record<string, unknown>) => ({
+    ...(manifest ?? {}),
+    logos: manifestLogos,
+  });
 
   try {
     const existing = await brandDb.getDiscoveredBrandByDomain(domain);
     if (!existing) {
       await brandDb.upsertDiscoveredBrand({
         domain,
-        brand_manifest: { logos: manifestLogos },
+        brand_manifest: mergeLogosIntoManifest(),
         has_brand_manifest: true,
         source_type: 'community',
       });
+      await brandDb.approveBrand(domain);
+    } else if (existing.source_type === 'community' && existing.review_status === 'pending') {
+      await brandDb.approveBrand(domain);
+      await brandDb.editDiscoveredBrand(domain, {
+        brand_manifest: mergeLogosIntoManifest(existing.brand_manifest),
+        has_brand_manifest: true,
+        edit_summary: 'Logo manifest rebuilt after review',
+        editor_user_id: 'system:logo-service',
+      });
     } else {
       await brandDb.editDiscoveredBrand(domain, {
-        brand_manifest: { logos: manifestLogos },
+        brand_manifest: mergeLogosIntoManifest(existing.brand_manifest),
         has_brand_manifest: true,
         edit_summary: 'Logo manifest rebuilt after review',
         editor_user_id: 'system:logo-service',
@@ -289,7 +302,7 @@ export async function rehostExternalLogo(
   brandDomain: string,
   brandLogoDb: BrandLogoDatabase,
   options?: {
-    uploadedBy?: { userId?: string; email?: string };
+    uploadedBy?: { userId?: string; orgId?: string; email?: string };
     source?: InsertBrandLogoInput['source'];
     tags?: string[];
   },
@@ -369,17 +382,26 @@ export async function rehostExternalLogo(
       source: options?.source ?? 'community',
       review_status: 'approved',
       uploaded_by_user_id: options?.uploadedBy?.userId,
+      uploaded_by_org_id: options?.uploadedBy?.orgId,
       uploaded_by_email: options?.uploadedBy?.email,
+      source_flow: 'external_logo_rehost',
       upload_note: `Rehosted from ${parsed.hostname}`,
+      original_filename: parsed.pathname.split('/').filter(Boolean).pop()?.slice(0, 255),
+      provenance: {
+        original_url_host: parsed.hostname,
+        original_url_path: parsed.pathname,
+        source_flow: 'external_logo_rehost',
+        promoted_for: 'brand_json',
+      },
     });
 
     if (inserted) {
-      return getLogoUrl(brandDomain, inserted.id);
+      return getBrandAssetUrl(brandDomain, inserted.id, inserted.content_type);
     }
 
     const existing = await brandLogoDb.getByDomainAndSha256(brandDomain, sha256);
     if (existing) {
-      return getLogoUrl(brandDomain, existing.id);
+      return getBrandAssetUrl(brandDomain, existing.id, existing.content_type);
     }
 
     logger.warn({ brandDomain, url: rawUrl, sha256 }, 'Logo rehost: insert returned no row and sha256 lookup empty, keeping original URL');

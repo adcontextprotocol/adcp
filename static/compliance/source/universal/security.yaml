@@ -36,6 +36,15 @@ narrative: |
   fail any required phase, or advertise no working auth mechanism, are
   non-conformant.
 
+  Positive static-credential probes MUST run through the normal protocol
+  session lifecycle. For MCP, that means the runner authenticates the
+  Streamable HTTP session with the test-kit credential, performs `initialize`,
+  and then calls the protected probe task on that initialized session. A server
+  that rejects a direct, unauthenticated-session `tools/call` carrying only an
+  `Authorization: Bearer ...` header is not failing this phase; the raw direct
+  path is reserved for unauthenticated and deliberately invalid-credential
+  rejection probes.
+
   **Static-credential agents (no OAuth).** An agent with no OAuth issuer -
   sandbox, staging, or any production deployment that chose Bearer or Basic auth
   - does NOT need to advertise RFC 9728 protected-resource metadata. Declare
@@ -71,10 +80,12 @@ prerequisites:
     return 200 without credentials by design.
 
     The test kit MAY also provide an API key at `auth.api_key` or HTTP Basic
-    credentials at `auth.basic`. If both are absent, the static-credential phases
-    are skipped and the OAuth discovery phase MUST succeed instead. OAuth discovery
-    probes the well-known endpoint directly and does not require any test-kit
-    input.
+    credentials at `auth.basic`. Positive static-credential probes use those
+    credentials as the runner's normal transport authentication, including the
+    protocol initialization handshake before the protected task call. If both
+    are absent, the static-credential phases are skipped and the OAuth discovery
+    phase MUST succeed instead. OAuth discovery probes the well-known endpoint
+    directly and does not require any test-kit input.
 
     Agent URLs MUST use `https://` in production compliance runs. The runner rejects
     `http://` agent URLs outright unless invoked with `--allow-http` for local dev.
@@ -159,30 +170,25 @@ phases:
       - id: probe_api_key
         title: "Call the protected probe task with the provided API key"
         narrative: |
-          Authenticate with the API key supplied by the test kit (as a Bearer token
-          in the Authorization header) and expect a normal 200 response on the
-          declared protected task. This confirms the static-credential path works
-          end to end.
+          Authenticate the protocol session with the API key supplied by the
+          test kit (as a Bearer token in the Authorization header), perform the
+          normal transport initialization handshake, and call the declared
+          protected task. This confirms the static-credential path works end
+          to end for a real buyer session.
         task: "$test_kit.auth.probe_task"
         task_default: list_creatives
         doc_ref: "/protocol/authentication"
         comply_scenario: security_api_key
         stateful: false
-        auth:
-          type: api_key
-          from_test_kit: true
         expected: |
-          The agent accepts the API key and returns a well-formed response with
-          http_status 200.
+          The initialized session accepts the API key and returns a well-formed
+          successful response.
 
         sample_request:
           context:
             correlation_id: "security_baseline--probe_api_key"
 
         validations:
-          - check: http_status
-            value: 200
-            description: "Agent accepts the provided API key on the protected probe task"
           - check: field_present
             path: "context"
             description: "Response echoes back the context object"
@@ -260,30 +266,25 @@ phases:
       - id: probe_basic
         title: "Call the protected probe task with the provided Basic credential"
         narrative: |
-          Authenticate with the Basic credential supplied by the test kit (as an
-          `Authorization: Basic ...` header) and expect a normal 200 response on
-          the declared protected task. This confirms the Basic credential path
-          works end to end.
+          Authenticate the protocol session with the Basic credential supplied
+          by the test kit (as an `Authorization: Basic ...` header), perform
+          the normal transport initialization handshake, and call the declared
+          protected task. This confirms the Basic credential path works end to
+          end for a real buyer session.
         task: "$test_kit.auth.probe_task"
         task_default: list_creatives
         doc_ref: "/protocol/authentication"
         comply_scenario: security_basic
         stateful: false
-        auth:
-          type: basic
-          from_test_kit: "auth.basic"
         expected: |
-          The agent accepts the Basic credential and returns a well-formed response
-          with http_status 200.
+          The initialized session accepts the Basic credential and returns a
+          well-formed successful response.
 
         sample_request:
           context:
             correlation_id: "security_baseline--probe_basic"
 
         validations:
-          - check: http_status
-            value: 200
-            description: "Agent accepts the provided Basic credential on the protected probe task"
           - check: field_present
             path: "context"
             description: "Response echoes back the context object"

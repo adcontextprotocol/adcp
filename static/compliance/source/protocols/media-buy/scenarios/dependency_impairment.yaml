@@ -170,8 +170,8 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
           idempotency_key: "$generate:uuid_v4#dependency_impairment_create_buy"
-          start_time: "2026-11-01T00:00:00Z"
-          end_time: "2026-11-30T23:59:59Z"
+          start_time: "asap"
+          end_time: "2099-11-30T23:59:59Z"
           packages:
             - product_id: "$context.product_id"
               budget: 5000
@@ -276,6 +276,18 @@ phases:
         validations:
           - check: response_schema
             description: "Response matches update-media-buy-response.json schema"
+          - check: field_present
+            path: "affected_packages"
+            description: "Package-mutating update returns affected_packages"
+          - check: field_contains
+            path: "affected_packages[*]"
+            value:
+              package_id: "$context.package_id"
+              product_id: "$context.product_id"
+              pricing_option_id: "$context.pricing_option_id"
+              creative_assignments:
+                - creative_id: "acme_dep_banner_001"
+            description: "Update response returns the affected package with complete creative assignment state"
 
       - id: force_creative_approved
         title: "Force the creative to approved baseline"
@@ -439,31 +451,16 @@ phases:
           - check: field_present
             path: "media_buys[0].impairments[0]"
             description: "Buy reports at least one impairment entry (inverse rule)"
-          - check: field_value
-            path: "media_buys[0].impairments[0].resource_type"
-            allowed_values: ["creative"]
-            description: "Impairment entry's resource_type is creative"
-          - check: field_value
-            path: "media_buys[0].impairments[0].resource_id"
-            value: "acme_dep_banner_001"
-            description: "Impairment entry's resource_id matches the rejected creative (forward rule)"
           - check: field_contains
-            path: "media_buys[0].impairments[0].package_ids[*]"
-            value: "$context.package_id"
-            description: "Impairment entry's package_ids[] contains the buy's package — without this, a seller could list a different package and still pass the impairment-present check"
-          - check: field_value
-            path: "media_buys[0].impairments[0].transition.to"
-            allowed_values: ["rejected"]
-            description: "Impairment entry's transition.to is rejected"
-          - check: field_present
-            path: "media_buys[0].impairments[0].impairment_id"
-            description: "Impairment carries the required impairment_id (notification_id for state-event webhooks; see snapshot-and-log Rule 1)"
-          - check: field_present
-            path: "media_buys[0].impairments[0].reason_code"
-            description: "Impairment carries a reason_code (required per impairment.json) — buyer needs this to route remediation"
-          - check: field_present
-            path: "media_buys[0].impairments[0].observed_at"
-            description: "Impairment carries observed_at (required per impairment.json) — buyer needs this to reconcile webhook ordering against the snapshot"
+            path: "media_buys[0].impairments[*]"
+            value:
+              resource_type: "creative"
+              resource_id: "acme_dep_banner_001"
+              package_ids:
+                - "$context.package_id"
+              transition:
+                to: "rejected"
+            description: "At least one impairment entry matches the rejected creative, affected package, and rejected transition (forward rule)"
 
   - id: swap_recovery
     title: "Recover via assignment swap — different creative replaces the rejected one"
@@ -594,6 +591,18 @@ phases:
         validations:
           - check: response_schema
             description: "Response matches update-media-buy-response.json schema"
+          - check: field_present
+            path: "affected_packages"
+            description: "Package-mutating update returns affected_packages"
+          - check: field_contains
+            path: "affected_packages[*]"
+            value:
+              package_id: "$context.package_id"
+              product_id: "$context.product_id"
+              pricing_option_id: "$context.pricing_option_id"
+              creative_assignments:
+                - creative_id: "acme_dep_banner_002"
+            description: "Update response returns the affected package with complete replacement assignment state"
 
       - id: get_buy_recovered
         title: "Read the buy — health: ok, impairments[] cleared via swap"

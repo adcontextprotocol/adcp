@@ -131,9 +131,12 @@ describe('organization-db', () => {
 
   describe('setStripeCustomerId', () => {
     test('updates existing organization', async () => {
-      mockPool.query.mockResolvedValueOnce({
-        rows: [],
-      });
+      mockPool.query
+        .mockResolvedValueOnce({
+          rows: [{ workos_organization_id: 'org_123', name: 'Test Org', stripe_customer_id: null }],
+        })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] });
 
       const { OrganizationDatabase } = await import('../../server/src/db/organization-db.js');
       const orgDb = new OrganizationDatabase();
@@ -144,6 +147,21 @@ describe('organization-db', () => {
         expect.stringContaining('UPDATE organizations'),
         ['cus_123', 'org_123']
       );
+    });
+
+    test('refuses to overwrite a different customer without force', async () => {
+      mockPool.query.mockResolvedValueOnce({
+        rows: [{ workos_organization_id: 'org_123', name: 'Test Org', stripe_customer_id: 'cus_existing' }],
+      });
+
+      const { OrganizationDatabase } = await import('../../server/src/db/organization-db.js');
+      const orgDb = new OrganizationDatabase();
+
+      await expect(
+        orgDb.setStripeCustomerId('org_123', 'cus_new')
+      ).rejects.toThrow('already linked to Stripe customer cus_existing');
+
+      expect(mockPool.query).toHaveBeenCalledTimes(1);
     });
 
     test('handles errors gracefully', async () => {

@@ -53,6 +53,11 @@
       "type": "string",
       "description": "Placement identifier from the publisher's placement registry in adagents.json. Identifies where on the property this ad opportunity exists. One placement per request."
     },
+    "seller_agent_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "API endpoint URL of the seller agent issuing this request. The provider uses this to resolve the active package set it has synced for this seller; when `package_ids` is omitted, evaluation occurs against that full set. If `seller_agent_url` does not match any seller the provider has synced packages for, the provider MUST return an empty offer set — it MUST NOT fall back to another seller's active set. The value identifies the asking seller, is identical for every user on a given placement, and carries no user identity, so it neither varies the request per user nor weakens the context/identity decorrelation boundary. Compared using the AdCP URL canonicalization rules, not byte-equality — see docs/reference/url-canonicalization. Consistent with `seller_agent_url` on the identity match request, `seller_agent.agent_url` on `AvailablePackage`, and `agent_url` in `adagents.json`."
+    },
     "artifact": {
       "$ref": "/schemas/content-standards/artifact.json",
       "description": "Full content artifact adjacent to this ad opportunity. Same schema used for content standards evaluation. The publisher sends the artifact when they want the buyer to evaluate the full content. Contractual protections govern buyer use. TEE deployment upgrades contractual trust to cryptographic verification. Publishers MUST NOT include asset access credentials (bearer tokens, service accounts) — the router fans out to multiple buyer agents. For secured assets, use signed URLs with short expiry. Routers MUST strip access fields from artifacts before forwarding."
@@ -219,7 +224,8 @@
     "request_id",
     "property_rid",
     "property_type",
-    "placement_id"
+    "placement_id",
+    "seller_agent_url"
   ],
   "additionalProperties": false
 }

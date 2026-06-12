@@ -98,6 +98,11 @@ function preloadReferencedSchemas(ajv: Ajv): void {
           referencedSchema.$id = ref;
         }
         ajv.addSchema(referencedSchema, ref);
+        // Recurse into the loaded schema so its own cross-file $refs are
+        // registered transitively (e.g. brand-ref.json → brand-id.json /
+        // image-asset.json / ext.json). The `seen` set dedupes and breaks
+        // cycles.
+        visit(referencedSchema);
       } catch (err) {
         logger.warn({ err, ref }, 'Failed to preload referenced schema; validation may flag it as unresolvable');
       }

@@ -129,6 +129,39 @@ test('field_contains accepts wildcard paths that resolve through array items', (
   assert.deepEqual(violations, []);
 });
 
+test('dependency_impairment verify_impaired matches impairment entries without index coupling', () => {
+  const filePath = path.join(
+    REPO_ROOT,
+    'static/compliance/source/protocols/media-buy/scenarios/dependency_impairment.yaml',
+  );
+  const doc = yaml.load(fs.readFileSync(filePath, 'utf8'));
+  const phase = doc.phases.find((p) => p.id === 'verify_impaired');
+  const step = phase.steps.find((s) => s.id === 'get_buy_impaired');
+  const validations = step.validations ?? [];
+
+  const match = validations.find(
+    (v) => v.check === 'field_contains' && v.path === 'media_buys[0].impairments[*]',
+  );
+
+  assert.deepEqual(match?.value, {
+    resource_type: 'creative',
+    resource_id: 'acme_dep_banner_001',
+    package_ids: ['$context.package_id'],
+    transition: { to: 'rejected' },
+  });
+
+  const positionalMatchChecks = validations
+    .filter((v) => typeof v.path === 'string')
+    .filter((v) => /^media_buys\[0\]\.impairments\[0\]\.(resource_type|resource_id|package_ids|transition)/.test(v.path))
+    .map((v) => v.path);
+
+  assert.deepEqual(
+    positionalMatchChecks,
+    [],
+    'verify_impaired must not require the matching impairment entry to be at impairments[0]',
+  );
+});
+
 test('wildcard paths are rejected for checks without wildcard runtime semantics', () => {
   const doc = {
     phases: [
@@ -262,6 +295,61 @@ test('envelope-aware resolution: replayed and adcp_error resolve via protocol-en
     true,
     'status should resolve via envelope fallback',
   );
+});
+
+test('runtime test-kit response refs allow envelope-only path assertions', () => {
+  const violations = lintDoc({
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 'webhook_replay',
+            task: '$test_kit.operations.primary_webhook_emitter',
+            response_schema_ref: '$test_kit.schemas.primary_response',
+            validations: [
+              {
+                check: 'field_value',
+                path: 'replayed',
+                value: true,
+                description: 'Replay resolves from the idempotency cache',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }, '/synth/test.yaml');
+
+  assert.deepEqual(violations, []);
+});
+
+test('runtime test-kit response refs still flag non-envelope path assertions', () => {
+  const violations = lintDoc({
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 'webhook_replay',
+            task: '$test_kit.operations.primary_webhook_emitter',
+            response_schema_ref: '$test_kit.schemas.primary_response',
+            validations: [
+              {
+                check: 'field_present',
+                path: 'media_buy_id',
+                description: 'Body fields require a concrete response schema',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }, '/synth/test.yaml');
+
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].rule, 'runtime_response_schema_unresolved_path');
+  assert.equal(violations[0].validationPath, 'media_buy_id');
 });
 
 test('source tree allows envelope_field_absent for protocol-envelope forbidden fields', () => {
