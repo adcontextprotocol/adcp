@@ -188,6 +188,10 @@ phases:
         context_outputs:
           - name: idempotency_supported
             path: "adcp.idempotency.supported"
+          - name: replay_key
+            generate: uuid_v4
+          - name: fresh_key
+            generate: uuid_v4
 
   - id: missing_key
     title: "Reject requests without idempotency_key"
@@ -273,12 +277,9 @@ phases:
          payload would break the at-most-once guarantee; silently returning the old
          response would hide a real bug in the buyer's retry logic.
 
-      Both branches share a single `$generate:uuid_v4#replay_key` placeholder. They
-      live in the same phase so the alias resolves to one UUID across all four steps
-      — the seller sees one cached idempotency entry that the conflict step probes
-      with a different body. Splitting these into separate phases would reset the
-      alias cache at the phase boundary (adcp-client#1657) and mint a fresh UUID for
-      the conflict step, defeating the test.
+      Both branches share the generated `$context.replay_key` value captured
+      during capability discovery. The seller sees one cached idempotency entry
+      that the conflict step probes with a different body.
 
     steps:
       - id: create_media_buy_initial
@@ -300,7 +301,7 @@ phases:
           canonical response that subsequent replays must match.
 
         sample_request:
-          idempotency_key: "$generate:uuid_v4#replay_key"
+          idempotency_key: "$context.replay_key"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -360,7 +361,7 @@ phases:
           - No new side effects (no duplicate audit log entry or resource mutation)
 
         sample_request:
-          idempotency_key: "$generate:uuid_v4#replay_key"
+          idempotency_key: "$context.replay_key"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -407,12 +408,8 @@ phases:
           IDEMPOTENCY_CONFLICT. CONFLICT is accepted as a fallback for sellers
           that haven't adopted the new error code yet.
 
-          This step shares the `$generate:uuid_v4#replay_key` alias with the
-          initial and replay steps above, so the runner injects the same UUID
-          on the wire. Lives in the same phase as those steps because the
-          runner's alias cache resets at phase boundaries (adcp-client#1657);
-          a separate phase would mint a fresh UUID and the seller would treat
-          the call as a new request rather than a conflicting key reuse.
+          This step shares `$context.replay_key` with the initial and replay
+          steps above, so the runner injects the same UUID on the wire.
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
@@ -427,7 +424,7 @@ phases:
           - recovery: correctable (buyer should use a fresh UUID v4)
 
         sample_request:
-          idempotency_key: "$generate:uuid_v4#replay_key"
+          idempotency_key: "$context.replay_key"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -490,7 +487,7 @@ phases:
           This confirms the seller treats the fresh key as a new request.
 
         sample_request:
-          idempotency_key: "$generate:uuid_v4#fresh_key"
+          idempotency_key: "$context.fresh_key"
           account:
             brand:
               domain: "acmeoutdoor.example"

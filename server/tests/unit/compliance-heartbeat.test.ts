@@ -42,6 +42,7 @@ vi.mock('../../src/addie/services/compliance-testing.js', () => ({
 
 vi.mock('../../src/services/hosted-compliance-version.js', () => ({
   hostedComplianceTarget: mocks.hostedComplianceTarget,
+  HOSTED_FULL_COMPLIANCE_TIMEOUT_MS: 600_000,
 }));
 
 vi.mock('../../src/db/outbound-log-db.js', () => ({
@@ -91,6 +92,13 @@ describe('runComplianceHeartbeatJob', () => {
     const result = await runComplianceHeartbeatJob({ limit: 1 });
 
     expect(result).toEqual({ checked: 1, passed: 0, failed: 1, skipped: 0 });
+    expect(mocks.comply).toHaveBeenCalledWith(
+      'https://agent.example.com/mcp',
+      expect.objectContaining({
+        timeout_ms: 600_000,
+      }),
+      target,
+    );
     expect(mocks.recordComplianceRun).toHaveBeenCalledWith(
       expect.objectContaining({
         agent_url: 'https://agent.example.com/mcp',

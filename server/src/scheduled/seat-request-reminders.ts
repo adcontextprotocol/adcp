@@ -32,6 +32,7 @@ export function startSeatRequestReminders(workos: WorkOS): void {
   intervalId = setInterval(() => {
     runCheck(workos).catch(err => logger.error({ err }, 'Seat request reminder check failed'));
   }, CHECK_INTERVAL_MS);
+  intervalId?.unref();
 
   logger.info('Seat request reminder scheduler started');
 }

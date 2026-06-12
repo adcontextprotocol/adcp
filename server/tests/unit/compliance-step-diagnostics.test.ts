@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 
 vi.mock('@adcp/sdk/testing', () => ({
   setAgentTesterLogger: vi.fn(),
@@ -22,6 +22,9 @@ import {
   extractFailingStepDiagnostics,
   complianceResultToDbInput,
 } from '../../src/addie/services/compliance-testing.js';
+import { getStoryboard } from '../../src/services/storyboards.js';
+
+const mockGetStoryboard = vi.mocked(getStoryboard);
 
 function step(overrides: Record<string, unknown>) {
   return {
@@ -65,6 +68,11 @@ function resultWith(tracks: any[]) {
 }
 
 describe('extractFailingStepDiagnostics', () => {
+  beforeEach(() => {
+    mockGetStoryboard.mockReset();
+    mockGetStoryboard.mockReturnValue(undefined);
+  });
+
   it('captures request + response payloads for a failing wire step', () => {
     const failing = step({
       passed: false,
@@ -598,6 +606,379 @@ describe('extractFailingStepDiagnostics', () => {
         description: 'Canonical formats advertised',
         expected: 'formats',
         actual: undefined,
+        passed: false,
+      },
+    ]);
+  });
+
+  it('captures an unmatched failure summary when the runner halts after a passing visible step', () => {
+    mockGetStoryboard.mockReturnValue({
+      phases: [
+        {
+          id: 'list_and_filter',
+          steps: [
+            { id: 'list_filtered', title: 'List creatives filtered by format', task: 'list_creatives' },
+          ],
+        },
+      ],
+    } as any);
+    const listAll = step({
+      passed: true,
+      step_id: 'list_all',
+      title: 'List all creatives',
+      task: 'list_creatives',
+      request: { transport: 'mcp_http', url: 'https://x/mcp', payload: { filter: {} } },
+      response_record: {
+        transport: 'mcp_http',
+        status: 200,
+        payload: { creatives: [{ creative_id: 'display_trail_pro_300x250' }] },
+      },
+      validations: [
+        { id: 'list_all_response_schema', check: 'response_schema', passed: true },
+        { id: 'list_all_context_echo', check: 'field_value', passed: true },
+      ],
+    });
+    const result = resultWith([
+      {
+        track: 'creative',
+        status: 'fail',
+        duration_ms: 100,
+        scenarios: [phase('creative_lifecycle/list_and_filter', [listAll])],
+      },
+    ]) as any;
+    result.failures = [
+      {
+        track: 'creative',
+        storyboard_id: 'creative_lifecycle',
+        step_id: 'list_filtered',
+        step_title: 'List creatives filtered by format',
+        task: 'list_creatives',
+        error: 'Probe validations failed.',
+        validation: {
+          id: 'list_filtered_display_only',
+          check: 'field_value',
+          description: 'Filtered result contains only display creatives',
+          json_pointer: '/creatives/0/format_id',
+          expected: 'display_300x250',
+          actual: 'native_in_feed',
+        },
+        fix_command: 'adcp storyboard step https://x creative_lifecycle list_filtered --json',
+      },
+    ];
+
+    const out = extractFailingStepDiagnostics(result);
+
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      storyboard_id: 'creative_lifecycle',
+      phase_id: 'list_and_filter',
+      step_id: 'list_filtered',
+      task: 'list_creatives',
+      error_text: 'Probe validations failed.',
+    });
+    expect(out[0].request_jsonb).toBeUndefined();
+    expect(out[0].response_jsonb).toBeUndefined();
+    expect(out[0].failed_validations_jsonb).toEqual([
+      {
+        id: 'list_filtered_display_only',
+        check: 'field_value',
+        description: 'Filtered result contains only display creatives',
+        json_pointer: '/creatives/0/format_id',
+        expected: 'display_300x250',
+        actual: 'native_in_feed',
+        passed: false,
+      },
+    ]);
+  });
+
+  it('captures an unmatched stale-response failure summary when the visible step has no failed validation', () => {
+    mockGetStoryboard.mockReturnValue({
+      phases: [
+        {
+          id: 'stale_response_forcing',
+          steps: [
+            {
+              id: 'stale_response_wire_placement',
+              title: 'STALE_RESPONSE in errors[] on populated success response',
+              task: 'get_products',
+            },
+          ],
+        },
+      ],
+    } as any);
+    const visibleWireStep = step({
+      passed: true,
+      storyboard_id: 'stale_response_advisory',
+      phase_id: 'stale_response_forcing',
+      step_id: 'stale_response_wire_placement',
+      title: 'STALE_RESPONSE in errors[] on populated success response',
+      task: 'get_products',
+      request: { transport: 'mcp_http', url: 'https://x/mcp', payload: { context: { correlation_id: 'stale_response_advisory--stale_response_wire_placement' } } },
+      response_record: {
+        transport: 'mcp_http',
+        status: 200,
+        payload: {
+          status: 'completed',
+          products: [{ product_id: 'cached_display' }],
+          errors: [{ code: 'STALE_RESPONSE', recovery: 'transient' }],
+        },
+      },
+      validations: [
+        { id: 'stale_response_schema', check: 'response_schema', passed: true },
+        { id: 'stale_response_code', check: 'field_value', path: 'errors[0].code', passed: true },
+      ],
+    });
+    const result = resultWith([
+      {
+        track: 'error_handling',
+        status: 'fail',
+        duration_ms: 100,
+        scenarios: [phase('stale_response_advisory/stale_response_forcing', [visibleWireStep])],
+      },
+    ]) as any;
+    result.failures = [
+      {
+        track: 'error_handling',
+        storyboard_id: 'stale_response_advisory',
+        step_id: 'stale_response_wire_placement',
+        step_title: 'STALE_RESPONSE in errors[] on populated success response',
+        task: 'get_products',
+        error: 'Probe validations failed.',
+        validation: {
+          id: 'stale_response_details_schema',
+          check: 'response_schema',
+          description: 'STALE_RESPONSE details conform to stale-response schema',
+          json_pointer: '/errors/0/details',
+          schema_id: '/schemas/error-details/stale-response.json',
+          actual: [{ instance_path: '/upstream', message: 'must have required property name' }],
+        },
+        fix_command: 'adcp storyboard step https://x stale_response_advisory stale_response_wire_placement --json',
+      },
+    ];
+
+    const out = extractFailingStepDiagnostics(result);
+
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      storyboard_id: 'stale_response_advisory',
+      phase_id: 'stale_response_forcing',
+      step_id: 'stale_response_wire_placement',
+      task: 'get_products',
+    });
+    expect(out[0].request_jsonb).toBeUndefined();
+    expect(out[0].response_jsonb).toBeUndefined();
+    expect(out[0].failed_validations_jsonb).toEqual([
+      {
+        id: 'stale_response_details_schema',
+        check: 'response_schema',
+        description: 'STALE_RESPONSE details conform to stale-response schema',
+        json_pointer: '/errors/0/details',
+        schema_id: '/schemas/error-details/stale-response.json',
+        actual: [{ instance_path: '/upstream', message: 'must have required property name' }],
+        passed: false,
+      },
+    ]);
+  });
+
+  it('does not guess the first phase for an unmatched failure in a multi-phase storyboard', () => {
+    const result = resultWith([
+      {
+        track: 'creative',
+        status: 'fail',
+        duration_ms: 100,
+        scenarios: [
+          phase('creative_lifecycle/discovery', [step({ passed: true, step_id: 'get_capabilities', title: 'Get capabilities' })]),
+          phase('creative_lifecycle/list_and_filter', [step({ passed: true, step_id: 'list_all', title: 'List all creatives' })]),
+        ],
+      },
+    ]) as any;
+    result.failures = [
+      {
+        track: 'creative',
+        storyboard_id: 'creative_lifecycle',
+        step_id: 'list_filtered',
+        step_title: 'List creatives filtered by format',
+        task: 'list_creatives',
+        error: 'Probe validations failed.',
+        validation: {
+          id: 'list_filtered_display_only',
+          check: 'field_value',
+          description: 'Filtered result contains only display creatives',
+          expected: 'display_300x250',
+          actual: 'native_in_feed',
+        },
+        fix_command: 'adcp storyboard step https://x creative_lifecycle list_filtered --json',
+      },
+    ];
+
+    const out = extractFailingStepDiagnostics(result);
+
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      storyboard_id: 'creative_lifecycle',
+      phase_id: 'unknown',
+      step_id: 'list_filtered',
+    });
+  });
+
+  it('resolves an unmatched hidden failure to its authored phase instead of the first scenario', () => {
+    mockGetStoryboard.mockReturnValue({
+      phases: [
+        {
+          id: 'discovery',
+          steps: [
+            { id: 'get_capabilities', title: 'Get capabilities', task: 'get_adcp_capabilities' },
+          ],
+        },
+        {
+          id: 'list_and_filter',
+          steps: [
+            { id: 'list_filtered', title: 'List creatives filtered by format', task: 'list_creatives' },
+          ],
+        },
+      ],
+    } as any);
+    const result = resultWith([
+      {
+        track: 'creative',
+        status: 'fail',
+        duration_ms: 100,
+        scenarios: [
+          phase('creative_lifecycle/discovery', [step({ passed: true, step_id: 'get_capabilities', title: 'Get capabilities' })]),
+          phase('creative_lifecycle/list_and_filter', [
+            step({
+              passed: true,
+              step_id: 'list_filtered',
+              title: 'List creatives filtered by format',
+              task: 'list_creatives',
+            }),
+          ]),
+        ],
+      },
+    ]) as any;
+    result.failures = [
+      {
+        track: 'creative',
+        storyboard_id: 'creative_lifecycle',
+        step_id: 'list_filtered',
+        step_title: 'List creatives filtered by format',
+        task: 'list_creatives',
+        error: 'Probe validations failed.',
+        validation: {
+          id: 'list_filtered_display_only',
+          check: 'field_value',
+          description: 'Filtered result contains only display creatives',
+          expected: 'display_300x250',
+          actual: 'native_in_feed',
+        },
+        fix_command: 'adcp storyboard step https://x creative_lifecycle list_filtered --json',
+      },
+    ];
+
+    const out = extractFailingStepDiagnostics(result);
+
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      storyboard_id: 'creative_lifecycle',
+      phase_id: 'list_and_filter',
+      step_id: 'list_filtered',
+    });
+  });
+
+  it('does not consume a later-phase failure summary for an earlier step with the same title', () => {
+    const sharedTitle = 'Validate response shape';
+    const phaseOneFail = step({
+      passed: false,
+      step_id: 'phase_one_check',
+      phase_id: 'phase_one',
+      title: sharedTitle,
+      task: 'list_creatives',
+      error: 'Probe validations failed.',
+      validations: [
+        {
+          id: 'phase_one_visible_failure',
+          check: 'field_value',
+          passed: false,
+          description: 'Phase one visible failure',
+          expected: 'one',
+          actual: 'two',
+        },
+      ],
+    });
+    const result = resultWith([
+      {
+        track: 'creative',
+        status: 'fail',
+        duration_ms: 100,
+        scenarios: [
+          phase('creative_lifecycle/phase_one', [phaseOneFail]),
+          phase('creative_lifecycle/phase_two', []),
+        ],
+      },
+    ]) as any;
+    result.failures = [
+      {
+        track: 'creative',
+        storyboard_id: 'creative_lifecycle',
+        step_id: 'phase_two_hidden',
+        step_title: sharedTitle,
+        task: 'list_creatives',
+        error: 'Probe validations failed.',
+        validation: {
+          id: 'phase_two_hidden_validation',
+          check: 'field_value',
+          description: 'Phase two hidden failure',
+          expected: 'display_300x250',
+          actual: 'native_in_feed',
+        },
+        fix_command: 'adcp storyboard step https://x creative_lifecycle phase_two_hidden --json',
+      },
+    ];
+    mockGetStoryboard.mockReturnValue({
+      phases: [
+        {
+          id: 'phase_one',
+          steps: [
+            { id: 'phase_one_check', title: sharedTitle, task: 'list_creatives' },
+          ],
+        },
+        {
+          id: 'phase_two',
+          steps: [
+            { id: 'phase_two_hidden', title: sharedTitle, task: 'list_creatives' },
+          ],
+        },
+      ],
+    } as any);
+
+    const out = extractFailingStepDiagnostics(result);
+
+    expect(out).toHaveLength(2);
+    expect(out[0]).toMatchObject({
+      phase_id: 'phase_one',
+      step_id: 'phase_one_check',
+    });
+    expect(out[0].failed_validations_jsonb).toEqual([
+      {
+        id: 'phase_one_visible_failure',
+        check: 'field_value',
+        passed: false,
+        description: 'Phase one visible failure',
+        expected: 'one',
+        actual: 'two',
+      },
+    ]);
+    expect(out[1]).toMatchObject({
+      phase_id: 'phase_two',
+      step_id: 'phase_two_hidden',
+    });
+    expect(out[1].failed_validations_jsonb).toEqual([
+      {
+        id: 'phase_two_hidden_validation',
+        check: 'field_value',
+        description: 'Phase two hidden failure',
+        expected: 'display_300x250',
+        actual: 'native_in_feed',
         passed: false,
       },
     ]);

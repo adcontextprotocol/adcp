@@ -1468,6 +1468,41 @@ function asStringRecord(value: unknown): Record<string, string> | undefined {
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
+async function getCapstoneModuleForAttempt(
+  attempt: certDb.CertificationAttempt,
+): Promise<certDb.CertificationModule | null> {
+  if (attempt.module_id) {
+    const mod = await certDb.getModule(attempt.module_id);
+    if (mod) return mod;
+  }
+
+  logger.warn(
+    { attemptId: attempt.id, trackId: attempt.track_id },
+    'Attempt missing module_id, falling back to track lookup',
+  );
+  const trackModules = await certDb.getModulesForTrack(attempt.track_id);
+  return trackModules.find(m => m.format === 'capstone') || null;
+}
+
+async function getCredentialForModule(moduleId: string): Promise<certDb.CertificationCredential | null> {
+  const credentials = await certDb.getCredentials();
+  return credentials.find(c => c.required_modules.includes(moduleId)) || null;
+}
+
+async function getUserCredential(userId: string, credentialId: string): Promise<certDb.UserCredential | null> {
+  const credentials = await certDb.getUserCredentials(userId);
+  return credentials.find(c => c.credential_id === credentialId) || null;
+}
+
+function isCredentialIssued(
+  userCredential: certDb.UserCredential | null,
+  credential: certDb.CertificationCredential,
+): boolean {
+  if (!userCredential) return false;
+  if (!credential.certifier_group_id) return true;
+  return Boolean(userCredential.certifier_credential_id && userCredential.certifier_public_id);
+}
+
 /**
  * Build the cert MCP handler set for a single user, single request.
  *
@@ -2458,19 +2493,52 @@ export function createCertificationToolHandlers(
       }
       if (!attempt) return 'Exam attempt not found.';
       if (attempt.workos_user_id !== userId) return 'This exam attempt belongs to a different user.';
-      if (attempt.status !== 'in_progress') return 'This exam attempt is already completed.';
+
+      if (attempt.status !== 'in_progress') {
+        if (attempt.status === 'passed' && attempt.passing === true) {
+          const capstoneMod = await getCapstoneModuleForAttempt(attempt);
+          if (!capstoneMod) {
+            return 'This exam attempt is already completed, but I could not find the capstone module needed to reconcile credential issuance. Ask an admin to run the certification repair from the admin dashboard.';
+          }
+
+          const completedScores = asNumberRecord(attempt.scores);
+          if (!completedScores) {
+            return notCompleted(capstoneMod.id, 'state', `This capstone attempt is already passed, but its recorded scores are missing. Ask an admin to use Certification > Attempts needing attention for attempt ${attempt.id}.`);
+          }
+
+          try {
+            await certDb.reconcilePassedAttemptModule(attempt, capstoneMod.id, completedScores);
+          } catch (modError) {
+            logger.error({ error: modError, userId, moduleId: capstoneMod.id, attemptId: attempt.id }, 'Failed to reconcile module completion for already-passed capstone');
+            return notCompleted(capstoneMod.id, 'state', `This capstone attempt is already passed, but module completion could not be reconciled. Ask an admin to use Certification > Attempts needing attention for attempt ${attempt.id}.`);
+          }
+
+          const expectedCredential = await getCredentialForModule(capstoneMod.id);
+          const lines: string[] = [CAPSTONE_COMPLETED_PREFIX, ''];
+          lines.push('The capstone was already recorded, so I rechecked module completion and credential issuance.');
+
+          try {
+            lines.push(...await checkAndFormatCredentials(userId, memberContext));
+          } catch (credError) {
+            logger.error({ error: credError, userId, attemptId: attempt.id }, 'Failed to reconcile credentials for already-passed capstone');
+            return notCompleted(capstoneMod.id, 'state', `This capstone attempt is already passed, but credential issuance failed during reconciliation. Ask an admin to use Certification > Attempts needing attention for attempt ${attempt.id}.`);
+          }
+
+          if (expectedCredential && !isCredentialIssued(await getUserCredential(userId, expectedCredential.id), expectedCredential)) {
+            return notCompleted(capstoneMod.id, 'state', `This capstone attempt is already passed, but ${expectedCredential.name} is still not issued. Ask an admin to use Certification > Attempts needing attention for attempt ${attempt.id}, then run Issue missing badges if the Certifier badge is still pending.`);
+          }
+
+          lines.push('');
+          lines.push('Credential status has been verified.');
+          return lines.join('\n');
+        }
+
+        return 'This exam attempt is already completed.';
+      }
 
       // Get capstone module for assessment criteria
       // Use attempt.module_id when available; fall back to track lookup for old attempts
-      let capstoneMod: certDb.CertificationModule | null = null;
-      if (attempt.module_id) {
-        capstoneMod = await certDb.getModule(attempt.module_id);
-      }
-      if (!capstoneMod) {
-        logger.warn({ attemptId, trackId: attempt.track_id }, 'Attempt missing module_id, falling back to track lookup');
-        const trackModules = await certDb.getModulesForTrack(attempt.track_id);
-        capstoneMod = trackModules.find(m => m.format === 'capstone') || null;
-      }
+      const capstoneMod = await getCapstoneModuleForAttempt(attempt);
       if (!capstoneMod) {
         return 'Unable to verify required demonstrations — capstone module not found for this exam attempt. Contact support.';
       }

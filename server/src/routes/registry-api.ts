@@ -24,6 +24,7 @@ import { listStoryboards, getStoryboard, getTestKitForStoryboard } from "../serv
 import {
   hostedComplianceTarget,
   hostedComplianceOptions,
+  HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
   hostedAuthProbeTaskForProfile,
   withHostedStoryboardRunOptions,
   withHostedTestOptions,
@@ -2770,7 +2771,7 @@ registry.registerPath({
   operationId: "refreshAgent",
   summary: "Refresh agent snapshot",
   description:
-    "Re-probe the agent and update its registry health (online, tools_count, response_time_ms), capability snapshot (inferred type, discovered tools), and compliance verdict (storyboard pass/fail counts). Use after fixing your agent so the registry shows fresh data without waiting for the periodic heartbeat (~1h).\n\n**Compliance re-run:** when the caller owns the agent or is an AAO admin and the capability probe succeeds, the full storyboard suite runs (~30–90s) with a fresh test session and `agent_storyboard_status` is updated. Owner-triggered runs use `triggered_by: 'owner_test'`; admin-triggered support runs use `triggered_by: 'manual'`. Badge fan-out reissues verification badges off the new run. If the compliance call fails (timeout, OAuth wall, internal error), the capability/health portion still returns successfully — `compliance.ran` is `false` with an `error` string.\n\n**Auth:** owner of the agent, AAO admin, or static `ADMIN_API_KEY`.\n\n**Rate limits:** 60 seconds per agent URL, 30 requests per user per hour.",
+    "Re-probe the agent and update its registry health (online, tools_count, response_time_ms), capability snapshot (inferred type, discovered tools), and compliance verdict (storyboard pass/fail counts). Use after fixing your agent so the registry shows fresh data without waiting for the periodic heartbeat (~1h).\n\n**Compliance re-run:** when the caller owns the agent or is an AAO admin and the capability probe succeeds, the full storyboard suite can run for several minutes on capability-rich agents with a fresh test session, and `agent_storyboard_status` is updated. Owner-triggered runs use `triggered_by: 'owner_test'`; admin-triggered support runs use `triggered_by: 'manual'`. Badge fan-out reissues verification badges off the new run. If the compliance call fails (timeout, OAuth wall, internal error), the capability/health portion still returns successfully — `compliance.ran` is `false` with an `error` string.\n\n**Auth:** owner of the agent, AAO admin, or static `ADMIN_API_KEY`.\n\n**Rate limits:** 60 seconds per agent URL, 30 requests per user per hour.",
   tags: ["Agent Compliance"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -6048,10 +6049,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       // capability/health probe. Prior to #4886, /refresh probed capabilities
       // and health but left agent_storyboard_status untouched, leaving owners
       // to stare at a stale verdict for up to a full heartbeat cycle after
-      // deploying a fix. The full storyboard suite can run 30–90s; the
-      // per-agent 60s rate limit above bounds repeat-clicks. comply() failure
-      // is a soft-fail — we still return the capability/health refresh so a
-      // partially-working agent still moves the snapshot forward.
+      // deploying a fix. The full storyboard suite can run for several minutes
+      // on capability-rich agents (bounded by HOSTED_FULL_COMPLIANCE_TIMEOUT_MS).
+      // The per-agent 60s rate limit above only bounds repeat-clicks, not the
+      // duration of an in-flight run, so a second refresh of the same agent can
+      // start while the first is still running; that is acceptable for this
+      // owner/admin-gated path. comply() failure is a soft-fail — we still
+      // return the capability/health refresh so a partially-working agent still
+      // moves the snapshot forward.
       let complianceSummary: {
         ran: boolean;
         requested_compliance_target?: string;
@@ -6075,7 +6080,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           const triggeredBy = ownerOrgId ? 'owner_test' : 'manual';
           const complyOptions = {
             test_session_id: testSessionId,
-            timeout_ms: 90_000,
+            timeout_ms: HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
             userAgent: AAO_UA_COMPLIANCE,
             ...(resolvedAuth && { auth: resolvedAuth }),
           };

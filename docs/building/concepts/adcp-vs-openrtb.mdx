@@ -33,7 +33,7 @@ A single AdCP `create_media_buy` task might result in thousands of OpenRTB bid r
 
 ## Where they're different
 
-**Scope.** OpenRTB is focused on the auction — bid requests, bid responses, win notifications, and billing events. AdCP covers the full campaign lifecycle: product discovery, creative management, audience activation, campaign execution, and delivery reporting.
+**Scope.** OpenRTB is focused on the auction — bid requests, bid responses, win notifications, and billing events. AdCP covers the full campaign lifecycle: product discovery, creative management, audience activation, campaign execution, and delivery reporting. AdCP also works independently of real-time bidding: a direct-sold publisher, sponsored content business, broadcast seller, or commerce media network can implement AdCP without any OpenRTB integration.
 
 **Communication model.** OpenRTB uses synchronous HTTP: a bid request arrives, and the bidder must respond within a few hundred milliseconds. AdCP is asynchronous: an agent submits a `create_media_buy` task, and the platform processes it on its own timeline, returning status updates.
 

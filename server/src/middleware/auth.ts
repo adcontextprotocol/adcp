@@ -64,8 +64,15 @@ function warnOncePerSession(
   }
 }
 
+function startBackgroundCleanup(callback: () => void, intervalMs: number): void {
+  const timer = setInterval(callback, intervalMs) as ReturnType<typeof setInterval> & {
+    unref?: () => void;
+  };
+  timer.unref?.();
+}
+
 // Clean up expired cache entries periodically (every 5 minutes)
-setInterval(() => {
+startBackgroundCleanup(() => {
   const now = Date.now();
   let cleaned = 0;
   for (const [key, value] of sessionCache.entries()) {
@@ -89,7 +96,7 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 // Clean up expired DB session refresh entries (every 10 minutes)
-setInterval(() => {
+startBackgroundCleanup(() => {
   cleanExpiredRefreshes().then(cleaned => {
     if (cleaned > 0) {
       logger.debug({ cleaned }, 'Cleaned expired session refresh DB entries');
@@ -107,7 +114,7 @@ const banCache = new Map<string, CachedBanCheck>();
 const BAN_CACHE_TTL_MS = 60 * 1000;
 
 // Clean up expired ban cache entries alongside session cache
-setInterval(() => {
+startBackgroundCleanup(() => {
   const now = Date.now();
   for (const [key, value] of banCache.entries()) {
     if (value.expiresAt < now) {
