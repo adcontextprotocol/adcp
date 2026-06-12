@@ -89,6 +89,20 @@ export interface LearnerProgress {
   attempts: number;
 }
 
+export interface AdminModuleCompletion {
+  id: string;
+  workos_user_id: string;
+  module_id: string;
+  admin_user_id: string;
+  completed_by: 'admin';
+  addie_thread_id: string;
+  score: Record<string, number>;
+  note: string | null;
+  teaching_checkpoint_id: string | null;
+  learner_progress_id: string | null;
+  created_at: string;
+}
+
 export interface CertificationAttempt {
   id: string;
   workos_user_id: string;
@@ -269,6 +283,71 @@ export async function completeModule(
   // Refresh engagement time view so admin metrics reflect the completion (errors logged internally)
   void refreshEngagementTime();
   return result.rows[0];
+}
+
+export async function adminCompleteModule(input: {
+  userId: string;
+  moduleId: string;
+  adminUserId: string;
+  addieThreadId: string;
+  score: Record<string, number>;
+  note?: string | null;
+  teachingCheckpointId?: string | null;
+}): Promise<{ progress: LearnerProgress; audit: AdminModuleCompletion }> {
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+
+    const progressResult = await client.query<LearnerProgress>(
+      `INSERT INTO learner_progress
+         (workos_user_id, module_id, status, started_at, completed_at, score, addie_thread_id)
+       VALUES ($1, $2, 'completed', NOW(), NOW(), $3, $4)
+       ON CONFLICT (workos_user_id, module_id) DO UPDATE
+         SET status = 'completed',
+             started_at = COALESCE(learner_progress.started_at, EXCLUDED.started_at),
+             completed_at = NOW(),
+             score = EXCLUDED.score,
+             addie_thread_id = EXCLUDED.addie_thread_id,
+             updated_at = NOW()
+       RETURNING *`,
+      [input.userId, input.moduleId, JSON.stringify(input.score), input.addieThreadId]
+    );
+    const progress = progressResult.rows[0];
+    if (!progress) {
+      throw new Error(`Failed to upsert admin completion for user ${input.userId}, module ${input.moduleId}`);
+    }
+
+    const auditResult = await client.query<AdminModuleCompletion>(
+      `INSERT INTO admin_module_completions
+         (workos_user_id, module_id, admin_user_id, completed_by, addie_thread_id, score, note,
+          teaching_checkpoint_id, learner_progress_id)
+       VALUES ($1, $2, $3, 'admin', $4, $5, $6, $7, $8)
+       RETURNING *`,
+      [
+        input.userId,
+        input.moduleId,
+        input.adminUserId,
+        input.addieThreadId,
+        JSON.stringify(input.score),
+        input.note || null,
+        input.teachingCheckpointId || null,
+        progress.id,
+      ]
+    );
+    const audit = auditResult.rows[0];
+    if (!audit) {
+      throw new Error(`Failed to audit admin completion for user ${input.userId}, module ${input.moduleId}`);
+    }
+
+    await client.query('COMMIT');
+    void refreshEngagementTime();
+    return { progress, audit };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function reconcilePassedAttemptModule(
@@ -1487,6 +1566,20 @@ export async function getLatestCheckpoint(
      WHERE workos_user_id = $1 AND module_id = $2
      ORDER BY created_at DESC LIMIT 1`,
     [userId, moduleId]
+  );
+  return result.rows[0] || null;
+}
+
+export async function getLatestCheckpointForThread(
+  userId: string,
+  moduleId: string,
+  threadId: string
+): Promise<TeachingCheckpoint | null> {
+  const result = await query<TeachingCheckpoint>(
+    `SELECT * FROM teaching_checkpoints
+     WHERE workos_user_id = $1 AND module_id = $2 AND thread_id = $3
+     ORDER BY created_at DESC LIMIT 1`,
+    [userId, moduleId, threadId]
   );
   return result.rows[0] || null;
 }
