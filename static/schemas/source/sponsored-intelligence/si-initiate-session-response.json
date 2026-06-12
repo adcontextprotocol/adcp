@@ -41,6 +41,10 @@
       "$ref": "/schemas/sponsored-intelligence/si-capabilities.json",
       "description": "Intersection of brand and host capabilities for this session"
     },
+    "sponsored_context": {
+      "$ref": "/schemas/sponsored-intelligence/si-sponsored-context.json",
+      "description": "Declaration for sponsored context carried by the initial brand-agent response. Hosts MUST either honor the declared context_use and disclosure_obligation or reject the context before presenting, comparing, or otherwise using it."
+    },
     "session_status": {
       "$ref": "/schemas/enums/si-session-status.json",
       "description": "Current session lifecycle state. Returned in initiation, message, and termination responses."

@@ -128,6 +128,10 @@
         "additionalProperties": true
       }
     },
+    "sponsored_context": {
+      "$ref": "/schemas/sponsored-intelligence/si-sponsored-context.json",
+      "description": "Declaration for the sponsored context carried by this offering response. When present, it applies to the returned offering and matching_products package as a whole unless a future extension narrows the declaration to individual items. Hosts MUST either honor the declared context_use and disclosure_obligation or reject the context before using it."
+    },
     "total_matching": {
       "type": "integer",
       "minimum": 0,

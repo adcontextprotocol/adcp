@@ -43,6 +43,10 @@
       },
       "additionalProperties": true
     },
+    "sponsored_context_receipt": {
+      "$ref": "/schemas/sponsored-intelligence/si-sponsored-context-receipt.json",
+      "description": "Host receipt for sponsored context accepted from a prior SI response in this session. This gives the brand/seller an audit-visible record of the host's accepted use mode and disclosure commitment for that context."
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

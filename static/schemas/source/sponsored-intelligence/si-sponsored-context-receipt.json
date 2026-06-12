@@ -1,0 +1,309 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/sponsored-intelligence/si-sponsored-context-receipt.json",
+  "title": "SI Sponsored Context Receipt",
+  "description": "Host receipt for sponsored context previously delivered into an SI host boundary. The receipt records what use mode the host accepted and what disclosure commitment it made; it does not claim that AdCP inspected hidden model reasoning.",
+  "x-status": "experimental",
+  "type": "object",
+  "properties": {
+    "sponsored_context": {
+      "$ref": "/schemas/sponsored-intelligence/si-sponsored-context.json",
+      "description": "The sponsored-context declaration the host received and is accepting or rejecting."
+    },
+    "host_receipt": {
+      "type": "object",
+      "description": "Receiving-surface accountability fact: the use mode the host accepted and committed to honor for this sponsored context.",
+      "properties": {
+        "status": {
+          "type": "string",
+          "description": "Whether the host accepted the declared sponsored context for use.",
+          "enum": [
+            "accepted",
+            "rejected"
+          ]
+        },
+        "accepted_context_use": {
+          "$ref": "/schemas/sponsored-intelligence/si-context-use.json",
+          "description": "Use mode the host accepted. When host_receipt.status is accepted, this MUST match the declaration's context_use; a host that cannot honor the declared use mode rejects the sponsored context instead of down-scoping it."
+        },
+        "received_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the host received the sponsored context."
+        },
+        "host_surface": {
+          "type": "string",
+          "description": "Host-defined surface or placement where the context was accepted, such as an assistant session, search result page, or comparison module."
+        },
+        "disclosure_commitment": {
+          "type": "object",
+          "description": "How the host committed to handle the declared disclosure obligation. Required when host_receipt.status is accepted.",
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "accepted",
+                "not_required"
+              ],
+              "description": "Host commitment status for the disclosure obligation. Use accepted when the declaration requires disclosure and the host will satisfy it; use not_required only when the declaration's disclosure_obligation.required is false. A host that will not satisfy a required disclosure rejects the sponsored context."
+            },
+            "label_text": {
+              "type": "string",
+              "description": "Disclosure label text the host committed to render, if different from or copied from the declaration."
+            },
+            "notes": {
+              "type": "string",
+              "description": "Optional host explanation for the disclosure commitment."
+            }
+          },
+          "required": [
+            "status"
+          ],
+          "additionalProperties": true
+        },
+        "rejection_reason": {
+          "type": "string",
+          "description": "Optional explanation when status is rejected, for example unsupported context_use or inability to satisfy the disclosure obligation."
+        }
+      },
+      "required": [
+        "status",
+        "received_at"
+      ],
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "accepted"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "accepted_context_use",
+              "disclosure_commitment"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "rejected"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "accepted_context_use"
+                  ]
+                },
+                {
+                  "required": [
+                    "disclosure_commitment"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "sponsored_context",
+    "host_receipt"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "sponsored_context": {
+            "properties": {
+              "context_use": {
+                "const": "presentation_only"
+              }
+            },
+            "required": [
+              "context_use"
+            ]
+          },
+          "host_receipt": {
+            "properties": {
+              "status": {
+                "const": "accepted"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          }
+        },
+        "required": [
+          "sponsored_context",
+          "host_receipt"
+        ]
+      },
+      "then": {
+        "properties": {
+          "host_receipt": {
+            "properties": {
+              "accepted_context_use": {
+                "const": "presentation_only"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "sponsored_context": {
+            "properties": {
+              "context_use": {
+                "const": "comparison_set"
+              }
+            },
+            "required": [
+              "context_use"
+            ]
+          },
+          "host_receipt": {
+            "properties": {
+              "status": {
+                "const": "accepted"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          }
+        },
+        "required": [
+          "sponsored_context",
+          "host_receipt"
+        ]
+      },
+      "then": {
+        "properties": {
+          "host_receipt": {
+            "properties": {
+              "accepted_context_use": {
+                "const": "comparison_set"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "sponsored_context": {
+            "properties": {
+              "context_use": {
+                "const": "reasoning_context"
+              }
+            },
+            "required": [
+              "context_use"
+            ]
+          },
+          "host_receipt": {
+            "properties": {
+              "status": {
+                "const": "accepted"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          }
+        },
+        "required": [
+          "sponsored_context",
+          "host_receipt"
+        ]
+      },
+      "then": {
+        "properties": {
+          "host_receipt": {
+            "properties": {
+              "accepted_context_use": {
+                "const": "reasoning_context"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "sponsored_context": {
+            "properties": {
+              "disclosure_obligation": {
+                "properties": {
+                  "required": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "required"
+                ]
+              }
+            },
+            "required": [
+              "disclosure_obligation"
+            ]
+          },
+          "host_receipt": {
+            "properties": {
+              "status": {
+                "const": "accepted"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          }
+        },
+        "required": [
+          "sponsored_context",
+          "host_receipt"
+        ]
+      },
+      "then": {
+        "properties": {
+          "host_receipt": {
+            "properties": {
+              "disclosure_commitment": {
+                "properties": {
+                  "status": {
+                    "const": "accepted"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": true
+}

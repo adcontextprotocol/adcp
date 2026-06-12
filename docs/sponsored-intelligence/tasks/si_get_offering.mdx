@@ -68,6 +68,7 @@ This request must not include any personally identifiable information. The `inte
 | `checked_at` | string | ISO 8601 timestamp of the lookup |
 | `offering` | object | Offering details |
 | `matching_products` | array | Products matching the intent (if requested) |
+| `sponsored_context` | object | Sponsored-context declaration for the returned offering and matching-products package |
 | `total_matching` | integer | Total products matching (may exceed returned count) |
 | `unavailable_reason` | string | Why offering is unavailable (if not available) |
 | `alternative_offering_ids` | array | Alternative offerings to check |
@@ -98,6 +99,18 @@ This request must not include any personally identifiable information. The `inte
 | `availability_summary` | string | Brief availability info |
 | `availability_status` | string | Machine-readable availability state (same enum as the offering field). Optional; structured counterpart to `availability_summary`. |
 | `url` | string | Product detail page URL |
+
+### Sponsored Context Object
+
+When the returned offering or `matching_products` are sponsored context entering the host boundary, include `sponsored_context` at the response level. It applies to the returned package as a whole:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `paying_principal` | object | Brand economically accountable for the sponsored context, with optional seller account/operator context |
+| `context_use` | string | Declared host-side use mode: `presentation_only`, `comparison_set`, or `reasoning_context` |
+| `disclosure_obligation` | object | Disclosure the host must either accept and satisfy or reject before using the context |
+
+Use `context_use: "comparison_set"` when `matching_products` are a sponsored candidate set for comparison, ranking, or selection. Use `presentation_only` for a distinct sponsored unit or handoff, and `reasoning_context` only when the context is intended to be available to host answer generation, planning, ranking, or other reasoning. Hosts that accept the package can include `sponsored_context_receipt` on the subsequent `si_initiate_session` request so the audit trail links the paying principal, declared use mode, disclosure obligation, and host receipt.
 
 ### Unavailable Reasons
 
@@ -192,6 +205,44 @@ This enables the host to show:
 
 > "Nike has 12 running shoes in your size starting at \$89. Want to explore with their assistant?"
 
+### Response with Sponsored Context
+
+```json
+{
+  "$schema": "/schemas/sponsored-intelligence/si-get-offering-response.json",
+  "status": "completed",
+  "available": true,
+  "offering_token": "offering_abc123xyz",
+  "matching_products": [
+    {
+      "product_id": "trail-pace-14",
+      "name": "Trail Pace 14",
+      "price": "$89",
+      "availability_summary": "Size 14 in stock"
+    }
+  ],
+  "sponsored_context": {
+    "paying_principal": {
+      "brand": { "domain": "acme-running.example" },
+      "display_name": "Acme Running"
+    },
+    "context_use": "comparison_set",
+    "disclosure_obligation": {
+      "required": true,
+      "label_text": "Sponsored results from Acme Running",
+      "timing": "near_each_influenced_output",
+      "proximity": "near_influenced_output"
+    },
+    "declared_by": {
+      "agent_url": "https://agent.acme-running.example/si",
+      "role": "brand_agent"
+    },
+    "declared_at": "2025-01-19T10:00:00Z"
+  },
+  "total_matching": 1
+}
+```
+
 ### Unavailable Response
 
 ```json
@@ -285,6 +336,40 @@ When initiating a session after getting offering details, include the token:
 }
 ```
 
+When the offering response included `sponsored_context` and the host accepted it, the host can also include a receipt:
+
+```json
+{
+  "intent": "User wants more detail about the sponsored trail shoe preview",
+  "offering_token": "offering_abc123xyz",
+  "sponsored_context_receipt": {
+    "sponsored_context": {
+      "paying_principal": {
+        "brand": { "domain": "acme-running.example" },
+        "display_name": "Acme Running"
+      },
+      "context_use": "comparison_set",
+      "disclosure_obligation": {
+        "required": true,
+        "label_text": "Sponsored results from Acme Running"
+      }
+    },
+    "host_receipt": {
+      "status": "accepted",
+      "accepted_context_use": "comparison_set",
+      "received_at": "2025-01-19T10:00:02Z",
+      "host_surface": "assistant_comparison",
+      "disclosure_commitment": {
+        "status": "accepted",
+        "label_text": "Sponsored results from Acme Running"
+      }
+    }
+  }
+}
+```
+
+An accepted receipt means the host honored the declaration. `accepted_context_use` must match the original `context_use`, and `disclosure_commitment.status` must be `accepted` when the declaration required disclosure. If the host cannot honor either condition, it rejects the sponsored context instead of sending an accepted receipt. A rejected receipt may still be sent to make the rejection audit-visible, but it must omit `accepted_context_use` and `disclosure_commitment`.
+
 ## Key Points
 
 1. **Anonymous by design** - No user data is sent with offering lookups. This protects user privacy while enabling hosts to show rich previews.
@@ -293,11 +378,13 @@ When initiating a session after getting offering details, include the token:
 
 3. **Product matching** - When `include_products` is true and `intent` is provided, brands can return relevant products. This powers pre-session previews like "12 shoes in your size from \$89."
 
-4. **Caching** - Hosts may cache responses for up to `ttl_seconds`. This reduces load on brand agents for frequently checked offerings.
+4. **Sponsored context accountability** - `sponsored_context` declares the paying principal, intended use mode, and disclosure obligation for returned sponsored context. Hosts that accept it should record a `sponsored_context_receipt`.
 
-5. **Graceful degradation** - If the lookup fails or times out, hosts may still initiate sessions directly. The offering lookup is optional.
+5. **Caching** - Hosts may cache responses for up to `ttl_seconds`. This reduces load on brand agents for frequently checked offerings.
 
-6. **Alternative suggestions** - When offerings are unavailable, brand agents may suggest alternatives via `alternative_offering_ids`.
+6. **Graceful degradation** - If the lookup fails or times out, hosts may still initiate sessions directly. The offering lookup is optional.
+
+7. **Alternative suggestions** - When offerings are unavailable, brand agents may suggest alternatives via `alternative_offering_ids`.
 
 ## Best Practices
 
@@ -305,6 +392,8 @@ When initiating a session after getting offering details, include the token:
 
 - Get offering details before showing sponsored results to users
 - Use `include_products` with an `intent` for richer previews
+- Honor or reject `sponsored_context` before using matching products for presentation, comparison, or reasoning context
+- Retain a receipt linking `paying_principal`, `context_use`, disclosure obligation, and host acceptance
 - Respect TTL for caching to avoid stale data
 - Handle unavailable gracefully - don't show expired offerings
 - Include offering token in session initiation when available
@@ -313,6 +402,7 @@ When initiating a session after getting offering details, include the token:
 
 - Return rich `offering` details to help hosts display accurate information
 - Support `include_products` for contextual product matching
+- Attach `sponsored_context` when returned products or offering details are sponsored context entering the host boundary
 - Use reasonable TTL values (e.g., 5-60 minutes depending on volatility)
 - Provide helpful `unavailable_reason` for debugging
 - Suggest alternatives when primary offering is unavailable
