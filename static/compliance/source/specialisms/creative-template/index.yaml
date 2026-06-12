@@ -201,6 +201,20 @@ phases:
           - check: field_present
             path: "formats[0].format_id.id"
             description: "Format IDs include id — must match those in get_products"
+          - check: field_less_than
+            path: "formats[*].renders[*].dimensions.width"
+            value: 729
+            description: "Advisory: formats returned for max_width 728 should not exceed that width"
+            severity: advisory
+            permanent_advisory:
+              reason: "Advisory while runner field-stripping notices roll out; preserves visibility into vacuous filter passes without failing existing agents."
+          - check: field_less_than
+            path: "formats[*].renders[*].dimensions.height"
+            value: 91
+            description: "Advisory: formats returned for max_height 90 should not exceed that height"
+            severity: advisory
+            permanent_advisory:
+              reason: "Advisory while runner field-stripping notices roll out; preserves visibility into vacuous filter passes without failing existing agents."
   - id: preview
     title: "Preview with real assets"
     narrative: |

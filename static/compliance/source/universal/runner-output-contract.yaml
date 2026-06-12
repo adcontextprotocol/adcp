@@ -1096,6 +1096,14 @@ notice:
         enum value. Drop it and rely solely on
         `request_signing.supported: true`. The enum value is removed
         in AdCP 4.0 (see adcontextprotocol/adcp#3078).
+    input_schema_field_stripped:
+      severity: info
+      spec_source: universal/runner-output-contract.yaml
+      message_template: |
+        Runner stripped one or more spec-defined request fields because
+        the agent's advertised tool input schema did not declare them.
+        The notice message MUST name the task and stripped field names
+        so implementors can fix incomplete tool schema declarations.
     request_signing_required_in_4_0:
       severity: future_required
       effective_version: "4.0"
