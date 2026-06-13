@@ -1632,6 +1632,44 @@ async function runTests() {
     return true;
   });
 
+  // Test 12B: VAST/DAAST tag URLs accept unsubstituted ad-server macros
+  await test('VAST and DAAST tag URLs accept [MACRO] and ${MACRO} placeholders', async () => {
+    // Real-world IAS-wrapped CTV tag: [OMIDPARTNER]-style VAST macros and
+    // ${GDPR_CONSENT}-style privacy macros are illegal in strict RFC 3986 URIs
+    // but valid RFC 6570 templates. format: "uri" rejected these; the tag
+    // asset URLs must use format: "uri-template" (same convention as url-asset).
+    const macroUrl = 'https://unified.adsafeprotected.com/v2/2816045/94180721?mon=94180722&omidPartner=[OMIDPARTNER]&apiframeworks=[APIFRAMEWORKS]&bundleId=[BUNDLEID]&blockedAdTracking=${DC_BLOCKED_AD}&ias_dts=atw&ias_xappb=[ctv_appid]&originalVast=https://vast.extremereach.io/v/16115077?us_privacy=${US_PRIVACY}&gdpr=${GDPR}&gdpr_consent=${GDPR_CONSENT_1002}&gpp=${GPP_STRING_1002}&gpp_sid=${GPP_SID}&er_did=[INSERT_DEVICE_ID_HERE]&ba_cb=[INSERT_CACHEBREAKER_HERE]';
+
+    const cases = [
+      ['core/assets/vast-asset.json', { asset_type: 'vast', delivery_type: 'url', url: macroUrl }],
+      ['core/assets/daast-asset.json', { asset_type: 'daast', delivery_type: 'url', url: macroUrl }]
+    ];
+
+    for (const [schemaFile, asset] of cases) {
+      const assetSchema = loadSchema(path.join(SCHEMA_BASE_DIR, schemaFile));
+      const testAjv = new Ajv({
+        allErrors: true,
+        verbose: true,
+        strict: false,
+        discriminator: true,
+        loadSchema: loadExternalSchema
+      });
+      addFormats(testAjv);
+
+      const validate = await testAjv.compileAsync(assetSchema);
+      if (!validate(asset)) {
+        const errors = validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ');
+        return `${schemaFile}: macro-laden tag URL must validate: ${errors}`;
+      }
+
+      const malformed = { ...asset, url: 'not a valid uri template' };
+      if (validate(malformed)) {
+        return `${schemaFile}: url with raw spaces must still be rejected`;
+      }
+    }
+    return true;
+  });
+
   // Test 13: Validate schema examples against their schemas
   await test('Schema examples validate against their own schemas', async () => {
     // Skip schemas that require format-aware validation (creative manifests need format context)

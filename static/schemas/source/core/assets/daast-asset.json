@@ -54,8 +54,8 @@
         },
         "url": {
           "type": "string",
-          "format": "uri",
-          "description": "URL endpoint that returns DAAST XML"
+          "format": "uri-template",
+          "description": "URL endpoint that returns DAAST XML. May carry unsubstituted ad-server macros — DAAST/VAST-style `[MACRO]` and `${MACRO}` placeholders are accepted as-is (RFC 6570 syntax); buyers MUST NOT pre-encode macro delimiters, since players match the literal token at substitution time."
         }
       },
       "required": [
