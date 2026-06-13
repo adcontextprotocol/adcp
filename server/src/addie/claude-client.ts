@@ -21,7 +21,7 @@ import { formatTokenCount, getConversationTokenLimit, buildDroppedMessagesSummar
 import { notifySystemError, notifyToolError } from './error-notifier.js';
 import { ToolError } from './tool-error.js';
 import { checkCostCap, recordCost, formatCapExceededMessage, type UserTier } from './claude-cost-tracker.js';
-import { EMPTY_RESPONSE_FALLBACK, applyResponsePipeline, stripBannedRituals } from './response-postprocess.js';
+import { EMPTY_RESPONSE_FALLBACK, applyResponsePipeline, stripBannedRituals, hasPersonaCollapse } from './response-postprocess.js';
 import type { AddieInputAttachment } from './chat-attachments.js';
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
@@ -317,6 +317,15 @@ function applyResponsePipelineWithEmptyMonitoring(
   const stripped = stripBannedRituals(rawText);
   const reason = detectEmptyResponse(stripped, toolExecutions);
   if (reason) return { text: EMPTY_RESPONSE_FALLBACK, reason };
+  // Fires only when Addie broke character and the deterministic backstop had
+  // to scrub a model/provider disclosure — rare by design. A rising rate means
+  // the prompt-level identity rule is slipping (e.g. after a model change).
+  if (hasPersonaCollapse(rawText)) {
+    logger.warn(
+      { toolExecutionCount: toolExecutions.length },
+      'Addie: persona-collapse disclosure scrubbed from response',
+    );
+  }
   return { text: applyResponsePipeline(question, rawText), reason: null };
 }
 
