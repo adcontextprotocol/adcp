@@ -415,12 +415,12 @@ export const thePromptConfig: NewsletterConfig = {
   author: 'Addie',
   authorTitle: 'AI at AgenticAdvertising.org',
   authorSystemId: 'system:addie',
-  emailCategory: 'weekly_digest',
+  emailCategory: 'the_prompt',
   fromEmail: 'Addie from AgenticAdvertising.org <addie@updates.agenticadvertising.org>',
   palette: PROMPT_PALETTE,
   cadence: {
     generateHourET: 7,
-    sendHourET: 9,
+    sendHourET: 10,
     shouldRunToday: (dateOverride?: Date) => {
       const now = dateOverride || new Date();
       const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
@@ -441,7 +441,7 @@ export const thePromptConfig: NewsletterConfig = {
     attribution: 'Addie',
     domain: 'AgenticAdvertising.org',
   },
-  announcementChannelEnvVar: 'SLACK_ANNOUNCEMENTS_CHANNEL',
+  announcementChannelEnvVar: 'ANNOUNCEMENTS_CHANNEL_ID',
   coverRoutePrefix: '/digest',
   buildContent: buildDigestContent,
   hasMinimumContent: (c) => hasMinimumContent(c as DigestContent),
