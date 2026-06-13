@@ -1,0 +1,157 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.14/creative/get-creative-delivery-response.json",
+  "title": "Get Creative Delivery Response",
+  "description": "Response payload for get_creative_delivery task. Returns creative delivery data with variant-level breakdowns including manifests and metrics.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/3.1.0-rc.14/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/3.1.0-rc.14/core/protocol-envelope.json"
+    }
+  ],
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Account identifier. Present when the response spans or is scoped to a specific account.",
+      "x-entity": "account"
+    },
+    "media_buy_id": {
+      "type": "string",
+      "description": "Publisher's media buy identifier. Present when the request was scoped to a single media buy.",
+      "x-entity": "media_buy"
+    },
+    "currency": {
+      "type": "string",
+      "description": "ISO 4217 currency code for monetary values in this response (e.g., 'USD', 'EUR')",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "reporting_period": {
+      "type": "object",
+      "description": "Date range for the report.",
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 start timestamp"
+        },
+        "end": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 end timestamp"
+        },
+        "timezone": {
+          "type": "string",
+          "description": "IANA timezone identifier for the reporting period (e.g., 'America/New_York', 'UTC'). Platforms report in their native timezone."
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "additionalProperties": true
+    },
+    "creatives": {
+      "type": "array",
+      "description": "Creative delivery data with variant breakdowns",
+      "items": {
+        "type": "object",
+        "properties": {
+          "creative_id": {
+            "type": "string",
+            "description": "Creative identifier",
+            "x-entity": "creative"
+          },
+          "media_buy_id": {
+            "type": "string",
+            "description": "Publisher's media buy identifier for this creative. Present when the request spanned multiple media buys, so the buyer can correlate each creative to its media buy.",
+            "x-entity": "media_buy"
+          },
+          "format_id": {
+            "$ref": "/schemas/3.1.0-rc.14/core/format-id.json",
+            "description": "Format of this creative"
+          },
+          "totals": {
+            "$ref": "/schemas/3.1.0-rc.14/core/delivery-metrics.json",
+            "description": "Aggregate delivery metrics across all variants of this creative"
+          },
+          "variant_count": {
+            "type": "integer",
+            "description": "Total number of variants for this creative. When max_variants was specified in the request, this may exceed the number of items in the variants array.",
+            "minimum": 0
+          },
+          "variants": {
+            "type": "array",
+            "description": "Variant-level delivery breakdown. Each variant includes the rendered manifest and delivery metrics. For standard creatives, contains a single variant. For asset group optimization, one per combination. For generative creative, one per generated execution. Empty when a creative has no variants yet.",
+            "items": {
+              "$ref": "/schemas/3.1.0-rc.14/core/creative-variant.json"
+            }
+          }
+        },
+        "required": [
+          "creative_id",
+          "variants"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "pagination": {
+      "type": "object",
+      "description": "Pagination information. Present when the request included pagination parameters. **Note:** `get_creative_delivery` uses page-based pagination (`limit`/`offset`) for historical reasons, distinct from the cursor-based [`PaginationResponse`](/schemas/v3/core/pagination-response.json) used by `list_*` tools. Field naming aligned with `PaginationResponse.total_count` in 3.1; the legacy `total` field is retained as a deprecated alias until 4.0. Sellers MUST populate both fields identically; buyers SHOULD prefer `total_count` (the canonical name) and ignore `total` if both are present.",
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "description": "Maximum number of creatives requested",
+          "minimum": 1
+        },
+        "offset": {
+          "type": "integer",
+          "description": "Number of creatives skipped",
+          "minimum": 0
+        },
+        "has_more": {
+          "type": "boolean",
+          "description": "Whether more creatives are available beyond this page"
+        },
+        "total_count": {
+          "type": "integer",
+          "description": "Total number of creatives matching the request filters. Canonical field name (matches `PaginationResponse.total_count`). Sellers SHOULD populate this and the deprecated `total` field identically until 4.0; buyers SHOULD prefer this field.",
+          "minimum": 0
+        },
+        "total": {
+          "type": "integer",
+          "description": "**Deprecated** — use `total_count` instead. Retained as a legacy alias for 3.x backward compatibility; removed in AdCP 4.0. Sellers populating this field MUST also populate `total_count` with the same value.",
+          "minimum": 0,
+          "deprecated": true
+        }
+      },
+      "required": [
+        "limit",
+        "offset",
+        "has_more"
+      ],
+      "additionalProperties": true
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors and warnings",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.14/core/error.json"
+      }
+    },
+    "context": {
+      "$ref": "/schemas/3.1.0-rc.14/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-rc.14/core/ext.json"
+    }
+  },
+  "required": [
+    "reporting_period",
+    "currency",
+    "creatives"
+  ],
+  "additionalProperties": true
+}
