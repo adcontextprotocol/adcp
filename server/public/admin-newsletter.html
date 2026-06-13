@@ -19,8 +19,14 @@
     .status-draft { background: #fef3c7; color: #92400e; }
     .status-approved { background: #d1fae5; color: #065f46; }
     .status-sent { background: #dbeafe; color: #1e40af; }
+    .status-skipped { background: #fee2e2; color: #991b1b; }
     .recipient-count { font-size: 13px; color: #666; padding: 4px 10px; background: #f1f5f9; border-radius: 12px; }
     .optin-stats { font-size: 12px; color: #666; margin-top: 4px; text-align: right; }
+    .send-status-panel { border: 1px solid var(--color-border, #e5e7eb); border-left: 4px solid var(--nl-primary); background: var(--color-bg-card, #fff); border-radius: 8px; padding: 14px 16px; margin-bottom: 16px; display: grid; gap: 8px; }
+    .send-status-title { font-size: 14px; font-weight: 700; color: var(--color-text-heading, #1a1a2e); }
+    .send-status-copy { font-size: 13px; color: var(--color-text-secondary, #4b5563); line-height: 1.45; }
+    .send-status-meta { display: flex; gap: 8px; flex-wrap: wrap; }
+    .send-status-chip { font-size: 12px; color: #374151; background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 12px; padding: 3px 8px; }
 
     .section { background: var(--color-bg-card, #fff); border-radius: 8px; padding: 20px; margin-bottom: 16px; box-shadow: var(--shadow-xs, 0 1px 2px rgba(0,0,0,0.05)); position: relative; }
     .section.hidden-section { opacity: 0.5; }
@@ -108,6 +114,8 @@
     </div>
 
     <div id="editorContent" style="display:none;">
+      <div id="sendStatusPanel" class="send-status-panel"></div>
+
       <div class="mode-tabs">
         <button class="mode-tab active" onclick="switchMode('edit')">Edit sections</button>
         <button class="mode-tab" onclick="switchMode('paste')">Paste content</button>
@@ -496,6 +504,103 @@
       return (el.innerText || el.textContent || '').replace(/\u00a0/g, ' ').trim();
     }
 
+    function formatETDateTime(value) {
+      if (!value) return '';
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return '';
+      return d.toLocaleString('en-US', {
+        timeZone: 'America/New_York',
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        timeZoneName: 'short',
+      });
+    }
+
+    function formatHourET(hour) {
+      const h = Number(hour);
+      if (!Number.isFinite(h)) return 'the scheduled send window';
+      const suffix = h >= 12 ? 'pm' : 'am';
+      const twelveHour = h % 12 || 12;
+      return `${twelveHour}${suffix} ET`;
+    }
+
+    function getSendWindowInfo() {
+      const nextSendAt = uiConfig?.cadence?.nextSendWindowAt;
+      const formatted = formatETDateTime(nextSendAt);
+      if (!formatted) {
+        return {
+          formatted: formatHourET(uiConfig?.cadence?.sendHourET),
+          isOpen: false,
+        };
+      }
+      return {
+        formatted,
+        isOpen: new Date(nextSendAt).getTime() <= Date.now(),
+      };
+    }
+
+    function formatSendWindowChip() {
+      const info = getSendWindowInfo();
+      return `${info.isOpen ? 'Send window open since' : 'Scheduled send'}: ${info.formatted}`;
+    }
+
+    function renderSendStatus() {
+      const status = currentDigest?.status;
+      const stats = currentDigest?.send_stats || {};
+      const emailCount = Number(stats.email_count || 0);
+      const slackCount = Number(stats.slack_count || 0);
+      const bySegment = stats.by_segment && typeof stats.by_segment === 'object' ? stats.by_segment : null;
+      const segmentText = bySegment
+        ? Object.entries(bySegment).map(([k, v]) => `${k}: ${v}`).join(' · ')
+        : '';
+
+      if (status === 'draft') {
+        return `
+          <div class="send-status-title">Draft only</div>
+          <div class="send-status-copy">This edition has not been queued. Send tests, finish edits, then approve it for the scheduled sender.</div>
+          <div class="send-status-meta">
+            <span class="send-status-chip">${esc(formatSendWindowChip())}</span>
+            ${recipientCount ? `<span class="send-status-chip">${esc(String(recipientCount.emailCount))} eligible email recipients</span>` : ''}
+          </div>`;
+      }
+
+      if (status === 'approved') {
+        return `
+          <div class="send-status-title">Queued for delivery</div>
+          <div class="send-status-copy">Approved editions are picked up by the scheduled sender on the next eligible run. Use Send now if this should go immediately.</div>
+          <div class="send-status-meta">
+            <span class="send-status-chip">${esc(formatSendWindowChip())}</span>
+            ${currentDigest.approved_at ? `<span class="send-status-chip">Approved ${esc(formatETDateTime(currentDigest.approved_at))}</span>` : ''}
+            ${currentDigest.approved_by ? `<span class="send-status-chip">By ${esc(currentDigest.approved_by)}</span>` : ''}
+            ${recipientCount ? `<span class="send-status-chip">${esc(String(recipientCount.emailCount))} eligible email recipients</span>` : ''}
+          </div>`;
+      }
+
+      if (status === 'sent') {
+        return `
+          <div class="send-status-title">Sent</div>
+          <div class="send-status-copy">Delivery is complete. The edition is locked against further edits.</div>
+          <div class="send-status-meta">
+            ${currentDigest.sent_at ? `<span class="send-status-chip">Sent ${esc(formatETDateTime(currentDigest.sent_at))}</span>` : ''}
+            <span class="send-status-chip">${esc(String(emailCount))} emails</span>
+            <span class="send-status-chip">${esc(String(slackCount))} Slack posts</span>
+            ${segmentText ? `<span class="send-status-chip">${esc(segmentText)}</span>` : ''}
+            ${currentDigest.perspective_id ? `<span class="send-status-chip">Perspective linked</span>` : '<span class="send-status-chip">Perspective pending</span>'}
+          </div>`;
+      }
+
+      if (status === 'skipped') {
+        return `
+          <div class="send-status-title">Skipped</div>
+          <div class="send-status-copy">This edition was skipped by the sender and cannot be sent from this screen.</div>`;
+      }
+
+      return '';
+    }
+
     function placeCaretAtEnd(el) {
       const range = document.createRange();
       range.selectNodeContents(el);
@@ -594,12 +699,15 @@
           <div style="display: flex; align-items: center; gap: 8px; justify-content: flex-end;">
             ${badge}
             <span class="status-badge status-${esc(status)}">${esc(status)}</span>
-            ${status === 'draft' ? `<button class="btn btn-nl" onclick="sendTest()">Send Test</button>` : ''}
-            ${status === 'draft' ? `<button class="btn btn-success" onclick="approveEdition()">Approve & Queue</button>` : ''}
+            ${status === 'draft' || status === 'approved' ? `<button class="btn btn-outline" onclick="sendTest()">Send test</button>` : ''}
+            ${status === 'draft' ? `<button class="btn btn-success" onclick="approveEdition()">Approve for scheduled send</button>` : ''}
+            ${status === 'approved' ? `<button class="btn btn-nl" onclick="sendNow(event)">Send now</button>` : ''}
           </div>
           ${optInBar}
         </div>
       `;
+
+      document.getElementById('sendStatusPanel').innerHTML = renderSendStatus();
 
       // Subject
       document.getElementById('subjectLine').innerHTML = `<strong>Subject:</strong> ${esc(currentSubject)}`;
@@ -1032,15 +1140,41 @@
 
     async function approveEdition() {
       const count = recipientCount ? ` This will go to ${recipientCount.emailCount} recipients.` : '';
-      if (!confirm('Approve this edition?' + count + ' It will be sent on the next scheduled run.')) return;
+      const sendWindow = getSendWindowInfo();
+      const timing = sendWindow.isOpen
+        ? ' The send window is already open; the sender will pick it up on the next scheduled check.'
+        : ` The sender will pick it up at ${sendWindow.formatted}.`;
+      if (!confirm('Approve this edition for scheduled delivery?' + count + timing)) return;
       try {
         const res = await api('/editions/' + currentDigest.id + '/approve', { method: 'POST' });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
         currentDigest = data.digest;
         render();
-        toast('Approved');
+        toast('Approved for scheduled send');
       } catch (err) { toast('Approve failed: ' + esc(err.message)); }
+    }
+
+    async function sendNow(event) {
+      const btn = event?.currentTarget;
+      const count = recipientCount ? ` This will go to ${recipientCount.emailCount} recipients and post to Slack if configured.` : '';
+      if (!confirm('Send this approved edition now?' + count)) return;
+      try {
+        if (btn) { btn.disabled = true; btn.textContent = 'Sending...'; }
+        const res = await api('/editions/' + currentDigest.id + '/send-now', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        currentDigest = data.digest;
+        currentSubject = data.subject || currentSubject;
+        uiConfig = data.uiConfig || uiConfig;
+        applyConfig();
+        render();
+        const sent = data.result?.sent;
+        toast(Number.isFinite(sent) ? `Sent ${sent} emails` : 'Sent');
+      } catch (err) {
+        toast('Send failed: ' + esc(err.message));
+        if (btn) { btn.disabled = false; btn.textContent = 'Send now'; }
+      }
     }
 
     async function sendTest() {
