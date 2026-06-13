@@ -875,19 +875,21 @@
 
     function renderSeatUsage(usage, limits) {
       const el = document.getElementById('seatUsageSummary');
+      const hasCommunitySeats = limits.community !== 0;
       const communityLimit = limits.community === -1 ? '&infin;' : limits.community;
       el.style.display = 'grid';
-      el.style.gridTemplateColumns = '1fr 1fr';
+      el.style.gridTemplateColumns = hasCommunitySeats ? '1fr 1fr' : '1fr';
       el.style.gap = 'var(--space-3)';
       el.innerHTML = `
-        <div style="padding: var(--space-3); background: var(--color-primary-50); border-radius: var(--radius-md); font-size: var(--text-sm);">
-          <strong>${usage.contributor} / ${limits.contributor}</strong> Contributor seats
+        <div style="padding: var(--space-3); background: var(--color-primary-100); border: 1px solid var(--color-primary-200); border-radius: var(--radius-md); font-size: var(--text-sm);">
+          <strong style="color: var(--color-primary-800);">${usage.contributor} / ${limits.contributor} Contributor seats</strong>
           <div style="font-size: 10px; color: var(--color-text-muted); margin-top: 2px;">Slack, working groups, councils, summit</div>
         </div>
-        <div style="padding: var(--space-3); background: var(--color-success-50); border-radius: var(--radius-md); font-size: var(--text-sm);">
-          <strong>${usage.community_only} / ${communityLimit}</strong> Community seats
+        ${hasCommunitySeats ? `
+        <div style="padding: var(--space-3); background: var(--color-success-100); border: 1px solid var(--color-success-200); border-radius: var(--radius-md); font-size: var(--text-sm);">
+          <strong style="color: var(--color-success-800);">${usage.community_only} / ${communityLimit} Community seats</strong>
           <div style="font-size: 10px; color: var(--color-text-muted); margin-top: 2px;">Addie, certification, training, chapters</div>
-        </div>
+        </div>` : ''}
       `;
     }
 
