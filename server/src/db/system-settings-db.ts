@@ -353,20 +353,31 @@ export async function setAnnouncementChannel(
 
 // ============== Certification Protocol-Update Gates ==============
 
-export async function getS2CanonicalFormatsDeltaRelease(): Promise<S2CanonicalFormatsDeltaReleaseSetting> {
-  const result = await getSetting<S2CanonicalFormatsDeltaReleaseSetting>(
-    SETTING_KEYS.CERTIFICATION_S2_CANONICAL_FORMATS_DELTA_RELEASE,
-  );
+/**
+ * Release gate for a protocol-triggered recertification delta. Keyed by the
+ * delta's `release_setting_key` so the recertification engine can read any
+ * module's gate, not just S2. An unset gate reads as "both dates unconfigured."
+ */
+export async function getDeltaRelease(key: string): Promise<S2CanonicalFormatsDeltaReleaseSetting> {
+  const result = await getSetting<S2CanonicalFormatsDeltaReleaseSetting>(key);
   return result ?? { adcp_3_1_ga_at: null, criteria_deployed_at: null };
+}
+
+export async function setDeltaRelease(
+  key: string,
+  value: S2CanonicalFormatsDeltaReleaseSetting,
+  updatedBy?: string,
+): Promise<void> {
+  await setSetting<S2CanonicalFormatsDeltaReleaseSetting>(key, value, updatedBy);
+}
+
+export async function getS2CanonicalFormatsDeltaRelease(): Promise<S2CanonicalFormatsDeltaReleaseSetting> {
+  return getDeltaRelease(SETTING_KEYS.CERTIFICATION_S2_CANONICAL_FORMATS_DELTA_RELEASE);
 }
 
 export async function setS2CanonicalFormatsDeltaRelease(
   value: S2CanonicalFormatsDeltaReleaseSetting,
   updatedBy?: string
 ): Promise<void> {
-  await setSetting<S2CanonicalFormatsDeltaReleaseSetting>(
-    SETTING_KEYS.CERTIFICATION_S2_CANONICAL_FORMATS_DELTA_RELEASE,
-    value,
-    updatedBy,
-  );
+  await setDeltaRelease(SETTING_KEYS.CERTIFICATION_S2_CANONICAL_FORMATS_DELTA_RELEASE, value, updatedBy);
 }

@@ -1,14 +1,16 @@
 import { query, getClient } from './client.js';
 import { createLogger } from '../logger.js';
 import {
-  computeS2CanonicalFormatsDeltaStatus,
+  computeProtocolDeltaStatus,
   S2_CANONICAL_FORMATS_CREDENTIAL_ID,
   S2_CANONICAL_FORMATS_CRITERION_IDS,
   S2_CANONICAL_FORMATS_DELTA_UPDATE_ID,
   S2_CANONICAL_FORMATS_MODULE_ID,
+  type ProtocolDeltaStatus,
   type S2CanonicalFormatsDeltaStatus,
 } from '../certification/s2-canonical-formats-delta.js';
-import { getS2CanonicalFormatsDeltaRelease } from './system-settings-db.js';
+import { S2_DELTA_DEFINITION, type DeltaDefinition } from '../config/recertification-deltas.js';
+import { getDeltaRelease } from './system-settings-db.js';
 
 const logger = createLogger('certification-db');
 
@@ -735,14 +737,17 @@ export async function getUserCredentials(userId: string): Promise<UserCredential
   return result.rows;
 }
 
-export interface S2CanonicalFormatsDeltaEvidence {
+export interface ProtocolDeltaEvidence {
   verifiedCriterionIds: string[];
   evidenceByCriterionId: Record<string, string>;
 }
 
-export async function getS2CanonicalFormatsDeltaEvidence(
+export type S2CanonicalFormatsDeltaEvidence = ProtocolDeltaEvidence;
+
+export async function getDeltaEvidence(
+  def: DeltaDefinition,
   userId: string,
-): Promise<S2CanonicalFormatsDeltaEvidence> {
+): Promise<ProtocolDeltaEvidence> {
   const result = await query<{ criterion_id: string; evidence: string | null }>(
     `SELECT v.criterion_id,
             NULLIF(BTRIM(tc.demonstration_evidence ->> v.criterion_id), '') AS evidence
@@ -752,7 +757,7 @@ export async function getS2CanonicalFormatsDeltaEvidence(
        AND tc.module_id = $2
        AND v.criterion_id = ANY($3::text[])
      ORDER BY tc.created_at DESC`,
-    [userId, S2_CANONICAL_FORMATS_MODULE_ID, [...S2_CANONICAL_FORMATS_CRITERION_IDS]]
+    [userId, def.module_id, [...def.criterion_ids]]
   );
 
   const evidenceByCriterionId: Record<string, string> = {};
@@ -768,18 +773,19 @@ export async function getS2CanonicalFormatsDeltaEvidence(
   };
 }
 
-export async function getS2CanonicalFormatsDeltaCompletedAt(userId: string): Promise<string | null> {
+export async function getDeltaCompletedAt(def: DeltaDefinition, userId: string): Promise<string | null> {
   const result = await query<{ completed_at: string }>(
     `SELECT completed_at
      FROM learner_protocol_updates
      WHERE workos_user_id = $1 AND update_id = $2
      LIMIT 1`,
-    [userId, S2_CANONICAL_FORMATS_DELTA_UPDATE_ID]
+    [userId, def.update_id]
   );
   return result.rows[0]?.completed_at ?? null;
 }
 
-export async function recordS2CanonicalFormatsDeltaCompletion(
+export async function recordDeltaCompletion(
+  def: DeltaDefinition,
   userId: string,
   attemptId: string,
   evidenceByCriterionId: Record<string, string>,
@@ -795,39 +801,39 @@ export async function recordS2CanonicalFormatsDeltaCompletion(
            evidence = EXCLUDED.evidence`,
     [
       userId,
-      S2_CANONICAL_FORMATS_DELTA_UPDATE_ID,
-      S2_CANONICAL_FORMATS_MODULE_ID,
-      S2_CANONICAL_FORMATS_CREDENTIAL_ID,
+      def.update_id,
+      def.module_id,
+      def.credential_id,
       attemptId,
-      [...S2_CANONICAL_FORMATS_CRITERION_IDS],
+      [...def.criterion_ids],
       JSON.stringify(evidenceByCriterionId),
     ]
   );
 }
 
-async function hasS2CanonicalFormatsCriteriaPresent(): Promise<boolean> {
-  const mod = await getModule(S2_CANONICAL_FORMATS_MODULE_ID);
+export async function hasCriteriaPresent(def: DeltaDefinition): Promise<boolean> {
+  const mod = await getModule(def.module_id);
   const exerciseDefs = mod?.exercise_definitions ?? [];
   const ids = new Set(
     exerciseDefs.flatMap(ex =>
       ex.success_criteria.map(sc => typeof sc === 'string' ? sc : sc.id)
     )
   );
-  return S2_CANONICAL_FORMATS_CRITERION_IDS.every(id => ids.has(id));
+  return def.criterion_ids.every(id => ids.has(id));
 }
 
-async function hasPriorAuditableS2Record(
+export async function hasPriorAuditableRecord(
+  def: DeltaDefinition,
   userId: string,
-  s2CompletedAt: string | null | undefined,
+  moduleCompletedAt: string | null | undefined,
 ): Promise<boolean> {
-  if (!s2CompletedAt) return false;
+  if (!moduleCompletedAt) return false;
 
-  const mod = await getModule(S2_CANONICAL_FORMATS_MODULE_ID);
+  const mod = await getModule(def.module_id);
+  const deltaCriterionIds = new Set<string>(def.criterion_ids);
   const priorCriterionIds = (mod?.exercise_definitions ?? [])
     .flatMap(ex => ex.success_criteria.map(sc => typeof sc === 'string' ? sc : sc.id))
-    .filter(id => !S2_CANONICAL_FORMATS_CRITERION_IDS.includes(
-      id as (typeof S2_CANONICAL_FORMATS_CRITERION_IDS)[number],
-    ));
+    .filter(id => !deltaCriterionIds.has(id));
   if (priorCriterionIds.length === 0) return false;
 
   const result = await query<{ criterion_id: string }>(
@@ -839,13 +845,14 @@ async function hasPriorAuditableS2Record(
        AND tc.created_at <= $3::timestamptz + INTERVAL '1 hour'
        AND v.criterion_id = ANY($4::text[])
        AND NULLIF(BTRIM(tc.demonstration_evidence ->> v.criterion_id), '') IS NOT NULL`,
-    [userId, S2_CANONICAL_FORMATS_MODULE_ID, s2CompletedAt, priorCriterionIds]
+    [userId, def.module_id, moduleCompletedAt, priorCriterionIds]
   );
   const evidenced = new Set(result.rows.map(row => row.criterion_id));
   return priorCriterionIds.every(id => evidenced.has(id));
 }
 
-export async function completeS2CanonicalFormatsDeltaAttempt(
+export async function completeDeltaAttempt(
+  def: DeltaDefinition,
   attemptId: string,
   userId: string,
   scores: Record<string, number>,
@@ -873,12 +880,12 @@ export async function completeS2CanonicalFormatsDeltaAttempt(
         JSON.stringify(scores),
         overallScore,
         userId,
-        S2_CANONICAL_FORMATS_MODULE_ID,
+        def.module_id,
       ]
     );
     const attempt = attemptResult.rows[0];
     if (!attempt) {
-      throw new Error(`Active S2 canonical formats delta attempt ${attemptId} not found`);
+      throw new Error(`Active ${def.label} delta attempt ${attemptId} not found`);
     }
 
     await client.query(
@@ -892,11 +899,11 @@ export async function completeS2CanonicalFormatsDeltaAttempt(
              evidence = EXCLUDED.evidence`,
       [
         userId,
-        S2_CANONICAL_FORMATS_DELTA_UPDATE_ID,
-        S2_CANONICAL_FORMATS_MODULE_ID,
-        S2_CANONICAL_FORMATS_CREDENTIAL_ID,
+        def.update_id,
+        def.module_id,
+        def.credential_id,
         attemptId,
-        [...S2_CANONICAL_FORMATS_CRITERION_IDS],
+        [...def.criterion_ids],
         JSON.stringify(evidenceByCriterionId),
       ]
     );
@@ -911,34 +918,70 @@ export async function completeS2CanonicalFormatsDeltaAttempt(
   }
 }
 
+export async function getDeltaStatus(
+  def: DeltaDefinition,
+  userId: string,
+  now: Date = new Date(),
+): Promise<ProtocolDeltaStatus> {
+  const [release, credentials, moduleProgress, evidence, deltaCompletedAt, criteriaPresent] = await Promise.all([
+    getDeltaRelease(def.release_setting_key),
+    getUserCredentials(userId),
+    getModuleProgress(userId, def.module_id),
+    getDeltaEvidence(def, userId),
+    getDeltaCompletedAt(def, userId),
+    hasCriteriaPresent(def),
+  ]);
+
+  const credential = credentials.find(c => c.credential_id === def.credential_id);
+
+  return computeProtocolDeltaStatus(def, {
+    release,
+    hasCredential: !!credential,
+    credentialAwardedAt: credential?.awarded_at ?? null,
+    moduleCompletedAt: moduleProgress?.completed_at ?? null,
+    deltaCompletedAt,
+    criteriaPresent,
+    hasPriorAuditableRecord: await hasPriorAuditableRecord(def, userId, moduleProgress?.completed_at),
+    verifiedCriterionIds: evidence.verifiedCriterionIds,
+    now,
+  });
+}
+
+// ----- S2 canonical-formats delta — back-compat wrappers binding the S2 definition -----
+
+export async function getS2CanonicalFormatsDeltaEvidence(
+  userId: string,
+): Promise<S2CanonicalFormatsDeltaEvidence> {
+  return getDeltaEvidence(S2_DELTA_DEFINITION, userId);
+}
+
+export async function getS2CanonicalFormatsDeltaCompletedAt(userId: string): Promise<string | null> {
+  return getDeltaCompletedAt(S2_DELTA_DEFINITION, userId);
+}
+
+export async function recordS2CanonicalFormatsDeltaCompletion(
+  userId: string,
+  attemptId: string,
+  evidenceByCriterionId: Record<string, string>,
+): Promise<void> {
+  return recordDeltaCompletion(S2_DELTA_DEFINITION, userId, attemptId, evidenceByCriterionId);
+}
+
+export async function completeS2CanonicalFormatsDeltaAttempt(
+  attemptId: string,
+  userId: string,
+  scores: Record<string, number>,
+  overallScore: number,
+  evidenceByCriterionId: Record<string, string>,
+): Promise<CertificationAttempt> {
+  return completeDeltaAttempt(S2_DELTA_DEFINITION, attemptId, userId, scores, overallScore, evidenceByCriterionId);
+}
+
 export async function getS2CanonicalFormatsDeltaStatus(
   userId: string,
   now: Date = new Date(),
 ): Promise<S2CanonicalFormatsDeltaStatus> {
-  const [release, credentials, s2Progress, evidence, deltaCompletedAt, criteriaPresent] = await Promise.all([
-    getS2CanonicalFormatsDeltaRelease(),
-    getUserCredentials(userId),
-    getModuleProgress(userId, S2_CANONICAL_FORMATS_MODULE_ID),
-    getS2CanonicalFormatsDeltaEvidence(userId),
-    getS2CanonicalFormatsDeltaCompletedAt(userId),
-    hasS2CanonicalFormatsCriteriaPresent(),
-  ]);
-
-  const creativeCredential = credentials.find(
-    c => c.credential_id === S2_CANONICAL_FORMATS_CREDENTIAL_ID
-  );
-
-  return computeS2CanonicalFormatsDeltaStatus({
-    release,
-    hasCreativeSpecialistCredential: !!creativeCredential,
-    credentialAwardedAt: creativeCredential?.awarded_at ?? null,
-    s2CompletedAt: s2Progress?.completed_at ?? null,
-    deltaCompletedAt,
-    canonicalCriteriaPresent: criteriaPresent,
-    hasPriorAuditableS2Record: await hasPriorAuditableS2Record(userId, s2Progress?.completed_at),
-    verifiedCriterionIds: evidence.verifiedCriterionIds,
-    now,
-  });
+  return getDeltaStatus(S2_DELTA_DEFINITION, userId, now) as Promise<S2CanonicalFormatsDeltaStatus>;
 }
 
 /**
