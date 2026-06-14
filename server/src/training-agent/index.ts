@@ -631,6 +631,19 @@ export function createTrainingAgentRouter(options: { storyboardCompat?: Training
     // below.
     res.setHeader('Vary', 'X-Forwarded-Host, X-Forwarded-Proto, Host');
     res.setHeader('Cache-Control', 'public, max-age=300');
+    if (req.query.compat === '3.0') {
+      res.json({
+        $schema: '/schemas/brand.json',
+        version: '1.0',
+        agents,
+        contact: {
+          name: 'AdCP Training Agent',
+          email: 'hello@agenticadvertising.org',
+        },
+        last_updated: STARTUP_TIME,
+      });
+      return;
+    }
     res.json({
       $schema: '/schemas/brand.json',
       version: '1.0',

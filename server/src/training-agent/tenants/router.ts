@@ -646,9 +646,26 @@ function projectWholesaleCapabilities(
   tenantId: string,
   storyboardCompat?: TrainingContext['storyboardCompat'],
 ): void {
+  const addWebhookSigningIdentity = (): void => {
+    structured.webhook_signing = {
+      supported: true,
+      profile: 'adcp/webhook-signing/v1',
+      algorithms: ['ed25519'],
+      legacy_hmac_fallback: true,
+    };
+    const brandJsonUrl = storyboardCompat?.version === '3.0'
+      ? `${getAgentUrl()}/.well-known/brand.json?compat=3.0`
+      : `${getAgentUrl()}/.well-known/brand.json`;
+    structured.identity = {
+      ...(structured.identity ?? {}),
+      brand_json_url: brandJsonUrl,
+    };
+  };
+
   if (storyboardCompat?.version === '3.0') {
     delete structured.wholesale_feed_versioning;
     delete structured.wholesale_feed_webhooks;
+    addWebhookSigningIdentity();
     return;
   }
 
@@ -689,16 +706,7 @@ function projectWholesaleCapabilities(
       'wholesale_feed.bulk_change',
     ],
   };
-  structured.webhook_signing = {
-    supported: true,
-    profile: 'adcp/webhook-signing/v1',
-    algorithms: ['ed25519'],
-    legacy_hmac_fallback: true,
-  };
-  structured.identity = {
-    ...(structured.identity ?? {}),
-    brand_json_url: `${getAgentUrl()}/.well-known/brand.json`,
-  };
+  addWebhookSigningIdentity();
 }
 
 /**

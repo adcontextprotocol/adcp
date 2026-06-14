@@ -138,12 +138,12 @@ jobs:
                   git checkout --ours -- "$f"
                   git add -- "$f"
                   ;;
-                # Schema source index files carry version metadata that gets
-                # regenerated on every release build (scripts/build-schemas.cjs
-                # populates published_version / adcp_version from package.json).
-                # Take theirs — values get overwritten on next release.
+                # Schema source index files carry branch-local version
+                # metadata. Preserve main's copy so pre-mode package metadata
+                # stays in sync; 3.0.x's published schemas still flow forward
+                # through dist/schemas/<version>/.
                 static/schemas/source/index.json|static/schemas/source/registry/index.yaml)
-                  git checkout --theirs -- "$f"
+                  git checkout --ours -- "$f"
                   git add -- "$f"
                   ;;
                 # CHANGELOG.md: both lines prepend new entries via changesets;
@@ -256,8 +256,8 @@ jobs:
             - `.changeset/*.md` / `.changeset/pre.json` → preserve main's
               state (main consumes changesets on its own beta schedule)
             - `static/schemas/source/index.json`,
-              `static/schemas/source/registry/index.yaml` → take 3.0.x's
-              (regenerated on next release build anyway)
+              `static/schemas/source/registry/index.yaml` → preserve main's
+              branch-local version metadata
             - `CHANGELOG.md` → take 3.0.x's (main's next Version Packages
               cut prepends its own beta entries above)
             - `dist/*` → take 3.0.x's (versioned release artifacts)

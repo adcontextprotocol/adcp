@@ -254,6 +254,10 @@ function lintStoryboardIdempotency(sourceDir, schemasDir) {
   const duplicateGeneratedKeyViolations = [];
   const missingSchemaRefs = [];
   const generatedKeyUses = new Map();
+  const duplicateGeneratedKeyAllowedFiles = new Set([
+    'universal/idempotency.yaml',
+    'universal/webhook-emission.yaml',
+  ]);
 
   function isGeneratedIdempotencyKey(value, generatedContextNames) {
     if (typeof value !== 'string') return false;
@@ -326,7 +330,7 @@ function lintStoryboardIdempotency(sourceDir, schemasDir) {
               task: step.task,
               key,
             });
-          } else if (rel !== 'universal/idempotency.yaml') {
+          } else if (!duplicateGeneratedKeyAllowedFiles.has(rel)) {
             const existing = generatedKeyUses.get(key);
             const current = {
               file: rel,
@@ -403,7 +407,7 @@ function lintStoryboardIdempotency(sourceDir, schemasDir) {
       `Storyboard idempotency_key freshness lint: ${duplicateGeneratedKeyViolations.length} duplicate generated alias use(s).\n\n` +
       lines.join('\n') +
       `\n\nUse a unique \`$generate:uuid_v4#...\` alias for each mutating storyboard step. ` +
-      `Only universal/idempotency.yaml may intentionally reuse aliases for replay vectors.`
+      `Only universal/idempotency.yaml and universal/webhook-emission.yaml may intentionally reuse aliases for replay vectors.`
     );
   }
 

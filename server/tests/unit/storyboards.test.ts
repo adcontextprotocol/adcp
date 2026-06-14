@@ -168,7 +168,7 @@ describe('wrapper contract', () => {
     const target = hostedComplianceTarget();
     const index = loadComplianceIndex(hostedComplianceOptions(target));
     expect(index.adcp_version).toBe(DEFAULT_HOSTED_COMPLIANCE_VERSION);
-    expect(DEFAULT_HOSTED_COMPLIANCE_VERSION).toBe('3.0.14');
+    expect(DEFAULT_HOSTED_COMPLIANCE_VERSION).toBe('3.0.16');
     expect(DEFAULT_HOSTED_COMPLIANCE_LINE).toBe('3.0');
     expect(HOSTED_FULL_COMPLIANCE_TIMEOUT_MS).toBe(600_000);
     expect(target.requested).toBe(DEFAULT_HOSTED_COMPLIANCE_LINE);
@@ -180,7 +180,7 @@ describe('wrapper contract', () => {
   it('resolves compliance target aliases against checked-in caches', () => {
     const stable = hostedComplianceTarget('3.0');
     expect(stable.requested).toBe('3.0');
-    expect(stable.version).toBe('3.0.14');
+    expect(stable.version).toBe('3.0.16');
     expect(stable.version).toMatch(/^3\.0\.\d+$/);
 
     const beta = hostedComplianceTarget('3.1-beta');

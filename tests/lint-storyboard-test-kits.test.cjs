@@ -54,6 +54,25 @@ test('classify: brand kit (auth.basic credentials only)', () => {
   assert.equal(hasAppliesTo, false);
 });
 
+test('classify: malformed auth.basic shapes do not count as brand kits', () => {
+  const cases = [
+    { auth: { basic: { credentials: 'demo-user' } } },
+    { auth: { basic: { credentials: ':demo-password' } } },
+    { auth: { basic: { credentials: 'demo-user:' } } },
+    { auth: { basic: { username: 'demo-user' } } },
+    { auth: { basic: { password: 'demo-password' } } },
+    { auth: { basic: { username: '', password: 'demo-password' } } },
+    { auth: { basic: { username: 'demo-user', password: '' } } },
+    { auth: { basic: { username: 'demo\nuser', password: 'demo-password' } } },
+  ];
+  for (const doc of cases) {
+    const { hasApiKey, hasBasic, hasAppliesTo } = classify(doc);
+    assert.equal(hasApiKey, false);
+    assert.equal(hasBasic, false);
+    assert.equal(hasAppliesTo, false);
+  }
+});
+
 test('classify: runner contract (applies_to only)', () => {
   const { hasApiKey, hasBasic, hasAppliesTo } = classify({ applies_to: { universal_storyboard: 'signed-requests' } });
   assert.equal(hasApiKey, false);

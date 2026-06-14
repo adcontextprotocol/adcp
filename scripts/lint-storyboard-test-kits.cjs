@@ -41,6 +41,18 @@ const RULE_MESSAGES = {
     'static/compliance/source/universal/storyboard-schema.yaml.',
 };
 
+function isSafeBasicPart(value) {
+  return typeof value === 'string' && value.length > 0 && !/[\r\n\x00]|[^\x20-\x7E]/.test(value);
+}
+
+function hasUsableBasicCredential(basic) {
+  if (basic === null || typeof basic !== 'object') return false;
+  if (isSafeBasicPart(basic.username) && isSafeBasicPart(basic.password)) return true;
+  if (!isSafeBasicPart(basic.credentials)) return false;
+  const colonIndex = basic.credentials.indexOf(':');
+  return colonIndex > 0 && colonIndex < basic.credentials.length - 1;
+}
+
 /**
  * Classify a parsed kit doc by which partition markers it carries.
  *
@@ -61,10 +73,7 @@ function classify(doc) {
     auth !== null &&
     typeof auth.api_key === 'string';
   const basic = auth !== null && auth.basic !== null && typeof auth.basic === 'object' ? auth.basic : null;
-  const hasBasic =
-    basic !== null &&
-    ((typeof basic.username === 'string' && typeof basic.password === 'string') ||
-      typeof basic.credentials === 'string');
+  const hasBasic = hasUsableBasicCredential(basic);
   const hasAppliesTo =
     isObject && doc.applies_to !== undefined && doc.applies_to !== null;
   return { hasApiKey, hasBasic, hasAppliesTo };
