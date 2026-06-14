@@ -2090,6 +2090,14 @@
   },
   "redirects": [
     {
+      "source": "/docs/governance/content-standards/overview",
+      "destination": "/docs/governance/content-standards/index"
+    },
+    {
+      "source": "/docs/learning/basics/intro",
+      "destination": "/docs/learning/overview"
+    },
+    {
       "source": "/docs/building/schemas-and-sdks",
       "destination": "/docs/building/by-layer/L0/schemas"
     },

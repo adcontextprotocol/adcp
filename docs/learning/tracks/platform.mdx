@@ -158,7 +158,7 @@ How AdCP coexists with existing programmatic infrastructure. Migration strategie
 ### Key concepts
 
 - **Coexistence strategy** — run AdCP alongside OpenRTB, gradually migrating workflows
-- **TMP as the bridge** — TMP connects planning-time media buys to serve-time decisions through two structurally separated operations (Context Match and Identity Match). The TMP Router fans out to configured providers in parallel and the publisher joins responses locally. This is how cross-publisher frequency capping, suppression, and suitability work at impression time
+- **TMP as the bridge** — TMP connects planning-time media buys to serve-time decisions through two structurally separated operations (Context Match and Identity Match). The TMP Router fans out to configured providers in parallel and the publisher joins responses locally. This is how cross-publisher frequency capping, suppression, and suitability work at impression time. TMP is an [experimental surface](/docs/reference/experimental-status) in AdCP 3.0 (feature id `trusted_match.core`); router, exposure-token, and identity-match details may change between 3.x releases with at least 6 weeks' notice.
 - **Router deployment and fan-out patterns** — how the TMP Router is deployed, provider configuration, and parallel fan-out to multiple match providers
 - **Platform-specific migration** — DSPs wrap bidding logic, SSPs expose inventory, exchanges translate
 - **Performance benchmarking** — compare agentic vs traditional on campaign performance, efficiency, cost

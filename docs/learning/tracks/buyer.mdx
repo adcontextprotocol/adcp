@@ -74,7 +74,7 @@ How buyer agents orchestrate across multiple sales agents simultaneously: discov
 - **Negotiated accountability** — for guaranteed buys, propose `measurement_terms` / `performance_standards`; seller accepts, adjusts, or returns `TERMS_REJECTED`. S1 covers the recovery patterns
 - **Account required on updates** — `update_media_buy` takes `account` + `media_buy_id`; omitting `account` is a protocol error
 - **Audience targeting** — `sync_audiences` for custom segments
-- **Impression-time execution** — campaigns activate through TMP at serve time; frequency caps, audience eligibility, and brand suitability are enforced via Identity Match without exposing user data to buyers alongside content context
+- **Impression-time execution** — campaigns activate through TMP at serve time; frequency caps, audience eligibility, and brand suitability are enforced via Identity Match without exposing user data to buyers alongside content context. TMP is an [experimental surface](/docs/reference/experimental-status) in AdCP 3.0 (feature id `trusted_match.core`); the privacy architecture and identity-match details may change between 3.x releases with at least 6 weeks' notice.
 - **Account setup** — `sync_accounts` to establish billing before buying
 
 <Card title="Start C1 with Addie" icon="play" href="https://agenticadvertising.org/chat">
@@ -133,6 +133,9 @@ The Brand Protocol (`brand.json`), content standards, and how brand agents enfor
   </Card>
   <Card title="Policy registry" icon="book" href="/docs/governance/policy-registry">
     Community-maintained compliance policies (COPPA, GDPR, HFSS) that brands reference by ID.
+  </Card>
+  <Card title="Your measurement & verification stack" icon="ruler-combined" href="/docs/reference/known-limitations">
+    AdCP's content standards are generation-time brand safety — they do **not** replace your verification vendors. AdCP carries the delivery and usage data your existing IAS, DV, Nielsen, Comscore, and attribution tools consume; you keep those contracts and accreditations. See also the [FAQ](/docs/faq).
   </Card>
 </CardGroup>
 
@@ -238,7 +241,11 @@ S2 goes deeper on [authoring manifests](/docs/learning/specialist/creative), `fo
 
 **~45 min** | Prerequisite: C3
 
-Create a working buyer agent that discovers products and executes media buys. Use any AI coding assistant (Claude Code, Cursor, Copilot) with the [`@adcp/sdk`](/docs/building/schemas-and-sdks) SDK. The skill tested is orchestrating a buying workflow correctly.
+Create a working buyer agent that discovers products and executes media buys. Use any AI coding assistant (Claude Code, Cursor, Copilot) with the [`@adcp/sdk`](/docs/building/schemas-and-sdks) SDK, and point it at the [Build a caller](/docs/building/by-layer/L4/build-a-caller) guide — the buyer/caller-side reference for installing the client, discovering capabilities, and handling responses. The skill tested is orchestrating a buying workflow correctly.
+
+<Tip>
+New to running tool calls and reading JSON in a terminal? Do [A2b: Testing your first agent](/docs/learning/foundations/a2b-testing-your-first-agent) first — it walks through initializing an MCP session, reading response fields, and telling errors apart from normal output, which this build project assumes you can do.
+</Tip>
 
 ### What you'll build
 
@@ -250,13 +257,16 @@ Create a working buyer agent that discovers products and executes media buys. Us
 
 ### How you'll validate
 
-Your buyer agent runs against the public test agent (`test-mcp`). Use `npx @adcp/sdk@latest` to execute tool calls and verify your agent handles the complete buying workflow:
+Your buyer agent is a *caller* — it consumes seller tools rather than exposing them. Validate it by pointing your agent at the public test **seller** (`https://test-agent.adcontextprotocol.org/sales/mcp`) and confirming it drives the full workflow end to end: discovers products, creates a media buy, syncs a creative, and reads delivery.
+
+To see the seller responses your agent must handle, you can inspect the test seller directly. This shows you the shape your buyer agent receives — it does **not** test your agent:
 
 ```bash
+# Inspects the test SELLER's get_products response — the shape your buyer agent must parse.
 npx @adcp/sdk@latest test-mcp get_products '{"brief":"your campaign brief"}'
 ```
 
-See [Validate Your Agent](/docs/building/validate-your-agent) for CLI setup and the full testing workflow.
+See [Build a caller](/docs/building/by-layer/L4/build-a-caller) for client setup and [Validate Your Agent](/docs/building/verification/validate-your-agent) for the storyboard workflow.
 
 ### Validating across sellers
 
