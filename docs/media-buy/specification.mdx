@@ -350,6 +350,7 @@ Retrieve operational media buy state, including package status, creative approva
 - Orchestrators SHOULD use cursor pagination (`pagination.max_results` / `pagination.cursor`) for broad scope queries
 - Sales agents MUST return every media buy owned by the authenticated account that matches the declared filter set, regardless of how the buy was created (AdCP, seller's native APIs/UI, manual trafficking, legacy systems). See [Account Ownership vs. Creation Surface](#account-ownership-vs-creation-surface).
 - Sales agents MUST return current media buy status and package-level operational state for each matched media buy
+- Sales agents SHOULD include `status_as_of` when the returned media-buy-level `status` is served from a cache or computed as a rolled-up status from upstream legs. For rolled-up statuses, `status_as_of` MUST NOT be later than the oldest upstream status observation that could affect the returned roll-up, so it never overstates freshness. Omit it or return `null` to make no freshness assertion; buyers MUST NOT infer that an omitted or null value means the status is live. Buyers use `status_as_of` to interpret list-status freshness; `updated_at` remains the media buy's last modification time.
 - Sales agents SHOULD include `valid_actions` for each media buy, listing the actions the buyer can perform in the current state. This eliminates the need for agents to internalize the state machine. Expected mapping:
 
 | Status | Expected `valid_actions` |

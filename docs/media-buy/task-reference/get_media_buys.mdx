@@ -59,6 +59,7 @@ Returns an array of media buys with current status, creative approval state, and
 | `media_buy_id` | Seller's media buy identifier |
 | `invoice_recipient` | Per-buy invoice recipient when provided at creation. Confirms the seller accepted the billing override. Bank details are omitted (write-only). |
 | `status` | Current status (`pending_creatives`, `pending_start`, `active`, `paused`, `completed`, `rejected`, `canceled`). Maps to `media_buy_status` on `create_media_buy` / `update_media_buy` success responses (3.1 vocabulary note above). |
+| `status_as_of` | ISO 8601 timestamp when the seller last refreshed the returned media-buy-level `status` from its source of truth. For rolled-up statuses, this MUST NOT be later than the oldest upstream status observation that could affect the returned roll-up. Optional; omitted or `null` makes no freshness assertion, and buyers MUST NOT infer live status from absence. Use this to interpret cached or rolled-up statuses separately from `updated_at`, which means the media buy's last modification time. |
 | `currency` | ISO 4217 currency for media-buy-level monetary values |
 | `total_budget` | Total campaign budget (in `currency`) |
 | `creative_deadline` | Creative upload deadline (ISO 8601) |

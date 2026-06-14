@@ -1,0 +1,120 @@
+{
+  "version": 1,
+  "schema": "/schemas/media-buy/get-media-buys-response.json",
+  "description": "Positive wire-level vectors for media_buys[].status_as_of in get_media_buys responses. Covers cached rolled-up list status with a timestamp, explicit null for no freshness assertion, and omitted optional freshness.",
+  "vectors": [
+    {
+      "id": "cached-rollup-status",
+      "description": "Curator/storefront seller returns a cached rolled-up status and identifies when that status was last refreshed from the upstream source of truth.",
+      "payload": {
+        "status": "completed",
+        "media_buys": [
+          {
+            "media_buy_id": "mb_acme_storefront_rollup_001",
+            "status": "active",
+            "status_as_of": "2026-06-14T13:45:00Z",
+            "currency": "USD",
+            "total_budget": 50000,
+            "confirmed_at": "2026-06-01T12:00:00Z",
+            "revision": 4,
+            "start_time": "2026-06-10T00:00:00Z",
+            "end_time": "2026-07-10T23:59:59Z",
+            "created_at": "2026-06-01T12:00:00Z",
+            "updated_at": "2026-06-12T18:30:00Z",
+            "packages": [
+              {
+                "package_id": "pkg_acme_storefront_rollup_video",
+                "product_id": "prod_storefront_video",
+                "budget": 50000,
+                "currency": "USD",
+                "start_time": "2026-06-10T00:00:00Z",
+                "end_time": "2026-07-10T23:59:59Z"
+              }
+            ]
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "path": "media_buys[0].status_as_of",
+          "value": "2026-06-14T13:45:00Z"
+        }
+      ]
+    },
+    {
+      "id": "live-status-null-freshness",
+      "description": "Seller explicitly returns null when it makes no freshness assertion about the returned status.",
+      "payload": {
+        "status": "completed",
+        "media_buys": [
+          {
+            "media_buy_id": "mb_nova_direct_live_001",
+            "status": "pending_start",
+            "status_as_of": null,
+            "currency": "USD",
+            "total_budget": 12500,
+            "confirmed_at": "2026-06-14T10:00:00Z",
+            "revision": 1,
+            "start_time": "2026-06-20T00:00:00Z",
+            "end_time": "2026-07-20T23:59:59Z",
+            "created_at": "2026-06-14T10:00:00Z",
+            "updated_at": "2026-06-14T10:00:00Z",
+            "packages": [
+              {
+                "package_id": "pkg_nova_direct_live_display",
+                "product_id": "prod_display_standard",
+                "budget": 12500,
+                "currency": "USD",
+                "start_time": "2026-06-20T00:00:00Z",
+                "end_time": "2026-07-20T23:59:59Z"
+              }
+            ]
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "path": "media_buys[0].status_as_of",
+          "value": null
+        }
+      ]
+    },
+    {
+      "id": "freshness-omitted",
+      "description": "Seller omits status_as_of when it makes no freshness assertion about the returned status.",
+      "payload": {
+        "status": "completed",
+        "media_buys": [
+          {
+            "media_buy_id": "mb_pinnacle_direct_omitted_001",
+            "status": "active",
+            "currency": "USD",
+            "total_budget": 18000,
+            "confirmed_at": "2026-06-12T09:00:00Z",
+            "revision": 2,
+            "start_time": "2026-06-13T00:00:00Z",
+            "end_time": "2026-07-13T23:59:59Z",
+            "created_at": "2026-06-12T09:00:00Z",
+            "updated_at": "2026-06-13T08:15:00Z",
+            "packages": [
+              {
+                "package_id": "pkg_pinnacle_direct_omitted_audio",
+                "product_id": "prod_audio_standard",
+                "budget": 18000,
+                "currency": "USD",
+                "start_time": "2026-06-13T00:00:00Z",
+                "end_time": "2026-07-13T23:59:59Z"
+              }
+            ]
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "path": "media_buys[0].status_as_of",
+          "absent": true
+        }
+      ]
+    }
+  ]
+}
