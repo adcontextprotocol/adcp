@@ -35,6 +35,11 @@
           "status": {
             "$ref": "/schemas/enums/media-buy-status.json"
           },
+          "status_as_of": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "ISO 8601 timestamp indicating when the seller last refreshed the returned media-buy-level `status` from its source of truth. Use this to interpret cached or rolled-up list statuses, especially for curator/storefront aggregators where one buyer-facing buy maps to multiple upstream legs. For rolled-up statuses, this timestamp MUST NOT be later than the oldest upstream status observation that could affect the returned roll-up, so it never overstates freshness. Omit or return null to make no freshness assertion; buyers MUST NOT infer that an omitted or null value means the status is live. This is distinct from `updated_at`, which records when the media buy was last modified."
+          },
           "health": {
             "allOf": [
               {
