@@ -6,7 +6,9 @@ const SEMVER_PATTERN = String.raw`\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?`;
 const VERSIONED_DIR_RE = new RegExp(
   `^dist/(schemas|compliance|docs)/(${SEMVER_PATTERN})(?:/|$)`
 );
-const PROTOCOL_ARTIFACT_RE = new RegExp(`^dist/protocol/(${SEMVER_PATTERN})(?:[.]|$)`);
+const PROTOCOL_ARTIFACT_RE = new RegExp(
+  `^dist/protocol/(${SEMVER_PATTERN})[.]tgz(?:[.](?:sha256|sig|crt))?$`
+);
 
 function parseImmutableArtifactPath(filePath) {
   const normalized = String(filePath || '').replace(/\\/g, '/').replace(/^\.\//, '');

@@ -33,6 +33,21 @@ assert.deepStrictEqual(
   ]
 );
 
+assert.deepStrictEqual(
+  parseImmutableArtifactPath('dist/protocol/3.1.0-beta.0.tgz.sha256'),
+  {
+    kind: 'protocol',
+    version: '3.1.0-beta.0',
+    releaseRoot: 'dist/protocol/3.1.0-beta.0',
+    probePaths: [
+      'dist/protocol/3.1.0-beta.0.tgz',
+      'dist/protocol/3.1.0-beta.0.tgz.sha256',
+      'dist/protocol/3.1.0-beta.0.tgz.sig',
+      'dist/protocol/3.1.0-beta.0.tgz.crt',
+    ],
+  }
+);
+
 let violations = findImmutableArtifactViolations(
   [
     { status: 'M', paths: ['dist/compliance/3.0.14/universal/idempotency.yaml'] },
@@ -66,6 +81,18 @@ violations = findImmutableArtifactViolations(
   hasBasePath(['dist/protocol/3.0.14.tgz'])
 );
 assert.strictEqual(violations.length, 1, 'Changing sidecars for an existing protocol tarball must fail');
+
+violations = findImmutableArtifactViolations(
+  [{ status: 'M', paths: ['dist/protocol/3.1.0-beta.0.tgz.sig'] }],
+  hasBasePath(['dist/protocol/3.1.0-beta.0.tgz'])
+);
+assert.deepStrictEqual(violations, [
+  {
+    status: 'M',
+    path: 'dist/protocol/3.1.0-beta.0.tgz.sig',
+    releaseRoot: 'dist/protocol/3.1.0-beta.0',
+  },
+]);
 
 const message = formatViolationMessage(violations);
 assert(message.includes('Do not patch existing versioned dist artifacts in-place.'));
