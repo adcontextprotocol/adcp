@@ -410,6 +410,76 @@ async function runTests() {
 
   await validateExample(
     {
+      "buying_mode": "brief",
+      "brief": "Q4 launch campaign for a new electric bicycle line",
+      "brand": {
+        "domain": "acmecorp.com"
+      },
+      "brief_stage": {
+        "phase": "active_sourcing",
+        "planning_horizon": {
+          "start": "2026-10-01",
+          "end": "2026-12-31"
+        },
+        "response_deadline": "2026-08-15T21:00:00Z"
+      }
+    },
+    '/schemas/media-buy/get-products-request.json',
+    'get_products request with brief_stage context'
+  );
+
+  await validateExample(
+    {
+      "buying_mode": "brief",
+      "brief": "Explore CTV options for a future launch",
+      "brand": {
+        "domain": "acmecorp.com"
+      },
+      "brief_stage": {
+        "phase": "exploratory"
+      }
+    },
+    '/schemas/media-buy/get-products-request.json',
+    'get_products request with minimal brief_stage'
+  );
+
+  await expectInvalid(
+    {
+      "buying_mode": "brief",
+      "brief": "Q4 launch campaign for a new electric bicycle line",
+      "brand": {
+        "domain": "acmecorp.com"
+      },
+      "brief_stage": {
+        "planning_horizon": {
+          "start": "2026-10-01"
+        }
+      }
+    },
+    '/schemas/media-buy/get-products-request.json',
+    'get_products brief_stage without phase is rejected',
+    ['phase']
+  );
+
+  await expectInvalid(
+    {
+      "buying_mode": "brief",
+      "brief": "Q4 launch campaign for a new electric bicycle line",
+      "brand": {
+        "domain": "acmecorp.com"
+      },
+      "brief_stage": {
+        "phase": "planning",
+        "planning_horizon": {}
+      }
+    },
+    '/schemas/media-buy/get-products-request.json',
+    'get_products empty brief_stage planning_horizon is rejected',
+    ['must match a schema in anyOf']
+  );
+
+  await validateExample(
+    {
       "signal_spec": "High-income households",
       "destinations": [
         {
