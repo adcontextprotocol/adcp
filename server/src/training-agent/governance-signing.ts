@@ -9,20 +9,28 @@
  * appear under any other `adcp_use` value, and its `kid` MUST NOT collide
  * with the webhook-signing or transport-signing kids on the shared JWKS.
  *
- * Ephemeral per process — the kid changes across restarts. Same call-out
- * as the webhook-signing key: KMS-backed keys are the production answer
- * but the sandbox runs on the ephemeral keypair until cert-track KMS
- * provisioning lands.
+ * Stable across restarts: the keypair is derived deterministically from a
+ * fixed, non-secret sandbox label (SHA-256 → Ed25519 seed), so the `kid`
+ * stays constant and always matches the public JWK published at
+ * `/.well-known/jwks.json`. That stability is what lets a learner resolve a
+ * `governance_context` token's `iss`→JWKS→`kid` and cryptographically verify
+ * the signature (S6 cert lab). This is a PUBLIC SANDBOX signing key with no
+ * security value — nothing here authorizes real spend. Production governance
+ * agents MUST use KMS-backed keys; the derivation below is sandbox-only.
  */
 
-import { createHash, generateKeyPairSync, type KeyObject } from 'node:crypto';
+import { createHash, createPrivateKey, createPublicKey, type KeyObject } from 'node:crypto';
 import type { AdcpJsonWebKey } from '@adcp/sdk/signing';
-import { createLogger } from '../logger.js';
-
-const logger = createLogger('training-agent-governance-signing');
 
 const ADCP_USE = 'governance-signing';
 const KID_PREFIX = 'training-gov-';
+
+// Fixed, non-secret label → deterministic Ed25519 seed. Derived (not a
+// committed key) so it carries no secret material and won't trip secret
+// scanners, while still yielding a stable keypair + kid every boot.
+const SANDBOX_KEY_LABEL = 'adcp-training-agent:sandbox:governance-signing:v1';
+// Ed25519 PKCS8 DER prefix for a raw 32-byte seed (RFC 8410 §7).
+const ED25519_PKCS8_PREFIX = '302e020100300506032b657004220420';
 
 interface GovernanceSigningMaterial {
   /** Stable identifier published in the JWKS and the JWS header. */
@@ -35,8 +43,11 @@ interface GovernanceSigningMaterial {
 
 let material: GovernanceSigningMaterial | null = null;
 
-function generateEphemeral(): GovernanceSigningMaterial {
-  const { publicKey, privateKey } = generateKeyPairSync('ed25519');
+function deriveStableMaterial(): GovernanceSigningMaterial {
+  const seed = createHash('sha256').update(SANDBOX_KEY_LABEL).digest(); // 32 bytes
+  const pkcs8 = Buffer.concat([Buffer.from(ED25519_PKCS8_PREFIX, 'hex'), seed]);
+  const privateKey = createPrivateKey({ key: pkcs8, format: 'der', type: 'pkcs8' });
+  const publicKey = createPublicKey(privateKey);
   // Node's JWK export for Ed25519 emits { kty: 'OKP', crv: 'Ed25519', x }.
   // Destructure explicitly so a future Node version that adds private bits
   // to the public-export shape can't accidentally leak into the published JWK.
@@ -59,11 +70,7 @@ function generateEphemeral(): GovernanceSigningMaterial {
 
 function ensureMaterial(): GovernanceSigningMaterial {
   if (material) return material;
-  material = generateEphemeral();
-  logger.warn(
-    { kid: material.kid },
-    'Governance signing key generated ephemerally. Provision KMS-backed governance keys for stable kids.',
-  );
+  material = deriveStableMaterial();
   return material;
 }
 
