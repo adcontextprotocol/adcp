@@ -14,6 +14,7 @@ describe('stripe-client', () => {
   beforeEach(() => {
     // Clear all mocks before each test
     vi.clearAllMocks();
+    vi.doUnmock('../../server/src/db/client.js');
     // Reset modules to get fresh imports
     vi.resetModules();
   });
@@ -605,6 +606,197 @@ describe('stripe-client', () => {
         },
         undefined,
       );
+    });
+
+    test('stamps invoice subscriptions with org and user metadata for webhook agreement attribution', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      const mockDbQuery = vi.fn<any>().mockResolvedValue({ rows: [] });
+      vi.doMock('../../server/src/db/client.js', () => ({
+        getPool: () => ({ query: mockDbQuery }),
+      }));
+
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
+      const mockStripeInstance = {
+        prices: {
+          list: vi.fn<any>().mockResolvedValue({ data: [{ id: 'price_abc123' }] }),
+          retrieve: vi.fn<any>().mockResolvedValue({
+            id: 'price_abc123',
+            unit_amount: 1000000,
+            currency: 'usd',
+          }),
+        },
+        customers: {
+          search: vi.fn<any>().mockResolvedValue({ data: [] }),
+          list: vi.fn<any>().mockResolvedValue({ data: [] }),
+          create: vi.fn<any>().mockResolvedValue({
+            id: 'cus_new123',
+            email: 'ruben.schreurs@ebiquity.com',
+          }),
+          update: vi.fn<any>().mockResolvedValue({
+            id: 'cus_new123',
+            email: 'ruben.schreurs@ebiquity.com',
+          }),
+        },
+        subscriptions: {
+          create: vi.fn<any>().mockResolvedValue({
+            id: 'sub_xyz789',
+            latest_invoice: 'in_abc123',
+          }),
+        },
+        invoices: {
+          retrieve: vi.fn<any>().mockResolvedValue({
+            id: 'in_abc123',
+            amount_due: 1000000,
+          }),
+          sendInvoice: vi.fn<any>().mockResolvedValue({
+            id: 'in_abc123',
+            hosted_invoice_url: 'https://invoice.stripe.com/i/acct_xxx/test_xxx',
+          }),
+        },
+      };
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+
+      const { createAndSendInvoice } = await import('../../server/src/billing/stripe-client.js');
+
+      const result = await createAndSendInvoice({
+        ...validInvoiceData,
+        workosOrganizationId: 'org_123',
+        workosUserId: 'user_123',
+      });
+
+      expect(result).not.toBeNull();
+      expect(mockDbQuery).toHaveBeenCalledWith(
+        'SELECT stripe_customer_id FROM organizations WHERE workos_organization_id = $1',
+        ['org_123'],
+      );
+      expect(mockStripeInstance.customers.create).toHaveBeenCalledWith(expect.objectContaining({
+        metadata: expect.objectContaining({
+          workos_organization_id: 'org_123',
+          workos_user_id: 'user_123',
+        }),
+      }));
+      expect(mockStripeInstance.subscriptions.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            workos_organization_id: 'org_123',
+            workos_user_id: 'user_123',
+          }),
+        }),
+        undefined,
+      );
+    });
+
+    test('refuses org-scoped invoice creation without signer metadata', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
+      const mockStripeInstance = {
+        prices: {
+          list: vi.fn<any>(),
+        },
+        subscriptions: {
+          create: vi.fn<any>(),
+        },
+      };
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+
+      const { createAndSendInvoice } = await import('../../server/src/billing/stripe-client.js');
+
+      const result = await createAndSendInvoice({
+        ...validInvoiceData,
+        workosOrganizationId: 'org_123',
+      });
+
+      expect(result).toBeNull();
+      expect(mockStripeInstance.prices.list).not.toHaveBeenCalled();
+      expect(mockStripeInstance.subscriptions.create).not.toHaveBeenCalled();
+    });
+
+    test('stamps metadata when reusing a DB-linked Stripe customer', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      const mockDbQuery = vi.fn<any>().mockResolvedValue({
+        rows: [{ stripe_customer_id: 'cus_linked' }],
+      });
+      vi.doMock('../../server/src/db/client.js', () => ({
+        getPool: () => ({ query: mockDbQuery }),
+      }));
+
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
+      const mockStripeInstance = {
+        prices: {
+          list: vi.fn<any>().mockResolvedValue({ data: [{ id: 'price_abc123' }] }),
+          retrieve: vi.fn<any>().mockResolvedValue({
+            id: 'price_abc123',
+            unit_amount: 1000000,
+            currency: 'usd',
+          }),
+        },
+        customers: {
+          retrieve: vi.fn<any>().mockResolvedValue({
+            id: 'cus_linked',
+            name: 'Linked Customer',
+            metadata: { workos_organization_id: 'org_123', existing: 'yes' },
+          }),
+          update: vi.fn<any>().mockResolvedValue({
+            id: 'cus_linked',
+            email: 'billing@example.com',
+          }),
+          create: vi.fn<any>(),
+          search: vi.fn<any>(),
+          list: vi.fn<any>(),
+        },
+        subscriptions: {
+          create: vi.fn<any>().mockResolvedValue({
+            id: 'sub_xyz789',
+            latest_invoice: 'in_abc123',
+          }),
+        },
+        invoices: {
+          retrieve: vi.fn<any>().mockResolvedValue({
+            id: 'in_abc123',
+            amount_due: 1000000,
+          }),
+          sendInvoice: vi.fn<any>().mockResolvedValue({
+            id: 'in_abc123',
+            hosted_invoice_url: 'https://invoice.stripe.com/i/acct_xxx/test_xxx',
+          }),
+        },
+      };
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+
+      const { createAndSendInvoice } = await import('../../server/src/billing/stripe-client.js');
+
+      const result = await createAndSendInvoice({
+        ...validInvoiceData,
+        workosOrganizationId: 'org_123',
+        workosUserId: 'user_123',
+      });
+
+      expect(result).not.toBeNull();
+      expect(mockStripeInstance.customers.retrieve).toHaveBeenCalledWith('cus_linked');
+      expect(mockStripeInstance.customers.update).toHaveBeenNthCalledWith(1, 'cus_linked', {
+        metadata: expect.objectContaining({
+          existing: 'yes',
+          workos_organization_id: 'org_123',
+          workos_user_id: 'user_123',
+        }),
+      });
+      expect(mockStripeInstance.customers.update).toHaveBeenNthCalledWith(2, 'cus_linked', {
+        address: validInvoiceData.billingAddress,
+      });
+      expect(mockStripeInstance.subscriptions.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          customer: 'cus_linked',
+          metadata: expect.objectContaining({
+            workos_organization_id: 'org_123',
+            workos_user_id: 'user_123',
+          }),
+        }),
+        undefined,
+      );
+      expect(mockStripeInstance.customers.create).not.toHaveBeenCalled();
+      expect(mockStripeInstance.customers.search).not.toHaveBeenCalled();
+      expect(mockStripeInstance.customers.list).not.toHaveBeenCalled();
     });
 
     test('returns null when price has zero amount', async () => {

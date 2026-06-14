@@ -974,6 +974,7 @@ export interface InvoiceRequestData {
   };
   lookupKey: string; // Stripe price lookup key (e.g., 'aao_invoice_membership_10k')
   workosOrganizationId?: string;
+  workosUserId?: string;
   couponId?: string; // Stripe coupon ID to apply discount to the invoice
   daysUntilDue?: number; // Payment terms in days (default: 30)
   invoiceDate?: string; // ISO date (YYYY-MM-DD) for backdating the invoice
@@ -995,6 +996,14 @@ export async function createAndSendInvoice(
 ): Promise<{ invoiceId: string; invoiceUrl: string; subscriptionId: string; discountApplied: boolean; discountWarning?: string } | null> {
   if (!stripe) {
     logger.warn('Stripe not initialized - cannot create invoice');
+    return null;
+  }
+
+  if (data.workosOrganizationId && !data.workosUserId) {
+    logger.error({
+      orgId: data.workosOrganizationId,
+      lookupKey: data.lookupKey,
+    }, 'createAndSendInvoice: Refusing org-scoped invoice without WorkOS signer metadata');
     return null;
   }
 
@@ -1043,6 +1052,7 @@ export async function createAndSendInvoice(
             const metadataUpdate = {
               ...current.metadata,
               workos_organization_id: data.workosOrganizationId,
+              ...(data.workosUserId && { workos_user_id: data.workosUserId }),
             };
             const needsNameBackfill = !current.name?.trim();
             await stripe.customers.update(linkedId, {
@@ -1078,6 +1088,7 @@ export async function createAndSendInvoice(
           contact_name: data.contactName,
           invoice_request: 'true',
           ...(data.workosOrganizationId && { workos_organization_id: data.workosOrganizationId }),
+          ...(data.workosUserId && { workos_user_id: data.workosUserId }),
         },
       });
     }
@@ -1205,6 +1216,7 @@ export async function createAndSendInvoice(
           lookup_key: data.lookupKey,
           contact_name: data.contactName,
           ...(data.workosOrganizationId && { workos_organization_id: data.workosOrganizationId }),
+          ...(data.workosUserId && { workos_user_id: data.workosUserId }),
         },
       },
       // Idempotency-Key: concurrent accept clicks on the same invite converge

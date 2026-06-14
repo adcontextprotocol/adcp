@@ -169,3 +169,30 @@ describe('GET /api/admin/accounts/contacts-export', () => {
     expect(mockPoolQuery.mock.calls[0][0]).toContain('NOT EXISTS');
   });
 });
+
+describe('GET /api/admin/activity-feed', () => {
+  it('casts empty metadata arms to jsonb so the UNION matches payment metadata', async () => {
+    mockPoolQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          source: 'payment',
+          timestamp: new Date('2026-06-14T10:00:00Z'),
+          action: 'subscription',
+          actor_name: 'Nova Brands',
+          org_name: 'Nova Brands',
+          org_id: 'org_nova',
+          description: 'Builder Membership',
+          metadata: { amount: 250000, currency: 'usd' },
+        },
+      ],
+    });
+
+    const response = await request(buildApp()).get('/api/admin/activity-feed');
+
+    expect(response.status).toBe(200);
+    expect(response.body.activities[0].metadata).toEqual({ amount: 250000, currency: 'usd' });
+    const sql = mockPoolQuery.mock.calls[0][0] as string;
+    expect(sql.match(/NULL::jsonb as metadata/g)?.length).toBe(4);
+    expect(sql).toContain("jsonb_build_object('amount', re.amount_paid, 'currency', re.currency) as metadata");
+  });
+});

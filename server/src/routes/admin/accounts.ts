@@ -2016,7 +2016,7 @@ export function setupAccountRoutes(
               o.name as org_name,
               o.workos_organization_id as org_id,
               NULL as description,
-              NULL as metadata
+              NULL::jsonb as metadata
             FROM slack_activities sa
             JOIN slack_user_mappings sm ON sm.slack_user_id = sa.slack_user_id
             LEFT JOIN organization_memberships om ON om.workos_user_id = sm.workos_user_id
@@ -2035,7 +2035,7 @@ export function setupAccountRoutes(
               o.name as org_name,
               o.workos_organization_id as org_id,
               eca.subject as description,
-              NULL as metadata
+              NULL::jsonb as metadata
             FROM email_contact_activities eca
             JOIN email_activity_contacts eac ON eac.activity_id = eca.id AND eac.is_primary = true
             JOIN email_contacts ec ON ec.id = eac.contact_id
@@ -2056,7 +2056,7 @@ export function setupAccountRoutes(
               e.title as org_name,
               NULL as org_id,
               e.title as description,
-              NULL as metadata
+              NULL::jsonb as metadata
             FROM event_registrations er
             JOIN events e ON e.id = er.event_id
             LEFT JOIN email_contacts ec ON ec.id = er.email_contact_id
@@ -2090,7 +2090,7 @@ export function setupAccountRoutes(
               wg.name as org_name,
               o.workos_organization_id as org_id,
               wg.name as description,
-              NULL as metadata
+              NULL::jsonb as metadata
             FROM working_group_memberships wgm
             JOIN working_groups wg ON wg.id = wgm.working_group_id
             JOIN organizations o ON o.workos_organization_id = wgm.workos_organization_id
