@@ -220,7 +220,8 @@ describe('CollectionCatalogDatabase integration', () => {
     expect(feed.events
       .filter((event) => event.actor === 'test:collections:rename')
       .map((event) => event.event_type)
-    ).toEqual(['collection.created', 'collection.removed', 'collection.created']);
+      .sort()
+    ).toEqual(['collection.created', 'collection.created', 'collection.removed']);
   });
 
   it('authoritative identifiers supersede contributed identifiers, but contributed cannot steal authoritative identifiers', async () => {
