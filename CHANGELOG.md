@@ -4,7 +4,7 @@
 
 ### Patch Changes
 
-- Backport compliance storyboard fixes for idempotency webhook placeholders, past-start validation, initialized security probes, webhook receiver URLs, and media-buy state transitions.
+- Backport compliance storyboard fixes for idempotency webhook placeholders, past-start reject-or-adjust handling, initialized security probes, RFC 9421 webhook receiver URLs, and media-buy state transitions.
 - c57bcd8: Backport the proposal-finalize storyboard gate to 3.0.x so sellers that do not declare `media_buy.supports_proposals: true` skip the proposal lifecycle scenario instead of receiving false-negative compliance failures, and refresh the idempotency storyboard flight dates so the 3.0.x runner preserves byte-identical replay payloads.
 - 895f74a: spec(tmp): add required `seller_agent_url` to `context_match_request`.
 
