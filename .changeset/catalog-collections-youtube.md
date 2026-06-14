@@ -1,4 +1,5 @@
 ---
+"adcontextprotocol": minor
 ---
 
 feat(registry): add catalog collections and YouTube channel aliases
