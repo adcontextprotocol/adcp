@@ -1,7 +1,7 @@
 {
   "published_version": "3.0.16",
   "adcp_version": "3.0.16",
-  "generated_at": "2026-06-14T15:29:06.746Z",
+  "generated_at": "2026-06-14T15:47:17.193Z",
   "universal": [
     "capability-discovery",
     "collection-lists-pagination-integrity",

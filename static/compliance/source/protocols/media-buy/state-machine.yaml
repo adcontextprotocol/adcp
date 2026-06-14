@@ -244,7 +244,7 @@ phases:
             path: "media_buy_id"
             description: "Response includes a media_buy_id"
           - check: field_value
-            path: "media_buy_status"
+            path: "status"
             allowed_values: ["active"]
             description: "Auto-approval state-machine test starts from an active media buy"
 
@@ -291,8 +291,8 @@ phases:
             correlation_id: "media_buy_state_machine--pause_buy"
         validations:
           - check: field_present
-            path: "media_buy_status"
-            description: "Response includes updated media_buy_status"
+            path: "status"
+            description: "Response includes updated status"
 
           - check: field_present
             path: "context"
@@ -327,8 +327,8 @@ phases:
             correlation_id: "media_buy_state_machine--resume_buy"
         validations:
           - check: field_present
-            path: "media_buy_status"
-            description: "Response includes updated media_buy_status"
+            path: "status"
+            description: "Response includes updated status"
 
           - check: field_present
             path: "context"
@@ -364,8 +364,8 @@ phases:
             correlation_id: "media_buy_state_machine--cancel_buy"
         validations:
           - check: field_present
-            path: "media_buy_status"
-            description: "Response includes canceled media_buy_status"
+            path: "status"
+            description: "Response includes canceled status"
 
           - check: field_present
             path: "context"
