@@ -291,6 +291,21 @@ export async function getCurrentWeekDigest(): Promise<DigestRecord | null> {
 }
 
 /**
+ * Get the newest approved edition that has not been marked sent yet.
+ * Used by the scheduler as a catch-up path for editions approved after
+ * their original cadence window.
+ */
+export async function getLatestApprovedDigest(): Promise<DigestRecord | null> {
+  const result = await query<DigestRecord>(
+    `SELECT ${DIGEST_COLUMNS} FROM weekly_digests
+     WHERE status = 'approved'
+     ORDER BY edition_date DESC
+     LIMIT 1`,
+  );
+  return result.rows[0] || null;
+}
+
+/**
  * Approve a digest. Sets status to 'approved' and records who approved it.
  */
 export async function approveDigest(id: number, approvedBy: string): Promise<DigestRecord | null> {
