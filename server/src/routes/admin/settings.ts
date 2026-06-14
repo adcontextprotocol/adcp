@@ -496,6 +496,11 @@ export function createAdminSettingsRouter(): Router {
   });
 
   // PUT /api/admin/settings/s2-canonical-formats-delta-release
+  // TODO: When a second recertification delta registers in
+  // config/recertification-deltas.ts, add a generic
+  // PUT /delta-release/:updateId path that resolves the definition via
+  // getDeltaByUpdateId and writes through setDeltaRelease(def.release_setting_key, ...).
+  // Until then this S2-specific route is the only configured gate.
   router.put('/s2-canonical-formats-delta-release', ...requireGlobalAdmin, async (req: Request, res: Response) => {
     try {
       const adcpGaAt = normalizeOptionalDate(req.body?.adcp_3_1_ga_at);

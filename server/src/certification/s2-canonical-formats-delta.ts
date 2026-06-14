@@ -1,32 +1,29 @@
-export const S2_CANONICAL_FORMATS_DELTA_UPDATE_ID = 's2_canonical_formats_3_1';
-export const S2_CANONICAL_FORMATS_MODULE_ID = 'S2';
-export const S2_CANONICAL_FORMATS_CREDENTIAL_ID = 'specialist_creative';
+import type { DeltaDefinition } from '../config/recertification-deltas.js';
+import { S2_DELTA_DEFINITION } from '../config/recertification-deltas.js';
 
-export const S2_CANONICAL_FORMATS_CRITERION_IDS = [
-  's2_ex1_sc_format_kind_selection',
-  's2_ex1_sc_format_options_cardinality',
-  's2_ex1_sc_option_vs_capability_id',
-  's2_ex1_sc_source_taxonomy',
-  's2_ex1_sc_validation_order',
-] as const;
+export const S2_CANONICAL_FORMATS_DELTA_UPDATE_ID = S2_DELTA_DEFINITION.update_id;
+export const S2_CANONICAL_FORMATS_MODULE_ID = S2_DELTA_DEFINITION.module_id;
+export const S2_CANONICAL_FORMATS_CREDENTIAL_ID = S2_DELTA_DEFINITION.credential_id;
 
-export interface S2CanonicalFormatsDeltaReleaseSetting {
+export const S2_CANONICAL_FORMATS_CRITERION_IDS = S2_DELTA_DEFINITION.criterion_ids;
+
+export interface ProtocolDeltaReleaseSetting {
   adcp_3_1_ga_at: string | null;
   criteria_deployed_at: string | null;
 }
 
-export type S2CanonicalFormatsDeltaStatusKind =
+export type ProtocolDeltaStatusKind =
   | 'gated'
   | 'not_required'
   | 'delta_available'
   | 'delta_completed'
   | 'full_recertification_required';
 
-export interface S2CanonicalFormatsDeltaStatus {
-  update_id: typeof S2_CANONICAL_FORMATS_DELTA_UPDATE_ID;
-  module_id: typeof S2_CANONICAL_FORMATS_MODULE_ID;
-  credential_id: typeof S2_CANONICAL_FORMATS_CREDENTIAL_ID;
-  status: S2CanonicalFormatsDeltaStatusKind;
+export interface ProtocolDeltaStatus {
+  update_id: string;
+  module_id: string;
+  credential_id: string;
+  status: ProtocolDeltaStatusKind;
   active: boolean;
   reason: string;
   adcp_3_1_ga_at: string | null;
@@ -35,6 +32,31 @@ export interface S2CanonicalFormatsDeltaStatus {
   delta_window_opens_at: string | null;
   delta_window_closes_at: string | null;
   missing_criterion_ids: string[];
+}
+
+export interface ProtocolDeltaInput {
+  release: ProtocolDeltaReleaseSetting | null;
+  hasCredential: boolean;
+  credentialAwardedAt: string | null;
+  moduleCompletedAt: string | null;
+  deltaCompletedAt?: string | null;
+  criteriaPresent?: boolean;
+  hasPriorAuditableRecord?: boolean;
+  verifiedCriterionIds: string[];
+  now?: Date;
+}
+
+// ---------------------------------------------------------------------------
+// Back-compat S2 surface
+// ---------------------------------------------------------------------------
+
+export type S2CanonicalFormatsDeltaReleaseSetting = ProtocolDeltaReleaseSetting;
+export type S2CanonicalFormatsDeltaStatusKind = ProtocolDeltaStatusKind;
+
+export interface S2CanonicalFormatsDeltaStatus extends ProtocolDeltaStatus {
+  update_id: typeof S2_CANONICAL_FORMATS_DELTA_UPDATE_ID;
+  module_id: typeof S2_CANONICAL_FORMATS_MODULE_ID;
+  credential_id: typeof S2_CANONICAL_FORMATS_CREDENTIAL_ID;
 }
 
 export interface S2CanonicalFormatsDeltaInput {
@@ -72,17 +94,18 @@ function addUtcCalendarDaysEndOfDay(value: Date, days: number): Date {
 }
 
 function baseStatus(
-  release: S2CanonicalFormatsDeltaReleaseSetting | null,
-  status: S2CanonicalFormatsDeltaStatusKind,
+  definition: DeltaDefinition,
+  release: ProtocolDeltaReleaseSetting | null,
+  status: ProtocolDeltaStatusKind,
   active: boolean,
   reason: string,
   criteriaEffectiveAt: Date | null,
   missingCriterionIds: string[] = [],
-): S2CanonicalFormatsDeltaStatus {
+): ProtocolDeltaStatus {
   return {
-    update_id: S2_CANONICAL_FORMATS_DELTA_UPDATE_ID,
-    module_id: S2_CANONICAL_FORMATS_MODULE_ID,
-    credential_id: S2_CANONICAL_FORMATS_CREDENTIAL_ID,
+    update_id: definition.update_id,
+    module_id: definition.module_id,
+    credential_id: definition.credential_id,
     status,
     active,
     reason,
@@ -90,69 +113,77 @@ function baseStatus(
     criteria_deployed_at: release?.criteria_deployed_at ?? null,
     criteria_effective_at: toIso(criteriaEffectiveAt),
     delta_window_opens_at: toIso(criteriaEffectiveAt),
-    delta_window_closes_at: criteriaEffectiveAt ? toIso(addUtcCalendarDaysEndOfDay(criteriaEffectiveAt, 90)) : null,
+    delta_window_closes_at: criteriaEffectiveAt
+      ? toIso(addUtcCalendarDaysEndOfDay(criteriaEffectiveAt, definition.delta_window_days))
+      : null,
     missing_criterion_ids: missingCriterionIds,
   };
 }
 
-export function computeS2CanonicalFormatsDeltaStatus(
-  input: S2CanonicalFormatsDeltaInput,
-): S2CanonicalFormatsDeltaStatus {
+export function computeProtocolDeltaStatus(
+  definition: DeltaDefinition,
+  input: ProtocolDeltaInput,
+): ProtocolDeltaStatus {
+  const phrases = definition.reason_phrases;
   const gaAt = parseDate(input.release?.adcp_3_1_ga_at);
   const deployedAt = parseDate(input.release?.criteria_deployed_at);
 
   if (!gaAt || !deployedAt) {
     const missing = [
-      !gaAt ? 'AdCP 3.1.0 GA date' : null,
-      !deployedAt ? 'production deployment date for migration 496_curriculum_3_1_canonical_formats_criteria.sql' : null,
+      !gaAt ? phrases.ga_date_label : null,
+      !deployedAt ? `production deployment date for migration ${definition.criteria_migration}` : null,
     ].filter(Boolean).join(' and ');
-    return baseStatus(input.release, 'gated', false, `Blocked until ${missing} is configured.`, null);
+    return baseStatus(definition, input.release, 'gated', false, `Blocked until ${missing} is configured.`, null);
   }
 
   const criteriaEffectiveAt = new Date(Math.max(gaAt.getTime(), deployedAt.getTime()));
-  const deltaWindowClosesAt = addUtcCalendarDaysEndOfDay(criteriaEffectiveAt, 90);
+  const deltaWindowClosesAt = addUtcCalendarDaysEndOfDay(criteriaEffectiveAt, definition.delta_window_days);
   const now = input.now ?? new Date();
 
-  if (input.canonicalCriteriaPresent === false) {
+  if (input.criteriaPresent === false) {
     return baseStatus(
+      definition,
       input.release,
       'gated',
       false,
-      'Blocked until the five AdCP 3.1 S2 canonical-format criteria are present in certification_modules.exercise_definitions.',
+      `Blocked until the ${phrases.criteria_count_word} ${phrases.criteria_phrase} criteria are present in certification_modules.exercise_definitions.`,
       criteriaEffectiveAt,
     );
   }
 
   if (now < criteriaEffectiveAt) {
     return baseStatus(
+      definition,
       input.release,
       'gated',
       false,
-      'Blocked until the later of AdCP 3.1.0 GA and production deployment of the S2 canonical-format criteria.',
+      `Blocked until the later of ${phrases.ga_milestone_label} and production deployment of the ${phrases.criteria_short_phrase} criteria.`,
       criteriaEffectiveAt,
     );
   }
 
-  if (!input.hasCreativeSpecialistCredential) {
+  if (!input.hasCredential) {
     return baseStatus(
+      definition,
       input.release,
       'not_required',
       true,
-      'Learner does not hold the S2 Creative specialist credential.',
+      phrases.not_credentialed,
       criteriaEffectiveAt,
     );
   }
 
   const awardedAt = parseDate(input.credentialAwardedAt);
-  const completedAt = parseDate(input.s2CompletedAt);
+  const completedAt = parseDate(input.moduleCompletedAt);
   const deltaCompletedAt = parseDate(input.deltaCompletedAt);
 
   if (completedAt && completedAt >= criteriaEffectiveAt) {
     return baseStatus(
+      definition,
       input.release,
       'not_required',
       true,
-      'S2 completion is already on or after the AdCP 3.1 canonical-format criteria effective point.',
+      phrases.completion_after_effective,
       criteriaEffectiveAt,
     );
   }
@@ -160,42 +191,46 @@ export function computeS2CanonicalFormatsDeltaStatus(
   if (!completedAt) {
     if (awardedAt && awardedAt >= criteriaEffectiveAt) {
       return baseStatus(
+        definition,
         input.release,
         'not_required',
         true,
-        'S2 credential was awarded after the AdCP 3.1 canonical-format criteria effective point.',
+        phrases.credential_after_effective,
         criteriaEffectiveAt,
       );
     }
     return baseStatus(
+      definition,
       input.release,
       'full_recertification_required',
       true,
-      'Prior S2 completion record is missing, so the learner does not meet the auditable-record requirement for a delta.',
+      `Prior ${phrases.module_label} completion record is missing, so the learner does not meet the auditable-record requirement for a delta.`,
       criteriaEffectiveAt,
-      [...S2_CANONICAL_FORMATS_CRITERION_IDS],
+      [...definition.criterion_ids],
     );
   }
 
   const verified = new Set(input.verifiedCriterionIds);
-  const missingCriterionIds = S2_CANONICAL_FORMATS_CRITERION_IDS.filter(id => !verified.has(id));
+  const missingCriterionIds = definition.criterion_ids.filter(id => !verified.has(id));
 
   if (deltaCompletedAt) {
     return baseStatus(
+      definition,
       input.release,
       'delta_completed',
       true,
-      'Learner has auditable evidence for all AdCP 3.1 S2 canonical-format criteria.',
+      phrases.delta_completed,
       criteriaEffectiveAt,
     );
   }
 
-  if (input.hasPriorAuditableS2Record === false) {
+  if (input.hasPriorAuditableRecord === false) {
     return baseStatus(
+      definition,
       input.release,
       'full_recertification_required',
       true,
-      'Prior S2 checkpoint trail is missing, so the learner does not meet the auditable-record requirement for a delta.',
+      `Prior ${phrases.module_label} checkpoint trail is missing, so the learner does not meet the auditable-record requirement for a delta.`,
       criteriaEffectiveAt,
       missingCriterionIds,
     );
@@ -203,21 +238,46 @@ export function computeS2CanonicalFormatsDeltaStatus(
 
   if (now > deltaWindowClosesAt) {
     return baseStatus(
+      definition,
       input.release,
       'full_recertification_required',
       true,
-      'The S2 canonical-formats delta window has closed.',
+      `The ${phrases.delta_name} delta window has closed.`,
       criteriaEffectiveAt,
       missingCriterionIds,
     );
   }
 
   return baseStatus(
+    definition,
     input.release,
     'delta_available',
     true,
-    'Pre-3.1 S2 holder is eligible for the canonical-formats delta assessment.',
+    phrases.delta_available,
     criteriaEffectiveAt,
     missingCriterionIds,
   );
+}
+
+function mapLegacyInput(input: S2CanonicalFormatsDeltaInput): ProtocolDeltaInput {
+  return {
+    release: input.release,
+    hasCredential: input.hasCreativeSpecialistCredential,
+    credentialAwardedAt: input.credentialAwardedAt,
+    moduleCompletedAt: input.s2CompletedAt,
+    deltaCompletedAt: input.deltaCompletedAt,
+    criteriaPresent: input.canonicalCriteriaPresent,
+    hasPriorAuditableRecord: input.hasPriorAuditableS2Record,
+    verifiedCriterionIds: input.verifiedCriterionIds,
+    now: input.now,
+  };
+}
+
+export function computeS2CanonicalFormatsDeltaStatus(
+  input: S2CanonicalFormatsDeltaInput,
+): S2CanonicalFormatsDeltaStatus {
+  return computeProtocolDeltaStatus(
+    S2_DELTA_DEFINITION,
+    mapLegacyInput(input),
+  ) as S2CanonicalFormatsDeltaStatus;
 }
