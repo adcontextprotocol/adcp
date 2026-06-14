@@ -192,12 +192,75 @@ describe('comply_test_controller', () => {
         'seed_measurement_catalog',
         'query_provenance_audit_observations',
         'evaluate_distributed_brand_resolution',
+        'verify_governance_token',
       ]));
       // Catch silent drift in either direction (entries removed, or new ones
       // not yet documented in this assertion).
-      expect(scenarios.length).toBe(20);
+      expect(scenarios.length).toBe(21);
       // Dedup invariant — see SCENARIO_ENUM dedup in the wrapper.
       expect(new Set(scenarios).size).toBe(scenarios.length);
+    });
+  });
+
+  describe('verify_governance_token', () => {
+    async function mintValidToken(): Promise<string> {
+      const { getGovernanceSigningKey } = await import('../../src/training-agent/governance-signing.js');
+      const { CANONICAL_SELLER_AUD } = await import('../../src/training-agent/governance-verify.js');
+      const { FlattenedSign } = await import('jose');
+      const { kid, privateKey } = getGovernanceSigningKey();
+      const now = Math.floor(Date.now() / 1000);
+      const payload = new TextEncoder().encode(JSON.stringify({
+        iss: 'https://agenticadvertising.org/governance', sub: 'plan-1',
+        aud: CANONICAL_SELLER_AUD, iat: now, exp: now + 900, jti: 'jti-1', phase: 'intent',
+      }));
+      const jws = await new FlattenedSign(payload).setProtectedHeader({ alg: 'EdDSA', typ: 'adcp-gov+jws', kid }).sign(privateKey);
+      return `${jws.protected}.${jws.payload}.${jws.signature}`;
+    }
+
+    it('accepts a valid token (all checklist steps pass)', async () => {
+      const token = await mintValidToken();
+      const { result } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'verify_governance_token', account: ACCOUNT, params: { token },
+      });
+      expect(result.success).toBe(true);
+      expect(result.verdict).toBe('valid');
+      expect(result.error_code).toBeNull();
+      expect((result.checklist as Array<{ pass: boolean }>).every(s => s.pass)).toBe(true);
+    });
+
+    it('rejects a tampered token at the signature step', async () => {
+      const token = await mintValidToken();
+      const { result } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'verify_governance_token', account: ACCOUNT, params: { token, tamper: 'aud' },
+      });
+      expect(result.verdict).toBe('rejected');
+      expect(result.error_code).toBe('invalid_signature');
+    });
+
+    it('rejects a valid token presented to the wrong seller (confused deputy)', async () => {
+      const token = await mintValidToken();
+      const { result } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'verify_governance_token', account: ACCOUNT,
+        params: { token, expected_aud: 'https://other-seller.example/sales' },
+      });
+      expect(result.verdict).toBe('rejected');
+      expect(result.error_code).toBe('aud_mismatch');
+    });
+
+    it('rejects a token signed under a revoked kid', async () => {
+      const { result } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'verify_governance_token', account: ACCOUNT, params: { mode: 'revoked_demo' },
+      });
+      expect(result.verdict).toBe('rejected');
+      expect(result.error_code).toBe('governance_token_revoked');
+    });
+
+    it('asks for a token when none is supplied', async () => {
+      const { result } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'verify_governance_token', account: ACCOUNT,
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INVALID_PARAMS');
     });
   });
 

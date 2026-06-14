@@ -37,6 +37,7 @@ import { getSession, sessionKeyFromArgs } from './state.js';
 import { getAgentUrl } from './config.js';
 import { randomUUID } from 'node:crypto';
 import { getAccountNotificationSubscribers, seedAccountFixture } from './account-handlers.js';
+import { verifyGovernanceToken, mintRevokedDemoToken } from './governance-verify.js';
 import { emitAccountNotificationWebhook } from './webhooks.js';
 import { buildCatalog } from './product-factory.js';
 import { getAllSignals } from './signal-providers.js';
@@ -774,12 +775,75 @@ const LOCAL_SCENARIOS = [
   'seed_measurement_catalog',
   'query_provenance_audit_observations',
   'evaluate_distributed_brand_resolution',
+  'verify_governance_token',
 ] as const;
 
 function localScenariosFor(ctx: TrainingContext): string[] {
   return ctx.storyboardCompat?.version === '3.0'
     ? LOCAL_SCENARIOS.filter(s => s !== 'force_creative_purge' && s !== 'force_wholesale_feed_webhook' && s !== 'query_provenance_audit_observations')
     : [...LOCAL_SCENARIOS];
+}
+
+/**
+ * verify_governance_token — run the JWS-profile seller verification checklist
+ * against a supplied governance_context and return a per-step pass/fail trace.
+ * The training agent is otherwise an issuer with no verification surface, so
+ * this is what lets an S6 learner observe a token being ACCEPTED (valid) or
+ * REJECTED (tampered → signature; wrong seller → aud; revoked kid → revocation).
+ *
+ * params: { token?, mode?: 'verify'|'revoked_demo', tamper?: 'signature'|'aud'|'sub'|<claim>,
+ *           expected_aud?, expected_sub? }
+ */
+async function handleVerifyGovernanceToken(rawArgs: Record<string, unknown>): Promise<object> {
+  const params = (rawArgs.params ?? {}) as Record<string, unknown>;
+  const mode = typeof params.mode === 'string' ? params.mode : 'verify';
+  let token = typeof params.token === 'string' ? params.token : undefined;
+  let note: string | undefined;
+  if (mode === 'revoked_demo') {
+    token = await mintRevokedDemoToken();
+    note = 'Minted a token signed under a deliberately-revoked sandbox governance kid — watch step 14 reject it.';
+  }
+  if (!token) {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'Provide params.token (a governance_context from sync_plans -> intent check_governance), or set params.mode to "revoked_demo" to mint a revoked-kid token to verify. To see the confused-deputy rejection, pass a valid token with params.expected_aud set to a different seller URL.',
+    };
+  }
+  const tamper = typeof params.tamper === 'string' ? params.tamper : undefined;
+  if (tamper) token = tamperGovernanceToken(token, tamper);
+  const result = await verifyGovernanceToken(token, {
+    expectedAud: typeof params.expected_aud === 'string' ? params.expected_aud : undefined,
+    expectedSub: typeof params.expected_sub === 'string' ? params.expected_sub : undefined,
+  });
+  return {
+    success: true,
+    verdict: result.verdict,
+    error_code: result.error_code,
+    checklist: result.steps,
+    ...(note ? { note } : {}),
+    ...(tamper ? { tampered: tamper } : {}),
+  };
+}
+
+/** Mutate a token to demonstrate rejection. Any payload edit breaks the signature
+ * (step 7); 'signature' corrupts the signature segment directly. */
+function tamperGovernanceToken(token: string, what: string): string {
+  const parts = token.split('.');
+  if (parts.length !== 3) return token;
+  if (what === 'signature') {
+    const sig = parts[2];
+    return `${parts[0]}.${parts[1]}.${sig.slice(0, -1)}${sig.slice(-1) === 'A' ? 'B' : 'A'}`;
+  }
+  try {
+    const claims = JSON.parse(Buffer.from(parts[1], 'base64url').toString());
+    if (what === 'aud') claims.aud = 'https://attacker.example/sales';
+    else if (what === 'sub') claims.sub = 'plan-swapped';
+    else claims[what] = 'tampered';
+    return `${parts[0]}.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.${parts[2]}`;
+  } catch {
+    return token;
+  }
 }
 
 // ── Tool definition ───────────────────────────────────────────────
@@ -879,6 +943,9 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
       variant: typeof params.variant === 'string' ? params.variant : 'default',
       message: 'Distributed brand-resolution fixture evaluated successfully.',
     };
+  }
+  if (scenario === 'verify_governance_token') {
+    return handleVerifyGovernanceToken(rawArgs);
   }
   if (scenario === 'force_upstream_unavailable') {
     const params = (rawArgs.params ?? {}) as Record<string, unknown>;
