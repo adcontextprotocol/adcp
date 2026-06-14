@@ -50,3 +50,68 @@ try {
 } finally {
   fs.closeSync(idempotencyFd);
 }
+
+const webhookEmissionPath = path.join(bundleDir, 'universal', 'webhook-emission.yaml');
+let webhookEmissionFd;
+try {
+  webhookEmissionFd = fs.openSync(webhookEmissionPath, 'r+');
+} catch (err) {
+  if (err && err.code === 'ENOENT') {
+    process.exit(0);
+  }
+  throw err;
+}
+
+// The frozen 3.0.16 webhook-emission storyboard's synthetic branch-set
+// assertion is unconditional even when an agent does not expose get_products.
+// The two optional branch probes correctly skip on agents without that tool,
+// but the final assert_contribution step still fails because no branch could
+// have contributed. Patch only the temp compatibility bundle by removing the
+// obsolete assertion phase; current-source storyboards still exercise the
+// synchronous completion branch-set semantics.
+try {
+  const before = fs.readFileSync(webhookEmissionFd, 'utf8');
+  const after = before.replace(
+    /\n  - id: synchronous_completion_assertion\n[\s\S]*?\n  - id: idempotency_key_stability\n/,
+    '\n  - id: idempotency_key_stability\n',
+  );
+
+  if (after !== before) {
+    fs.ftruncateSync(webhookEmissionFd, 0);
+    fs.writeSync(webhookEmissionFd, after, 0, 'utf8');
+    console.log(`Patched 3.0 compatibility webhook assertion phase in ${webhookEmissionPath}`);
+  }
+} finally {
+  fs.closeSync(webhookEmissionFd);
+}
+
+for (const rel of [
+  path.join('protocols', 'media-buy', 'state-machine.yaml'),
+  path.join('domains', 'media-buy', 'state-machine.yaml'),
+]) {
+  const stateMachinePath = path.join(bundleDir, rel);
+  let stateMachineFd;
+  try {
+    stateMachineFd = fs.openSync(stateMachinePath, 'r+');
+  } catch (err) {
+    if (err && err.code === 'ENOENT') continue;
+    throw err;
+  }
+
+  // The frozen 3.0.16 media-buy state-machine storyboard predates the
+  // create/update response split between protocol-envelope `status` and
+  // lifecycle `media_buy_status`. Patch the temp compatibility copy to assert
+  // the lifecycle field, matching current source without rewriting dist.
+  try {
+    const before = fs.readFileSync(stateMachineFd, 'utf8');
+    const after = before.replace(/\n            path: "status"\n/g, '\n            path: "media_buy_status"\n');
+
+    if (after !== before) {
+      fs.ftruncateSync(stateMachineFd, 0);
+      fs.writeSync(stateMachineFd, after, 0, 'utf8');
+      console.log(`Patched 3.0 compatibility media-buy status assertions in ${stateMachinePath}`);
+    }
+  } finally {
+    fs.closeSync(stateMachineFd);
+  }
+}

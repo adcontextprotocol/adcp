@@ -382,7 +382,7 @@ Default flow when a fix is needed in both lines:
    **Auto-resolved (metadata that legitimately diverges by-design):**
    - `package.json` / `package-lock.json` → preserve main's (main may carry structural changes — package renames, new deps — that 3.0.x doesn't)
    - `.changeset/*.md` / `.changeset/pre.json` → preserve main's (independent pre-mode pool)
-   - `static/schemas/source/index.json` / `static/schemas/source/registry/index.yaml` → take 3.0.x's (regenerated on next release build)
+   - `static/schemas/source/index.json` / `static/schemas/source/registry/index.yaml` → preserve main's (branch-local package/version metadata must stay aligned with main)
    - `CHANGELOG.md` → take 3.0.x's (main's next Version Packages cut prepends its own entries above)
    - `dist/{schemas,compliance,protocol,docs}/*` → take 3.0.x's (immutable per release; main only ever ADDS)
 
