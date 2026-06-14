@@ -19,6 +19,7 @@ import type { RequestHandler, Response } from 'express';
 import { z } from 'zod';
 import { CommunityMirrorDatabase } from '../db/community-mirror-db.js';
 import { PublisherDatabase } from '../db/publisher-db.js';
+import type { CatalogEventsDatabase } from '../db/catalog-events-db.js';
 import { getClient } from '../db/client.js';
 import { isRegistryModerator } from '../services/brand-logo-auth.js';
 import { isWebUserAAOAdmin } from '../addie/admin-status-lookup.js';
@@ -64,6 +65,7 @@ const MirrorBodySchema = z
 
 export interface CommunityMirrorRouterConfig {
   requireAuth?: RequestHandler;
+  eventsDb?: CatalogEventsDatabase;
 }
 
 /**
@@ -97,7 +99,7 @@ async function resolvePublisher(
 
 export function createCommunityMirrorRouter(config: CommunityMirrorRouterConfig): Router {
   const router = Router();
-  const { requireAuth: authMiddleware } = config;
+  const { requireAuth: authMiddleware, eventsDb } = config;
   const mirrorDb = new CommunityMirrorDatabase();
   const publisherDb = new PublisherDatabase();
 
@@ -228,6 +230,7 @@ export function createCommunityMirrorRouter(config: CommunityMirrorRouterConfig)
         catalogUrl: `/api/creative-agent/translated/${platform}/adagents.json`,
         createdByUserId: userId,
         createdByEmail: req.user?.email ?? null,
+        eventsDb,
       });
       await client.query('COMMIT');
       logger.info({ platform, by: userId }, 'Published community mirror');

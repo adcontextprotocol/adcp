@@ -32,6 +32,7 @@ describe('RegistrySync', () => {
       const sync = new RegistrySync(makeConfig());
       expect(sync.agents).toBeDefined();
       expect(sync.properties).toBeDefined();
+      expect(sync.collections).toBeDefined();
       expect(sync.authorizations).toBeDefined();
     });
 
@@ -39,6 +40,7 @@ describe('RegistrySync', () => {
       const sync = new RegistrySync(makeConfig({ indexes: ['agents'] }));
       expect(sync.agents).toBeDefined();
       expect(sync.properties).toBeUndefined();
+      expect(sync.collections).toBeUndefined();
       expect(sync.authorizations).toBeUndefined();
     });
 
@@ -54,7 +56,8 @@ describe('RegistrySync', () => {
     it('emits ready after bootstrap', async () => {
       mockFetch
         .mockReturnValueOnce(mockJsonResponse({ results: [] }))    // agents search
-        .mockReturnValueOnce(mockJsonResponse({ properties: [] })); // catalog sync
+        .mockReturnValueOnce(mockJsonResponse({ entries: [] }))  // catalog browse
+        .mockReturnValueOnce(mockJsonResponse({ collections: [] })); // collections sync
 
       const sync = new RegistrySync(makeConfig());
       const readyPromise = new Promise<void>(resolve => sync.on('ready', resolve));
@@ -70,7 +73,8 @@ describe('RegistrySync', () => {
     it('emits stopped on stop', async () => {
       mockFetch
         .mockReturnValueOnce(mockJsonResponse({ results: [] }))
-        .mockReturnValueOnce(mockJsonResponse({ properties: [] }));
+        .mockReturnValueOnce(mockJsonResponse({ entries: [] }))
+        .mockReturnValueOnce(mockJsonResponse({ collections: [] }));
 
       const sync = new RegistrySync(makeConfig());
       const stoppedPromise = new Promise<void>(resolve => sync.on('stopped', resolve));
@@ -91,7 +95,8 @@ describe('RegistrySync', () => {
               publisher_count: 1, has_tmp: true, category_taxonomy: null, updated_at: '2026-01-01' },
           ],
         }))
-        .mockReturnValueOnce(mockJsonResponse({ properties: [] }));
+        .mockReturnValueOnce(mockJsonResponse({ entries: [] }))
+        .mockReturnValueOnce(mockJsonResponse({ collections: [] }));
 
       const sync = new RegistrySync(makeConfig());
       await sync.start();
@@ -101,21 +106,90 @@ describe('RegistrySync', () => {
       sync.stop();
     });
 
-    it('populates property index from catalog sync', async () => {
+    it('populates property index from catalog browse bootstrap', async () => {
       mockFetch
         .mockReturnValueOnce(mockJsonResponse({ results: [] }))
         .mockReturnValueOnce(mockJsonResponse({
-          properties: [
+          entries: [
             { property_rid: 'rid-001', identifiers: [{ type: 'domain', value: 'pub.com' }],
               classification: 'property', publisher_domain: 'pub.com' },
           ],
-        }));
+        }))
+        .mockReturnValueOnce(mockJsonResponse({ collections: [] }));
 
       const sync = new RegistrySync(makeConfig());
       await sync.start();
 
       expect(sync.properties!.size).toBe(1);
       expect(sync.properties!.getByRid('rid-001')).toBeDefined();
+      sync.stop();
+    });
+
+    it('populates collection index from collection sync', async () => {
+      mockFetch
+        .mockReturnValueOnce(mockJsonResponse({ results: [] }))
+        .mockReturnValueOnce(mockJsonResponse({ entries: [] }))
+        .mockReturnValueOnce(mockJsonResponse({
+          collections: [
+            {
+              collection_rid: 'collection-rid-001',
+              publisher_domain: 'stuk.tv',
+              collection_id: 'stuktv',
+              name: 'StukTV',
+              kind: 'series',
+              identifiers: [
+                { publisher_domain: 'youtube.com', type: 'youtube_channel_handle', value: '@stuktv' },
+              ],
+            },
+          ],
+        }));
+
+      const sync = new RegistrySync(makeConfig());
+      await sync.start();
+
+      expect(sync.collections!.size).toBe(1);
+      expect(sync.collections!.getByDistributionIdentifier(
+        'youtube.com',
+        'youtube_channel_handle',
+        'StukTV',
+      )?.collection_id).toBe('stuktv');
+      sync.stop();
+    });
+
+    it('clears stale collections when cursor-expired recovery reboots from full sync', async () => {
+      mockFetch
+        .mockReturnValueOnce(mockJsonResponse({ results: [] }))
+        .mockReturnValueOnce(mockJsonResponse({ entries: [] }))
+        .mockReturnValueOnce(mockJsonResponse({
+          collections: [
+            {
+              collection_rid: 'stale-collection-rid',
+              publisher_domain: 'stuk.tv',
+              collection_id: 'stale',
+              identifiers: [
+                { publisher_domain: 'youtube.com', type: 'youtube_channel_handle', value: '@stale' },
+              ],
+            },
+          ],
+        }));
+
+      const sync = new RegistrySync(makeConfig());
+      await sync.start();
+      expect(sync.collections!.size).toBe(1);
+
+      mockFetch
+        .mockReturnValueOnce(mockJsonResponse({ error: 'cursor_expired', message: 'expired' }))
+        .mockReturnValueOnce(mockJsonResponse({ results: [] }))
+        .mockReturnValueOnce(mockJsonResponse({ entries: [] }))
+        .mockReturnValueOnce(mockJsonResponse({ collections: [] }));
+
+      await (sync as any).poller.poll();
+      expect(sync.collections!.size).toBe(0);
+      expect(sync.collections!.getByDistributionIdentifier(
+        'youtube.com',
+        'youtube_channel_handle',
+        '@stale',
+      )).toBeUndefined();
       sync.stop();
     });
   });
@@ -126,7 +200,8 @@ describe('RegistrySync', () => {
     beforeEach(async () => {
       mockFetch
         .mockReturnValueOnce(mockJsonResponse({ results: [] }))
-        .mockReturnValueOnce(mockJsonResponse({ properties: [] }));
+        .mockReturnValueOnce(mockJsonResponse({ entries: [] }))
+        .mockReturnValueOnce(mockJsonResponse({ collections: [] }));
 
       sync = new RegistrySync(makeConfig());
       await sync.start();
@@ -214,6 +289,104 @@ describe('RegistrySync', () => {
       expect(sync.properties!.getByRid('alias-rid')).toBeUndefined();
       // alias.com now resolves to canonical
       expect(sync.properties!.getByIdentifier('domain', 'alias.com')?.property_rid).toBe('canonical-rid');
+    });
+
+    it('handles collection.created and collection.updated events', () => {
+      (sync as any).applyEvents([{
+        event_id: 'e-collection-create',
+        event_type: 'collection.created',
+        entity_type: 'collection',
+        entity_id: 'collection-rid',
+        payload: {
+          collection_rid: 'collection-rid',
+          publisher_domain: 'stuk.tv',
+          collection_id: 'stuktv',
+          name: 'StukTV',
+          kind: 'series',
+          identifiers: [
+            { publisher_domain: 'youtube.com', type: 'youtube_channel_handle', value: '@stuktv' },
+          ],
+        },
+        actor: 'pipeline:catalog',
+        created_at: new Date(),
+      }]);
+
+      expect(sync.collections!.getByCollectionId('stuk.tv', 'stuktv')?.name).toBe('StukTV');
+      expect(sync.collections!.getByDistributionIdentifier(
+        'youtube.com',
+        'youtube_channel_handle',
+        'StukTV',
+      )?.collection_rid).toBe('collection-rid');
+
+      (sync as any).applyEvents([{
+        event_id: 'e-collection-update',
+        event_type: 'collection.updated',
+        entity_type: 'collection',
+        entity_id: 'collection-rid',
+        payload: {
+          collection_rid: 'collection-rid',
+          name: 'StukTV Prime',
+        },
+        actor: 'pipeline:catalog',
+        created_at: new Date(),
+      }]);
+
+      expect(sync.collections!.getByRid('collection-rid')?.name).toBe('StukTV Prime');
+      expect(sync.collections!.getByDistributionIdentifier(
+        'youtube.com',
+        'youtube_channel_handle',
+        '@stuktv',
+      )?.name).toBe('StukTV Prime');
+    });
+
+    it('handles collection.removed and collection.merged events', () => {
+      sync.collections!.upsert({
+        collection_rid: 'canonical-collection-rid',
+        publisher_domain: 'stuk.tv',
+        collection_id: 'stuktv',
+        identifiers: [],
+      });
+      sync.collections!.upsert({
+        collection_rid: 'alias-collection-rid',
+        publisher_domain: 'talpanetwork.com',
+        collection_id: 'stuk-tv',
+        identifiers: [
+          { publisher_domain: 'youtube.com', type: 'youtube_channel_id', value: 'UCK5Fn7Z6-iFMdxEye2FsKXg' },
+        ],
+      });
+
+      (sync as any).applyEvents([{
+        event_id: 'e-collection-merge',
+        event_type: 'collection.merged',
+        entity_type: 'collection',
+        entity_id: 'alias-collection-rid',
+        payload: {
+          alias_rid: 'alias-collection-rid',
+          canonical_rid: 'canonical-collection-rid',
+        },
+        actor: 'registry:manual_review',
+        created_at: new Date(),
+      }]);
+
+      expect(sync.collections!.getByRid('alias-collection-rid')).toBeUndefined();
+      expect(sync.collections!.getByDistributionIdentifier(
+        'youtube.com',
+        'youtube_channel_id',
+        'UCK5Fn7Z6-iFMdxEye2FsKXg',
+      )?.collection_rid).toBe('canonical-collection-rid');
+
+      (sync as any).applyEvents([{
+        event_id: 'e-collection-remove',
+        event_type: 'collection.removed',
+        entity_type: 'collection',
+        entity_id: 'canonical-collection-rid',
+        payload: { collection_rid: 'canonical-collection-rid' },
+        actor: 'pipeline:catalog',
+        created_at: new Date(),
+      }]);
+
+      expect(sync.collections!.getByRid('canonical-collection-rid')).toBeUndefined();
+      expect(sync.collections!.getByCollectionId('stuk.tv', 'stuktv')).toBeUndefined();
     });
 
     it('handles authorization.granted event', () => {

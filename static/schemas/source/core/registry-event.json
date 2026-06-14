@@ -30,6 +30,10 @@
         "property.merged",
         "property.stale",
         "property.reactivated",
+        "collection.created",
+        "collection.updated",
+        "collection.merged",
+        "collection.removed",
         "agent.discovered",
         "agent.removed",
         "agent.profile_updated",
@@ -48,6 +52,7 @@
       "type": "string",
       "enum": [
         "property",
+        "collection",
         "agent",
         "publisher",
         "authorization"
@@ -167,6 +172,89 @@
               "required": ["property_rid"],
               "properties": {
                 "reactivated_at": { "type": "string", "format": "date-time" }
+              }
+            }
+          ]
+        }
+      },
+      "required": ["event_type"]
+    },
+    {
+      "description": "collection.created - a new collection_rid was assigned.",
+      "properties": {
+        "event_type": { "type": "string", "const": "collection.created" },
+        "entity_type": { "type": "string", "const": "collection" },
+        "payload": {
+          "allOf": [
+            { "$ref": "#/$defs/collectionPayload" },
+            {
+              "type": "object",
+              "required": ["collection_rid", "publisher_domain", "collection_id", "identifiers"]
+            }
+          ]
+        }
+      },
+      "required": ["event_type"]
+    },
+    {
+      "description": "collection.updated - collection metadata or distribution identifiers changed.",
+      "properties": {
+        "event_type": { "type": "string", "const": "collection.updated" },
+        "entity_type": { "type": "string", "const": "collection" },
+        "payload": {
+          "allOf": [
+            { "$ref": "#/$defs/collectionPayload" },
+            {
+              "type": "object",
+              "required": ["collection_rid"]
+            }
+          ]
+        }
+      },
+      "required": ["event_type"]
+    },
+    {
+      "description": "collection.merged - one collection_rid became an alias of another.",
+      "properties": {
+        "event_type": { "type": "string", "const": "collection.merged" },
+        "entity_type": { "type": "string", "const": "collection" },
+        "payload": {
+          "type": "object",
+          "required": ["alias_rid", "canonical_rid"],
+          "properties": {
+            "alias_rid": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Retired collection_rid that now aliases to canonical_rid."
+            },
+            "canonical_rid": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Canonical collection_rid that consumers should retain."
+            },
+            "evidence": {
+              "type": "string",
+              "description": "Registry evidence source for the merge, such as adagents_json or manual_review."
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": ["event_type"]
+    },
+    {
+      "description": "collection.removed - a collection is no longer visible in the publisher's authoritative catalog.",
+      "properties": {
+        "event_type": { "type": "string", "const": "collection.removed" },
+        "entity_type": { "type": "string", "const": "collection" },
+        "payload": {
+          "allOf": [
+            { "$ref": "#/$defs/collectionPayload" },
+            {
+              "type": "object",
+              "required": ["collection_rid", "publisher_domain", "status"],
+              "properties": {
+                "status": { "type": "string", "const": "removed" }
               }
             }
           ]
@@ -378,6 +466,7 @@
             },
             "agent_count": { "type": "integer", "minimum": 0 },
             "property_count": { "type": "integer", "minimum": 0 },
+            "collection_count": { "type": "integer", "minimum": 0 },
             "discovery_method": { "type": "string" },
             "manager_domain": { "type": ["string", "null"] },
             "source": { "type": "string" }
@@ -421,6 +510,57 @@
         "property": {
           "$ref": "/schemas/core/property.json",
           "description": "Optional full post-change property object when available."
+        },
+        "changed_fields": { "$ref": "#/$defs/changedFields" }
+      },
+      "additionalProperties": true
+    },
+    "collectionIdentifier": {
+      "type": "object",
+      "properties": {
+        "publisher_domain": {
+          "$ref": "#/$defs/domain",
+          "description": "Distribution platform domain, such as youtube.com or spotify.com."
+        },
+        "type": {
+          "$ref": "/schemas/enums/distribution-identifier-type.json"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": ["publisher_domain", "type", "value"],
+      "additionalProperties": false
+    },
+    "collectionPayload": {
+      "type": "object",
+      "properties": {
+        "collection_rid": { "type": "string", "format": "uuid" },
+        "publisher_domain": { "$ref": "#/$defs/domain" },
+        "collection_id": {
+          "type": ["string", "null"],
+          "description": "Publisher-local collection_id from the authoritative adagents.json."
+        },
+        "name": { "type": ["string", "null"] },
+        "kind": {
+          "anyOf": [
+            { "$ref": "/schemas/enums/collection-kind.json" },
+            { "type": "null" }
+          ]
+        },
+        "source": { "$ref": "#/$defs/propertySource" },
+        "status": {
+          "type": "string",
+          "enum": ["active", "stale", "removed"]
+        },
+        "identifiers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/collectionIdentifier" },
+          "description": "Distribution identifiers that alias this collection across platforms."
+        },
+        "collection": {
+          "$ref": "/schemas/core/collection.json",
+          "description": "Optional full post-change collection object when available."
         },
         "changed_fields": { "$ref": "#/$defs/changedFields" }
       },

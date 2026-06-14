@@ -40,7 +40,8 @@ describe('Registry Pipeline Client Tests', () => {
     // Bootstrap with empty data
     mockFetch
       .mockReturnValueOnce(mockJsonResponse({ results: [] }))
-      .mockReturnValueOnce(mockJsonResponse({ properties: [] }));
+      .mockReturnValueOnce(mockJsonResponse({ entries: [] }))
+      .mockReturnValueOnce(mockJsonResponse({ collections: [] }));
 
     sync = new RegistrySync({
       apiKey: 'test',
@@ -295,6 +296,52 @@ describe('Registry Pipeline Client Tests', () => {
     });
   });
 
+  // ── Collection lifecycle through events ─────────────────────────
+
+  describe('collection lifecycle', () => {
+    it('collection indexes update from collection events', () => {
+      (sync as any).applyEvents([
+        makeEvent({
+          event_type: 'collection.created',
+          entity_id: 'collection-rid-1',
+          payload: {
+            collection_rid: 'collection-rid-1',
+            publisher_domain: 'stuk.tv',
+            collection_id: 'stuktv',
+            name: 'StukTV',
+            kind: 'series',
+            identifiers: [
+              { publisher_domain: 'youtube.com', type: 'youtube_channel_url', value: 'https://www.youtube.com/@StukTV/videos' },
+            ],
+          },
+        }),
+      ]);
+
+      expect(sync.collections!.size).toBe(1);
+      expect(sync.collections!.getByCollectionId('stuk.tv', 'stuktv')?.name).toBe('StukTV');
+      expect(sync.collections!.getByDistributionIdentifier(
+        'youtube.com',
+        'youtube_channel_url',
+        'youtube.com/@stuktv',
+      )?.collection_rid).toBe('collection-rid-1');
+
+      (sync as any).applyEvents([
+        makeEvent({
+          event_type: 'collection.removed',
+          entity_id: 'collection-rid-1',
+          payload: { collection_rid: 'collection-rid-1' },
+        }),
+      ]);
+
+      expect(sync.collections!.size).toBe(0);
+      expect(sync.collections!.getByDistributionIdentifier(
+        'youtube.com',
+        'youtube_channel_url',
+        'https://youtube.com/@stuktv',
+      )).toBeUndefined();
+    });
+  });
+
   // ── EventEmitter ────────────────────────────────────────────────
 
   describe('event emitter', () => {
@@ -345,7 +392,7 @@ describe('Registry Pipeline Client Tests', () => {
       vi.clearAllMocks();
       mockFetch
         .mockReturnValueOnce(mockJsonResponse({ results: [] }))
-        .mockReturnValueOnce(mockJsonResponse({ properties: [] }));
+        .mockReturnValueOnce(mockJsonResponse({ entries: [] }));
 
       const agentsOnly = new RegistrySync({
         apiKey: 'test',
@@ -357,7 +404,11 @@ describe('Registry Pipeline Client Tests', () => {
 
       expect(agentsOnly.agents).toBeDefined();
       expect(agentsOnly.properties).toBeUndefined();
+      expect(agentsOnly.collections).toBeUndefined();
       expect(agentsOnly.authorizations).toBeUndefined();
+      expect(mockFetch.mock.calls.map((call) => call[0])).not.toContain(
+        'https://test.example.com/api/catalog/collections/sync?limit=1000&offset=0',
+      );
 
       // Events for disabled indexes should not throw
       (agentsOnly as any).applyEvents([
@@ -365,6 +416,16 @@ describe('Registry Pipeline Client Tests', () => {
           event_type: 'property.created',
           entity_id: 'rid',
           payload: { property_rid: 'rid', identifiers: [] },
+        }),
+        makeEvent({
+          event_type: 'collection.created',
+          entity_id: 'collection-rid',
+          payload: {
+            collection_rid: 'collection-rid',
+            publisher_domain: 'stuk.tv',
+            collection_id: 'stuktv',
+            identifiers: [],
+          },
         }),
         makeEvent({
           event_type: 'authorization.granted',

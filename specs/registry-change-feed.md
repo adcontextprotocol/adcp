@@ -311,6 +311,9 @@ Events are written at the point of change, not reconstructed later:
 | Crawler `populateFederatedIndex` (new agent discovered) | `agent.discovered` |
 | Crawler diff (agent no longer in any adagents.json) | `agent.removed` |
 | Crawler diff (adagents.json content changed) | `publisher.adagents_changed` |
+| Crawler/adagents collection projection | `collection.created`, `collection.updated`, `collection.removed` |
+| Community collection catalog upsert (`PUT /catalog/collections/{publisher_domain}/{collection_id}`) | `collection.created`, `collection.updated` |
+| Collection catalog merge | `collection.merged` |
 | Crawler diff (authorization added/removed) | `authorization.granted`, `authorization.revoked` |
 | Authorization row body update | `authorization.modified` |
 | Crawler diff (agent inventory profile changed) | `agent.profile_updated` |
@@ -319,21 +322,21 @@ Events are written at the point of change, not reconstructed later:
 | Resolve reactivation (stale property resolved) | `property.reactivated` |
 | Compliance heartbeat status transition | `agent.compliance_changed` |
 
-**Seed operations** do not write individual registry feed events. Consumers who need full state after a seed should use `/catalog/sync`.
+**Seed operations** do not write individual registry feed events. Consumers who need full state after a seed should use `/catalog` for properties and `/catalog/collections/sync` for collections.
 
 ---
 
 ## Consumer Pattern
 
-1. **Bootstrap:** `GET /api/registry/catalog/sync?since=1970-01-01T00:00:00Z` with pagination for full property catalog.
+1. **Bootstrap:** `GET /api/registry/catalog` with cursor pagination for the full property catalog, and `GET /api/registry/catalog/collections/sync` for the full collection catalog.
 2. **Steady state:** Poll `GET /api/registry/feed?cursor={last_event_id}` every 30-60 seconds, or wait for webhook notification and then poll.
-3. **Recovery:** If cursor is older than 90 days (retention window), do another full sync via `/catalog/sync` and reset the cursor.
+3. **Recovery:** If cursor is older than 90 days (retention window), do another full sync via `/catalog` and `/catalog/collections/sync`, then reset the cursor.
 
 ---
 
 ## Relationship to Existing Endpoints
 
-- **`/catalog/sync`** remains the full-state sync mechanism for property-only data. The change feed is the incremental update mechanism that covers properties, agents, publishers, and authorizations.
+- **`/catalog`** is the full-state sync mechanism for property data. **`/catalog/collections/sync`** is the equivalent full-state sync for publisher-declared collections. The change feed is the incremental update mechanism that covers properties, collections, agents, publishers, and authorizations.
 - **`/registry/agents`** and **`/registry/publishers`** remain point-in-time query endpoints. The change feed tells you *when* things changed; the query endpoints tell you the *current state*.
 
 ---
@@ -433,12 +436,12 @@ matches := registry.Agents().Search(adcp.AgentSearchQuery{
 │          └──────┬──────┘ └────┬────┘            │
 └─────────────────┼─────────────┼─────────────────┘
                   │             │
-    GET /catalog/sync    GET /registry/feed
+    GET /catalog         GET /registry/feed
     GET /registry/agents/search (bootstrap profiles)
 ```
 
 1. **Bootstrap** (on `start()`):
-   - Fetches full property catalog via `GET /catalog/sync?since=epoch` (paginated)
+   - Fetches full property catalog via `GET /catalog` (paginated)
    - Fetches full agent list with inventory profiles via `GET /registry/agents/search` (paginated, no filters)
    - Builds in-memory indexes: properties by rid, properties by identifier, agents by url, agents by profile fields, authorizations by domain
 
@@ -596,8 +599,9 @@ The change feed keeps all of this live. When a publisher updates their `adagents
 |------------|---------------------------|--------------------------|
 | `registry.agents.search(...)` | `GET /registry/agents/search` | `GET /registry/feed` (agent events) |
 | `registry.agents.get(url)` | `GET /registry/agents/search` | `GET /registry/feed` |
-| `registry.properties.getByRid(rid)` | `GET /catalog/sync` | `GET /registry/feed` (property events) |
-| `registry.properties.getByIdentifier(...)` | `GET /catalog/sync` | `GET /registry/feed` |
+| `registry.properties.getByRid(rid)` | `GET /catalog` | `GET /registry/feed` (property events) |
+| `registry.properties.getByIdentifier(...)` | `GET /catalog` | `GET /registry/feed` |
+| `registry.collections.getByDistributionIdentifier(...)` | `GET /catalog/collections/sync` | `GET /registry/feed` (collection events) |
 | `registry.authorizations.check(...)` | `GET /registry/agents/search` (includes auth data) | `GET /registry/feed` (authorization events) |
 | `registry.authorizations.getSigningKeys(...)` | `GET /registry/agents/search` | `GET /registry/feed` |
 | `registry.on('event', ...)` | — | `GET /registry/feed` |

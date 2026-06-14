@@ -54,7 +54,7 @@ import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain, getGoogleEmailAliases } from "./utils/email-domain.js";
 import { isUuid } from "./utils/uuid.js";
 import { resolveUserNameWithFallbacks, sanitizeName } from "./utils/resolve-user-name.js";
-import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, encodeDevSessionCookie, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
+import { requireAuth, requireAdmin, requireGlobalAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, encodeDevSessionCookie, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter, newsletterSubscribeRateLimiter, newsletterConfirmRateLimiter } from "./middleware/rate-limit.js";
 import { findOrCreateUserByEmail } from "./auth/workos-client.js";
 import { sendNewsletterConfirmation } from "./notifications/email.js";
@@ -1400,12 +1400,12 @@ export class HTTPServer {
     });
 
     // Mount property catalog API routes (resolve, browse, sync, disputes)
-    const catalogApiRouter = createCatalogApiRouter({ requireAuth, requireAdmin });
+    const catalogApiRouter = createCatalogApiRouter({ requireAuth, requireAdmin, requireGlobalAdmin });
     this.app.use('/api/registry', catalogApiRouter);
 
     // Community-mirror catalog lifecycle (#2176): publish/read/list catalog-only
     // adagents.json mirrors for unadopted platforms (served at /translated/<platform>).
-    const communityMirrorRouter = createCommunityMirrorRouter({ requireAuth });
+    const communityMirrorRouter = createCommunityMirrorRouter({ requireAuth, eventsDb: this.catalogEventsDb });
     this.app.use('/api/registry', communityMirrorRouter);
 
     // Mount network health API routes (page route is in createAdminRouter)

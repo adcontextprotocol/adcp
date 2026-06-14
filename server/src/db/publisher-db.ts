@@ -1,5 +1,7 @@
 import { getClient } from './client.js';
 import { uuidv7 } from './uuid.js';
+import { CollectionCatalogDatabase, type CollectionProjectionEvent } from './collection-catalog-db.js';
+import type { CatalogEventsDatabase, WriteEventInput } from './catalog-events-db.js';
 import { normalizeIdentifier } from '../services/identifier-normalization.js';
 import { canonicalizePublisherDomain } from '../services/publisher-domain.js';
 import { createLogger } from '../logger.js';
@@ -19,6 +21,17 @@ export interface AdagentsProperty {
   name?: string;
   identifiers?: Array<{ type?: string; value?: string }>;
   tags?: string[];
+}
+
+export interface AdagentsCollection {
+  collection_id?: string;
+  name?: string;
+  kind?: string;
+  distribution?: Array<{
+    publisher_domain?: string;
+    identifiers?: Array<{ type?: string; value?: string }>;
+  }>;
+  [key: string]: unknown;
 }
 
 /**
@@ -54,6 +67,7 @@ export interface AdagentsAuthorizedAgent {
 export interface AdagentsManifest {
   authorized_agents?: AdagentsAuthorizedAgent[];
   properties?: AdagentsProperty[];
+  collections?: AdagentsCollection[];
   [key: string]: unknown;
 }
 
@@ -90,6 +104,12 @@ export interface UpsertAdagentsCacheInput {
    * whose adagents.json was used. Written to publishers.manager_domain.
    */
   managerDomain?: string;
+  eventsDb?: CatalogEventsDatabase;
+  collectionEventActor?: string;
+}
+
+export interface UpsertAdagentsCacheResult {
+  collectionEvents: CollectionProjectionEvent[];
 }
 
 export interface UpsertCommunityAdagentsCatalogInput {
@@ -99,6 +119,7 @@ export interface UpsertCommunityAdagentsCatalogInput {
   catalogUrl?: string;
   createdByUserId?: string | null;
   createdByEmail?: string | null;
+  eventsDb?: CatalogEventsDatabase;
 }
 
 const ADAGENTS_CREATED_BY_PREFIX = 'adagents_json:';
@@ -174,6 +195,33 @@ function truncateResolvedUrl(url: string | undefined): string | null {
 // failure mode for a security control.
 const PUBLISHER_DOMAIN_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
 
+function collectionProjectionEventPayload(event: CollectionProjectionEvent): Record<string, unknown> {
+  return {
+    collection_rid: event.collection_rid,
+    publisher_domain: event.publisher_domain,
+    collection_id: event.collection_id,
+    name: event.name,
+    kind: event.kind,
+    source: event.source,
+    status: event.status,
+    identifiers: event.identifiers,
+    collection: event.collection,
+  };
+}
+
+function collectionProjectionWriteEvents(
+  events: CollectionProjectionEvent[],
+  actor: string,
+): WriteEventInput[] {
+  return events.map((event) => ({
+    event_type: event.event_type,
+    entity_type: 'collection',
+    entity_id: event.collection_rid,
+    payload: collectionProjectionEventPayload(event),
+    actor,
+  }));
+}
+
 // Read `revoked_publisher_domains[]` from a (loose-typed) manifest and return
 // the set of canonicalized publisher_domain values. Entries MUST carry both
 // a string `publisher_domain` (which canonicalizes to a schema-valid domain)
@@ -232,6 +280,8 @@ export function canonicalizeAgentUrl(raw: string): string | null {
  * malformed property does not lose the rest of the manifest.
  */
 export class PublisherDatabase {
+  private readonly collectionCatalog = new CollectionCatalogDatabase();
+
   /**
    * Cache an adagents.json manifest and project its properties into the
    * catalog.
@@ -390,7 +440,9 @@ export class PublisherDatabase {
   ): Promise<string[]> {
     const platform = input.platform.toLowerCase();
     const properties = Array.isArray(input.manifest.properties) ? input.manifest.properties : [];
+    const collections = Array.isArray(input.manifest.collections) ? input.manifest.collections : [];
     const byDomain = new Map<string, AdagentsProperty[]>();
+    const collectionsByDomain = new Map<string, AdagentsCollection[]>();
 
     for (const property of properties) {
       const domain = this.readCommunityCatalogPublisherDomain(property);
@@ -400,13 +452,54 @@ export class PublisherDatabase {
       byDomain.set(domain, bucket);
     }
 
-    const updatedDomains: string[] = [];
-    await this.retireCommunityAdagentsCatalogWithClient(client, platform, input.previousManifest);
+    for (const collection of collections) {
+      const domain = this.readCommunityCatalogCollectionPublisherDomain(collection);
+      if (!domain) continue;
+      const bucket = collectionsByDomain.get(domain) ?? [];
+      bucket.push(collection);
+      collectionsByDomain.set(domain, bucket);
+    }
 
-    for (const [domain, domainProperties] of byDomain.entries()) {
+    const updatedDomains: string[] = [];
+    await this.retireCommunityAdagentsCatalogWithClient(client, platform, input.previousManifest, {
+      includeCollections: false,
+    });
+
+    const communityCollectionEvents: CollectionProjectionEvent[] = [];
+    const previousCollections = Array.isArray(input.previousManifest?.collections)
+      ? input.previousManifest.collections as AdagentsCollection[]
+      : [];
+    const collectionDomains = new Set([...collectionsByDomain.keys()]);
+    for (const collection of previousCollections) {
+      const domain = this.readCommunityCatalogCollectionPublisherDomain(collection);
+      if (domain) collectionDomains.add(domain);
+    }
+    for (const domain of collectionDomains) {
+      const activeCollectionIds = (collectionsByDomain.get(domain) ?? [])
+        .map((collection) => collection.collection_id)
+        .filter((collectionId): collectionId is string =>
+          typeof collectionId === 'string' && collectionId.trim().length > 0
+        )
+        .map((collectionId) => collectionId.trim());
+      communityCollectionEvents.push(
+        ...await this.collectionCatalog.retireMissingAdagentsCollections(
+          client,
+          domain,
+          activeCollectionIds,
+          communityCatalogCreatedBy(platform),
+          'community',
+        ),
+      );
+    }
+
+    const domains = new Set([...byDomain.keys(), ...collectionsByDomain.keys()]);
+    for (const domain of domains) {
+      const domainProperties = byDomain.get(domain) ?? [];
+      const domainCollections = collectionsByDomain.get(domain) ?? [];
       const scopedManifest: AdagentsManifest = {
         ...input.manifest,
         properties: domainProperties,
+        collections: domainCollections,
         authorized_agents: Array.isArray(input.manifest.authorized_agents)
           ? input.manifest.authorized_agents
           : [],
@@ -465,6 +558,15 @@ export class PublisherDatabase {
       );
 
       if (publisherWrite.rows[0]?.source_type === 'adagents_json') {
+        communityCollectionEvents.push(
+          ...await this.collectionCatalog.retireMissingAdagentsCollections(
+            client,
+            domain,
+            [],
+            communityCatalogCreatedBy(platform),
+            'community',
+          ),
+        );
         updatedDomains.push(domain);
         continue;
       }
@@ -472,7 +574,26 @@ export class PublisherDatabase {
       for (const property of domainProperties) {
         await this.upsertCommunityCatalogProperty(client, platform, domain, property, input.catalogUrl);
       }
+      for (const collection of domainCollections) {
+        const event = await this.collectionCatalog.projectCollection(client, {
+          publisherDomain: domain,
+          collection: collection as Record<string, unknown>,
+          evidence: 'community',
+          confidence: 'strong',
+          source: 'contributed',
+          adagentsUrl: input.catalogUrl ?? null,
+          createdBy: communityCatalogCreatedBy(platform),
+        });
+        if (event) communityCollectionEvents.push(event);
+      }
       updatedDomains.push(domain);
+    }
+
+    if (input.eventsDb && communityCollectionEvents.length > 0) {
+      await input.eventsDb.writeEvents(
+        collectionProjectionWriteEvents(communityCollectionEvents, 'registry:community_mirror'),
+        client,
+      );
     }
 
     return updatedDomains;
@@ -499,8 +620,10 @@ export class PublisherDatabase {
     client: PoolClient,
     platform: string,
     manifest?: AdagentsManifest | Record<string, unknown> | null,
+    options: { includeCollections?: boolean } = {},
   ): Promise<void> {
     const createdBy = communityCatalogCreatedBy(platform.toLowerCase());
+    const includeCollections = options.includeCollections ?? true;
     await client.query(
       `DELETE FROM catalog_identifiers ci
         WHERE ci.property_rid IN (
@@ -510,6 +633,22 @@ export class PublisherDatabase {
         )`,
       [createdBy],
     );
+    if (includeCollections) {
+      await client.query(
+        `DELETE FROM catalog_collection_identifiers cci
+          WHERE cci.collection_rid IN (
+            SELECT cc.collection_rid
+              FROM catalog_collections cc
+             WHERE cc.created_by = $1
+          )`,
+        [createdBy],
+      );
+      await client.query(
+        `DELETE FROM catalog_collections
+          WHERE created_by = $1`,
+        [createdBy],
+      );
+    }
     await client.query(
       `DELETE FROM catalog_properties
         WHERE created_by = $1`,
@@ -568,6 +707,25 @@ export class PublisherDatabase {
       && i.value.trim().length > 0
     );
     return domainIdentifier?.value ? canonicalizePublisherDomain(domainIdentifier.value) : null;
+  }
+
+  private readCommunityCatalogCollectionPublisherDomain(collection: AdagentsCollection): string | null {
+    const explicit = (collection as AdagentsCollection & { publisher_domain?: unknown }).publisher_domain;
+    if (typeof explicit === 'string' && explicit.trim()) {
+      return canonicalizePublisherDomain(explicit);
+    }
+
+    const distribution = Array.isArray(collection.distribution) ? collection.distribution : [];
+    for (const entry of distribution) {
+      if (!entry || typeof entry !== 'object') continue;
+      const domainIdentifier = entry.identifiers?.find((i) =>
+        i?.type === 'domain'
+        && typeof i.value === 'string'
+        && i.value.trim().length > 0
+      );
+      if (domainIdentifier?.value) return canonicalizePublisherDomain(domainIdentifier.value);
+    }
+    return null;
   }
 
   private readCommunityCatalogPropertyKeys(
@@ -773,9 +931,10 @@ export class PublisherDatabase {
     }
   }
 
-  async upsertAdagentsCache(input: UpsertAdagentsCacheInput): Promise<void> {
+  async upsertAdagentsCache(input: UpsertAdagentsCacheInput): Promise<UpsertAdagentsCacheResult> {
     const domain = canonicalizePublisherDomain(input.domain);
     const client = await getClient();
+    const collectionEvents: CollectionProjectionEvent[] = [];
     try {
       await client.query('BEGIN');
 
@@ -787,6 +946,7 @@ export class PublisherDatabase {
       const safeManifest: AdagentsManifest = {
         ...input.manifest,
         properties: Array.isArray(input.manifest.properties) ? input.manifest.properties : [],
+        collections: Array.isArray(input.manifest.collections) ? input.manifest.collections : [],
         authorized_agents: Array.isArray(input.manifest.authorized_agents)
           ? input.manifest.authorized_agents
           : [],
@@ -860,8 +1020,25 @@ export class PublisherDatabase {
               )`,
           [domain, adagentsCreatedBy(domain)],
         );
+        collectionEvents.push(
+          ...await this.collectionCatalog.retireMissingAdagentsCollections(
+            client,
+            domain,
+            [],
+            adagentsCreatedBy(domain),
+          ),
+        );
+        if (input.eventsDb && collectionEvents.length > 0) {
+          await input.eventsDb.writeEvents(
+            collectionProjectionWriteEvents(
+              collectionEvents,
+              input.collectionEventActor ?? 'pipeline:catalog_crawl',
+            ),
+            client,
+          );
+        }
         await client.query('COMMIT');
-        return;
+        return { collectionEvents };
       }
 
       const properties = Array.isArray(safeManifest.properties) ? safeManifest.properties : [];
@@ -881,6 +1058,51 @@ export class PublisherDatabase {
               err: err instanceof Error ? err.message : err,
             },
             'Catalog projection failed for property; skipping'
+          );
+        }
+      }
+
+      const collections = Array.isArray(safeManifest.collections) ? safeManifest.collections : [];
+      const currentCollectionIds = collections
+        .map((collection) => collection?.collection_id)
+        .filter((collectionId): collectionId is string =>
+          typeof collectionId === 'string' && collectionId.trim().length > 0
+        )
+        .map((collectionId) => collectionId.trim());
+      collectionEvents.push(
+        ...await this.collectionCatalog.retireMissingAdagentsCollections(
+          client,
+          domain,
+          currentCollectionIds,
+          adagentsCreatedBy(domain),
+        ),
+      );
+      for (let i = 0; i < collections.length; i += 1) {
+        const collection = collections[i];
+        const savepoint = `collection_${i}`;
+        await client.query(`SAVEPOINT ${savepoint}`);
+        try {
+          const event = await this.collectionCatalog.projectCollection(client, {
+            publisherDomain: domain,
+            collection: collection as Record<string, unknown>,
+            evidence: 'adagents_json',
+            confidence: 'authoritative',
+            source: 'authoritative',
+            adagentsUrl: `https://${domain}/.well-known/adagents.json`,
+            createdBy: adagentsCreatedBy(domain),
+          });
+          if (event) collectionEvents.push(event);
+          await client.query(`RELEASE SAVEPOINT ${savepoint}`);
+        } catch (err) {
+          await client.query(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+          log.warn(
+            {
+              domain,
+              collectionId: collection?.collection_id,
+              collectionIndex: i,
+              err: err instanceof Error ? err.message : err,
+            },
+            'Catalog projection failed for collection; skipping'
           );
         }
       }
@@ -948,7 +1170,18 @@ export class PublisherDatabase {
         [domain, currentCanonical, adagentsCreatedBy(domain)],
       );
 
+      if (input.eventsDb && collectionEvents.length > 0) {
+        await input.eventsDb.writeEvents(
+          collectionProjectionWriteEvents(
+            collectionEvents,
+            input.collectionEventActor ?? 'pipeline:catalog_crawl',
+          ),
+          client,
+        );
+      }
+
       await client.query('COMMIT');
+      return { collectionEvents };
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;

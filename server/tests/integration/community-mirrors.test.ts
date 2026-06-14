@@ -75,6 +75,20 @@ const REMOVED_PROPERTY = {
   identifiers: [{ type: 'domain', value: REMOVED_PUBLISHER_DOMAIN }],
   publisher_domain: REMOVED_PUBLISHER_DOMAIN,
 };
+const MINIMAL_COLLECTION = {
+  collection_id: 'test_show',
+  name: 'Test Show',
+  kind: 'series',
+  publisher_domain: PUBLISHER_DOMAIN,
+  distribution: [
+    {
+      publisher_domain: 'youtube.com',
+      identifiers: [
+        { type: 'youtube_channel_handle', value: '@CommunityMirrorShow' },
+      ],
+    },
+  ],
+};
 // A valid ProductFormatDeclaration: format_kind + params are both required.
 const MINIMAL_FORMAT = {
   format_option_id: 'meta_feed_image',
@@ -100,6 +114,28 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
   let federatedDb: FederatedIndexDatabase;
 
   async function clear() {
+    await pool.query(
+      `DELETE FROM catalog_events
+        WHERE actor IN ('registry:community_mirror', 'test:community-mirrors')
+           OR payload->>'publisher_domain' = ANY($1::text[])`,
+      [[PUBLISHER_DOMAIN, REMOVED_PUBLISHER_DOMAIN]],
+    );
+    await pool.query(
+      `DELETE FROM catalog_collection_identifiers cci
+        WHERE cci.collection_rid IN (
+          SELECT cc.collection_rid
+            FROM catalog_collections cc
+           WHERE cc.created_by = $1
+              OR cc.publisher_domain = ANY($2::text[])
+        )`,
+      [`community_adagents:${PLATFORM}`, [PUBLISHER_DOMAIN, REMOVED_PUBLISHER_DOMAIN]],
+    );
+    await pool.query(
+      `DELETE FROM catalog_collections
+        WHERE created_by = $1
+           OR publisher_domain = ANY($2::text[])`,
+      [`community_adagents:${PLATFORM}`, [PUBLISHER_DOMAIN, REMOVED_PUBLISHER_DOMAIN]],
+    );
     await pool.query(
       `DELETE FROM catalog_identifiers ci
         WHERE ci.property_rid IN (
@@ -187,6 +223,107 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
     expect(read.body.adagents_json.authorized_agents).toEqual([]);
     expect(read.body.adagents_json.formats).toHaveLength(1);
     expect(read.body.adagents_json.$schema).toMatch(/adagents\.json$/);
+  });
+
+  it('publishes a collection-only mirror and emits a collection event', async () => {
+    const res = await request(app)
+      .put(`/api/registry/mirrors/${PLATFORM}`)
+      .send({ catalog_etag: 'collection-only', collections: [MINIMAL_COLLECTION] });
+    expect(res.status).toBe(200);
+    expect(res.body.publisher_domains).toEqual([PUBLISHER_DOMAIN]);
+
+    const collections = await pool.query<{
+      publisher_domain: string;
+      collection_id: string;
+      name: string;
+      source: string;
+      status: string;
+    }>(
+      `SELECT publisher_domain, collection_id, name, source, status
+         FROM catalog_collections
+        WHERE created_by = $1`,
+      [`community_adagents:${PLATFORM}`],
+    );
+    expect(collections.rows).toEqual([
+      {
+        publisher_domain: PUBLISHER_DOMAIN,
+        collection_id: 'test_show',
+        name: 'Test Show',
+        source: 'contributed',
+        status: 'active',
+      },
+    ]);
+
+    const identifiers = await pool.query<{ identifier_type: string; identifier_value: string }>(
+      `SELECT cci.identifier_type, cci.identifier_value
+         FROM catalog_collection_identifiers cci
+         JOIN catalog_collections cc ON cc.collection_rid = cci.collection_rid
+        WHERE cc.created_by = $1`,
+      [`community_adagents:${PLATFORM}`],
+    );
+    expect(identifiers.rows).toEqual([
+      { identifier_type: 'youtube_channel_handle', identifier_value: '@communitymirrorshow' },
+    ]);
+
+    const events = await pool.query<{ event_type: string; payload: { collection_id?: string } }>(
+      `SELECT event_type, payload
+         FROM catalog_events
+        WHERE actor = 'registry:community_mirror'
+        ORDER BY created_at`,
+    );
+    expect(events.rows.map((row) => [row.event_type, row.payload.collection_id])).toEqual([
+      ['collection.created', 'test_show'],
+    ]);
+  });
+
+  it('re-publish retires removed mirror collections without replacing unchanged collection rids', async () => {
+    await request(app)
+      .put(`/api/registry/mirrors/${PLATFORM}`)
+      .send({
+        catalog_etag: 'collections-v1',
+        collections: [
+          MINIMAL_COLLECTION,
+          { ...MINIMAL_COLLECTION, collection_id: 'retired_show', name: 'Retired Show' },
+        ],
+      });
+
+    const before = await pool.query<{ collection_id: string; collection_rid: string }>(
+      `SELECT collection_id, collection_rid
+         FROM catalog_collections
+        WHERE created_by = $1`,
+      [`community_adagents:${PLATFORM}`],
+    );
+    const originalRid = before.rows.find((row) => row.collection_id === 'test_show')?.collection_rid;
+    expect(originalRid).toBeTruthy();
+
+    await request(app)
+      .put(`/api/registry/mirrors/${PLATFORM}`)
+      .send({
+        catalog_etag: 'collections-v2',
+        collections: [{ ...MINIMAL_COLLECTION, name: 'Test Show Updated' }],
+      });
+
+    const after = await pool.query<{ collection_id: string; collection_rid: string; status: string; name: string }>(
+      `SELECT collection_id, collection_rid, status, name
+         FROM catalog_collections
+        WHERE created_by = $1
+        ORDER BY collection_id`,
+      [`community_adagents:${PLATFORM}`],
+    );
+    expect(after.rows).toEqual([
+      {
+        collection_id: 'retired_show',
+        collection_rid: expect.any(String),
+        status: 'removed',
+        name: 'Retired Show',
+      },
+      {
+        collection_id: 'test_show',
+        collection_rid: originalRid,
+        status: 'active',
+        name: 'Test Show Updated',
+      },
+    ]);
   });
 
   it('drops any caller-supplied authorized_agents', async () => {
@@ -381,17 +518,29 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
   });
 
   it('force-deletes a non-superseded mirror with ?force=true', async () => {
-    await request(app).put(`/api/registry/mirrors/${PLATFORM}`).send(publishBody());
+    await request(app)
+      .put(`/api/registry/mirrors/${PLATFORM}`)
+      .send(publishBody({ collections: [MINIMAL_COLLECTION] }));
     const del = await request(app).delete(`/api/registry/mirrors/${PLATFORM}?force=true`);
     expect(del.status).toBe(200);
     expect((await request(app).get(`/api/registry/mirrors/${PLATFORM}`)).status).toBe(404);
     expect((await pool.query('SELECT 1 FROM publishers WHERE domain = $1', [PUBLISHER_DOMAIN])).rows).toHaveLength(0);
     expect((await pool.query('SELECT 1 FROM discovered_properties WHERE publisher_domain = $1', [PUBLISHER_DOMAIN])).rows).toHaveLength(0);
     expect((await pool.query('SELECT 1 FROM catalog_properties WHERE created_by = $1', [`community_adagents:${PLATFORM}`])).rows).toHaveLength(0);
+    expect((await pool.query('SELECT 1 FROM catalog_collections WHERE created_by = $1', [`community_adagents:${PLATFORM}`])).rows).toHaveLength(0);
+    expect((await pool.query(
+      `SELECT 1
+         FROM catalog_collection_identifiers cci
+         JOIN catalog_collections cc ON cc.collection_rid = cci.collection_rid
+        WHERE cc.created_by = $1`,
+      [`community_adagents:${PLATFORM}`],
+    )).rows).toHaveLength(0);
   });
 
   it('retiring after first-party self-host takeover removes stale community properties', async () => {
-    await request(app).put(`/api/registry/mirrors/${PLATFORM}`).send(publishBody());
+    await request(app)
+      .put(`/api/registry/mirrors/${PLATFORM}`)
+      .send(publishBody({ collections: [MINIMAL_COLLECTION] }));
     await publisherDb.upsertAdagentsCache({
       domain: PUBLISHER_DOMAIN,
       manifest: {
@@ -401,6 +550,10 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
           property_type: 'website',
           name: 'Self Hosted Site',
           identifiers: [{ type: 'domain', value: PUBLISHER_DOMAIN }],
+        }],
+        collections: [{
+          ...MINIMAL_COLLECTION,
+          name: 'Self Hosted Show',
         }],
       },
       statusCode: 200,
@@ -419,6 +572,19 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
       'SELECT 1 FROM discovered_properties WHERE publisher_domain = $1 AND source_type = $2',
       [PUBLISHER_DOMAIN, 'community'],
     )).rows).toHaveLength(0);
+    const collections = await pool.query<{ source: string; created_by: string; name: string }>(
+      `SELECT source, created_by, name
+         FROM catalog_collections
+        WHERE publisher_domain = $1 AND collection_id = $2`,
+      [PUBLISHER_DOMAIN, MINIMAL_COLLECTION.collection_id],
+    );
+    expect(collections.rows).toEqual([
+      {
+        source: 'authoritative',
+        created_by: `adagents_json:${PUBLISHER_DOMAIN}`,
+        name: 'Self Hosted Show',
+      },
+    ]);
   });
 
   it('returns 404 deleting an unknown mirror', async () => {
