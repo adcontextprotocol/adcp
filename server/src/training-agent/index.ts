@@ -664,6 +664,14 @@ export function createTrainingAgentRouter(options: { storyboardCompat?: Training
           agents,
         },
       ],
+      // Buy-side operator authorization — entities permitted to represent this
+      // house when buying. The S7 brand-specialist lab resolves this to teach
+      // the operator axis (who acts FOR the brand), distinct from the agents[]
+      // declaration (which agents the brand operates) and the sell-side
+      // delegation in adagents.json.
+      authorized_operators: [
+        { domain: 'agenticadvertising.org', brands: ['*'], scopes: ['all'] },
+      ],
       contact: {
         name: 'AdCP Training Agent',
         email: 'hello@agenticadvertising.org',
