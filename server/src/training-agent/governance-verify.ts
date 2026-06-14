@@ -26,7 +26,7 @@
 import { createHash, createPrivateKey, createPublicKey, type KeyObject } from 'node:crypto';
 import { compactVerify, FlattenedSign, importJWK } from 'jose';
 import type { AdcpJsonWebKey } from '@adcp/sdk/signing';
-import { getGovernanceSigningPublicJwk } from './governance-signing.js';
+import { getGovernanceSigningPublicJwk, getGovernanceSigningKey } from './governance-signing.js';
 
 /** Canonical seller audience a real training-agent governance token is bound to. */
 export const CANONICAL_SELLER_AUD = 'https://agenticadvertising.org/sales';
@@ -66,6 +66,25 @@ export async function mintRevokedDemoToken(): Promise<string> {
   return `${jws.protected}.${jws.payload}.${jws.signature}`;
 }
 
+/**
+ * Mint a VALIDLY-signed token (real governance key) but bound to a different
+ * seller's `aud`, so a learner can watch the aud byte-match step reject a
+ * confused-deputy / token-redirection attempt. The verifier always checks
+ * against this seller's own canonical aud — the reference value is never
+ * caller-controlled — so the demo is shown by minting a wrong-aud token, not
+ * by letting the caller move the goalposts.
+ */
+export async function mintWrongAudDemoToken(): Promise<string> {
+  const { kid, privateKey } = getGovernanceSigningKey();
+  const now = Math.floor(Date.now() / 1000);
+  const payload = new TextEncoder().encode(JSON.stringify({
+    iss: CANONICAL_GOV_ISS, sub: 'plan-wrong-aud-demo',
+    aud: 'https://other-seller.example/sales', iat: now, exp: now + 900, jti: `wrong-aud-demo-${now}`, phase: 'intent',
+  }));
+  const jws = await new FlattenedSign(payload).setProtectedHeader({ alg: 'EdDSA', typ: 'adcp-gov+jws', kid }).sign(privateKey);
+  return `${jws.protected}.${jws.payload}.${jws.signature}`;
+}
+
 export interface ChecklistStep { step: number; name: string; pass: boolean; detail: string; }
 export interface ChecklistResult { verdict: 'valid' | 'rejected'; steps: ChecklistStep[]; error_code: string | null; }
 
@@ -85,11 +104,11 @@ function resolveJwk(kid: string): AdcpJsonWebKey | null {
  * expired (revocation is a stronger signal than freshness; exp must never
  * pre-empt it).
  */
-export async function verifyGovernanceToken(
-  token: string,
-  opts: { expectedAud?: string; expectedSub?: string } = {},
-): Promise<ChecklistResult> {
-  const expectedAud = opts.expectedAud ?? CANONICAL_SELLER_AUD;
+export async function verifyGovernanceToken(token: string): Promise<ChecklistResult> {
+  // The aud reference is ALWAYS this seller's own canonical URL — never a
+  // caller-supplied value. Letting a caller pass the expected aud would make
+  // the security check caller-controlled (the attacker moving the goalposts);
+  // confused-deputy is demonstrated by minting a wrong-aud token instead.
   const now = Math.floor(Date.now() / 1000);
   const SKEW = 60;
   const steps: ChecklistStep[] = [];
@@ -148,13 +167,15 @@ export async function verifyGovernanceToken(
   if (revokedGovernanceKids().includes(kid)) { fail(14, 'revocation', `kid ${kid} is in the revocation list`); return reject('governance_token_revoked'); }
   pass(14, 'revocation', `kid ${kid} not revoked`);
 
-  // 8. aud byte-match against the seller's own canonical URL (confused-deputy defense).
-  if (claims.aud !== expectedAud) { fail(8, 'aud_binding', `aud=${String(claims.aud)} != this seller's ${expectedAud}`); return reject('governance_token_not_applicable'); }
-  pass(8, 'aud_binding', `aud byte-matches ${expectedAud}`);
+  // 8. aud byte-match against the seller's OWN canonical URL (confused-deputy defense).
+  if (claims.aud !== CANONICAL_SELLER_AUD) { fail(8, 'aud_binding', `aud=${String(claims.aud)} != this seller's ${CANONICAL_SELLER_AUD}`); return reject('governance_token_not_applicable'); }
+  pass(8, 'aud_binding', `aud byte-matches ${CANONICAL_SELLER_AUD}`);
 
-  // 10. sub binding (plan), when the caller asserts an expected plan.
-  if (opts.expectedSub !== undefined && claims.sub !== opts.expectedSub) { fail(10, 'sub_binding', `sub=${String(claims.sub)} != expected plan ${opts.expectedSub}`); return reject('governance_token_not_applicable'); }
-  pass(10, 'sub_binding', opts.expectedSub ? `sub matches plan ${opts.expectedSub}` : `sub=${String(claims.sub)} (no plan asserted)`);
+  // 10. sub binding — the token must name the plan it authorizes. (The seller
+  // cross-checks this sub against the plan_id of the operation it is executing;
+  // that operation-side comparison is out of scope for this standalone verifier.)
+  if (typeof claims.sub !== 'string' || !claims.sub) { fail(10, 'sub_binding', 'sub claim missing — token not bound to a plan'); return reject('governance_token_not_applicable'); }
+  pass(10, 'sub_binding', `sub=${claims.sub} (token bound to a plan)`);
 
   // 11. phase present.
   if (typeof claims.phase !== 'string' || !claims.phase) { fail(11, 'phase_binding', 'phase claim missing'); return reject('governance_token_not_applicable'); }

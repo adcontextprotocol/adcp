@@ -237,11 +237,9 @@ describe('comply_test_controller', () => {
       expect(result.error_code).toBe('governance_token_invalid');
     });
 
-    it('rejects a valid token presented to the wrong seller (confused deputy)', async () => {
-      const token = await mintValidToken();
+    it('rejects a validly-signed token bound to the wrong seller (confused deputy)', async () => {
       const { result } = await simulateCallTool(server, 'comply_test_controller', {
-        scenario: 'verify_governance_token', account: ACCOUNT,
-        params: { token, expected_aud: 'https://other-seller.example/sales' },
+        scenario: 'verify_governance_token', account: ACCOUNT, params: { mode: 'wrong_aud_demo' },
       });
       expect(result.verdict).toBe('rejected');
       expect(result.error_code).toBe('governance_token_not_applicable');

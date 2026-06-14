@@ -37,7 +37,7 @@ import { getSession, sessionKeyFromArgs } from './state.js';
 import { getAgentUrl } from './config.js';
 import { randomUUID } from 'node:crypto';
 import { getAccountNotificationSubscribers, seedAccountFixture } from './account-handlers.js';
-import { verifyGovernanceToken, mintRevokedDemoToken } from './governance-verify.js';
+import { verifyGovernanceToken, mintRevokedDemoToken, mintWrongAudDemoToken } from './governance-verify.js';
 import { emitAccountNotificationWebhook } from './webhooks.js';
 import { buildCatalog } from './product-factory.js';
 import { getAllSignals } from './signal-providers.js';
@@ -791,8 +791,13 @@ function localScenariosFor(ctx: TrainingContext): string[] {
  * this is what lets an S6 learner observe a token being ACCEPTED (valid) or
  * REJECTED (tampered → signature; wrong seller → aud; revoked kid → revocation).
  *
- * params: { token?, mode?: 'verify'|'revoked_demo', tamper?: 'signature'|'aud'|'sub'|<claim>,
- *           expected_aud?, expected_sub? }
+ * The verifier always checks against this seller's own fixed canonical aud —
+ * the caller never supplies the reference value of a security check. The
+ * rejection demos are shown by MINTING the offending token, not by moving the
+ * verifier's goalposts.
+ *
+ * params: { token?, mode?: 'verify'|'revoked_demo'|'wrong_aud_demo',
+ *           tamper?: 'signature'|'sub'|<anything-else> }
  */
 async function handleVerifyGovernanceToken(rawArgs: Record<string, unknown>): Promise<object> {
   const params = (rawArgs.params ?? {}) as Record<string, unknown>;
@@ -801,21 +806,21 @@ async function handleVerifyGovernanceToken(rawArgs: Record<string, unknown>): Pr
   let note: string | undefined;
   if (mode === 'revoked_demo') {
     token = await mintRevokedDemoToken();
-    note = 'Minted a token signed under a deliberately-revoked sandbox governance kid — watch step 14 reject it.';
+    note = 'Minted a token signed under a deliberately-revoked sandbox governance kid — watch the revocation step reject it.';
+  } else if (mode === 'wrong_aud_demo') {
+    token = await mintWrongAudDemoToken();
+    note = 'Minted a validly-signed token bound to a different seller (aud) — watch the aud step reject it (confused deputy).';
   }
   if (!token) {
     return {
       success: false,
       error: 'INVALID_PARAMS',
-      error_detail: 'Provide params.token (a governance_context from sync_plans -> intent check_governance), or set params.mode to "revoked_demo" to mint a revoked-kid token to verify. To see the confused-deputy rejection, pass a valid token with params.expected_aud set to a different seller URL.',
+      error_detail: 'Provide params.token (a governance_context from sync_plans -> intent check_governance), or set params.mode to "revoked_demo" (revocation rejection) or "wrong_aud_demo" (confused-deputy aud rejection) to mint a demo token to verify. Add params.tamper to mutate a claim and watch the signature step reject it.',
     };
   }
   const tamper = typeof params.tamper === 'string' ? params.tamper : undefined;
   if (tamper) token = tamperGovernanceToken(token, tamper);
-  const result = await verifyGovernanceToken(token, {
-    expectedAud: typeof params.expected_aud === 'string' ? params.expected_aud : undefined,
-    expectedSub: typeof params.expected_sub === 'string' ? params.expected_sub : undefined,
-  });
+  const result = await verifyGovernanceToken(token);
   return {
     success: true,
     verdict: result.verdict,
