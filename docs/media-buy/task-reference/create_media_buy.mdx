@@ -159,6 +159,8 @@ npx @adcp/sdk@latest \
 |-----------|------|----------|-------------|
 | `account` | [account-ref](/docs/building/integration/accounts-and-agents#account-references) | Yes | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. Required for billing and policy evaluation. |
 | `proposal_id` | string | No* | ID of a committed proposal from `get_products` to execute. Alternative to providing packages. Draft proposals must be finalized first; sellers reject draft proposal execution with `PROPOSAL_NOT_COMMITTED`. |
+| `proposal_version` | string | Conditional | Opaque version from the proposal being executed. Required when the selected proposal carried `proposal_version`. Sellers reject execution of a previously declined proposal version with `INVALID_STATE`. Requires `proposal_id`. |
+| `opportunity` | OpportunityContext | No | Buyer-supplied planning-cycle context. When the buy came from prior `get_products` calls, buyers SHOULD carry the same `opportunity_id` so the seller can connect discovery/refinement activity to the accepted media buy. If the create request also marks the opportunity closed, `close_reason` must be `accepted_with_seller`. |
 | `total_budget` | TotalBudget | No* | Total budget when executing a proposal. Publisher applies allocation percentages. |
 | `packages` | Package[] | No* | Array of package configurations (see below). Required when not using proposal_id. |
 | `brand` | BrandRef | Yes | Brand reference — resolved to full identity at execution time. See [brand.json](/docs/brand-protocol/brand-json) |
@@ -174,6 +176,14 @@ npx @adcp/sdk@latest \
 \* Either `packages` OR (`proposal_id` + `total_budget`) must be provided.
 
 When executing a proposal, `proposal_status` on the returned proposal determines whether `create_media_buy` is valid. `committed` proposals can be executed before `expires_at`; `draft` proposals require a prior `get_products` refine call with `action: "finalize"`. Finalization is seller commitment to firm terms, not buyer acceptance. This `create_media_buy` call is the acceptance/execution step.
+
+If the proposal carried `proposal_version`, buyers MUST include that version in `create_media_buy` to identify the exact offer state being accepted. Sellers MUST reject a proposal execution that omits `proposal_version` when the referenced executable proposal is versioned with `INVALID_REQUEST`. If the buyer previously declined the same `proposal_id` + `proposal_version` through `get_products` refine action `decline`, the seller MUST reject the create request with `INVALID_STATE`.
+
+When `proposal_version` is provided, sellers MUST verify it matches the executable offer state. If the proposal is known but no longer at that version, reject with `CONFLICT` so the buyer re-reads or refines before retrying. If the proposal/version cannot be resolved for the caller, reject with `PROPOSAL_NOT_FOUND`.
+
+If the buyer used `opportunity` during discovery or refinement, it SHOULD carry the same `opportunity_id` into `create_media_buy`. `opportunity_id` connects the accepted buy back to the planning cycle; it is not an idempotency key and does not change execution semantics.
+
+`create_media_buy` is the in-protocol close-won signal for an opportunity. If the buyer sends `opportunity.status: "closed"` on `create_media_buy`, the only valid `close_reason` is `accepted_with_seller`; loss-style reasons such as `not_pursued`, `selected_alternative`, or `purchased_elsewhere` belong on a `get_products` refine call that closes the opportunity without creating a buy.
 
 ### TotalBudget Object
 
@@ -1022,7 +1032,11 @@ Common errors and resolutions:
 | `BUDGET_TOO_LOW` | Budget below product minimum | Increase budget or choose different product |
 | `TARGETING_TOO_NARROW` | Targeting yields zero inventory | Broaden geographic or audience criteria |
 | `POLICY_VIOLATION` | Brand/product violates policy | Review publisher's content policies |
+| `INVALID_REQUEST` | The buyer omitted `proposal_version` while executing a proposal that carried a version | Include the proposal's current `proposal_version`, or re-read/refine the proposal before retrying |
 | `INVALID_PRICING_OPTION` | pricing_option_id not found | Use ID from product's `pricing_options` |
+| `INVALID_STATE` | The referenced proposal version was previously declined through `get_products` refine action `decline` | Re-discover or refine to obtain a current proposal version before creating the media buy |
+| `CONFLICT` | The supplied `proposal_version` is stale for a known proposal | Re-read or refine the proposal and retry with the current version |
+| `PROPOSAL_NOT_FOUND` | The referenced `proposal_id` or `proposal_version` cannot be resolved for the caller | Re-discover or finalize the proposal again |
 | `CREATIVE_ID_EXISTS` | Creative ID already exists in the seller's creative namespace | For library-backed sellers, assign existing creatives via `creative_assignments` or update via `sync_creatives`; for inline-only sellers, use a different package-scoped `creative_id` |
 
 Example error response:

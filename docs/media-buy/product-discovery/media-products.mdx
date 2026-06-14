@@ -899,6 +899,8 @@ A proposal is a recommended buying strategy that groups products with suggested 
 
 Key characteristics:
 - **Actionable**: A returned proposal is buyable through its lifecycle. `proposal_status: "draft"` means finalize first; `proposal_status: "committed"` means execute via `create_media_buy` with `proposal_id` before `expires_at`.
+- **Versioned**: Sellers SHOULD include `proposal_version` when a proposal has mutable execution terms, and MUST include it on proposals they expect buyers to resolve explicitly by accepting or declining a specific version. Buyers use that version when declining a proposal and MUST carry it into `create_media_buy` when accepting a versioned proposal.
+- **Opportunity-aware**: Buyers MAY carry the same `opportunity.opportunity_id` across discovery, `open` retrieval, refinement, proposal decline, and `create_media_buy` so both sides can connect proposal outcomes to the broader planning cycle.
 - **Budget-agnostic**: Allocations use percentages, allowing the same proposal to scale to any budget
 - **Forecast-equipped**: Proposals and allocations can include delivery forecasts to help buyers evaluate expected performance before purchase
 
@@ -907,6 +909,7 @@ Key characteristics:
 ```json
 {
   "proposal_id": "swiss_balanced_v1",
+  "proposal_version": "1",
   "name": "Swiss Multi-Channel Plan",
   "description": "Balanced coverage across devices and language regions",
   "allocations": [
@@ -1010,6 +1013,7 @@ To execute a committed proposal, provide the `proposal_id` and `total_budget` in
 ```json
 {
   "proposal_id": "swiss_balanced_v1",
+  "proposal_version": "1",
   "total_budget": {
     "amount": 50000,
     "currency": "USD"

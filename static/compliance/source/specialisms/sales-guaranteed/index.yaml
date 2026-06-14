@@ -18,6 +18,7 @@ requires_scenarios:
   - media_buy_seller/inventory_list_no_match
   - media_buy_seller/invalid_transitions
   - media_buy_seller/proposal_finalize
+  - media_buy_seller/proposal_decline
   - media_buy_seller/proposal_finalize_asap_timing
   - media_buy_seller/proposal_not_found_errors
   - governance_aware_seller/governance_multi_agent_rejected
@@ -51,7 +52,8 @@ narrative: |
   Proposal-driven workflows are part of guaranteed selling: most guaranteed deals start with
   an RFP/brief, generate a proposal with curated bundles and rationale, refine, finalize to
   committed status with firm pricing and an inventory hold, and then the buyer executes via
-  create_media_buy. The `media_buy_seller/proposal_finalize` scenario covers that flow and is
+  create_media_buy. The `media_buy_seller/proposal_finalize` scenario covers acceptance, and
+  `media_buy_seller/proposal_decline` covers declined proposal versions. Both are
   capability-gated on `media_buy.supports_proposals` — a conformance declaration, not the
   buyer's per-proposal executable-state signal. Sellers that declare `false` (or omit the
   field, since the schema default is false) skip it with skip_result.reason: not_applicable;

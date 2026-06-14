@@ -178,10 +178,10 @@
         },
         "buying_modes": {
           "type": "array",
-          "description": "Buying modes this seller supports on get_products. 'brief' (semantic discovery driven by the brief) is universally supported and implicit. 'wholesale' (raw wholesale product feed enumeration — caller omits brief and the seller returns the full priced product feed, paginated) is opt-in and SHOULD be declared explicitly so buyers can probe before issuing wholesale calls. 'refine' lets buyers iterate on prior products/proposals and is also the vehicle for finalizing draft proposals when the seller returns them. Sellers MAY declare ['brief', 'wholesale'] to signal wholesale support; absent declaration is treated as ['brief'] for wholesale-feed probing purposes and sellers MAY return INVALID_REQUEST for wholesale calls they do not support. Symmetric with signals.discovery_modes.",
+          "description": "Buying modes this seller supports on get_products. 'brief' (semantic discovery driven by the brief) is universally supported and implicit. 'refine' lets buyers iterate on prior products/proposals and is also the vehicle for finalizing draft proposals when the seller returns them. 'open' reloads unresolved products/proposals already associated with the caller/account/opportunity without creating new products, proposals, firm prices, inventory holds, or proposal versions. 'wholesale' (raw wholesale product feed enumeration — caller omits brief and the seller returns the full priced product feed, paginated) SHOULD be declared explicitly so buyers can probe before issuing wholesale calls. Sellers SHOULD declare the full set they support, for example ['brief', 'refine', 'open', 'wholesale']. Absent declaration is treated as ['brief'] for backward-compatible wholesale-feed probing purposes. Symmetric with signals.discovery_modes.",
           "items": {
             "type": "string",
-            "enum": ["brief", "wholesale", "refine"]
+            "enum": ["brief", "wholesale", "refine", "open"]
           },
           "minItems": 1,
           "uniqueItems": true,

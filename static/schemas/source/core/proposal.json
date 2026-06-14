@@ -10,6 +10,12 @@
       "description": "Unique identifier for this proposal. Used to finalize a draft proposal and to execute a committed proposal via create_media_buy.",
       "maxLength": 255
     },
+    "proposal_version": {
+      "type": "string",
+      "description": "Opaque seller-assigned version for this proposal's current offer state. Changes when allocations, pricing, inventory hold terms, insertion order, or other execution-relevant proposal terms change. Sellers that expect buyers to resolve a proposal version explicitly, whether by accepting it via create_media_buy or declining it via get_products refine action 'decline', MUST include this value on the proposal. Buyers include this value when declining a proposal and MUST include it when accepting/executing a versioned proposal via create_media_buy.",
+      "minLength": 1,
+      "maxLength": 255
+    },
     "name": {
       "type": "string",
       "description": "Human-readable name for this media plan proposal",

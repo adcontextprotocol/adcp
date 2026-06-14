@@ -60,7 +60,7 @@ Any AdCP task can return one of these statuses. The server chooses based on what
 | `sync_catalogs` | Large feeds or feeds requiring content policy review |
 | `activate_signal` | Platform deployment pipelines |
 
-These operations integrate with external systems or require human approval. Wholesale feed reads are the exception: `get_products buying_mode: "wholesale"` and `get_signals discovery_mode: "wholesale"` stay synchronous repair/reconciliation reads and report partial completion with `incomplete[]`, not `submitted`.
+These operations integrate with external systems or require human approval. Wholesale feed reads are the exception: `get_products buying_mode: "wholesale"` and `get_signals discovery_mode: "wholesale"` stay synchronous repair/reconciliation reads and report partial completion with `incomplete[]`, not `submitted`. `get_products buying_mode: "open"` is also a synchronous state read; sellers return the unresolved products/proposals they already associate with the caller/account/opportunity rather than routing through `submitted`.
 
 ## Timeout Configuration
 

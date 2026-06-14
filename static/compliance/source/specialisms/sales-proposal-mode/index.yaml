@@ -10,6 +10,7 @@ required_tools:
   - create_media_buy
 requires_scenarios:
   - media_buy_seller/proposal_finalize
+  - media_buy_seller/proposal_decline
   - media_buy_seller/proposal_finalize_asap_timing
   - media_buy_seller/proposal_not_found_errors
   - media_buy_seller/delivery_reporting
@@ -33,7 +34,8 @@ narrative: |
   `sales-proposal-mode` should drop it and declare `sales-guaranteed` plus
   `media_buy.supports_proposals: true` instead. This storyboard is retained for
   backward compat through 3.x and removed at 4.0. The `media_buy_seller/proposal_finalize`
-  scenario lives under `sales-guaranteed.requires_scenarios`.
+  scenario lives under `sales-guaranteed.requires_scenarios`; declined proposal
+  versions are covered by `media_buy_seller/proposal_decline`.
 
   Your seller generates curated media plan proposals. The buyer sends a brief, your platform
   returns products alongside proposals — curated bundles with budget allocations and rationale
