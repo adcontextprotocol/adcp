@@ -234,7 +234,7 @@ describe('comply_test_controller', () => {
         scenario: 'verify_governance_token', account: ACCOUNT, params: { token, tamper: 'aud' },
       });
       expect(result.verdict).toBe('rejected');
-      expect(result.error_code).toBe('invalid_signature');
+      expect(result.error_code).toBe('governance_token_invalid');
     });
 
     it('rejects a valid token presented to the wrong seller (confused deputy)', async () => {
@@ -244,7 +244,7 @@ describe('comply_test_controller', () => {
         params: { token, expected_aud: 'https://other-seller.example/sales' },
       });
       expect(result.verdict).toBe('rejected');
-      expect(result.error_code).toBe('aud_mismatch');
+      expect(result.error_code).toBe('governance_token_not_applicable');
     });
 
     it('rejects a token signed under a revoked kid', async () => {

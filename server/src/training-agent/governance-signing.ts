@@ -17,6 +17,11 @@
  * the signature (S6 cert lab). This is a PUBLIC SANDBOX signing key with no
  * security value — nothing here authorizes real spend. Production governance
  * agents MUST use KMS-backed keys; the derivation below is sandbox-only.
+ *
+ * Because the private key is fully reconstructable from public source (the
+ * fixed label + known PKCS8 prefix + SHA-256), a valid signature under a
+ * `training-gov-*` kid proves nothing about the signer's identity and MUST
+ * NOT be treated as an authentication signal anywhere outside the sandbox lab.
  */
 
 import { createHash, createPrivateKey, createPublicKey, type KeyObject } from 'node:crypto';

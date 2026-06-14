@@ -837,9 +837,11 @@ function tamperGovernanceToken(token: string, what: string): string {
   }
   try {
     const claims = JSON.parse(Buffer.from(parts[1], 'base64url').toString());
-    if (what === 'aud') claims.aud = 'https://attacker.example/sales';
-    else if (what === 'sub') claims.sub = 'plan-swapped';
-    else claims[what] = 'tampered';
+    // Mutate a FIXED claim (never a user-controlled property name — that would
+    // be property injection). Any payload edit breaks the signature, which is
+    // the whole teaching point; `what` only selects which fixed claim to alter.
+    if (what === 'sub') claims.sub = 'plan-swapped';
+    else claims.aud = 'https://attacker.example/sales';
     return `${parts[0]}.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.${parts[2]}`;
   } catch {
     return token;
