@@ -499,8 +499,9 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
     const paymentTerms = input.payment_terms as number | undefined;
 
     const memberEmail = memberContext?.workos_user?.email;
+    const workosUserId = memberContext?.workos_user?.workos_user_id;
     const orgId = memberContext?.organization?.workos_organization_id;
-    if (!memberEmail) {
+    if (!memberEmail || !workosUserId) {
       await recordToolError(memberContext, 'confirm_send_invoice', 'not_signed_in', { lookup_key: lookupKey });
       return JSON.stringify({
         success: false,
@@ -568,6 +569,7 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
         billingAddress: org.billing_address,
         couponId: effectiveCouponId,
         workosOrganizationId: orgId,
+        workosUserId,
         daysUntilDue: paymentTerms,
       });
 

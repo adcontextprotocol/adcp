@@ -278,6 +278,7 @@ export function createInvitesRouter(): Router {
           contactEmail: user.email,
           billingAddress: sanitizedAddress,
           workosOrganizationId: org.workos_organization_id,
+          workosUserId: user.id,
           couponId: couponId ?? org.stripe_coupon_id ?? undefined,
           // Token-keyed idempotency. Two concurrent clicks converge to one
           // subscription on Stripe's side; the DB atomic mark below then picks

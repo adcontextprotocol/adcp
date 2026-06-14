@@ -373,6 +373,7 @@ export function createPublicBillingRouter(): Router {
         billingAddress: sanitizedAddress,
         lookupKey,
         workosOrganizationId: orgId,
+        workosUserId: user.id,
         couponId: invoiceCouponId ?? org.stripe_coupon_id ?? undefined,
       };
 

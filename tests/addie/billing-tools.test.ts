@@ -513,6 +513,7 @@ describe('billing-tools', () => {
         companyName: 'Test Corp',
         billingAddress: orgWithBillingAddress.billing_address,
         workosOrganizationId: 'org_test_123',
+        workosUserId: 'user_test_123',
       }));
     });
 
