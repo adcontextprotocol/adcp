@@ -37,6 +37,7 @@ import { getSession, sessionKeyFromArgs } from './state.js';
 import { getAgentUrl } from './config.js';
 import { randomUUID } from 'node:crypto';
 import { getAccountNotificationSubscribers, seedAccountFixture } from './account-handlers.js';
+import { verifyGovernanceToken, mintRevokedDemoToken, mintWrongAudDemoToken } from './governance-verify.js';
 import { emitAccountNotificationWebhook } from './webhooks.js';
 import { buildCatalog } from './product-factory.js';
 import { getAllSignals } from './signal-providers.js';
@@ -774,12 +775,82 @@ const LOCAL_SCENARIOS = [
   'seed_measurement_catalog',
   'query_provenance_audit_observations',
   'evaluate_distributed_brand_resolution',
+  'verify_governance_token',
 ] as const;
 
 function localScenariosFor(ctx: TrainingContext): string[] {
   return ctx.storyboardCompat?.version === '3.0'
     ? LOCAL_SCENARIOS.filter(s => s !== 'force_creative_purge' && s !== 'force_wholesale_feed_webhook' && s !== 'query_provenance_audit_observations')
     : [...LOCAL_SCENARIOS];
+}
+
+/**
+ * verify_governance_token — run the JWS-profile seller verification checklist
+ * against a supplied governance_context and return a per-step pass/fail trace.
+ * The training agent is otherwise an issuer with no verification surface, so
+ * this is what lets an S6 learner observe a token being ACCEPTED (valid) or
+ * REJECTED (tampered → signature; wrong seller → aud; revoked kid → revocation).
+ *
+ * The verifier always checks against this seller's own fixed canonical aud —
+ * the caller never supplies the reference value of a security check. The
+ * rejection demos are shown by MINTING the offending token, not by moving the
+ * verifier's goalposts.
+ *
+ * params: { token?, mode?: 'verify'|'revoked_demo'|'wrong_aud_demo',
+ *           tamper?: 'signature'|'sub'|<anything-else> }
+ */
+async function handleVerifyGovernanceToken(rawArgs: Record<string, unknown>): Promise<object> {
+  const params = (rawArgs.params ?? {}) as Record<string, unknown>;
+  const mode = typeof params.mode === 'string' ? params.mode : 'verify';
+  let token = typeof params.token === 'string' ? params.token : undefined;
+  let note: string | undefined;
+  if (mode === 'revoked_demo') {
+    token = await mintRevokedDemoToken();
+    note = 'Minted a token signed under a deliberately-revoked sandbox governance kid — watch the revocation step reject it.';
+  } else if (mode === 'wrong_aud_demo') {
+    token = await mintWrongAudDemoToken();
+    note = 'Minted a validly-signed token bound to a different seller (aud) — watch the aud step reject it (confused deputy).';
+  }
+  if (!token) {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'Provide params.token (a governance_context from sync_plans -> intent check_governance), or set params.mode to "revoked_demo" (revocation rejection) or "wrong_aud_demo" (confused-deputy aud rejection) to mint a demo token to verify. Add params.tamper to mutate a claim and watch the signature step reject it.',
+    };
+  }
+  const tamper = typeof params.tamper === 'string' ? params.tamper : undefined;
+  if (tamper) token = tamperGovernanceToken(token, tamper);
+  const result = await verifyGovernanceToken(token);
+  return {
+    success: true,
+    verdict: result.verdict,
+    error_code: result.error_code,
+    checklist: result.steps,
+    ...(note ? { note } : {}),
+    ...(tamper ? { tampered: tamper } : {}),
+  };
+}
+
+/** Mutate a token to demonstrate rejection. Any payload edit breaks the signature
+ * (step 7); 'signature' corrupts the signature segment directly. */
+function tamperGovernanceToken(token: string, what: string): string {
+  const parts = token.split('.');
+  if (parts.length !== 3) return token;
+  if (what === 'signature') {
+    const sig = parts[2];
+    return `${parts[0]}.${parts[1]}.${sig.slice(0, -1)}${sig.slice(-1) === 'A' ? 'B' : 'A'}`;
+  }
+  try {
+    const claims = JSON.parse(Buffer.from(parts[1], 'base64url').toString());
+    // Mutate a FIXED claim (never a user-controlled property name — that would
+    // be property injection). Any payload edit breaks the signature, which is
+    // the whole teaching point; `what` only selects which fixed claim to alter.
+    if (what === 'sub') claims.sub = 'plan-swapped';
+    else claims.aud = 'https://attacker.example/sales';
+    return `${parts[0]}.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.${parts[2]}`;
+  } catch {
+    return token;
+  }
 }
 
 // ── Tool definition ───────────────────────────────────────────────
@@ -879,6 +950,9 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
       variant: typeof params.variant === 'string' ? params.variant : 'default',
       message: 'Distributed brand-resolution fixture evaluated successfully.',
     };
+  }
+  if (scenario === 'verify_governance_token') {
+    return handleVerifyGovernanceToken(rawArgs);
   }
   if (scenario === 'force_upstream_unavailable') {
     const params = (rawArgs.params ?? {}) as Record<string, unknown>;
