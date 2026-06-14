@@ -7,6 +7,7 @@
  *   registry.agents.search({ channels: ['ctv'], markets: ['US'] })
  *   registry.authorizations.check({ agent_url, property_rid, placement_id })
  *   registry.properties.getByRid(rid)
+ *   registry.collections.getByDistributionIdentifier('youtube.com', 'youtube_channel_id', channelId)
  *
  * Usage:
  *   const registry = new RegistrySync({ apiKey: '...', baseUrl: 'https://agenticadvertising.org' });
@@ -18,13 +19,14 @@
 import { EventEmitter } from 'node:events';
 import { AgentIndex, type AgentProfile } from './agent-index.js';
 import { CatalogPropertyIndex, type CatalogProperty } from './property-index.js';
+import { CatalogCollectionIndex, type CatalogCollection } from './collection-index.js';
 import { AuthorizationIndex, type AuthorizationEntry } from './authorization-index.js';
 import { FeedPoller } from './poller.js';
 import type { CatalogEvent } from '../db/catalog-events-db.js';
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
-export type IndexName = 'agents' | 'properties' | 'authorizations';
+export type IndexName = 'agents' | 'properties' | 'collections' | 'authorizations';
 
 export interface RegistrySyncConfig {
   apiKey: string;
@@ -43,6 +45,7 @@ export interface RegistrySyncConfig {
 export class RegistrySync extends EventEmitter {
   readonly agents?: AgentIndex;
   readonly properties?: CatalogPropertyIndex;
+  readonly collections?: CatalogCollectionIndex;
   readonly authorizations?: AuthorizationIndex;
 
   private poller: FeedPoller;
@@ -51,12 +54,15 @@ export class RegistrySync extends EventEmitter {
   constructor(config: RegistrySyncConfig) {
     super();
 
-    const enabledIndexes = new Set<IndexName>(config.indexes ?? ['agents', 'properties', 'authorizations']);
+    const enabledIndexes = new Set<IndexName>(config.indexes ?? ['agents', 'properties', 'collections', 'authorizations']);
     this.enabledIndexes = enabledIndexes;
 
     // Create indexes based on config
     if (enabledIndexes.has('properties')) {
       this.properties = new CatalogPropertyIndex();
+    }
+    if (enabledIndexes.has('collections')) {
+      this.collections = new CatalogCollectionIndex();
     }
     if (enabledIndexes.has('agents')) {
       this.agents = new AgentIndex();
@@ -76,11 +82,22 @@ export class RegistrySync extends EventEmitter {
         onError: config.onError ?? ((err) => this.emit('error', err)),
       },
       {
+        onBootstrapStart: () => this.clearIndexesForBootstrap(),
         onEvents: (events) => this.applyEvents(events),
         onBootstrapAgents: (agents) => this.bootstrapAgents(agents),
         onBootstrapProperties: (properties) => this.bootstrapProperties(properties),
+        ...(this.collections
+          ? { onBootstrapCollections: (collections: unknown[]) => this.bootstrapCollections(collections) }
+          : {}),
       }
     );
+  }
+
+  private clearIndexesForBootstrap(): void {
+    this.agents?.clear();
+    this.properties?.clear();
+    this.collections?.clear();
+    this.authorizations?.clear();
   }
 
   async start(): Promise<void> {
@@ -123,6 +140,19 @@ export class RegistrySync extends EventEmitter {
     }
 
     this.emit('properties:bootstrapped', { count: this.properties.size });
+  }
+
+  private bootstrapCollections(rawCollections: unknown[]): void {
+    if (!this.collections) return;
+
+    for (const raw of rawCollections) {
+      const collection = raw as CatalogCollection;
+      if (collection.collection_rid) {
+        this.collections.upsert(collection);
+      }
+    }
+
+    this.emit('collections:bootstrapped', { count: this.collections.size });
   }
 
   // ── Event application ───────────────────────────────────────────
@@ -199,6 +229,36 @@ export class RegistrySync extends EventEmitter {
         }
         break;
 
+      case 'collection.created':
+        if (this.collections && payload.collection_rid) {
+          const collection = this.collectionFromPayload(payload);
+          if (collection) this.collections.upsert(collection);
+        }
+        break;
+
+      case 'collection.updated':
+        if (this.collections && payload.collection_rid) {
+          const existing = this.collections.getByRid(payload.collection_rid as string);
+          const collection = this.collectionFromPayload(payload, existing);
+          if (collection) this.collections.upsert(collection);
+        }
+        break;
+
+      case 'collection.merged':
+        if (this.collections && payload.alias_rid && payload.canonical_rid) {
+          this.collections.handleMerge(
+            payload.alias_rid as string,
+            payload.canonical_rid as string,
+          );
+        }
+        break;
+
+      case 'collection.removed':
+        if (this.collections && payload.collection_rid) {
+          this.collections.remove(payload.collection_rid as string);
+        }
+        break;
+
       case 'authorization.granted':
         if (this.authorizations && payload.agent_url && payload.publisher_domain && payload.authorization_type) {
           this.authorizations.addEntry({
@@ -231,11 +291,35 @@ export class RegistrySync extends EventEmitter {
         break;
     }
   }
+
+  private collectionFromPayload(
+    payload: Record<string, unknown>,
+    existing?: CatalogCollection,
+  ): CatalogCollection | null {
+    const collectionRid = payload.collection_rid as string | undefined;
+    const publisherDomain = (payload.publisher_domain as string | undefined) ?? existing?.publisher_domain;
+    if (!collectionRid || !publisherDomain) return null;
+
+    return {
+      collection_rid: collectionRid,
+      publisher_domain: publisherDomain,
+      collection_id: (payload.collection_id as string | null | undefined) ?? existing?.collection_id,
+      name: (payload.name as string | null | undefined) ?? existing?.name,
+      kind: (payload.kind as string | null | undefined) ?? existing?.kind,
+      source: (payload.source as string | undefined) ?? existing?.source,
+      status: (payload.status as string | undefined) ?? existing?.status ?? 'active',
+      identifiers: (payload.identifiers as Array<{ publisher_domain: string; type: string; value: string }> | undefined)
+        ?? existing?.identifiers
+        ?? [],
+      collection: (payload.collection as Record<string, unknown> | undefined) ?? existing?.collection,
+    };
+  }
 }
 
 // Re-exports
 export { AgentIndex, type AgentProfile, type AgentSearchQuery, type AgentSearchResult } from './agent-index.js';
 export { CatalogPropertyIndex, type CatalogProperty } from './property-index.js';
+export { CatalogCollectionIndex, type CatalogCollection } from './collection-index.js';
 export {
   AuthorizationIndex,
   type AuthorizationEntry,

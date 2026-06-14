@@ -792,7 +792,9 @@ Buyers discover collections through the standard `get_products` workflow. Natura
 }
 ```
 
-The seller returns products with `collections` selectors. The buyer resolves full collection objects from each publisher's [adagents.json](/docs/governance/property/adagents). There is no separate collection discovery endpoint — collections surface through product discovery and `adagents.json` crawling.
+The seller returns products with `collections` selectors. The buyer resolves full collection objects from each publisher's [adagents.json](/docs/governance/property/adagents). Registry clients can also bootstrap and look up the crawled collection catalog through `/api/registry/catalog/collections/sync` and `/api/registry/catalog/collections/distribution`, which is useful for cross-referencing platform aliases such as YouTube channel IDs back to the publisher-declared collection.
+
+For community-maintained entries, registry moderators can seed a publisher-scoped collection with `PUT /api/registry/catalog/collections/{publisher_domain}/{collection_id}`. This creates a contributed registry record and emits the same `collection.created` / `collection.updated` feed events. It does not replace publisher-origin proof: once the publisher declares the collection in their own `adagents.json`, the authoritative declaration wins.
 
 ## Brand safety
 
@@ -874,7 +876,7 @@ Shows SHOULD include at least one platform-independent identifier when available
 
 </CodeGroup>
 
-Available podcast types: `apple_podcast_id`, `spotify_collection_id`, `rss_url`, `podcast_guid`, `amazon_music_id`, `iheart_id`, `podcast_index_id`. Available video/CTV types: `youtube_channel_id`, `youtube_playlist_id`, `amazon_title_id`, `roku_channel_id`, `pluto_channel_id`, `tubi_id`, `peacock_id`, `tiktok_id`, `twitch_channel`. Other: `domain`, `substack_id`.
+Available podcast types: `apple_podcast_id`, `spotify_collection_id`, `rss_url`, `podcast_guid`, `amazon_music_id`, `iheart_id`, `podcast_index_id`. Available video/CTV types: `youtube_channel_id`, `youtube_channel_handle`, `youtube_channel_url`, `youtube_playlist_id`, `amazon_title_id`, `roku_channel_id`, `pluto_channel_id`, `tubi_id`, `peacock_id`, `tiktok_id`, `twitch_channel`. Other: `domain`, `substack_id`. For YouTube channels, `youtube_channel_id` is the preferred canonical identifier; handles and URLs are aliases for discovery and matching when the channel ID is not yet resolved.
 
 ## Ad inventory
 

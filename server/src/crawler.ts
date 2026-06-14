@@ -39,7 +39,7 @@ function unknownClassificationProbeDue(
 /**
  * Compare a freshly-fetched adagents.json against the previously-cached
  * body for the same domain. Returns true when the contributory fields
- * differ — `authorized_agents` and `properties` — so manager fan-out
+ * differ — `authorized_agents`, `properties`, and `collections` — so manager fan-out
  * is gated on actual change rather than firing on every routine
  * 60-minute crawl. Top-level keys outside that subset (`$schema`,
  * `last_updated`, comments) are intentionally ignored. Arrays compare
@@ -54,6 +54,7 @@ export function manifestContentChanged(
   const subset = (m: AdagentsManifest) => ({
     authorized_agents: Array.isArray(m.authorized_agents) ? m.authorized_agents : [],
     properties: Array.isArray(m.properties) ? m.properties : [],
+    collections: Array.isArray(m.collections) ? m.collections : [],
   });
   return stableStringify(subset(previous)) !== stableStringify(subset(next));
 }
@@ -1134,6 +1135,10 @@ export class CrawlerService {
         resolvedUrl: meta?.resolvedUrl,
         discoveryMethod: meta?.discoveryMethod,
         managerDomain: meta?.managerDomain,
+        eventsDb: this.eventsDb,
+        collectionEventActor: meta?.discoveryMethod === 'ads_txt_managerdomain'
+          ? 'pipeline:manager_revalidation'
+          : 'pipeline:catalog_crawl',
       });
 
       // Manager fan-out: when the just-written manifest belongs to a
@@ -1633,6 +1638,7 @@ export class CrawlerService {
             publisher_domain: domain,
             agent_count: validation.raw_data.authorized_agents.length,
             property_count: validation.raw_data.properties?.length ?? 0,
+            collection_count: validation.raw_data.collections?.length ?? 0,
             discovery_method: validation.discovery_method,
             manager_domain: validation.manager_domain,
           },
@@ -1918,6 +1924,7 @@ export class CrawlerService {
           publisher_domain: domain,
           agent_count: validation.raw_data.authorized_agents.length,
           property_count: validation.raw_data.properties?.length ?? 0,
+          collection_count: validation.raw_data.collections?.length ?? 0,
           source: 'catalog_crawl',
           discovery_method: validation.discovery_method,
           manager_domain: validation.manager_domain,

@@ -504,6 +504,10 @@ Poll a cursor-based feed of registry changes. Use this to keep a local copy of t
 | `property.merged` | Two property records were merged |
 | `property.stale` | Property failed re-crawl validation |
 | `property.reactivated` | A stale property passed re-crawl |
+| `collection.created` | A new publisher collection was added to the registry |
+| `collection.updated` | Collection metadata or distribution identifiers changed |
+| `collection.merged` | Two collection records were merged |
+| `collection.removed` | A collection is no longer visible in the publisher's authoritative catalog |
 | `agent.discovered` | A new `agent_url` appeared in a publisher's `adagents.json` (authorization graph; does not imply the agent is in `/api/registry/agents`) |
 | `agent.removed` | An agent was removed from the registry |
 | `agent.profile_updated` | Agent inventory profile changed |
@@ -577,7 +581,7 @@ If the cursor has expired (older than 90 days or not found), the response is `41
 ```json 410 Gone
 {
   "error": "cursor_expired",
-  "message": "Cursor is older than 90-day retention window. Re-bootstrap from /registry/agents/search and /catalog/sync."
+  "message": "Cursor is older than 90-day retention window. Re-bootstrap from /registry/agents/search, /catalog, and /catalog/collections/sync."
 }
 ```
 

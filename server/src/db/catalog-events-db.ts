@@ -65,24 +65,36 @@ export class CatalogEventsDatabase {
   /**
    * Write multiple events in a single transaction.
    */
-  async writeEvents(inputs: WriteEventInput[]): Promise<string[]> {
+  async writeEvents(
+    inputs: WriteEventInput[],
+    client?: { query: (text: string, params?: unknown[]) => Promise<unknown> },
+  ): Promise<string[]> {
     if (inputs.length === 0) return [];
 
-    const client = await getClient();
-    try {
-      await client.query('BEGIN');
+    if (client) {
       const ids: string[] = [];
       for (const input of inputs) {
         const id = await this.writeEvent(input, client);
         ids.push(id);
       }
-      await client.query('COMMIT');
+      return ids;
+    }
+
+    const dbClient = await getClient();
+    try {
+      await dbClient.query('BEGIN');
+      const ids: string[] = [];
+      for (const input of inputs) {
+        const id = await this.writeEvent(input, dbClient);
+        ids.push(id);
+      }
+      await dbClient.query('COMMIT');
       return ids;
     } catch (err) {
-      await client.query('ROLLBACK');
+      await dbClient.query('ROLLBACK');
       throw err;
     } finally {
-      client.release();
+      dbClient.release();
     }
   }
 
@@ -112,7 +124,7 @@ export class CatalogEventsDatabase {
       if (check.rows[0].status === 'expired' || check.rows[0].status === 'unknown') {
         return {
           error: 'cursor_expired',
-          message: `Cursor is older than ${RETENTION_DAYS_DEFAULT}-day retention window. Re-bootstrap from /registry/agents/search and /catalog/sync.`,
+          message: `Cursor is older than ${RETENTION_DAYS_DEFAULT}-day retention window. Re-bootstrap from /registry/agents/search, /catalog, and /catalog/collections/sync.`,
         };
       }
     }

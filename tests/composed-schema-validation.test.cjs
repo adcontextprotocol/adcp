@@ -1292,6 +1292,79 @@ async function runTests() {
         },
         {
           event_id: '019539a0-1234-7000-8000-000000000003',
+          event_type: 'collection.created',
+          entity_type: 'collection',
+          entity_id: '019539a0-b1c2-7000-8000-000000000011',
+          payload: {
+            collection_rid: '019539a0-b1c2-7000-8000-000000000011',
+            publisher_domain: 'streamer.example.com',
+            collection_id: 'weekly_show',
+            name: 'Weekly show',
+            kind: 'series',
+            source: 'authoritative',
+            status: 'active',
+            identifiers: [
+              { publisher_domain: 'youtube.com', type: 'youtube_channel_id', value: 'uc_example123' }
+            ]
+          },
+          actor: 'pipeline:catalog_crawl',
+          created_at: '2026-03-31T10:00:30.000Z'
+        },
+        {
+          event_id: '019539a0-1234-7000-8000-000000000013',
+          event_type: 'collection.updated',
+          entity_type: 'collection',
+          entity_id: '019539a0-b1c2-7000-8000-000000000011',
+          payload: {
+            collection_rid: '019539a0-b1c2-7000-8000-000000000011',
+            publisher_domain: 'streamer.example.com',
+            collection_id: 'weekly_show',
+            name: 'Weekly show',
+            kind: 'series',
+            source: 'authoritative',
+            status: 'active',
+            identifiers: [
+              { publisher_domain: 'youtube.com', type: 'youtube_channel_id', value: 'UCK5Fn7Z6-iFMdxEye2FsKXg' },
+              { publisher_domain: 'youtube.com', type: 'youtube_channel_handle', value: '@weeklyshow' },
+              { publisher_domain: 'youtube.com', type: 'youtube_channel_url', value: 'https://youtube.com/@weeklyshow' }
+            ]
+          },
+          actor: 'pipeline:catalog_crawl',
+          created_at: '2026-03-31T10:00:40.000Z'
+        },
+        {
+          event_id: '019539a0-1234-7000-8000-000000000014',
+          event_type: 'collection.merged',
+          entity_type: 'collection',
+          entity_id: '019539a0-b1c2-7000-8000-000000000015',
+          payload: {
+            alias_rid: '019539a0-b1c2-7000-8000-000000000015',
+            canonical_rid: '019539a0-b1c2-7000-8000-000000000011',
+            evidence: 'manual_review'
+          },
+          actor: 'registry:manual_review',
+          created_at: '2026-03-31T10:00:42.000Z'
+        },
+        {
+          event_id: '019539a0-1234-7000-8000-000000000015',
+          event_type: 'collection.removed',
+          entity_type: 'collection',
+          entity_id: '019539a0-b1c2-7000-8000-000000000014',
+          payload: {
+            collection_rid: '019539a0-b1c2-7000-8000-000000000014',
+            publisher_domain: 'streamer.example.com',
+            collection_id: 'retired_show',
+            name: 'Retired show',
+            kind: 'series',
+            source: 'authoritative',
+            status: 'removed',
+            identifiers: []
+          },
+          actor: 'pipeline:catalog_crawl',
+          created_at: '2026-03-31T10:00:45.000Z'
+        },
+        {
+          event_id: '019539a0-1234-7000-8000-000000000012',
           event_type: 'authorization.granted',
           entity_type: 'authorization',
           entity_id: 'https://ads.agency.example.com:streamer.example.com',
@@ -1387,6 +1460,7 @@ async function runTests() {
             publisher_domain: 'streamer.example.com',
             agent_count: 2,
             property_count: 4,
+            collection_count: 1,
             source: 'catalog_crawl',
             discovery_method: 'direct',
             manager_domain: null
@@ -1395,10 +1469,10 @@ async function runTests() {
           created_at: '2026-03-31T10:03:00.000Z'
         }
       ],
-      cursor: '019539a0-1234-7000-8000-000000000010',
+      cursor: '019539a0-1234-7000-8000-000000000013',
       has_more: false
     },
-    'Registry feed response validates typed property, authorization, and compliance events'
+    'Registry feed response validates typed property, collection, authorization, and compliance events'
   );
   await testSchemaRejection(
     '/schemas/core/registry-event.json',
@@ -1434,6 +1508,65 @@ async function runTests() {
       created_at: '2026-03-31T10:04:00.000Z'
     },
     'Registry event discriminator rejects mismatched entity_type'
+  );
+  await testSchemaRejection(
+    '/schemas/core/registry-event.json',
+    {
+      event_id: '019539a0-1234-7000-8000-000000000016',
+      event_type: 'collection.created',
+      entity_type: 'collection',
+      entity_id: '019539a0-b1c2-7000-8000-000000000016',
+      payload: {
+        collection_rid: '019539a0-b1c2-7000-8000-000000000016',
+        publisher_domain: 'streamer.example.com',
+        collection_id: 'empty_identifiers',
+        source: 'authoritative',
+        status: 'active'
+      },
+      actor: 'pipeline:catalog_crawl',
+      created_at: '2026-03-31T10:05:00.000Z'
+    },
+    'Registry collection.created rejects missing identifiers'
+  );
+  await testSchemaRejection(
+    '/schemas/core/registry-event.json',
+    {
+      event_id: '019539a0-1234-7000-8000-000000000017',
+      event_type: 'collection.created',
+      entity_type: 'property',
+      entity_id: '019539a0-b1c2-7000-8000-000000000017',
+      payload: {
+        collection_rid: '019539a0-b1c2-7000-8000-000000000017',
+        publisher_domain: 'streamer.example.com',
+        collection_id: 'wrong_entity',
+        source: 'authoritative',
+        status: 'active',
+        identifiers: [{ publisher_domain: 'youtube.com', type: 'youtube_channel_id', value: 'UCK5Fn7Z6-iFMdxEye2FsKXg' }]
+      },
+      actor: 'pipeline:catalog_crawl',
+      created_at: '2026-03-31T10:06:00.000Z'
+    },
+    'Registry collection events reject mismatched entity_type'
+  );
+  await testSchemaRejection(
+    '/schemas/core/registry-event.json',
+    {
+      event_id: '019539a0-1234-7000-8000-000000000018',
+      event_type: 'collection.removed',
+      entity_type: 'collection',
+      entity_id: '019539a0-b1c2-7000-8000-000000000018',
+      payload: {
+        collection_rid: '019539a0-b1c2-7000-8000-000000000018',
+        publisher_domain: 'streamer.example.com',
+        collection_id: 'not_removed',
+        source: 'authoritative',
+        status: 'active',
+        identifiers: []
+      },
+      actor: 'pipeline:catalog_crawl',
+      created_at: '2026-03-31T10:07:00.000Z'
+    },
+    'Registry collection.removed rejects active status'
   );
   await testSchemaValidation(
     '/schemas/signals/get-signals-request.json',

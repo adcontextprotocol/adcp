@@ -55,6 +55,20 @@ describe('manifestContentChanged', () => {
     expect(manifestContentChanged(baseManifest, next)).toBe(true);
   });
 
+  it('returns true when collections changes', () => {
+    const next: AdagentsManifest = {
+      ...baseManifest,
+      collections: [
+        {
+          collection_id: 'show',
+          name: 'Show',
+          kind: 'series',
+        },
+      ],
+    };
+    expect(manifestContentChanged(baseManifest, next)).toBe(true);
+  });
+
   it('returns true when authorized_agents reorders (order semantically distinct)', () => {
     // Order matters — a publisher reshuffling priority is meaningful
     // signal for downstream consumers, not noise to swallow.
@@ -75,8 +89,8 @@ describe('manifestContentChanged', () => {
     expect(manifestContentChanged(original, reordered)).toBe(true);
   });
 
-  it('treats missing authorized_agents/properties as empty arrays', () => {
-    const previous: AdagentsManifest = { authorized_agents: [], properties: [] };
+  it('treats missing authorized_agents/properties/collections as empty arrays', () => {
+    const previous: AdagentsManifest = { authorized_agents: [], properties: [], collections: [] };
     const next: AdagentsManifest = {};
     expect(manifestContentChanged(previous, next)).toBe(false);
   });
