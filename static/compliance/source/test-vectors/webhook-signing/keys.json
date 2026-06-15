@@ -44,7 +44,7 @@
       "_private_d_for_test_only": "MdgOQLf-gC6G-vq2GGlDwbNE1Q40FY6SQ20yd3s33Cg"
     },
     {
-      "$comment": "Response-signing key (adcp_use='response-signing'). Used by negative vector 008-wrong-adcp-use: presented when verifying a webhook signature, the verifier MUST reject at step 8 with webhook_mode_mismatch because response-signing is neither 'webhook-signing' nor 'request-signing'. Preserves cross-purpose rejection coverage for genuinely non-webhook purposes.",
+      "$comment": "Response-signing key (adcp_use='response-signing'). Used by negative vector 008-wrong-adcp-use: presented when verifying a webhook signature, the verifier MUST reject at step 8 with webhook_signature_key_purpose_invalid because response-signing is neither 'webhook-signing' nor 'request-signing' (webhook_mode_mismatch is reserved for the HMAC-vs-9421 auth-mode selector). Preserves cross-purpose rejection coverage for genuinely non-webhook purposes.",
       "kid": "test-response-purpose-2026",
       "kty": "OKP",
       "crv": "Ed25519",
