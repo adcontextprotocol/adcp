@@ -1,0 +1,368 @@
+id: si_sponsored_context_accountability
+version: "1.0.0"
+title: "Sponsored context accountability"
+protocol: sponsored-intelligence
+category: si_sponsored_context_accountability
+summary: "Validates that a conformant brand-side SI agent emits sponsored_context on every response, accepts well-formed sponsored_context_receipt envelopes, and rejects receipts that silently downgrade declared context_use."
+track: si
+required_tools:
+  - si_initiate_session
+  - si_send_message
+
+narrative: |
+  AdCP 3.1.0-rc.13/rc.14 introduced the sponsored_context_accountability surface (PR #5501): every SI
+  response carries a `sponsored_context` envelope (paying_principal, context_use, disclosure_obligation),
+  and the receiving host echoes a `sponsored_context_receipt` back on its next request. The spec's allOf
+  chain in si-sponsored-context-receipt.json enforces three invariants that a conformant brand agent
+  must validate on the receiving side:
+
+    1. an accepted receipt's `accepted_context_use` MUST equal the declared `context_use`;
+    2. an accepted receipt with `disclosure_obligation.required = true` MUST carry
+       `disclosure_commitment.status = "accepted"`;
+    3. a rejected receipt MUST NOT carry `accepted_context_use` or `disclosure_commitment`.
+
+  This storyboard exercises four cases against a brand-side agent:
+
+    - happy path under `presentation_only` with a matching accepted receipt;
+    - happy path under a declared disclosure obligation, with `disclosure_commitment.status = accepted`;
+    - rejection path where the host returns `host_receipt.status = rejected` with `rejection_reason`;
+    - mismatch path where the host returns an accepted receipt with a downgraded `accepted_context_use`,
+      which a conformant brand agent must refuse.
+
+  The mismatch invariant is the regression anchor: whether the agent surfaces the rejection as JSON-RPC
+  `-32602`, canonical `INVALID_PARAMS`, or another envelope/payload error shape, the response message
+  MUST contain the literal "silent downgrade forbidden" so a regulator (or a later auditor) can grep
+  for it deterministically. LLM-generated `response.message` content is asserted only as
+  present/non-empty so language and provider remain implementation choices.
+
+agent:
+  interaction_model: si_brand_agent
+  capabilities:
+    - sponsored_intelligence
+  examples:
+    - "bragent (kapoost/bragent, v0.2.0+)"
+    - "any AdCP SI brand agent claiming sponsored_context_accountability conformance"
+
+caller:
+  role: si_host
+  example: "Conformance test harness (acts as the receiving SI host)"
+
+prerequisites:
+  description: |
+    The agent under test is the brand-side SI surface. The harness acts as the host: it sends
+    sample requests and echoes back synthesised receipts.
+
+    The acme-outdoor test kit is a natural fixture — it matches the catalog the reference
+    implementation (bragent) ships and is already used by other SI scenarios. A conformant
+    brand agent that prefers a different identity may substitute its own kit; the assertions
+    below are configuration-independent.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: presentation_only_happy_path
+    title: "Presentation-only declaration with a matching accepted receipt"
+    narrative: |
+      The agent opens a session and emits a sponsored_context envelope. The host accepts the
+      declared `presentation_only` context_use, mirrors it in `accepted_context_use`, and the
+      next brand turn lands cleanly.
+
+    steps:
+      - id: si_initiate_session_presentation
+        title: "si_initiate_session emits a presentation_only envelope"
+        narrative: |
+          The agent must surface a sponsored_context envelope with all required fields. We
+          assert the envelope shape, the canonical declared role (`brand_agent`), and that
+          paying_principal carries a brand reference rather than a free-form string.
+        task: si_initiate_session
+        schema_ref: "sponsored-intelligence/si-initiate-session-request.json"
+        response_schema_ref: "sponsored-intelligence/si-initiate-session-response.json"
+        doc_ref: "/sponsored-intelligence/tasks/si_initiate_session"
+        comply_scenario: si_sponsored_context_accountability
+        stateful: true
+        expected: |
+          Return an active session and a sponsored_context envelope with:
+          - paying_principal.brand.domain present
+          - context_use = "presentation_only"
+          - disclosure_obligation present with required as a boolean
+          - declared_by.role = "brand_agent"
+          - response.message non-empty (content is LLM-defined)
+
+        sample_request:
+          intent: "User is comparing two-person backpacking tents and asked about your brand"
+          identity:
+            consent_granted: true
+            consent_timestamp: "2026-06-15T10:00:00Z"
+            user:
+              locale: "en-US"
+          idempotency_key: "$generate:uuid_v4#si_sca_presentation_initiate"
+          context:
+            correlation_id: "si_sca--presentation_initiate"
+
+        context_outputs:
+          - name: session_id
+            path: 'session_id'
+          - name: sponsored_context
+            path: 'sponsored_context'
+
+        validations:
+          - check: response_schema
+            description: "Response matches si-initiate-session-response.json"
+
+          - check: field_present
+            path: "session_id"
+          - check: field_value
+            path: "session_status"
+            value: "active"
+
+          - check: field_present
+            path: "response.message"
+            description: "Brand reply is present (content is LLM-defined, not asserted)"
+
+          - check: field_present
+            path: "sponsored_context"
+            description: "PR #5501 envelope: every SI response must carry sponsored_context"
+          - check: field_present
+            path: "sponsored_context.paying_principal.brand.domain"
+            description: "Canonical economic principal — brand reference, not a free-form string"
+          - check: field_value
+            path: "sponsored_context.context_use"
+            value: "presentation_only"
+          - check: field_present
+            path: "sponsored_context.disclosure_obligation.required"
+            description: "Disclosure obligation must declare required as a boolean"
+          - check: field_value
+            path: "sponsored_context.declared_by.role"
+            value: "brand_agent"
+
+          - check: field_value
+            path: "context.correlation_id"
+            value: "si_sca--presentation_initiate"
+
+      - id: si_send_message_presentation_accepted
+        title: "si_send_message with a matching accepted receipt"
+        narrative: |
+          The host echoes the brand's sponsored_context back inside a receipt whose
+          `accepted_context_use` matches the declared value. A conformant brand agent accepts
+          the receipt, persists it for audit, and emits a fresh sponsored_context on the
+          response.
+        task: si_send_message
+        schema_ref: "sponsored-intelligence/si-send-message-request.json"
+        response_schema_ref: "sponsored-intelligence/si-send-message-response.json"
+        doc_ref: "/sponsored-intelligence/tasks/si_send_message"
+        comply_scenario: si_sponsored_context_accountability
+        stateful: true
+        expected: |
+          Process the message and return a fresh sponsored_context envelope. session_status
+          remains "active". The agent does not error on a well-formed accepted receipt.
+
+        sample_request:
+          session_id: "$context.session_id"
+          message: "What does your two-person tent weigh and how does it pack down?"
+          sponsored_context_receipt:
+            sponsored_context: "$context.sponsored_context"
+            host_receipt:
+              status: "accepted"
+              accepted_context_use: "presentation_only"
+              received_at: "2026-06-15T10:00:01Z"
+              host_surface: "conformance-harness"
+              disclosure_commitment:
+                status: "not_required"
+          idempotency_key: "$generate:uuid_v4#si_sca_presentation_send"
+          context:
+            correlation_id: "si_sca--presentation_send"
+
+        context_outputs:
+          - name: sponsored_context
+            path: 'sponsored_context'
+
+        validations:
+          - check: response_schema
+          - check: field_value
+            path: "session_status"
+            value: "active"
+          - check: field_present
+            path: "response.message"
+          - check: field_present
+            path: "sponsored_context"
+          - check: field_value
+            path: "sponsored_context.context_use"
+            value: "presentation_only"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "si_sca--presentation_send"
+
+  - id: required_disclosure_commitment
+    title: "Declared disclosure obligation with an accepted commitment"
+    narrative: |
+      When the brand agent declares `disclosure_obligation.required = true`, the host's
+      accepted receipt MUST carry `disclosure_commitment.status = "accepted"`. This phase
+      exercises a receipt that carries the accepted commitment; configurations that
+      ship `required = false` by default still pass the wire shape — the assertion is on
+      the receipt rather than on the brand declaration.
+
+    steps:
+      - id: si_send_message_with_disclosure_commitment
+        title: "Receipt with disclosure_commitment.status = accepted"
+        narrative: |
+          The host's receipt carries `disclosure_commitment.status = accepted`. Whether or
+          not the brand declared `required = true`, this commitment is a valid wire shape
+          and the brand agent must accept it without error.
+        task: si_send_message
+        schema_ref: "sponsored-intelligence/si-send-message-request.json"
+        response_schema_ref: "sponsored-intelligence/si-send-message-response.json"
+        doc_ref: "/sponsored-intelligence/tasks/si_send_message"
+        comply_scenario: si_sponsored_context_accountability
+        stateful: true
+        expected: |
+          Accept the receipt and return a fresh sponsored_context. session_status remains
+          "active". No error returned.
+
+        sample_request:
+          session_id: "$context.session_id"
+          message: "If I'm car camping in autumn, which sleeping pad would you pair with the tent?"
+          sponsored_context_receipt:
+            sponsored_context: "$context.sponsored_context"
+            host_receipt:
+              status: "accepted"
+              accepted_context_use: "presentation_only"
+              received_at: "2026-06-15T10:00:02Z"
+              host_surface: "conformance-harness"
+              disclosure_commitment:
+                status: "accepted"
+                label_text: "Sponsored content"
+                notes: "Host commits to render the disclosure near the recommendation."
+          idempotency_key: "$generate:uuid_v4#si_sca_disclosure_send"
+          context:
+            correlation_id: "si_sca--disclosure_send"
+
+        context_outputs:
+          - name: sponsored_context
+            path: 'sponsored_context'
+
+        validations:
+          - check: response_schema
+          - check: field_value
+            path: "session_status"
+            value: "active"
+          - check: field_present
+            path: "sponsored_context"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "si_sca--disclosure_send"
+
+  - id: rejected_receipt
+    title: "Rejected receipt with a rejection_reason"
+    narrative: |
+      The host signals that it cannot honour the declared use mode or disclosure obligation
+      and returns `host_receipt.status = "rejected"` with a free-form `rejection_reason`.
+      A conformant brand agent accepts the rejection without erroring on the wire — the
+      audit trail records that the prior turn's sponsored context was declined.
+
+    steps:
+      - id: si_send_message_with_rejected_receipt
+        title: "Receipt with status = rejected and rejection_reason"
+        narrative: |
+          The receipt carries `status: rejected` and a `rejection_reason`. The agent must
+          NOT error on a well-formed rejected receipt — the rejection is a valid wire
+          response, not a protocol violation.
+        task: si_send_message
+        schema_ref: "sponsored-intelligence/si-send-message-request.json"
+        response_schema_ref: "sponsored-intelligence/si-send-message-response.json"
+        doc_ref: "/sponsored-intelligence/tasks/si_send_message"
+        comply_scenario: si_sponsored_context_accountability
+        stateful: true
+        expected: |
+          Accept the rejection and return a fresh sponsored_context. session_status remains
+          "active". No error returned.
+
+        sample_request:
+          session_id: "$context.session_id"
+          message: "Actually, do you have headlamps?"
+          sponsored_context_receipt:
+            sponsored_context: "$context.sponsored_context"
+            host_receipt:
+              status: "rejected"
+              received_at: "2026-06-15T10:00:03Z"
+              host_surface: "conformance-harness"
+              rejection_reason: "harness exercising the rejection path"
+          idempotency_key: "$generate:uuid_v4#si_sca_reject_send"
+          context:
+            correlation_id: "si_sca--reject_send"
+
+        context_outputs:
+          - name: sponsored_context
+            path: 'sponsored_context'
+
+        validations:
+          - check: response_schema
+          - check: field_value
+            path: "session_status"
+            value: "active"
+          - check: field_present
+            path: "sponsored_context"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "si_sca--reject_send"
+
+  - id: silent_downgrade_rejected
+    title: "Mismatched accepted_context_use is rejected as silent downgrade"
+    narrative: |
+      The host returns an accepted receipt whose `accepted_context_use` does NOT match the
+      declared `context_use`. Per AdCP 3.1.0-rc.14 §Sponsored Context Accountability, a
+      conformant brand agent MUST reject this rather than silently down-scope or accept it.
+
+      This is the regression anchor of the storyboard. The response shape is intentionally
+      decoupled from any one transport: whether the agent surfaces the rejection as JSON-RPC
+      `-32602`, a canonical `INVALID_PARAMS` envelope, or another payload error, the message
+      MUST contain the literal "silent downgrade forbidden" so the invariant is grep-able
+      after any future transport change.
+
+    steps:
+      - id: si_send_message_with_mismatched_receipt
+        title: "Receipt with accepted but downgraded accepted_context_use"
+        narrative: |
+          The host claims it accepted the sponsored context but advertises a different
+          accepted_context_use than the brand declared. A conformant brand agent rejects
+          this with a structured error whose message names "silent downgrade".
+        task: si_send_message
+        schema_ref: "sponsored-intelligence/si-send-message-request.json"
+        response_schema_ref: "sponsored-intelligence/si-send-message-response.json"
+        doc_ref: "/sponsored-intelligence/tasks/si_send_message"
+        comply_scenario: si_sponsored_context_accountability
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        expected: |
+          Reject the request with an error whose message contains "silent downgrade
+          forbidden". Acceptable error codes include INVALID_PARAMS, VALIDATION_ERROR, and
+          INVALID_REQUEST — the invariant is on the message, not the transport-specific
+          code.
+
+        sample_request:
+          session_id: "$context.session_id"
+          message: "(harness regression check — should be rejected before reaching the LLM)"
+          sponsored_context_receipt:
+            sponsored_context: "$context.sponsored_context"
+            host_receipt:
+              status: "accepted"
+              accepted_context_use: "reasoning_context"
+              received_at: "2026-06-15T10:00:04Z"
+              host_surface: "conformance-harness"
+              disclosure_commitment:
+                status: "not_required"
+          idempotency_key: "$generate:uuid_v4#si_sca_mismatch_send"
+          context:
+            correlation_id: "si_sca--mismatch_send"
+
+        validations:
+          - check: error_code
+            allowed_values: ["INVALID_PARAMS", "VALIDATION_ERROR", "INVALID_REQUEST"]
+            description: "Error code; transport-specific shape — accept the canonical AdCP codes and the JSON-RPC equivalent."
+          - check: field_contains
+            path: "error.message"
+            value: "silent downgrade forbidden"
+            description: "Regression anchor — wording must survive future transport changes."
+
+          - check: field_value
+            path: "context.correlation_id"
+            value: "si_sca--mismatch_send"
