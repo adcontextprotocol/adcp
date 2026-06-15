@@ -404,7 +404,48 @@ function mapOverallStatus(status: string): OverallRunStatus {
   }
 }
 
-function skipReasonIsCoverageGap(reason: string | undefined): boolean {
+function isSyntheticRequiredToolsMissingSkip(
+  step: { skip_reason?: string; step?: unknown; step_id?: unknown },
+  scenario: unknown,
+): boolean {
+  if (step.skip_reason !== 'missing_tool' || typeof scenario !== 'string' || !scenario.endsWith('/missing_tool')) {
+    return false;
+  }
+  const stepId = firstString(step.step_id);
+  const title = firstString(step.step);
+  return stepId === 'missing_tool' || title?.startsWith('Skipped — agent does not advertise') === true;
+}
+
+function isExplicitRequiresToolMissingSkip(step: {
+  skip_reason?: string;
+  details?: unknown;
+  error?: unknown;
+  warnings?: unknown;
+  skip?: { detail?: unknown };
+}): boolean {
+  if (step.skip_reason !== 'missing_tool') return false;
+  const warning = Array.isArray(step.warnings)
+    ? step.warnings.find((w): w is string => typeof w === 'string' && w.trim().length > 0)
+    : undefined;
+  const detail = firstString(step.skip?.detail, step.details, step.error, warning);
+  return detail?.startsWith('Required tool "') === true && detail.includes('" not advertised');
+}
+
+function skipReasonIsCoverageGap(
+  reason: string | undefined,
+  step?: {
+    skip_reason?: string;
+    step?: unknown;
+    step_id?: unknown;
+    details?: unknown;
+    error?: unknown;
+    warnings?: unknown;
+    skip?: { detail?: unknown };
+  },
+  scenario?: unknown,
+): boolean {
+  if (step && isSyntheticRequiredToolsMissingSkip(step, scenario)) return false;
+  if (step && isExplicitRequiresToolMissingSkip(step)) return false;
   switch (reason) {
     case 'not_applicable':
     case 'peer_branch_taken':
@@ -418,7 +459,7 @@ function skipReasonIsCoverageGap(reason: string | undefined): boolean {
 function trackHasCoverageGapSkip(track: TrackResult): boolean {
   for (const scenario of track.scenarios) {
     for (const step of scenario.steps ?? []) {
-      if (step.skipped && skipReasonIsCoverageGap(step.skip_reason)) {
+      if (step.skipped && skipReasonIsCoverageGap(step.skip_reason, step, scenario.scenario)) {
         return true;
       }
     }
@@ -530,6 +571,28 @@ export function deriveStoryboardStatuses(
     branchSkipReasons.has(step.skip_reason ?? '');
   const isCascadeSkip = (step: { skip_reason?: string }): boolean =>
     cascadeSkipReasons.has(step.skip_reason ?? '');
+  const isNeutralApplicabilitySkip = (
+    step: {
+      skip_reason?: string;
+      step?: unknown;
+      step_id?: unknown;
+      details?: unknown;
+      error?: unknown;
+      warnings?: unknown;
+      skip?: { detail?: unknown };
+    },
+    scenario: string,
+  ): boolean => {
+    if (step.skip_reason === 'not_applicable') return true;
+
+    // `@adcp/sdk` emits a single synthetic `missing_tool` phase when a
+    // storyboard's `required_tools` gate is unmet. That means the storyboard is
+    // out of scope for this agent, not that a claimed production step failed.
+    if (isSyntheticRequiredToolsMissingSkip(step, scenario)) return true;
+    if (isExplicitRequiresToolMissingSkip(step)) return true;
+
+    return false;
+  };
   const perStoryboard = new Map<string, Aggregate>();
   // Storyboard ids in `static/compliance/source/**/index.yaml` are flat
   // identifiers (no `/`); splitting on the first `/` therefore always yields
@@ -578,6 +641,9 @@ export function deriveStoryboardStatuses(
           }
           if (isControllerSkip(step)) {
             agg.controllerSkipped++;
+            continue;
+          }
+          if (isNeutralApplicabilitySkip(step, String(s.scenario))) {
             continue;
           }
           if (isCascadeSkip(step)) {
