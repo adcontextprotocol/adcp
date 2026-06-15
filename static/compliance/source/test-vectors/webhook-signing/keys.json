@@ -30,7 +30,7 @@
       "_private_d_for_test_only": "xgSwq4Iq3RS8MFP2oXsDP--8uZLoq6Idip2PNM6pCZ4"
     },
     {
-      "$comment": "Request-signing key (adcp_use='request-signing'). Included so negative vector 008 can demonstrate cross-purpose rejection: the vector presents this key when verifying a webhook signature, and the verifier MUST reject at step 8 because adcp_use is not 'webhook-signing'.",
+      "$comment": "Request-signing key (adcp_use='request-signing'). Used by positive vector 008-request-signing-key-reuse: the vector presents this key when verifying a webhook signature, and the verifier MUST accept it at step 8 because a signer may reuse its request-signing key for webhook delivery (domain separation is carried by the tag, not the key purpose).",
       "kid": "test-wrong-purpose-2026",
       "kty": "OKP",
       "crv": "Ed25519",
@@ -42,6 +42,20 @@
       "adcp_use": "request-signing",
       "x": "VgpQd9JRrBf433BcMw6IUNW7tHnAAHAHegsQ5U9I53c",
       "_private_d_for_test_only": "MdgOQLf-gC6G-vq2GGlDwbNE1Q40FY6SQ20yd3s33Cg"
+    },
+    {
+      "$comment": "Response-signing key (adcp_use='response-signing'). Used by negative vector 008-wrong-adcp-use: presented when verifying a webhook signature, the verifier MUST reject at step 8 with webhook_mode_mismatch because response-signing is neither 'webhook-signing' nor 'request-signing'. Preserves cross-purpose rejection coverage for genuinely non-webhook purposes.",
+      "kid": "test-response-purpose-2026",
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "alg": "EdDSA",
+      "use": "sig",
+      "key_ops": [
+        "verify"
+      ],
+      "adcp_use": "response-signing",
+      "x": "aCo2Y5TsWrbE0gpueDK09ScOejqoOCl98QIDqywEAB4",
+      "_private_d_for_test_only": "hS8wfl8JNYl4QEbTRaX_5GtHelcLMEWx5pOTBqvTFdo"
     },
     {
       "$comment": "Revoked webhook-signing key. Dedicated keypair for negative vector 017-key-revoked. adcp_use is 'webhook-signing' so that the verifier's purpose check (step 8) passes and the revocation check (step 9) fires. Runners pre-configure their revocation list to include this keyid before the negative phase runs; see test-kits/webhook-receiver-runner.yaml.",
