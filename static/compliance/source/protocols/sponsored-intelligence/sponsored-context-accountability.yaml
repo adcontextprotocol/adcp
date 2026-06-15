@@ -29,11 +29,16 @@ narrative: |
     - mismatch path where the host returns an accepted receipt with a downgraded `accepted_context_use`,
       which a conformant brand agent must refuse.
 
-  The mismatch invariant is the regression anchor: whether the agent surfaces the rejection as JSON-RPC
-  `-32602`, canonical `INVALID_PARAMS`, or another envelope/payload error shape, the response message
-  MUST contain the literal "silent downgrade forbidden" so a regulator (or a later auditor) can grep
-  for it deterministically. LLM-generated `response.message` content is asserted only as
-  present/non-empty so language and provider remain implementation choices.
+  The mismatch invariant is the regression anchor. This first pass asserts only on `error_code`
+  (the canonical AdCP code, with `VALIDATION_ERROR` and `INVALID_REQUEST` both accepted) —
+  auto-asserting on the error message text would require a new storyboard primitive,
+  and Bill's call on #5541 was to start without one. The recommendation in the step's `expected:`
+  text remains that the rejection message contains "silent downgrade forbidden" so a regulator
+  can grep the wire trace; a follow-up PR can elevate that to a hard check if the WG wants an
+  `error_message_contains` matcher in the storyboard runner.
+
+  LLM-generated `response.message` content is asserted only as present/non-empty so language and
+  provider remain implementation choices.
 
 agent:
   interaction_model: si_brand_agent
@@ -50,7 +55,9 @@ caller:
 prerequisites:
   description: |
     The agent under test is the brand-side SI surface. The harness acts as the host: it sends
-    sample requests and echoes back synthesised receipts.
+    sample requests and echoes back synthesised receipts whose `sponsored_context` field is the
+    one previously emitted by the agent (the runtime substitution replaces the literal
+    sample_request envelope with the real prior emission).
 
     The acme-outdoor test kit is a natural fixture — it matches the catalog the reference
     implementation (bragent) ships and is already used by other SI scenarios. A conformant
@@ -144,7 +151,8 @@ phases:
           The host echoes the brand's sponsored_context back inside a receipt whose
           `accepted_context_use` matches the declared value. A conformant brand agent accepts
           the receipt, persists it for audit, and emits a fresh sponsored_context on the
-          response.
+          response. The runtime substitutes the literal `sponsored_context` envelope below
+          with the one returned by the prior step.
         task: si_send_message
         schema_ref: "sponsored-intelligence/si-send-message-request.json"
         response_schema_ref: "sponsored-intelligence/si-send-message-response.json"
@@ -159,7 +167,21 @@ phases:
           session_id: "$context.session_id"
           message: "What does your two-person tent weigh and how does it pack down?"
           sponsored_context_receipt:
-            sponsored_context: "$context.sponsored_context"
+            sponsored_context:
+              paying_principal:
+                brand:
+                  domain: "acmeoutdoor.example"
+                display_name: "Acme Outdoor"
+              context_use: "presentation_only"
+              disclosure_obligation:
+                required: false
+                label_text: "Sponsored by Acme Outdoor"
+                timing: "at_first_influenced_output"
+                proximity: "near_influenced_output"
+              declared_at: "2026-06-15T10:00:00Z"
+              declared_by:
+                agent_url: "https://acmeoutdoor.example/mcp"
+                role: "brand_agent"
             host_receipt:
               status: "accepted"
               accepted_context_use: "presentation_only"
@@ -195,18 +217,17 @@ phases:
     title: "Declared disclosure obligation with an accepted commitment"
     narrative: |
       When the brand agent declares `disclosure_obligation.required = true`, the host's
-      accepted receipt MUST carry `disclosure_commitment.status = "accepted"`. This phase
-      exercises a receipt that carries the accepted commitment; configurations that
-      ship `required = false` by default still pass the wire shape — the assertion is on
-      the receipt rather than on the brand declaration.
+      accepted receipt MUST carry `disclosure_commitment.status = "accepted"`. The
+      sample_request literal carries the required=true declaration so the receipt's
+      `commitment.status = accepted` is the only legal shape per the spec's allOf chain.
 
     steps:
       - id: si_send_message_with_disclosure_commitment
         title: "Receipt with disclosure_commitment.status = accepted"
         narrative: |
-          The host's receipt carries `disclosure_commitment.status = accepted`. Whether or
-          not the brand declared `required = true`, this commitment is a valid wire shape
-          and the brand agent must accept it without error.
+          The literal sponsored_context carries `required=true`; the host's receipt
+          mirrors that with `disclosure_commitment.status = accepted`. The agent under test
+          must accept this without error.
         task: si_send_message
         schema_ref: "sponsored-intelligence/si-send-message-request.json"
         response_schema_ref: "sponsored-intelligence/si-send-message-response.json"
@@ -221,11 +242,25 @@ phases:
           session_id: "$context.session_id"
           message: "If I'm car camping in autumn, which sleeping pad would you pair with the tent?"
           sponsored_context_receipt:
-            sponsored_context: "$context.sponsored_context"
+            sponsored_context:
+              paying_principal:
+                brand:
+                  domain: "acmeoutdoor.example"
+                display_name: "Acme Outdoor"
+              context_use: "presentation_only"
+              disclosure_obligation:
+                required: true
+                label_text: "Sponsored content"
+                timing: "at_first_influenced_output"
+                proximity: "near_influenced_output"
+              declared_at: "2026-06-15T10:00:02Z"
+              declared_by:
+                agent_url: "https://acmeoutdoor.example/mcp"
+                role: "brand_agent"
             host_receipt:
               status: "accepted"
               accepted_context_use: "presentation_only"
-              received_at: "2026-06-15T10:00:02Z"
+              received_at: "2026-06-15T10:00:03Z"
               host_surface: "conformance-harness"
               disclosure_commitment:
                 status: "accepted"
@@ -264,7 +299,8 @@ phases:
         narrative: |
           The receipt carries `status: rejected` and a `rejection_reason`. The agent must
           NOT error on a well-formed rejected receipt — the rejection is a valid wire
-          response, not a protocol violation.
+          response, not a protocol violation. Per the spec, rejected receipts MUST NOT
+          carry `accepted_context_use` or `disclosure_commitment`.
         task: si_send_message
         schema_ref: "sponsored-intelligence/si-send-message-request.json"
         response_schema_ref: "sponsored-intelligence/si-send-message-response.json"
@@ -279,10 +315,24 @@ phases:
           session_id: "$context.session_id"
           message: "Actually, do you have headlamps?"
           sponsored_context_receipt:
-            sponsored_context: "$context.sponsored_context"
+            sponsored_context:
+              paying_principal:
+                brand:
+                  domain: "acmeoutdoor.example"
+                display_name: "Acme Outdoor"
+              context_use: "presentation_only"
+              disclosure_obligation:
+                required: false
+                label_text: "Sponsored by Acme Outdoor"
+                timing: "at_first_influenced_output"
+                proximity: "near_influenced_output"
+              declared_at: "2026-06-15T10:00:04Z"
+              declared_by:
+                agent_url: "https://acmeoutdoor.example/mcp"
+                role: "brand_agent"
             host_receipt:
               status: "rejected"
-              received_at: "2026-06-15T10:00:03Z"
+              received_at: "2026-06-15T10:00:05Z"
               host_surface: "conformance-harness"
               rejection_reason: "harness exercising the rejection path"
           idempotency_key: "$generate:uuid_v4#si_sca_reject_send"
@@ -311,11 +361,18 @@ phases:
       declared `context_use`. Per AdCP 3.1.0-rc.14 §Sponsored Context Accountability, a
       conformant brand agent MUST reject this rather than silently down-scope or accept it.
 
-      This is the regression anchor of the storyboard. The response shape is intentionally
-      decoupled from any one transport: whether the agent surfaces the rejection as JSON-RPC
-      `-32602`, a canonical `INVALID_PARAMS` envelope, or another payload error, the message
-      MUST contain the literal "silent downgrade forbidden" so the invariant is grep-able
-      after any future transport change.
+      This is the regression anchor of the storyboard, and intentionally a schema-invalid
+      sample_request (the spec's allOf forbids the mismatched accepted_context_use). The
+      schema-lint allowlist carries the drift entry for this step deliberately — the test's
+      whole purpose is to send an envelope the spec rejects, and confirm the agent surfaces
+      it as an error.
+
+      Assertion is on `error_code` (accepting VALIDATION_ERROR or INVALID_REQUEST so the test
+      decouples from any one transport's error envelope shape).
+      The recommended wire wording for the error message — "silent downgrade forbidden" —
+      is documented in `expected:` as a manual review pointer; promoting it to a hard
+      assertion would require a new `error_message_contains` matcher in the runner, which
+      is deferred to a follow-up.
 
     steps:
       - id: si_send_message_with_mismatched_receipt
@@ -333,20 +390,39 @@ phases:
         negative_path: payload_well_formed
         stateful: true
         expected: |
-          Reject the request with an error whose message contains "silent downgrade
-          forbidden". Acceptable error codes include INVALID_PARAMS, VALIDATION_ERROR, and
-          INVALID_REQUEST — the invariant is on the message, not the transport-specific
-          code.
+          Reject the request with one of the canonical AdCP error codes:
+          VALIDATION_ERROR or INVALID_REQUEST.
+
+          Recommendation (not auto-asserted in this first pass — the storyboard primitives
+          don't expose an error-message matcher today): the response message SHOULD contain
+          the literal "silent downgrade forbidden" so a regulator or auditor can grep the
+          wire trace for the invariant deterministically across implementations. The
+          reference implementation (bragent v0.2.0+) emits that exact wording from its
+          si.SponsoredContextReceipt.Validate path.
 
         sample_request:
           session_id: "$context.session_id"
           message: "(harness regression check — should be rejected before reaching the LLM)"
           sponsored_context_receipt:
-            sponsored_context: "$context.sponsored_context"
+            sponsored_context:
+              paying_principal:
+                brand:
+                  domain: "acmeoutdoor.example"
+                display_name: "Acme Outdoor"
+              context_use: "presentation_only"
+              disclosure_obligation:
+                required: false
+                label_text: "Sponsored by Acme Outdoor"
+                timing: "at_first_influenced_output"
+                proximity: "near_influenced_output"
+              declared_at: "2026-06-15T10:00:06Z"
+              declared_by:
+                agent_url: "https://acmeoutdoor.example/mcp"
+                role: "brand_agent"
             host_receipt:
               status: "accepted"
               accepted_context_use: "reasoning_context"
-              received_at: "2026-06-15T10:00:04Z"
+              received_at: "2026-06-15T10:00:07Z"
               host_surface: "conformance-harness"
               disclosure_commitment:
                 status: "not_required"
@@ -356,13 +432,11 @@ phases:
 
         validations:
           - check: error_code
-            allowed_values: ["INVALID_PARAMS", "VALIDATION_ERROR", "INVALID_REQUEST"]
-            description: "Error code; transport-specific shape — accept the canonical AdCP codes and the JSON-RPC equivalent."
-          - check: field_contains
-            path: "error.message"
-            value: "silent downgrade forbidden"
-            description: "Regression anchor — wording must survive future transport changes."
+            allowed_values: ["VALIDATION_ERROR", "INVALID_REQUEST"]
+            description: "Canonical AdCP error code for receipt validation rejection."
 
+          - check: field_present
+            path: "context"
           - check: field_value
             path: "context.correlation_id"
             value: "si_sca--mismatch_send"
