@@ -867,7 +867,7 @@ AdCP 3.0 defines this profile as **optional and capability-advertised** via `req
 **Roles:**
 - **Agents** sign requests with a key published at their own `jwks_uri` in their operator's brand.json `agents[]` entry. The operator (the domain hosting brand.json) may be a house buying direct or an authorized third party — this profile does not distinguish. The signer is always an agent.
 - **Sellers** verify the signature against the signing agent's published key, establishing agent identity. Sellers then perform the separate brand-operator authorization check (outside this profile's scope).
-- **Sellers calling agent-side AdCP endpoints** (e.g., buyer-hosted mutation callbacks that are themselves AdCP protocol calls) sign their outgoing requests symmetrically; the receiving agent verifies against the seller's keys published under the seller operator's brand.json `agents[]` entry. Push-notification webhook callbacks (`push_notification_config.url` and similar asynchronous one-way notifications) are covered by the symmetric [Webhook callbacks](#webhook-callbacks) variant of this profile — the seller signs outbound with an `adcp_use: "webhook-signing"` key and the buyer verifies.
+- **Sellers calling agent-side AdCP endpoints** (e.g., buyer-hosted mutation callbacks that are themselves AdCP protocol calls) sign their outgoing requests symmetrically; the receiving agent verifies against the seller's keys published under the seller operator's brand.json `agents[]` entry. Push-notification webhook callbacks (`push_notification_config.url` and similar asynchronous one-way notifications) are covered by the symmetric [Webhook callbacks](#webhook-callbacks) variant of this profile — the seller signs outbound with its `adcp_use: "request-signing"` key (the deprecated `"webhook-signing"` value is still accepted) and the buyer verifies.
 
 **Dependencies:**
 - Shares JWKS discovery, SSRF rules, alg allowlist, revocation semantics, and key rotation with the [AdCP JWS profile](#adcp-jws-profile) above. Cross-purpose key reuse is forbidden: a request-signing JWK MUST declare `"adcp_use": "request-signing"`, `"use": "sig"`, `"key_ops": ["verify"]`, and a `kid` that does not appear on any other JWKS entry with a different `adcp_use`. Verifiers enforce all four; see [Agent key publication](#agent-key-publication).
@@ -875,7 +875,7 @@ AdCP 3.0 defines this profile as **optional and capability-advertised** via `req
 
 **Conformance.** Verifier behavior is graded by the universal capability-gated storyboard at [`/compliance/latest/universal/signed-requests`](https://adcontextprotocol.org/compliance/latest/universal/signed-requests), which runs for any agent advertising `request_signing.supported: true`. The storyboard exercises every step in the [verifier checklist](#verifier-checklist-requests) below and every canonicalization-edge rule in this profile, against the test vectors at [`/compliance/latest/test-vectors/request-signing/`](https://adcontextprotocol.org/compliance/latest/test-vectors/request-signing/). To run the CLI grader against your own agent, see [Auth Graders](/docs/building/verification/grading).
 
-**No general-purpose RFC 9421 response-signing profile.** This profile signs the *request*; AdCP 3.x defines no general-purpose paired profile for signing the synchronous response *transport*. Sellers MUST NOT apply RFC 9421 §2.2.9 response signing to synchronous AdCP responses (whether MCP `tools/call` or A2A non-streaming responses including streaming `artifactUpdate` frames), and buyers MUST NOT rely on an RFC 9421 response signature on the synchronous reply. Integrity of the immediate response transport rests on TLS within the authenticated session that carried the request, modulo the standard edge-termination caveats that govern request-side body integrity at body-modifying CDNs. Durable at-rest attestation for artifacts that need to survive past the session — including specialism-scoped payloads (brand-rights, AAO Verified compliance, sales-intelligence relay, governance receipts, bilateral non-repudiation receipts such as `plan_receipt`) — is the job of [signed webhooks](#webhook-callbacks) (`adcp_use: "webhook-signing"`). The split is deliberate — see [Security Model: What gets signed](/docs/building/concepts/security-model#what-gets-signed--and-what-doesnt) for the full rationale and the request-the-webhook pattern for tools whose canonical artifact needs to be attestable.
+**No general-purpose RFC 9421 response-signing profile.** This profile signs the *request*; AdCP 3.x defines no general-purpose paired profile for signing the synchronous response *transport*. Sellers MUST NOT apply RFC 9421 §2.2.9 response signing to synchronous AdCP responses (whether MCP `tools/call` or A2A non-streaming responses including streaming `artifactUpdate` frames), and buyers MUST NOT rely on an RFC 9421 response signature on the synchronous reply. Integrity of the immediate response transport rests on TLS within the authenticated session that carried the request, modulo the standard edge-termination caveats that govern request-side body integrity at body-modifying CDNs. Durable at-rest attestation for artifacts that need to survive past the session — including specialism-scoped payloads (brand-rights, AAO Verified compliance, sales-intelligence relay, governance receipts, bilateral non-repudiation receipts such as `plan_receipt`) — is the job of [signed webhooks](#webhook-callbacks) (signed with the `adcp_use: "request-signing"` key). The split is deliberate — see [Security Model: What gets signed](/docs/building/concepts/security-model#what-gets-signed--and-what-doesnt) for the full rationale and the request-the-webhook pattern for tools whose canonical artifact needs to be attestable.
 
 <a id="designated-task-response-signing" />
 
@@ -970,14 +970,14 @@ Reference implementations: `@adcp/sdk` (TypeScript) ships a `SigningProvider` in
       "x": "lHJI-IvBwCE36heDNOyBmCk5UMKRIs4b4BAWJRgao-M",
       "kid": "acme-webhook-2026-04",
       "alg": "EdDSA", "use": "sig",
-      "adcp_use": "webhook-signing",
+      "adcp_use": "request-signing",
       "key_ops": ["verify"]
     }
   ]
 }
 ```
 
-Distinct `kid` values also mean counterparties can cache and rotate the two keys independently.
+This second entry is the optional webhook-isolation key from the [Key publication](#webhook-callbacks) section: same `adcp_use: "request-signing"`, distinct `kid`, used to sign webhooks so a webhook-key compromise doesn't extend to request signing. Distinct `kid` values also mean counterparties can cache and rotate the two keys independently.
 
 #### AdCP RFC 9421 profile
 
@@ -1070,7 +1070,7 @@ Each request-signing JWK entry MUST declare:
 |---|---|---|
 | `use` | `"sig"` | Standard JWK signing use. |
 | `key_ops` | `["verify"]` | Verifier-visible JWKS declares verify-only. The signing operator holds the corresponding private key locally with `["sign"]` per JWK spec. |
-| `adcp_use` | `"request-signing"` | AdCP-specific purpose discriminator. Distinguishes from `"governance-signing"` (JWS profile) and any future AdCP signing purpose. Verifiers MUST reject any JWK with absent or different `adcp_use` when verifying a request signature. The same `"request-signing"` key (or a second one under a distinct `kid`) also signs outbound webhooks — see [Webhook callbacks](#webhook-callbacks). (`"webhook-signing"` is a deprecated purpose, removed in 4.0; still accepted on the webhook path for backward compatibility.) |
+| `adcp_use` | `"request-signing"` | AdCP-specific purpose discriminator. Distinguishes from `"governance-signing"` (JWS profile) and any future AdCP signing purpose. Verifiers MUST reject any JWK with absent or different `adcp_use` when verifying a request signature. The same `"request-signing"` key (or a second one under a distinct `kid`) also signs outbound webhooks — see [Webhook callbacks](#webhook-callbacks). (`"webhook-signing"` is a deprecated purpose pending removal — see [#5555](https://github.com/adcontextprotocol/adcp/issues/5555); still accepted on the webhook path for backward compatibility.) |
 | `kid` | distinct | Unique within the JWKS. MUST NOT collide with any other entry's `kid` regardless of `adcp_use`. |
 | `alg` | `"EdDSA"` or `"ES256"` | Must match the signature's `alg` parameter (JWK `alg` uses JWS names; `alg` in `Signature-Input` uses RFC 9421 names). |
 
@@ -1435,7 +1435,7 @@ The buyer opts into the legacy HMAC-SHA256 scheme by populating `push_notificati
 
 **Key isolation is optional, via a distinct `kid` — not a distinct purpose.** An operator that wants its webhook traffic signed by separate key material (so a webhook-key compromise does not extend to request signing, or to rotate the two independently) publishes a **second `adcp_use: "request-signing"` key with a distinct `kid`** and signs webhooks with that one. Both keys carry the same `adcp_use`; the verifier resolves the right one by the `kid` in `Signature-Input`. No dedicated webhook key purpose is required to achieve isolation.
 
-> **Deprecated:** `adcp_use: "webhook-signing"` is deprecated and will be removed in AdCP 4.0. Verifiers MUST still accept it for backward compatibility (a webhook signed under a `"webhook-signing"` key verifies cleanly), but new signers SHOULD publish and sign with `"request-signing"` keys only.
+> **Deprecated:** `adcp_use: "webhook-signing"` is deprecated and scheduled for removal in a future major version (tracked in [#5555](https://github.com/adcontextprotocol/adcp/issues/5555); the exact window is a WG/RFC decision). Verifiers MUST still accept it for backward compatibility (a webhook signed under a `"webhook-signing"` key verifies cleanly), but new signers SHOULD publish and sign with `"request-signing"` keys only.
 
 A buyer verifying a webhook MUST accept a JWK whose `adcp_use` is `"request-signing"` (or the deprecated `"webhook-signing"`), and MUST reject any other key-purpose failure — any other `adcp_use` value, absent `adcp_use`, or a missing `verify` key_op — with `webhook_signature_key_purpose_invalid`. The reverse is still forbidden: request verification requires `adcp_use == "request-signing"` exactly (a request signature is rejected if the key declares any other purpose), and neither `"response-signing"` nor `"governance-signing"` keys are ever valid for webhook delivery. The webhook path is permissive on key purpose because it already carries domain separation in the `tag` (`adcp/webhook-signing/v1`) and mandatory `content-digest` coverage, so the key-purpose check adds no confusion resistance there.
 
@@ -1585,8 +1585,8 @@ Codes parallel the [request-signing error taxonomy](#transport-error-taxonomy), 
 **TMP keys MUST declare a distinct `adcp_use` value** (or omit it entirely) so verifiers reject them for request signing via step 8. Publishing TMP keys at the same `jwks_uri` as request-signing and webhook-signing keys is permitted and encouraged — one publication pattern, five signing systems, each `kid`-scoped:
 
 - governance JWS — `adcp_use: "governance-signing"`
-- request signing (RFC 9421) — `adcp_use: "request-signing"`
-- webhook signing (RFC 9421) — `adcp_use: "webhook-signing"`
+- request signing (RFC 9421) — `adcp_use: "request-signing"` (also signs webhooks; see [Webhook callbacks](#webhook-callbacks))
+- webhook signing (RFC 9421) — uses the `request-signing` key; the legacy `adcp_use: "webhook-signing"` value is **deprecated** (still accepted, pending removal — see follow-up issue in the deprecation note)
 - designated-task response-payload JWS — `adcp_use: "response-signing"` (see [Designated-task payload-envelope response signing](#designated-task-response-signing) above)
 - TMP envelope — TMP's own future `adcp_use` value
 
