@@ -1386,9 +1386,12 @@ export class CrawlerService {
 
   async revalidatePublisherAdagents(
     domain: string,
-    _options: { force?: boolean } = {},
+    options: { force?: boolean } = {},
   ): Promise<PublisherAdagentsRevalidationResult> {
     const normalizedDomain = canonicalizePublisherDomain(domain);
+    if (options.force) {
+      log.info({ domain: normalizedDomain }, 'Force revalidation requested; live origin validation is always performed');
+    }
     const checkedAt = new Date();
     const validation = await this.adAgentsManager.validateDomain(normalizedDomain);
     const persisted = await this.persistPublisherAdagentsValidation(
