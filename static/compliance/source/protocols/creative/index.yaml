@@ -328,6 +328,7 @@ phases:
         response_schema_ref: "creative/preview-creative-response.json"
         doc_ref: "/creative/task-reference/preview_creative"
         comply_scenario: creative_flow
+        requires_tool: preview_creative
         stateful: true
         expected: |
           Return a preview of the display creative:

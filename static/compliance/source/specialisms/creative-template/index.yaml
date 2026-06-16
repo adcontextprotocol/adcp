@@ -213,6 +213,7 @@ phases:
         response_schema_ref: "creative/preview-creative-response.json"
         doc_ref: "/creative/task-reference/preview_creative"
         comply_scenario: creative_flow
+        requires_tool: preview_creative
         stateful: false
         expected: |
           Return a preview render. The response should include:
