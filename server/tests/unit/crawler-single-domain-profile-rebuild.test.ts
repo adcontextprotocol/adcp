@@ -251,6 +251,60 @@ describe('CrawlerService single-domain profile rebuild', () => {
     });
   });
 
+  it('manual adagents revalidation preserves cached state on transient fetch failures', async () => {
+    const { CrawlerService } = await import('../../src/crawler.js');
+    const proto = (CrawlerService as any).prototype;
+    const ctx = Object.create(proto);
+
+    Object.assign(ctx, {
+      adAgentsManager: {
+        validateDomain: vi.fn().mockResolvedValue({
+          valid: false,
+          errors: [{ field: 'http_status', message: 'HTTP 503 error fetching https://publisher.example/.well-known/adagents.json', severity: 'error' }],
+          warnings: [],
+          domain: 'publisher.example',
+          url: 'https://publisher.example/.well-known/adagents.json',
+          status_code: 503,
+          response_bytes: 18,
+          resolved_url: 'https://publisher.example/.well-known/adagents.json',
+          discovery_method: 'direct',
+        }),
+      },
+      federatedIndex: {
+        getAuthorizationsForDomain: vi.fn().mockResolvedValue([
+          { agent_url: 'https://old-agent.example/mcp/', source: 'adagents_json' },
+        ]),
+        markPublisherHasInvalidAdagents: vi.fn().mockResolvedValue(undefined),
+        reconcileAdagentsAuthorizations: vi.fn().mockResolvedValue(undefined),
+      },
+      publisherDb: {
+        recordAdagentsValidationFailure: vi.fn().mockResolvedValue(undefined),
+        recordFailedAdagentsFetch: vi.fn().mockResolvedValue(undefined),
+      },
+      scanBrandForDomain: vi.fn().mockResolvedValue(undefined),
+      buildInventoryProfiles: vi.fn().mockResolvedValue(new Map()),
+    });
+
+    const result = await ctx.revalidatePublisherAdagents('publisher.example');
+
+    expect(result).toMatchObject({
+      domain: 'publisher.example',
+      adagents_valid: false,
+      status_code: 503,
+      error: 'HTTP 503 error fetching https://publisher.example/.well-known/adagents.json',
+    });
+    expect(ctx.publisherDb.recordFailedAdagentsFetch).toHaveBeenCalledWith({
+      domain: 'publisher.example',
+      statusCode: 503,
+      responseBytes: 18,
+      resolvedUrl: 'https://publisher.example/.well-known/adagents.json',
+    });
+    expect(ctx.publisherDb.recordAdagentsValidationFailure).not.toHaveBeenCalled();
+    expect(ctx.federatedIndex.markPublisherHasInvalidAdagents).not.toHaveBeenCalled();
+    expect(ctx.federatedIndex.reconcileAdagentsAuthorizations).not.toHaveBeenCalled();
+    expect(ctx.buildInventoryProfiles).not.toHaveBeenCalled();
+  });
+
   it('manual adagents revalidation persists schema-invalid 200 responses as invalid', async () => {
     const { CrawlerService } = await import('../../src/crawler.js');
     const proto = (CrawlerService as any).prototype;

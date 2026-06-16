@@ -522,8 +522,7 @@ export class FederatedIndexDatabase {
             WHERE domain = $1
               AND source_type <> 'adagents_json'
               AND (
-                last_http_status IS NOT NULL
-                OR last_validation_error IS NOT NULL
+                last_validation_error IS NOT NULL
                 OR last_validation_issues IS NOT NULL
               )
          ) AS catalog_invalid,

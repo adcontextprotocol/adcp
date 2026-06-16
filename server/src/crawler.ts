@@ -1236,6 +1236,21 @@ export class CrawlerService {
     };
   }
 
+  private isTransientPublisherAdagentsFailure(validation: AdAgentsValidationResult): boolean {
+    if (validation.status_code !== undefined) {
+      return validation.status_code >= 500
+        || validation.status_code === 429
+        || (validation.status_code >= 300 && validation.status_code < 400);
+    }
+
+    return validation.errors.some((error) =>
+      error.field === 'timeout'
+      || error.field === 'connection'
+      || error.field === 'network'
+      || error.field === 'unknown'
+    );
+  }
+
   private summarizePublisherAdagentsRevalidation(
     domain: string,
     validation: AdAgentsValidationResult,
@@ -1274,6 +1289,21 @@ export class CrawlerService {
     }
 
     if (!validation.valid || !Array.isArray(validation.raw_data?.authorized_agents)) {
+      if (this.isTransientPublisherAdagentsFailure(validation)) {
+        await this.publisherDb.recordFailedAdagentsFetch({
+          domain,
+          statusCode: validation.status_code,
+          responseBytes: validation.response_bytes,
+          resolvedUrl: validation.resolved_url,
+        });
+        return { valid: false, affectedAgentUrls: new Set() };
+      }
+
+      // Authoritative-negative revalidation is intentionally destructive:
+      // it changes the registry's cached publisher-origin verdict, then
+      // reconciles legacy indexes to match. The writes are ordered so stale
+      // public auth/property projections are removed only after the failed
+      // verdict is durably recorded.
       await this.publisherDb.recordAdagentsValidationFailure({
         domain,
         statusCode: validation.status_code,

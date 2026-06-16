@@ -1013,14 +1013,14 @@ export class PublisherDatabase {
           USING discovered_properties dp
          WHERE apa.property_id = dp.id
            AND dp.publisher_domain = $1
-           AND dp.source_type IN ('adagents_json', 'aao_hosted')`,
+           AND dp.source_type = 'adagents_json'`,
         [domain],
       );
 
       await client.query(
         `DELETE FROM discovered_properties
           WHERE publisher_domain = $1
-            AND source_type IN ('adagents_json', 'aao_hosted')`,
+            AND source_type = 'adagents_json'`,
         [domain],
       );
 
