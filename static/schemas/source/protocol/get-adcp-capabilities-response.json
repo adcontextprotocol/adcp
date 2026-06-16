@@ -1269,7 +1269,7 @@
         },
         "key_origins": {
           "type": "object",
-          "description": "Map of signing-key purpose → publishing origin, so counterparties can verify origin separation (e.g., governance keys served from a separate origin than transport/webhook keys) at onboarding. Absent means the operator has not declared a separation scheme; receivers SHOULD assume shared-origin. Every purpose listed MUST have a corresponding signing posture declared elsewhere — `request_signing` requires non-empty `request_signing.supported_for`/`required_for`/`protocol_methods_supported_for`/`protocol_methods_required_for`; `webhook_signing` requires `webhook_signing.supported === true` — otherwise the consistency check at signature-verification time has nothing to anchor against. See `x-adcp-validation` and docs/building/implementation/security.mdx §Origin separation.",
+          "description": "Map of signing-key surface/purpose → publishing origin, so counterparties can verify origin separation (e.g., governance keys served from a separate origin than transport/webhook keys) at onboarding. Absent means the operator has not declared a separation scheme; receivers SHOULD assume shared-origin. Every entry listed MUST have a corresponding signing posture declared elsewhere — `request_signing` requires non-empty `request_signing.supported_for`/`required_for`/`protocol_methods_supported_for`/`protocol_methods_required_for`; `webhook_signing` requires `webhook_signing.supported === true` and names the webhook delivery surface, not a required live `adcp_use: \"webhook-signing\"` key purpose — otherwise the consistency check at signature-verification time has nothing to anchor against. See `x-adcp-validation` and docs/building/implementation/security.mdx §Origin separation.",
           "properties": {
             "governance_signing": {
               "type": "string",
@@ -1284,7 +1284,7 @@
             "webhook_signing": {
               "type": "string",
               "format": "uri",
-              "description": "Origin (scheme + host) serving the webhook-signing JWKS."
+              "description": "Origin (scheme + host) serving the JWKS used for webhook delivery. Webhooks are signed with `adcp_use: \"request-signing\"` keys; the deprecated `adcp_use: \"webhook-signing\"` value remains accepted during the backward-compatibility window."
             },
             "tmp_signing": {
               "type": "string",
