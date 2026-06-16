@@ -3,15 +3,15 @@ version: "1.0.0"
 title: "Sponsored context accountability"
 protocol: sponsored-intelligence
 category: si_sponsored_context_accountability
-summary: "Validates that a conformant brand-side SI agent emits sponsored_context on every response, accepts well-formed sponsored_context_receipt envelopes, and rejects receipts that silently downgrade declared context_use."
+summary: "Validates that a brand-side SI agent claiming sponsored_context_accountability conformance emits sponsored_context on each response, accepts well-formed sponsored_context_receipt envelopes, and rejects receipts that silently downgrade declared context_use."
 track: si
 required_tools:
   - si_initiate_session
   - si_send_message
 
 narrative: |
-  AdCP 3.1.0-rc.13/rc.14 introduced the sponsored_context_accountability surface (PR #5501): every SI
-  response carries a `sponsored_context` envelope (paying_principal, context_use, disclosure_obligation),
+  AdCP 3.1.0-rc.13/rc.14 introduced the sponsored_context_accountability surface (PR #5501): in this
+  conformance profile, a brand-side SI agent's every response carries a `sponsored_context` envelope (paying_principal, context_use, disclosure_obligation),
   and the receiving host echoes a `sponsored_context_receipt` back on its next request. The spec's allOf
   chain in si-sponsored-context-receipt.json enforces three invariants that a conformant brand agent
   must validate on the receiving side:
@@ -55,9 +55,10 @@ caller:
 prerequisites:
   description: |
     The agent under test is the brand-side SI surface. The harness acts as the host: it sends
-    sample requests and echoes back synthesised receipts whose `sponsored_context` field is the
-    one previously emitted by the agent (the runtime substitution replaces the literal
-    sample_request envelope with the real prior emission).
+    sample requests carrying static Acme outdoor receipt literals. The storyboard runner does
+    not perform object-shaped context substitution, so these receipts are fixed Acme fixtures —
+    not echoes of the agent's own prior emission. The assertions test receipt acceptance and
+    rejection semantics, not principal-matching against the agent's own declaration.
 
     The acme-outdoor test kit is a natural fixture — it matches the catalog the reference
     implementation (bragent) ships and is already used by other SI scenarios. A conformant
@@ -127,7 +128,7 @@ phases:
 
           - check: field_present
             path: "sponsored_context"
-            description: "PR #5501 envelope: every SI response must carry sponsored_context"
+            description: "sponsored_context_accountability conformance target: brand-side SI agent must emit sponsored_context on each response"
           - check: field_present
             path: "sponsored_context.paying_principal.brand.domain"
             description: "Canonical economic principal — brand reference, not a free-form string"
@@ -151,8 +152,7 @@ phases:
           The host echoes the brand's sponsored_context back inside a receipt whose
           `accepted_context_use` matches the declared value. A conformant brand agent accepts
           the receipt, persists it for audit, and emits a fresh sponsored_context on the
-          response. The runtime substitutes the literal `sponsored_context` envelope below
-          with the one returned by the prior step.
+          response.
         task: si_send_message
         schema_ref: "sponsored-intelligence/si-send-message-request.json"
         response_schema_ref: "sponsored-intelligence/si-send-message-response.json"
