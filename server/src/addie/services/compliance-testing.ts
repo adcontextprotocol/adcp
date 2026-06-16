@@ -283,6 +283,38 @@ function skipReasonIsCoverageGap(
   }
 }
 
+function scenarioIsNeutralSkipOnly(
+  steps: Array<{
+    skipped?: boolean;
+    skip_reason?: string;
+    step?: unknown;
+    step_id?: unknown;
+    details?: unknown;
+    error?: unknown;
+    warnings?: unknown;
+    skip?: { detail?: unknown };
+  }>,
+  scenario: unknown,
+): boolean {
+  if (steps.length === 0 || !steps.every((step) => step.skipped)) return false;
+
+  let sawNeutralSkip = false;
+  for (const step of steps) {
+    if (!skipReasonIsCoverageGap(step.skip_reason, step, scenario)) {
+      sawNeutralSkip = true;
+      continue;
+    }
+
+    if (step.skip_reason === 'prerequisite_failed' && sawNeutralSkip) {
+      continue;
+    }
+
+    return false;
+  }
+
+  return sawNeutralSkip;
+}
+
 // ── Storyboard Status Derivation ─────────────────────────────────
 
 /**
@@ -302,10 +334,7 @@ export function deriveStoryboardStatuses(
   for (const track of result.tracks) {
     for (const s of track.scenarios) {
       const steps = Array.isArray(s.steps) ? s.steps : [];
-      const isNeutralSkipOnlyScenario = steps.length > 0 && steps.every((step) =>
-        step.skipped && !skipReasonIsCoverageGap(step.skip_reason, step, s.scenario)
-      );
-      if (isNeutralSkipOnlyScenario) {
+      if (scenarioIsNeutralSkipOnly(steps, s.scenario)) {
         continue;
       }
       scenarioResults.set(s.scenario, s.overall_passed);

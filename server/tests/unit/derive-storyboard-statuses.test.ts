@@ -97,6 +97,30 @@ function makeResult(
   } as unknown as ComplianceResult;
 }
 
+function makeResultWithSteps(
+  scenario: string,
+  steps: Array<{
+    skipped?: boolean;
+    skip_reason?: string;
+    step?: string;
+    step_id?: string;
+    warnings?: string[];
+  }>,
+  overallPassed = false,
+): ComplianceResult {
+  const result = makeResult(scenario, steps[0] ?? {}, overallPassed);
+  result.tracks[0]!.scenarios[0]!.steps = steps.map((step) => ({
+    step: step.step ?? 'step',
+    step_id: step.step_id,
+    passed: overallPassed,
+    skipped: step.skipped,
+    skip_reason: step.skip_reason,
+    warnings: step.warnings,
+    duration_ms: 0,
+  })) as any;
+  return result;
+}
+
 describe('deriveStoryboardStatuses optional-tool skip handling', () => {
   beforeEach(() => {
     storyboards.clear();
@@ -134,6 +158,32 @@ describe('deriveStoryboardStatuses optional-tool skip handling', () => {
     );
 
     expect(entry).toMatchObject({ storyboard_id: 'governance_optional', status: 'untested' });
+  });
+
+  it('treats cascades from explicit requires_tool missing-tool skips as untested', async () => {
+    storyboards.set('creative_lifecycle', storyboard('creative_lifecycle', 'creative_flow'));
+    const { deriveStoryboardStatuses } = await import('../../src/addie/services/compliance-testing.js');
+
+    const [entry] = deriveStoryboardStatuses(
+      makeResultWithSteps('creative_flow', [
+        {
+          skipped: true,
+          skip_reason: 'missing_tool',
+          step: 'Preview the display creative',
+          step_id: 'preview_creative',
+          warnings: ['Required tool "preview_creative" not advertised; agent tools: [build_creative].'],
+        },
+        {
+          skipped: true,
+          skip_reason: 'prerequisite_failed',
+          step: 'Build a VAST tag for the video creative',
+          step_id: 'build_creative',
+        },
+      ]),
+      ['creative_lifecycle'],
+    );
+
+    expect(entry).toMatchObject({ storyboard_id: 'creative_lifecycle', status: 'untested' });
   });
 
   it('treats storyboard-level missing-tool synthetic skips as untested', async () => {
