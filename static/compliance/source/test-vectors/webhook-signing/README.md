@@ -14,7 +14,7 @@ Specification: [Webhook callbacks](https://adcontextprotocol.org/docs/building/b
 
 ## Scope
 
-These vectors exercise the [webhook verifier checklist](https://adcontextprotocol.org/docs/building/by-layer/L1/security#verifier-checklist-for-webhooks) and the RFC 9421 profile constraints specific to webhooks: required covered components (content-digest is REQUIRED, no policy branch), the distinct `tag="adcp/webhook-signing/v1"`, the `adcp_use: "webhook-signing"` key-purpose discriminator, and the `webhook_signature_*` error taxonomy. They do not exercise live JWKS fetch, brand.json discovery, or revocation-list polling — those require live endpoints and belong in integration suites.
+These vectors exercise the [webhook verifier checklist](https://adcontextprotocol.org/docs/building/by-layer/L1/security#verifier-checklist-for-webhooks) and the RFC 9421 profile constraints specific to webhooks: required covered components (content-digest is REQUIRED, no policy branch), the distinct `tag="adcp/webhook-signing/v1"`, the webhook-valid `adcp_use` purpose set (`"request-signing"` plus deprecated `"webhook-signing"`), and the `webhook_signature_*` error taxonomy. They do not exercise live JWKS fetch, brand.json discovery, or revocation-list polling — those require live endpoints and belong in integration suites.
 
 Vectors cover the receiver side (buyer verifying inbound webhooks). Sender-side grading — does the agent-under-test emit conformant signatures on live traffic — is handled by the [`webhook-emission` universal](https://adcontextprotocol.org/compliance/latest/universal/webhook-emission) via a runner that hosts a receiver during storyboard execution.
 
@@ -33,8 +33,8 @@ The distinct surface is the purpose-discriminator chain: `adcp_use` MUST be `"re
 ```
 test-vectors/webhook-signing/
 ├── README.md                             this file
-├── keys.json                             test keypairs (Ed25519 + ES256) with adcp_use: "webhook-signing",
-│                                         plus a request-signing key reused by positive vector
+├── keys.json                             test keypairs (Ed25519 + ES256) with webhook-valid adcp_use values,
+│                                         including a request-signing key reused by positive vector
 │                                         008-request-signing-key-reuse, a response-signing key for negative
 │                                         vector 008-wrong-adcp-use, and a revoked key for vector 017
 ├── negative/                             vectors that MUST fail verification
