@@ -41,7 +41,7 @@ caller:
 prerequisites:
   description: |
     The runner MUST be configured with a buyer webhook receiver URL and a
-    test webhook-signing key whose public JWK the receiver can resolve. Runners
+    test webhook signing key whose public JWK the receiver can resolve. Runners
     without a receiver URL grade this storyboard as not_applicable.
   vectors: "test-vectors/webhook-receiver-envelope.json"
 

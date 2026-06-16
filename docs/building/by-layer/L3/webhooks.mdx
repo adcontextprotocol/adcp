@@ -11,7 +11,7 @@ Push notifications let sellers deliver task status updates to you directly, inst
 1. A unique operation ID is generated per task invocation for webhook correlation
 2. A webhook URL is built for your receiver. The URL may contain your own routing token, but it is opaque to the seller
 3. `push_notification_config` is injected into the task request body with the URL and explicit `operation_id` — no shared secret required
-4. The seller POSTs webhook notifications to your URL as the task status changes, signing each POST with its `adcp_use: "webhook-signing"` key published in its own brand.json `agents[]` entry
+4. The seller POSTs webhook notifications to your URL as the task status changes, signing each POST with its `adcp_use: "request-signing"` key published in its own brand.json `agents[]` entry; deprecated `webhook-signing` keys remain accepted during the compatibility window
 5. You verify the signature against the seller's published JWKS and dedupe by `idempotency_key`
 6. Each notification echoes the explicit `operation_id` back in the payload so you can correlate it without parsing the URL
 
@@ -42,7 +42,7 @@ POST https://you.com/adcp/webhook/create_media_buy/agent_123/route_abc123
   }
 ```
 
-If you're using the `@adcp/sdk` library, this entire flow is handled automatically. As a **buyer**, configure `webhookUrlTemplate` and your agent URL on the client; `push_notification_config` is injected into every outgoing task call, and incoming webhooks are verified against the seller's JWKS automatically. As a **seller emitting webhooks**, publish a webhook-signing JWK at your brand.json `agents[]` entry (with `adcp_use: "webhook-signing"`) and the client signs outgoing webhooks for you.
+If you're using the `@adcp/sdk` library, this entire flow is handled automatically. As a **buyer**, configure `webhookUrlTemplate` and your agent URL on the client; `push_notification_config` is injected into every outgoing task call, and incoming webhooks are verified against the seller's JWKS automatically. As a **seller emitting webhooks**, publish a signing JWK at your brand.json `agents[]` entry. New signers use `adcp_use: "request-signing"`; if you want webhook-only key material, publish a second `request-signing` JWK with a distinct `kid`.
 
 :::warning Legacy HMAC fallback (deprecated)
 Buyers integrating with receivers that have not yet adopted the RFC 9421 webhook profile MAY opt into the legacy HMAC-SHA256 scheme by populating `push_notification_config.authentication.credentials`. That path is deprecated and removed in AdCP 4.0 — see [Legacy HMAC-SHA256 fallback](#legacy-hmac-sha256-fallback-deprecated) below. Because the inbound request that registers the webhook is typically not 9421-signed in 3.0, the `authentication` block is susceptible to on-path strip/inject — see [Downgrade and injection resistance](/docs/building/by-layer/L1/security#webhook-callbacks) for the operational mitigations.
@@ -80,7 +80,7 @@ Include `push_notification_config` as a task argument, merged with the rest of y
 }
 ```
 
-`authentication` is omitted in the default case — the seller signs with its own `adcp_use: "webhook-signing"` key. Include `authentication.credentials` only if you need the legacy HMAC-SHA256 fallback.
+`authentication` is omitted in the default case — the seller signs with its own `adcp_use: "request-signing"` key. Deprecated `webhook-signing` keys remain accepted during the compatibility window. Include `authentication.credentials` only if you need the legacy HMAC-SHA256 fallback.
 
 ### A2A
 
@@ -321,7 +321,7 @@ The two channels are independent. A buyer MAY register both for the same task an
 
 ## Signature verification
 
-Every AdCP 3.0 webhook is signed under the [RFC 9421 webhook profile](/docs/building/by-layer/L1/security#webhook-callbacks). The seller signs with its `adcp_use: "webhook-signing"` key published in its own brand.json `agents[]` entry; you verify against the seller's published JWKS. No shared secret crosses the wire.
+Every AdCP 3.0 webhook is signed under the [RFC 9421 webhook profile](/docs/building/by-layer/L1/security#webhook-callbacks). The seller signs with its `adcp_use: "request-signing"` key published in its own brand.json `agents[]` entry; deprecated `webhook-signing` keys remain accepted during the compatibility window. You verify against the seller's published JWKS. No shared secret crosses the wire.
 
 **Publisher sends three headers** (plus `Content-Type`):
 
