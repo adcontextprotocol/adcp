@@ -5051,6 +5051,132 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/registry/publisher/{domain}/adagents/revalidate:
+    post:
+      operationId: revalidatePublisherAdagents
+      summary: Revalidate publisher adagents.json
+      description: Admin-only endpoint for support/operator tooling to synchronously fetch a publisher's live `/.well-known/adagents.json`, run the registry validator, persist the refreshed verdict and fetch metadata, and return the validation result. `force=true` is accepted for operator tooling; the current validator always fetches the live origin.
+      tags:
+        - Authorization Lookups
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      parameters:
+        - schema:
+            type: string
+            example: publisher.example
+          required: true
+          name: domain
+          in: path
+        - schema:
+            type:
+              - boolean
+              - "null"
+            description: Accepted for tooling compatibility; live origin validation is always performed.
+          required: false
+          description: Accepted for tooling compatibility; live origin validation is always performed.
+          name: force
+          in: query
+      responses:
+        "200":
+          description: Revalidation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  domain:
+                    type: string
+                  adagents_valid:
+                    type: boolean
+                  checked_at:
+                    type: string
+                    format: date-time
+                  error:
+                    type: string
+                  issues:
+                    type: object
+                    properties:
+                      errors:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            field:
+                              type: string
+                            message:
+                              type: string
+                            severity:
+                              type: string
+                              enum:
+                                - error
+                          required:
+                            - field
+                            - message
+                            - severity
+                      warnings:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            field:
+                              type: string
+                            message:
+                              type: string
+                            suggestion:
+                              type: string
+                          required:
+                            - field
+                            - message
+                    required:
+                      - errors
+                      - warnings
+                  properties_count:
+                    type: integer
+                    minimum: 0
+                  authorized_agents_count:
+                    type: integer
+                    minimum: 0
+                  status_code:
+                    type: integer
+                    minimum: 100
+                    maximum: 599
+                  response_bytes:
+                    type: integer
+                    minimum: 0
+                  resolved_url:
+                    type: string
+                  discovery_method:
+                    type: string
+                    enum:
+                      - direct
+                      - authoritative_location
+                      - ads_txt_managerdomain
+                      - adagents_authoritative
+                  manager_domain:
+                    type: string
+                required:
+                  - domain
+                  - adagents_valid
+                  - checked_at
+        "400":
+          description: Invalid domain format, private IP, or unresolvable domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/registry/publisher/authorization:
     get:
       operationId: lookupPublisherAgentAuthorization

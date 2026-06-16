@@ -508,7 +508,7 @@ export class FederatedIndexDatabase {
    * crawl-on-view or turn hosting.mode into `self`.
    */
   async hasValidAdagents(domain: string): Promise<boolean | null> {
-    const result = await query<{ catalog_present: boolean; legacy_or: boolean | null }>(
+    const result = await query<{ catalog_present: boolean; catalog_invalid: boolean; legacy_or: boolean | null }>(
       `SELECT
          EXISTS(
            SELECT 1 FROM publishers
@@ -517,6 +517,16 @@ export class FederatedIndexDatabase {
               AND source_type = 'adagents_json'
               AND review_status = 'approved'
          ) AS catalog_present,
+         EXISTS(
+           SELECT 1 FROM publishers
+            WHERE domain = $1
+              AND source_type <> 'adagents_json'
+              AND (
+                last_http_status IS NOT NULL
+                OR last_validation_error IS NOT NULL
+                OR last_validation_issues IS NOT NULL
+              )
+         ) AS catalog_invalid,
          (SELECT bool_or(has_valid_adagents)
             FROM discovered_publishers
            WHERE domain = $1) AS legacy_or`,
@@ -525,8 +535,19 @@ export class FederatedIndexDatabase {
     const row = result.rows[0];
     if (!row) return null;
     if (row.catalog_present) return true;
+    if (row.catalog_invalid) return false;
     if (row.legacy_or === null) return null;
     return row.legacy_or;
+  }
+
+  async markPublisherHasInvalidAdagents(domain: string): Promise<void> {
+    await query(
+      `UPDATE discovered_publishers
+          SET has_valid_adagents = FALSE,
+              last_validated = NOW()
+        WHERE domain = $1`,
+      [domain],
+    );
   }
 
   /**

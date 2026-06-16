@@ -108,6 +108,15 @@ export interface UpsertAdagentsCacheInput {
   collectionEventActor?: string;
 }
 
+export interface RecordAdagentsValidationFailureInput {
+  domain: string;
+  statusCode?: number;
+  responseBytes?: number;
+  resolvedUrl?: string;
+  error?: string;
+  issues?: unknown;
+}
+
 export interface UpsertAdagentsCacheResult {
   collectionEvents: CollectionProjectionEvent[];
 }
@@ -931,6 +940,119 @@ export class PublisherDatabase {
     }
   }
 
+  /**
+   * Persist an operator-triggered failed validation verdict. Unlike the
+   * routine failed-fetch path, this clears a stale publisher-origin cache and
+   * retires adagents_json authorizations because a human explicitly asked the
+   * registry to re-check the live source of truth now.
+   */
+  async recordAdagentsValidationFailure(input: RecordAdagentsValidationFailureInput): Promise<void> {
+    const domain = canonicalizePublisherDomain(input.domain);
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `INSERT INTO publishers
+           (domain, source_type, adagents_json, last_http_status, last_response_bytes,
+            resolved_url, discovery_method, manager_domain, last_validation_error,
+            last_validation_issues)
+         VALUES ($1, 'community', NULL, $2, $3, $4, NULL, NULL, $5, $6::jsonb)
+         ON CONFLICT (domain) DO UPDATE SET
+           adagents_json = CASE
+             WHEN publishers.source_type = 'adagents_json' THEN NULL
+             ELSE publishers.adagents_json
+           END,
+           source_type = CASE
+             WHEN publishers.source_type = 'adagents_json' THEN 'community'
+             ELSE publishers.source_type
+           END,
+           last_http_status = EXCLUDED.last_http_status,
+           last_response_bytes = EXCLUDED.last_response_bytes,
+           resolved_url = EXCLUDED.resolved_url,
+           discovery_method = CASE
+             WHEN publishers.source_type = 'adagents_json' THEN NULL
+             ELSE publishers.discovery_method
+           END,
+           manager_domain = CASE
+             WHEN publishers.source_type = 'adagents_json' THEN NULL
+             ELSE publishers.manager_domain
+           END,
+           last_validation_error = EXCLUDED.last_validation_error,
+           last_validation_issues = EXCLUDED.last_validation_issues,
+           updated_at = NOW()`,
+        [
+          domain,
+          clampHttpStatus(input.statusCode),
+          input.responseBytes ?? null,
+          truncateResolvedUrl(input.resolvedUrl),
+          input.error ?? null,
+          input.issues === undefined ? null : JSON.stringify(input.issues),
+        ],
+      );
+
+      await client.query(
+        `UPDATE catalog_agent_authorizations caa
+            SET deleted_at = NOW()
+          WHERE caa.evidence = 'adagents_json'
+            AND caa.created_by = 'system'
+            AND caa.deleted_at IS NULL
+            AND (
+              caa.publisher_domain = $1
+              OR caa.property_rid IN (
+                SELECT property_rid FROM catalog_properties WHERE created_by = $2
+              )
+              OR (caa.property_id_slug IS NOT NULL AND caa.property_rid IN (
+                SELECT property_rid FROM catalog_properties WHERE created_by = $2
+              ))
+            )`,
+        [domain, adagentsCreatedBy(domain)],
+      );
+
+      await client.query(
+        `DELETE FROM agent_property_authorizations apa
+          USING discovered_properties dp
+         WHERE apa.property_id = dp.id
+           AND dp.publisher_domain = $1
+           AND dp.source_type IN ('adagents_json', 'aao_hosted')`,
+        [domain],
+      );
+
+      await client.query(
+        `DELETE FROM discovered_properties
+          WHERE publisher_domain = $1
+            AND source_type IN ('adagents_json', 'aao_hosted')`,
+        [domain],
+      );
+
+      await client.query(
+        `DELETE FROM catalog_identifiers ci
+          USING catalog_properties cp
+         WHERE ci.property_rid = cp.property_rid
+           AND cp.created_by = $1`,
+        [adagentsCreatedBy(domain)],
+      );
+
+      await client.query(
+        `DELETE FROM catalog_properties WHERE created_by = $1`,
+        [adagentsCreatedBy(domain)],
+      );
+
+      await this.collectionCatalog.retireMissingAdagentsCollections(
+        client,
+        domain,
+        [],
+        adagentsCreatedBy(domain),
+      );
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
   async upsertAdagentsCache(input: UpsertAdagentsCacheInput): Promise<UpsertAdagentsCacheResult> {
     const domain = canonicalizePublisherDomain(input.domain);
     const client = await getClient();
@@ -968,6 +1090,8 @@ export class PublisherDatabase {
            resolved_url = EXCLUDED.resolved_url,
            discovery_method = EXCLUDED.discovery_method,
            manager_domain = EXCLUDED.manager_domain,
+           last_validation_error = NULL,
+           last_validation_issues = NULL,
            updated_at = NOW()`,
         [
           domain,
