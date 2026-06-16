@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.0.18
+
+### Patch Changes
+
+- 64ce06c: Prevent optional creative preview skips from cascading into false storyboard failures.
+
 ## 3.0.17
 
 ### Patch Changes
