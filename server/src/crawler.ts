@@ -1238,14 +1238,16 @@ export class CrawlerService {
 
   private isTransientPublisherAdagentsFailure(validation: AdAgentsValidationResult): boolean {
     // Network fetch failures come from classifySafeFetchError in
-    // utils/url-security.ts. Keep every known transport bucket
-    // non-destructive: only completed publisher-origin negatives may clear
-    // cached adagents-derived projections.
+    // utils/url-security.ts. Keep every known transport bucket and
+    // inconclusive 200 responses non-destructive: only completed
+    // publisher-origin negatives may clear cached adagents-derived projections.
     const hasTransientError = validation.errors.some((error) =>
       error.field === 'timeout'
       || error.field === 'connection'
       || error.field === 'network'
       || error.field === 'unknown'
+      || error.field === 'json'
+      || error.field === 'authoritative_location'
       || /HTTP (401|403|408|429|451|5\d\d)\b/i.test(error.message)
       || /Redirect \(HTTP 3\d\d\)/i.test(error.message)
       || /timed out|timeout|Cannot connect|ECONN|ENOTFOUND|EAI_/i.test(error.message)
