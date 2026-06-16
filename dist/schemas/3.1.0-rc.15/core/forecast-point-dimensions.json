@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.15/core/forecast-point-dimensions.json",
+  "title": "Forecast Point Dimensions",
+  "description": "Dimension constraints represented by a ForecastPoint. Use this when one product, proposal, or signal coverage forecast needs to expose availability or forecasted delivery by country, region, placement, device, audience, signal value, or intersections such as placement x country without creating separate products solely for each slice. Each item declares one dimension family via `kind`; when multiple items are present, the point represents their intersection. Sellers MUST NOT emit more than one item for each `kind` in a point. Consumers MUST NOT treat repeated kinds as OR semantics; repeated peer values such as two countries are a seller conformance issue. Dimension values are descriptors of the forecast row and are independent of pricing_options.",
+  "x-adcp-validation": {
+    "unique_item_properties": ["kind"],
+    "description": "`dimensions[]` is an array for readable intersection syntax, but `kind` is a logical set key. JSON Schema draft-07 cannot express unique-by-property for this array shape, so conformance tooling should reject repeated `kind` values."
+  },
+  "type": "array",
+  "minItems": 1,
+  "uniqueItems": true,
+  "items": {
+    "oneOf": [
+      {
+        "$ref": "/schemas/3.1.0-rc.15/core/forecast-dimension-geo.json"
+      },
+      {
+        "$ref": "/schemas/3.1.0-rc.15/core/forecast-dimension-placement.json"
+      },
+      {
+        "$ref": "/schemas/3.1.0-rc.15/core/forecast-dimension-device-type.json"
+      },
+      {
+        "$ref": "/schemas/3.1.0-rc.15/core/forecast-dimension-device-platform.json"
+      },
+      {
+        "$ref": "/schemas/3.1.0-rc.15/core/forecast-dimension-audience.json"
+      },
+      {
+        "$ref": "/schemas/3.1.0-rc.15/core/forecast-dimension-signal.json"
+      }
+    ]
+  }
+}

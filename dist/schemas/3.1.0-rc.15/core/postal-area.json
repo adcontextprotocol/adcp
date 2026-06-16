@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.15/core/postal-area.json",
+  "title": "Postal Area",
+  "description": "Postal area values. Prefer the native country + postal system form. Deprecated legacy country-fused postal-system tokens remain accepted for compatibility.",
+  "anyOf": [
+    {
+      "title": "PostalArea",
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "/schemas/3.1.0-rc.15/core/postal-country-system.json"
+        }
+      ],
+      "properties": {
+        "country": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$",
+          "description": "ISO 3166-1 alpha-2 country code for the postal values."
+        },
+        "system": {
+          "$ref": "/schemas/3.1.0-rc.15/enums/postal-system.json",
+          "description": "Country-local postal code system (e.g., 'zip', 'outward', 'plz', 'postal_code')."
+        },
+        "values": {
+          "type": "array",
+          "description": "Postal codes within the country and system.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        }
+      },
+      "required": ["country", "system", "values"],
+      "additionalProperties": false
+    },
+    {
+      "title": "LegacyPostalArea",
+      "deprecated": true,
+      "type": "object",
+      "properties": {
+        "system": {
+          "$ref": "/schemas/3.1.0-rc.15/enums/legacy-postal-system.json",
+          "description": "Deprecated country-fused postal code system (e.g., 'us_zip', 'gb_outward'). Prefer country + postal-system."
+        },
+        "values": {
+          "type": "array",
+          "description": "Postal codes within the legacy system.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        }
+      },
+      "required": ["system", "values"],
+      "additionalProperties": false
+    }
+  ]
+}
