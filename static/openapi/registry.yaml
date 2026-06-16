@@ -5055,7 +5055,10 @@ paths:
     post:
       operationId: revalidatePublisherAdagents
       summary: Revalidate publisher adagents.json
-      description: Admin-only endpoint for support/operator tooling to synchronously fetch a publisher's live `/.well-known/adagents.json`, run the registry validator, persist the refreshed verdict and fetch metadata, and return the validation result. `force=true` is accepted for operator tooling; the current validator always fetches the live origin.
+      description: |-
+        Admin-only endpoint for support/operator tooling to synchronously fetch a publisher's live `/.well-known/adagents.json`, run the registry validator, persist the refreshed verdict and fetch metadata, and return the validation result. `force=true` is accepted for operator tooling; the current validator always fetches the live origin.
+
+        **Rate limits:** 5 minutes per domain, 30 requests per user per hour.
       tags:
         - Authorization Lookups
       security:
@@ -5069,9 +5072,10 @@ paths:
           name: domain
           in: path
         - schema:
-            type:
-              - boolean
-              - "null"
+            type: string
+            enum:
+              - "1"
+              - "true"
             description: Accepted for tooling compatibility; live origin validation is always performed.
           required: false
           description: Accepted for tooling compatibility; live origin validation is always performed.
@@ -5177,6 +5181,21 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  retry_after:
+                    type: integer
+                    description: Seconds to wait before retrying
+                required:
+                  - error
+                  - retry_after
   /api/registry/publisher/authorization:
     get:
       operationId: lookupPublisherAgentAuthorization

@@ -1237,18 +1237,28 @@ export class CrawlerService {
   }
 
   private isTransientPublisherAdagentsFailure(validation: AdAgentsValidationResult): boolean {
-    if (validation.status_code !== undefined) {
-      return validation.status_code >= 500
-        || validation.status_code === 429
-        || (validation.status_code >= 300 && validation.status_code < 400);
-    }
-
-    return validation.errors.some((error) =>
+    // Network fetch failures come from classifySafeFetchError in
+    // utils/url-security.ts. Keep every known transport bucket
+    // non-destructive: only completed publisher-origin negatives may clear
+    // cached adagents-derived projections.
+    const hasTransientError = validation.errors.some((error) =>
       error.field === 'timeout'
       || error.field === 'connection'
       || error.field === 'network'
       || error.field === 'unknown'
+      || /HTTP (401|403|408|429|451|5\d\d)\b/i.test(error.message)
+      || /Redirect \(HTTP 3\d\d\)/i.test(error.message)
+      || /timed out|timeout|Cannot connect|ECONN|ENOTFOUND|EAI_/i.test(error.message)
     );
+    if (hasTransientError) return true;
+
+    if (validation.status_code !== undefined) {
+      return validation.status_code !== 200
+        && validation.status_code !== 404
+        && validation.status_code !== 410;
+    }
+
+    return false;
   }
 
   private summarizePublisherAdagentsRevalidation(
@@ -1312,8 +1322,6 @@ export class CrawlerService {
         error: validation.errors[0]?.message,
         issues: this.validationIssues(validation),
       });
-      await this.federatedIndex.markPublisherHasInvalidAdagents(domain);
-      await this.federatedIndex.reconcileAdagentsAuthorizations(domain, []);
       return { valid: false, affectedAgentUrls };
     }
 

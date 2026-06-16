@@ -1302,7 +1302,7 @@ registry.registerPath({
   operationId: "revalidatePublisherAdagents",
   summary: "Revalidate publisher adagents.json",
   description:
-    "Admin-only endpoint for support/operator tooling to synchronously fetch a publisher's live `/.well-known/adagents.json`, run the registry validator, persist the refreshed verdict and fetch metadata, and return the validation result. `force=true` is accepted for operator tooling; the current validator always fetches the live origin.",
+    "Admin-only endpoint for support/operator tooling to synchronously fetch a publisher's live `/.well-known/adagents.json`, run the registry validator, persist the refreshed verdict and fetch metadata, and return the validation result. `force=true` is accepted for operator tooling; the current validator always fetches the live origin.\n\n**Rate limits:** 5 minutes per domain, 30 requests per user per hour.",
   tags: ["Authorization Lookups"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -1310,7 +1310,7 @@ registry.registerPath({
       domain: z.string().openapi({ example: "publisher.example" }),
     }),
     query: z.object({
-      force: z.coerce.boolean().optional().openapi({ description: "Accepted for tooling compatibility; live origin validation is always performed." }),
+      force: z.enum(["true", "1"]).optional().openapi({ description: "Accepted for tooling compatibility; live origin validation is always performed." }),
     }),
   },
   responses: {
@@ -1318,6 +1318,17 @@ registry.registerPath({
     400: { description: "Invalid domain format, private IP, or unresolvable domain", content: { "application/json": { schema: ErrorSchema } } },
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
     403: { description: "Admin access required", content: { "application/json": { schema: ErrorSchema } } },
+    429: {
+      description: "Rate limit exceeded",
+      content: {
+        "application/json": {
+          schema: z.object({
+            error: z.string(),
+            retry_after: z.number().int().openapi({ description: "Seconds to wait before retrying" }),
+          }),
+        },
+      },
+    },
   },
 });
 
@@ -9412,8 +9423,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     req: import('express').Request,
     res: import('express').Response,
     rateLimitKey: string,
+    domainOverride?: string,
   ): Promise<string | null> {
-    const { domain } = req.body;
+    const domain = domainOverride ?? req.body?.domain;
     if (!domain || typeof domain !== 'string') {
       res.status(400).json({ error: "domain is required" });
       return null;
@@ -9476,13 +9488,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         return res.status(400).json({ error: "Invalid domain" });
       }
 
-      let normalizedDomain: string;
-      try {
-        normalizedDomain = await validateCrawlDomain(rawDomain);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Invalid domain';
-        return res.status(400).json({ error: message });
-      }
+      const normalizedDomain = await validateAndRateLimitCrawl(req, res, rawDomain, rawDomain);
+      if (!normalizedDomain) return;
 
       const force = req.query.force === 'true' || req.query.force === '1';
       const result = await crawler.revalidatePublisherAdagents(normalizedDomain, { force });

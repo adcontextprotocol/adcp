@@ -147,6 +147,34 @@ describe('POST /api/registry/publisher/:domain/adagents/revalidate', () => {
     });
   });
 
+  it('rate limits repeated revalidation for the same domain', async () => {
+    const revalidatePublisherAdagents = vi.fn().mockResolvedValue({
+      domain: 'rate-limited.example',
+      adagents_valid: true,
+      checked_at: '2026-06-16T12:00:00.000Z',
+      status_code: 200,
+    });
+    const app = buildApp({
+      user: { id: 'admin_user', email: 'admin@example.com', isAdmin: true },
+      crawler: { revalidatePublisherAdagents },
+    });
+
+    const first = await request(app)
+      .post('/api/registry/publisher/rate-limited.example/adagents/revalidate')
+      .send();
+    const second = await request(app)
+      .post('/api/registry/publisher/rate-limited.example/adagents/revalidate')
+      .send();
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(429);
+    expect(second.body).toMatchObject({
+      error: 'Rate limit exceeded for this domain',
+    });
+    expect(typeof second.body.retry_after).toBe('number');
+    expect(revalidatePublisherAdagents).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects authenticated non-admin callers', async () => {
     const revalidatePublisherAdagents = vi.fn();
     isWebUserAAOAdminMock.mockResolvedValue(false);

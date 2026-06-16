@@ -1009,6 +1009,21 @@ export class PublisherDatabase {
       );
 
       await client.query(
+        `UPDATE discovered_publishers
+            SET has_valid_adagents = FALSE,
+                last_validated = NOW()
+          WHERE domain = $1`,
+        [domain],
+      );
+
+      await client.query(
+        `DELETE FROM agent_publisher_authorizations
+          WHERE publisher_domain = $1
+            AND source = 'adagents_json'`,
+        [domain],
+      );
+
+      await client.query(
         `DELETE FROM agent_property_authorizations apa
           USING discovered_properties dp
          WHERE apa.property_id = dp.id
