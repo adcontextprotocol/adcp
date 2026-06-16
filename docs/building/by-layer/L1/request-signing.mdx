@@ -42,12 +42,12 @@ If any covered component changes after signing, verification fails.
 
 ### Key separation
 
-Every agent needs **separate keys per purpose**, each with a distinct `kid` and `adcp_use` tag:
+Every agent publishes signing keys with a distinct `kid` and `adcp_use` tag:
 
-- `adcp_use: "request-signing"` — for signing outbound tool calls
-- `adcp_use: "webhook-signing"` — for signing outbound webhooks
+- `adcp_use: "request-signing"` — for signing outbound tool calls and outbound webhooks
+- `adcp_use: "webhook-signing"` — deprecated; still accepted on the webhook path for backward compatibility
 
-Reusing a key across purposes is forbidden by the spec.
+For blast-radius isolation, publish a second `request-signing` key under a separate `kid` for webhook delivery rather than reusing the same key material for tool calls and webhooks.
 
 ### Discovery chain
 
@@ -122,7 +122,7 @@ if err != nil { /* handle */ }
 //                    fields (kid, kty, crv, alg, use, key_ops, adcp_use) are set.
 ```
 
-Use `signing.ProfileWebhookSigning` for webhook keys — never reuse a request-signing key for webhook signing (per `adcp_use` purpose separation).
+Use `signing.ProfileWebhookSigning` for the webhook RFC 9421 profile. Publish the corresponding public key with `adcp_use: "request-signing"`; if you want webhook-only key material, use a separate `kid`.
 </Tab>
 </Tabs>
 
@@ -172,7 +172,7 @@ Serve a JSON Web Key Set at a stable HTTPS URL (defaults to `/.well-known/jwks.j
 }
 ```
 
-Only public keys go here — no `d` field. Set `Cache-Control: max-age=3600` or similar. If you serve both request-signing and webhook-signing keys, include both in the same JWKS with different `kid` values and `adcp_use` tags.
+Only public keys go here — no `d` field. Set `Cache-Control: max-age=3600` or similar. If you use separate key material for webhook delivery, publish a second `request-signing` JWK with a distinct `kid`. Deprecated `webhook-signing` JWKs remain accepted on the webhook path for backward compatibility.
 
 ### brand.json
 
@@ -545,8 +545,9 @@ import (
 )
 
 // Mount the same Middleware on your webhook receiver, but configure it for
-// the webhook profile — adcp_use="webhook-signing", Content-Digest required,
-// no required_for gating (webhooks always carry signatures).
+// the webhook profile — adcp_use="request-signing" (deprecated
+// "webhook-signing" also accepted), Content-Digest required, no required_for
+// gating (webhooks always carry signatures).
 webhookMW := signing.Middleware(signing.MiddlewareOptions{
     Resolver:            signing.NewBrandJSONJWKSResolver(),
     Replay:              signing.NewMemoryReplayStore(0),
@@ -632,7 +633,7 @@ webhookClient := &http.Client{
 </Tab>
 </Tabs>
 
-Publish a separate JWK with `"adcp_use": "webhook-signing"` in your JWKS alongside your request-signing key. Never reuse the same key for both purposes — receivers enforce purpose at the JWK `adcp_use` level, not the RFC 9421 tag.
+Publish the webhook signing public key as a JWK with `"adcp_use": "request-signing"`. The webhook verifier still accepts deprecated `"webhook-signing"` keys for backward compatibility, but new signers should use `request-signing`. If you want independent webhook rotation or blast-radius isolation, publish a separate `request-signing` JWK with a webhook-specific `kid`.
 
 ## Step 7: Declare the capability
 
