@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.15/core/vendor-pricing-option.json",
+  "title": "Vendor Pricing Option",
+  "description": "A pricing option offered by a vendor agent (signals, creative, governance). Combines pricing_option_id with the pricing model fields. Pass pricing_option_id in report_usage for billing verification. All vendor discovery responses return pricing_options as an array — vendors may offer multiple options (volume tiers, context-specific rates, different models per product line).",
+  "allOf": [
+    {
+      "type": "object",
+      "properties": {
+        "pricing_option_id": {
+          "type": "string",
+          "description": "Opaque identifier for this pricing option, unique within the vendor agent. Pass this in report_usage to identify which pricing option was applied.",
+          "x-entity": "vendor_pricing_option"
+        },
+        "applies_to_output_format_ids": {
+          "type": "array",
+          "description": "Creative transformers only: scopes this pricing option to specific output formats, so one transformer can price different outputs differently (e.g. a multi-publisher template charging per publisher format). When present, the option applies only to leaves whose format matches one of these; an unscoped option (this field absent) is the default for any output. A build targeting an output that matches no scoped option AND has no unscoped default is rejected with UNPRICEABLE_OUTPUT — never billed at a guessed rate (no silent fallback). Inert for non-creative vendors (signals/governance), which omit it.",
+          "items": { "$ref": "/schemas/3.1.0-rc.15/core/format-id.json" },
+          "minItems": 1
+        }
+      },
+      "required": ["pricing_option_id"]
+    },
+    {
+      "$ref": "/schemas/3.1.0-rc.15/core/signal-pricing.json"
+    }
+  ]
+}
