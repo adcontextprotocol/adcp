@@ -104,7 +104,7 @@ jobs:
 
       - name: Fetch 3.0.x for error-code drift comparison
         if: github.ref != 'refs/heads/3.0.x' && github.base_ref != '3.0.x'
-        run: git fetch --depth=1 origin 3.0.x:refs/remotes/origin/3.0.x
+        run: git fetch --depth=1 origin +3.0.x:refs/remotes/origin/3.0.x
 
       - name: Error-code drift vs 3.0.x
         if: github.ref != 'refs/heads/3.0.x' && github.base_ref != '3.0.x'
