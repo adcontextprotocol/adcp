@@ -312,7 +312,7 @@ export function deriveStoryboardStatuses(
     }
   }
 
-  if (scenarioResults.size === 0) return [];
+  if (scenarioResults.size === 0 && (!storyboardIds || storyboardIds.length === 0)) return [];
 
   const storyboardsToCheck: Storyboard[] = storyboardIds
     ? storyboardIds.map(id => getStoryboard(id)).filter((s): s is Storyboard => !!s)
