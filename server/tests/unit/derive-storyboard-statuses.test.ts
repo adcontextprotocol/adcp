@@ -208,6 +208,113 @@ describe('deriveStoryboardStatuses', () => {
     });
   });
 
+  it('marks a storyboard untested when every produced step is not applicable', () => {
+    const result = makeResult([
+      {
+        scenario: 'get_signals_pagination_integrity/not_applicable',
+        passed: true,
+        steps: [
+          { passed: true, skipped: true, skip_reason: 'not_applicable', step: 'Not applicable — missing required_tools' },
+        ],
+      },
+    ]);
+
+    const [entry] = deriveStoryboardStatuses(result);
+
+    expect(entry).toEqual({
+      storyboard_id: 'get_signals_pagination_integrity',
+      status: 'untested',
+      steps_passed: 0,
+      steps_total: 0,
+    });
+  });
+
+  it('treats storyboard-level required-tool skips as untested', () => {
+    const result = makeResult([
+      {
+        scenario: 'collection_lists/missing_tool',
+        passed: true,
+        steps: [
+          {
+            passed: true,
+            skipped: true,
+            skip_reason: 'missing_tool',
+            step_id: 'missing_tool',
+            step: 'Skipped — agent does not advertise any of [list_collection_lists]',
+          },
+        ],
+      },
+    ]);
+
+    const [entry] = deriveStoryboardStatuses(result);
+
+    expect(entry).toEqual({
+      storyboard_id: 'collection_lists',
+      status: 'untested',
+      steps_passed: 0,
+      steps_total: 0,
+    });
+  });
+
+  it('treats explicit requires_tool skips as untested', () => {
+    const result = makeResult([
+      {
+        scenario: 'media_buy_seller/governance_setup',
+        passed: true,
+        steps: [
+          {
+            passed: true,
+            skipped: true,
+            skip_reason: 'missing_tool',
+            step: 'Register governance agents',
+            step_id: 'sync_governance',
+            task: 'sync_governance',
+            warnings: ['Required tool "sync_governance" not advertised; agent tools: [get_products, create_media_buy].'],
+          },
+        ],
+      },
+    ]);
+
+    const [entry] = deriveStoryboardStatuses(result);
+
+    expect(entry).toEqual({
+      storyboard_id: 'media_buy_seller',
+      status: 'untested',
+      steps_passed: 0,
+      steps_total: 0,
+    });
+  });
+
+  it('excludes explicit requires_tool skips from mixed storyboard totals', () => {
+    const result = makeResult([
+      {
+        scenario: 'creative_lifecycle/build_and_preview',
+        passed: true,
+        steps: [
+          { passed: true, step: 'Sync creative', step_id: 'sync_creative', task: 'sync_creatives' },
+          {
+            passed: true,
+            skipped: true,
+            skip_reason: 'missing_tool',
+            step: 'Preview the display creative',
+            step_id: 'preview_display',
+            task: 'preview_creative',
+            warnings: ['Required tool "preview_creative" not advertised; agent tools: [list_creative_formats, sync_creatives].'],
+          },
+        ],
+      },
+    ]);
+
+    const [entry] = deriveStoryboardStatuses(result);
+
+    expect(entry).toEqual({
+      storyboard_id: 'creative_lifecycle',
+      status: 'passing',
+      steps_passed: 1,
+      steps_total: 1,
+    });
+  });
+
   it('still counts missing production-tool skips as non-passing coverage gaps', () => {
     const result = makeResult([
       {

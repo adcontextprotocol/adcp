@@ -100,6 +100,83 @@ describe('complianceResultToDbInput — effectiveRunStatus', () => {
     ]);
   });
 
+  it('ignores storyboard-level required-tool skips when deciding promotion', () => {
+    const result = makeResult([
+      makeTrack('silent'),
+      {
+        track: 'governance',
+        label: 'Governance',
+        status: 'skip',
+        duration_ms: 1000,
+        skipped_scenarios: [],
+        observations: [],
+        scenarios: [
+          {
+            scenario: 'collection_lists/missing_tool',
+            overall_passed: true,
+            steps: [
+              {
+                step: 'Skipped — agent does not advertise any of [list_collection_lists]',
+                step_id: 'missing_tool',
+                passed: true,
+                skipped: true,
+                skip_reason: 'missing_tool',
+                duration_ms: 0,
+              },
+            ],
+          },
+        ],
+      },
+    ] as any);
+
+    const out = complianceResultToDbInput(result as any, 'https://agent.example.com/mcp', 'production');
+
+    expect(out.overall_status).toBe('passing');
+    expect(out.tracks_passed).toBe(1);
+    expect(out.tracks_failed).toBe(0);
+    expect(out.tracks_partial).toBe(0);
+    expect(out.tracks_json).toEqual([
+      expect.objectContaining({ track: 'core', has_coverage_gap_skip: false }),
+      expect.objectContaining({ track: 'governance', status: 'skip', has_coverage_gap_skip: false }),
+    ]);
+  });
+
+  it('does not flag explicit requires_tool skips as coverage gaps', () => {
+    const result = makeResult([
+      {
+        track: 'core',
+        label: 'Core',
+        status: 'silent',
+        duration_ms: 1000,
+        scenarios: [
+          {
+            scenario: 'media_buy_seller/governance_setup',
+            overall_passed: true,
+            steps: [
+              {
+                step: 'Register governance agents',
+                step_id: 'sync_governance',
+                task: 'sync_governance',
+                passed: true,
+                skipped: true,
+                skip_reason: 'missing_tool',
+                warnings: ['Required tool "sync_governance" not advertised; agent tools: [get_products, create_media_buy].'],
+                duration_ms: 0,
+              },
+            ],
+          },
+        ],
+      },
+    ] as any);
+
+    const out = complianceResultToDbInput(result as any, 'https://agent.example.com/mcp', 'production');
+
+    expect(out.overall_status).toBe('passing');
+    expect(out.tracks_json).toEqual([
+      expect.objectContaining({ track: 'core', status: 'silent', has_coverage_gap_skip: false }),
+    ]);
+  });
+
   it('does not promote when all tracks are skipped (no active tracks)', () => {
     const result = makeResult([makeTrack('skip'), makeTrack('skip')], 'partial');
     const out = complianceResultToDbInput(result as any, 'https://agent.example.com/mcp', 'production');
