@@ -1,0 +1,135 @@
+id: comply_controller_mode_gate
+version: '1.0.0'
+title: 'Comply test controller — live-account denial gate'
+category: deterministic_testing
+summary: 'Verifies that a seller exposing comply_test_controller refuses calls from live-mode (non-sandbox) accounts with FORBIDDEN.'
+track: security
+required_tools:
+  - comply_test_controller
+
+requires:
+  - controller
+
+narrative: |
+  Sellers that expose comply_test_controller MUST gate dispatch against the calling
+  account's mode. When a buyer agent authenticates as a live-mode (non-sandbox)
+  account and calls comply_test_controller, the seller MUST refuse with
+  error: FORBIDDEN before dispatching any scenario.
+
+  This storyboard exercises the denial path by sending a well-formed
+  force_creative_status request from a live-mode principal (test-kit:
+  acme-outdoor-live, sandbox: false) and asserting FORBIDDEN is returned.
+
+  The live_account_denial phase is optional for two-deployment sellers whose
+  sandbox endpoint admits all authenticated principals regardless of account mode.
+  Those sellers rely on their production endpoint simply not advertising
+  comply_test_controller. Single-endpoint sellers that expose the controller on
+  their main endpoint MUST implement per-account gating and MUST pass this phase.
+
+  This storyboard is the keystone for the (Sandbox) AAO Verified tier — a seller
+  claiming that badge must prove its compliance infrastructure correctly refuses
+  live-mode callers from the controller surface, confirming the sandbox/production
+  boundary is enforced in both directions.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - supports_test_controller
+  examples:
+    - 'Any single-endpoint seller with comply_test_controller'
+
+caller:
+  role: buyer_agent
+  example: 'Comply test harness'
+
+prerequisites:
+  description: |
+    The seller must expose comply_test_controller (verified by requires: [controller]
+    at storyboard load time). The live-mode test kit (acme-outdoor-live, sandbox: false)
+    provides an API key whose associated account resolves as live/production mode.
+    Conformant sellers resolve the account, detect mode: live, and return FORBIDDEN
+    without dispatching the scenario.
+  test_kit: 'test-kits/acme-outdoor-live.yaml'
+
+phases:
+  - id: live_account_denial
+    title: 'Live-account caller is denied'
+    narrative: |
+      A buyer authenticates as the live-mode Acme Outdoor principal (sandbox: false)
+      and calls comply_test_controller with a well-formed force_creative_status request.
+
+      Sellers that implement per-account gating MUST detect mode: live and return
+      ControllerError with error: FORBIDDEN before any scenario dispatch occurs.
+
+      This phase is optional: two-deployment sellers whose sandbox endpoint
+      has no per-account gate will return a successful state transition rather than
+      FORBIDDEN, which would fail this phase. Those sellers correctly prevent
+      live-mode misuse by not advertising the tool on their production endpoint
+      at all, so an optional result here does not indicate non-conformance.
+
+    optional: true
+
+    steps:
+      - id: deny_live_caller
+        title: 'comply_test_controller returns FORBIDDEN for a live-mode account'
+        narrative: |
+          Send a valid force_creative_status request authenticated as the live-mode
+          principal. The creative_id comply-live-mode-probe-000 is a stable probe
+          value that will not exist on any real seller; the scenario is benign —
+          the seller's gate fires before entity lookup, so NOT_FOUND is not a
+          conformant response here.
+
+          The seller MUST resolve the calling account, detect that account.mode
+          is live (not sandbox), and return FORBIDDEN. Returning UNKNOWN_SCENARIO,
+          NOT_FOUND, or a success response are all non-conformant for a
+          single-endpoint seller that implements the gate.
+        task: comply_test_controller
+        schema_ref: 'compliance/comply-test-controller-request.json'
+        response_schema_ref: 'compliance/comply-test-controller-response.json'
+        doc_ref: '/building/implementation/comply-test-controller'
+        comply_scenario: comply_controller_mode_gate
+        stateful: false
+        auth:
+          type: api_key
+          from_test_kit: true
+        expect_error: true
+        negative_path: payload_well_formed
+        expected: |
+          Seller refuses with:
+          - success: false
+          - error: FORBIDDEN
+          - error_detail (optional): human-readable explanation such as
+            "comply_test_controller requires a sandbox account; resolved
+            account is in live mode"
+
+        sample_request:
+          scenario: 'force_creative_status'
+          params:
+            creative_id: 'comply-live-mode-probe-000'
+            status: 'approved'
+
+          context:
+            correlation_id: "comply_controller_mode_gate--deny_live_caller"
+
+        validations:
+          - check: response_schema
+            description: 'Response matches comply-test-controller-response.json schema (ControllerError branch)'
+          - check: field_value
+            path: 'success'
+            allowed_values:
+              - false
+            description: 'Request is rejected — seller refused live-mode controller dispatch'
+          - check: field_value
+            path: 'error'
+            allowed_values:
+              - 'FORBIDDEN'
+            description: 'Error code is FORBIDDEN — seller detected live-mode account and denied dispatch before scenario execution'
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "comply_controller_mode_gate--deny_live_caller"
+            description: "Context correlation_id returned unchanged"
