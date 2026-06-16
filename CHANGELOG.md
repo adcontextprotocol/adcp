@@ -1,5 +1,18 @@
 # Changelog
 
+## 3.0.17
+
+### Patch Changes
+
+- e1255d6: Use generated storyboard context values for idempotency replay keys so the
+  initial, replay, and conflict requests share one UUID while the fresh-key path
+  uses a distinct generated UUID.
+- 7954f34: Fix compliance reporting for optional-tool skips: storyboard-level `required_tools`
+  and step-level `requires_tool` skips now remain untested/not applicable in Addie
+  instead of surfacing as failures. Preview creative checks now declare their
+  `preview_creative` gate explicitly.
+- c6131e7: Fix two universal storyboard false failures: remove runner-only webhook URL templating from the core idempotency replay requests while preserving webhook replay side-effect coverage in the webhook-emission universal, and spell out the schema-validation past-start contribution flag for runners that do not normalize `contributes: true` shorthand before grading.
+
 ## 3.0.16
 
 ### Patch Changes
