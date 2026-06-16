@@ -371,6 +371,10 @@ export class FederatedIndexService {
     await this.db.markPublisherHasValidAdagents(domain);
   }
 
+  async markPublisherHasInvalidAdagents(domain: string): Promise<void> {
+    await this.db.markPublisherHasInvalidAdagents(domain);
+  }
+
   // ============================================
   // Sales-candidate probe lifecycle
   // ============================================

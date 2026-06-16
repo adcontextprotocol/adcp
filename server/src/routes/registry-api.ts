@@ -1270,6 +1270,68 @@ registry.registerPath({
   },
 });
 
+const PublisherAdagentsRevalidationResultSchema = z.object({
+  domain: z.string(),
+  adagents_valid: z.boolean(),
+  checked_at: z.string().datetime(),
+  error: z.string().optional(),
+  issues: z.object({
+    errors: z.array(z.object({
+      field: z.string(),
+      message: z.string(),
+      severity: z.literal("error"),
+    })),
+    warnings: z.array(z.object({
+      field: z.string(),
+      message: z.string(),
+      suggestion: z.string().optional(),
+    })),
+  }).optional(),
+  properties_count: z.number().int().nonnegative().optional(),
+  authorized_agents_count: z.number().int().nonnegative().optional(),
+  status_code: z.number().int().min(100).max(599).optional(),
+  response_bytes: z.number().int().nonnegative().optional(),
+  resolved_url: z.string().optional(),
+  discovery_method: z.enum(["direct", "authoritative_location", "ads_txt_managerdomain", "adagents_authoritative"]).optional(),
+  manager_domain: z.string().optional(),
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/registry/publisher/{domain}/adagents/revalidate",
+  operationId: "revalidatePublisherAdagents",
+  summary: "Revalidate publisher adagents.json",
+  description:
+    "Admin-only endpoint for support/operator tooling to synchronously fetch a publisher's live `/.well-known/adagents.json`, run the registry validator, persist the refreshed verdict and fetch metadata, and return the validation result. `force=true` is accepted for operator tooling; the current validator always fetches the live origin.\n\n**Rate limits:** 5 minutes per domain, 30 requests per user per hour.",
+  tags: ["Authorization Lookups"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    params: z.object({
+      domain: z.string().openapi({ example: "publisher.example" }),
+    }),
+    query: z.object({
+      force: z.enum(["true", "1"]).optional().openapi({ description: "Accepted for tooling compatibility; live origin validation is always performed." }),
+    }),
+  },
+  responses: {
+    200: { description: "Revalidation result", content: { "application/json": { schema: PublisherAdagentsRevalidationResultSchema } } },
+    400: { description: "Invalid domain format, private IP, or unresolvable domain", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Admin access required", content: { "application/json": { schema: ErrorSchema } } },
+    429: {
+      description: "Rate limit exceeded",
+      content: {
+        "application/json": {
+          schema: z.object({
+            error: z.string(),
+            retry_after: z.number().int().openapi({ description: "Seconds to wait before retrying" }),
+          }),
+        },
+      },
+    },
+  },
+});
+
 registry.registerPath({
   method: "get",
   path: "/api/registry/publisher/authorization",
@@ -5600,6 +5662,21 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     return (req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey === true;
   }
 
+  async function isRegistryAdminRequest(req: Request): Promise<boolean> {
+    if (isStaticAdminRequest(req)) return true;
+    const user = req.user as ({ id?: string; email?: string; isAdmin?: boolean } | undefined);
+    if (!user) return false;
+    if (user.isAdmin === true) return true;
+
+    const devUser = isDevModeEnabled() ? getDevUser(req) : null;
+    if (devUser?.isAdmin === true) return true;
+
+    const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) ?? [];
+    if (user.email && adminEmails.includes(user.email.toLowerCase())) return true;
+    if (!user.id) return false;
+    return isWebUserAAOAdmin(user.id);
+  }
+
   router.get(
     "/registry/agents/:encodedUrl/storyboard-status",
     ...memberReadMiddleware,
@@ -9346,8 +9423,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     req: import('express').Request,
     res: import('express').Response,
     rateLimitKey: string,
+    domainOverride?: string,
   ): Promise<string | null> {
-    const { domain } = req.body;
+    const domain = domainOverride ?? req.body?.domain;
     if (!domain || typeof domain !== 'string') {
       res.status(400).json({ error: "domain is required" });
       return null;
@@ -9393,6 +9471,35 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
   }
 
   if (!authMiddleware) throw new Error('requireAuth middleware is required for crawl-request endpoint');
+
+  router.post("/registry/publisher/:domain/adagents/revalidate", authMiddleware, async (req, res) => {
+    try {
+      if (!req.user && !isStaticAdminRequest(req)) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      if (!(await isRegistryAdminRequest(req))) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const rawDomain = typeof req.params.domain === 'string'
+        ? extractDomain(req.params.domain)
+        : '';
+      if (!rawDomain || !isValidDomain(rawDomain)) {
+        return res.status(400).json({ error: "Invalid domain" });
+      }
+
+      const normalizedDomain = await validateAndRateLimitCrawl(req, res, rawDomain, rawDomain);
+      if (!normalizedDomain) return;
+
+      const force = req.query.force === 'true' || req.query.force === '1';
+      const result = await crawler.revalidatePublisherAdagents(normalizedDomain, { force });
+      return res.json(result);
+    } catch (error) {
+      logger.error({ error, path: req.path }, "Failed to revalidate publisher adagents.json");
+      return res.status(500).json({ error: "Failed to revalidate publisher adagents.json" });
+    }
+  });
+
   router.post("/registry/crawl-request", authMiddleware, async (req, res) => {
     try {
       const normalizedDomain = await validateAndRateLimitCrawl(req, res, req.body?.domain?.toLowerCase?.()?.trim?.() || '');

@@ -3,7 +3,7 @@ import { PropertyCrawler, getPropertyIndex, type AgentInfo, type CrawlResult } f
 import { sanitizeAdagentsProperty } from "./discovery/property-index-guard.js";
 import { FederatedIndexService } from "./federated-index.js";
 import type { DiscoveredAgent } from "./db/federated-index-db.js";
-import { AdAgentsManager } from "./adagents-manager.js";
+import { AdAgentsManager, type AdAgentsValidationResult } from "./adagents-manager.js";
 import { BrandManager } from "./brand-manager.js";
 import { BrandDatabase } from "./db/brand-db.js";
 import { PublisherDatabase, canonicalizeAgentUrl, type AdagentsManifest, type AdagentsAuthorizedAgent } from "./db/publisher-db.js";
@@ -65,6 +65,24 @@ function stableStringify(value: unknown): string {
   const obj = value as Record<string, unknown>;
   const keys = Object.keys(obj).sort();
   return '{' + keys.map(k => JSON.stringify(k) + ':' + stableStringify(obj[k])).join(',') + '}';
+}
+
+export interface PublisherAdagentsRevalidationResult {
+  domain: string;
+  adagents_valid: boolean;
+  checked_at: string;
+  error?: string;
+  issues?: {
+    errors: AdAgentsValidationResult['errors'];
+    warnings: AdAgentsValidationResult['warnings'];
+  };
+  properties_count?: number;
+  authorized_agents_count?: number;
+  status_code?: number;
+  response_bytes?: number;
+  resolved_url?: string;
+  discovery_method?: AdAgentsValidationResult['discovery_method'];
+  manager_domain?: string;
 }
 
 export class CrawlerService {
@@ -1206,6 +1224,198 @@ export class CrawlerService {
     } catch (err) {
       log.warn({ domain, err: err instanceof Error ? err.message : err }, 'Adagents legacy reconcile failed');
     }
+  }
+
+  private validationIssues(validation: AdAgentsValidationResult): {
+    errors: AdAgentsValidationResult['errors'];
+    warnings: AdAgentsValidationResult['warnings'];
+  } {
+    return {
+      errors: validation.errors,
+      warnings: validation.warnings,
+    };
+  }
+
+  private isTransientPublisherAdagentsFailure(validation: AdAgentsValidationResult): boolean {
+    // Network fetch failures come from classifySafeFetchError in
+    // utils/url-security.ts. Keep every known transport bucket and
+    // inconclusive 200 responses non-destructive: only completed
+    // publisher-origin negatives may clear cached adagents-derived projections.
+    const hasTransientError = validation.errors.some((error) =>
+      error.field === 'timeout'
+      || error.field === 'connection'
+      || error.field === 'network'
+      || error.field === 'unknown'
+      || error.field === 'json'
+      || error.field === 'authoritative_location'
+      || /HTTP (401|403|408|429|451|5\d\d)\b/i.test(error.message)
+      || /Redirect \(HTTP 3\d\d\)/i.test(error.message)
+      || /timed out|timeout|Cannot connect|ECONN|ENOTFOUND|EAI_/i.test(error.message)
+    );
+    if (hasTransientError) return true;
+
+    if (validation.status_code !== undefined) {
+      return validation.status_code !== 200
+        && validation.status_code !== 404
+        && validation.status_code !== 410;
+    }
+
+    return false;
+  }
+
+  private summarizePublisherAdagentsRevalidation(
+    domain: string,
+    validation: AdAgentsValidationResult,
+    checkedAt: Date,
+  ): PublisherAdagentsRevalidationResult {
+    const manifest = validation.raw_data as AdagentsManifest | undefined;
+    const valid = validation.valid && Array.isArray(manifest?.authorized_agents);
+    const error = validation.errors[0]?.message;
+    const hasIssues = !valid || validation.warnings.length > 0;
+    return {
+      domain,
+      adagents_valid: valid,
+      checked_at: checkedAt.toISOString(),
+      ...(valid ? {} : { error: error ?? 'Invalid adagents.json' }),
+      ...(hasIssues ? { issues: this.validationIssues(validation) } : {}),
+      properties_count: Array.isArray(manifest?.properties) ? manifest.properties.length : 0,
+      authorized_agents_count: Array.isArray(manifest?.authorized_agents) ? manifest.authorized_agents.length : 0,
+      ...(validation.status_code !== undefined ? { status_code: validation.status_code } : {}),
+      ...(validation.response_bytes !== undefined ? { response_bytes: validation.response_bytes } : {}),
+      ...(validation.resolved_url ? { resolved_url: validation.resolved_url } : {}),
+      discovery_method: validation.discovery_method,
+      ...(validation.manager_domain ? { manager_domain: validation.manager_domain } : {}),
+    };
+  }
+
+  private async persistPublisherAdagentsValidation(
+    domain: string,
+    validation: AdAgentsValidationResult,
+    actor: string,
+  ): Promise<{ valid: boolean; affectedAgentUrls: Set<string> }> {
+    const affectedAgentUrls = new Set<string>();
+    const existingAuthorizations = await this.federatedIndex.getAuthorizationsForDomain(domain);
+    for (const auth of existingAuthorizations) {
+      if (auth.source !== 'adagents_json') continue;
+      affectedAgentUrls.add(canonicalizeAgentUrl(auth.agent_url) ?? auth.agent_url);
+    }
+
+    if (!validation.valid || !Array.isArray(validation.raw_data?.authorized_agents)) {
+      if (this.isTransientPublisherAdagentsFailure(validation)) {
+        await this.publisherDb.recordFailedAdagentsFetch({
+          domain,
+          statusCode: validation.status_code,
+          responseBytes: validation.response_bytes,
+          resolvedUrl: validation.resolved_url,
+        });
+        return { valid: false, affectedAgentUrls: new Set() };
+      }
+
+      // Authoritative-negative revalidation is intentionally destructive:
+      // it changes the registry's cached publisher-origin verdict, then
+      // reconciles legacy indexes to match. The writes are ordered so stale
+      // public auth/property projections are removed only after the failed
+      // verdict is durably recorded.
+      await this.publisherDb.recordAdagentsValidationFailure({
+        domain,
+        statusCode: validation.status_code,
+        responseBytes: validation.response_bytes,
+        resolvedUrl: validation.resolved_url,
+        error: validation.errors[0]?.message,
+        issues: this.validationIssues(validation),
+      });
+      return { valid: false, affectedAgentUrls };
+    }
+
+    const manifest = validation.raw_data as AdagentsManifest;
+    await this.cacheAdagentsManifest(
+      domain,
+      manifest,
+      {
+        statusCode: validation.status_code,
+        responseBytes: validation.response_bytes,
+        resolvedUrl: validation.resolved_url,
+        discoveryMethod: validation.discovery_method,
+        managerDomain: validation.manager_domain,
+      },
+    );
+    await this.federatedIndex.markPublisherHasValidAdagents(domain);
+
+    for (const authorizedAgent of manifest.authorized_agents ?? []) {
+      if (!authorizedAgent.url) continue;
+      affectedAgentUrls.add(canonicalizeAgentUrl(authorizedAgent.url) ?? authorizedAgent.url);
+
+      await this.federatedIndex.recordAgentFromAdagentsJson(
+        authorizedAgent.url,
+        domain,
+        authorizedAgent.authorized_for,
+        authorizedAgent.property_ids,
+      );
+
+      await this.recordPropertiesForAgent(
+        (manifest.properties || []) as any,
+        domain,
+        authorizedAgent.url,
+        authorizedAgent.authorized_for,
+        authorizedAgent.property_ids,
+      );
+
+      if (validation.discovery_method !== 'ads_txt_managerdomain') {
+        await this.fanOutPublisherPropertiesAuthorizations(authorizedAgent, domain);
+      }
+    }
+    await this.reconcileLegacyAdagentsAgents(domain, manifest);
+
+    if (this.eventsDb) {
+      await this.eventsDb.writeEvent({
+        event_type: 'publisher.adagents_changed',
+        entity_type: 'publisher',
+        entity_id: domain,
+        payload: {
+          publisher_domain: domain,
+          agent_count: manifest.authorized_agents?.length ?? 0,
+          property_count: manifest.properties?.length ?? 0,
+          collection_count: manifest.collections?.length ?? 0,
+          discovery_method: validation.discovery_method,
+          manager_domain: validation.manager_domain,
+        },
+        actor,
+      });
+    }
+
+    return { valid: true, affectedAgentUrls };
+  }
+
+  async revalidatePublisherAdagents(
+    domain: string,
+    options: { force?: boolean } = {},
+  ): Promise<PublisherAdagentsRevalidationResult> {
+    const normalizedDomain = canonicalizePublisherDomain(domain);
+    if (options.force) {
+      log.info({ domain: normalizedDomain }, 'Force revalidation requested; live origin validation is always performed');
+    }
+    const checkedAt = new Date();
+    const validation = await this.adAgentsManager.validateDomain(normalizedDomain);
+    const persisted = await this.persistPublisherAdagentsValidation(
+      normalizedDomain,
+      validation,
+      'api:adagents-revalidate',
+    );
+
+    try {
+      await this.scanBrandForDomain(normalizedDomain);
+    } catch (err) {
+      log.warn({ domain: normalizedDomain, err: err instanceof Error ? err.message : err }, 'Brand scan during adagents revalidation failed');
+    }
+
+    if (persisted.affectedAgentUrls.size > 0) {
+      await this.buildInventoryProfiles({
+        agentUrls: [...persisted.affectedAgentUrls],
+        deleteStale: false,
+      });
+    }
+
+    return this.summarizePublisherAdagentsRevalidation(normalizedDomain, validation, checkedAt);
   }
 
   /**
