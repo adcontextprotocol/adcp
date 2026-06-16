@@ -281,8 +281,19 @@ function lintStoryboardIdempotency(sourceDir, schemasDir) {
     'universal/webhook-emission.yaml',
   ]);
 
-  function isGeneratedIdempotencyKey(value) {
-    return typeof value === 'string' && value.startsWith('$generate:uuid_v4');
+  function isGeneratedIdempotencyKey(value, generatedContextNames) {
+    if (typeof value !== 'string') return false;
+    if (value.startsWith('$generate:uuid_v4')) return true;
+    const contextMatch = value.match(/^\$context\.([A-Za-z0-9_]+)$/);
+    return Boolean(contextMatch && generatedContextNames.has(contextMatch[1]));
+  }
+
+  function rememberGeneratedUuidContextOutputs(step, generatedContextNames) {
+    for (const output of step?.context_outputs ?? []) {
+      if (output?.generate === 'uuid_v4' && typeof output.name === 'string') {
+        generatedContextNames.add(output.name);
+      }
+    }
   }
 
   function lintFile(p) {
@@ -295,6 +306,7 @@ function lintStoryboardIdempotency(sourceDir, schemasDir) {
     try { doc = yaml.load(fs.readFileSync(p, 'utf8')); }
     catch { return; }
     if (!doc || typeof doc !== 'object' || !Array.isArray(doc.phases)) return;
+    const generatedContextNames = new Set();
 
     for (const phase of doc.phases) {
       if (!phase || !Array.isArray(phase.steps)) continue;
@@ -316,17 +328,23 @@ function lintStoryboardIdempotency(sourceDir, schemasDir) {
           });
         }
         const schemaRef = step.schema_ref;
-        if (!schemaRef || !mutatingRefs.has(schemaRef)) continue;
+        if (!schemaRef || !mutatingRefs.has(schemaRef)) {
+          rememberGeneratedUuidContextOutputs(step, generatedContextNames);
+          continue;
+        }
         // The missing-key negative vector explicitly suppresses both runner
         // auto-injection and this authored-sample lint.
-        if (step.omit_idempotency_key === true) continue;
+        if (step.omit_idempotency_key === true) {
+          rememberGeneratedUuidContextOutputs(step, generatedContextNames);
+          continue;
+        }
         const hasKey =
           step.sample_request &&
           typeof step.sample_request === 'object' &&
           step.sample_request.idempotency_key !== undefined;
         if (hasKey) {
           const key = step.sample_request.idempotency_key;
-          if (!isGeneratedIdempotencyKey(key)) {
+          if (!isGeneratedIdempotencyKey(key, generatedContextNames)) {
             stableKeyViolations.push({
               file: rel,
               phase: phase.id,
@@ -349,15 +367,16 @@ function lintStoryboardIdempotency(sourceDir, schemasDir) {
               generatedKeyUses.set(key, current);
             }
           }
-          continue;
+        } else {
+          violations.push({
+            file: rel,
+            phase: phase.id,
+            step: step.id,
+            task: step.task,
+            schema: schemaRef,
+          });
         }
-        violations.push({
-          file: rel,
-          phase: phase.id,
-          step: step.id,
-          task: step.task,
-          schema: schemaRef,
-        });
+        rememberGeneratedUuidContextOutputs(step, generatedContextNames);
       }
     }
   }
@@ -741,4 +760,12 @@ function main() {
   }
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = {
+  buildTo,
+  generateIndex,
+  lintStoryboardIdempotency,
+};
