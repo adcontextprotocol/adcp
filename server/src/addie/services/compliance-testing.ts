@@ -634,6 +634,7 @@ export function deriveStoryboardStatuses(
         }
         continue;
       }
+      let phaseSawNeutralApplicabilitySkip = false;
       for (const step of s.steps) {
         if (step.skipped) {
           if (isBranchSkip(step)) {
@@ -644,6 +645,10 @@ export function deriveStoryboardStatuses(
             continue;
           }
           if (isNeutralApplicabilitySkip(step, String(s.scenario))) {
+            phaseSawNeutralApplicabilitySkip = true;
+            continue;
+          }
+          if (phaseSawNeutralApplicabilitySkip && isCascadeSkip(step)) {
             continue;
           }
           if (isCascadeSkip(step)) {
