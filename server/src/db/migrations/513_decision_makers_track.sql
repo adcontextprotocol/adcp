@@ -113,6 +113,13 @@ ON CONFLICT (id) DO UPDATE SET
   assessment_criteria = EXCLUDED.assessment_criteria;
 
 -- L2: Your data, brand, and governance as the control surface
+-- Recertification note: when AdCP 3.1 ships, update this module.
+-- L2's "governance as a control dial" framing (specifically l2_ex1_sc_generation_time_brand_safety
+-- and the governance_model dimension) is tied to current governance behavior. When the
+-- 3.1 governance changes land (tracked in the rc.4 cycle), review and update the
+-- teaching_notes for "Generation-time brand safety" and the related success criterion text.
+-- The stable semantic ids (l2_ex1_sc_data_ownership, l2_ex1_sc_generation_time_brand_safety,
+-- l2_ex1_sc_measurement_persists) enable targeted recertification of L2 holders at that point.
 INSERT INTO certification_modules (id, track_id, title, description, format, duration_minutes, sort_order, is_free, prerequisites, lesson_plan, exercise_definitions, assessment_criteria) VALUES
 ('L2', 'L', 'Your data, brand, and governance as the control surface',
  'In agentic advertising your control comes from what you put in: brand identity as the creative voice, content standards enforced at generation time, a catalog when you advertise products, and a measurement stack that persists. Decide which levers your organization owns.',
@@ -164,7 +171,13 @@ ON CONFLICT (id) DO UPDATE SET
   exercise_definitions = EXCLUDED.exercise_definitions,
   assessment_criteria = EXCLUDED.assessment_criteria;
 
--- L3: Deciding and leading
+-- L3: Deciding and leading (capstone)
+-- Capstone enforcement: L3 is the capstone of the Decision-Makers track. Sage is
+-- instructed (via DECISION_ARTIFACT_CAPSTONE_SUPPLEMENT in certification-tools.ts)
+-- to require the learner to produce an actual decision artifact before completing
+-- the module — a business case, agency brief, or phased adoption plan. Fluent
+-- discussion alone is not sufficient. format stays 'interactive' (this is not a
+-- specialist capstone/lab); the enforcement is in the Sage prompt layer.
 INSERT INTO certification_modules (id, track_id, title, description, format, duration_minutes, sort_order, is_free, prerequisites, lesson_plan, exercise_definitions, assessment_criteria) VALUES
 ('L3', 'L', 'Deciding and leading',
  'Make the call and lead your organization: brief an agency or in-house team, decide pilot-vs-standardize given a surface''s maturity, and produce a decision artifact — a business case, an agency brief, or a phased adoption plan. The capstone is a decision, not a build.',
