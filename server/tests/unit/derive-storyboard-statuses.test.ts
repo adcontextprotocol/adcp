@@ -315,6 +315,43 @@ describe('deriveStoryboardStatuses', () => {
     });
   });
 
+  it('excludes prerequisite cascades caused by explicit requires_tool skips', () => {
+    const result = makeResult([
+      {
+        scenario: 'creative_lifecycle/build_and_preview',
+        passed: false,
+        steps: [
+          {
+            passed: true,
+            skipped: true,
+            skip_reason: 'missing_tool',
+            step: 'Preview the display creative',
+            step_id: 'preview_display',
+            task: 'preview_creative',
+            warnings: ['Required tool "preview_creative" not advertised; agent tools: [build_creative].'],
+          },
+          {
+            passed: true,
+            skipped: true,
+            skip_reason: 'prerequisite_failed',
+            step: 'Build a VAST tag for the video creative',
+            step_id: 'build_video_tag',
+            task: 'build_creative',
+          },
+        ],
+      },
+    ]);
+
+    const [entry] = deriveStoryboardStatuses(result);
+
+    expect(entry).toEqual({
+      storyboard_id: 'creative_lifecycle',
+      status: 'untested',
+      steps_passed: 0,
+      steps_total: 0,
+    });
+  });
+
   it('still counts missing production-tool skips as non-passing coverage gaps', () => {
     const result = makeResult([
       {
