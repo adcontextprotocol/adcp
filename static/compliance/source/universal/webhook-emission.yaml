@@ -660,7 +660,7 @@ phases:
     narrative: |
       Every outbound webhook MUST verify under the 14-step webhook verifier
       checklist per
-      docs/building/implementation/security.mdx#verifier-checklist-for-webhooks.
+      docs/building/by-layer/L1/security.mdx#verifier-checklist-for-webhooks.
       The runner registers the trigger as a 9421-default buyer (no
       `authentication` block on `push_notification_config`); the agent is
       graded on the signatures it emits in that mode.

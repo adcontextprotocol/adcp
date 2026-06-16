@@ -24,7 +24,7 @@ function readVector(relativePath) {
 function extractSig1Signature(vector) {
   const signature = vector.request?.headers?.Signature;
   assert.equal(typeof signature, 'string', `${vector.name}: Signature header must be present`);
-  const match = signature.match(/^sig1=:([A-Za-z0-9_-]+):$/);
+  const match = signature.match(/^sig1=:([A-Za-z0-9+/_=-]+):$/);
   assert.ok(match, `${vector.name}: Signature header must contain a sig1 sf-binary value`);
   return Buffer.from(match[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64');
 }
