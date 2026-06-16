@@ -66,11 +66,14 @@ narrative: |
   token such as `{{runner.webhook_url:...}}` to the agent under test.
 
   **9421 is the on-ramp.** Any agent advertising webhook-emitting operations
-  MUST publish a `webhook-signing` JWKS at its `brand.json` `agents[].jwks_uri`
-  and MUST emit valid 9421 signatures when triggered with no `authentication`
-  block on `push_notification_config`. Agents without published signing keys
-  fail the `signing_keys_published` precheck before the signature phase runs;
-  agents with keys but invalid signatures fail `signature_validity`. The
+  MUST publish a webhook-valid signing key at its `brand.json`
+  `agents[].jwks_uri` and MUST emit valid 9421 signatures when triggered with
+  no `authentication` block on `push_notification_config`. The canonical key
+  purpose is `adcp_use: "request-signing"`; deprecated
+  `adcp_use: "webhook-signing"` keys remain accepted on the webhook path for
+  backward compatibility. Agents without published signing keys fail the
+  `signing_keys_published` precheck before the signature phase runs; agents
+  with keys but invalid signatures fail `signature_validity`. The
   deprecated HMAC fallback remains a buyer-side registration option in 3.x
   (`push_notification_config.authentication`), but it is not a path that
   exempts the agent from publishing 9421 keys — the runner registers as a
@@ -115,9 +118,11 @@ prerequisites:
     skipped cleanly, not graded as failures.
 
     Agents advertising webhook-emitting operations MUST publish a JWKS at the
-    `jwks_uri` on their brand.json `agents[]` entry containing a key with
-    `adcp_use: "webhook-signing"`. The `signing_keys_published` precheck
-    asserts this directly; agents without published signing keys fail
+    `jwks_uri` on their brand.json `agents[]` entry containing a webhook-valid
+    signing key. The canonical purpose is `adcp_use: "request-signing"`;
+    deprecated `adcp_use: "webhook-signing"` keys remain accepted for backward
+    compatibility. The `signing_keys_published` precheck asserts this
+    directly; agents without published signing keys fail
     `webhook_signing_keys_unpublished` before the signature phase runs.
   test_kit: "test-kits/webhook-receiver-runner.yaml"
 
@@ -589,21 +594,24 @@ phases:
           registered operation_id, it will not match this payload assertion.
 
   - id: signing_keys_published
-    title: "Agent publishes a webhook-signing JWKS at brand.json"
+    title: "Agent publishes a webhook-valid signing JWKS at brand.json"
     narrative: |
       Precheck: any agent advertising webhook-emitting operations MUST publish
       a JWKS at the `jwks_uri` on its `brand.json` `agents[]` entry containing
-      at least one key with `adcp_use: "webhook-signing"`. This is the on-ramp
-      gate — an agent that has only ever signed HMAC and never published a
-      9421 signing key fails here, before the signature phase even runs.
+      at least one webhook-valid signing key: canonical
+      `adcp_use: "request-signing"`, or deprecated
+      `adcp_use: "webhook-signing"` for backward compatibility. This is the
+      on-ramp gate — an agent that has only ever signed HMAC and never
+      published a 9421 signing key fails here, before the signature phase even
+      runs.
 
       The runner resolves the agent's `brand.json` from its
       `get_adcp_capabilities` advertisement (or, for agents not yet member-
       registered, from operator configuration), fetches the JWKS at
-      `agents[].jwks_uri`, and asserts at least one key has
-      `adcp_use: "webhook-signing"` and a non-revoked status. Absent or
-      malformed JWKS produces `webhook_signing_keys_unpublished`; JWKS present
-      but with no webhook-signing key produces
+      `agents[].jwks_uri`, and asserts at least one key has a webhook-valid
+      `adcp_use` value and a non-revoked status. Absent or malformed JWKS
+      produces `webhook_signing_keys_unpublished`; JWKS present but with no
+      webhook-valid signing key produces
       `webhook_signing_keys_wrong_purpose`.
 
       This phase is observable-only and stateless — no traffic flows. It runs
@@ -628,23 +636,23 @@ phases:
           `agents_jwks_uri_missing`.
 
       - id: assert_webhook_signing_key_present
-        title: "Assert JWKS contains a webhook-signing key"
+        title: "Assert JWKS contains a webhook-valid signing key"
         narrative: |
           Runner inspects the JWKS and asserts at least one key has
+          `adcp_use: "request-signing"` or deprecated
           `adcp_use: "webhook-signing"`. Keys advertising other purposes
-          (`request-signing`, `webhook-receipts`, etc.) do not satisfy this
-          check — purpose-separation is enforced per the `adcp_use` rule
-          (one cryptoKeyVersion per signing purpose; receivers enforce
-          purpose at JWK `adcp_use`, not RFC 9421 tag).
+          (`response-signing`, `governance-signing`, `webhook-receipts`, etc.)
+          do not satisfy this check.
         task: assert_jwks_purpose
         stateful: false
         expected: |
           At least one JWK in the agent's published JWKS carries
+          `adcp_use: "request-signing"` or deprecated
           `adcp_use: "webhook-signing"` and is not marked revoked. Fails
           with `webhook_signing_keys_unpublished` (no JWKS or empty JWKS),
           `webhook_signing_keys_wrong_purpose` (JWKS present but no key
-          with the webhook-signing purpose), or
-          `webhook_signing_keys_all_revoked` (all webhook-signing keys
+          with a webhook-valid signing purpose), or
+          `webhook_signing_keys_all_revoked` (all webhook-valid signing keys
           revoked).
 
   - id: signature_validity
@@ -652,7 +660,7 @@ phases:
     narrative: |
       Every outbound webhook MUST verify under the 14-step webhook verifier
       checklist per
-      docs/building/implementation/security.mdx#verifier-checklist-for-webhooks.
+      docs/building/by-layer/L1/security.mdx#verifier-checklist-for-webhooks.
       The runner registers the trigger as a 9421-default buyer (no
       `authentication` block on `push_notification_config`); the agent is
       graded on the signatures it emits in that mode.
@@ -732,7 +740,7 @@ grading:
     synchronous completion branch set MUST pass for agents that expose
     get_products and advertise `media_buy.buying_modes` including `"wholesale"`;
     otherwise the branch steps grade not_applicable.
-    Agents without a published webhook-signing JWKS fail
+    Agents without a published webhook-valid signing JWKS fail
     signing_keys_published — there is no exemption for "HMAC legacy mode."
     Agents that advertise no webhook-emitting operations grade the entire
     universal as not_applicable. Runners without a webhook receiver grade the
@@ -747,5 +755,5 @@ grading:
     the full suite. signing_keys_published failures cite the specific gap —
     `webhook_signing_keys_unpublished`, `webhook_signing_keys_wrong_purpose`,
     or `webhook_signing_keys_all_revoked` — so operators distinguish "never
-    set up keys" from "set up keys with the wrong purpose label" without
+    set up keys" from "set up keys with only non-webhook-valid purpose labels" without
     reading the JWKS by hand.

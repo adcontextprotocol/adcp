@@ -98,7 +98,7 @@ For the full sell-side setup pattern, including direct publisher and delegated n
 }
 ```
 
-The `agents[].jwks_uri` lets buyers resolve your public signing keys. The protocol requires verifiable signatures and discoverable public keys; it does not require a specific KMS vendor. Production agents should back private signing keys with KMS/HSM or a managed secret system. Sellers that send AdCP webhooks should publish a webhook-signing JWK with `adcp_use: "webhook-signing"` in that JWKS so buyers can verify outbound webhook signatures. See [request signing](/docs/building/by-layer/L1/request-signing) for the key-publication and webhook-signing profile.
+The `agents[].jwks_uri` lets buyers resolve your public signing keys. The protocol requires verifiable signatures and discoverable public keys; it does not require a specific KMS vendor. Production agents should back private signing keys with KMS/HSM or a managed secret system. Sellers that send AdCP webhooks should publish an `adcp_use: "request-signing"` JWK in that JWKS so buyers can verify outbound webhook signatures. Deprecated `adcp_use: "webhook-signing"` keys remain accepted on the webhook path for backward compatibility. See [request signing](/docs/building/by-layer/L1/request-signing) for the key-publication and webhook-signing profile.
 
 ### Expose your inventory
 
