@@ -218,6 +218,10 @@
             <div class="stat-label">Open</div>
           </div>
           <div class="stat-card">
+            <div class="stat-value urgent" id="statFollowup">-</div>
+            <div class="stat-label">Needs Follow-up</div>
+          </div>
+          <div class="stat-card">
             <div class="stat-value" id="statResolved">-</div>
             <div class="stat-label">Resolved Today</div>
           </div>
@@ -300,6 +304,7 @@
 
         // Update stats
         document.getElementById('statOpen').textContent = data.stats.open;
+        document.getElementById('statFollowup').textContent = data.stats.needs_follow_up || 0;
         document.getElementById('statResolved').textContent = data.stats.resolved_today;
         document.getElementById('statCapability').textContent = data.stats.by_category.capability_gap || 0;
         document.getElementById('statHuman').textContent = data.stats.by_category.needs_human_action || 0;
@@ -342,6 +347,23 @@
     function renderEscalation(e) {
       const isResolved = e.status === 'resolved' || e.status === 'wont_do';
       const createdAt = new Date(e.created_at).toLocaleString();
+      const ageLabel = formatAge(e.sla?.age_hours);
+      const followupBadge = e.sla?.needs_follow_up
+        ? `<span><span class="badge badge-urgent">${escapeHtml(e.sla.label || 'Needs follow-up')}</span></span>`
+        : '';
+      const notificationBadge = e.notification_sent_at
+        ? `<span><span class="badge badge-resolved">Team notified</span></span>`
+        : `<span><span class="badge badge-wont_do">Not notified</span></span>`;
+      const updates = Array.isArray(e.updates) && e.updates.length > 0
+        ? `
+          <div class="detail-section">
+            <strong>Requester-visible Updates:</strong>
+            ${e.updates.map(update => `
+              <p><strong>${update.author_type === 'requester' ? 'Requester' : 'Team'}:</strong> ${escapeHtml(update.body)}</p>
+            `).join('')}
+          </div>
+        `
+        : '';
 
       return `
         <div class="escalation-item ${isResolved ? 'resolved' : ''}">
@@ -352,7 +374,9 @@
                 <span><span class="badge badge-${e.status}">${statusLabels[e.status] || e.status}</span></span>
                 <span><span class="badge badge-${e.priority}">${e.priority}</span></span>
                 <span><span class="badge category-badge">${categoryLabels[e.category] || e.category}</span></span>
-                <span>${createdAt}</span>
+                ${followupBadge}
+                ${notificationBadge}
+                <span>${createdAt}${ageLabel ? ` · ${ageLabel}` : ''}</span>
                 ${e.user_display_name ? `<span>From: ${escapeHtml(e.user_display_name)}</span>` : ''}
                 ${e.user_email ? `<span>Email: ${escapeHtml(e.user_email)}</span>` : ''}
                 ${e.user_slack_handle ? `<span>Slack: ${escapeHtml(e.user_slack_handle)}</span>` : ''}
@@ -380,6 +404,8 @@
             </div>
           ` : ''}
 
+          ${updates}
+
           ${e.resolution_notes ? `
             <div class="detail-section">
               <strong>Resolution Notes:</strong>
@@ -394,6 +420,14 @@
           ` : ''}
         </div>
       `;
+    }
+
+    function formatAge(ageHours) {
+      if (typeof ageHours !== 'number' || !Number.isFinite(ageHours)) return '';
+      if (ageHours < 1) return 'less than 1h old';
+      if (ageHours < 24) return `${Math.round(ageHours)}h old`;
+      const days = Math.floor(ageHours / 24);
+      return `${days}d old`;
     }
 
     // Update escalation status

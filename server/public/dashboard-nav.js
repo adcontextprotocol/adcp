@@ -83,6 +83,7 @@
         label: 'Account',
         items: [
           { href: '/organization#membership', label: 'Membership & billing', icon: '💳' },
+          { href: isDashboardPage ? '#escalations' : '/dashboard#escalations', label: 'Support requests', icon: '🚨', anchor: isDashboardPage ? 'escalations' : null, id: 'supportRequestsNavItem', hidden: true },
         ]
       },
       {
@@ -922,6 +923,13 @@
     }
   }
 
+  function showSupportRequestsNav(show) {
+    const supportNavItem = document.getElementById('supportRequestsNavItem');
+    if (supportNavItem) {
+      supportNavItem.style.display = show ? 'flex' : 'none';
+    }
+  }
+
   // Export API
   window.DashboardNav = {
     config: NAV_CONFIG,
@@ -936,6 +944,7 @@
     selectOrg,
     showAdminLink,
     showLeadershipNav,
+    showSupportRequestsNav,
     resolveOrg,
     renderOrgPicker
   };

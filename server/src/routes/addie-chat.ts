@@ -135,6 +135,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ATTACHMENT_VALIDATION_CLIENT_MESSAGE =
   "Attachment could not be processed. Use PNG, JPEG, GIF, WebP, or PDF files under the size limits.";
+export const EMPTY_ASSISTANT_RESPONSE_FALLBACK =
+  "I hit a response delivery issue before I could finish. Please try again in a moment.";
 
 const logger = createLogger("addie-chat-routes");
 
@@ -158,6 +160,15 @@ const ANONYMOUS_MAX_ITERATIONS = 5;
 // Sources the web client is permitted to assert. Voice / email / unknown are
 // set server-side only (tavus.ts, email-conversation-handler.ts, bolt-app.ts).
 const VALID_WEB_SOURCES = new Set<'typed' | 'cta_chip'>(['typed', 'cta_chip']);
+
+export function ensureNonEmptyAssistantResponse(
+  text: string | null | undefined,
+): { text: string; usedFallback: boolean } {
+  if (typeof text === 'string' && text.trim().length > 0) {
+    return { text, usedFallback: false };
+  }
+  return { text: EMPTY_ASSISTANT_RESPONSE_FALLBACK, usedFallback: true };
+}
 
 /**
  * Merge per-request member tools with cached authenticated-only tools,
@@ -924,8 +935,23 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         };
       }
 
+      const normalizedResponse = ensureNonEmptyAssistantResponse(response.text);
+      if (normalizedResponse.usedFallback) {
+        logger.warn(
+          {
+            threadId: thread.thread_id,
+            toolsUsed: response.tools_used,
+            toolExecutions: response.tool_executions?.length ?? 0,
+          },
+          "Addie Chat: Empty assistant response replaced with fallback"
+        );
+        response.text = normalizedResponse.text;
+        response.flagged = true;
+        response.flag_reason = response.flag_reason || 'Empty assistant response';
+      }
+
       // Validate output
-      const outputValidation = validateOutput(response.text);
+      const outputValidation = validateOutput(normalizedResponse.text);
 
       const latencyMs = Date.now() - startTime;
 
@@ -1250,6 +1276,27 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
           return;
         }
       }
+
+      const finalStreamText = fullText.trim() ? fullText : response?.text;
+      const normalizedStream = ensureNonEmptyAssistantResponse(finalStreamText);
+      if (normalizedStream.usedFallback) {
+        logger.warn(
+          {
+            threadId: thread.thread_id,
+            toolsUsed,
+            toolExecutions: response?.tool_executions?.length ?? 0,
+          },
+          "Addie Chat Stream: Empty assistant response replaced with fallback"
+        );
+        if (!fullText.trim()) {
+          sendEvent("text", { text: normalizedStream.text });
+        }
+        if (response) {
+          response.flagged = true;
+          response.flag_reason = response.flag_reason || 'Empty assistant response';
+        }
+      }
+      fullText = normalizedStream.text;
 
       // Validate output
       const outputValidation = validateOutput(fullText);

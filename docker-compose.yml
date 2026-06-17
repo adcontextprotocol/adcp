@@ -16,7 +16,10 @@ services:
       retries: 5
 
   app:
-    build: .
+    build:
+      context: .
+      args:
+        SKIP_PRECLONE_REPOS: "true"
     ports:
       - "${CONDUCTOR_PORT:-3000}:8080"
     env_file:
