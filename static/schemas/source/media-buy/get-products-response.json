@@ -151,7 +151,8 @@
               },
               "proposal_id": {
                 "type": "string",
-                "description": "Echoes proposal_id from the corresponding refine entry."
+                "description": "Echoes proposal_id from the corresponding refine entry.",
+                "x-entity": "proposal"
               },
               "proposal_version": {
                 "type": "string",

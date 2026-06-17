@@ -62,7 +62,8 @@
     },
     "proposal_id": {
       "type": "string",
-      "description": "ID of a committed proposal from get_products to execute. When provided with total_budget, the publisher converts the proposal's allocation percentages into packages automatically. Alternative to providing packages array. If the referenced proposal has proposal_status: 'draft', the seller MUST reject with PROPOSAL_NOT_COMMITTED; the buyer finalizes first via get_products refine action 'finalize'."
+      "description": "ID of a committed proposal from get_products to execute. When provided with total_budget, the publisher converts the proposal's allocation percentages into packages automatically. Alternative to providing packages array. If the referenced proposal has proposal_status: 'draft', the seller MUST reject with PROPOSAL_NOT_COMMITTED; the buyer finalizes first via get_products refine action 'finalize'.",
+      "x-entity": "proposal"
     },
     "proposal_version": {
       "type": "string",

@@ -8,7 +8,8 @@
     "proposal_id": {
       "type": "string",
       "description": "Unique identifier for this proposal. Used to finalize a draft proposal and to execute a committed proposal via create_media_buy.",
-      "maxLength": 255
+      "maxLength": 255,
+      "x-entity": "proposal"
     },
     "proposal_version": {
       "type": "string",

@@ -191,7 +191,8 @@
               "proposal_id": {
                 "type": "string",
                 "minLength": 1,
-                "description": "Proposal ID from a previous get_products response."
+                "description": "Proposal ID from a previous get_products response.",
+                "x-entity": "proposal"
               },
               "proposal_version": {
                 "type": "string",
