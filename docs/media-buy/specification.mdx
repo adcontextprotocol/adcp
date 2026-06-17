@@ -218,17 +218,26 @@ The Media Buy Protocol defines the following tasks. See task reference pages for
 Discover advertising inventory using natural language briefs or explicit wholesale intent.
 
 **Requirements:**
-- Orchestrators MUST set `buying_mode` to `"brief"`, `"wholesale"`, or `"refine"`
+- Orchestrators MUST set `buying_mode` to `"brief"`, `"wholesale"`, `"refine"`, or `"open"`
 - Orchestrators MUST include `brief` when `buying_mode` is `"brief"`
-- Orchestrators MUST NOT include `brief` when `buying_mode` is `"wholesale"` or `"refine"`
+- Orchestrators MUST NOT include `brief` when `buying_mode` is `"wholesale"`, `"refine"`, or `"open"`
 - Orchestrators MUST include `refine` when `buying_mode` is `"refine"`
-- Orchestrators MUST NOT include `refine` when `buying_mode` is `"brief"` or `"wholesale"`
+- Orchestrators MUST NOT include `refine` when `buying_mode` is `"brief"`, `"wholesale"`, or `"open"`
 - Orchestrators MUST provide `scope` and `product_id` for each product entry in `refine`, and `scope` and `proposal_id` for each proposal entry
 - Orchestrators MAY omit `action` on product and proposal entries (defaults to `"include"`)
+- Orchestrators MUST include `proposal_version` and `reason` when a proposal entry uses `action: "decline"`
+- Orchestrators MUST NOT send `action: "decline"` for an unversioned proposal
+- Orchestrators MAY include `opportunity` on `brief`, `open`, and `refine` requests to identify or narrow a buyer planning cycle across related discovery, proposal outcome, and `create_media_buy` calls
+- Orchestrators MUST treat `opportunity_id` as an opaque seller/account-scoped identifier and MUST NOT embed advertiser names, campaign names, audience names, budget references, competitor names, internal authorization IDs, personal data, or confidential campaign identifiers
+- Orchestrators SHOULD include `opportunity.intent` when the buyer can distinguish test/speculative exploration from a real planning cycle or live RFP; sales agents SHOULD NOT infer that distinction from `opportunity.phase` alone
 - Orchestrators MUST NOT include multiple entries for the same product ID or proposal ID in a single `refine` array
 - Sales agents MUST return products matching the brief criteria when a brief is provided
 - Sales agents MUST include `product_id` and `pricing_options` for each product
 - Sales agents SHOULD include relevance scoring when multiple products match
+- Sales agents MUST handle `buying_mode: "open"` by returning unresolved products and proposals already associated with the caller/account, optionally narrowed by `opportunity.opportunity_id`
+- Sales agents MUST NOT create new products, proposals, firm prices, inventory holds, or proposal versions solely to satisfy an `open` request
+- Sales agents SHOULD complete `open` requests synchronously and MUST NOT route them through the async Submitted arm solely because `push_notification_config` is present
+- For win/loss analytics, sales agents SHOULD compute denominators from buyer-resolved outcomes: closed opportunities and declined or accepted proposal versions. Sales agents SHOULD NOT count every `get_products` call, `open` read, omitted proposal, or exploratory discovery response as a loss.
 
 **Refinement requirements:**
 
@@ -237,14 +246,24 @@ Each `get_products` request with `buying_mode: "refine"` is self-contained — s
 - Sales agents MUST treat a missing `action` on product and proposal refine entries as `action: "include"`
 - Sales agents MUST omit products with `action: "omit"` from the response
 - Sales agents MUST omit proposals with `action: "omit"` from the response
+- Sales agents MUST treat proposal-scoped `action: "decline"` as a terminal not-pursued outcome for the referenced `proposal_id` + `proposal_version`
+- Sales agents MUST return `refinement_applied` for any request containing proposal-scoped `action: "decline"`; `status: "applied"` means the decline was recorded, while `status: "partial"` or `"unable"` means the buyer MUST NOT treat the proposal as declined
+- Sales agents MUST treat duplicate declines for the same buyer, account, `proposal_id`, and `proposal_version` as idempotent and MUST NOT double-count feedback
+- Orchestrators MUST NOT execute a declined `proposal_id` + `proposal_version` with `create_media_buy`
+- Sales agents MUST reject stale `proposal_version` execution for a known proposal with `CONFLICT`
 - Sales agents MUST return products with `action: "include"`, with updated pricing
 - Sales agents SHOULD fulfill the `ask` on product entries with `action: "include"`
 - Sales agents SHOULD return additional products similar to those with `action: "more_like_this"`, plus the original product
 - Sales agents SHOULD consider request-level asks (`scope: "request"`) when composing the response — this MAY result in additional products beyond those explicitly referenced. Per-product actions take precedence over request-level direction.
 - Sales agents SHOULD fulfill the `ask` on proposal entries with `action: "include"`
 - Sales agents SHOULD include `refinement_applied` in the response, with one entry per change request matched by position
-- Sales agents that return `refinement_applied` MUST echo `scope` on each entry and MUST echo `product_id` / `proposal_id` for product and proposal scopes, so orchestrators can cross-validate alignment
+- Sales agents that return `refinement_applied` MUST echo `scope` on each entry and MUST echo `product_id` / `proposal_id` for product and proposal scopes, so orchestrators can cross-validate alignment. For proposal entries where the buyer supplied `proposal_version`, sales agents MUST echo `proposal_version`.
 - Sales agents MAY return proposals alongside products in refine mode, even when the orchestrator did not include proposal entries
+- To close an opportunity without buying, orchestrators SHOULD send `buying_mode: "refine"` with the same `opportunity_id`, `opportunity.status: "closed"`, optional `close_reason` / `close_detail`, and a request-level refine entry such as "Close this opportunity; no further proposals requested."
+- When a comparable buy is accepted with another seller, orchestrators SHOULD close this seller's related opportunity as `purchased_elsewhere` and SHOULD decline any evaluated proposal versions with `reason: "selected_alternative"` without identifying the other seller or disclosing clearing terms
+- Sales agents that persist opportunity state SHOULD record buyer-reported opportunity closure, but opportunity closure has no dedicated protocol acknowledgement surface beyond the ordinary task response in this version
+- Opportunity closure does not replace proposal decline; orchestrators that need acknowledgement for an evaluated proposal version MUST send proposal-scoped `action: "decline"` for that `proposal_id` + `proposal_version`
+- Stateful conformance requires runtime state, not only schema validation: sales agents that support versioned proposals MUST persist proposal-version state, duplicate decline idempotency, stale-version rejection, declined-version create rejection, and unresolved-state retrieval through `buying_mode: "open"`
 
 ### list_creative_formats
 
@@ -270,11 +289,18 @@ Create a media buy from selected packages or execute a proposal.
 **Requirements:**
 - Orchestrators MUST include either `packages` array or `proposal_id`
 - Orchestrators MUST include `start_time` and `end_time` for the campaign
+- Orchestrators MUST include `proposal_version` when executing a proposal that carried `proposal_version`
+- Orchestrators SHOULD carry the same `opportunity_id` into `create_media_buy` when the buy came from prior `get_products` calls
+- Orchestrators MUST use `close_reason: "accepted_with_seller"` when `create_media_buy` also sends `opportunity.status: "closed"` with a `close_reason`
 - Sales agents MUST return `media_buy_id` on successful creation
+- Sales agents SHOULD echo `proposal_id` and, when supplied, `proposal_version` on successful proposal execution so buyers can reconcile the accepted proposal with the resulting `media_buy_id`
 - Sales agents MUST return `confirmed_at` on successful creation. The value is the seller commitment timestamp, or `null` when the response creates a provisional buy that is not yet committed.
 - Sales agents MUST return `revision` on successful creation
 - Sales agents MUST return `creative_deadline` indicating when creatives must be uploaded
 - Sales agents MUST validate budget against pricing options
+- Sales agents MUST reject attempts to execute a declined proposal version with `INVALID_STATE`
+- Sales agents MUST reject `create_media_buy` requests that omit `proposal_version` when the referenced executable proposal carried a version with `INVALID_REQUEST`
+- Sales agents MUST reject stale or unknown `proposal_version` values with `CONFLICT` when the proposal is known but no longer at that version, or `PROPOSAL_NOT_FOUND` when the proposal/version cannot be resolved for the caller
 - On validation failure, sales agents MUST return an `errors` array
 
 ### update_media_buy

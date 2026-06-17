@@ -4,23 +4,27 @@ description: "AdCP product refinement — iterate on discovered products and pro
 "og:title": "AdCP — Refinement"
 ---
 
-Refinement turns product discovery into a conversation. After an initial `brief` or `wholesale` discovery, use `buying_mode: "refine"` to iterate on specific products and proposals — adjusting the selection, requesting changes, and exploring alternatives — before committing to a [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy).
+Refinement turns product discovery into a conversation. After an initial `brief` or `wholesale` discovery, use `buying_mode: "open"` to reload unresolved products/proposals or `buying_mode: "refine"` to iterate on specific products and proposals — adjusting the selection, requesting changes, and exploring alternatives — before committing to a [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy).
 
 ## The refinement lifecycle
 
 A typical media buying workflow follows this pattern:
 
 ```
-discover → refine → refine → ... → buy
+discover → open/load → refine → refine → ... → buy or decline
 ```
 
 1. **Discover** — Call `get_products` with `buying_mode: "brief"` or `"wholesale"` to find matching inventory. The seller returns products (and optionally proposals).
 
-2. **Refine** — Call `get_products` with `buying_mode: "refine"` and a `refine` array of change requests. Each entry declares a scope and what the buyer is asking for. The seller returns updated products with revised pricing and configurations.
+2. **Reload open work** — Call `get_products` with `buying_mode: "open"` to retrieve unresolved products/proposals already associated with the account or opportunity. The response reuses the existing `products` and `proposals` arrays.
 
-3. **Repeat** — Refine as many times as needed. Each call is self-contained and stateless.
+3. **Refine** — Call `get_products` with `buying_mode: "refine"` and a `refine` array of change requests. Each entry declares a scope and what the buyer is asking for. The seller returns updated products with revised pricing and configurations.
 
-4. **Buy** — When satisfied, execute the final selection via `create_media_buy`.
+4. **Repeat** — Refine as many times as needed. Each call is self-contained and stateless.
+
+5. **Buy or decline** — When satisfied, execute the final selection via `create_media_buy`. If a proposal is not being pursued, send a proposal-scoped `action: "decline"` so the seller can resolve that proposal version.
+
+If the buyer is working within a named planning cycle, include the same `opportunity.opportunity_id` on each related `brief`, `open`, `refine`, and `create_media_buy` call. `opportunity_id` connects the overall opportunity; `proposal_id` + `proposal_version` resolves one exact seller offer. To close the planning cycle without buying, send a `refine` call with the same `opportunity_id`, `opportunity.status: "closed"`, optional close reason/detail, and a request-level ask to close the opportunity.
 
 <Tip>
 Refinement is not required. Simple campaigns can go straight from discovery to purchase. But for campaigns involving multiple products, proposals with budget allocations, or iterative negotiation, refinement is where the value is.
@@ -85,6 +89,13 @@ The seller may add, remove, or rebalance products based on this direction. Produ
 
 Reference proposals by `proposal_id` to request adjustments or remove them. Like product entries, `action` defaults to `"include"`:
 
+| Action | Behavior | `ask` / feedback |
+|--------|----------|------------------|
+| `include` (default) | Return this proposal with updated allocations, pricing, and terms | Optional — specific changes to request |
+| `omit` | Exclude this proposal from the response without marking a terminal outcome | Ignored |
+| `finalize` | Request firm pricing, terms, and inventory hold for a draft proposal | Ignored |
+| `decline` | Terminally report that the buyer evaluated this proposal version and is not pursuing it | Requires `proposal_version` and `reason`; optional `detail` |
+
 ```json
 {
   "buying_mode": "refine",
@@ -95,6 +106,51 @@ Reference proposals by `proposal_id` to request adjustments or remove them. Like
   ]
 }
 ```
+
+### Decline a proposal
+
+Use `action: "decline"` when the buyer has evaluated a specific proposal version and decided not to pursue it. This is distinct from `omit`: `omit` only removes a proposal from the next response, while `decline` is a terminal outcome for the referenced proposal version.
+
+Sellers that expect buyers to resolve a proposal version explicitly, whether by accepting it via `create_media_buy` or declining it here, MUST include `proposal_version` on the proposal. Buyers MUST NOT send `decline` for an unversioned proposal; use `omit`, ignore it, or re-run discovery/refinement to obtain a versioned proposal.
+
+```json
+{
+  "buying_mode": "refine",
+  "refine": [
+    {
+      "scope": "proposal",
+      "proposal_id": "prop_balanced_v1",
+      "proposal_version": "4",
+      "action": "decline",
+      "reason": "price",
+      "detail": "Above target CPM range"
+    }
+  ]
+}
+```
+
+For `action: "decline"`, sellers MUST acknowledge the request with `refinement_applied`. `status: "applied"` means the decline was recorded and the proposal version is terminal. `status: "partial"` or `"unable"` means the buyer MUST NOT treat the proposal as declined.
+
+After a seller applies a proposal-scoped `decline`, the buyer MUST NOT execute that same `proposal_id` + `proposal_version` with `create_media_buy`. Sellers MUST reject later `create_media_buy` attempts against a declined proposal version with `INVALID_STATE`.
+
+Duplicate declines for the same buyer, account, `proposal_id`, and `proposal_version` are idempotent: sellers MUST NOT double-count the feedback. If a duplicate decline repeats the same `reason` and `detail`, sellers SHOULD acknowledge it as already applied. If a duplicate decline supplies different feedback, sellers SHOULD preserve the first applied reason and MAY return `refinement_applied[].status: "partial"` or `"unable"` with notes explaining that the proposal version was already declined.
+
+Decline feedback is aggregate-friendly. Use `reason` for seller analytics and keep `detail` short and non-identifying. Buyers MUST NOT include competing seller/platform/product names, clearing prices, bid strategy, confidential audience definitions, budget reallocations, campaign IDs, NDA-scoped terms, or other sensitive campaign information in `detail`.
+
+### Resolving buyer outcomes
+
+Use the narrowest terminal signal that matches what the buyer knows:
+
+| Situation | Buyer behavior |
+|-----------|----------------|
+| Evaluated a specific proposal version and will not pursue it | Send proposal-scoped `action: "decline"` with `proposal_id`, `proposal_version`, and `reason`. This resolves that offer version, but does not necessarily close the broader opportunity. |
+| No longer pursuing the planning cycle with this seller | Send `opportunity.status: "closed"` on a `buying_mode: "refine"` call, with a request-level ask such as "Close this opportunity; no further proposals requested." Use `close_reason` when known. |
+| Evaluated proposal version(s) and the seller should stop working the opportunity | Do both in the same refine call: include proposal-scoped `decline` entries for each evaluated version, and set `opportunity.status: "closed"` with the appropriate `close_reason`. |
+| Accepted this seller's proposal | Execute it with `create_media_buy`, carrying `proposal_id`, `proposal_version` when versioned, and the same `opportunity_id`. If the create request closes the opportunity, use `close_reason: "accepted_with_seller"`. |
+| Accepted another seller or bought outside this seller | For this seller, buyers SHOULD close the opportunity with `close_reason: "purchased_elsewhere"` and SHOULD decline any evaluated proposal versions with `reason: "selected_alternative"`. Do not identify the other seller or disclose clearing terms. |
+| Abandoned or no-decision outcome | If the buyer knows the seller should stop pursuing the work, close the opportunity with `close_reason: "not_pursued"` or the more specific budget/timing reason. If the buyer has no reliable terminal outcome, or the interaction was only test/speculative exploration, neither decline nor close is required. |
+
+`open` mode is a read surface for unresolved state; it is not itself a loss signal. Sellers SHOULD compute win/loss over closed opportunities and resolved proposal versions, not over all discovery/refinement/open calls.
 
 ### Combining scopes
 
@@ -144,7 +200,7 @@ When a buyer sends a `refine` array, the seller responds with `refinement_applie
 }
 ```
 
-The `refinement_applied` array MUST contain the same number of entries in the same order as the `refine` array. Each entry MUST echo `scope` and the matching id (`product_id` on product scope, `proposal_id` on proposal scope) so orchestrators can cross-validate alignment. The entire field is optional — sellers that don't track per-ask outcomes can omit it — but sellers that return it MUST return valid, position-matched entries.
+The `refinement_applied` array MUST contain the same number of entries in the same order as the `refine` array. Each entry MUST echo `scope` and the matching id (`product_id` on product scope, `proposal_id` on proposal scope) so orchestrators can cross-validate alignment. For proposal entries where the buyer supplied `proposal_version`, sellers MUST echo `proposal_version` on the matching response entry. The entire field is optional for ordinary refinements — sellers that don't track per-ask outcomes can omit it — but sellers MUST return `refinement_applied` for any request containing proposal-scoped `action: "decline"`.
 
 Orchestrators SHOULD cross-check entries by the echoed id rather than trusting positional order alone — a seller bug that reorders entries would otherwise silently mis-attribute each outcome.
 
@@ -201,7 +257,7 @@ The product entries define which products the seller should consider for the pro
 
 `action: "finalize"` is seller commitment, not buyer acceptance — it transitions a draft proposal to committed with firm pricing and an expires_at hold window. The buyer accepts/executes a committed proposal later via `create_media_buy(proposal_id)`. When a buyer wants to finalize, the spec requires the `refine[]` array contain **only** finalize entries:
 
-- If any entry has `action: "finalize"`, **all** entries in the array MUST be proposal-scoped with `action: "finalize"`. Mixing finalize with `include` / `omit` entries, or with request- or product-scoped entries, MUST be rejected by the seller with `INVALID_REQUEST`.
+- If any entry has `action: "finalize"`, **all** entries in the array MUST be proposal-scoped with `action: "finalize"`. Mixing finalize with `include` / `omit` / `decline` entries, or with request- or product-scoped entries, MUST be rejected by the seller with `INVALID_REQUEST`.
 - Buyers needing to refine *and* commit in close succession **sequence** the calls: first a refine call (no finalize), then a finalize call against the resulting `proposal_id`(s). The two intents are distinct decisions and the spec treats them as distinct calls.
 
 ```yaml
@@ -235,7 +291,7 @@ Key points:
 
 - **Proposals are not guaranteed.** Sellers are not required to generate proposals in refine mode. Allocation and campaign optimization are primarily orchestrator (buyer-side agent) responsibilities.
 - **Signal interest via a request-level ask.** Include `{ "scope": "request", "ask": "suggest how to combine these products" }` to indicate you'd welcome a proposal.
-- **Unsolicited proposals can be refined or ignored.** If a seller returns a proposal you didn't request, you can refine it in a follow-up call, or simply ignore it and build packages manually via `create_media_buy`.
+- **Unsolicited proposals can be refined, declined, or ignored.** If a seller returns a proposal you didn't request, you can refine it in a follow-up call, explicitly decline it when you know you will not pursue it, or ignore it and build packages manually via `create_media_buy`.
 
 Publishers typically omit proposals in `wholesale` mode, where the buyer is directing targeting and allocation themselves.
 
@@ -255,7 +311,7 @@ This design enables:
 Orchestrators should validate refinement requests before sending:
 
 - **Non-empty refine** — The `refine` array requires at least one entry. An empty `[]` is rejected by schema validation.
-- **Valid entries** — Each product entry requires `scope` and `product_id`. Each proposal entry requires `scope` and `proposal_id`. Request-level entries require `scope` and `ask`. `action` is optional on product and proposal entries (defaults to `"include"`); valid values are `include` / `omit` / `more_like_this` for products and `include` / `omit` / `finalize` for proposals.
+- **Valid entries** — Each product entry requires `scope` and `product_id`. Each proposal entry requires `scope` and `proposal_id`. Request-level entries require `scope` and `ask`. `action` is optional on product and proposal entries (defaults to `"include"`); valid values are `include` / `omit` / `more_like_this` for products and `include` / `omit` / `finalize` / `decline` for proposals. Proposal declines require `proposal_version` and `reason`.
 - **Filters are absolute** — Send the full filter set you want applied, not a delta from the previous request.
 
 Client implementations should validate refinement requests against the [request schema](/docs/building/schemas-and-sdks) before sending.
@@ -268,6 +324,7 @@ Client implementations should validate refinement requests against the [request 
 | `PROPOSAL_EXPIRED` | A referenced proposal ID has passed its `expires_at` | Re-discover with a new `brief` or `wholesale` request |
 | `PROPOSAL_NOT_FOUND` | The referenced `proposal_id` is unknown to the seller (never finalized, wrong tenant, or evicted from cache) | Re-issue `get_products` in `refine` mode with `action: 'finalize'` to obtain a current proposal_id |
 | `MULTI_FINALIZE_UNSUPPORTED` | `refine[]` carried multiple `action: 'finalize'` entries but the seller cannot guarantee atomic multi-proposal commit | Sequence single-proposal finalize calls (one finalize per `get_products` call) |
+| `INVALID_STATE` | The buyer attempts to execute a proposal version that was previously declined | Re-discover or refine to obtain a current proposal version before creating the media buy |
 | `INVALID_REQUEST` | `refine` provided in `brief` or `wholesale` mode, empty `refine` array, or missing required fields | Check `buying_mode` and required fields |
 
 ### Troubleshooting: "must NOT have additional properties" on `refine[].id`
@@ -295,14 +352,24 @@ The [Media Buy Specification](/docs/media-buy/specification#get_products) define
 
 **Orchestrators:**
 - MUST include `refine` when `buying_mode` is `"refine"`
-- MUST NOT include `refine` when `buying_mode` is `"brief"` or `"wholesale"`
+- MUST NOT include `refine` when `buying_mode` is `"brief"`, `"wholesale"`, or `"open"`
 - MUST provide `scope` and `product_id` for each product entry, and `scope` and `proposal_id` for each proposal entry
 - MAY omit `action` on product and proposal entries — sellers treat missing `action` as `"include"`
 - MUST NOT include multiple entries for the same product ID or proposal ID in a single `refine` array
+- MUST include `proposal_version` and `reason` when sending proposal-scoped `action: "decline"`
+- MUST NOT execute a declined `proposal_id` + `proposal_version` with `create_media_buy`
+- MUST NOT send `action: "decline"` for an unversioned proposal
+- SHOULD close other seller opportunities as `purchased_elsewhere` when a comparable buy is accepted with another seller, and SHOULD decline any evaluated proposal versions from those sellers as `selected_alternative`
 
 **Sales agents:**
 - MUST omit products with `action: "omit"` from the response
 - MUST omit proposals with `action: "omit"` from the response
+- MUST treat proposal-scoped `action: "decline"` as a terminal not-pursued outcome for the referenced `proposal_id` + `proposal_version`
+- MUST return `refinement_applied` for requests containing proposal-scoped `action: "decline"`; `status: "applied"` is the signal that the decline is recorded
+- MUST reject `create_media_buy` attempts against a declined proposal version with `INVALID_STATE`
+- MUST reject stale `proposal_version` execution for a known proposal with `CONFLICT`
+- MUST support `buying_mode: "open"` as a read of unresolved products/proposals when the seller persists that state
+- MUST treat duplicate declines for the same buyer, account, `proposal_id`, and `proposal_version` as idempotent and MUST NOT double-count them
 - MUST return products with `action: "include"`, with updated pricing
 - SHOULD fulfill the `ask` on product entries with `action: "include"`
 - SHOULD return additional products similar to those with `action: "more_like_this"`, plus the original product

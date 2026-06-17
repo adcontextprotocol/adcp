@@ -151,7 +151,14 @@
               },
               "proposal_id": {
                 "type": "string",
-                "description": "Echoes proposal_id from the corresponding refine entry."
+                "description": "Echoes proposal_id from the corresponding refine entry.",
+                "x-entity": "proposal"
+              },
+              "proposal_version": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "description": "MUST exactly echo proposal_version from the corresponding proposal refine entry when the buyer supplied one. Required by the protocol when acknowledging action 'decline'."
               },
               "status": {
                 "type": "string",

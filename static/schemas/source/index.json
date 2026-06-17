@@ -202,6 +202,10 @@
           "$ref": "/schemas/core/proposal.json",
           "description": "A proposed media plan with budget allocations across products - actionable via create_media_buy"
         },
+        "opportunity-context": {
+          "$ref": "/schemas/core/opportunity-context.json",
+          "description": "Buyer-supplied planning-cycle context that can span discovery, refinement, proposal outcomes, and create_media_buy"
+        },
         "insertion-order": {
           "$ref": "/schemas/core/insertion-order.json",
           "description": "A formal insertion order attached to a committed proposal for agreement signing"

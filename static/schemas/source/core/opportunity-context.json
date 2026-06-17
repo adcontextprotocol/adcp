@@ -1,0 +1,111 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/opportunity-context.json",
+  "title": "Opportunity Context",
+  "description": "Buyer-supplied context for a planning cycle or opportunity that can span multiple get_products brief/refine calls, proposals, declines, and create_media_buy execution. This is buyer-reported advisory operational metadata, not an idempotency key, purchase commitment, insertion order, inventory hold, or authorization. Sellers MAY use it for queueing, SLA expectations, async routing, human-review prioritization, CRM or pipeline labels, and aggregate win-rate analytics. Sellers MUST NOT use opportunity context to alter price, rate card, product eligibility, inventory availability, or buyability. Absence means the opportunity context is unknown and MUST NOT reduce response quality, product availability, or pricing fairness.",
+  "type": "object",
+  "properties": {
+    "opportunity_id": {
+      "type": "string",
+      "description": "Opaque buyer-assigned identifier for this planning cycle with this seller. Stable across related discovery, refinement, proposal, decline, and create_media_buy calls. Distinct from idempotency_key, which identifies one mutating request attempt, and from proposal_id/proposal_version, which identify a seller offer. Buyers SHOULD generate opaque values scoped per seller/account and MUST NOT embed advertiser names, campaign names, audience names, budget references, competitor names, internal authorization IDs, globally correlatable values, personal data, or confidential campaign identifiers.",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "opportunity"
+    },
+    "phase": {
+      "type": "string",
+      "enum": [
+        "exploratory",
+        "planning",
+        "active_sourcing"
+      ],
+      "description": "Buyer-declared stage for the opportunity. 'exploratory': early market scan or option gathering, often before budget, timing, or vendor shortlist are concrete. 'planning': a concrete opportunity is being planned, with likely campaign timing, budget, or internal planning work, but the buyer is not yet actively requesting seller proposals. 'active_sourcing': the buyer is actively requesting seller responses or proposals for a specific opportunity, but has not requested proposal finalization, an inventory hold, or a committed media buy."
+    },
+    "intent": {
+      "type": "string",
+      "enum": [
+        "test",
+        "speculative",
+        "planning",
+        "live_rfp"
+      ],
+      "description": "Advisory buyer-declared intent for the opportunity. This is distinct from phase: phase describes workflow maturity; intent describes whether the opportunity represents a real buying motion. 'test' means sandbox, QA, demo, certification, or buyer-agent exploration that should not be counted as a real sales opportunity. 'speculative' means the buyer is exploring a possible campaign without a client-approved brief, budget, or RFP. 'planning' means a real planning cycle exists but is not yet a live RFP. 'live_rfp' means the buyer is sourcing against an active client brief, RFP, or equivalent buying process. Sellers MAY use intent for queueing, CRM labeling, and aggregate analytics, but MUST NOT use it to alter price, rate card, product eligibility, inventory availability, or buyability."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "open",
+        "closed"
+      ],
+      "description": "Buyer-declared advisory status for the opportunity. 'open' means the planning cycle is still active. 'closed' means the buyer is no longer pursuing this opportunity with the seller, or is reporting that it resolved with this seller through create_media_buy. Closing an opportunity is distinct from declining a proposal version: proposal decline applies to a specific proposal_id + proposal_version; opportunity closure applies to the broader planning cycle."
+    },
+    "close_reason": {
+      "type": "string",
+      "enum": [
+        "accepted_with_seller",
+        "purchased_elsewhere",
+        "selected_alternative",
+        "not_pursued",
+        "budget_changed",
+        "timing_changed",
+        "other"
+      ],
+      "description": "Optional machine-readable reason when status is 'closed'. 'accepted_with_seller' means the opportunity resolved into a media buy with this seller; buyers normally carry the same opportunity_id on create_media_buy and use this reason only when that create call should also mark the opportunity closed. 'purchased_elsewhere' means the buyer bought outside this seller without naming the alternative seller. 'selected_alternative' means another non-purchase approach or supply path was selected. Buyers MUST NOT disclose competitor identity, clearing prices, bid strategy, confidential audience definitions, or other sensitive details."
+    },
+    "close_detail": {
+      "type": "string",
+      "description": "Optional short, non-identifying explanation when status is 'closed'. MUST NOT include competitor identity, clearing prices, bid strategy, confidential audience definitions, budget reallocations, campaign IDs, NDA-scoped terms, or other sensitive campaign information.",
+      "maxLength": 500
+    },
+    "planning_horizon": {
+      "allOf": [
+        {
+          "$ref": "/schemas/core/date-range.json"
+        }
+      ],
+      "description": "Advisory planning or campaign window for the opportunity, using the canonical Date Range shape with inclusive start and end dates. This is context for seller routing and planning, not a hard availability filter; use filters.start_date and filters.end_date for availability constraints."
+    },
+    "response_deadline": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 date-time by which the buyer would like a seller response or proposal update. Sellers MAY use it for routing and SLA handling only; it does not require or authorize firm pricing, inventory availability confirmation, inventory hold, proposal finalization, or buyer/seller commitment."
+    }
+  },
+  "required": [
+    "opportunity_id"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "not": {
+          "properties": {
+            "status": {
+              "const": "closed"
+            }
+          },
+          "required": [
+            "status"
+          ]
+        }
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "close_reason"
+              ]
+            },
+            {
+              "required": [
+                "close_detail"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

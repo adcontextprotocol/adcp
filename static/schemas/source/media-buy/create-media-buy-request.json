@@ -7,6 +7,39 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "description": "If create_media_buy marks an opportunity closed, the only valid close reason is accepted_with_seller because the create call is the in-protocol close-won signal.",
+      "if": {
+        "properties": {
+          "opportunity": {
+            "properties": {
+              "status": {
+                "const": "closed"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          }
+        },
+        "required": [
+          "opportunity"
+        ]
+      },
+      "then": {
+        "properties": {
+          "opportunity": {
+            "properties": {
+              "close_reason": {
+                "enum": [
+                  "accepted_with_seller"
+                ]
+              }
+            }
+          }
+        }
+      }
     }
   ],
   "x-mutates-state": true,
@@ -29,7 +62,18 @@
     },
     "proposal_id": {
       "type": "string",
-      "description": "ID of a committed proposal from get_products to execute. When provided with total_budget, the publisher converts the proposal's allocation percentages into packages automatically. Alternative to providing packages array. If the referenced proposal has proposal_status: 'draft', the seller MUST reject with PROPOSAL_NOT_COMMITTED; the buyer finalizes first via get_products refine action 'finalize'."
+      "description": "ID of a committed proposal from get_products to execute. When provided with total_budget, the publisher converts the proposal's allocation percentages into packages automatically. Alternative to providing packages array. If the referenced proposal has proposal_status: 'draft', the seller MUST reject with PROPOSAL_NOT_COMMITTED; the buyer finalizes first via get_products refine action 'finalize'.",
+      "x-entity": "proposal"
+    },
+    "proposal_version": {
+      "type": "string",
+      "description": "Opaque version from the proposal being accepted/executed. Buyers MUST include this when the selected proposal carried proposal_version so the seller can verify the exact offer state being accepted. Sellers MUST reject execution that omits proposal_version when the referenced executable proposal is versioned with INVALID_REQUEST. If this proposal version was previously declined via get_products refine action 'decline', the seller MUST reject the create_media_buy request with INVALID_STATE. If the supplied version is stale for a known proposal, reject with CONFLICT; if the proposal/version cannot be resolved for the caller, reject with PROPOSAL_NOT_FOUND.",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "opportunity": {
+      "$ref": "/schemas/core/opportunity-context.json",
+      "description": "Optional buyer-supplied planning-cycle context. When create_media_buy accepts a proposal or package plan that came from prior get_products calls, buyers SHOULD carry the same opportunity_id so the seller can connect discovery/refinement activity to the accepted media buy. This is distinct from idempotency_key and does not change create_media_buy execution semantics."
     },
     "total_budget": {
       "type": "object",
@@ -219,6 +263,9 @@
   "dependencies": {
     "proposal_id": [
       "total_budget"
+    ],
+    "proposal_version": [
+      "proposal_id"
     ]
   },
   "additionalProperties": true
