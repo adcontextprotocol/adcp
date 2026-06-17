@@ -211,6 +211,14 @@ describe('run_conformance_against_my_agent Addie tool', () => {
                   description: 'Structured error details are present',
                 },
                 {
+                  id: 'multi_finalize_unsupported.error_code',
+                  check: 'error_code',
+                  passed: false,
+                  expected: ['MULTI_FINALIZE_UNSUPPORTED', 'INVALID_REQUEST'],
+                  actual: 'INTERNAL_ERROR',
+                  description: 'Multi-finalize rejected with MULTI_FINALIZE_UNSUPPORTED or INVALID_REQUEST',
+                },
+                {
                   id: 'sk_live_1234567890abcdefghijkl',
                   check: 'field_value',
                   passed: false,
@@ -254,6 +262,7 @@ describe('run_conformance_against_my_agent Addie tool', () => {
     expect(out).toMatch(/failed validations/);
     expect(out).toMatch(/"id": "check_extend_flight_mode"/);
     expect(out).toMatch(/"id": "authorization_header_missing"/);
+    expect(out).toMatch(/"id": "multi_finalize_unsupported\.error_code"/);
     expect(out).toMatch(/"id": "\[redacted\]"/);
     expect(out).not.toMatch(/\\"check_extend_flight_mode\\"/);
     expect(out).toContain('"description": "<untrusted_proposer_input>Product declares extend_flight as approval-routed</untrusted_proposer_input>"');
