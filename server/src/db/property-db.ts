@@ -277,6 +277,16 @@ export class PropertyDatabase {
             AND p.source_type = 'adagents_json'
             AND prop->>'name' IS NOT NULL
             AND prop->>'property_type' IS NOT NULL
+            AND LOWER(REGEXP_REPLACE(
+                  REGEXP_REPLACE(
+                    BTRIM(COALESCE(NULLIF(prop->>'publisher_domain', ''), p.domain)),
+                    '^https?://',
+                    '',
+                    'i'
+                  ),
+                  '[./]+$',
+                  ''
+                )) = p.domain
        )
        SELECT DISTINCT ON (publisher_domain, name, property_type)
               id, property_id, publisher_domain, property_type, name,
@@ -335,6 +345,16 @@ export class PropertyDatabase {
             AND regexp_replace(cp.created_by, '^[^:]+:', '') = $1
             AND prop->>'property_id' = cp.property_id
             AND prop->>'name' IS NOT NULL
+            AND LOWER(REGEXP_REPLACE(
+                  REGEXP_REPLACE(
+                    BTRIM(COALESCE(NULLIF(prop->>'publisher_domain', ''), pub.domain)),
+                    '^https?://',
+                    '',
+                    'i'
+                  ),
+                  '[./]+$',
+                  ''
+                )) = pub.domain
        )
        SELECT DISTINCT ON (agent_url, name, COALESCE(authorized_for, ''))
               agent_url, name, authorized_for

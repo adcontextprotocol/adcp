@@ -741,7 +741,7 @@ describe('catalog_agent_authorizations writer projection', () => {
       expect(rows.map((r) => r.property_id_slug)).toEqual(['site_a']);
     });
 
-    it('skips selection_type=by_tag (deferred per spec)', async () => {
+    it('resolves selection_type=by_tag against the publisher properties named by compact publisher_domains[]', async () => {
       await publisherDb.upsertAdagentsCache({
         domain: TEST_PUB,
         manifest: manifest(
@@ -750,7 +750,11 @@ describe('catalog_agent_authorizations writer projection', () => {
               url: TEST_AGENT_RAW,
               authorization_type: 'publisher_properties',
               publisher_properties: [
-                { publisher_domain: TEST_PUB, selection_type: 'by_tag', property_tags: ['flagship'] },
+                {
+                  publisher_domains: [VICTIM_PUB, TEST_PUB],
+                  selection_type: 'by_tag',
+                  property_tags: ['raptive_managed'],
+                },
               ],
             },
           ],
@@ -760,17 +764,56 @@ describe('catalog_agent_authorizations writer projection', () => {
               property_type: 'website',
               name: 'Site A',
               identifiers: [{ type: 'domain', value: TEST_PUB }],
-              tags: ['flagship'],
+              tags: ['raptive_managed'],
+            },
+            {
+              property_id: 'site_b',
+              property_type: 'website',
+              name: 'Site B',
+              identifiers: [{ type: 'subdomain', value: `b.${TEST_PUB}` }],
+              tags: ['other'],
+            },
+            {
+              property_id: 'victim_site',
+              property_type: 'website',
+              name: 'Victim site',
+              identifiers: [{ type: 'domain', value: VICTIM_PUB }],
+              publisher_domain: VICTIM_PUB,
+              tags: ['raptive_managed'],
             },
           ]
         ),
       });
-      const { rows } = await pool.query(
-        `SELECT 1 FROM catalog_agent_authorizations
-          WHERE agent_url_canonical = $1`,
+      const { rows } = await pool.query<{ property_id_slug: string }>(
+        `SELECT property_id_slug FROM catalog_agent_authorizations
+          WHERE agent_url_canonical = $1 AND property_rid IS NOT NULL
+          ORDER BY property_id_slug`,
         [TEST_AGENT_CANON]
       );
-      expect(rows).toHaveLength(0);
+      expect(rows.map((r) => r.property_id_slug)).toEqual(['site_a']);
+
+      const federatedDb = new FederatedIndexDatabase();
+      const validation = await federatedDb.validateAgentForProduct(TEST_AGENT_CANON, [
+        {
+          publisher_domain: TEST_PUB,
+          selection_type: 'by_tag',
+          property_tags: ['raptive_managed'],
+        },
+      ]);
+      expect(validation.authorized).toBe(true);
+      expect(validation.total_requested).toBe(1);
+      expect(validation.total_authorized).toBe(1);
+
+      const victimValidation = await federatedDb.validateAgentForProduct(TEST_AGENT_CANON, [
+        {
+          publisher_domain: VICTIM_PUB,
+          selection_type: 'by_tag',
+          property_tags: ['raptive_managed'],
+        },
+      ]);
+      expect(victimValidation.authorized).toBe(false);
+      expect(victimValidation.total_requested).toBe(0);
+      expect(victimValidation.total_authorized).toBe(0);
     });
   });
 

@@ -51,6 +51,48 @@ try {
   fs.closeSync(idempotencyFd);
 }
 
+const schemaValidationPath = path.join(bundleDir, 'universal', 'schema-validation.yaml');
+let schemaValidationFd;
+try {
+  schemaValidationFd = fs.openSync(schemaValidationPath, 'r+');
+} catch (err) {
+  if (err && err.code === 'ENOENT') {
+    schemaValidationFd = undefined;
+  } else {
+    throw err;
+  }
+}
+
+// Older frozen 3.0.x schema-validation bundles used the branch-set shorthand
+// `contributes: true` for the past-start reject/adjust branches. Modern
+// runners normalize that shorthand in the loader, but older runner paths can
+// inspect `contributes_to` directly when evaluating the final synthetic
+// assert_contribution step. Patch only the temp compatibility bundle to emit
+// the explicit flag so a passing branch reliably contributes
+// `past_start_handled`.
+if (schemaValidationFd !== undefined) try {
+  const before = fs.readFileSync(schemaValidationFd, 'utf8');
+  let after = before;
+  for (const { phaseId, stepId } of [
+    { phaseId: 'past_start_reject_path', stepId: 'create_buy_past_start_reject' },
+    { phaseId: 'past_start_adjust_path', stepId: 'create_buy_past_start_adjust' },
+  ]) {
+    const pattern = new RegExp(
+      `(\\n  - id: ${phaseId}\\n[\\s\\S]*?\\n      - id: ${stepId}\\n[\\s\\S]*?\\n)` +
+      `        contributes: true\\n`,
+    );
+    after = after.replace(pattern, `$1        contributes_to: past_start_handled\n`);
+  }
+
+  if (after !== before) {
+    fs.ftruncateSync(schemaValidationFd, 0);
+    fs.writeSync(schemaValidationFd, after, 0, 'utf8');
+    console.log(`Patched 3.0 compatibility schema-validation past-start contributions in ${schemaValidationPath}`);
+  }
+} finally {
+  fs.closeSync(schemaValidationFd);
+}
+
 const webhookEmissionPath = path.join(bundleDir, 'universal', 'webhook-emission.yaml');
 let webhookEmissionFd;
 try {

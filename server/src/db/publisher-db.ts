@@ -21,6 +21,7 @@ export interface AdagentsProperty {
   name?: string;
   identifiers?: Array<{ type?: string; value?: string }>;
   tags?: string[];
+  publisher_domain?: string;
 }
 
 export interface AdagentsCollection {
@@ -54,6 +55,7 @@ export interface AdagentsAuthorizedAgent {
     | 'signal_ids'
     | 'signal_tags';
   property_ids?: string[];
+  property_tags?: string[];
   properties?: AdagentsProperty[];           // for inline_properties variant
   publisher_properties?: Array<{
     publisher_domain?: string;
@@ -1492,6 +1494,17 @@ export class PublisherDatabase {
     publisherDomain: string,
     property: AdagentsProperty,
   ): Promise<void> {
+    const explicitPublisher = typeof property.publisher_domain === 'string' && property.publisher_domain.trim().length > 0
+      ? canonicalizePublisherDomain(property.publisher_domain)
+      : publisherDomain;
+    if (explicitPublisher !== publisherDomain) {
+      log.warn(
+        { publisherDomain, propertyId: property.property_id, explicitPublisher },
+        'Catalog projection refused: property.publisher_domain does not match publisher'
+      );
+      return;
+    }
+
     const rawIdentifiers = Array.isArray(property.identifiers) ? property.identifiers : [];
     const identifiers = rawIdentifiers
       .filter((i): i is { type: string; value: string } =>
@@ -1668,9 +1681,9 @@ export class PublisherDatabase {
    *                           to catalog first, then references them)
    *   - publisher_properties — only the lexical-anchor case lands
    *                            (entry.publisher_domain == publisherDomain)
-   *                            with selection_type='all' or 'by_id'.
-   *                            Cross-publisher claims and 'by_tag' are
-   *                            refused per spec.
+   *                            with selection_type='all', 'by_id', or
+   *                            'by_tag'. Cross-publisher claims are refused
+   *                            per spec.
    *   - no authorization_type (publisher-wide) — one row with
    *                            property_rid IS NULL, publisher_domain set
    *
@@ -1832,11 +1845,51 @@ export class PublisherDatabase {
           for (const row of rows.rows) {
             targets.push({ propertyRid: row.property_rid, slug: row.property_id });
           }
+        } else if (selectionType === 'by_tag') {
+          const tags = Array.isArray(sel.property_tags)
+            ? sel.property_tags.filter((s): s is string => typeof s === 'string' && s.length > 0)
+            : [];
+          if (tags.length === 0) continue;
+          const rows = await client.query<{ property_rid: string; property_id: string | null }>(
+            `SELECT cp.property_rid, cp.property_id
+               FROM catalog_properties cp
+               JOIN publishers p ON p.domain = $1
+              CROSS JOIN LATERAL jsonb_array_elements(
+                CASE WHEN jsonb_typeof(p.adagents_json->'properties') = 'array'
+                     THEN p.adagents_json->'properties'
+                     ELSE '[]'::jsonb END
+              ) AS prop
+              WHERE cp.created_by = $2
+                AND cp.property_id IS NOT NULL
+                AND prop->>'property_id' = cp.property_id
+                AND LOWER(REGEXP_REPLACE(
+                      REGEXP_REPLACE(
+                        BTRIM(COALESCE(NULLIF(prop->>'publisher_domain', ''), p.domain)),
+                        '^https?://',
+                        '',
+                        'i'
+                      ),
+                      '[./]+$',
+                      ''
+                    )) = p.domain
+                AND EXISTS (
+                  SELECT 1
+                    FROM jsonb_array_elements_text(
+                      CASE WHEN jsonb_typeof(prop->'tags') = 'array'
+                           THEN prop->'tags'
+                           ELSE '[]'::jsonb END
+                    ) AS tag(value)
+                   WHERE tag.value = ANY($3::text[])
+                )`,
+            [publisherDomain, adagentsCreatedBy(publisherDomain), tags]
+          );
+          for (const row of rows.rows) {
+            targets.push({ propertyRid: row.property_rid, slug: row.property_id });
+          }
         } else {
-          // selection_type='by_tag' is deferred per spec.
           log.debug(
             { publisherDomain, agentUrl: agentCanonical, selectionType },
-            'Skipping auth projection: publisher_properties.selection_type not supported in v1'
+            'Skipping auth projection: publisher_properties.selection_type is unknown'
           );
         }
       }

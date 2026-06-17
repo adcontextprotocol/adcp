@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import express from 'express';
 import request from 'supertest';
-import { parseRetryAfterSeconds, agentReadRateLimiter } from '../../src/middleware/rate-limit.js';
+import { parseRetryAfterSeconds, createAgentReadRateLimiter } from '../../src/middleware/rate-limit.js';
 
 /**
  * Tests for the retryAfter fallback field we surface on the 429 body
@@ -40,35 +40,30 @@ describe('parseRetryAfterSeconds', () => {
 
 describe('agentReadRateLimiter 429 body', () => {
   // Exercise the actual middleware through a tiny express app so the
-  // assertion lives at the same layer production depends on.
-  // `agentReadRateLimiter` is a module-singleton with a cached
-  // Postgres store — the increment hot path is in-memory, so no real
-  // DB is needed, but the counter persists across tests. `resetKey`
-  // scrubs the per-key counter in `beforeEach` so each test starts
-  // from zero regardless of what ran earlier in the suite.
+  // assertion lives at the same layer production depends on. Use an
+  // isolated limiter instance rather than the production singleton so
+  // parallel test files cannot reset or mutate this counter.
   function buildApp() {
     const app = express();
+    const limiter = createAgentReadRateLimiter({ max: 3 });
     app.use((req, _res, next) => {
       (req as any).user = { id: RATE_LIMIT_TEST_USER_ID };
       next();
     });
-    app.get('/ping', agentReadRateLimiter, (_req, res) => res.status(200).json({ ok: true }));
+    app.get('/ping', limiter, (_req, res) => res.status(200).json({ ok: true }));
     return app;
   }
 
   const RATE_LIMIT_TEST_USER_ID = 'rate-limit-retry-after-test-user';
-  beforeEach(async () => {
-    await agentReadRateLimiter.resetKey(RATE_LIMIT_TEST_USER_ID);
-  });
 
   it('includes `retryAfter` (seconds) in the body matching the Retry-After header', async () => {
     const app = buildApp();
-    // Race past the 240/min cap. Same IP so the limiter keys identically.
+    // Race past the configured cap. Same user so the limiter keys identically.
     // Serial rather than parallel — express-rate-limit's in-flight
     // tracking is more deterministic, and the assertion is about the
     // 429 body shape, not concurrent behavior.
     let last: Awaited<ReturnType<typeof request>>;
-    for (let i = 0; i < 241; i++) {
+    for (let i = 0; i < 4; i++) {
       last = await request(app).get('/ping');
     }
     expect(last!.status).toBe(429);

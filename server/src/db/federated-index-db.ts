@@ -984,6 +984,16 @@ export class FederatedIndexDatabase {
             AND prop->>'property_id' = cp.property_id
             AND prop->>'name' IS NOT NULL
             AND prop->>'property_type' IS NOT NULL
+            AND LOWER(REGEXP_REPLACE(
+                  REGEXP_REPLACE(
+                    BTRIM(COALESCE(NULLIF(prop->>'publisher_domain', ''), pub.domain)),
+                    '^https?://',
+                    '',
+                    'i'
+                  ),
+                  '[./]+$',
+                  ''
+                )) = pub.domain
        ), deduped AS (
          SELECT DISTINCT ON (publisher_domain, name, property_type)
                 id, property_id, publisher_domain, property_type, name,
@@ -1072,6 +1082,16 @@ export class FederatedIndexDatabase {
             AND p.review_status = 'approved'
             AND prop->>'name' IS NOT NULL
             AND prop->>'property_type' IS NOT NULL
+            AND LOWER(REGEXP_REPLACE(
+                  REGEXP_REPLACE(
+                    BTRIM(COALESCE(NULLIF(prop->>'publisher_domain', ''), p.domain)),
+                    '^https?://',
+                    '',
+                    'i'
+                  ),
+                  '[./]+$',
+                  ''
+                )) = p.domain
        ), deduped AS (
          SELECT DISTINCT ON (publisher_domain, name, property_type)
                 id, property_id, publisher_domain, property_type, name,
