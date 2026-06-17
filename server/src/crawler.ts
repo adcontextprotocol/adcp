@@ -67,6 +67,15 @@ function stableStringify(value: unknown): string {
   return '{' + keys.map(k => JSON.stringify(k) + ':' + stableStringify(obj[k])).join(',') + '}';
 }
 
+type ManifestProperty = {
+  property_id?: string;
+  property_type: string;
+  name: string;
+  identifiers: Array<{ type: string; value: string }>;
+  tags?: string[];
+  publisher_domain?: string;
+};
+
 export interface PublisherAdagentsRevalidationResult {
   domain: string;
   adagents_valid: boolean;
@@ -569,11 +578,10 @@ export class CrawlerService {
 
               // Record properties and link to this agent
               await this.recordPropertiesForAgent(
-                validation.raw_data.properties || [],
+                this.propertiesForValidation(validation, pubConfig.domain, authorizedAgent),
                 pubConfig.domain,
                 authorizedAgent.url,
-                authorizedAgent.authorized_for,
-                authorizedAgent.property_ids
+                authorizedAgent.authorized_for
               );
 
               // Fan out publisher_properties[].publisher_domains[] into
@@ -662,11 +670,10 @@ export class CrawlerService {
 
               // Record properties and link to this agent
               await this.recordPropertiesForAgent(
-                validation.raw_data.properties || [],
+                this.propertiesForValidation(validation, domain, authorizedAgent),
                 domain,
                 authorizedAgent.url,
-                authorizedAgent.authorized_for,
-                authorizedAgent.property_ids
+                authorizedAgent.authorized_for
               );
 
               // Skip fan-out when the source publisher delegates via
@@ -721,8 +728,8 @@ export class CrawlerService {
                   authorizedAgent.authorized_for, authorizedAgent.property_ids
                 );
                 await this.recordPropertiesForAgent(
-                  validation.raw_data.properties || [], domain,
-                  authorizedAgent.url, authorizedAgent.authorized_for, authorizedAgent.property_ids
+                  this.propertiesForValidation(validation, domain, authorizedAgent), domain,
+                  authorizedAgent.url, authorizedAgent.authorized_for
                 );
                 // Skip fan-out when the source publisher delegates via
                 // ads.txt MANAGERDOMAIN — see step 1/2 guards for rationale.
@@ -1353,11 +1360,10 @@ export class CrawlerService {
       );
 
       await this.recordPropertiesForAgent(
-        (manifest.properties || []) as any,
+        this.propertiesForValidation(validation, domain, authorizedAgent),
         domain,
         authorizedAgent.url,
         authorizedAgent.authorized_for,
-        authorizedAgent.property_ids,
       );
 
       if (validation.discovery_method !== 'ads_txt_managerdomain') {
@@ -1419,9 +1425,117 @@ export class CrawlerService {
   }
 
   /**
-   * Record properties from adagents.json and link them to an agent.
-   * If the agent has property_ids specified, only record those specific properties.
+   * Resolve an authorized_agents[] selector to the concrete manifest
+   * properties that should be written into the legacy property auth graph.
    */
+  private propertiesForValidation(
+    validation: AdAgentsValidationResult,
+    publisherDomain: string,
+    authorizedAgent: AdagentsAuthorizedAgent,
+  ): ManifestProperty[] {
+    const manifest = validation.raw_data as AdagentsManifest | undefined;
+    const properties = Array.isArray(manifest?.properties) ? manifest.properties as ManifestProperty[] : [];
+    const restrictToSourcePublisher = validation.discovery_method === 'ads_txt_managerdomain';
+    return this.selectPropertiesForAuthorizedAgent(properties, publisherDomain, authorizedAgent, restrictToSourcePublisher);
+  }
+
+  private selectPropertiesForAuthorizedAgent(
+    properties: ManifestProperty[],
+    publisherDomain: string,
+    authorizedAgent: AdagentsAuthorizedAgent,
+    restrictToSourcePublisher: boolean,
+  ): ManifestProperty[] {
+    const sourcePublisher = canonicalizePublisherDomain(publisherDomain);
+    const sourceProperties = (candidates: ManifestProperty[]) => restrictToSourcePublisher
+      ? candidates.filter((property) => this.propertyPublisherDomain(property, sourcePublisher) === sourcePublisher)
+      : candidates;
+    const byId = (ids: string[] | undefined, candidates = properties) => {
+      const idSet = new Set((ids || []).filter((id): id is string => typeof id === 'string' && id.length > 0));
+      if (idSet.size === 0) return [];
+      return sourceProperties(candidates).filter((property) => typeof property.property_id === 'string' && idSet.has(property.property_id));
+    };
+    const byTag = (tags: string[] | undefined, candidates = properties) => {
+      const tagSet = new Set((tags || []).filter((tag): tag is string => typeof tag === 'string' && tag.length > 0));
+      if (tagSet.size === 0) return [];
+      return sourceProperties(candidates).filter((property) => (property.tags || []).some((tag) => tagSet.has(tag)));
+    };
+
+    switch (authorizedAgent.authorization_type) {
+      case 'property_ids':
+        return byId(authorizedAgent.property_ids);
+      case 'property_tags':
+        return byTag(authorizedAgent.property_tags);
+      case 'inline_properties':
+        return sourceProperties(Array.isArray(authorizedAgent.properties) ? authorizedAgent.properties as ManifestProperty[] : []);
+      case 'publisher_properties':
+        return this.selectPublisherProperties(properties, sourcePublisher, authorizedAgent, restrictToSourcePublisher);
+      case 'signal_ids':
+      case 'signal_tags':
+        return [];
+      default:
+        return sourceProperties(properties);
+    }
+  }
+
+  private selectPublisherProperties(
+    properties: ManifestProperty[],
+    sourcePublisher: string,
+    authorizedAgent: AdagentsAuthorizedAgent,
+    restrictToSourcePublisher: boolean,
+  ): ManifestProperty[] {
+    const selected = new Map<string, ManifestProperty>();
+    const selectors = Array.isArray(authorizedAgent.publisher_properties) ? authorizedAgent.publisher_properties : [];
+    for (const selector of selectors) {
+      if (!selector || typeof selector !== 'object') continue;
+      const hasSingular = typeof selector.publisher_domain === 'string' && selector.publisher_domain.length > 0;
+      const hasPlural = Array.isArray(selector.publisher_domains) && selector.publisher_domains.length > 0;
+      if (hasSingular === hasPlural) continue;
+
+      const selectorDomains = new Set<string>();
+      if (hasSingular) {
+        selectorDomains.add(canonicalizePublisherDomain(selector.publisher_domain!));
+      } else {
+        for (const domain of selector.publisher_domains || []) {
+          if (typeof domain === 'string' && domain.length > 0) {
+            selectorDomains.add(canonicalizePublisherDomain(domain));
+          }
+        }
+      }
+      if (restrictToSourcePublisher && !selectorDomains.has(sourcePublisher)) continue;
+      if (hasPlural && selector.selection_type === 'by_id') continue;
+
+      const domainProperties = properties.filter((property) => {
+        const propertyPublisher = this.propertyPublisherDomain(property, sourcePublisher);
+        return restrictToSourcePublisher
+          ? propertyPublisher === sourcePublisher
+          : selectorDomains.has(propertyPublisher);
+      });
+
+      let matches: ManifestProperty[] = [];
+      if (selector.selection_type === 'all') {
+        matches = domainProperties;
+      } else if (selector.selection_type === 'by_id') {
+        const ids = new Set((selector.property_ids || []).filter((id): id is string => typeof id === 'string' && id.length > 0));
+        matches = domainProperties.filter((property) => typeof property.property_id === 'string' && ids.has(property.property_id));
+      } else if (selector.selection_type === 'by_tag') {
+        const tags = new Set((selector.property_tags || []).filter((tag): tag is string => typeof tag === 'string' && tag.length > 0));
+        matches = domainProperties.filter((property) => (property.tags || []).some((tag) => tags.has(tag)));
+      }
+
+      for (const property of matches) {
+        const key = `${this.propertyPublisherDomain(property, sourcePublisher)}:${property.property_id || property.name}:${property.property_type}`;
+        selected.set(key, property);
+      }
+    }
+    return [...selected.values()];
+  }
+
+  private propertyPublisherDomain(property: { publisher_domain?: string }, fallbackPublisher: string): string {
+    return typeof property.publisher_domain === 'string' && property.publisher_domain.trim().length > 0
+      ? canonicalizePublisherDomain(property.publisher_domain)
+      : fallbackPublisher;
+  }
+
   /**
    * Fan publisher_properties[].publisher_domains[] out into per-child
    * rows so the AAO directory inverse-lookup endpoint
@@ -1823,11 +1937,10 @@ export class CrawlerService {
         );
 
         await this.recordPropertiesForAgent(
-          validation.raw_data.properties || [],
+          this.propertiesForValidation(validation, domain, authorizedAgent),
           domain,
           authorizedAgent.url,
-          authorizedAgent.authorized_for,
-          authorizedAgent.property_ids
+          authorizedAgent.authorized_for
         );
 
         // Skip fan-out when the source publisher delegates via ads.txt
@@ -2110,11 +2223,10 @@ export class CrawlerService {
       );
 
       await this.recordPropertiesForAgent(
-        validation.raw_data.properties || [],
+        this.propertiesForValidation(validation, domain, authorizedAgent),
         domain,
         authorizedAgent.url,
-        authorizedAgent.authorized_for,
-        authorizedAgent.property_ids
+        authorizedAgent.authorized_for
       );
 
       // Skip fan-out when the source publisher delegates via ads.txt

@@ -11,6 +11,7 @@ import { createRegistryApiRouter, type RegistryApiConfig } from '../../src/route
 
 const TEST_DATABASE_URL = process.env.DATABASE_URL || 'postgresql://adcp:localdev@localhost:5432/adcp_test';
 const DOMAIN = `revalidate-${Date.now()}.registry-test.example`;
+const OTHER_DOMAIN = `other-${Date.now()}.registry-test.example`;
 const AGENT = 'https://sales-agent.example/mcp/storefront';
 const STALE_AGENT = 'https://stale-agent.example/mcp';
 const HOSTED_AGENT = 'https://hosted-agent.example/mcp';
@@ -39,12 +40,12 @@ async function cleanup(pool: Pool) {
     `DELETE FROM agent_property_authorizations apa
       USING discovered_properties dp
      WHERE apa.property_id = dp.id
-       AND (dp.publisher_domain = $1 OR apa.agent_url = ANY($2::text[]))`,
-    [DOMAIN, TEST_AGENTS],
+       AND (dp.publisher_domain = ANY($1::text[]) OR apa.agent_url = ANY($2::text[]))`,
+    [[DOMAIN, OTHER_DOMAIN], TEST_AGENTS],
   );
   await pool.query(
-    `DELETE FROM discovered_properties WHERE publisher_domain = $1`,
-    [DOMAIN],
+    `DELETE FROM discovered_properties WHERE publisher_domain = ANY($1::text[])`,
+    [[DOMAIN, OTHER_DOMAIN]],
   );
   await pool.query(
     `DELETE FROM catalog_agent_authorizations
@@ -76,7 +77,7 @@ async function cleanup(pool: Pool) {
     `DELETE FROM catalog_properties WHERE created_by = $1`,
     [`adagents_json:${DOMAIN}`],
   );
-  await pool.query(`DELETE FROM publishers WHERE domain = $1`, [DOMAIN]);
+  await pool.query(`DELETE FROM publishers WHERE domain = ANY($1::text[])`, [[DOMAIN, OTHER_DOMAIN]]);
 }
 
 function buildLookupApp(federatedIndex: FederatedIndexService) {
@@ -196,6 +197,130 @@ describe('publisher adagents manual revalidation DB path', () => {
         },
       },
     });
+  });
+
+  it('persists ads.txt managerdomain delegation with compact by_tag publisher_properties as authorized', async () => {
+    const managerDomain = `manager.${DOMAIN}`;
+    const crawler = makeCrawler({
+      valid: true,
+      errors: [],
+      warnings: [
+        {
+          field: 'managerdomain',
+          message: `No directly usable adagents.json at https://${DOMAIN}/.well-known/adagents.json; used ads.txt managerdomain ${managerDomain}`,
+        },
+      ],
+      domain: DOMAIN,
+      url: `https://${DOMAIN}/.well-known/adagents.json`,
+      status_code: 200,
+      response_bytes: 2048,
+      resolved_url: `https://${managerDomain}/.well-known/adagents.json`,
+      discovery_method: 'ads_txt_managerdomain',
+      manager_domain: managerDomain,
+      raw_data: {
+        properties: [
+          {
+            property_id: 'managed-site',
+            property_type: 'website',
+            name: 'Managed site',
+            identifiers: [{ type: 'domain', value: DOMAIN }],
+            publisher_domain: DOMAIN,
+            tags: ['raptive_managed'],
+          },
+          {
+            property_id: 'other-site',
+            property_type: 'website',
+            name: 'Other site',
+            identifiers: [{ type: 'subdomain', value: `other.${DOMAIN}` }],
+            publisher_domain: DOMAIN,
+            tags: ['other'],
+          },
+          {
+            property_id: 'elsewhere-site',
+            property_type: 'website',
+            name: 'Elsewhere site',
+            identifiers: [{ type: 'domain', value: OTHER_DOMAIN }],
+            publisher_domain: OTHER_DOMAIN,
+            tags: ['raptive_managed'],
+          },
+        ],
+        authorized_agents: [
+          {
+            url: AGENT,
+            authorized_for: 'Official sales agent for managed display inventory',
+            authorization_type: 'publisher_properties',
+            publisher_properties: [
+              {
+                publisher_domains: ['elsewhere.example', DOMAIN],
+                selection_type: 'by_tag',
+                property_tags: ['raptive_managed'],
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    const result = await crawler.revalidatePublisherAdagents(DOMAIN, { force: true });
+
+    expect(result).toMatchObject({
+      domain: DOMAIN,
+      adagents_valid: true,
+      discovery_method: 'ads_txt_managerdomain',
+      manager_domain: managerDomain,
+      properties_count: 3,
+      authorized_agents_count: 1,
+    });
+
+    const productAuth = await federatedIndex.validateAgentForProduct(AGENT, [
+      {
+        publisher_domain: DOMAIN,
+        selection_type: 'by_tag',
+        property_tags: ['raptive_managed'],
+      },
+    ]);
+    expect(productAuth.authorized).toBe(true);
+    expect(productAuth.total_requested).toBe(1);
+    expect(productAuth.total_authorized).toBe(1);
+
+    const otherDomainAuth = await federatedIndex.validateAgentForProduct(AGENT, [
+      {
+        publisher_domain: OTHER_DOMAIN,
+        selection_type: 'by_tag',
+        property_tags: ['raptive_managed'],
+      },
+    ]);
+    expect(otherDomainAuth.authorized).toBe(false);
+    expect(otherDomainAuth.total_requested).toBe(0);
+    expect(otherDomainAuth.total_authorized).toBe(0);
+
+    const lookup = await request(lookupApp)
+      .get('/api/registry/publisher')
+      .query({ domain: DOMAIN });
+    expect(lookup.status).toBe(200);
+    expect(lookup.body).toMatchObject({
+      domain: DOMAIN,
+      adagents_valid: true,
+      discovery_method: 'ads_txt_managerdomain',
+      manager_domain: managerDomain,
+      files: {
+        adagents_json: {
+          status: 'valid',
+        },
+      },
+    });
+    expect(lookup.body.properties.map((property: { id: string }) => property.id).sort()).toEqual([
+      'managed-site',
+      'other-site',
+    ]);
+    expect(lookup.body.authorized_agents).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        url: AGENT,
+        source: 'adagents_json',
+        properties_authorized: 1,
+        properties_total: 2,
+      }),
+    ]));
   });
 
   it('persists invalid revalidation and retires stale adagents authorizations', async () => {
