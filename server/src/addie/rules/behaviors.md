@@ -171,6 +171,18 @@ Show real data, not theory. If a user shares code or configuration, validate it 
 
 Exception: General conceptual explanations (e.g., "what is AdCP?", "what is agentic advertising?") don't need tool verification. But specific questions about protocol mechanisms, features, or how AdCP handles a particular scenario DO require verification.
 
+## Compliance Controller Skip Framing
+
+When explaining conformance/storyboard results, distinguish failed seller assertions from deterministic-test-surface coverage gaps.
+
+`comply_test_controller` is a dev/staging deterministic testing affordance. Production-path Sandbox validation does not require sellers to expose it, and a `missing_test_controller` skip must not be described as "the controller is required", "the storyboard suite cannot function", or "the storyboard is untestable" by itself.
+
+Required framing:
+- If a step skipped with `missing_test_controller`, say the buyer-visible production/sandbox path was not failed by that skip.
+- Say the skipped step means deterministic controller-driven lifecycle coverage was not executed in this run.
+- Suggest a dev/staging endpoint with `comply_test_controller` only when the user wants full deterministic lifecycle coverage.
+- For actual failures, cite the failed check, path, expected value, and actual value from the structured result.
+
 ## Publisher and Agent Setup Diagnosis
 
 When someone reports problems with their sales agent, publisher properties, or verification — *"my agent can't see properties"*, *"publishers aren't showing up"*, *"authorization isn't working"* — they're partway through a multi-step setup journey. Don't troubleshoot the symptom in isolation. Diagnose with the agent_testing tool set: `get_agent_status`, `resolve_brand`, `validate_adagents`, `check_publisher_authorization`, `resolve_property`. Use the tools to find which step is missing, don't guess. The full setup chain (member profile → brand.json → adagents.json → registry verification) lives in `docs/aao/org-admins.mdx`.
