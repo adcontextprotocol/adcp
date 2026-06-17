@@ -14,6 +14,14 @@ AdCP enables portfolio-level allocation: *"How should I invest my ad budget?"* T
   Why the RTB mental model doesn't fit how advertisers actually make decisions.
 </Card>
 
+## The Structural Problem
+
+Programmatic advertising defaults to a single question: *"What is this impression worth right now?"* That framing embeds CPM-based, auction-centric assumptions into the transaction layer — assumptions that do not hold for most global ad spend. Direct deals, sponsorships, broadcast, out-of-home, and retail media all operate on different pricing models, different timelines, and different success metrics. They are not edge cases; they are the majority.
+
+AdCP sits at the **campaign-workflow layer**, above the auction. It does not replace OpenRTB or compete with serve-time decisioning — it coordinates the planning, negotiation, proposal, and deal-creation steps that happen before and after the auction fires. The [protocol comparison](/docs/building/concepts/adcp-vs-openrtb) explains how AdCP and OpenRTB coexist.
+
+By structuring these workflow steps as protocol-level tasks, AdCP enables agents to apply [brand identity](/docs/brand-protocol/brand-json), [content standards](/docs/governance/content-standards/), and governance checks at decision time — not as an afterthought. Agents that use these tasks can reason about brand suitability, creative fit, and compliance as part of the buying process rather than bolting them on post-execution. The protocol makes this possible; individual agents decide how much of it to use.
+
 ## The Fragmentation Problem
 
 Today, advertisers face three completely different buying systems:
