@@ -20,6 +20,7 @@ import type { TenantSigningKey } from '@adcp/sdk/server';
 import type { AdcpJsonWebKey } from '@adcp/sdk/signing';
 import { createLogger } from '../../logger.js';
 import { getGovernanceSigningPublicJwk } from '../governance-signing.js';
+import { getBrandResponseSigningPublicJwk } from '../brand-response-signing.js';
 
 const logger = createLogger('training-agent-tenant-signing');
 
@@ -89,16 +90,19 @@ export function getTenantSigningMaterial(tenantId: string): TenantMaterial {
  * `/.well-known/brand.json` so the SDK validator finds each tenant's kid in
  * one shared discovery document.
  *
- * Includes the governance-signing key alongside per-tenant transport keys.
- * The JWS profile requires governance keys to be discoverable on the
- * issuer's published JWKS but to occupy a distinct `kid` and `adcp_use`
- * from transport-signing material.
+ * Includes the governance-signing and brand response-signing keys alongside
+ * per-tenant transport keys. The JWS profiles require these keys to be
+ * discoverable on the issuer's published JWKS but to occupy a distinct `kid`
+ * and `adcp_use` from transport-signing material — the brand response-signing
+ * key carries `adcp_use: response-signing` so a verify_brand_claim verifier
+ * resolving the envelope's `kid` enforces purpose at the JWK.
  */
 export function getAggregatedPublicJwks(): { keys: AdcpJsonWebKey[] } {
   return {
     keys: [
       ...Array.from(materials.values()).map(m => m.publicJwk),
       getGovernanceSigningPublicJwk(),
+      getBrandResponseSigningPublicJwk(),
     ],
   };
 }
