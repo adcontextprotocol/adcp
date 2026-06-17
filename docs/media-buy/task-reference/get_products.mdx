@@ -177,6 +177,7 @@ Use `opportunity` for curated discovery (`buying_mode: "brief"`), unresolved-sta
   "opportunity": {
     "opportunity_id": "opp_01HX7W8S3Q9K2M4N6P0R5T1V",
     "phase": "exploratory",
+    "intent": "speculative",
     "planning_horizon": {
       "start": "2026-07-01",
       "end": "2026-09-30"
@@ -190,6 +191,7 @@ Use `opportunity` for curated discovery (`buying_mode: "brief"`), unresolved-sta
 |-------|------|----------|-------------|
 | `opportunity_id` | string | Yes | Opaque buyer-assigned identifier for this planning cycle with this seller. Stable across related `get_products`, proposal decline, and `create_media_buy` calls. Do not embed advertiser names, campaign names, audience names, budget references, competitor names, internal authorization IDs, globally correlatable values, personal data, or confidential campaign identifiers. |
 | `phase` | string | No | `"exploratory"`: early market scan or option gathering. `"planning"`: a concrete opportunity is being planned, but the buyer is not yet actively requesting seller proposals. `"active_sourcing"`: the buyer is actively requesting seller responses or proposals, but has not requested proposal finalization, an inventory hold, or a committed media buy. |
+| `intent` | string | No | `"test"`: sandbox, QA, demo, certification, or buyer-agent exploration that should not be counted as a real sales opportunity. `"speculative"`: possible campaign exploration without a client-approved brief, budget, or RFP. `"planning"`: real planning cycle, not yet a live RFP. `"live_rfp"`: active client brief, RFP, or equivalent buying process. `intent` is advisory analytics context; `phase` still describes workflow maturity. |
 | `status` | string | No | `"open"` or `"closed"`. Use `"closed"` when the buyer is no longer pursuing this planning cycle with the seller. |
 | `close_reason` | string | Conditional | Optional when `status` is `"closed"`: `accepted_with_seller`, `purchased_elsewhere`, `selected_alternative`, `not_pursued`, `budget_changed`, `timing_changed`, or `other`. Not valid unless `status` is `"closed"`. |
 | `close_detail` | string | Conditional | Optional short, non-identifying explanation when `status` is `"closed"`. Not valid unless `status` is `"closed"`. |
@@ -198,11 +200,15 @@ Use `opportunity` for curated discovery (`buying_mode: "brief"`), unresolved-sta
 
 `opportunity_id` is not an idempotency key. It spans many calls. `idempotency_key` identifies one mutating request attempt. `proposal_id` + `proposal_version` identifies one seller offer state. Opportunity closure is broader than proposal decline: `opportunity.status: "closed"` says the planning cycle is done, while proposal-scoped `action: "decline"` says the buyer is not pursuing one exact proposal version.
 
+`phase` and `intent` answer different questions. `phase` says where the buyer is in the workflow; `intent` says whether the work represents a real buying motion. For example, a buyer-agent can send `phase: "exploratory"` with `intent: "test"` for sandbox exploration, or `phase: "exploratory"` with `intent: "planning"` for early work on a real planning cycle. Sellers SHOULD use `intent` rather than inferring real vs. speculative status from `phase` alone.
+
 To close an opportunity without buying, send `buying_mode: "refine"` with the same `opportunity_id`, `opportunity.status: "closed"`, an optional `close_reason` / `close_detail`, and a request-level refine entry such as `{ "scope": "request", "ask": "Close this opportunity; no further proposals requested." }`. Sellers that persist opportunity state SHOULD record this buyer-reported closure. This does not replace proposal-level acknowledgement: decline each evaluated proposal version separately when the buyer needs the seller to acknowledge that exact proposal outcome.
 
 When closing because the buyer accepted this seller's offer, carry the same `opportunity_id` into `create_media_buy`. If that create request marks the opportunity closed, `close_reason` MUST be `accepted_with_seller`.
 
 Sellers MAY use `opportunity` for queueing, SLA expectations, async routing, human-review prioritization, CRM or pipeline labels, and aggregate win-rate analytics. Sellers MUST NOT use `opportunity` to alter price, rate card, product eligibility, inventory availability, or buyability. Opportunity closure is buyer-reported advisory state; it has no dedicated protocol acknowledgement surface beyond the ordinary task response in this version. `response_deadline` does not require or authorize firm pricing, inventory availability confirmation, inventory hold, proposal finalization, or buyer/seller commitment.
+
+For win/loss analytics, sellers SHOULD compute denominators from buyer-resolved outcomes: closed opportunities and declined or accepted proposal versions. Sellers SHOULD NOT count every `get_products` call, `open` read, omitted proposal, or exploratory discovery response as a loss. When `intent` is present, sellers SHOULD exclude `intent: "test"` from sales win/loss metrics and SHOULD segment or down-weight `intent: "speculative"` according to their analytics policy.
 
 If `opportunity` is absent, sellers MUST treat the opportunity context as unknown. Absence MUST NOT reduce response quality, product availability, or pricing fairness.
 

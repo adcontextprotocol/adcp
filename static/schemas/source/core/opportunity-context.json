@@ -22,6 +22,16 @@
       ],
       "description": "Buyer-declared stage for the opportunity. 'exploratory': early market scan or option gathering, often before budget, timing, or vendor shortlist are concrete. 'planning': a concrete opportunity is being planned, with likely campaign timing, budget, or internal planning work, but the buyer is not yet actively requesting seller proposals. 'active_sourcing': the buyer is actively requesting seller responses or proposals for a specific opportunity, but has not requested proposal finalization, an inventory hold, or a committed media buy."
     },
+    "intent": {
+      "type": "string",
+      "enum": [
+        "test",
+        "speculative",
+        "planning",
+        "live_rfp"
+      ],
+      "description": "Advisory buyer-declared intent for the opportunity. This is distinct from phase: phase describes workflow maturity; intent describes whether the opportunity represents a real buying motion. 'test' means sandbox, QA, demo, certification, or buyer-agent exploration that should not be counted as a real sales opportunity. 'speculative' means the buyer is exploring a possible campaign without a client-approved brief, budget, or RFP. 'planning' means a real planning cycle exists but is not yet a live RFP. 'live_rfp' means the buyer is sourcing against an active client brief, RFP, or equivalent buying process. Sellers MAY use intent for queueing, CRM labeling, and aggregate analytics, but MUST NOT use it to alter price, rate card, product eligibility, inventory availability, or buyability."
+    },
     "status": {
       "type": "string",
       "enum": [

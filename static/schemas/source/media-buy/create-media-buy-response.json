@@ -23,6 +23,17 @@
           "description": "Seller's unique identifier for the created media buy",
           "x-entity": "media_buy"
         },
+        "proposal_id": {
+          "type": "string",
+          "description": "When the media buy was created by accepting a proposal, echoes the proposal_id from the create_media_buy request so buyers can reconcile the accepted seller offer with the resulting media_buy_id.",
+          "x-entity": "proposal"
+        },
+        "proposal_version": {
+          "type": "string",
+          "description": "When the media buy was created by accepting a versioned proposal, echoes the proposal_version from the create_media_buy request. Sellers SHOULD echo this whenever the request carried proposal_version, including task completion artifacts for submitted create flows.",
+          "minLength": 1,
+          "maxLength": 255
+        },
         "account": {
           "$ref": "/schemas/core/account.json",
           "description": "Account billed for this media buy. Includes advertiser, billing proxy (if any), and rate card applied."

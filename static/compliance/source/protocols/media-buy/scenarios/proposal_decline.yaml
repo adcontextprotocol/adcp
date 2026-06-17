@@ -2,7 +2,7 @@ id: media_buy_seller/proposal_decline
 version: "1.0.0"
 title: "Seller handles proposal decline"
 category: media_buy_seller
-summary: "Validates proposal decline acknowledgement, duplicate-decline idempotency, and create_media_buy rejection for a declined proposal version."
+summary: "Validates stateful proposal decline acknowledgement, duplicate-decline idempotency, and create_media_buy rejection for a declined proposal version."
 track: media_buy
 required_tools:
   - get_products
@@ -18,7 +18,11 @@ narrative: |
   get_products in refine mode using proposal-scoped action: decline. The seller
   acknowledges the exact proposal_id + proposal_version in refinement_applied,
   treats duplicate declines as idempotent, and rejects any later attempt to
-  execute that declined proposal version with INVALID_STATE.
+  execute that declined proposal version with INVALID_STATE. This is a
+  stateful conformance scenario: schema-valid payloads are not sufficient.
+  The seller runtime must persist proposal version state, record terminal
+  decline outcomes once, and enforce that declined versions cannot later be
+  accepted.
 
 agent:
   interaction_model: media_buy_seller
@@ -38,6 +42,9 @@ prerequisites:
   description: |
     The seller must support proposals (media_buy.supports_proposals: true) and
     include proposal_version on proposals it expects buyers to resolve explicitly.
+    The seller must persist proposal-version state across phases; otherwise it
+    cannot prove duplicate decline idempotency or declined-version create
+    rejection.
   test_kit: "test-kits/acme-outdoor.yaml"
 
 phases:

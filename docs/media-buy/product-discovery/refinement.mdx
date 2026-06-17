@@ -137,6 +137,21 @@ Duplicate declines for the same buyer, account, `proposal_id`, and `proposal_ver
 
 Decline feedback is aggregate-friendly. Use `reason` for seller analytics and keep `detail` short and non-identifying. Buyers MUST NOT include competing seller/platform/product names, clearing prices, bid strategy, confidential audience definitions, budget reallocations, campaign IDs, NDA-scoped terms, or other sensitive campaign information in `detail`.
 
+### Resolving buyer outcomes
+
+Use the narrowest terminal signal that matches what the buyer knows:
+
+| Situation | Buyer behavior |
+|-----------|----------------|
+| Evaluated a specific proposal version and will not pursue it | Send proposal-scoped `action: "decline"` with `proposal_id`, `proposal_version`, and `reason`. This resolves that offer version, but does not necessarily close the broader opportunity. |
+| No longer pursuing the planning cycle with this seller | Send `opportunity.status: "closed"` on a `buying_mode: "refine"` call, with a request-level ask such as "Close this opportunity; no further proposals requested." Use `close_reason` when known. |
+| Evaluated proposal version(s) and the seller should stop working the opportunity | Do both in the same refine call: include proposal-scoped `decline` entries for each evaluated version, and set `opportunity.status: "closed"` with the appropriate `close_reason`. |
+| Accepted this seller's proposal | Execute it with `create_media_buy`, carrying `proposal_id`, `proposal_version` when versioned, and the same `opportunity_id`. If the create request closes the opportunity, use `close_reason: "accepted_with_seller"`. |
+| Accepted another seller or bought outside this seller | For this seller, buyers SHOULD close the opportunity with `close_reason: "purchased_elsewhere"` and SHOULD decline any evaluated proposal versions with `reason: "selected_alternative"`. Do not identify the other seller or disclose clearing terms. |
+| Abandoned or no-decision outcome | If the buyer knows the seller should stop pursuing the work, close the opportunity with `close_reason: "not_pursued"` or the more specific budget/timing reason. If the buyer has no reliable terminal outcome, or the interaction was only test/speculative exploration, neither decline nor close is required. |
+
+`open` mode is a read surface for unresolved state; it is not itself a loss signal. Sellers SHOULD compute win/loss over closed opportunities and resolved proposal versions, not over all discovery/refinement/open calls.
+
 ### Combining scopes
 
 All scopes work together. A single refinement call can set direction for the selection, act on specific products, and request changes to a proposal:
@@ -344,6 +359,7 @@ The [Media Buy Specification](/docs/media-buy/specification#get_products) define
 - MUST include `proposal_version` and `reason` when sending proposal-scoped `action: "decline"`
 - MUST NOT execute a declined `proposal_id` + `proposal_version` with `create_media_buy`
 - MUST NOT send `action: "decline"` for an unversioned proposal
+- SHOULD close other seller opportunities as `purchased_elsewhere` when a comparable buy is accepted with another seller, and SHOULD decline any evaluated proposal versions from those sellers as `selected_alternative`
 
 **Sales agents:**
 - MUST omit products with `action: "omit"` from the response
@@ -351,6 +367,9 @@ The [Media Buy Specification](/docs/media-buy/specification#get_products) define
 - MUST treat proposal-scoped `action: "decline"` as a terminal not-pursued outcome for the referenced `proposal_id` + `proposal_version`
 - MUST return `refinement_applied` for requests containing proposal-scoped `action: "decline"`; `status: "applied"` is the signal that the decline is recorded
 - MUST reject `create_media_buy` attempts against a declined proposal version with `INVALID_STATE`
+- MUST reject stale `proposal_version` execution for a known proposal with `CONFLICT`
+- MUST support `buying_mode: "open"` as a read of unresolved products/proposals when the seller persists that state
+- MUST treat duplicate declines for the same buyer, account, `proposal_id`, and `proposal_version` as idempotent and MUST NOT double-count them
 - MUST return products with `action: "include"`, with updated pricing
 - SHOULD fulfill the `ask` on product entries with `action: "include"`
 - SHOULD return additional products similar to those with `action: "more_like_this"`, plus the original product

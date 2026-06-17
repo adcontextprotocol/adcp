@@ -181,6 +181,8 @@ If the proposal carried `proposal_version`, buyers MUST include that version in 
 
 When `proposal_version` is provided, sellers MUST verify it matches the executable offer state. If the proposal is known but no longer at that version, reject with `CONFLICT` so the buyer re-reads or refines before retrying. If the proposal/version cannot be resolved for the caller, reject with `PROPOSAL_NOT_FOUND`.
 
+On successful proposal execution, sellers SHOULD echo `proposal_id` and, when supplied, `proposal_version` on the `create_media_buy` success response or task completion artifact. This is additive reconciliation metadata: the authoritative created resource remains `media_buy_id`.
+
 If the buyer used `opportunity` during discovery or refinement, it SHOULD carry the same `opportunity_id` into `create_media_buy`. `opportunity_id` connects the accepted buy back to the planning cycle; it is not an idempotency key and does not change execution semantics.
 
 `create_media_buy` is the in-protocol close-won signal for an opportunity. If the buyer sends `opportunity.status: "closed"` on `create_media_buy`, the only valid `close_reason` is `accepted_with_seller`; loss-style reasons such as `not_pursued`, `selected_alternative`, or `purchased_elsewhere` belong on a `get_products` refine call that closes the opportunity without creating a buy.
