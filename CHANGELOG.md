@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.0.19
+
+### Patch Changes
+
+- 13588bf: Fix the 3.0.x proposal-finalize storyboard gate so sellers that omit `media_buy.supports_proposals` skip the proposal lifecycle scenario instead of running optional proposal assertions.
+
 ## 3.0.18
 
 ### Patch Changes
