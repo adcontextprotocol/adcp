@@ -281,6 +281,28 @@ The artifact must tie together economics (how to size a pilot), org-readiness (w
 When the learner has produced a draft artifact that meets the rubric threshold for the \`decision_artifact\` dimension, complete the module normally. If the learner tries to complete without producing one, redirect: "L3 culminates in a decision artifact — walk me through your [business case / agency brief / adoption plan]."`;
 
 /**
+ * Selects the teaching-methodology block injected into a module's start prompt.
+ *
+ * - Build-project capstones (B4/C4/D4) get BUILD_PROJECT_METHODOLOGY.
+ * - L3 (Decision-Makers capstone) gets TEACHING_METHODOLOGY plus the
+ *   decision-artifact supplement that requires the learner to produce an
+ *   artifact before completion.
+ * - Every other module gets the standard TEACHING_METHODOLOGY.
+ *
+ * Exported so the L3 capstone wiring is locked by a unit test against future
+ * refactors of the start_certification_module dispatch.
+ */
+export function selectModuleMethodology(moduleId: string): string {
+  if (['B4', 'C4', 'D4'].includes(moduleId)) {
+    return BUILD_PROJECT_METHODOLOGY;
+  }
+  if (moduleId === 'L3') {
+    return `${TEACHING_METHODOLOGY}\n${DECISION_ARTIFACT_CAPSTONE_SUPPLEMENT}`;
+  }
+  return TEACHING_METHODOLOGY;
+}
+
+/**
  * Count user messages in a conversation thread server-side.
  * Handles both internal thread_id (Slack) and external_id (web) formats.
  * If `since` is provided, only counts messages after that timestamp (for module-scoped counting).
@@ -1937,19 +1959,9 @@ export function createCertificationToolHandlers(
         lines.push('');
       }
 
-      // Build project modules get different teaching guidance
-      const isBuildProject = ['B4', 'C4', 'D4'].includes(mod.id);
-      // L3 is the capstone of the Decision-Makers track: requires artifact production
-      const isDecisionArtifactCapstone = mod.id === 'L3';
-
-      if (isBuildProject) {
-        lines.push(BUILD_PROJECT_METHODOLOGY);
-      } else if (isDecisionArtifactCapstone) {
-        lines.push(TEACHING_METHODOLOGY);
-        lines.push(DECISION_ARTIFACT_CAPSTONE_SUPPLEMENT);
-      } else {
-        lines.push(TEACHING_METHODOLOGY);
-      }
+      // Build-project capstones (B4/C4/D4) and the L3 decision-artifact capstone
+      // get distinct teaching guidance; see selectModuleMethodology.
+      lines.push(selectModuleMethodology(mod.id));
 
       return lines.join('\n');
     } catch (error) {
