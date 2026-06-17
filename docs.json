@@ -218,7 +218,8 @@
                       "docs/building/operating/orchestrator-design",
                       "docs/building/operating/transport-errors",
                       "docs/building/operating/seller-integration",
-                      "docs/building/operating/storyboard-troubleshooting"
+                      "docs/building/operating/storyboard-troubleshooting",
+                      "docs/building/operating/support-recovery-runbooks"
                     ]
                   },
                   {
@@ -650,6 +651,15 @@
                       "docs/learning/specialist/governance",
                       "docs/learning/specialist/sponsored-intelligence",
                       "docs/learning/specialist/security"
+                    ]
+                  },
+                  {
+                    "group": "Supplements",
+                    "expanded": false,
+                    "pages": [
+                      "docs/learning/supplements/buyer-briefs-and-get-products",
+                      "docs/learning/supplements/governance-protocol-by-role",
+                      "docs/learning/supplements/creative-agent-workflows"
                     ]
                   },
                   {
@@ -1423,7 +1433,8 @@
                   "docs/building/operating/orchestrator-design",
                   "docs/building/operating/transport-errors",
                   "docs/building/operating/seller-integration",
-                  "docs/building/operating/storyboard-troubleshooting"
+                  "docs/building/operating/storyboard-troubleshooting",
+                  "docs/building/operating/support-recovery-runbooks"
                 ]
               },
               {
@@ -1830,6 +1841,15 @@
                   "docs/learning/specialist/governance",
                   "docs/learning/specialist/sponsored-intelligence",
                   "docs/learning/specialist/security"
+                ]
+              },
+              {
+                "group": "Supplements",
+                "expanded": false,
+                "pages": [
+                  "docs/learning/supplements/buyer-briefs-and-get-products",
+                  "docs/learning/supplements/governance-protocol-by-role",
+                  "docs/learning/supplements/creative-agent-workflows"
                 ]
               },
               {

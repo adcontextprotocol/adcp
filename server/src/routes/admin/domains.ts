@@ -27,7 +27,12 @@ import { resolveOrgsByDomains } from "../../db/domain-resolution-db.js";
 import { complete, isLLMConfigured } from "../../utils/llm.js";
 import { BrandDatabase } from "../../db/brand-db.js";
 import { verifyDomainChallenge } from "../../services/brand-claim.js";
-import { FREE_EMAIL_PROVIDER_DOMAINS } from "../../services/identifier-normalization.js";
+import {
+  FREE_EMAIL_PROVIDER_DOMAINS,
+  canonicalizeBrandDomain,
+  assertClaimableBrandDomain,
+} from "../../services/identifier-normalization.js";
+import { invalidateMemberContextCache } from "../../addie/index.js";
 
 const slackDb = new SlackDatabase();
 const logger = createLogger("admin-domains");
@@ -1249,6 +1254,104 @@ export function setupDomainRoutes(
       } catch (error) {
         logger.error({ err: error, orgId, domain: rawDomain }, "Admin brand-claim verify failed");
         return res.status(500).json({ error: "Internal server error" });
+      }
+    }
+  );
+
+  // POST /api/admin/organizations/:orgId/domains/:domain/verify
+  // Admin recovery path for WorkOS DNS verification. Member self-service has
+  // a cooldown and requires the caller to belong to the org; this endpoint is
+  // for support/admin use after the customer has fixed DNS or a webhook missed
+  // the local reconciliation step.
+  apiRouter.post(
+    "/organizations/:orgId/domains/:domain/verify",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      const { orgId } = req.params;
+      if (!workos) {
+        return res.status(503).json({ error: "WorkOS not configured" });
+      }
+
+      let normalizedDomain: string;
+      try {
+        normalizedDomain = canonicalizeBrandDomain(req.params.domain);
+        assertClaimableBrandDomain(normalizedDomain);
+      } catch (error) {
+        logger.warn({ error, rawDomain: req.params.domain }, "Admin domain verify rejected invalid domain");
+        return res.status(400).json({
+          error: "invalid_domain",
+          message: "The domain is malformed or cannot be claimed.",
+        });
+      }
+
+      try {
+        const org = await workos.organizations.getOrganization(orgId);
+        const entry = org.domains.find(d => d.domain.toLowerCase() === normalizedDomain);
+        if (!entry) {
+          return res.status(404).json({
+            error: "no_challenge",
+            message: "No WorkOS domain challenge exists for this organization and domain.",
+          });
+        }
+
+        const initialState = String(entry.state);
+        let verifiedState = initialState;
+        const alreadyVerified = initialState === "verified" || initialState === "legacy_verified";
+        if (!alreadyVerified) {
+          try {
+            const verified = await workos.organizationDomains.verifyOrganizationDomain(entry.id);
+            verifiedState = String(verified.state);
+          } catch (err: any) {
+            const status = err?.status ?? err?.response?.status;
+            if (status === 400 || status === 422) {
+              const recordName = entry.verificationPrefix
+                ? `${entry.verificationPrefix}.${normalizedDomain}`
+                : normalizedDomain;
+              return res.status(400).json({
+                error: "still_pending",
+                message: "WorkOS could not find the DNS TXT verification record yet.",
+                state: initialState,
+                dns_record_name: recordName,
+                verification_token: entry.verificationToken ?? null,
+              });
+            }
+            throw err;
+          }
+        }
+
+        if (verifiedState !== "verified" && verifiedState !== "legacy_verified") {
+          return res.status(400).json({
+            error: "still_pending",
+            message: "WorkOS has not confirmed the DNS record yet.",
+            state: verifiedState,
+          });
+        }
+
+        await upsertWorkosDomain({
+          orgId,
+          domain: normalizedDomain,
+          verified: true,
+        });
+        invalidateMemberContextCache();
+
+        logger.info(
+          { orgId, domain: normalizedDomain, actor: req.user?.id, alreadyVerified },
+          "Admin verified organization domain through WorkOS",
+        );
+
+        return res.json({
+          success: true,
+          domain: normalizedDomain,
+          state: verifiedState,
+          newly_verified: !alreadyVerified,
+        });
+      } catch (error) {
+        logger.error({ err: error, orgId, domain: normalizedDomain }, "Admin domain verification failed");
+        return res.status(502).json({
+          error: "workos_error",
+          message: "Failed to verify domain through WorkOS.",
+        });
       }
     }
   );
