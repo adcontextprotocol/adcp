@@ -92,6 +92,10 @@
       },
       "uniqueItems": true,
       "minItems": 1
+    },
+    "dooh_placement_attributes": {
+      "$ref": "/schemas/core/dooh-placement-attributes.json",
+      "description": "Optional DOOH-specific discovery metadata for this placement. In 3.1 this object carries concrete location metadata for disclosed screens, frames, or venues. Omit it for aggregate packages or inventory where per-placement location is not disclosed."
     }
   },
   "required": [
