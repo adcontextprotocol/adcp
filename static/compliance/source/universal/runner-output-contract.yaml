@@ -1114,6 +1114,16 @@ notice:
         Agent advertises `webhook_signing.legacy_hmac_fallback: true`.
         The HMAC fallback path is deprecated and removed in AdCP 4.0;
         receivers SHOULD migrate to RFC 9421 signatures only.
+    input_schema_field_stripped:
+      severity: info
+      spec_source: creative/list-creative-formats-request.json
+      message_template: |
+        Runner stripped spec-defined request field(s) {stripped_fields}
+        from {task} because the agent's MCP inputSchema does not declare
+        them. The step's validations may pass vacuously if the stripped
+        field was material to the scenario's intent. Agents should
+        declare all spec-defined fields they support in their
+        inputSchema.
 
 cascade_rules:
   description: |
