@@ -1098,6 +1098,36 @@ export async function checkAndAwardCredentials(userId: string): Promise<string[]
   return awarded;
 }
 
+/**
+ * True when a missing credential that requires this module is currently
+ * eligible for the user. Used by recovery jobs to distinguish an award
+ * failure from a valid "module passed, other requirements still missing"
+ * state.
+ */
+export async function hasEligibleMissingCredentialForModule(
+  userId: string,
+  moduleId: string,
+): Promise<boolean> {
+  const result = await query<{ id: string }>(
+    `SELECT cc.id
+     FROM certification_credentials cc
+     WHERE $2 = ANY(cc.required_modules)
+       AND NOT EXISTS (
+         SELECT 1 FROM user_credentials uc
+         WHERE uc.workos_user_id = $1
+           AND uc.credential_id = cc.id
+       )
+     ORDER BY cc.tier, cc.sort_order`,
+    [userId, moduleId],
+  );
+
+  for (const row of result.rows) {
+    const { eligible } = await checkCredentialEligibility(userId, row.id);
+    if (eligible) return true;
+  }
+  return false;
+}
+
 // =====================================================
 // PROGRESS SUMMARIES
 // =====================================================
