@@ -440,6 +440,7 @@
                         "group": "Campaign Governance",
                         "pages": [
                           "docs/governance/campaign/index",
+                          "docs/governance/campaign/responsibilities",
                           "docs/governance/campaign/safety-model",
                           "docs/governance/campaign/specification",
                           "docs/governance/campaign/audit-trail",
@@ -1633,6 +1634,7 @@
                     "group": "Campaign Governance",
                     "pages": [
                       "docs/governance/campaign/index",
+                      "docs/governance/campaign/responsibilities",
                       "docs/governance/campaign/safety-model",
                       "docs/governance/campaign/specification",
                       "docs/governance/campaign/audit-trail",

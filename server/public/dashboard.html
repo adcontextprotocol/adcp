@@ -1070,6 +1070,150 @@
           opacity: 1;
         }
 
+        .support-alert {
+          background: var(--color-warning-50);
+          border: 1px solid var(--color-warning-200);
+          border-left: 4px solid var(--color-warning-500);
+          border-radius: var(--radius-md);
+          padding: var(--space-4);
+          margin-bottom: var(--space-4);
+          display: flex;
+          align-items: flex-start;
+          gap: var(--space-3);
+        }
+        .support-alert--urgent {
+          background: var(--color-error-50);
+          border-color: var(--color-error-200);
+          border-left-color: var(--color-error-500);
+        }
+        .support-alert-content {
+          flex: 1;
+          min-width: 0;
+        }
+        .support-alert-title {
+          margin: 0 0 var(--space-1) 0;
+          color: var(--color-text-heading);
+          font-size: var(--text-sm);
+          font-weight: var(--font-semibold);
+        }
+        .support-alert-message {
+          margin: 0;
+          color: var(--color-text-secondary);
+          font-size: var(--text-sm);
+        }
+        .support-alert-actions {
+          display: flex;
+          gap: var(--space-2);
+          flex-wrap: wrap;
+          flex-shrink: 0;
+        }
+
+        .escalation-group-title {
+          margin: var(--space-4) var(--space-4) var(--space-2);
+          color: var(--color-text-secondary);
+          font-size: var(--text-xs);
+          font-weight: var(--font-semibold);
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+        .escalation-row {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: var(--space-4);
+          padding: var(--space-4);
+          border-bottom: 1px solid var(--color-border);
+        }
+        .escalation-row:last-child {
+          border-bottom: none;
+        }
+        .escalation-main {
+          flex: 1;
+          min-width: 0;
+        }
+        .escalation-title-row {
+          display: flex;
+          align-items: center;
+          gap: var(--space-2);
+          flex-wrap: wrap;
+          margin-bottom: var(--space-1);
+        }
+        .escalation-title {
+          font-size: var(--text-sm);
+          font-weight: var(--font-medium);
+          color: var(--color-text-heading);
+        }
+        .escalation-meta {
+          margin: 0;
+          font-size: var(--text-xs);
+          color: var(--color-text-secondary);
+        }
+        .escalation-note {
+          margin: var(--space-2) 0 0 0;
+          font-size: var(--text-sm);
+          color: var(--color-text-secondary);
+        }
+        .escalation-badge {
+          padding: 2px var(--space-2);
+          border-radius: var(--radius-sm);
+          font-size: var(--text-xs);
+          font-weight: var(--font-medium);
+          white-space: nowrap;
+        }
+        .escalation-badge--follow-up {
+          background: var(--color-warning-50);
+          color: var(--color-warning-700);
+        }
+        .escalation-actions {
+          flex-shrink: 0;
+          display: flex;
+          align-items: center;
+          gap: var(--space-2);
+          flex-wrap: wrap;
+          justify-content: flex-end;
+        }
+        .escalation-updates {
+          margin: var(--space-3) 0 0 0;
+          display: flex;
+          flex-direction: column;
+          gap: var(--space-2);
+        }
+        .escalation-update {
+          padding: var(--space-2) var(--space-3);
+          background: var(--color-bg-subtle);
+          border-radius: var(--radius-md);
+          font-size: var(--text-sm);
+          color: var(--color-text-secondary);
+        }
+        .escalation-update-meta {
+          display: block;
+          margin-bottom: 2px;
+          color: var(--color-text-tertiary);
+          font-size: var(--text-xs);
+        }
+        @media (max-width: 640px) {
+          .support-alert {
+            flex-direction: column;
+          }
+          .support-alert-actions {
+            width: 100%;
+          }
+          .support-alert-actions .btn {
+            flex: 1;
+            justify-content: center;
+          }
+          .escalation-row {
+            flex-direction: column;
+          }
+          .escalation-actions {
+            width: 100%;
+          }
+          .escalation-actions .btn {
+            width: 100%;
+            justify-content: center;
+          }
+        }
+
       </style>
 
       <!-- ========== SLACK BANNER ========== -->
@@ -1120,6 +1264,9 @@
 
       <!-- ========== SETUP ALERTS ========== -->
       <div id="setupAlerts" style="display: none;"></div>
+
+      <!-- ========== SUPPORT ALERTS ========== -->
+      <div id="supportAlerts" style="display: none;"></div>
 
       <!-- ========== PROMO BANNER ========== -->
       <div id="promoBanner" style="display: none;"></div>
@@ -2923,12 +3070,14 @@
     async function loadEscalations() {
       const section = document.getElementById('escalations');
       const content = document.getElementById('escalationsContent');
+      const supportAlerts = document.getElementById('supportAlerts');
       if (!section || !content) return;
 
       try {
-        const response = await fetch('/api/user/escalations', { credentials: 'include' });
+        const response = await fetch(apiUrl('/api/user/escalations'), { credentials: 'include' });
         if (!response.ok) {
           section.style.display = '';
+          if (supportAlerts) supportAlerts.style.display = 'none';
           content.innerHTML = '<p style="padding: 16px; color: var(--color-text-secondary); font-size: 14px;">Unable to load your support requests.</p>';
           return;
         }
@@ -2938,48 +3087,183 @@
 
         if (escalations.length === 0) {
           section.style.display = 'none';
+          if (supportAlerts) supportAlerts.style.display = 'none';
+          if (window.DashboardNav?.showSupportRequestsNav) {
+            DashboardNav.showSupportRequestsNav(false);
+          }
           return;
         }
 
+        const activeEscalations = escalations.filter(e => e.can_add_details || e.can_resolve);
+        const closedEscalations = escalations.filter(e => !e.can_add_details && !e.can_resolve);
+
+        renderSupportEscalationAlert(activeEscalations);
+        if (window.DashboardNav?.showSupportRequestsNav) {
+          DashboardNav.showSupportRequestsNav(true);
+        }
         section.style.display = '';
 
-        const statusConfig = {
-          open:         { label: 'Open',          bg: 'var(--color-brand-bg)',     color: 'var(--color-primary-700)' },
-          acknowledged: { label: 'Acknowledged',  bg: 'var(--color-brand-bg)',     color: 'var(--color-primary-700)' },
-          in_progress:  { label: 'In progress',   bg: 'var(--color-warning-50)',   color: 'var(--color-warning-700)' },
-          resolved:     { label: 'Resolved',      bg: 'var(--color-success-50)',   color: 'var(--color-success-700)' },
-          wont_do:      { label: 'Closed',        bg: 'var(--color-bg-subtle)',    color: 'var(--color-text-secondary)' },
-          expired:      { label: 'Expired',       bg: 'var(--color-bg-subtle)',    color: 'var(--color-text-secondary)' },
-        };
+        const groups = [];
+        if (activeEscalations.length > 0) {
+          groups.push(`<div class="escalation-group-title">Active</div>${activeEscalations.map(renderEscalationRow).join('')}`);
+        }
+        if (closedEscalations.length > 0) {
+          groups.push(`<div class="escalation-group-title">Closed</div>${closedEscalations.map(renderEscalationRow).join('')}`);
+        }
 
-        content.innerHTML = escalations.map(e => {
-          const cfg = statusConfig[e.status] || statusConfig.open;
-          const date = new Date(e.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-          const notes = e.resolution_notes
-            ? `<p style="margin: 8px 0 0 0; font-size: 13px; color: var(--color-text-secondary);">${escapeHtml(e.resolution_notes)}</p>`
-            : '';
-          return `
-            <div style="display: flex; align-items: start; gap: 12px; padding: 16px; border-bottom: 1px solid var(--color-border);">
-              <div style="flex: 1; min-width: 0;">
-                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;">
-                  <span style="font-size: 14px; font-weight: 500; color: var(--color-text-heading);">${escapeHtml(e.summary)}</span>
-                  <span style="padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; background: ${cfg.bg}; color: ${cfg.color}; white-space: nowrap;">${cfg.label}</span>
-                </div>
-                <p style="margin: 0; font-size: 12px; color: var(--color-text-secondary);">Submitted ${date}</p>
-                ${notes}
-              </div>
-            </div>
-          `;
-        }).join('');
-
-        // Remove border from last item
-        const items = content.querySelectorAll('[style*="border-bottom"]');
-        if (items.length > 0) items[items.length - 1].style.borderBottom = 'none';
+        content.innerHTML = groups.join('');
 
       } catch (error) {
         console.error('Error loading escalations:', error);
         section.style.display = '';
+        if (supportAlerts) supportAlerts.style.display = 'none';
         content.innerHTML = '<p style="padding: 16px; color: var(--color-text-secondary); font-size: 14px;">Unable to load your support requests.</p>';
+      }
+    }
+
+    function renderSupportEscalationAlert(activeEscalations) {
+      const supportAlerts = document.getElementById('supportAlerts');
+      if (!supportAlerts) return;
+
+      if (!activeEscalations.length) {
+        supportAlerts.style.display = 'none';
+        supportAlerts.innerHTML = '';
+        return;
+      }
+
+      const followUp = activeEscalations.find(e => e.sla?.needs_follow_up);
+      const current = followUp || activeEscalations[0];
+      const status = getEscalationStatusConfig(current.status);
+      const countLabel = activeEscalations.length === 1
+        ? 'You have an open support request'
+        : `You have ${activeEscalations.length} open support requests`;
+      const ageLabel = formatEscalationAge(current.sla?.age_hours);
+
+      supportAlerts.innerHTML = `
+        <div class="support-alert ${followUp ? 'support-alert--urgent' : ''}">
+          <div class="support-alert-content">
+            <h4 class="support-alert-title">${countLabel}</h4>
+            <p class="support-alert-message">
+              "${escapeHtml(current.summary)}" is ${escapeHtml(status.next)}${ageLabel ? ` · ${escapeHtml(ageLabel)}` : ''}.
+            </p>
+          </div>
+          <div class="support-alert-actions">
+            <a href="#escalations" class="btn btn-primary btn-sm">View request</a>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="addEscalationDetails(${Number(current.id)}, this)">Add details</button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="resolveUserEscalation(${Number(current.id)}, this)">Close request</button>
+          </div>
+        </div>
+      `;
+      supportAlerts.style.display = 'block';
+    }
+
+    function getEscalationStatusConfig(status) {
+      const statusConfig = {
+        open:         { label: 'Waiting for team pickup', bg: 'var(--color-brand-bg)',  color: 'var(--color-primary-700)', next: 'waiting for team pickup' },
+        acknowledged: { label: 'Seen by the team',        bg: 'var(--color-info-50)',   color: 'var(--color-info-700)', next: 'seen by the team' },
+        in_progress:  { label: 'Being worked on',         bg: 'var(--color-warning-50)', color: 'var(--color-warning-700)', next: 'being worked on' },
+        resolved:     { label: 'Resolved',                bg: 'var(--color-success-50)', color: 'var(--color-success-700)', next: 'resolved' },
+        wont_do:      { label: 'Closed',                  bg: 'var(--color-bg-subtle)', color: 'var(--color-text-secondary)', next: 'closed' },
+        expired:      { label: 'Expired',                 bg: 'var(--color-bg-subtle)', color: 'var(--color-text-secondary)', next: 'expired' },
+      };
+      return statusConfig[status] || statusConfig.open;
+    }
+
+    function renderEscalationRow(e) {
+      const cfg = getEscalationStatusConfig(e.status);
+      const created = new Date(e.created_at);
+      const date = created.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+      const ageLabel = formatEscalationAge(e.sla?.age_hours);
+      const followUp = e.sla?.needs_follow_up
+        ? `<span class="escalation-badge escalation-badge--follow-up">${escapeHtml(e.sla.label || 'Needs follow-up')}</span>`
+        : '';
+      const updates = Array.isArray(e.updates) && e.updates.length > 0
+        ? `<div class="escalation-updates">${e.updates.map(update => `
+            <div class="escalation-update">
+              <span class="escalation-update-meta">${update.author_type === 'requester' ? 'You added' : 'Update'} · ${new Date(update.created_at).toLocaleString()}</span>
+              ${escapeHtml(update.body)}
+            </div>
+          `).join('')}</div>`
+        : '';
+      const actions = [
+        e.can_add_details ? `<button type="button" class="btn btn-secondary btn-sm" onclick="addEscalationDetails(${Number(e.id)}, this)">Add details</button>` : '',
+        e.can_resolve ? `<button type="button" class="btn btn-secondary btn-sm" onclick="resolveUserEscalation(${Number(e.id)}, this)">Close request</button>` : '',
+      ].filter(Boolean).join('');
+
+      return `
+        <div class="escalation-row">
+          <div class="escalation-main">
+            <div class="escalation-title-row">
+              <span class="escalation-title">${escapeHtml(e.summary)}</span>
+              <span class="escalation-badge" style="background: ${cfg.bg}; color: ${cfg.color};">${cfg.label}</span>
+              ${followUp}
+            </div>
+            <p class="escalation-meta">Submitted ${date}${ageLabel ? ` · ${ageLabel}` : ''}</p>
+            ${updates}
+          </div>
+          ${actions ? `<div class="escalation-actions">${actions}</div>` : ''}
+        </div>
+      `;
+    }
+
+    function formatEscalationAge(ageHours) {
+      if (typeof ageHours !== 'number' || !Number.isFinite(ageHours)) return '';
+      if (ageHours < 1) return 'less than an hour old';
+      if (ageHours < 24) return `${Math.round(ageHours)}h old`;
+      const days = Math.floor(ageHours / 24);
+      return `${days} day${days === 1 ? '' : 's'} old`;
+    }
+
+    async function resolveUserEscalation(id, buttonEl) {
+      const originalText = buttonEl.textContent;
+      buttonEl.disabled = true;
+      buttonEl.textContent = 'Closing...';
+      try {
+        const response = await fetch(apiUrl(`/api/user/escalations/${id}`), {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ action: 'resolve' })
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.message || data.error || 'Unable to close support request');
+        }
+        showToast('Support request marked resolved');
+        loadEscalations();
+      } catch (error) {
+        console.error('Error resolving escalation:', error);
+        showToast(error.message || 'Unable to close support request');
+        buttonEl.disabled = false;
+        buttonEl.textContent = originalText;
+      }
+    }
+
+    async function addEscalationDetails(id, buttonEl) {
+      const notes = window.prompt('Add details for the team');
+      if (!notes || !notes.trim()) return;
+
+      const originalText = buttonEl.textContent;
+      buttonEl.disabled = true;
+      buttonEl.textContent = 'Saving...';
+      try {
+        const response = await fetch(apiUrl(`/api/user/escalations/${id}`), {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ action: 'add_note', notes: notes.trim() })
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.message || data.error || 'Unable to add details');
+        }
+        showToast('Details added to support request');
+        loadEscalations();
+      } catch (error) {
+        console.error('Error adding escalation details:', error);
+        showToast(error.message || 'Unable to add details');
+        buttonEl.disabled = false;
+        buttonEl.textContent = originalText;
       }
     }
 

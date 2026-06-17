@@ -87,6 +87,12 @@ Plus a long tail of error-code clarity, auth tightening, idempotency rules, TMP 
 | **Schema housekeeping** | — | Named reusable schemas for SDK generators; `x-adcp-hoist` opt-in marker; `x-adcp-open-payload` marker for intentionally open JSON payload fields; open-string compliance scenarios; `allowed_values` on text-asset-requirements; `vast_tracker` + `daast_tracker` asset types; optional `currency`/`total_budget` on create/update responses |
 | **Compliance suite** | Per-tool scenarios | Capability-gated scenarios for `frequency_cap_enforcement`, `per_creative_attribution`, `metric_mode`, ROAS, `audience_buy_flow`, `event_dedup_flow`, `performance_buy_flow`, and `product_signal_targeting`; storyboard `requires` runtime gate; `comply_test_controller` sandbox gate; version-scoped badge evidence; packaged-reference validation for public compliance bundles |
 
+### Capability-slot migration note
+
+When using SDK helpers such as `definePlatform`, keep unsupported capability slots absent from `get_adcp_capabilities`. A missing slot is an honest scope boundary: storyboards and local test vectors targeting that slot should grade `not_applicable`, not failed.
+
+Current workaround: prerelease/custom runners should add explicit skip gates for vectors outside the declared slot scope. The runner-side follow-up is tracked in `adcp-client#2244`.
+
 ## Headline features
 
 ### Distributed `brand.json` — sub-brands self-publish

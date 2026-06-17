@@ -143,6 +143,12 @@ Optional specialization claims. Each entry corresponds to a narrow storyboard at
 
 See the full [Compliance Catalog](/docs/building/verification/compliance-catalog) for every specialism and the [enum schema](https://adcontextprotocol.org/schemas/v3/enums/specialism.json) for the authoritative list.
 
+### Capability slot gaps
+
+SDK helpers such as `definePlatform` can project a platform implementation into narrower capability slots. Treat those slots as commitments: only declare a slot when the agent can execute the corresponding task path end to end.
+
+If a storyboard or local test vector targets a slot the agent does not declare, the expected conformance outcome is `not_applicable`, not failure. Until runner-side enforcement lands in `adcp-client#2244`, implementers running custom or prerelease suites should add explicit skip gates for vectors outside the declared slot scope. Do not work around a missing slot by declaring it and returning placeholder responses; that turns an honest coverage gap into a failed capability claim.
+
 ### account
 
 Account and authentication capabilities. All sellers should declare this section — buyers read it before calling `sync_accounts`, `list_accounts`, or any authenticated task. Even simple publishers need account management to handle billing relationships and sandbox testing.

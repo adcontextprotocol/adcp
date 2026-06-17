@@ -362,6 +362,29 @@ Returns an array of `products` and optionally `proposals`.
 | `performance_standards` | [PerformanceStandard[]](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | (Optional) Seller's default performance standards (viewability, IVT, completion rate, brand safety, attention score). Buyers may propose different standards at `create_media_buy`. |
 | `cancellation_policy` | [CancellationPolicy](/docs/media-buy/advanced-topics/pricing-models#cancellation-policy) | (Optional) Cancellation notice period and penalties for guaranteed products. Buyers accept these terms by creating a media buy against the product. |
 
+### Publisher properties for non-URL inventory
+
+`publisher_properties[].publisher_domain` is the domain that anchors the publisher's `adagents.json` namespace. It is not required to be the URL where an ad is displayed, and it is not a placeholder for a physical venue, publication, station, screen network, or print title.
+
+Use the same selector shape for digital and non-digital products:
+
+- **Digital properties**: `publisher_domain` is usually the publisher domain whose `adagents.json` declares the website, app, channel, or CTV property.
+- **Print, static OOH, radio, cinema, and local TV**: `publisher_domain` is the operating publisher or network domain that publishes the authoritative property catalog. The actual inventory is identified by `property_ids`, `property_tags`, placements, collections, product metadata, and channel fields.
+- **Aggregated networks**: use `property_tags` when the product spans many properties, such as a tagged set of venues, publications, screens, stations, or local markets.
+
+Do not invent values like `"print"` or `"ooh"` for `publisher_domain`. Put channel meaning in `channels`, property meaning in the referenced property declarations, and sellable-package meaning in the product itself.
+
+For example, a product that spans tagged metro properties can use this selector inside its `publisher_properties` array:
+
+```json
+[
+  {
+    "selection_type": "by_tag",
+    "property_tags": ["metro", "station"]
+  }
+]
+```
+
 ### Proposals Array (Optional)
 
 Publishers may return proposals alongside products - structured media plans with budget allocations. See [Proposals](/docs/media-buy/product-discovery/media-products#proposals) for details.

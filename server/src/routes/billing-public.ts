@@ -37,17 +37,27 @@ import {
   type Organization,
   VALID_REVENUE_TIERS,
 } from "../db/organization-db.js";
+import { UsersDatabase } from "../db/users-db.js";
 import {
   mapIndustryToCompanyType,
   mapRevenueToTier,
 } from "../services/lusha.js";
-import { listEscalationsForUser } from "../db/escalation-db.js";
+import {
+  addRequesterEscalationUpdate,
+  describeEscalationSla,
+  getEscalation,
+  listEscalationsForUser,
+  listPublicEscalationUpdates,
+  resolveEscalationForUser,
+} from "../db/escalation-db.js";
 import { COMPANY_TYPE_VALUES } from "../config/company-types.js";
 import { notifyInvoiceSent } from "../notifications/billing.js";
 import { WorkOS } from "@workos-inc/node";
 
 const logger = createLogger("billing-public-routes");
 const orgDb = new OrganizationDatabase();
+const usersDb = new UsersDatabase();
+const MAX_ESCALATION_NOTE_LENGTH = 2_000;
 
 // Initialize WorkOS client only if authentication is enabled
 const AUTH_ENABLED = !!(
@@ -132,6 +142,36 @@ function getDevUser(req: Request): DevUser | null {
  */
 export function createPublicBillingRouter(): Router {
   const router = Router();
+  const activeEscalationStatuses = new Set(['open', 'acknowledged', 'in_progress']);
+
+  async function toSafeEscalations(rows: Awaited<ReturnType<typeof listEscalationsForUser>>) {
+    const updatesByEscalation = await listPublicEscalationUpdates(rows.map(row => row.id));
+    return rows.map(({ id, summary, status, priority, category, created_at, updated_at, resolved_at }) => ({
+      id,
+      summary,
+      status,
+      priority,
+      category,
+      created_at,
+      updated_at,
+      resolved_at,
+      updates: (updatesByEscalation[id] || []).map(update => ({
+        id: update.id,
+        author_type: update.author_type,
+        body: update.body,
+        created_at: update.created_at,
+      })),
+      sla: describeEscalationSla({ status, priority, created_at, updated_at }),
+      can_resolve: activeEscalationStatuses.has(status),
+      can_add_details: activeEscalationStatuses.has(status),
+    })).sort((a, b) => {
+      const aActive = activeEscalationStatuses.has(a.status);
+      const bActive = activeEscalationStatuses.has(b.status);
+      if (aActive !== bActive) return aActive ? -1 : 1;
+      if (a.sla.needs_follow_up !== b.sla.needs_follow_up) return a.sla.needs_follow_up ? -1 : 1;
+      return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+    });
+  }
 
   // =========================================================================
   // PUBLIC BILLING PRODUCT ROUTES (mounted at /api)
@@ -1067,17 +1107,85 @@ export function createPublicBillingRouter(): Router {
     async (req: Request, res: Response) => {
       try {
         const user = req.user!;
+        const userRecord = await usersDb.getUser(user.id);
+        const slackUserId = userRecord?.primary_slack_user_id || undefined;
         // WorkOS auth doesn't carry a Slack user ID, so escalations created via
-        // Slack before the user linked their WorkOS account won't appear here.
-        const rows = await listEscalationsForUser(user.id, undefined);
+        // Slack before the user linked their WorkOS account are matched through users.primary_slack_user_id.
+        const rows = await listEscalationsForUser(user.id, slackUserId);
         // Return only member-safe fields; addie_context and original_request are internal
-        const escalations = rows.map(({ id, summary, status, created_at, resolution_notes }) => ({
-          id, summary, status, created_at, resolution_notes,
-        }));
+        const escalations = await toSafeEscalations(rows);
         res.json({ escalations });
       } catch (error) {
         logger.error({ err: error }, "Error fetching user escalations");
         res.status(500).json({ error: "Failed to fetch escalations" });
+      }
+    }
+  );
+
+  // PATCH /api/user/escalations/:id - Let a requester update or close their own request
+  router.patch(
+    "/user/escalations/:id",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const user = req.user!;
+        const id = Number(req.params.id);
+        if (!Number.isInteger(id) || id < 1) {
+          return res.status(400).json({ error: "Invalid escalation ID" });
+        }
+
+        const action = req.body?.action;
+        if (action !== 'resolve' && action !== 'add_note') {
+          return res.status(400).json({ error: "Unsupported escalation action" });
+        }
+
+        let updated = null;
+        const userRecord = await usersDb.getUser(user.id);
+        const slackUserId = userRecord?.primary_slack_user_id || undefined;
+        if (action === 'resolve') {
+          const notes = typeof req.body?.notes === 'string' ? req.body.notes.trim() : '';
+          if (notes.length > MAX_ESCALATION_NOTE_LENGTH) {
+            return res.status(413).json({ error: "Notes are too long" });
+          }
+          if (notes) {
+            await addRequesterEscalationUpdate(id, user.id, slackUserId, `Closed request: ${notes}`);
+          }
+          updated = await resolveEscalationForUser(id, user.id, slackUserId, notes);
+          if (!updated) {
+            return res.status(404).json({
+              error: "Escalation not found",
+              message: "This support request is already closed or is not attached to your account.",
+            });
+          }
+        } else {
+          const notes = typeof req.body?.notes === 'string' ? req.body.notes.trim() : '';
+          if (!notes) {
+            return res.status(400).json({ error: "Notes are required" });
+          }
+          if (notes.length > MAX_ESCALATION_NOTE_LENGTH) {
+            return res.status(413).json({ error: "Notes are too long" });
+          }
+          const requesterUpdate = await addRequesterEscalationUpdate(id, user.id, slackUserId, notes);
+          if (!requesterUpdate) {
+            return res.status(404).json({
+              error: "Escalation not found",
+              message: "This support request is already closed or is not attached to your account.",
+            });
+          }
+          updated = await getEscalation(id);
+        }
+
+        if (!updated) {
+          return res.status(404).json({ error: "Escalation not found" });
+        }
+
+        const [safeEscalation] = await toSafeEscalations([updated]);
+        res.json({
+          escalation: safeEscalation,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error updating user escalation");
+        res.status(500).json({ error: "Failed to update escalation" });
       }
     }
   );

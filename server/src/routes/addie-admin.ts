@@ -36,6 +36,8 @@ import {
   getEscalationStats,
   setEscalationGithubIssue,
   buildResolutionNotificationMessage,
+  describeEscalationSla,
+  listPublicEscalationUpdates,
   type EscalationStatus,
   type EscalationCategory,
 } from "../db/escalation-db.js";
@@ -1733,8 +1735,15 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
         getEscalationStats(),
       ]);
 
+      const updatesByEscalation = await listPublicEscalationUpdates(escalations.map(e => e.id));
+      const enrichedEscalations = escalations.map((escalation) => ({
+        ...escalation,
+        updates: updatesByEscalation[escalation.id] ?? [],
+        sla: describeEscalationSla(escalation),
+      }));
+
       res.json({
-        escalations,
+        escalations: enrichedEscalations,
         stats,
         total: totalCount,
         limit: parsedLimit,
