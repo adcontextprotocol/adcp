@@ -97,6 +97,29 @@ describe('brand response-signing JWK publication', () => {
     const otherKids = aggregated.keys.filter(k => k.adcp_use !== 'response-signing').map(k => k.kid);
     expect(otherKids).not.toContain(getBrandResponseSigningPublicJwk().kid);
   });
+
+  // Multi-replica safety: with the app-wide secret set, the key is derived
+  // deterministically, so two processes (replicas) mint the SAME kid — a learner
+  // can verify a signed_response from one replica against the JWKS from another.
+  it('derives a stable kid across processes when the shared secret is set', () => {
+    const prev = process.env.AGENT_TOKEN_ENCRYPTION_SECRET;
+    process.env.AGENT_TOKEN_ENCRYPTION_SECRET = 'shared-secret-across-replicas-0000000000';
+    try {
+      resetBrandResponseSigning();
+      const kidA = getBrandResponseSigningPublicJwk().kid;   // "replica A"
+      resetBrandResponseSigning();
+      const kidB = getBrandResponseSigningPublicJwk().kid;   // "replica B", same secret
+      expect(kidB).toBe(kidA);
+      // A different secret yields a different kid (key is purpose-bound to the secret).
+      process.env.AGENT_TOKEN_ENCRYPTION_SECRET = 'a-different-secret-1111111111111111111111';
+      resetBrandResponseSigning();
+      expect(getBrandResponseSigningPublicJwk().kid).not.toBe(kidA);
+    } finally {
+      if (prev === undefined) delete process.env.AGENT_TOKEN_ENCRYPTION_SECRET;
+      else process.env.AGENT_TOKEN_ENCRYPTION_SECRET = prev;
+      resetBrandResponseSigning();
+    }
+  });
 });
 
 describe('verify_brand_claim signed responses', () => {

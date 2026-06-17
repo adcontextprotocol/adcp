@@ -410,6 +410,11 @@ export function verifyBrandClaimsHandler(agentUrl: string) {
     });
 
     // brand_domain names the subject of the first successfully-resolved claim.
+    // LIMITATION: a single envelope binds one brand_domain, so a mixed-subject
+    // batch (claims about different brands) is attested under only the first
+    // subject's domain — slightly misleading. Acceptable for the sandbox fixture;
+    // a production agent would batch per-subject (or sign per-result) so each
+    // answer's brand_domain matches its subject.
     const firstResolved = resolvedClaims.find((r): r is ResolveResult => !isResolveError(r));
     const brandDomain = firstResolved?.brand_domain ?? STREAMHAUS;
 

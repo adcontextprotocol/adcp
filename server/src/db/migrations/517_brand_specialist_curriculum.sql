@@ -88,7 +88,7 @@ ON CONFLICT (id) DO UPDATE SET
 
 -- ── Badge (must exist before the credential's badge_id FK) ────────
 INSERT INTO badges (id, name, description, icon, category) VALUES
-  ('adcp_specialist_brand', 'AdCP specialist — Brand',
+  ('adcp_specialist_brand', 'AdCP specialist — Brand identity',
    'Protocol specialist in brand identity and verification — brand.json resolution, distributed publishing and mutual-assertion reciprocity, bilateral adagents.json confirmation, verify_brand_claim signed-response verification, and trademark disambiguation.',
    'specialist', 'certification')
 ON CONFLICT (id) DO UPDATE SET
@@ -99,7 +99,7 @@ ON CONFLICT (id) DO UPDATE SET
 
 -- ── Credential (tier 3, requires Practitioner, gated on S7) ───────
 INSERT INTO certification_credentials (id, tier, name, description, required_modules, requires_any_track_complete, requires_credential, badge_id, certifier_group_id, sort_order) VALUES
-  ('specialist_brand', 3, 'AdCP Specialist — Brand',
+  ('specialist_brand', 3, 'AdCP Specialist — Brand identity',
    'Protocol specialist in brand identity and verification. Demonstrates mastery of resolving brand.json identity, distributed-publishing mutual assertion, bilateral adagents.json confirmation, verify_brand_claim signed-response verification, and trademark disambiguation through a capstone lab and adaptive exam. The experimental rights lifecycle is taught but not gated.',
    '{S7}', false, 'practitioner', 'adcp_specialist_brand', NULL, 7)
 ON CONFLICT (id) DO UPDATE SET
