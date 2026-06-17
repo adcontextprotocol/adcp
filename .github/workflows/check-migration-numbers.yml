@@ -66,8 +66,27 @@ jobs:
           # Union of both file lists, unique by full filename.
           all_files=$(printf '%s\n%s\n' "$local_files" "$main_files" | sort -u | sed '/^$/d')
 
-          # Extract the leading number prefix and look for duplicates.
-          dupes=$(echo "$all_files" | sed 's/_.*//' | sort | uniq -d)
+          prefix_dupes() {
+            printf '%s\n' "$1" | sed '/^$/d' | sed 's/_.*//' | sort | uniq -d
+          }
+
+          # Local duplicates must always fail: they are present in the checked-out
+          # ref (PR merge, merge-group commit, or main). Union duplicates catch the
+          # stale-merge case where local and current main are individually clean but
+          # collide with each other. If current main already has a duplicate and this
+          # PR fixes it, don't let the main-only duplicate make the fixing PR
+          # impossible to merge.
+          local_dupes=$(prefix_dupes "$local_files")
+          main_dupes=$(prefix_dupes "$main_files")
+          union_dupes=$(prefix_dupes "$all_files")
+
+          dupes="$local_dupes"
+          for prefix in $union_dupes; do
+            if ! printf '%s\n' "$main_dupes" | grep -qx "$prefix"; then
+              dupes=$(printf '%s\n%s\n' "$dupes" "$prefix")
+            fi
+          done
+          dupes=$(printf '%s\n' "$dupes" | sed '/^$/d' | sort -u)
 
           if [ -n "$dupes" ]; then
             echo "::error::Duplicate migration number prefixes found: $dupes"
