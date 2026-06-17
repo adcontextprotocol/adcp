@@ -57,6 +57,7 @@ jobs:
           npm run test:storyboard-response-schema &&
           npm run test:storyboard-context-output-paths &&
           npm run test:storyboard-validations-paths &&
+          npm run test:refine-finalize-validation-ids &&
           npm run test:update-media-buy-affected-packages &&
           npm run test:compliance-source-authority
 

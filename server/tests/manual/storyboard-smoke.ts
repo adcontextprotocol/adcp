@@ -26,6 +26,7 @@ import {
   hostedComplianceTarget,
   withHostedStoryboardRunOptions,
 } from '../../src/services/hosted-compliance-version.js';
+import { formatStepFailureDetail } from './storyboard-report-format.js';
 
 const TEST_AGENT_URL = process.env.TEST_AGENT_URL || PUBLIC_TEST_AGENT.url;
 const TEST_AGENT_TOKEN = process.env.TEST_AGENT_TOKEN || PUBLIC_TEST_AGENT.token;
@@ -132,11 +133,10 @@ function printFailures(result: StoryboardResult) {
   for (const phase of result.phases) {
     for (const step of phase.steps) {
       if (!step.passed && !step.skipped) {
-        const validationErrors = step.validations
-          .filter(v => !v.passed)
-          .map(v => v.error || v.description)
-          .join('; ');
-        console.log(`    ❌ ${step.step_id} (${step.task}): ${step.error || validationErrors}`);
+        const detail = formatStepFailureDetail(step.error, step.validations, {
+          missingDescription: '',
+        });
+        console.log(`    ❌ ${step.step_id} (${step.task}): ${detail}`);
       } else if (step.skipped) {
         console.log(`    ⏭  ${step.step_id} (${step.task}): ${step.skip_reason || 'skipped'}`);
       }

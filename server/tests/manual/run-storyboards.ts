@@ -34,6 +34,7 @@ import {
   testKitOptionsFromKit,
   type LoadedTestKit,
 } from '../../src/compliance/storyboard-runner-options.js';
+import { formatFailureDetailSnippet, formatStepFailureDetail } from './storyboard-report-format.js';
 
 // Set auth env BEFORE loading the training-agent router. The router captures
 // PUBLIC_TEST_AGENT_TOKEN / TRAINING_AGENT_TOKEN into its authenticator at
@@ -79,7 +80,7 @@ interface Summary {
   skipped: number;
   not_applicable: number;
   error?: string;
-  failures: Array<{ step: string; error: string }>;
+  failures: Array<{ step: string; error: string; validationId?: string }>;
 }
 
 async function startLocalAgent(): Promise<{ url: string; baseUrl: string; close: () => Promise<void> }> {
@@ -485,22 +486,13 @@ function summarize(sb: Storyboard, result: StoryboardResult | { error: string })
           id?: string;
           step_id?: string;
           error?: string;
-          validations?: Array<{ passed: boolean; description?: string; error?: string; actual?: unknown }>;
+          validations?: Array<{ id?: string; passed: boolean; description?: string; error?: string; actual?: unknown }>;
         };
-        const validationFails = (s.validations ?? [])
-          .filter(v => !v.passed)
-          .map(v => {
-            const desc = v.description ?? '(validation failed)';
-            const detail = v.error ?? (v.actual ? JSON.stringify(v.actual) : undefined);
-            return detail ? `${desc} — ${detail}` : desc;
-          })
-          .join('; ');
-        const errorDetail = validationFails
-          ? (s.error ? `${s.error} — ${validationFails}` : validationFails)
-          : (s.error ?? '(failed without message)');
+        const validationId = s.validations?.find(v => !v.passed && typeof v.id === 'string' && v.id)?.id;
         base.failures.push({
           step: s.id ?? s.step_id ?? '(unknown step)',
-          error: errorDetail,
+          error: formatStepFailureDetail(s.error, s.validations, { includeActual: true }),
+          ...(validationId ? { validationId } : {}),
         });
       }
     }
@@ -734,8 +726,11 @@ async function main() {
       console.log(`\n  ${r.id}: ${r.title}`);
       if (r.error) console.log(`    ! ${r.error}`);
       for (const f of r.failures.slice(0, verbose ? undefined : 5)) {
+        const visibleDetail = verbose
+          ? f.error
+          : formatFailureDetailSnippet(f.error, { validationId: f.validationId });
         // eslint-disable-next-line no-console
-        console.log(`    × ${f.step}: ${f.error.slice(0, 160)}`);
+        console.log(`    × ${f.step}: ${visibleDetail}`);
       }
       if (!verbose && r.failures.length > 5) {
         // eslint-disable-next-line no-console

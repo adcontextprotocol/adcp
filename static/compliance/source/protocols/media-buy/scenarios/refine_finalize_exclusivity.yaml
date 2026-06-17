@@ -85,9 +85,11 @@ phases:
               payment_terms: "net_30"
           idempotency_key: "$generate:uuid_v4#media_buy_seller_refine_finalize_exclusivity_setup_sync_accounts"
         validations:
-          - check: response_schema
+          - id: sync_accounts.response_schema
+            check: response_schema
             description: "Response matches sync-accounts-response.json schema"
-          - check: field_present
+          - id: sync_accounts.account_id_present
+            check: field_present
             path: "accounts[0].account_id"
             description: "Account has a platform-assigned ID"
 
@@ -113,9 +115,11 @@ phases:
           - path: "proposals[0].proposal_id"
             key: "proposal_id_1"
         validations:
-          - check: response_schema
+          - id: get_products_brief.response_schema
+            check: response_schema
             description: "Response matches get-products-response.json schema"
-          - check: field_present
+          - id: get_products_brief.proposal_id_present
+            check: field_present
             path: "proposals[0].proposal_id"
             description: "At least one proposal returned with an ID"
 
@@ -153,7 +157,8 @@ phases:
           - path: "proposals[1].proposal_id"
             key: "proposal_id_2"
         validations:
-          - check: field_present
+          - id: get_products_brief_second.proposal_id_2_present
+            check: field_present
             path: "proposals[1].proposal_id"
             description: "Second proposal present for multi-finalize test"
 
@@ -197,10 +202,12 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
         validations:
-          - check: error_code
+          - id: mixed_finalize.error_code
+            check: error_code
             value: "INVALID_REQUEST"
             description: "Mixed finalize + non-finalize refine[] rejected with INVALID_REQUEST"
-          - check: field_present
+          - id: mixed_finalize.error_field_present
+            check: field_present
             path: "errors[0].field"
             description: "Seller populates error.field pointing at the offending refine entry"
 
@@ -243,7 +250,8 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
         validations:
-          - check: error_code
+          - id: product_finalize.error_code
+            check: error_code
             value: "INVALID_REQUEST"
             description: "Product-scoped finalize entry rejected with INVALID_REQUEST"
 
@@ -253,12 +261,13 @@ phases:
     branch_set:
       id: multi_finalize_handled
       semantics: any_of
-    skip_if: "!context.proposal_id_2"
+    skip_if: "!context.proposal_id_2 || context.proposal_id_2 == context.proposal_id_1"
     narrative: |
       The seller supports atomic multi-finalize: both proposals commit in a single call or
       neither does. This branch passes when the seller returns a success response with both
-      proposals present. The spec requires atomicity at the observation point — the seller
-      must not return success unless every named proposal has been persisted as committed.
+      requested proposals present. The spec requires atomicity at the observation point —
+      the seller must not return success unless every named proposal has been persisted as
+      committed.
 
     steps:
       - id: get_products_multi_finalize_atomic
@@ -271,9 +280,9 @@ phases:
         stateful: true
         contributes: true
         expected: |
-          Return both proposals with committed status and expires_at hold windows.
-          Neither proposal is partially committed — the seller has run pre-commit
-          validation across all named proposals before returning success.
+          Return both requested proposals with committed status and mark both finalize
+          refinements as applied. Neither proposal is partially committed — the seller has
+          run pre-commit validation across all named proposals before returning success.
         sample_request:
           buying_mode: "refine"
           refine:
@@ -288,11 +297,47 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
         validations:
-          - check: response_schema
+          - id: multi_finalize_atomic.response_schema
+            check: response_schema
             description: "Response matches get-products-response.json schema"
-          - check: field_present
+          - id: multi_finalize_atomic.proposals_present
+            check: field_present
             path: "proposals"
             description: "Response contains the finalized proposals"
+          - id: multi_finalize_atomic.proposal_1_committed
+            check: field_contains
+            path: "proposals[*]"
+            value:
+              proposal_id: "$context.proposal_id_1"
+              proposal_status: "committed"
+            description: "First requested proposal is returned committed"
+          - id: multi_finalize_atomic.proposal_2_committed
+            check: field_contains
+            path: "proposals[*]"
+            value:
+              proposal_id: "$context.proposal_id_2"
+              proposal_status: "committed"
+            description: "Second requested proposal is returned committed"
+          - id: multi_finalize_atomic.refinement_1_proposal_id
+            check: field_value
+            path: "refinement_applied[0].proposal_id"
+            value: "$context.proposal_id_1"
+            description: "First finalize acknowledgement is tied to the first requested proposal"
+          - id: multi_finalize_atomic.refinement_1_applied
+            check: field_value
+            path: "refinement_applied[0].status"
+            value: "applied"
+            description: "First finalize refinement was applied"
+          - id: multi_finalize_atomic.refinement_2_proposal_id
+            check: field_value
+            path: "refinement_applied[1].proposal_id"
+            value: "$context.proposal_id_2"
+            description: "Second finalize acknowledgement is tied to the second requested proposal"
+          - id: multi_finalize_atomic.refinement_2_applied
+            check: field_value
+            path: "refinement_applied[1].status"
+            value: "applied"
+            description: "Second finalize refinement was applied"
 
   - id: multi_finalize_unsupported_path
     title: "Multi-finalize rejected with MULTI_FINALIZE_UNSUPPORTED"
@@ -300,7 +345,7 @@ phases:
     branch_set:
       id: multi_finalize_handled
       semantics: any_of
-    skip_if: "!context.proposal_id_2"
+    skip_if: "!context.proposal_id_2 || context.proposal_id_2 == context.proposal_id_1"
     narrative: |
       The seller cannot guarantee atomic pre-commit validation across multiple proposals.
       Per the spec, such sellers MUST reject with MULTI_FINALIZE_UNSUPPORTED (preferred —
@@ -343,18 +388,20 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
         validations:
-          - check: error_code
+          - id: multi_finalize_unsupported.error_code
+            check: error_code
             allowed_values: ["MULTI_FINALIZE_UNSUPPORTED", "INVALID_REQUEST"]
             description: "Multi-finalize rejected with MULTI_FINALIZE_UNSUPPORTED or INVALID_REQUEST"
 
   - id: multi_finalize_gate
     title: "At least one multi-finalize path contributed"
-    skip_if: "!context.proposal_id_2"
+    skip_if: "!context.proposal_id_2 || context.proposal_id_2 == context.proposal_id_1"
     steps:
       - id: assert_multi_finalize
         title: "Assert multi-finalize path contributed"
         task: assert_contribution
         validations:
-          - check: any_of
+          - id: multi_finalize_gate.any_path_contributed
+            check: any_of
             allowed_values: ["multi_finalize_handled"]
             description: "Seller either handled multi-finalize atomically or rejected with MULTI_FINALIZE_UNSUPPORTED"
