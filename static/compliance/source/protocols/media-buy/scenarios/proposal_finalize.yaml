@@ -10,6 +10,9 @@ required_tools:
 
 # `media_buy.supports_proposals` is defined in the 3.1 schema. On 3.0.x,
 # absence is treated as false so non-proposal sellers skip this scenario.
+# The storyboard-level equals check skips explicit false; phase-level
+# present checks below skip absent values for runners whose equals matcher
+# treats absence as satisfied.
 requires_capability:
   path: media_buy.supports_proposals
   equals: true
@@ -48,6 +51,9 @@ prerequisites:
 
 phases:
   - id: setup
+    requires_capability:
+      path: media_buy.supports_proposals
+      present: true
     title: "Account setup"
     steps:
       - id: sync_accounts
@@ -77,6 +83,9 @@ phases:
             description: "Account has a platform-assigned ID"
 
   - id: brief_with_proposals
+    requires_capability:
+      path: media_buy.supports_proposals
+      present: true
     title: "Brief with proposals"
     narrative: |
       Send a brief and receive proposals alongside products. Proposals are curated
@@ -122,6 +131,9 @@ phases:
             description: "Proposals have IDs"
 
   - id: refine_proposal
+    requires_capability:
+      path: media_buy.supports_proposals
+      present: true
     title: "Refine the proposal"
     narrative: |
       The buyer reviews the proposals and wants to adjust one. They call get_products in
@@ -164,6 +176,9 @@ phases:
             description: "Response contains updated proposals"
 
   - id: finalize_proposal
+    requires_capability:
+      path: media_buy.supports_proposals
+      present: true
     title: "Finalize the proposal"
     narrative: |
       The buyer is satisfied with the refined proposal and requests finalization. This
@@ -209,6 +224,9 @@ phases:
             description: "Response contains the finalized proposal"
 
   - id: accept_proposal
+    requires_capability:
+      path: media_buy.supports_proposals
+      present: true
     title: "Accept the committed proposal"
     narrative: |
       The buyer accepts the committed proposal by creating a media buy with the
