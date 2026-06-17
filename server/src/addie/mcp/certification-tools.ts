@@ -263,6 +263,49 @@ Conduct this capstone now. It combines a hands-on lab and adaptive exam:
 11. **Collect feedback after completion.** After you call complete_certification_exam and share the results, ask the learner for feedback: "How was that experience? Anything that felt confusing, too hard, or could be better?" If they share feedback, call save_learner_feedback to record it.`;
 
 /**
+ * Capstone supplement for L3 (Decision-Makers track).
+ *
+ * L3 is the capstone of the Decision-Makers track. Unlike L1/L2, which verify reasoning
+ * through conversation, L3 requires the learner to produce an actual decision artifact
+ * before the module can be completed. This supplement appends to TEACHING_METHODOLOGY.
+ */
+const DECISION_ARTIFACT_CAPSTONE_SUPPLEMENT = `
+
+## L3 capstone requirement — artifact production is mandatory
+
+This module is the **capstone of the Decision-Makers track**. Unlike L1 and L2 (which verify reasoning through conversation), L3 requires the learner to produce a concrete **decision artifact** before you may call complete_certification_module:
+
+- **Brand leader** → a business case for the CMO (opportunity, what changes, what they own, the pilot ask, the risk of waiting)
+- **Agency exec** → a client-facing adoption recommendation or internal capability plan (client inputs, what the agency delivers, P&L framing)
+- **SMB owner** → a phased adoption plan (pick a partner → connect the feed → set budget and goal → review and expand)
+
+The artifact must tie together economics (how to size a pilot), org-readiness (who owns the data pipeline), and a concrete next step. **Do not accept a description of what the learner would do — require them to produce the artifact in the conversation.** A fluent discussion of the concepts is necessary but not sufficient.
+
+When the learner has produced a draft artifact that meets the rubric threshold for the \`decision_artifact\` dimension, complete the module normally. If the learner tries to complete without producing one, redirect: "L3 culminates in a decision artifact — walk me through your [business case / agency brief / adoption plan]."`;
+
+/**
+ * Selects the teaching-methodology block injected into a module's start prompt.
+ *
+ * - Build-project capstones (B4/C4/D4) get BUILD_PROJECT_METHODOLOGY.
+ * - L3 (Decision-Makers capstone) gets TEACHING_METHODOLOGY plus the
+ *   decision-artifact supplement that requires the learner to produce an
+ *   artifact before completion.
+ * - Every other module gets the standard TEACHING_METHODOLOGY.
+ *
+ * Exported so the L3 capstone wiring is locked by a unit test against future
+ * refactors of the start_certification_module dispatch.
+ */
+export function selectModuleMethodology(moduleId: string): string {
+  if (['B4', 'C4', 'D4'].includes(moduleId)) {
+    return BUILD_PROJECT_METHODOLOGY;
+  }
+  if (moduleId === 'L3') {
+    return `${TEACHING_METHODOLOGY}\n${DECISION_ARTIFACT_CAPSTONE_SUPPLEMENT}`;
+  }
+  return TEACHING_METHODOLOGY;
+}
+
+/**
  * Count user messages in a conversation thread server-side.
  * Handles both internal thread_id (Slack) and external_id (web) formats.
  * If `since` is provided, only counts messages after that timestamp (for module-scoped counting).
@@ -1919,14 +1962,9 @@ export function createCertificationToolHandlers(
         lines.push('');
       }
 
-      // Build project modules get different teaching guidance
-      const isBuildProject = ['B4', 'C4', 'D4'].includes(mod.id);
-
-      if (isBuildProject) {
-        lines.push(BUILD_PROJECT_METHODOLOGY);
-      } else {
-        lines.push(TEACHING_METHODOLOGY);
-      }
+      // Build-project capstones (B4/C4/D4) and the L3 decision-artifact capstone
+      // get distinct teaching guidance; see selectModuleMethodology.
+      lines.push(selectModuleMethodology(mod.id));
 
       return lines.join('\n');
     } catch (error) {

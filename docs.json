@@ -635,6 +635,16 @@
                     ]
                   },
                   {
+                    "group": "For decision-makers",
+                    "pages": [
+                      "docs/learning/decision-makers/overview",
+                      "docs/learning/decision-makers/l1-agentic-advertising",
+                      "docs/learning/decision-makers/l2-data-brand-governance",
+                      "docs/learning/decision-makers/l3-deciding-and-leading",
+                      "docs/learning/decision-makers/explaining-agentic-advertising"
+                    ]
+                  },
+                  {
                     "group": "Role tracks",
                     "pages": [
                       "docs/learning/tracks/publisher",
@@ -1823,6 +1833,16 @@
                   "docs/learning/foundations/a2-protocol-architecture",
                   "docs/learning/foundations/a2b-testing-your-first-agent",
                   "docs/learning/foundations/a3-ecosystem-governance"
+                ]
+              },
+              {
+                "group": "For decision-makers",
+                "pages": [
+                  "docs/learning/decision-makers/overview",
+                  "docs/learning/decision-makers/l1-agentic-advertising",
+                  "docs/learning/decision-makers/l2-data-brand-governance",
+                  "docs/learning/decision-makers/l3-deciding-and-leading",
+                  "docs/learning/decision-makers/explaining-agentic-advertising"
                 ]
               },
               {
