@@ -10,7 +10,9 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
+const fs = require('node:fs');
 const path = require('node:path');
+const YAML = require('yaml');
 
 const {
   lintAll,
@@ -60,6 +62,26 @@ test('allowlist has no stale entries', async () => {
         'Regenerate the allowlist:\n' +
         '  node scripts/lint-storyboard-sample-request-schema.cjs --write-allowlist\n\n' +
         rendered,
+    );
+  }
+});
+
+test('proposal finalize gates absent and false supports_proposals separately', () => {
+  const file = path.join(
+    STORYBOARD_DIR,
+    'protocols/media-buy/scenarios/proposal_finalize.yaml',
+  );
+  const storyboard = YAML.parse(fs.readFileSync(file, 'utf8'));
+
+  assert.deepEqual(storyboard.requires_capability, {
+    path: 'media_buy.supports_proposals',
+    equals: true,
+  });
+  for (const phase of storyboard.phases) {
+    assert.deepEqual(
+      phase.requires_capability,
+      { path: 'media_buy.supports_proposals', present: true },
+      `phase ${phase.id}`,
     );
   }
 });
