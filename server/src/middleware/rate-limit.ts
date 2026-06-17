@@ -1,4 +1,5 @@
 import rateLimit from 'express-rate-limit';
+import type { Store } from 'express-rate-limit';
 import type { Request, Response } from 'express';
 import { createLogger } from '../logger.js';
 import { CachedPostgresStore, PostgresStore } from './pg-rate-limit-store.js';
@@ -318,41 +319,49 @@ export const storyboardStepRateLimiter = rateLimit({
  * (The sibling auth-status endpoint runs under complianceWriteMiddleware
  * and isn't gated by this limiter.)
  */
-export const agentReadRateLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 240, // 4/sec sustained; a 60-agent × 2-endpoint burst (120 req) fits with headroom
-  standardHeaders: true,
-  legacyHeaders: false,
-  store: new CachedPostgresStore('agent-read:'),
-  keyGenerator: generateKey,
-  validate: { keyGeneratorIpFallback: false },
-  handler: (req: Request, res: Response) => {
-    logger.warn({
-      userId: (req as any).user?.id,
-      ip: req.ip,
-      path: req.path,
-    }, 'Rate limit exceeded for agent dashboard reads');
+export function createAgentReadRateLimiter(options: {
+  windowMs?: number;
+  max?: number;
+  store?: Store;
+} = {}) {
+  return rateLimit({
+    windowMs: options.windowMs ?? 60 * 1000, // 1 minute
+    max: options.max ?? 240, // 4/sec sustained; a 60-agent × 2-endpoint burst (120 req) fits with headroom
+    standardHeaders: true,
+    legacyHeaders: false,
+    store: options.store ?? new CachedPostgresStore('agent-read:'),
+    keyGenerator: generateKey,
+    validate: { keyGeneratorIpFallback: false },
+    handler: (req: Request, res: Response) => {
+      logger.warn({
+        userId: (req as any).user?.id,
+        ip: req.ip,
+        path: req.path,
+      }, 'Rate limit exceeded for agent dashboard reads');
 
-    // standardHeaders emits `Retry-After` / `RateLimit-Reset` with the
-    // real remaining window — that's the authoritative signal. We also
-    // surface the same value in the JSON body as a proxy-stripped
-    // fallback (#2804): some reverse proxies drop non-standard
-    // headers, and the dashboard needs SOMETHING to key its countdown
-    // off. `retryAfter` is seconds-to-retry, matching the header's
-    // delta-seconds format.
-    //
-    // The HTTP spec (RFC 9110 §10.2.3) also allows an HTTP-date here,
-    // but express-rate-limit only emits delta-seconds — so a parseInt
-    // is sufficient. If that ever changes (e.g., we swap limiter
-    // libraries), the fallback below would need a second parse path.
-    const retryAfter = parseRetryAfterSeconds(res.getHeader('Retry-After'));
-    res.status(429).json({
-      error: 'Too many requests',
-      message: 'Agent dashboard read rate limit exceeded. Please try again in a moment.',
-      ...(retryAfter !== undefined ? { retryAfter } : {}),
-    });
-  },
-});
+      // standardHeaders emits `Retry-After` / `RateLimit-Reset` with the
+      // real remaining window — that's the authoritative signal. We also
+      // surface the same value in the JSON body as a proxy-stripped
+      // fallback (#2804): some reverse proxies drop non-standard
+      // headers, and the dashboard needs SOMETHING to key its countdown
+      // off. `retryAfter` is seconds-to-retry, matching the header's
+      // delta-seconds format.
+      //
+      // The HTTP spec (RFC 9110 §10.2.3) also allows an HTTP-date here,
+      // but express-rate-limit only emits delta-seconds — so a parseInt
+      // is sufficient. If that ever changes (e.g., we swap limiter
+      // libraries), the fallback below would need a second parse path.
+      const retryAfter = parseRetryAfterSeconds(res.getHeader('Retry-After'));
+      res.status(429).json({
+        error: 'Too many requests',
+        message: 'Agent dashboard read rate limit exceeded. Please try again in a moment.',
+        ...(retryAfter !== undefined ? { retryAfter } : {}),
+      });
+    },
+  });
+}
+
+export const agentReadRateLimiter = createAgentReadRateLimiter();
 
 /**
  * Rate limiter for bulk resolve endpoints
