@@ -64,15 +64,16 @@ function warnOncePerSession(
   }
 }
 
-function startBackgroundCleanup(callback: () => void, intervalMs: number): void {
+function startBackgroundCleanup(callback: () => void, intervalMs: number): ReturnType<typeof setInterval> {
   const timer = setInterval(callback, intervalMs) as ReturnType<typeof setInterval> & {
     unref?: () => void;
   };
   timer.unref?.();
+  return timer;
 }
 
 // Clean up expired cache entries periodically (every 5 minutes)
-startBackgroundCleanup(() => {
+const cacheCleanupTimer = startBackgroundCleanup(() => {
   const now = Date.now();
   let cleaned = 0;
   for (const [key, value] of sessionCache.entries()) {
@@ -96,7 +97,7 @@ startBackgroundCleanup(() => {
 }, 5 * 60 * 1000);
 
 // Clean up expired DB session refresh entries (every 10 minutes)
-startBackgroundCleanup(() => {
+const dbRefreshCleanupTimer = startBackgroundCleanup(() => {
   cleanExpiredRefreshes().then(cleaned => {
     if (cleaned > 0) {
       logger.debug({ cleaned }, 'Cleaned expired session refresh DB entries');
@@ -114,7 +115,7 @@ const banCache = new Map<string, CachedBanCheck>();
 const BAN_CACHE_TTL_MS = 60 * 1000;
 
 // Clean up expired ban cache entries alongside session cache
-startBackgroundCleanup(() => {
+const banCacheCleanupTimer = startBackgroundCleanup(() => {
   const now = Date.now();
   for (const [key, value] of banCache.entries()) {
     if (value.expiresAt < now) {
@@ -122,6 +123,12 @@ startBackgroundCleanup(() => {
     }
   }
 }, 5 * 60 * 1000);
+
+export function stopAuthTimers(): void {
+  clearInterval(cacheCleanupTimer);
+  clearInterval(dbRefreshCleanupTimer);
+  clearInterval(banCacheCleanupTimer);
+}
 
 /**
  * Check platform ban with caching. Returns the ban if active, or null if not banned.
