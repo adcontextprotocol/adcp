@@ -5,6 +5,7 @@ const {
   changesetTargetsProtocol,
   findChangesetProtocolScopeViolations,
   isChangesetDeleteOnlyCleanup,
+  isChangesetStatusExemptMaintenance,
   isProtocolScopedPath,
   parseNameStatus,
 } = require('../scripts/check-changeset-protocol-scope.cjs');
@@ -88,12 +89,54 @@ assert.strictEqual(
 );
 
 assert.strictEqual(
+  isChangesetStatusExemptMaintenance([
+    { status: 'D', paths: ['.changeset/old-app-fix.md'] },
+    { status: 'M', paths: ['.agents/playbook.md'] },
+    { status: 'M', paths: ['.agents/routines/context-refresh-prompt.md'] },
+    { status: 'M', paths: ['.agents/routines/triage-prompt.md'] },
+    { status: 'M', paths: ['.agents/shortcuts/cut-beta.md'] },
+    { status: 'M', paths: ['.agents/shortcuts/prep-for-pr.md'] },
+    { status: 'M', paths: ['docs/reference/changelog.mdx'] },
+    { status: 'M', paths: ['docs/spec-guidelines.md'] },
+  ]),
+  true,
+  'Changeset policy/runbook maintenance can bypass changesets status without adding an empty changeset'
+);
+
+assert.strictEqual(
+  isChangesetStatusExemptMaintenance([
+    { status: 'M', paths: ['.agents/playbook.md'] },
+    { status: 'M', paths: ['.agents/shortcuts/prep-empty.md'] },
+  ]),
+  true,
+  'Policy-only maintenance can bypass changesets status even when no changeset file is touched'
+);
+
+assert.strictEqual(
+  isChangesetStatusExemptMaintenance([
+    { status: 'M', paths: ['.agents/playbook.md'] },
+    { status: 'M', paths: ['server/src/billing/subscription-sync.ts'] },
+  ]),
+  false,
+  'Policy docs plus app changes still need normal changesets status'
+);
+
+assert.strictEqual(
   isChangesetDeleteOnlyCleanup([
     { status: 'D', paths: ['.changeset/old-app-fix.md'] },
     { status: 'M', paths: ['server/src/billing/subscription-sync.ts'] },
   ]),
   false,
   'App changes plus a deleted changeset still need normal changesets status'
+);
+
+assert.strictEqual(
+  isChangesetStatusExemptMaintenance([
+    { status: 'A', paths: ['.changeset/new-empty.md'] },
+    { status: 'M', paths: ['.agents/playbook.md'] },
+  ]),
+  false,
+  'Adding a new changeset is not maintenance-exempt'
 );
 
 console.log('Changeset protocol scope tests passed.');

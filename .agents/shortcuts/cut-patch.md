@@ -20,9 +20,9 @@ git show "$MAIN_SHA" -- .changeset/ | head -30
 
 Any frontmatter line `"adcontextprotocol": (minor|major)` is a stop. **Do not cherry-pick changes whose changeset bumps the protocol package above patch.** A minor on `3.0.x` would cut `3.1.0` from the patch line — exactly the failure mode this audit prevents.
 
-If the source commit's only changesets are `--empty` or `"adcontextprotocol": patch`, proceed.
+If the source commit's only protocol changesets are `"adcontextprotocol": patch`, proceed. If the commit has no changeset, it probably is not a protocol patch release candidate; do not add an empty changeset just to cut a package version.
 
-If the change is genuinely patch-eligible (per `.agents/playbook.md` § Patch eligibility) but the original commit shipped a higher bump, you'll need to author a fresh patch-level changeset for the cherry-pick. Land that on `main` first, then cherry-pick.
+If the change is genuinely patch-eligible (per `.agents/playbook.md` § Patch eligibility) but the original commit shipped a higher bump, you'll need to author a fresh patch-level protocol changeset for the cherry-pick. Land that on `main` first, then cherry-pick.
 
 ## 2. Cherry-pick the fix to 3.0.x
 
@@ -47,7 +47,7 @@ git push origin 3.0.x
 
 `release.yml` fires on push to `3.0.x`, runs `changesets/action`, and opens (or refreshes) the Version Packages PR on `changeset-release/3.0.x`. The PR title is `Version Packages` and its body lists `adcontextprotocol@3.0.X`.
 
-**Verify the bump level on the PR body.** The body shows `## adcontextprotocol@3.0.X` and a `### Patch Changes` section. If you see `### Minor Changes` or `### Major Changes`, stop — a non-patch changeset slipped through. Find the offending changeset on `3.0.x` (`git diff v3.0.{X-1}..3.0.x -- .changeset/`), drop it, fix on `main`, re-cherry-pick.
+**Verify the bump level and scope on the PR body.** The body shows `## adcontextprotocol@3.0.X` and a `### Patch Changes` section. If you see `### Minor Changes` or `### Major Changes`, stop — a non-patch changeset slipped through. If you see app, site, billing, admin, Addie, newsletter, digest, infra, migration-only, or operational work under the package release, stop — a non-protocol changeset slipped through. Find the offending changeset on `3.0.x` (`git diff v3.0.{X-1}..3.0.x -- .changeset/`), drop it, fix on `main`, re-cherry-pick.
 
 ## 4. Review and merge
 

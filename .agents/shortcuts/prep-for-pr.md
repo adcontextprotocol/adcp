@@ -13,9 +13,17 @@ request.
    - **Playwright** (for scripted flows): use the `/playwright-skill` skill
 3. If API or MCP logic changed, run the server locally and verify the behavior
    directly.
-4. Check for the right changeset. If none exists, or the type is wrong, fix it.
-   Stage the changeset before checking because the CLI ignores untracked files:
-   `git add .changeset/<name>.md && npx --yes @changesets/cli@^2.31.0 status --since=origin/main`.
+4. Classify whether the PR needs a changeset:
+   - Protocol/spec/release-surface changes need an `adcontextprotocol`
+     changeset with the correct semver bump.
+   - App, site, billing, admin, Addie, newsletter, digest, infra, migration,
+     and operational-only changes should have **no** changeset. Remove stray
+     `.changeset/*.md` files instead of adding empty ones.
+   - If a changeset is present, stage it because the CLI ignores untracked
+     files, then run:
+     `git add .changeset/<name>.md && node scripts/check-changeset-protocol-scope.cjs origin/main && npx --yes @changesets/cli@^2.31.0 status --since=origin/main`.
+   - If no changeset is expected, run:
+     `node scripts/check-changeset-protocol-scope.cjs origin/main`.
 5. Run code review and address the findings.
 6. Run the `security-reviewer` agent and address all Must Fix and Should Fix
    findings before proceeding.

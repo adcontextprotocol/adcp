@@ -821,10 +821,11 @@ Use this split to keep spec planning clean:
 
 **Step 1 — Decide the bump level.**
 
-- **Protocol repo (adcp) only:** the changeset file front-matter
-  names the bump level: `patch`, `minor`, or `major`. Non-protocol
-  changes (server, docs-only typos, infra) use `--empty` with no
-  bump — their PRs get no release milestone and target `main`.
+- **Protocol repo (adcp) only:** an `adcontextprotocol` changeset
+  file front-matter names the bump level: `patch`, `minor`, or
+  `major`. Non-protocol changes (server, docs-only typos, infra,
+  app/site/billing/admin/Addie/newsletter/digest work) get no
+  changeset, no release milestone, and target `main`.
 - **Sibling SDK repos (adcp-client, adcp-client-python, adcp-go):**
   changeset/release-please drives versioning repo-by-repo; follow
   each repo's local PR constraints.
@@ -849,8 +850,8 @@ How to detect "experimental":
 2. **Path heuristic (fallback for unmarked-but-known surfaces):** treat anything under `static/schemas/source/tmp/**`, `static/schemas/source/sponsored-intelligence/**`, or `static/schemas/source/a2ui/**` as experimental even if the `x-status` marker is missing. Surface "marker missing" in the run summary so a human can backfill.
 3. **Mixed diffs:** if the PR touches BOTH stable and experimental surfaces in a single change, take the **stable** bump level (no downgrade) — the stable touch is what gates the release contract.
 
-The downgrade does not apply to non-protocol changes (`--empty`),
-which never get a bump in the first place.
+The downgrade does not apply to non-protocol changes, which have no
+changeset and never get a bump in the first place.
 
 **Step 2 — Fetch live release signal.**
 
@@ -876,7 +877,7 @@ The repo publishes:
 | `major` | Next open `X.0` milestone (e.g., `4.0`) | `main` | If no next-major milestone is open, flag-for-human — don't invent one. |
 | `minor` | Next open `X.Y.0` milestone (e.g., `3.1.0`) | `main` | If no next-minor milestone is open, flag-for-human. |
 | `patch` | Next open `X.Y.Z` milestone if one exists; otherwise the active `X.Y.0` milestone | Active `X.Y.x` branch if it exists; otherwise **flag-for-human with "no patch branch open — needs @bokelley to cut one"** | Patches ship on the patch line, not `main`. |
-| `--empty` (no bump) | none | `main` | Server / docs typo / infra. |
+| No changeset | none | `main` | Server / docs typo / infra / app / site / billing / admin / Addie. |
 
 **Never create milestones.** If the expected milestone doesn't
 exist, surface the gap in the run summary and Flag for human review

@@ -11,15 +11,21 @@ Runbook for cutting beta releases while `main` is in pre mode, and for exiting p
 ### Preconditions
 
 - `main` is in pre mode (`.changeset/pre.json` exists)
-- Patch eligibility doesn't apply here — this is the minor line, so any `patch`/`minor` changeset is fine
+- Patch eligibility doesn't apply here — this is the minor line, so protocol
+  changes may carry `patch`/`minor` changesets. Non-protocol work still gets no
+  changeset.
 
 ### Steps
 
-1. Land minor (or patch) changesets on `main` via normal PR flow.
+1. Land minor (or patch) protocol changesets on `main` via normal PR flow.
 2. `release.yml` updates the Version Packages PR. Title shows `Version Packages` and body lists `adcontextprotocol@3.1.0-beta.N`.
-3. Required CI runs automatically (App-token-triggered events fire downstream workflows). Approve and merge through normal review.
-4. Merging tags `v3.1.0-beta.N`, creates the GitHub Release, publishes `/protocol/3.1.0-beta.N.tgz`.
-5. `release-docs.yml` fires on `release: published`, snapshots `dist/docs/3.1.0-beta.N/`, opens an auto-merging PR.
+3. Audit the Version Packages PR body and generated `CHANGELOG.md` block. If
+   any entry is app, site, billing, admin, Addie, newsletter, digest, infra,
+   migration-only, or operational work, remove the source changeset from `main`
+   and wait for the release branch to regenerate before merge.
+4. Required CI runs automatically (App-token-triggered events fire downstream workflows). Approve and merge through normal review.
+5. Merging tags `v3.1.0-beta.N`, creates the GitHub Release, publishes `/protocol/3.1.0-beta.N.tgz`.
+6. `release-docs.yml` fires on `release: published`, snapshots `dist/docs/3.1.0-beta.N/`, opens an auto-merging PR.
 
 `release-docs.yml`'s docs.json updater collapses prerelease versions into a single `3.1-beta` label, so the live docs site shows the latest beta at the `3.1-beta` version selector. The `dist/docs/3.1.0-beta.{N-1}/` directory accumulates in git but isn't linked.
 
@@ -50,7 +56,7 @@ While in beta, that section can carry a `**Status:** Beta — in development` ba
 **Critical race condition.** Between the exit PR opening and the `v3.1.0` tag landing, any `minor` changeset that merges to `main` ships in 3.1.0 stable directly — no further beta drop.
 
 Either:
-1. **Freeze `main` for new `minor` PRs** from "exit PR opened" through "v3.1.0 tag pushed". Patch and `--empty` PRs are fine. Communicate the freeze in #engineering or via a `release-freeze` GitHub label, OR
+1. **Freeze `main` for new `minor` PRs** from "exit PR opened" through "v3.1.0 tag pushed". Patch-level protocol fixes and no-changeset maintenance PRs are fine. Communicate the freeze in #engineering or via a `release-freeze` GitHub label, OR
 2. **Accept** that minor changesets merged in that window ship in 3.1.0 stable directly. Document explicitly in the exit PR description if you choose this path.
 
 The freeze is shorter than it sounds — typically 30 minutes from exit-PR-merge to tag.
@@ -69,6 +75,12 @@ gh pr create --base main \
 ```
 
 Land the exit PR. The next Version Packages cut (any new changesets on main, or a manual workflow_dispatch on `release.yml`) produces `3.1.0` stable.
+
+Before merging that Version Packages PR, repeat the same changeset audit used
+for beta cuts. The final stable `3.1.0` block may only contain protocol/spec or
+release-surface entries. If non-protocol work appears, delete the source
+changeset on `main`, wait for `changesets/action` to regenerate the release
+branch, and only then merge.
 
 If the Release workflow fails after merge, recover manually following the same fallback pattern as `cut-major.md` § 4 (manual `git tag` + `gh release create`).
 
@@ -130,6 +142,7 @@ The `3.1.0` block doesn't aggregate everything since `3.0.0` — each beta consu
 - [ ] `https://adcontextprotocol.org/protocol/` listing shows `3.1.0` in `versions[]`
 - [ ] `release-notes.mdx` curated `## Version 3.1.0` section written
 - [ ] No duplicate `## 3.1.0` header in CHANGELOG.md
+- [ ] No non-protocol entries in the generated `## 3.1.0` CHANGELOG block
 - [ ] Forward-merge from `3.0.x` to `main` is current (`git log v3.0.X..origin/3.0.x` is empty after the most recent forward-merge PR landed)
 
 ## Announcements (3.1.0 stable cut)

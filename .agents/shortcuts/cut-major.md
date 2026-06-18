@@ -51,11 +51,19 @@ for f in .changeset/*.md; do
 done | sort
 ```
 
-Any changeset describing **website, admin, newsletter, digest, Addie, or
-server-infra work** should be empty (no package entry), not `patch`/`minor`.
-Strip the `"adcontextprotocol": ...` line from the frontmatter and commit
-to `main`. Keep only protocol/spec changes (schemas, task definitions,
-compliance vectors, API reference).
+Any changeset describing **website, admin, billing, newsletter, digest, Addie,
+server-infra, migration-only, or operational work** should not exist at all.
+Strip the `"adcontextprotocol": ...` line only as a temporary local diagnosis;
+the durable fix is a PR to `main` that deletes the non-protocol changeset.
+
+Keep only protocol/spec/release-surface changesets: schemas, task definitions,
+compliance vectors, normative API/reference docs, release scripts, and generated
+versioned dist artifacts.
+
+Also inspect the Version Packages PR body and generated `CHANGELOG.md` block.
+If a non-protocol entry appears under `adcontextprotocol@...`, stop. Do not
+merge the Version Packages PR until the source changeset is removed from
+`main` and `changesets/action` regenerates the release branch cleanly.
 
 ## 3. Don't manually edit `CHANGELOG.md` on `changeset-release/main`
 

@@ -18,10 +18,24 @@ const PROTOCOL_SCOPED_PATHS = [
   /^[.]github\/workflows\/(?:release|training-agent-storyboards)[.]yml$/,
 ];
 
-const CHANGESET_POLICY_MAINTENANCE_PATHS = new Set([
+const CHANGESET_POLICY_CODE_PATHS = new Set([
   '.github/workflows/changeset-check.yml',
   'scripts/check-changeset-protocol-scope.cjs',
   'tests/changeset-protocol-scope.test.cjs',
+]);
+
+const CHANGESET_STATUS_EXEMPT_MAINTENANCE_PATHS = new Set([
+  ...CHANGESET_POLICY_CODE_PATHS,
+  '.agents/playbook.md',
+  '.agents/routines/context-refresh-prompt.md',
+  '.agents/routines/triage-prompt.md',
+  '.agents/shortcuts/cut-beta.md',
+  '.agents/shortcuts/cut-major.md',
+  '.agents/shortcuts/cut-patch.md',
+  '.agents/shortcuts/prep-empty.md',
+  '.agents/shortcuts/prep-for-pr.md',
+  'docs/reference/changelog.mdx',
+  'docs/spec-guidelines.md',
 ]);
 
 function normalizePath(filePath) {
@@ -68,13 +82,37 @@ function isChangesetDeleteOnlyCleanup(changes) {
         continue;
       }
 
-      if (!CHANGESET_POLICY_MAINTENANCE_PATHS.has(normalizePath(filePath))) {
+      if (!CHANGESET_POLICY_CODE_PATHS.has(normalizePath(filePath))) {
         return false;
       }
     }
   }
 
   return deletedChangeset;
+}
+
+function isChangesetStatusExemptMaintenance(changes) {
+  let exemptChange = false;
+
+  for (const change of changes) {
+    for (const filePath of change.paths || []) {
+      const normalized = normalizePath(filePath);
+
+      if (isChangesetFile(normalized)) {
+        if (change.status !== 'D') return false;
+        exemptChange = true;
+        continue;
+      }
+
+      if (!CHANGESET_STATUS_EXEMPT_MAINTENANCE_PATHS.has(normalized)) {
+        return false;
+      }
+
+      exemptChange = true;
+    }
+  }
+
+  return exemptChange;
 }
 
 
@@ -157,6 +195,16 @@ function run(argv = process.argv.slice(2)) {
     return 1;
   }
 
+  if (argv.includes('--is-status-exempt-maintenance')) {
+    const isExempt = isChangesetStatusExemptMaintenance(changes);
+    if (isExempt) {
+      console.log('Changeset status-exempt maintenance detected.');
+      return 0;
+    }
+    console.log('Not changeset status-exempt maintenance.');
+    return 1;
+  }
+
   const violations = findChangesetProtocolScopeViolations(changes, readFileAtHead);
 
   if (violations.length > 0) {
@@ -177,6 +225,7 @@ module.exports = {
   findChangesetProtocolScopeViolations,
   formatViolationMessage,
   isChangesetDeleteOnlyCleanup,
+  isChangesetStatusExemptMaintenance,
   isProtocolScopedPath,
   parseNameStatus,
   run,
