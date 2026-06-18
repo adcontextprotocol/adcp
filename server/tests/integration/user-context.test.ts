@@ -4,6 +4,7 @@ import request from 'supertest';
 import { getPool, initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import type { Pool } from 'pg';
+import { getWorkos } from '../../src/auth/workos-client.js';
 
 /**
  * User Context API Tests
@@ -15,8 +16,11 @@ import type { Pool } from 'pg';
 // Mock auth middleware to bypass authentication in tests
 vi.mock('../../src/middleware/auth.js', async (importOriginal) => {
   const mockedRequireAuth = (req: any, _res: any, next: any) => {
+    const testUserId = typeof req.headers['x-test-user-id'] === 'string'
+      ? req.headers['x-test-user-id']
+      : 'user_test_admin';
     req.user = {
-      id: 'user_test_admin',
+      id: testUserId,
       email: 'admin@test.com',
       is_admin: true,
     };
@@ -77,22 +81,45 @@ vi.mock('../../src/auth/workos-client.js', () => {
     // memberships, and once with { organizationId } for the org's full member list.
     listOrganizationMemberships: vi.fn().mockImplementation(({ userId, organizationId }: any) => {
       if (userId === 'user_test_workos') {
+        const memberships = [
+          {
+            organizationId: 'org_test_context_other',
+            userId: 'user_test_workos',
+            role: { slug: 'owner' },
+            status: 'active',
+            createdAt: new Date(Date.now() - 86400 * 1000).toISOString(),
+          },
+          {
+            organizationId: 'org_test_context',
+            userId: 'user_test_workos',
+            role: { slug: 'admin' },
+            status: 'active',
+            createdAt: new Date().toISOString(),
+          },
+        ];
         return Promise.resolve({
-          data: [
-            {
-              organizationId: 'org_test_context',
-              userId: 'user_test_workos',
-              role: { slug: 'admin' },
-              status: 'active',
-              createdAt: new Date().toISOString(),
-            },
-          ],
+          data: organizationId ? memberships.filter((m) => m.organizationId === organizationId) : memberships,
+        });
+      }
+      if (userId === 'user_test_single_context') {
+        const memberships = [
+          {
+            organizationId: 'org_test_context',
+            userId: 'user_test_single_context',
+            role: { slug: 'member' },
+            status: 'active',
+            createdAt: new Date().toISOString(),
+          },
+        ];
+        return Promise.resolve({
+          data: organizationId ? memberships.filter((m) => m.organizationId === organizationId) : memberships,
         });
       }
       if (organizationId === 'org_test_context') {
         return Promise.resolve({
           data: [
             { organizationId: 'org_test_context', userId: 'user_test_workos', status: 'active', role: { slug: 'admin' } },
+            { organizationId: 'org_test_context', userId: 'user_test_single_context', status: 'active', role: { slug: 'member' } },
             { organizationId: 'org_test_context', userId: 'user_test_2', status: 'active', role: { slug: 'member' } },
           ],
         });
@@ -123,7 +150,10 @@ describe('User Context API Tests', () => {
   let app: any;
   let pool: Pool;
   const TEST_ORG_ID = 'org_test_context';
+  const TEST_OTHER_ORG_ID = 'org_test_context_other';
   const TEST_WORKOS_USER_ID = 'user_test_workos';
+  const TEST_SINGLE_ORG_WORKOS_USER_ID = 'user_test_single_context';
+  const TEST_STALE_WORKOS_USER_ID = 'user_test_stale_context';
   const TEST_SLACK_USER_ID = 'U_test_context';
 
   beforeAll(async () => {
@@ -135,12 +165,73 @@ describe('User Context API Tests', () => {
     // Run migrations
     await runMigrations();
 
-    // Create test organization
+    // Create test organizations
     await pool.query(
       `INSERT INTO organizations (workos_organization_id, name, subscription_status, created_at, updated_at)
        VALUES ($1, $2, $3, NOW(), NOW())
        ON CONFLICT (workos_organization_id) DO UPDATE SET name = $2, subscription_status = $3`,
       [TEST_ORG_ID, 'Test Context Org', 'active']
+    );
+    await pool.query(
+      `INSERT INTO organizations (workos_organization_id, name, subscription_status, created_at, updated_at)
+       VALUES ($1, $2, $3, NOW(), NOW())
+       ON CONFLICT (workos_organization_id) DO UPDATE SET name = $2, subscription_status = $3`,
+      [TEST_OTHER_ORG_ID, 'Other Context Org', null]
+    );
+
+    await pool.query(
+      `INSERT INTO users (workos_user_id, email, primary_organization_id, created_at, updated_at)
+       VALUES ($1, $2, $3, NOW(), NOW())
+       ON CONFLICT (workos_user_id) DO UPDATE
+         SET email = EXCLUDED.email,
+             primary_organization_id = EXCLUDED.primary_organization_id,
+             updated_at = NOW()`,
+      [TEST_WORKOS_USER_ID, 'test@example.com', TEST_ORG_ID]
+    );
+    await pool.query(
+      `INSERT INTO users (workos_user_id, email, primary_organization_id, created_at, updated_at)
+       VALUES ($1, $2, $3, NOW(), NOW())
+       ON CONFLICT (workos_user_id) DO UPDATE
+         SET email = EXCLUDED.email,
+             primary_organization_id = EXCLUDED.primary_organization_id,
+             updated_at = NOW()`,
+      [TEST_SINGLE_ORG_WORKOS_USER_ID, 'single@example.com', TEST_ORG_ID]
+    );
+    await pool.query(
+      `INSERT INTO users (workos_user_id, email, primary_organization_id, created_at, updated_at)
+       VALUES ($1, $2, $3, NOW(), NOW())
+       ON CONFLICT (workos_user_id) DO UPDATE
+         SET email = EXCLUDED.email,
+             primary_organization_id = EXCLUDED.primary_organization_id,
+             updated_at = NOW()`,
+      [TEST_STALE_WORKOS_USER_ID, 'stale@example.com', TEST_ORG_ID]
+    );
+
+    await pool.query(
+      `INSERT INTO organization_memberships (
+         workos_user_id, workos_organization_id, workos_membership_id, email,
+         role, seat_type, synced_at, created_at, updated_at
+       ) VALUES
+         ($1, $2, $4, $5, 'admin', 'community_only', NOW(), NOW(), NOW()),
+         ($1, $3, $6, $5, 'owner', 'community_only', NOW(), NOW(), NOW()),
+         ($7, $2, $8, $9, 'member', 'community_only', NOW(), NOW(), NOW()),
+         ($10, $2, $11, $12, 'admin', 'community_only', NOW(), NOW(), NOW())
+       ON CONFLICT (workos_user_id, workos_organization_id)
+       DO UPDATE SET role = EXCLUDED.role, updated_at = NOW()`,
+      [
+        TEST_WORKOS_USER_ID,
+        TEST_ORG_ID,
+        TEST_OTHER_ORG_ID,
+        `om_${TEST_WORKOS_USER_ID}_${TEST_ORG_ID}`,
+        'test@example.com',
+        `om_${TEST_WORKOS_USER_ID}_${TEST_OTHER_ORG_ID}`,
+        TEST_SINGLE_ORG_WORKOS_USER_ID,
+        `om_${TEST_SINGLE_ORG_WORKOS_USER_ID}_${TEST_ORG_ID}`,
+        'single@example.com',
+        TEST_STALE_WORKOS_USER_ID,
+        `om_${TEST_STALE_WORKOS_USER_ID}_${TEST_ORG_ID}`,
+        'stale@example.com',
+      ]
     );
 
     // Create test Slack user mapping
@@ -183,10 +274,12 @@ describe('User Context API Tests', () => {
 
   afterAll(async () => {
     // Clean up test data
-    await pool.query('DELETE FROM member_profiles WHERE workos_organization_id = $1', [TEST_ORG_ID]);
+    await pool.query('DELETE FROM member_profiles WHERE workos_organization_id = ANY($1)', [[TEST_ORG_ID, TEST_OTHER_ORG_ID]]);
     await pool.query('DELETE FROM person_relationships WHERE slack_user_id = $1 OR workos_user_id = $2', [TEST_SLACK_USER_ID, TEST_WORKOS_USER_ID]);
     await pool.query('DELETE FROM slack_user_mappings WHERE slack_user_id = $1', [TEST_SLACK_USER_ID]);
-    await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [TEST_ORG_ID]);
+    await pool.query('DELETE FROM organization_memberships WHERE workos_user_id = ANY($1)', [[TEST_WORKOS_USER_ID, TEST_SINGLE_ORG_WORKOS_USER_ID, TEST_STALE_WORKOS_USER_ID]]);
+    await pool.query('DELETE FROM users WHERE workos_user_id = ANY($1)', [[TEST_WORKOS_USER_ID, TEST_SINGLE_ORG_WORKOS_USER_ID, TEST_STALE_WORKOS_USER_ID]]);
+    await pool.query('DELETE FROM organizations WHERE workos_organization_id = ANY($1)', [[TEST_ORG_ID, TEST_OTHER_ORG_ID]]);
 
     await server?.stop();
     await closeDatabase();
@@ -208,18 +301,50 @@ describe('User Context API Tests', () => {
 
     it('should return context for a Slack user ID', async () => {
       const response = await request(app)
-        .get(`/api/admin/users/${TEST_SLACK_USER_ID}/context?type=slack`)
+        .get(`/api/admin/users/${TEST_SLACK_USER_ID}/context?type=slack&org=${TEST_ORG_ID}`)
         .expect(200);
 
       expect(response.body).toHaveProperty('is_mapped');
       expect(response.body).toHaveProperty('slack_linked');
       expect(response.body.slack_user).toBeDefined();
       expect(response.body.slack_user.slack_user_id).toBe(TEST_SLACK_USER_ID);
+      expect(response.body.organization.workos_organization_id).toBe(TEST_ORG_ID);
+      expect(response.body.org_membership.role).toBe('admin');
+    });
+
+    it('should not hydrate org context when local primary org lacks active WorkOS membership', async () => {
+      const response = await request(app)
+        .get(`/api/admin/users/${TEST_STALE_WORKOS_USER_ID}/context?type=workos&org=${TEST_ORG_ID}`)
+        .expect(200);
+
+      expect(response.body.workos_user.workos_user_id).toBe(TEST_STALE_WORKOS_USER_ID);
+      expect(response.body.organization).toBeUndefined();
+      expect(response.body.org_membership).toBeUndefined();
+    });
+
+    it('should not default org context for multi-org users without explicit selection', async () => {
+      const response = await request(app)
+        .get(`/api/admin/users/${TEST_WORKOS_USER_ID}/context?type=workos`)
+        .expect(200);
+
+      expect(response.body.workos_user.workos_user_id).toBe(TEST_WORKOS_USER_ID);
+      expect(response.body.organization).toBeUndefined();
+      expect(response.body.org_membership).toBeUndefined();
+    });
+
+    it('should default org context for a user with exactly one active WorkOS organization', async () => {
+      const response = await request(app)
+        .get(`/api/admin/users/${TEST_SINGLE_ORG_WORKOS_USER_ID}/context?type=workos`)
+        .expect(200);
+
+      expect(response.body.workos_user.workos_user_id).toBe(TEST_SINGLE_ORG_WORKOS_USER_ID);
+      expect(response.body.organization.workos_organization_id).toBe(TEST_ORG_ID);
+      expect(response.body.org_membership.role).toBe('member');
     });
 
     it('should preserve member engagement when relationship engagement is present', async () => {
       const response = await request(app)
-        .get(`/api/admin/users/${TEST_SLACK_USER_ID}/context?type=slack`)
+        .get(`/api/admin/users/${TEST_SLACK_USER_ID}/context?type=slack&org=${TEST_ORG_ID}`)
         .expect(200);
 
       expect(response.body.engagement).toMatchObject({
@@ -254,6 +379,8 @@ describe('User Context API Tests', () => {
 
       expect(response.body.slack_user).toBeDefined();
       expect(response.body.slack_user.slack_user_id).toBe(TEST_SLACK_USER_ID);
+      expect(response.body.organization).toBeUndefined();
+      expect(response.body.org_membership).toBeUndefined();
     });
 
     it('should return 404 for non-existent user', async () => {
@@ -266,7 +393,7 @@ describe('User Context API Tests', () => {
 
     it('should include organization info when user has org membership', async () => {
       const response = await request(app)
-        .get(`/api/admin/users/${TEST_WORKOS_USER_ID}/context?type=workos`)
+        .get(`/api/admin/users/${TEST_WORKOS_USER_ID}/context?type=workos&org=${TEST_ORG_ID}`)
         .expect(200);
 
       expect(response.body.organization).toBeDefined();
@@ -276,7 +403,7 @@ describe('User Context API Tests', () => {
 
     it('should include member profile when available', async () => {
       const response = await request(app)
-        .get(`/api/admin/users/${TEST_WORKOS_USER_ID}/context?type=workos`)
+        .get(`/api/admin/users/${TEST_WORKOS_USER_ID}/context?type=workos&org=${TEST_ORG_ID}`)
         .expect(200);
 
       expect(response.body.member_profile).toBeDefined();
@@ -287,7 +414,7 @@ describe('User Context API Tests', () => {
 
     it('should include org membership details', async () => {
       const response = await request(app)
-        .get(`/api/admin/users/${TEST_WORKOS_USER_ID}/context?type=workos`)
+        .get(`/api/admin/users/${TEST_WORKOS_USER_ID}/context?type=workos&org=${TEST_ORG_ID}`)
         .expect(200);
 
       expect(response.body.org_membership).toBeDefined();
@@ -297,12 +424,31 @@ describe('User Context API Tests', () => {
 
     it('should indicate slack_linked status correctly', async () => {
       const response = await request(app)
-        .get(`/api/admin/users/${TEST_WORKOS_USER_ID}/context?type=workos`)
+        .get(`/api/admin/users/${TEST_WORKOS_USER_ID}/context?type=workos&org=${TEST_ORG_ID}`)
         .expect(200);
 
       expect(response.body.slack_linked).toBe(true);
       expect(response.body.slack_user).toBeDefined();
       expect(response.body.slack_user.slack_user_id).toBe(TEST_SLACK_USER_ID);
+    });
+  });
+
+  describe('GET /api/me/addie-home', () => {
+    it('hydrates the explicitly selected organization from the org query', async () => {
+      const listMemberships = (getWorkos() as any).userManagement.listOrganizationMemberships as ReturnType<typeof vi.fn>;
+      listMemberships.mockClear();
+
+      const response = await request(app)
+        .get(`/api/me/addie-home?org=${TEST_ORG_ID}`)
+        .set('x-test-user-id', TEST_WORKOS_USER_ID)
+        .expect(200);
+
+      expect(response.body.greeting.orgName).toBe('Test Context Org');
+      expect(response.body.greeting.isMember).toBe(true);
+      expect(listMemberships).toHaveBeenCalledWith(expect.objectContaining({
+        userId: TEST_WORKOS_USER_ID,
+        organizationId: TEST_ORG_ID,
+      }));
     });
   });
 

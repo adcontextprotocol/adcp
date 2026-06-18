@@ -962,6 +962,189 @@ function sanitizeInline(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
 }
 
+function normalizeOrgSelector(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = sanitizeInline(value);
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeOrgNameForMatch(value: string): string {
+  return sanitizeInline(value).toLowerCase();
+}
+
+function formatOrgNameForTool(value: string): string {
+  return wrapUntrustedInput(sanitizeInline(value), 100);
+}
+
+function formatOrgChoice(org: { organizationId: string; name?: string | null }): string {
+  const name = org.name ? formatOrgNameForTool(org.name) : '';
+  return name ? `${name} (${org.organizationId})` : org.organizationId;
+}
+
+type SaveAgentOrgResolution =
+  | { ok: true; organizationId: string; organizationName: string | null }
+  | { ok: false; message: string };
+
+type ActiveSaveAgentMembership = {
+  userId: string;
+  organizationId: string;
+  status: 'active';
+};
+
+async function listActiveWorkosMembershipsForSaveAgent(
+  workosUserId: string,
+  organizationId?: string | null,
+): Promise<ActiveSaveAgentMembership[]> {
+  const allMemberships: Array<{
+    userId?: string;
+    organizationId?: string;
+    status?: string;
+  }> = [];
+  let after: string | undefined;
+
+  do {
+    const page = await getWorkos().userManagement.listOrganizationMemberships({
+      userId: workosUserId,
+      statuses: ['active'],
+      ...(organizationId ? { organizationId } : {}),
+      limit: 100,
+      after,
+    });
+    allMemberships.push(...(page.data ?? []));
+    after = page.listMetadata?.after ?? undefined;
+  } while (after);
+
+  const activeMemberships: ActiveSaveAgentMembership[] = [];
+  for (const membership of allMemberships) {
+    if (
+      membership.userId !== workosUserId ||
+      membership.status !== 'active' ||
+      typeof membership.organizationId !== 'string' ||
+      (organizationId && membership.organizationId !== organizationId)
+    ) {
+      continue;
+    }
+    activeMemberships.push({
+      userId: workosUserId,
+      organizationId: membership.organizationId,
+      status: 'active',
+    });
+  }
+
+  return activeMemberships;
+}
+
+async function resolveSaveAgentOrganization(
+  memberContext: MemberContext,
+  input: Record<string, unknown>,
+): Promise<SaveAgentOrgResolution> {
+  const workosUserId = memberContext.workos_user?.workos_user_id;
+  if (!workosUserId) {
+    return {
+      ok: false,
+      message: 'You need to be logged in to save agents. Please log in at https://agenticadvertising.org/dashboard first.',
+    };
+  }
+
+  const requestedOrgId = normalizeOrgSelector(input.organization_id);
+  const requestedOrgName = normalizeOrgSelector(input.organization_name);
+
+  if (requestedOrgId && requestedOrgName) {
+    return {
+      ok: false,
+      message: 'Use either organization_id or organization_name for save_agent, not both.',
+    };
+  }
+
+  if (!requestedOrgId && !requestedOrgName) {
+    const contextOrgId = memberContext.organization?.workos_organization_id;
+    if (!contextOrgId) {
+      return {
+        ok: false,
+        message: 'This feature requires an organization. If you belong to multiple organizations, say which one to save to, or use the organization_id / organization_name field.',
+      };
+    }
+    const activeMemberships = await listActiveWorkosMembershipsForSaveAgent(workosUserId, contextOrgId);
+    if (activeMemberships.length === 0) {
+      return {
+        ok: false,
+        message: `I can't save to ${contextOrgId} because your account is not an active member of that organization.`,
+      };
+    }
+    return {
+      ok: true,
+      organizationId: contextOrgId,
+      organizationName: memberContext.organization?.name || null,
+    };
+  }
+
+  const memberships = await listActiveWorkosMembershipsForSaveAgent(workosUserId, requestedOrgId);
+  const activeOrgIds = [...new Set(
+    memberships
+      .map((m) => m.organizationId)
+      .filter(Boolean),
+  )];
+
+  if (requestedOrgId) {
+    if (activeOrgIds.length === 0) {
+      return {
+        ok: false,
+        message: `I can't save to ${requestedOrgId} because your account is not an active member of that organization.`,
+      };
+    }
+    const org = await orgDb.getOrganization(requestedOrgId).catch(() => null);
+    const workosOrg = org ? null : await getWorkos().organizations.getOrganization(requestedOrgId).catch(() => null);
+    const ambientOrgName = memberContext.organization?.workos_organization_id === requestedOrgId
+      ? memberContext.organization?.name
+      : null;
+    return {
+      ok: true,
+      organizationId: requestedOrgId,
+      organizationName: org?.name || workosOrg?.name || ambientOrgName || null,
+    };
+  }
+
+  const candidates = await Promise.all(activeOrgIds.map(async (organizationId) => {
+    const localOrg = await orgDb.getOrganization(organizationId).catch(() => null);
+    let name = localOrg?.name ?? null;
+    if (!name) {
+      const workosOrg = await getWorkos().organizations.getOrganization(organizationId).catch(() => null);
+      name = workosOrg?.name ?? null;
+    }
+    return { organizationId, name };
+  }));
+
+  const requestedName = normalizeOrgNameForMatch(requestedOrgName!);
+  const matches = candidates.filter((candidate) =>
+    candidate.organizationId === requestedOrgName ||
+    (candidate.name && normalizeOrgNameForMatch(candidate.name) === requestedName),
+  );
+
+  if (matches.length === 1) {
+    return {
+      ok: true,
+      organizationId: matches[0].organizationId,
+      organizationName: matches[0].name ?? null,
+    };
+  }
+
+  if (matches.length > 1) {
+    const choices = matches.map(formatOrgChoice).join(', ');
+    return {
+      ok: false,
+      message: `I found multiple active organizations named "${sanitizeInline(requestedOrgName!)}": ${choices}. Please use organization_id to choose the exact one.`,
+    };
+  }
+
+  const visibleChoices = candidates.map(formatOrgChoice).join(', ');
+  return {
+    ok: false,
+    message: visibleChoices
+      ? `I couldn't find an active organization named "${sanitizeInline(requestedOrgName!)}" for your account. Active organizations I can save to: ${visibleChoices}.`
+      : `I couldn't find any active organizations for your account, so I can't save to "${sanitizeInline(requestedOrgName!)}".`,
+  };
+}
+
 function sanitizeAuthorizationError(raw: string): string {
   const withoutMarkdown = neutralizeAndTruncate(raw, 400)
     .replace(/[\\`*_{}\[\]<>()#+\-.!|]/g, '')
@@ -1733,7 +1916,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'save_agent',
     description:
-      'Register an agent in the AAO registry on behalf of the current organization. Adds the agent to the org\'s member profile; surfaces in `/dashboard/agents`. New agents land with `members_only` visibility (discoverable to other paying AAO members — Professional, Builder, Member, or Leader; not publicly listed in the directory or brand.json). To list publicly, the caller promotes the agent via the dashboard; public visibility requires a paid AAO tier (Professional, Builder, Member, or Leader) and a primary brand domain. Auth modes: (1) none — public agent, no credentials; (2) static `auth_token` + `auth_type` (`bearer` or `basic`, stored encrypted); (3) `oauth_client_credentials` for machine-to-machine (RFC 6749 §4.4). For interactive OAuth user authorization, save with no auth fields and have the user complete the dashboard\'s **Authorize** flow afterward — `save_agent` does not collect end-user OAuth state. The caller MUST declare the agent\'s `type` (`brand`, `rights`, `measurement`, `governance`, `creative`, `sales`, `buying`, `signals`); ask the owner — do not guess. Server-side smuggle protection still validates the declared type against the capability snapshot when one is available. If the user mentions their MCP endpoint requires auth, lives at a non-root path (e.g. /adcp/mcp), or shows up as offline after saving, suggest setting `health_check_url` for a liveness fallback while they fix the underlying URL. See the "Registering an Agent in the AAO Registry" section of the rules for the intake script.',
+      'Register an agent in the AgenticAdvertising.org registry on behalf of the current organization, or an explicitly selected active organization via `organization_id` / `organization_name`. Adds the agent to the org\'s member profile; surfaces in `/dashboard/agents`. New agents land with `members_only` visibility (discoverable to other paying AgenticAdvertising.org members — Professional, Builder, Member, or Leader; not publicly listed in the directory or brand.json). To list publicly, the caller promotes the agent via the dashboard; public visibility requires a paid AgenticAdvertising.org tier (Professional, Builder, Member, or Leader) and a primary brand domain. Auth modes: (1) none — public agent, no credentials; (2) static `auth_token` + `auth_type` (`bearer` or `basic`, stored encrypted); (3) `oauth_client_credentials` for machine-to-machine (RFC 6749 §4.4). For interactive OAuth user authorization, save with no auth fields and have the user complete the dashboard\'s **Authorize** flow afterward — `save_agent` does not collect end-user OAuth state. The caller MUST declare the agent\'s `type` (`brand`, `rights`, `measurement`, `governance`, `creative`, `sales`, `buying`, `signals`); ask the owner — do not guess. Server-side smuggle protection still validates the declared type against the capability snapshot when one is available. If the user mentions their MCP endpoint requires auth, lives at a non-root path (e.g. /adcp/mcp), or shows up as offline after saving, suggest setting `health_check_url` for a liveness fallback while they fix the underlying URL. See the "Registering an Agent in the AgenticAdvertising.org Registry" section of the rules for the intake script.',
     usage_hints: 'use for "register my agent", "add an agent", "save my agent", "store my auth token", "configure client credentials". When the user opens the conversation with a registration intent and no details, follow the intake script in the rules — do not call save_agent until you have `agent_url`, `type`, and an explicit auth-mode choice.',
     input_schema: {
       type: 'object',
@@ -1763,6 +1946,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
         },
         protocol: { type: 'string', enum: ['mcp', 'a2a'], description: 'Protocol (default: mcp)' },
         health_check_url: { type: 'string', description: 'Optional fallback liveness URL. The dashboard probe tries the protocol handshake first; if it fails and this URL is set, the probe GETs it and treats any 2xx as "online." Used by sellers whose protocol endpoint requires auth or is path-prefixed (e.g. /adcp/mcp). Liveness only — does not populate type or tools. Pass an empty string to clear a previously-set value.' },
+        organization_id: { type: 'string', description: 'Optional explicit WorkOS organization ID to save this agent under. Required when the caller belongs to multiple organizations and no selected organization context is available. The user must be an active member of this organization.' },
+        organization_name: { type: 'string', description: 'Optional explicit organization name to save this agent under, for natural-language requests like "save this to my org Example Co". Must match exactly one active organization for the caller. Prefer organization_id when available.' },
       },
       required: ['agent_url', 'type'],
     },
@@ -6507,10 +6692,16 @@ export function createMemberToolHandlers(
       return 'You need to be logged in to save agents. Please log in at https://agenticadvertising.org/dashboard first.';
     }
 
-    const saveOrgId = memberContext.organization?.workos_organization_id;
-    if (!saveOrgId) {
-      return 'This feature requires an organization. Visit https://agenticadvertising.org/onboarding to create one (free, takes 2 minutes). You can still use the public test agent directly via `evaluate_agent_quality` without an organization.';
+    const saveOrg = await resolveSaveAgentOrganization(memberContext, input);
+    if (!saveOrg.ok) {
+      return saveOrg.message;
     }
+    const saveOrgId = saveOrg.organizationId;
+    const saveOrgNameForDisplay = saveOrg.organizationName
+      ? formatOrgNameForTool(saveOrg.organizationName)
+      : '';
+    const saveOrgProfileName = saveOrg.organizationName;
+    const saveOrgLabel = saveOrgNameForDisplay ? `${saveOrgNameForDisplay} (${saveOrgId})` : saveOrgId;
 
     const rawAgentUrl = input.agent_url as string;
     try {
@@ -6628,7 +6819,7 @@ export function createMemberToolHandlers(
         let profile = await memberDb.getProfileByOrgId(saveOrgId);
         let createdProfile = false;
         if (!profile) {
-          const orgName = memberContext?.organization?.name;
+          const orgName = saveOrgProfileName;
           if (!orgName) {
             return { ok: false, reason: 'no-org-name' };
           }
@@ -6726,6 +6917,7 @@ export function createMemberToolHandlers(
         const profileStatus = await ensureAgentInProfile(agentName || context?.agent_name || new URL(agentUrl).hostname);
 
         let response = `✅ Updated saved agent: **${context?.agent_name || agentUrl}**\n\n`;
+        response += `**Organization:** ${saveOrgLabel}\n`;
         if (authToken) {
           const typeLabel = authType === 'basic' ? 'Basic' : 'Bearer';
           response += `🔐 ${typeLabel} auth token saved securely (hint: ${context?.auth_token_hint})\n`;
@@ -6763,6 +6955,7 @@ export function createMemberToolHandlers(
       const profileStatus = await ensureAgentInProfile(agentName || new URL(agentUrl).hostname);
 
       let response = `✅ Saved agent: **${context?.agent_name || agentUrl}**\n\n`;
+      response += `**Organization:** ${saveOrgLabel}\n`;
       response += `**URL:** ${agentUrl}\n`;
       response += `**Protocol:** ${protocol.toUpperCase()}\n`;
       if (authToken) {
@@ -6775,7 +6968,7 @@ export function createMemberToolHandlers(
         response += `_The client secret is encrypted and will never be shown again. The SDK exchanges and refreshes at test time._\n`;
       }
       if (profileStatus.ok) {
-        response += `\nThe agent has been added to your dashboard with **members_only** visibility — other paying AAO members (Professional, Builder, Member, or Leader) can discover it, but it won't appear in the public directory. To publish publicly, use the dashboard publish flow (requires a paid AAO tier). When you test this agent, I'll automatically use the saved credentials.`;
+        response += `\nThe agent has been added to your dashboard with **members_only** visibility — other paying AgenticAdvertising.org members (Professional, Builder, Member, or Leader) can discover it, but it won't appear in the public directory. To publish publicly, use the dashboard publish flow (requires a paid AgenticAdvertising.org tier). When you test this agent, I'll automatically use the saved credentials.`;
       } else {
         response += `\n⚠️ The credentials are saved on the backend, but I couldn't add this agent to your dashboard listing right now (${profileStatus.reason}). The team has been notified — please check back shortly, or use the dashboard's manual register flow at https://agenticadvertising.org/dashboard/agents.`;
       }

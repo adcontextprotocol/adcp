@@ -292,6 +292,28 @@ export function resolveMembershipTier(org: MembershipTierRow | null | undefined)
 }
 
 /**
+ * Decide the tier to write for a live subscription update.
+ *
+ * Stripe webhook payloads can occasionally be missing the price/product
+ * signals needed to resolve a tier. If the subscription is still entitled,
+ * preserve the existing authoritative tier instead of clobbering it to null.
+ * Non-entitled statuses still clear the tier.
+ */
+export function resolveMembershipTierForSubscriptionWrite(
+  update: Pick<SubscriptionUpdatePayload, 'subscription_status' | 'membership_tier'>,
+  currentMembershipTier: MembershipTier | string | null | undefined,
+): MembershipTier | null {
+  if (
+    update.membership_tier === null &&
+    (TIER_PRESERVING_STATUSES as readonly string[]).includes(update.subscription_status)
+  ) {
+    return (currentMembershipTier ?? null) as MembershipTier | null;
+  }
+
+  return update.membership_tier;
+}
+
+/**
  * Read + resolve the current membership tier for `orgId` using a
  * caller-held pg client. Prefer this to inline SQL when the read
  * must share a transaction with subsequent writes (e.g.,

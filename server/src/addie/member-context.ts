@@ -28,6 +28,7 @@ import { PERSONA_LABELS } from '../config/personas.js';
 import { resolveEffectiveMembership } from '../db/org-filters.js';
 import { resolveUserRole } from '../utils/resolve-user-role.js';
 import { getAgentTestingContext } from '../db/agent-test-db.js';
+import { wrapUntrustedInput } from './mcp/untrusted-input.js';
 
 /** Stripe-defined subscription statuses (safe to interpolate into prompts). */
 const KNOWN_SUBSCRIPTION_STATUSES = new Set([
@@ -41,6 +42,10 @@ export function safeSubscriptionStatus(status: string | null | undefined): strin
   return KNOWN_SUBSCRIPTION_STATUSES.has(status) ? status : 'unknown';
 }
 
+function promptFact(value: string | null | undefined, maxLength = 200): string {
+  return wrapUntrustedInput(value ?? '', maxLength);
+}
+
 const slackDb = new SlackDatabase();
 const memberDb = new MemberDatabase();
 const orgDb = new OrganizationDatabase();
@@ -50,6 +55,107 @@ const addieDb = new AddieDatabase();
 const joinRequestDb = new JoinRequestDatabase();
 const orgKnowledgeDb = new OrgKnowledgeDatabase();
 const agentContextDb = new AgentContextDatabase();
+
+type ActiveWorkosMembership = {
+  userId: string;
+  organizationId: string;
+  status: 'active';
+  createdAt?: string | Date | null;
+  role?: { slug: string };
+};
+
+async function listActiveWorkosMembershipsForUser(
+  workosUserId: string,
+  organizationId?: string | null,
+): Promise<ActiveWorkosMembership[]> {
+  const allMemberships: Array<{
+    userId?: string;
+    organizationId?: string;
+    status?: string;
+    createdAt?: string | Date | null;
+    role?: { slug?: unknown } | null;
+  }> = [];
+  let after: string | undefined;
+
+  do {
+    const page = await getWorkos().userManagement.listOrganizationMemberships({
+      userId: workosUserId,
+      statuses: ['active'],
+      ...(organizationId ? { organizationId } : {}),
+      limit: 100,
+      after,
+    });
+    allMemberships.push(...(page.data ?? []));
+    after = page.listMetadata?.after ?? undefined;
+  } while (after);
+
+  const activeMemberships: ActiveWorkosMembership[] = [];
+  for (const membership of allMemberships) {
+    if (
+      membership.userId !== workosUserId ||
+      membership.status !== 'active' ||
+      typeof membership.organizationId !== 'string' ||
+      (organizationId && membership.organizationId !== organizationId)
+    ) {
+      continue;
+    }
+
+    const roleSlug = typeof membership.role?.slug === 'string'
+      ? membership.role.slug
+      : undefined;
+    activeMemberships.push({
+      userId: workosUserId,
+      organizationId: membership.organizationId,
+      status: 'active',
+      createdAt: membership.createdAt,
+      ...(roleSlug ? { role: { slug: roleSlug } } : {}),
+    });
+  }
+
+  return activeMemberships;
+}
+
+async function resolveAddieOrganization(
+  workosUserId: string,
+  logPrefix: 'Addie' | 'Addie Web',
+  selectedOrganizationId?: string | null,
+): Promise<{ organizationId: string; userRole: string; userJoinedAt: Date | null } | null> {
+  try {
+    const activeMemberships = await listActiveWorkosMembershipsForUser(workosUserId, selectedOrganizationId);
+
+    if (selectedOrganizationId && activeMemberships.length === 0) {
+      logger.warn(
+        { workosUserId, organizationId: selectedOrganizationId },
+        `${logPrefix}: selected org is not backed by active WorkOS membership`,
+      );
+      return null;
+    }
+
+    const uniqueActiveOrgIds = [...new Set(activeMemberships.map((m) => m.organizationId).filter(Boolean))];
+    if (uniqueActiveOrgIds.length === 0) return null;
+    if (uniqueActiveOrgIds.length > 1) {
+      logger.info(
+        { workosUserId, orgCount: uniqueActiveOrgIds.length },
+        `${logPrefix}: multiple active organizations; waiting for explicit org selection`,
+      );
+      return null;
+    }
+
+    const organizationId = uniqueActiveOrgIds[0];
+    const selectedOrgMemberships = activeMemberships.filter((m) => m.organizationId === organizationId);
+    const userRole = resolveUserRole(selectedOrgMemberships) || 'member';
+    const activeMembership = selectedOrgMemberships[0];
+    const userJoinedAt = activeMembership?.createdAt ? new Date(activeMembership.createdAt) : null;
+
+    return { organizationId, userRole, userJoinedAt };
+  } catch (error) {
+    logger.warn(
+      { error, workosUserId, selectedOrganizationId },
+      `${logPrefix}: Failed to resolve org membership details`,
+    );
+    return null;
+  }
+}
 
 /**
  * Get pending content count for a user
@@ -479,12 +585,17 @@ export interface MemberContext {
  * 4. Look up user's organization memberships in WorkOS
  * 5. Look up organization and member profile in local DB (in parallel)
  */
-export async function getMemberContext(slackUserId: string): Promise<MemberContext> {
+export async function getMemberContext(slackUserId: string, selectedOrganizationId?: string | null): Promise<MemberContext> {
   // Check cache first for fast response
-  const cached = getCachedContext(slackUserId);
-  if (cached) {
-    logger.debug({ slackUserId }, 'Addie: Using cached member context');
-    return cached;
+  if (!selectedOrganizationId) {
+    const cached = getCachedContext(slackUserId);
+    if (cached && !cached.organization) {
+      logger.debug({ slackUserId }, 'Addie: Using cached member context');
+      return cached;
+    }
+    if (cached?.organization) {
+      logger.debug({ slackUserId }, 'Addie: Bypassing cached org-bearing member context');
+    }
   }
 
   const context: MemberContext = {
@@ -533,33 +644,13 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
       return context;
     }
 
-    // Step 4: Get user's organization memberships
-    let organizationId: string | null = null;
-    let userRole: string = 'member';
-    let userJoinedAt: Date | null = null;
-    try {
-      const memberships = await getWorkos().userManagement.listOrganizationMemberships({
-        userId: slackMapping.workos_user_id,
-      });
-
-      // Find the first active membership (users typically have one org)
-      if (memberships.data && memberships.data.length > 0) {
-        const activeMembership = memberships.data.find(m => m.status === 'active');
-        if (activeMembership) {
-          organizationId = activeMembership.organizationId;
-          userRole = resolveUserRole(memberships.data) || 'member';
-          userJoinedAt = activeMembership.createdAt ? new Date(activeMembership.createdAt) : null;
-        }
-      }
-    } catch (error) {
-      logger.warn({ error, workosUserId: slackMapping.workos_user_id }, 'Addie: Failed to get org memberships');
-      return context;
-    }
-
-    if (!organizationId) {
+    // Step 4: Resolve the explicitly selected org, or a sole unambiguous org.
+    const resolvedOrg = await resolveAddieOrganization(slackMapping.workos_user_id, 'Addie', selectedOrganizationId);
+    if (!resolvedOrg) {
       logger.debug({ workosUserId: slackMapping.workos_user_id }, 'Addie: User has no organization');
       return context;
     }
+    const { organizationId, userRole, userJoinedAt } = resolvedOrg;
 
     // Step 4b: Get org member count from WorkOS
     let memberCount = 0;
@@ -853,8 +944,11 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
       'Addie: Member context resolved'
     );
 
-    // Cache the context for future lookups
-    setCachedContext(slackUserId, context);
+    // Cache only org-less default Slack context. Org-bearing context depends
+    // on live WorkOS membership and must not outlive membership changes.
+    if (!selectedOrganizationId && !context.organization) {
+      setCachedContext(slackUserId, context);
+    }
 
     return context;
   } catch (error) {
@@ -1119,9 +1213,13 @@ async function resolveContextFromLocalDb(
 
 /**
  * Build member context from WorkOS user ID (web session authentication).
- * In dev mode, resolves org from dev user config. In production, uses WorkOS API.
+ * In dev mode, resolves org from dev user config. In production, uses the
+ * explicitly selected org, or the user's sole active org when unambiguous.
  */
-export async function getWebMemberContext(workosUserId: string): Promise<MemberContext> {
+export async function getWebMemberContext(
+  workosUserId: string,
+  selectedOrganizationId?: string | null,
+): Promise<MemberContext> {
   const context: MemberContext = {
     is_mapped: true, // They're authenticated via WorkOS, so they're "mapped"
     is_member: false,
@@ -1202,32 +1300,13 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
       logger.warn({ error, workosUserId }, 'Addie Web: Failed to check Slack mapping');
     }
 
-    // Step 3: Get user's organization memberships
-    let organizationId: string | null = null;
-    let userRole: string = 'member';
-    let userJoinedAt: Date | null = null;
-    try {
-      const memberships = await getWorkos().userManagement.listOrganizationMemberships({
-        userId: workosUserId,
-      });
-
-      if (memberships.data && memberships.data.length > 0) {
-        const activeMembership = memberships.data.find(m => m.status === 'active');
-        if (activeMembership) {
-          organizationId = activeMembership.organizationId;
-          userRole = resolveUserRole(memberships.data) || 'member';
-          userJoinedAt = activeMembership.createdAt ? new Date(activeMembership.createdAt) : null;
-        }
-      }
-    } catch (error) {
-      logger.warn({ error, workosUserId }, 'Addie Web: Failed to get org memberships');
-      return context;
-    }
-
-    if (!organizationId) {
+    // Step 3: Resolve the explicitly selected org, or a sole unambiguous org.
+    const resolvedOrg = await resolveAddieOrganization(workosUserId, 'Addie Web', selectedOrganizationId);
+    if (!resolvedOrg) {
       logger.debug({ workosUserId }, 'Addie Web: User has no organization');
       return context;
     }
+    const { organizationId, userRole, userJoinedAt } = resolvedOrg;
 
     // Step 4: Get org member count from WorkOS
     let memberCount = 0;
@@ -1283,7 +1362,7 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
     context.workos_user?.first_name ||
     context.slack_user?.display_name ||
     'Unknown';
-  lines.push(`The user's name is ${userName}.`);
+  lines.push(`The user's name is ${promptFact(userName, 120)}.`);
 
   // Organization
   if (context.organization) {
@@ -1299,7 +1378,7 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
         }
       }
     } else {
-      lines.push(`They work at ${context.organization.name}.`);
+      lines.push(`They work at ${promptFact(context.organization.name, 200)}.`);
 
       if (context.is_member) {
         lines.push('Their organization is an active AgenticAdvertising.org member.');
@@ -1320,13 +1399,13 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
   if (context.member_profile) {
     lines.push('### Company Profile (source: AgenticAdvertising.org registry)');
     if (context.member_profile.tagline) {
-      lines.push(`Company description: ${context.member_profile.tagline}`);
+      lines.push(`Company description: ${promptFact(context.member_profile.tagline, 500)}`);
     }
     if (context.member_profile.offerings && context.member_profile.offerings.length > 0) {
-      lines.push(`Company offerings: ${context.member_profile.offerings.join(', ')}`);
+      lines.push(`Company offerings: ${context.member_profile.offerings.map((offering) => promptFact(offering, 120)).join(', ')}`);
     }
     if (context.member_profile.headquarters) {
-      lines.push(`Company headquarters: ${context.member_profile.headquarters}`);
+      lines.push(`Company headquarters: ${promptFact(context.member_profile.headquarters, 200)}`);
     }
   } else if (context.organization && !context.organization.is_personal) {
     lines.push('### Company Profile');
