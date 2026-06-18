@@ -1,4 +1,8 @@
 {
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/registries/geo-metro-nielsen_dma.json",
+  "title": "Nielsen DMA Geo Metro Registry",
+  "description": "AAO-maintained registry of Nielsen Designated Market Area (DMA) codes and canonical market names for use in AdCP geo_metros targeting.",
   "system": "nielsen_dma",
   "version": "1.0.0",
   "last_updated": "2026-06-18",
