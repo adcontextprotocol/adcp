@@ -432,6 +432,30 @@ describe('organization-db', () => {
       })).toBe('company_standard');
     });
 
+    test('lookup key corrects stale explicit tier when subscription is entitled', async () => {
+      const { resolveMembershipTier } = await import('../../server/src/db/organization-db.js');
+      expect(resolveMembershipTier({
+        membership_tier: 'individual_academic',
+        subscription_price_lookup_key: 'aao_membership_builder_2500',
+        subscription_status: 'active',
+        subscription_amount: 250000,
+        subscription_interval: 'year',
+        is_personal: false,
+      })).toBe('company_standard');
+    });
+
+    test('keeps explicit tier when lookup key is absent to avoid discount-based downgrades', async () => {
+      const { resolveMembershipTier } = await import('../../server/src/db/organization-db.js');
+      expect(resolveMembershipTier({
+        membership_tier: 'company_leader',
+        subscription_price_lookup_key: null,
+        subscription_status: 'active',
+        subscription_amount: 250000,
+        subscription_interval: 'year',
+        is_personal: false,
+      })).toBe('company_leader');
+    });
+
     test('infers tier from active subscription when membership_tier is null', async () => {
       const { resolveMembershipTier } = await import('../../server/src/db/organization-db.js');
       expect(resolveMembershipTier({

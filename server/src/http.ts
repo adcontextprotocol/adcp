@@ -34,7 +34,7 @@ import { resolveOrgForStripeCustomer } from "./billing/webhook-helpers.js";
 import { dedupOnSubscriptionCreated } from "./billing/dedup-on-subscription-created.js";
 import { pickMembershipSubWithProductFetch } from "./billing/membership-prices.js";
 import Stripe from "stripe";
-import { OrganizationDatabase, getUserSeatType, buildSubscriptionUpdate, TIER_PRESERVING_STATUSES, type SeatType, type MembershipTier } from "./db/organization-db.js";
+import { OrganizationDatabase, getUserSeatType, buildSubscriptionUpdate, MEMBERSHIP_TIER_COLUMNS, resolveMembershipTier, resolveMembershipTierForSubscriptionWrite, TIER_PRESERVING_STATUSES, type SeatType, type MembershipTier, type MembershipTierRow } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { ensureMemberProfilePublished } from "./services/member-profile-autopublish.js";
 import { getBrandPrimaryDomain, getBrandPrimaryDomainsForOrgs } from "./services/brand-domain-resolver.js";
@@ -4346,15 +4346,17 @@ export class HTTPServer {
             // paying member with stale subscription_status until a human
             // noticed (#3623 catch-block audit; #3681).
             let subUpdate: ReturnType<typeof buildSubscriptionUpdate> | undefined;
-            let oldTier: string | null | undefined;
+            let oldTier: MembershipTier | null | undefined;
+            let writtenMembershipTier: MembershipTier | null | undefined;
             if (org && !suppressOrgUpdate) {
               subUpdate = buildSubscriptionUpdate(subscription as any, org.is_personal);
 
-              const oldTierResult = await pool.query<{ membership_tier: string | null }>(
-                'SELECT membership_tier FROM organizations WHERE workos_organization_id = $1',
+              const oldTierResult = await pool.query<MembershipTierRow>(
+                `SELECT ${MEMBERSHIP_TIER_COLUMNS.join(', ')} FROM organizations WHERE workos_organization_id = $1`,
                 [org.workos_organization_id]
               );
-              oldTier = oldTierResult.rows[0]?.membership_tier;
+              oldTier = resolveMembershipTier(oldTierResult.rows[0] ?? null);
+              writtenMembershipTier = resolveMembershipTierForSubscriptionWrite(subUpdate, oldTier);
 
               await pool.query(
                 `UPDATE organizations
@@ -4384,7 +4386,7 @@ export class HTTPServer {
                   subUpdate.subscription_product_name,
                   subUpdate.subscription_price_id,
                   subUpdate.subscription_price_lookup_key,
-                  subUpdate.membership_tier,
+                  writtenMembershipTier,
                   org.workos_organization_id,
                 ]
               );
@@ -4398,12 +4400,12 @@ export class HTTPServer {
               // (FOR UPDATE on member_profiles; no-ops if no public agents
               // remain). Hoisted outside the swallow-on-error block so a
               // transient failure here re-throws and Stripe retries (#3694).
-              if (oldTier && oldTier !== subUpdate.membership_tier) {
+              if (oldTier && oldTier !== writtenMembershipTier) {
                 const { demotePublicAgentsOnTierDowngrade } = await import('./services/agent-visibility-enforcement.js');
                 await demotePublicAgentsOnTierDowngrade(
                   org.workos_organization_id,
-                  oldTier as MembershipTier,
-                  (subUpdate.membership_tier ?? null) as MembershipTier | null,
+                  oldTier,
+                  (writtenMembershipTier ?? null) as MembershipTier | null,
                 );
               }
             }
@@ -4419,7 +4421,7 @@ export class HTTPServer {
               if (org && !suppressOrgUpdate && subUpdate) {
 
                 // Detect tier change and notify admins
-                if (subUpdate.membership_tier && oldTier && subUpdate.membership_tier !== oldTier) {
+                if (writtenMembershipTier && oldTier && writtenMembershipTier !== oldTier) {
                   const { getSeatLimits, getSeatUsage } = await import('./db/organization-db.js');
                   const { notifyTierChange } = await import('./slack/org-group-dm.js');
                   const { getOrgAdminEmails } = await import('./utils/org-admins.js');
@@ -4427,7 +4429,7 @@ export class HTTPServer {
                   (async () => {
                     try {
                       const oldLimits = getSeatLimits(oldTier);
-                      const newLimits = getSeatLimits(subUpdate.membership_tier);
+                      const newLimits = getSeatLimits(writtenMembershipTier);
                       const currentUsage = await getSeatUsage(org.workos_organization_id);
                       const adminEmails = await getOrgAdminEmails(workos!, org.workos_organization_id);
 
@@ -4452,7 +4454,7 @@ export class HTTPServer {
                   subscriptionId: subscription.id,
                   status: subscription.status,
                   lookupKey: subUpdate.subscription_price_lookup_key,
-                  membershipTier: subUpdate.membership_tier,
+                  membershipTier: writtenMembershipTier,
                 }, 'Subscription data synced to database');
 
                 // Invalidate member context cache for all users in this org
@@ -4496,7 +4498,7 @@ export class HTTPServer {
                   }
 
                   const { getSeatLimits } = await import('./db/organization-db.js');
-                  const seatLimits = getSeatLimits(subUpdate.membership_tier);
+                  const seatLimits = getSeatLimits(writtenMembershipTier ?? null);
                   const capturedAdmin = activationAdminContext;
                   const orgIdForDispatch = org.workos_organization_id;
                   const orgNameForDispatch = org.name;
