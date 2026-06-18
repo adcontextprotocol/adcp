@@ -16,23 +16,24 @@ AdCP's `geo_metros` targeting field accepts system-qualified numeric codes:
 }
 ```
 
-Buyers think in market names, not codes. Agents that guess codes from training data produce hallucinations — "Albany" could be DMA 525 (Albany, GA) or DMA 532 (Albany-Schenectady-Troy, NY). The AAO geo metro registry provides the authoritative code-to-name tables so agents can resolve names correctly and display human-readable labels for stored codes.
+Buyers think in market names, not codes. Agents that guess codes from training data produce hallucinations — "Albany" matches both DMA 525 (Albany, GA) and DMA 532 (Albany-Schenectady-Troy, NY), and resolving to the wrong one silently misdirects spend. The AAO geo metro registry provides authoritative code-to-name tables so agents can resolve names correctly and display human-readable labels for stored codes.
 
 ## Registry Structure
 
-One registry file per system, available at:
+One registry file per system. Registry data files are available in the AdCP repository under `static/schemas/source/registries/`.
 
-```
-GET /api/reference/geo-metros/{system}
-```
+<Note>
+A `GET /api/reference/geo-metros/{system}` endpoint is planned to serve registry data over HTTP. Until it ships, consume registry files directly from the repository or bundle them in your SDK.
+</Note>
 
-Each response conforms to the [geo-metro-registry schema](https://adcontextprotocol.org/schemas/v3/registries/geo-metro-registry.json) and includes:
+Each registry file conforms to the [geo-metro-registry schema](https://adcontextprotocol.org/schemas/v3/registries/geo-metro-registry.json) and includes:
 
 | Field | Description |
 |-------|-------------|
 | `system` | The metro system identifier (matches `metro-system.json` enum) |
 | `version` | Semver — bump on every published change |
-| `digest` | sha256 of the `entries` array for cache validation |
+| `digest` | sha256 of the `entries` array (sorted keys, hex-encoded) for cache validation |
+| `last_updated` | ISO date of the last published change |
 | `entries[]` | All code-name pairs for this system |
 
 Each entry:
@@ -42,16 +43,19 @@ Each entry:
 | `code` | Opaque numeric string — the value used in `geo_metros.values[]` |
 | `name` | Official canonical market name |
 | `aliases[]` | Common variants: abbreviations, historical names, city-only forms |
+| `region` | ISO 3166-2 region code (informational, where applicable) |
+| `country` | ISO 3166-1 alpha-2 country code (required for non-US systems) |
 | `deprecated` | `true` if the system authority has discontinued this market |
+| `deprecated_reason` | Human-readable explanation of deprecation |
 
 ## Supported Systems
 
-| System | Coverage | Source |
-|--------|----------|--------|
-| `nielsen_dma` | ~210 US designated market areas | Nielsen DMA regions |
-| `uk_itl1` | 12 UK ITL Level 1 regions | ONS ITL reference |
-| `uk_itl2` | ~41 UK ITL Level 2 regions | ONS ITL reference |
-| `eurostat_nuts2` | ~240 EU NUTS Level 2 regions | Eurostat NUTS reference |
+| System | Status | Coverage | Source |
+|--------|--------|----------|--------|
+| `nielsen_dma` | Available | ~27 verified US markets (initial seed; expanding to ~210) | Nielsen DMA regions |
+| `uk_itl1` | Planned | 12 UK ITL Level 1 regions | ONS ITL reference |
+| `uk_itl2` | Planned | ~41 UK ITL Level 2 regions | ONS ITL reference |
+| `eurostat_nuts2` | Planned | ~240 EU NUTS Level 2 regions | Eurostat NUTS reference |
 
 `custom` system values are provider-scoped and are not covered by the AAO registry.
 
@@ -61,39 +65,32 @@ Each entry:
 
 When a buyer provides a market name, resolve it before setting `geo_metros`:
 
-1. Fetch the registry for the relevant system.
+1. Load the registry for the relevant system.
 2. Match the buyer's input against `name` and `aliases[]` (case-insensitive, trimmed).
-3. If multiple entries match (e.g. "Albany" matches both DMA 525 and DMA 532), surface all matches and ask the buyer to confirm.
+3. If multiple entries match, surface all matches and ask the buyer to confirm. For example, "Albany" matches both DMA 525 (Albany, GA) and DMA 532 (Albany-Schenectady-Troy, NY) — these are distinct markets in different states.
 4. Use the confirmed `code` in the `values[]` array.
 
-**Never infer a code from training data.** Market names are not globally unique, and codes shift between system versions.
+**Never infer a code from training data.** DMA codes are a fixed, non-sequential numbering scheme — market size rank does not correspond to code. An agent guessing codes silently misdirects spend.
 
 ### Code → name (read direction)
 
 When displaying campaign targeting to a user, resolve stored codes to names:
 
-1. Fetch the registry for the system.
+1. Load the registry for the system.
 2. Look up each code in `entries[]` by `code`.
-3. Display `name`. If a code is not found, display the raw code with a note that it may be a deprecated or provider-custom market.
+3. Display `name`. If a code is not found, display the raw code — it may be a deprecated market or one not yet in the registry seed.
 
 ### Caching
 
-Cache registry responses by `version`. Use the `digest` field (sha256 of `entries`, sorted keys, hex-encoded) to detect stale caches without comparing entries. A 24-hour TTL is appropriate — registries change infrequently.
+Cache registry data by `version`. Use the `digest` field (sha256 of `entries` with sorted keys, hex-encoded) to detect stale caches without comparing entries entry-by-entry. A 24-hour TTL is appropriate — registries change infrequently.
 
 ## Example: Nielsen DMA Lookup
 
-**Request:**
-```
-GET /api/reference/geo-metros/nielsen_dma
-```
-
-**Response (abbreviated):**
+**Abbreviated `nielsen_dma` data file:**
 ```json
 {
   "system": "nielsen_dma",
   "version": "1.0.0",
-  "last_updated": "2026-06-18",
-  "digest": "...",
   "entries": [
     {
       "code": "501",
@@ -103,22 +100,34 @@ GET /api/reference/geo-metros/nielsen_dma
     {
       "code": "525",
       "name": "Albany, GA",
-      "aliases": []
+      "aliases": ["Albany"]
     },
     {
       "code": "532",
       "name": "Albany-Schenectady-Troy, NY",
-      "aliases": ["Albany NY", "Schenectady", "Troy NY", "Capital Region"]
+      "aliases": ["Albany", "Albany NY", "Schenectady", "Troy NY", "Capital Region"]
+    },
+    {
+      "code": "602",
+      "name": "Chicago, IL",
+      "aliases": ["Chicago"]
+    },
+    {
+      "code": "803",
+      "name": "Los Angeles, CA",
+      "aliases": ["LA", "Los Angeles", "L.A."]
     }
   ]
 }
 ```
 
-A buyer saying "target Albany" triggers an ambiguity — the agent surfaces both DMA 525 and DMA 532 and asks which market the buyer intends.
+A buyer saying "target Albany" triggers an ambiguity — both DMA 525 and DMA 532 carry "Albany" in their aliases. The agent surfaces both and asks which market the buyer intends before writing `geo_metros`.
 
 ## Governance
 
 Registry entries are additive. Once published, a code is never removed — it may be marked `deprecated: true` with a `deprecated_reason` if the system authority discontinues a market. Name changes follow the source system's official release; the previous name moves to `aliases[]`.
+
+The `digest` field is sha256 of the `entries` array serialized with sorted keys. It is computed at publish time and changes whenever any entry changes; clients use it for cache invalidation.
 
 Corrections and additions land via PR against [adcontextprotocol/adcp](https://github.com/adcontextprotocol/adcp) with a reference to the source system's authoritative publication.
 
@@ -131,4 +140,4 @@ The geo metro registry is the first of a broader class of shared reference regis
 - Stable enough to version
 - Painful and duplicative for every provider to ship independently
 
-Planned additions include ITL and NUTS registries for UK and EU markets. Property identity registries (mobile apps, CTV apps, domains) are tracked separately under the property registry design.
+The `nielsen_dma` file ships as a verified seed (~27 markets). The full ~210 US DMA list and the ITL and NUTS registries for UK and EU markets are tracked as follow-up contributions. Property identity registries (mobile apps, CTV apps, domains) are tracked separately under the property registry design.
