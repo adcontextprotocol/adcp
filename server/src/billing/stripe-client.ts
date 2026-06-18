@@ -3,6 +3,7 @@ import { createLogger } from '../logger.js';
 import { notifySystemError } from '../addie/error-notifier.js';
 import { getPool } from '../db/client.js';
 import { isStripeNotFound } from '../audit/integrity/stripe-helpers.js';
+import { pickMembershipSubWithProductFetch } from './membership-prices.js';
 
 const logger = createLogger('stripe-client');
 
@@ -396,9 +397,17 @@ export async function getStripeSubscriptionInfo(
       return { status: 'none' };
     }
 
+    const picked = await pickMembershipSubWithProductFetch(
+      subscriptions.data as Stripe.Subscription[],
+      (productId) => stripe.products.retrieve(productId),
+    );
+    if (!picked) {
+      return { status: 'none' };
+    }
+
     // The subscription from customer.subscriptions is a limited object
     // We need to fetch the full subscription with latest_invoice expanded to get current_period_end
-    const subscriptionId = subscriptions.data[0].id;
+    const subscriptionId = picked.sub.id;
     const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
       expand: ['items.data.price.product', 'latest_invoice'],
     });
