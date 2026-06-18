@@ -470,7 +470,8 @@ export async function prepareRequestWithMemberTools(
   userId: string | undefined,
   threadExternalId: string,
   isAuthenticated: boolean,
-  threadId?: string
+  threadId?: string,
+  selectedOrganizationId?: string | null,
 ): Promise<PreparedRequest> {
   const messageToProcess = sanitizedInput;
   let memberContext: MemberContext | null = null;
@@ -482,7 +483,7 @@ export async function prepareRequestWithMemberTools(
     (async () => {
       try {
         if (userId) {
-          return await getWebMemberContext(userId);
+          return await getWebMemberContext(userId, selectedOrganizationId);
         }
         return null;
       } catch (error) {
@@ -743,7 +744,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         });
       }
 
-      const { message, conversation_id, user_name, message_source: rawMessageSource, attachments: rawAttachments } = req.body;
+      const { message, conversation_id, user_name, message_source: rawMessageSource, attachments: rawAttachments, organization_id } = req.body;
       const attachments = validateChatAttachments(rawAttachments);
 
       if (typeof message !== "string" || (!message.trim() && attachments.length === 0)) {
@@ -884,7 +885,8 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         req.user?.id,
         externalId,
         isAuth,
-        thread.thread_id
+        thread.thread_id,
+        typeof organization_id === 'string' ? organization_id : null
       );
       const { requestTools, processOptions, effectiveModel } = buildTieredAccess(memberTools, isAuth);
 
@@ -1067,7 +1069,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         return;
       }
 
-      const { message, conversation_id, user_name, message_source: rawMessageSourceStream, attachments: rawAttachmentsStream } = req.body;
+      const { message, conversation_id, user_name, message_source: rawMessageSourceStream, attachments: rawAttachmentsStream, organization_id } = req.body;
       const attachments = validateChatAttachments(rawAttachmentsStream);
 
       if (typeof message !== "string" || (!message.trim() && attachments.length === 0)) {
@@ -1203,7 +1205,8 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         req.user?.id,
         externalId,
         isAuth,
-        thread.thread_id
+        thread.thread_id,
+        typeof organization_id === 'string' ? organization_id : null
       );
       const { requestTools, processOptions, effectiveModel } = buildTieredAccess(memberTools, isAuth);
 

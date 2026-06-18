@@ -8020,7 +8020,8 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         const user = req.user!;
         const { getWebHomeContent, renderHomeHTML, ADDIE_HOME_CSS } = await import('./addie/home/index.js');
 
-        const content = await getWebHomeContent(user.id);
+        const selectedOrganizationId = typeof req.query.org === 'string' ? req.query.org : null;
+        const content = await getWebHomeContent(user.id, selectedOrganizationId);
 
         // Check if HTML rendering is requested
         const format = req.query.format as string | undefined;
