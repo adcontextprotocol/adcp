@@ -77,6 +77,13 @@ violations = findImmutableArtifactViolations(
 assert.strictEqual(violations.length, 1, 'Adding files to an existing schema release must fail');
 
 violations = findImmutableArtifactViolations(
+  [{ status: 'D', paths: ['dist/schemas/3.1.1/index.json'] }],
+  hasBasePath(['dist/schemas/3.1.1']),
+  version => version !== '3.1.1'
+);
+assert.deepStrictEqual(violations, [], 'Deleting artifacts for an untagged aborted release is allowed');
+
+violations = findImmutableArtifactViolations(
   [{ status: 'M', paths: ['dist/protocol/3.0.14.tgz.sha256'] }],
   hasBasePath(['dist/protocol/3.0.14.tgz'])
 );
