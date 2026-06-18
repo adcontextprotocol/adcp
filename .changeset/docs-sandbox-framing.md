@@ -1,4 +1,0 @@
----
----
-
-Rewrites the AAO Verified framing in `docs/building/verification/aao-verified.mdx`, `docs/building/verification/conformance.mdx`, and `docs/building/by-layer/L3/comply-test-controller.mdx` to reflect the (Sandbox) verdict from #4379. Closes the docs half of #4380. Front-of-page sections (intro, axis tables, badge meaning, lifecycle, claim instructions, supporting-spec references) now describe the (Sandbox) tier: same storyboards as (Spec), real production endpoint, `account.sandbox: true` flagging, zero real-world side effects. `comply_test_controller` doc gains a prominent dev/staging-only callout. Deprecated canonical-campaign sections in aao-verified.mdx (eight observability checks, two discovery paths, webhook ownership, maintenance windows) carry a Warning banner pointing readers at the new framing; full removal of those sections tracked as a follow-up sweep.
