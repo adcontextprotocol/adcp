@@ -490,8 +490,8 @@ export async function initializeDocsIndex(): Promise<void> {
     }
   }
 
-  docsIndex = [];
-  headingsIndex = [];
+  const nextDocsIndex: IndexedDoc[] = [];
+  const nextHeadingsIndex: IndexedHeading[] = [];
 
   // Index markdown docs
   if (docsRoot) {
@@ -517,7 +517,7 @@ export async function initializeDocsIndex(): Promise<void> {
         const id = `doc:${relativePath.replace(/\\/g, '/').replace(/\.(md|mdx)$/, '')}`;
         const sourceUrl = buildSourceUrl(filePath, docsRoot);
 
-        docsIndex.push({
+        nextDocsIndex.push({
           id,
           title,
           category,
@@ -528,7 +528,7 @@ export async function initializeDocsIndex(): Promise<void> {
 
         // Extract and index headings from this doc
         const docHeadings = extractHeadings(cleanedContent, id, title, sourceUrl);
-        headingsIndex.push(...docHeadings);
+        nextHeadingsIndex.push(...docHeadings);
       } catch (error) {
         logger.warn({ error, filePath }, 'Addie Docs: Failed to index file');
       }
@@ -541,7 +541,7 @@ export async function initializeDocsIndex(): Promise<void> {
   if (publicRoot) {
     logger.info({ publicRoot }, 'Addie Docs: Indexing website pages');
     const websitePages = indexWebsitePages(publicRoot);
-    docsIndex.push(...websitePages);
+    nextDocsIndex.push(...websitePages);
   } else {
     logger.warn({ paths: possiblePublicPaths }, 'Addie Docs: Could not find public directory');
   }
@@ -549,7 +549,7 @@ export async function initializeDocsIndex(): Promise<void> {
   // Index working group documents from database
   try {
     const workingGroupDocs = await loadWorkingGroupDocuments();
-    docsIndex.push(...workingGroupDocs);
+    nextDocsIndex.push(...workingGroupDocs);
     if (workingGroupDocs.length > 0) {
       logger.info({ count: workingGroupDocs.length }, 'Addie Docs: Indexed working group documents');
     }
@@ -560,7 +560,7 @@ export async function initializeDocsIndex(): Promise<void> {
   // Index published perspectives from database
   try {
     const perspectives = await loadPublishedPerspectives();
-    docsIndex.push(...perspectives);
+    nextDocsIndex.push(...perspectives);
     if (perspectives.length > 0) {
       logger.info({ count: perspectives.length }, 'Addie Docs: Indexed published perspectives');
     }
@@ -568,6 +568,8 @@ export async function initializeDocsIndex(): Promise<void> {
     logger.warn({ error }, 'Addie Docs: Failed to index perspectives');
   }
 
+  docsIndex = nextDocsIndex;
+  headingsIndex = nextHeadingsIndex;
   initialized = true;
 
   const categories = [...new Set(docsIndex.map((d) => d.category))];
