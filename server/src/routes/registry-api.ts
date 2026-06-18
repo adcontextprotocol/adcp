@@ -6125,7 +6125,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
       let probeResult: Awaited<ReturnType<typeof crawler.refreshSingleAgent>>;
       try {
-        probeResult = await crawler.refreshSingleAgent(agentUrl, { auth: resolvedAuth });
+        probeResult = await crawler.refreshSingleAgent(agentUrl, {
+          auth: resolvedAuth,
+          ...(ownerOrgId ? { ownerOrgId } : {}),
+        });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Probe failed';
         if (/Monitoring paused/i.test(message)) {
@@ -6507,7 +6510,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         try {
           const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
           const resolvedAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `connect:${agentUrl}` });
-          refreshed = await crawler.refreshSingleAgent(agentUrl, { auth: resolvedAuth });
+          refreshed = await crawler.refreshSingleAgent(agentUrl, { auth: resolvedAuth, ownerOrgId: orgId });
         } catch (refreshErr) {
           logger.warn(
             { err: refreshErr, agentUrl },
@@ -6591,7 +6594,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         try {
           const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
           const resolvedAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `connect-cc:${agentUrl}` });
-          refreshed = await crawler.refreshSingleAgent(agentUrl, { auth: resolvedAuth });
+          refreshed = await crawler.refreshSingleAgent(agentUrl, { auth: resolvedAuth, ownerOrgId: orgId });
         } catch (refreshErr) {
           logger.warn(
             { err: refreshErr, agentUrl },
