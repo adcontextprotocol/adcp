@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/registries/geo-metro-registry.json",
+  "title": "Geo Metro Code Registry",
+  "description": "AAO-maintained registry mapping numeric geo metro codes to canonical names and aliases for each supported metro classification system.\n\n**Purpose.** AdCP's `geo_metros` targeting field accepts system-qualified numeric codes (e.g. `{ \"system\": \"nielsen_dma\", \"values\": [\"532\"] }`). Human buyers know markets by name, not code. This registry provides the authoritative code → name mapping and alias table so agents can resolve natural-language market names to the correct codes without hallucination, and display human-readable labels for stored codes.\n\n**Systems covered.** One registry file per system, named `geo-metro-{system}.json` (e.g. `geo-metro-nielsen_dma.json`). Each file conforms to this schema. The set of valid system identifiers is defined by `/schemas/enums/metro-system.json`.\n\n**Agent usage (normative).**\n1. *Name → code (write direction):* When a buyer provides a market name (e.g. \"Albany\" or \"Albany, NY\"), the agent MUST fetch the registry for the relevant system and match against `name` and `aliases[]` before setting `geo_metros`. The agent MUST NOT guess or infer a code from training data.\n2. *Code → name (read direction):* When displaying campaign targeting to a user, the agent SHOULD resolve stored codes to names via the registry and present `name`, not raw codes.\n3. *Ambiguous input:* When an input matches multiple entries (e.g. \"Albany\" matches Albany, GA (DMA 525) and Albany-Schenectady-Troy, NY (DMA 532)), the agent MUST surface all matches and ask the buyer to confirm.\n\n**Caching.** Clients SHOULD cache registry files by `version`. The `digest` field (sha256 of the `entries` array serialised with sorted keys, hex-encoded) lets clients detect changes without re-fetching. Registries are updated infrequently; a TTL of 24 hours is appropriate.\n\n**Governance.** Entries are additive. Once published, a code entry is never removed (it may be marked `deprecated: true` with a `deprecated_reason` if a market is discontinued or renamed). Name changes follow the source system's official release; the previous name moves to `aliases[]` and the official current name becomes `name`. Additions and corrections land via PR with a reference to the source system's authoritative publication.",
+  "type": "object",
+  "required": ["system", "version", "last_updated", "digest", "entries"],
+  "properties": {
+    "system": {
+      "$ref": "/schemas/enums/metro-system.json",
+      "description": "The metro classification system these entries belong to. Matches the `system` field used in AdCP `geo_metros` targeting."
+    },
+    "version": {
+      "type": "string",
+      "description": "Semver of this registry file. Bumped on every published change."
+    },
+    "last_updated": {
+      "type": "string",
+      "format": "date",
+      "description": "ISO date of the last published change."
+    },
+    "digest": {
+      "type": "string",
+      "description": "sha256 of the `entries` array serialised with sorted keys, hex-encoded. Clients use this to detect stale caches without comparing entry-by-entry."
+    },
+    "source_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL of the authoritative source publication for this registry (e.g. Nielsen DMA documentation, Eurostat NUTS reference)."
+    },
+    "entries": {
+      "type": "array",
+      "description": "All known code-name pairs for this system. Ordered by code ascending.",
+      "items": {
+        "$ref": "#/definitions/GeoMetroEntry"
+      }
+    }
+  },
+  "definitions": {
+    "GeoMetroEntry": {
+      "type": "object",
+      "required": ["code", "name"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "The numeric string code used in AdCP `geo_metros.values[]`. Must be treated as an opaque string identifier — do not cast to integer."
+        },
+        "name": {
+          "type": "string",
+          "description": "Official canonical name for this market as published by the system authority."
+        },
+        "aliases": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Alternative names buyers commonly use to refer to this market, including historical names, abbreviations, and city-only variants. Used for fuzzy name resolution."
+        },
+        "region": {
+          "type": "string",
+          "description": "ISO 3166-2 region code for the primary region this market falls within (where applicable). Informational only."
+        },
+        "country": {
+          "type": "string",
+          "description": "ISO 3166-1 alpha-2 country code. Required for non-US systems."
+        },
+        "deprecated": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, this market has been discontinued by the system authority. The code is retained for backward-compatibility with stored campaigns but SHOULD NOT be offered in new targeting."
+        },
+        "deprecated_reason": {
+          "type": "string",
+          "description": "Human-readable explanation of why this entry is deprecated (e.g. 'Market discontinued in Nielsen 2024 DMA refresh')."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
