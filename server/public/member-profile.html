@@ -1333,19 +1333,26 @@
     }
 
     // Initialize
-    document.addEventListener('DOMContentLoaded', () => {
-      // Setup event listeners first
-      setupOfferingsToggle();
-      setupTagsInput();
-      setupSlugCheck();
-      setupPhotoPreview();
-      setupMemberCardPreview();
-      setupPhoneFormatting();
-      setupMarketsAutoSelect();
-      setupBrandColorSync();
-      // Load profile data after listeners are ready
-      loadProfile();
-    });
+    document.addEventListener('DOMContentLoaded', initMemberProfilePage);
+
+    async function initMemberProfilePage() {
+      try {
+        // Setup event listeners first
+        setupOfferingsToggle();
+        setupTagsInput();
+        setupSlugCheck();
+        setupPhotoPreview();
+        setupMemberCardPreview();
+        setupPhoneFormatting();
+        setupMarketsAutoSelect();
+        setupBrandColorSync();
+        // Load profile data after listeners are ready
+        await loadProfile();
+      } catch (error) {
+        console.error('Member profile initialization error:', error);
+        handleLoadProfileError(error);
+      }
+    }
 
     function setupMemberCardPreview() {
       // Update preview when key fields change
@@ -1435,7 +1442,11 @@
 
         // Individual accounts use the community profile as their single profile
         if (isPersonal) {
-          window.location.href = '/account';
+          document.getElementById('loading').style.display = 'none';
+          showError('This page is for organization profiles. Opening your account profile instead.');
+          window.setTimeout(() => {
+            window.location.href = '/account';
+          }, 1200);
           return;
         }
 
@@ -1495,17 +1506,23 @@
 
       } catch (error) {
         console.error('Load profile error:', error);
-        document.getElementById('loading').style.display = 'none';
-        let msg;
-        if (error.name === 'AbortError') {
-          msg = 'The server is taking too long to respond. Please try again in a moment.';
-        } else if (error.message) {
-          msg = error.message;
-        } else {
-          msg = 'Failed to load your profile. Please try again.';
-        }
-        showError(msg);
+        handleLoadProfileError(error);
       }
+    }
+
+    function handleLoadProfileError(error) {
+      const loading = document.getElementById('loading');
+      if (loading) loading.style.display = 'none';
+
+      let msg;
+      if (error && error.name === 'AbortError') {
+        msg = 'The server is taking too long to respond. Please try again in a moment.';
+      } else if (error && error.message) {
+        msg = error.message;
+      } else {
+        msg = 'Failed to load your profile. Please try again.';
+      }
+      showError(msg);
     }
 
     // Update form labels and placeholders based on account type
