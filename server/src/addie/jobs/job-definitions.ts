@@ -27,6 +27,7 @@ import { SlackDatabase } from '../../db/slack-db.js';
 import { runPersonaInferenceJob } from '../services/persona-inference.js';
 import { runJourneyComputationJob } from '../services/journey-computation.js';
 import { runKnowledgeStalenessJob } from './knowledge-staleness.js';
+import { runDocsIndexRefreshJob } from './docs-index-refresh.js';
 import { runGeoMonitorJob } from './geo-monitor.js';
 import { runGeoSnapshotJob } from './geo-snapshot.js';
 import { runGeoContentPlannerJob } from './geo-content-planner.js';
@@ -313,6 +314,16 @@ export function registerAllJobs(): void {
     runner: runKnowledgeStalenessJob,
     options: { limit: 200 },
     shouldLogResult: (r) => r.staleEntries > 0,
+  });
+
+  // Addie docs index refresh - re-walks protocol docs, website pages, and DB-backed content
+  jobScheduler.register({
+    name: 'addie-docs-index-refresh',
+    description: 'Addie docs index refresh',
+    interval: { value: 24, unit: 'hours' },
+    initialDelay: { value: 12, unit: 'minutes' },
+    runner: runDocsIndexRefreshJob,
+    shouldLogResult: (r) => r.docsIndexed === 0,
   });
 
   // Prospect triage - assesses unmapped Slack domains and creates prospects
@@ -908,6 +919,7 @@ export const JOB_NAMES = {
   PERSONA_INFERENCE: 'persona-inference',
   JOURNEY_COMPUTATION: 'journey-computation',
   KNOWLEDGE_STALENESS: 'knowledge-staleness',
+  ADDIE_DOCS_INDEX_REFRESH: 'addie-docs-index-refresh',
   PROSPECT_TRIAGE: 'prospect-triage',
   PROSPECT_ESCALATION: 'prospect-escalation',
   WEEKLY_DIGEST: 'weekly-digest',
