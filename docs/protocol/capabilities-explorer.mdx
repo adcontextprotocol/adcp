@@ -28,7 +28,7 @@ The 14 domains below are the entire top-level surface of `get_adcp_capabilities`
 
 Version negotiation, idempotency contract, build identifier.
 
-- **`supported_versions`** — release-precision strings (e.g. `"3.0"`, `"3.1-beta"`). Authoritative for buyer-side release pinning.
+- **`supported_versions`** — release-precision strings (e.g. `"3.0"`, `"3.1"`). Authoritative for buyer-side release pinning.
 - **`major_versions`** — DEPRECATED in favor of `supported_versions`; sellers MUST keep emitting through 3.x.
 - **`build_version`** — full semver build identifier; advisory metadata for buyer-side incident triage.
 - **`idempotency`** — discriminated union (`IdempotencySupported` / `IdempotencyUnsupported`) declaring replay semantics. **A declaration here is a commitment** — sellers that declare `supported: true` are probed by the conformance runner.

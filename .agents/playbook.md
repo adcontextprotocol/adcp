@@ -329,6 +329,14 @@ source and cut the next patch/RC release for the line that needs it. Temporary
 copies in CI scratch directories may be transformed for compatibility testing,
 but checked-in existing semver artifacts must remain unchanged.
 
+This includes beta and RC artifacts after GA. Do not clean out
+`dist/{schemas,compliance,docs,protocol}/<version>-beta.*` or
+`dist/{schemas,compliance,docs,protocol}/<version>-rc.*` during the stable
+release. They are release records for adopters who pinned prerelease artifacts
+and for debugging release history. GA cleanup may hide prerelease selectors from
+navigation, but it must not delete or rewrite published prerelease artifacts or
+published npm versions.
+
 #### PR title hygiene
 
 PR titles must be review- and release-ready:
@@ -447,6 +455,21 @@ git add -A && git commit -m "chore(release): exit pre mode for 3.1.0 stable cut"
 ```
 
 Next Version Packages cut after the exit PR merges produces `3.1.0` stable.
+
+The stable cut is not complete until public docs and package tags stop presenting
+the line as a prerelease:
+
+- Mintlify navigation uses the stable label (`3.1`), not `3.1-rc` or
+  `3.1-beta`, and points at the final `dist/docs/3.1.0/` snapshot after the docs
+  snapshot PR lands.
+- The docs banner says 3.1 is released or is removed. No primary docs page
+  should say 3.1 is still in RC validation.
+- Release notes, versions, what's-new, and migration pages describe the final
+  GA release. Keep RC/beta guidance only in prerelease migration/archive pages.
+- SDK examples on GA-facing pages use the stable wire pin (`"3.1"`). Exact RC
+  pins belong only in prerelease guidance.
+- npm dist-tags for the stable line point at the intended GA package. Old
+  beta/RC package versions remain available.
 
 #### When 3.1.0 cuts — release-line transition
 
