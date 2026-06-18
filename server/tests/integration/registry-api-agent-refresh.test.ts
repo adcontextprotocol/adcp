@@ -402,6 +402,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
       agentUrl,
       expect.objectContaining({
         auth: { type: 'bearer', token: FAKE_BEARER },
+        ownerOrgId: TEST_ORG_ID,
       }),
     );
 

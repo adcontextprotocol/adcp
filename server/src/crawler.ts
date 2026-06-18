@@ -1,4 +1,4 @@
-import type { Agent } from "./types.js";
+import type { Agent, FederatedAgent } from "./types.js";
 import { PropertyCrawler, getPropertyIndex, type AgentInfo, type CrawlResult } from "@adcp/sdk";
 import { sanitizeAdagentsProperty } from "./discovery/property-index-guard.js";
 import { FederatedIndexService } from "./federated-index.js";
@@ -813,6 +813,7 @@ export class CrawlerService {
       mcp_endpoint: a.url,
       contact: { name: '', email: '', website: '' },
       added_date: new Date().toISOString().split('T')[0],
+      ...(a.health_check_url ? { health_check_url: a.health_check_url } : {}),
     } satisfies Agent))]) {
       if (seen.has(src.url) || pausedUrls.has(src.url)) continue;
       seen.add(src.url);
@@ -996,6 +997,25 @@ export class CrawlerService {
     return this.federatedIndex;
   }
 
+  private async findRegisteredAgentForOrg(orgId: string, agentUrl: string): Promise<FederatedAgent | undefined> {
+    const profile = await this.memberDb.getProfileByOrgId(orgId);
+    if (!profile) return undefined;
+    const key = canonicalizeAgentUrl(agentUrl) ?? agentUrl;
+    const agentConfig = (profile.agents || []).find((a) => (canonicalizeAgentUrl(a.url) ?? a.url) === key);
+    if (!agentConfig) return undefined;
+    return {
+      url: key,
+      name: agentConfig.name || profile.display_name,
+      type: agentConfig.type,
+      protocol: 'mcp',
+      ...(agentConfig.health_check_url ? { health_check_url: agentConfig.health_check_url } : {}),
+      member: {
+        slug: profile.slug,
+        display_name: profile.display_name,
+      },
+    };
+  }
+
   /**
    * Probe one agent and refresh both snapshot tables (health + capabilities)
    * for it. Used by `POST /api/registry/agents/{encodedUrl}/refresh` so an
@@ -1011,7 +1031,7 @@ export class CrawlerService {
    * route handler maps that to a 502 so the user sees why the refresh
    * couldn't happen (timeout, DNS, OAuth wall, etc).
    */
-  async refreshSingleAgent(agentUrl: string, options: { auth?: SdkAuth } = {}): Promise<{
+  async refreshSingleAgent(agentUrl: string, options: { auth?: SdkAuth; ownerOrgId?: string } = {}): Promise<{
     online: boolean;
     tools_count: number | null;
     response_time_ms: number | null;
@@ -1022,7 +1042,7 @@ export class CrawlerService {
     error?: string;
   }> {
     const PROBE_TIMEOUT_MS = 10000;
-    const { auth } = options;
+    const { auth, ownerOrgId } = options;
 
     const pausedUrls = await this.getPausedAgentUrls();
     if (pausedUrls.has(agentUrl)) {
@@ -1034,7 +1054,9 @@ export class CrawlerService {
     // who got here). `refreshAgentSnapshots` uses public-only because the
     // periodic crawl probes everything in the federated index regardless.
     const allAgents = await this.federatedIndex.listAllAgents(undefined, { includeMembersOnly: true });
-    const known = allAgents.find(a => a.url === agentUrl);
+    const known = ownerOrgId
+      ? await this.findRegisteredAgentForOrg(ownerOrgId, agentUrl)
+      : allAgents.find(a => a.url === agentUrl);
     const knownType = known?.type && known.type !== 'unknown' ? known.type : undefined;
 
     const agent: Agent = {
@@ -1046,6 +1068,7 @@ export class CrawlerService {
       mcp_endpoint: agentUrl,
       contact: { name: '', email: '', website: '' },
       added_date: new Date().toISOString().split('T')[0],
+      ...(known?.health_check_url ? { health_check_url: known.health_check_url } : {}),
     };
 
     const profile = await Promise.race([
