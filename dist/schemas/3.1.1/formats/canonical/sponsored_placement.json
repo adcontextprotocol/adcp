@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.1/formats/canonical/sponsored_placement.json",
+  "title": "Canonical Format: Sponsored Placement (retail-media catalog-driven)",
+  "description": "Catalog-driven retail-media format. Slot: `source_catalog` (catalog asset — product/SKU/ASIN/GTIN catalog reference, REQUIRED), optional `hero_asset`, optional `landing_page_url`. Buyer supplies the catalog reference; surface composes per-item or multi-item rendering using its native placement template. **Composition is deterministic** — buyer can predict per-slot rendering from the catalog item structure. Tracking model: per-item impression + click + conversion (catalog-keyed via offering_id/sku/gtin macros). Covers Amazon Sponsored Products, Criteo Sponsored Products, CitrusAd Sponsored Products, Walmart Connect Sponsored Products, Pinterest Collection (catalog-driven mode).\n\n**Scope (normative — buyer-agent routing).** This canonical is the home for catalog-driven retail-media placements ONLY. The defining feature is the `source_catalog` slot — products under this canonical compose their creative *per catalog item* using the buyer-supplied catalog feed. Without a catalog feed there is nothing to render against. Buyer agents reading `format_kind: sponsored_placement` MUST attach a catalog reference; sellers MUST require `source_catalog` in the manifest.\n\n**Not this canonical (route elsewhere):**\n- IAB in-feed native ads, content-recommendation widgets (Taboola, Outbrain, Yahoo Native, AdMob Native, in-feed sponsored cards) — use `native_in_feed` (asset-bundle composition; no catalog).\n- Algorithmic surface that picks from a buyer-supplied asset pool (Google PMax, Meta Advantage+) — use `responsive_creative`.\n- Single-image or single-video creative — use `image` or `video_hosted`.\n\nThe earlier broader framing ('any sponsored placement') was too loose for buyer-agent routing — a buyer reading `sponsored_placement` couldn't disambiguate a catalog-driven Amazon SP from an in-feed Taboola widget. As of 3.1, the canonical is narrowed to catalog-keyed retail-media; native moves to `native_in_feed`. Distinct from `responsive_creative` (algorithmic combinator from buyer pool) and `agent_placement` (text/audio AI-surface composition).",
+  "allOf": [{ "$ref": "/schemas/3.1.1/formats/canonical/_base.json" }],
+  "properties": {
+    "experimental": {
+      "default": true,
+      "description": "Marked experimental at 3.1 GA: the canonical covers 4 meaningfully different retail-media adapter contracts (Amazon SP, Criteo SP / CitrusAd SP, Pinterest Collection, generative-per-SKU). Adopter contracts vary; buyers MUST validate per-adapter behavior before routing budget. Promotion to non-experimental gated on the #4592 adapter-contract docs work."
+    },
+    "v1_translatable": {
+      "default": false,
+      "description": "Inherently new in v2 — retail-media catalog placements weren't expressible as v1 named formats. SDKs MUST NOT emit `FORMAT_PROJECTION_FAILED` for products using this canonical; the v1-unreachability is structural, not a registry-coverage gap."
+    },
+    "slots": {
+      "default": [
+        { "asset_group_id": "source_catalog", "required": true, "asset_type": "catalog" },
+        { "asset_group_id": "hero_asset", "required": false, "asset_type": "image" },
+        { "asset_group_id": "landing_page_url", "required": false, "asset_type": "url" }
+      ]
+    },
+    "supported_catalog_types": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["product", "store", "offering", "hotel", "flight", "vehicle", "real_estate", "education", "destination", "app", "job", "inventory"]
+      },
+      "description": "Catalog types this product accepts."
+    },
+    "min_items": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum catalog item count buyer must supply."
+    },
+    "max_items": {
+      "type": "integer",
+      "description": "Maximum items considered for placement."
+    },
+    "fanout_mode": {
+      "type": "string",
+      "enum": ["per_item", "multi_item_in_creative", "single_item"],
+      "description": "How items map to delivery: per_item = one ad per catalog item; multi_item_in_creative = composed multi-item ad (Pinterest Collection, Snap Collection); single_item = one ad showing one item."
+    },
+    "required_catalog_fields": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Catalog item fields the seller requires (e.g., ['title', 'image_url', 'price'])."
+    },
+    "supported_id_types": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["asin", "sku", "gtin", "offering_id", "store_id", "hotel_id", "flight_id", "vehicle_id", "listing_id", "program_id", "destination_id", "app_id", "job_id"] },
+      "description": "Catalog identifier types the placement renders against."
+    },
+    "hero_asset_supported": {
+      "type": "boolean",
+      "description": "Whether the buyer can supply a hero/banner asset alongside the catalog (Pinterest Collection pattern)."
+    },
+    "item_production_model": {
+      "type": "string",
+      "enum": ["buyer_uploaded", "seller_pre_rendered_from_brief", "seller_human_designed", "agent_synthesized"],
+      "default": "buyer_uploaded",
+      "description": "How each per-item creative is produced. Covers the same production-source axis as `asset_source` on `image` / `video_hosted` / `audio_hosted` but with a 4-value subset — drops `publisher_host_recorded` because it's audio-specific and doesn't apply to retail-media catalog placements. SDK codegen MAY share a base enum and narrow per-canonical, or emit two distinct enums; either way the wire values overlap exactly for the 4 retained values. `buyer_uploaded` (default, current Amazon/Criteo/CitrusAd pattern): the buyer's catalog already contains rendered assets per item; the seller composes the placement using those assets. (\"Uploaded\" reads slightly off for catalog-keyed items where the buyer didn't actively upload bytes — the catalog ingestion already supplied them — but the semantic is the same: rendered bytes are buyer-supplied, not seller-produced.) `seller_pre_rendered_from_brief`: the buyer ships a brief plus the catalog reference; the seller renders one creative per catalog item from the brief at sync_creatives time. `seller_human_designed`: seller's design team produces per-item renders manually. `agent_synthesized`: AI synthesis pipeline produces per-item renders; pair with `synthesis_nondeterministic: true` for Veo/Sora-class generative video applied per item. Captures the multi-output generative pattern (1 brief × N catalog items → N rendered creatives) under the existing canonical without requiring a separate canonical. Distinct from `fanout_mode`, which describes how items map to delivery slots after rendering."
+    }
+  },
+  "additionalProperties": true
+}
