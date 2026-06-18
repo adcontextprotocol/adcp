@@ -1,0 +1,130 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0/core/downstream-connection-requirement.json",
+  "title": "Downstream Connection Requirement",
+  "description": "A seller/platform-side connection or grant required by a product, format, or request. This is not the AdCP caller credential: the AdCP request is still authenticated once, and the seller uses these stored downstream connections to call a platform or service on the buyer's behalf. Use this shape for platforms that require more than one downstream grant, such as an advertiser account connection plus a publisher identity or post authorization for published-post references.",
+  "type": "object",
+  "properties": {
+    "provider": {
+      "type": "string",
+      "description": "Stable provider or platform namespace, preferably lowercase. Examples: `social.example`, `shortvideo.example`, or a seller-defined namespace. Omit only when the requirement is provider-agnostic, or when an `authorization_url` fully routes the human to the correct provider-specific connection flow."
+    },
+    "connection_type": {
+      "type": "string",
+      "enum": ["advertiser_account", "publisher_identity", "post_authorization"],
+      "description": "Kind of downstream connection required. `advertiser_account` is the platform account used to buy/manage ads. `publisher_identity` is the creator, page, channel, organization, or profile that owns source posts. `post_authorization` is a post-scoped grant when the platform authorizes individual posts instead of, or in addition to, the owning identity."
+    },
+    "required_for": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "examples": ["list_creatives", "sync_creatives", "create_media_buy", "get_media_buy_delivery", "get_creative_delivery"]
+      },
+      "uniqueItems": true,
+      "description": "Concrete AdCP protocol operation names that require this downstream connection. Sellers SHOULD include this in product declarations when the requirement is known ahead of time, and in AUTHORIZATION_REQUIRED details when it explains the failed operation. Prefer specific operation names such as `list_creatives`, `sync_creatives`, `create_media_buy`, `get_media_buy_delivery`, or `get_creative_delivery` over broad category labels such as `reporting`."
+    },
+    "scope": {
+      "type": "string",
+      "enum": ["account", "identity", "post", "unknown"],
+      "description": "Granularity of the downstream grant."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["connected", "missing", "pending", "expired", "revoked", "not_required", "unknown"],
+      "description": "Current seller-observed state for this downstream connection when known. Product declarations MAY omit status or use `unknown`; AUTHORIZATION_REQUIRED details SHOULD use `missing`, `expired`, or `revoked` for the connection that blocked the call."
+    },
+    "connection_id": {
+      "type": "string",
+      "description": "Seller-defined identifier for an already-created downstream connection. Omit when no connection exists yet or when exposing it would leak platform/account state."
+    },
+    "resource_ref": {
+      "type": "object",
+      "description": "Optional opaque provider-native resource hint, such as a platform account id, profile URL, handle, channel id, post id, or post URL. This is a hint for routing authorization, not proof that authorization exists.",
+      "properties": {
+        "platform_account_id": {
+          "type": "string",
+          "description": "Provider-native advertiser or business account id, when safe to disclose."
+        },
+        "identity_id": {
+          "type": "string",
+          "description": "Provider-native creator, page, channel, organization, or profile id, when safe to disclose."
+        },
+        "handle": {
+          "type": "string",
+          "description": "Provider-native public handle for the owning identity, when available."
+        },
+        "profile_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Public URL for the owning identity, when available."
+        },
+        "post_id": {
+          "type": "string",
+          "description": "Provider-native post id, when the grant is post-scoped or the failed request referenced a specific post."
+        },
+        "post_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Public URL for the referenced post, when available."
+        }
+      },
+      "additionalProperties": true
+    },
+    "authorization_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Seller-hosted or provider-hosted URL where a human can complete or restore this downstream connection."
+    },
+    "authorization_instructions": {
+      "type": "string",
+      "description": "Human-readable instructions for completing or restoring this downstream connection."
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Expiration time for the downstream grant, when known."
+    }
+  },
+  "required": ["connection_type"],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": ["missing", "pending", "expired", "revoked"]
+          }
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "anyOf": [
+          { "required": ["provider"] },
+          { "required": ["authorization_url"] }
+        ]
+      }
+    }
+  ],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "provider": "social.example",
+      "connection_type": "advertiser_account",
+      "required_for": ["sync_creatives", "create_media_buy"],
+      "scope": "account",
+      "status": "connected"
+    },
+    {
+      "provider": "social.example",
+      "connection_type": "publisher_identity",
+      "required_for": ["list_creatives", "sync_creatives", "create_media_buy"],
+      "scope": "identity",
+      "status": "missing",
+      "resource_ref": {
+        "handle": "@acme",
+        "profile_url": "https://social.example/@acme"
+      },
+      "authorization_instructions": "Connect the creator or page that owns the source post."
+    }
+  ]
+}

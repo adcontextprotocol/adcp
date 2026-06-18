@@ -1,4 +1,0 @@
----
----
-
-feat(training-agent): governance-token verifier for the S6 security lab. (1) Derive the governance-signing key deterministically so its `kid` is stable across restarts and always matches the public JWK at `/.well-known/jwks.json` (was ephemeral per process, so tokens couldn't be verified across restarts). (2) Add a sandbox-only `verify_governance_token` comply scenario that runs the JWS-profile seller checklist against a supplied `governance_context` and returns a per-step pass/fail trace — so a learner can observe a token ACCEPTED when valid and REJECTED when tampered (signature), presented to the wrong seller (aud / confused-deputy), or signed under a revoked kid (revocation). The served `governance-revocations.json` stays empty (conformance); the revoked kid is a scenario-internal teaching fixture. Sandbox-only; production governance agents use KMS-backed keys. No published-package or schema change.
