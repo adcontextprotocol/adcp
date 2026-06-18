@@ -37,6 +37,13 @@ interface FlyMachine {
   config?: { metadata?: { fly_process_group?: string } };
 }
 
+interface RecoveryResult {
+  attempted: boolean;
+  started: number;
+  stoppedWorkerCount?: number;
+  reason?: string;
+}
+
 async function probeWorker(): Promise<{ ok: true } | { ok: false; reason: string }> {
   const appName = process.env.FLY_APP_NAME;
   if (!appName) {
@@ -58,10 +65,11 @@ async function probeWorker(): Promise<{ ok: true } | { ok: false; reason: string
   }
 }
 
-async function recoverStoppedWorkers(): Promise<number> {
+async function recoverStoppedWorkers(): Promise<RecoveryResult> {
   const appName = process.env.FLY_APP_NAME;
   const token = process.env.FLY_API_TOKEN;
-  if (!appName || !token) return 0;
+  if (!appName) return { attempted: false, started: 0, reason: 'FLY_APP_NAME not set' };
+  if (!token) return { attempted: false, started: 0, reason: 'FLY_API_TOKEN not set' };
 
   const headers = { Authorization: `Bearer ${token}` };
   const controller = new AbortController();
@@ -74,12 +82,16 @@ async function recoverStoppedWorkers(): Promise<number> {
     });
     if (!listRes.ok) {
       logger.warn({ status: listRes.status }, 'Fly Machines API list failed');
-      return 0;
+      return { attempted: true, started: 0, reason: `Fly Machines API list failed: HTTP ${listRes.status}` };
     }
     machines = (await listRes.json()) as FlyMachine[];
   } catch (err) {
     logger.warn({ err: err instanceof Error ? err.message : String(err) }, 'Fly Machines API list errored');
-    return 0;
+    return {
+      attempted: true,
+      started: 0,
+      reason: `Fly Machines API list errored: ${err instanceof Error ? err.message : String(err)}`,
+    };
   } finally {
     clearTimeout(timer);
   }
@@ -87,7 +99,9 @@ async function recoverStoppedWorkers(): Promise<number> {
   const stoppedWorkers = machines.filter(
     (m) => m.config?.metadata?.fly_process_group === 'worker' && m.state === 'stopped',
   );
-  if (stoppedWorkers.length === 0) return 0;
+  if (stoppedWorkers.length === 0) {
+    return { attempted: true, started: 0, stoppedWorkerCount: 0 };
+  }
 
   let started = 0;
   for (const machine of stoppedWorkers) {
@@ -109,7 +123,7 @@ async function recoverStoppedWorkers(): Promise<number> {
       );
     }
   }
-  return started;
+  return { attempted: true, started, stoppedWorkerCount: stoppedWorkers.length };
 }
 
 async function tick(): Promise<void> {
@@ -124,12 +138,12 @@ async function tick(): Promise<void> {
   }
 
   consecutiveFailures++;
-  await recoverStoppedWorkers();
+  const recovery = await recoverStoppedWorkers();
 
   if (consecutiveFailures === FAILURE_THRESHOLD && !alerted) {
     alerted = true;
     logger.error(
-      { consecutiveFailures, reason: result.reason },
+      { consecutiveFailures, reason: result.reason, recovery },
       `Worker unreachable for ${FAILURE_THRESHOLD} consecutive checks (${FAILURE_THRESHOLD * TICK_MS / 1000}s) — scheduled jobs are not running`,
     );
   }
