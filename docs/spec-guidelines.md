@@ -356,7 +356,7 @@ All schema changes must:
 2. ✅ Pass example data through validation
 3. ✅ Generate types successfully (Python, TypeScript)
 4. ✅ Update documentation to match
-5. ✅ Include changeset describing the change
+5. ✅ Include an `adcontextprotocol` changeset describing the schema change
 
 ## Review Checklist
 
@@ -369,7 +369,7 @@ Before merging schema changes, verify:
 - [ ] Documentation updated to match schemas
 - [ ] Examples validate against new schemas
 - [ ] Type generation tested
-- [ ] Changeset created with proper version bump
+- [ ] `adcontextprotocol` changeset created with proper version bump
 
 ## Philosophy
 

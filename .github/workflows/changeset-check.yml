@@ -54,8 +54,8 @@ jobs:
 
       - name: Check for changeset
         run: |
-          if node scripts/check-changeset-protocol-scope.cjs origin/${{ github.base_ref }} --is-delete-only-cleanup; then
-            echo "Skipping changesets status for delete-only bad-changeset cleanup."
+          if node scripts/check-changeset-protocol-scope.cjs origin/${{ github.base_ref }} --is-status-exempt-maintenance; then
+            echo "Skipping changesets status for changeset policy maintenance."
             exit 0
           fi
           npx --yes @changesets/cli@^2.31.0 status --since=origin/${{ github.base_ref }}
