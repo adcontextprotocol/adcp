@@ -71,6 +71,10 @@ function isProtocolScopedPath(filePath) {
   return PROTOCOL_SCOPED_PATHS.some(pattern => pattern.test(normalized));
 }
 
+function hasProtocolScopedChanges(changes) {
+  return changes.some(change => (change.paths || []).some(isProtocolScopedPath));
+}
+
 function isChangesetDeleteOnlyCleanup(changes) {
   let deletedChangeset = false;
 
@@ -122,7 +126,7 @@ function changedPathForHead(change) {
 }
 
 function findChangesetProtocolScopeViolations(changes, readFileAtHead) {
-  const protocolChangesets = [];
+  const changesetFiles = [];
   const protocolScopedFiles = [];
 
   for (const change of changes) {
@@ -136,19 +140,21 @@ function findChangesetProtocolScopeViolations(changes, readFileAtHead) {
     if (!headPath || !isChangesetFile(headPath)) continue;
 
     const content = readFileAtHead(headPath);
-    if (changesetTargetsProtocol(content)) {
-      protocolChangesets.push(headPath);
-    }
+    changesetFiles.push({
+      filePath: headPath,
+      targetsProtocol: changesetTargetsProtocol(content),
+    });
   }
 
-  if (protocolChangesets.length === 0 || protocolScopedFiles.length > 0) {
+  if (changesetFiles.length === 0 || protocolScopedFiles.length > 0) {
     return [];
   }
 
-  return protocolChangesets.map(filePath => ({
-    filePath,
-    message:
-      'Protocol changesets are only allowed when the PR also changes protocol schemas, compliance assets, normative reference docs, release scripts, or versioned dist artifacts.',
+  return changesetFiles.map(changeset => ({
+    filePath: changeset.filePath,
+    message: changeset.targetsProtocol
+      ? 'Protocol changesets are only allowed when the PR also changes protocol schemas, compliance assets, normative reference docs, release scripts, or versioned dist artifacts.'
+      : 'Empty/non-package changesets are not allowed for non-protocol PRs. Remove the changeset file instead.',
   }));
 }
 
@@ -173,7 +179,7 @@ function formatViolationMessage(violations) {
     'Non-protocol changeset detected:',
     ...violations.map(v => `  - ${v.filePath}`),
     '',
-    'Do not add an adcontextprotocol changeset for app, site, billing, admin, or operational-only changes.',
+    'Do not add .changeset files for app, site, billing, admin, or operational-only changes.',
     violations[0]?.message,
   ]
     .filter(Boolean)
@@ -205,6 +211,16 @@ function run(argv = process.argv.slice(2)) {
     return 1;
   }
 
+  if (argv.includes('--has-protocol-scoped-changes')) {
+    const hasProtocol = hasProtocolScopedChanges(changes);
+    if (hasProtocol) {
+      console.log('Protocol-scoped changes detected.');
+      return 0;
+    }
+    console.log('No protocol-scoped changes detected.');
+    return 1;
+  }
+
   const violations = findChangesetProtocolScopeViolations(changes, readFileAtHead);
 
   if (violations.length > 0) {
@@ -224,6 +240,7 @@ module.exports = {
   changesetTargetsProtocol,
   findChangesetProtocolScopeViolations,
   formatViolationMessage,
+  hasProtocolScopedChanges,
   isChangesetDeleteOnlyCleanup,
   isChangesetStatusExemptMaintenance,
   isProtocolScopedPath,
