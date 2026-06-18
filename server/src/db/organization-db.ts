@@ -280,15 +280,42 @@ export const MEMBERSHIP_TIER_COLUMNS = [
 
 /**
  * Resolve the effective membership tier for an organization.
- * Fallback chain: cached tier → stored lookup key → amount inference.
+ * Fallback chain: stored lookup key → cached tier → amount inference.
  * Only falls back for tier-preserving statuses (active, past_due, trialing).
+ *
+ * Lookup key is per-price Stripe evidence and can correct stale tier columns.
+ * Amount inference is intentionally only a fallback when no tier column exists,
+ * because discounts/special pricing can make amount lower than the real tier.
  */
 export function resolveMembershipTier(org: MembershipTierRow | null | undefined): MembershipTier | null {
   if (!org) return null;
-  if (org.membership_tier) return org.membership_tier as MembershipTier;
   if (!(TIER_PRESERVING_STATUSES as readonly string[]).includes(org.subscription_status ?? '')) return null;
-  return tierFromLookupKey(org.subscription_price_lookup_key)
-    ?? inferMembershipTier(org.subscription_amount, org.subscription_interval, org.is_personal);
+  const lookupTier = tierFromLookupKey(org.subscription_price_lookup_key);
+  if (lookupTier) return lookupTier;
+  if (org.membership_tier) return org.membership_tier as MembershipTier;
+  return inferMembershipTier(org.subscription_amount, org.subscription_interval, org.is_personal);
+}
+
+/**
+ * Decide the tier to write for a live subscription update.
+ *
+ * Stripe webhook payloads can occasionally be missing the price/product
+ * signals needed to resolve a tier. If the subscription is still entitled,
+ * preserve the existing authoritative tier instead of clobbering it to null.
+ * Non-entitled statuses still clear the tier.
+ */
+export function resolveMembershipTierForSubscriptionWrite(
+  update: Pick<SubscriptionUpdatePayload, 'subscription_status' | 'membership_tier'>,
+  currentMembershipTier: MembershipTier | string | null | undefined,
+): MembershipTier | null {
+  if (
+    update.membership_tier === null &&
+    (TIER_PRESERVING_STATUSES as readonly string[]).includes(update.subscription_status)
+  ) {
+    return (currentMembershipTier ?? null) as MembershipTier | null;
+  }
+
+  return update.membership_tier;
 }
 
 /**
