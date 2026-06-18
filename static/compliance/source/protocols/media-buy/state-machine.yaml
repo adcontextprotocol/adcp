@@ -93,6 +93,14 @@ phases:
       Discover products and create a media buy to use for state transition testing.
       The media buy ID is captured and passed to subsequent phases.
 
+    # The sync_creatives step sends display (image) assets keyed to the seller's
+    # own format_id. Sellers without a creative library cannot accept
+    # sync_creatives and would fail setup before reaching the state-machine
+    # transitions this storyboard actually tests.
+    requires_capability:
+      path: creative.has_creative_library
+      equals: true
+
     steps:
       - id: discover_products
         title: "Discover products for media buy"
@@ -112,7 +120,7 @@ phases:
 
         sample_request:
           buying_mode: "brief"
-          brief: "Display advertising products for state machine testing"
+          brief: "Products for state machine testing"
           brand:
             domain: "acmeoutdoor.example"
 

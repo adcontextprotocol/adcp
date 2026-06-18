@@ -5,15 +5,15 @@ description: "Authoritative AdCP version-by-version release record with cumulati
 ---
 
 
-Authoritative version-by-version release record for AdCP, with cumulative change detail, migration guidance, and per-version adoption notes. For a curated adopter overview of the 3.1 minor release, see [What's New in AdCP 3.1](/docs/reference/whats-new-in-3-1). For the at-a-glance status of every published version, see [Versions & Compatibility](/docs/reference/versions). For source-level changelogs, see [CHANGELOG.md](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md). For version stability, schema-change scope, and the 3.x guarantees see [Versioning & Governance](/docs/reference/versioning). For v2 end-of-life see the [v2 sunset page](/docs/reference/v2-sunset).
+Authoritative version-by-version release record for AdCP, with cumulative change detail, migration guidance, and per-version adoption notes. For a curated adopter overview of the 3.1 minor release, see [What's New in AdCP 3.1](/docs/reference/whats-new-in-3-1). For a focused upgrade checklist, see [Migrating from 3.0 to 3.1](/docs/reference/migration/3-0-to-3-1). For the at-a-glance status of every published version, see [Versions & Compatibility](/docs/reference/versions). For source-level changelogs, see [CHANGELOG.md](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md). For version stability, schema-change scope, and the 3.x guarantees see [Versioning & Governance](/docs/reference/versioning). For v2 end-of-life see the [v2 sunset page](/docs/reference/v2-sunset).
 
 ---
 
 ## Version 3.1.0 (GA pending)
 
-**Status:** Release-candidate validation — minor release. The current published release candidate is `v3.1.0-rc.9`; its wire negotiation value is `"3.1-rc.9"`. The published 3.0.x line remains stable; 3.1 is feature-complete and validating through RC artifacts. SDKs pin to exact release values advertised in `supported_versions` during RC validation and use `"3.1"` at GA.
+**Status:** Release-candidate validation — minor release. The current published release candidate is `v3.1.0-rc.15`; its wire negotiation value is `"3.1-rc.15"`. The published 3.0.x line remains stable; 3.1 is feature-complete and validating through RC artifacts. SDKs pin to exact release values advertised in `supported_versions` during RC validation and use `"3.1"` at GA.
 
-For adoption-oriented framing before the full change list, start with [What's New in AdCP 3.1](/docs/reference/whats-new-in-3-1).
+For adoption-oriented framing before the full change list, start with [What's New in AdCP 3.1](/docs/reference/whats-new-in-3-1). For a role-based upgrade checklist, use [Migrating from 3.0 to 3.1](/docs/reference/migration/3-0-to-3-1).
 
 **Headline:** **Production-hardening for real agent operations.** 3.1 adds distributed `brand.json`, release-precision version negotiation, designated brand response signing, canonical creative formats, vendor-attested optimization, wholesale-feed mirroring, dependency-impact observability, proposal-lifecycle precision, and per-version verification badges. A brand can now publish its **own** canonical document on its own domain while the corporate house declares ownership via a portfolio pointer. The hierarchy stays one level deep — only houses declare ownership — and trust between a leaf and a house resolves via mutual assertion (both sides reciprocate). Identity attributes (logos, colors, tone, tagline) trust on the leaf's TLS alone; relationship trust (governance propagation, billable inclusion) gates on the reciprocal entry.
 
@@ -30,14 +30,14 @@ Additive over 3.0 — every existing brand.json publisher continues to validate 
 - **SDK and compliance readiness:** named codegen schemas, async-response refs, open-payload markers, capability-gated storyboards, packaged compliance closure, and release-artifact drift checks.
 
 <Info>
-**Upgrading from 3.0.x?** No code changes required. Schemas remain wire-compatible. SDK consumers pin the AdCP release to `"3.1"` on GA to pick up the new variant and field shapes. The one publisher-visible behavior change: free-text values for `trademarks[].status` or `trademarks[].countries` now validate against the typed enum / ISO 3166-1 alpha-2 — non-conforming values surface as schema errors.
+**Upgrading from 3.0.x?** No code changes are required to remain on stable `"3.0"`. To validate or claim 3.1, follow the [3.0 to 3.1 migration guide](/docs/reference/migration/3-0-to-3-1): pin the exact RC during validation, add read-task idempotency keys if you are hand-rolled, tolerate envelope fields, and move to `"3.1"` only at GA. The one publisher-visible behavior change: free-text values for `trademarks[].status` or `trademarks[].countries` now validate against the typed enum / ISO 3166-1 alpha-2 — non-conforming values surface as schema errors.
 </Info>
 
 ### Adopter action
 
 | If you are… | What you need to do |
 |---|---|
-| A 3.0-conformant production agent | Nothing. Stable schemas remain wire-compatible with 3.0.0. During RC validation, pin exact advertised values such as `"3.1-rc.9"`; at GA, move your SDK pin to `"3.1"` when you are ready to consume the new fields. |
+| A 3.0-conformant production agent | Nothing. Stable schemas remain wire-compatible with 3.0.0. During RC validation, pin exact advertised values such as `"3.1-rc.15"`; at GA, move your SDK pin to `"3.1"` when you are ready to consume the new fields. |
 | A brand on the existing inline `brands[]` shape | Nothing. Pull-based migration — you move out of `brands[]` only when you decide to self-publish. |
 | A sub-brand team that wants self-publish authority | Stand up `/.well-known/brand.json` at your own domain as a Brand Canonical Document. Declare `house_domain: "<parent-house>"`. Ask the parent house team to add `{ domain, brand_id, effective_at }` to their `brand_refs[]`. Mutual assertion completes on the next crawl. |
 | A house running the AAO crawler today (or any consumer that walks brand hierarchy) | Read [`brand.json` § Mutual-assertion trust model](/docs/brand-protocol/brand-json#mutual-assertion-trust-model). The 3-tier read — identity-trusted vs relationship-trusted vs unverified — replaces the binary "is this in my portfolio" check for `brand_refs[]` pointer children. The 180-day TTL is already AAO's reference behavior. |
@@ -204,7 +204,7 @@ See [Metric lifecycle](/docs/media-buy/media-buys/optimization-reporting#metric-
 
 `adcp_major_version` (the 3.0 integer field) and `adcp.major_versions` remain functional through all of 3.x — additive ship, no required changes for 3.0-conformant agents. The full migration table lives in [Versioning & Governance § Migration timeline](/docs/reference/versioning#migration-timeline).
 
-**Pin your release.** Every SDK exposes a constructor option for the version pin. Through 3.x, the SDK SHOULD also emit `adcp_major_version` automatically so legacy 3.x sellers that only read the integer keep negotiating correctly. During RC validation, use the exact advertised prerelease value such as `"3.1-rc.9"`; after GA, use `"3.1"`. The wire shape is **release-precision only** (`"3.1"`, `"3.1-rc.9"`) — full semver like `"3.1.2"` or `"3.1.0-rc.9"` is invalid on the wire.
+**Pin your release.** Every SDK exposes a constructor option for the version pin. Through 3.x, the SDK SHOULD also emit `adcp_major_version` automatically so legacy 3.x sellers that only read the integer keep negotiating correctly. During RC validation, use the exact advertised prerelease value such as `"3.1-rc.15"`; after GA, use `"3.1"`. The wire shape is **release-precision only** (`"3.1"`, `"3.1-rc.15"`) — full semver like `"3.1.2"` or `"3.1.0-rc.15"` is invalid on the wire.
 
 ```typescript
 // @adcp/sdk (TypeScript)
@@ -212,7 +212,7 @@ import { SingleAgentClient } from "@adcp/sdk";
 
 const client = new SingleAgentClient(
   { agent_uri: "https://sales.example/mcp/", protocol: "mcp" },
-  { adcpVersion: "3.1-rc.9" }, // use "3.1" after GA
+  { adcpVersion: "3.1-rc.15" }, // use "3.1" after GA
                                // adcp_major_version: 3 mirror auto-emitted
 );
 ```
@@ -224,7 +224,7 @@ from adcp.types import AgentConfig, Protocol
 
 client = ADCPClient(
     AgentConfig(agent_uri="https://sales.example/mcp/", protocol=Protocol.MCP),
-    adcp_version="3.1-rc.9",  # use "3.1" after GA
+    adcp_version="3.1-rc.15",  # use "3.1" after GA
                               # adcp_major_version: 3 mirror auto-emitted
 )
 ```
@@ -244,7 +244,7 @@ client, err := adcp.NewClient(
 
 **`VERSION_UNSUPPORTED` is typed.** When a buyer's pin isn't in the seller's `supported_versions`, the seller returns `VERSION_UNSUPPORTED` with `error.data` matching [`error-details/version-unsupported.json`](https://github.com/adcontextprotocol/adcp/blob/main/static/schemas/source/error-details/version-unsupported.json) — `supported_versions` is authoritative for retry. SDKs raise a typed error rather than silently retrying; auto-downshift changes wire shape under the caller and is left to application code.
 
-**Wire shape is release-precision only.** `"3.1.2"`, `"3.1.0-rc.9"`, `"v3.1"`, and `"3"` are all invalid on the wire. SDKs that key bundles by full semver MUST normalize to release-precision (`"3.1.0-rc.9"` → `"3.1-rc.9"`) before emitting — the `published_version` field on meta-objects (schema registry, tarball `manifest.json`, compliance index, `/protocol/` discovery) is documentation, not a wire value. See [Versioning § Patches are not negotiated](/docs/reference/versioning#patches-are-not-negotiated) for the full wire-shape rule.
+**Wire shape is release-precision only.** `"3.1.2"`, `"3.1.0-rc.15"`, `"v3.1"`, and `"3"` are all invalid on the wire. SDKs that key bundles by full semver MUST normalize to release-precision (`"3.1.0-rc.15"` → `"3.1-rc.15"`) before emitting — the `published_version` field on meta-objects (schema registry, tarball `manifest.json`, compliance index, `/protocol/` discovery) is documentation, not a wire value. See [Versioning § Patches are not negotiated](/docs/reference/versioning#patches-are-not-negotiated) for the full wire-shape rule.
 
 **Compliance grader at 3.1 is advisory.** The grader runs the new `version_negotiation` universal storyboard and reports presence on requests and responses — see the [migration timeline](/docs/reference/versioning#migration-timeline) for the 3.1 → 3.2 → 4.0 cadence.
 

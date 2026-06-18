@@ -201,6 +201,12 @@ phases:
           - check: field_present
             path: "formats[0].format_id.id"
             description: "Format IDs include id — must match those in get_products"
+          - check: field_present
+            path: "formats[0].renders[0].dimensions"
+            severity: advisory
+            permanent_advisory:
+              reason: "Filter-effectiveness check: the sample request sends type=display with max_width/max_height constraints. Display formats should declare render dimensions. Advisory because runner field-stripping (adcontextprotocol/adcp#5495) may prevent the filter from reaching the agent."
+            description: "First returned format has render dimensions, consistent with the display type filter"
   - id: preview
     title: "Preview with real assets"
     narrative: |
