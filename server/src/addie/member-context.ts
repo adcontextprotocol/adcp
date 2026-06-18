@@ -64,6 +64,13 @@ type ActiveWorkosMembership = {
   role?: { slug: string };
 };
 
+type AvailableOrganizationChoice = {
+  workos_organization_id: string;
+  name: string | null;
+  role: string | null;
+  joined_at: Date | null;
+};
+
 async function listActiveWorkosMembershipsForUser(
   workosUserId: string,
   organizationId?: string | null,
@@ -115,10 +122,37 @@ async function listActiveWorkosMembershipsForUser(
   return activeMemberships;
 }
 
+async function resolveAvailableOrganizationChoices(
+  activeMemberships: ActiveWorkosMembership[],
+): Promise<AvailableOrganizationChoice[]> {
+  const membershipsByOrg = new Map<string, ActiveWorkosMembership[]>();
+  for (const membership of activeMemberships) {
+    const existing = membershipsByOrg.get(membership.organizationId) ?? [];
+    existing.push(membership);
+    membershipsByOrg.set(membership.organizationId, existing);
+  }
+
+  const choices = await Promise.all([...membershipsByOrg.entries()].map(async ([organizationId, memberships]) => {
+    const localOrg = await orgDb.getOrganization(organizationId).catch(() => null);
+    const firstMembership = memberships[0];
+    return {
+      workos_organization_id: organizationId,
+      name: localOrg?.name ?? null,
+      role: resolveUserRole(memberships) || null,
+      joined_at: firstMembership?.createdAt ? new Date(firstMembership.createdAt) : null,
+    };
+  }));
+
+  return choices.sort((a, b) =>
+    (a.name ?? a.workos_organization_id).localeCompare(b.name ?? b.workos_organization_id)
+  );
+}
+
 async function resolveAddieOrganization(
   workosUserId: string,
   logPrefix: 'Addie' | 'Addie Web',
   selectedOrganizationId?: string | null,
+  context?: MemberContext,
 ): Promise<{ organizationId: string; userRole: string; userJoinedAt: Date | null } | null> {
   try {
     const activeMemberships = await listActiveWorkosMembershipsForUser(workosUserId, selectedOrganizationId);
@@ -134,6 +168,9 @@ async function resolveAddieOrganization(
     const uniqueActiveOrgIds = [...new Set(activeMemberships.map((m) => m.organizationId).filter(Boolean))];
     if (uniqueActiveOrgIds.length === 0) return null;
     if (uniqueActiveOrgIds.length > 1) {
+      if (context) {
+        context.available_organizations = await resolveAvailableOrganizationChoices(activeMemberships);
+      }
       logger.info(
         { workosUserId, orgCount: uniqueActiveOrgIds.length },
         `${logPrefix}: multiple active organizations; waiting for explicit org selection`,
@@ -409,6 +446,12 @@ export interface MemberContext {
     membership_tier: string | null;
   };
 
+  /**
+   * Verified active WorkOS organizations available to this user when no single
+   * organization is selected. This is a choice list, not ambient org context.
+   */
+  available_organizations?: AvailableOrganizationChoice[];
+
   /** Persona classification for the organization */
   persona?: {
     persona: string;
@@ -645,7 +688,7 @@ export async function getMemberContext(slackUserId: string, selectedOrganization
     }
 
     // Step 4: Resolve the explicitly selected org, or a sole unambiguous org.
-    const resolvedOrg = await resolveAddieOrganization(slackMapping.workos_user_id, 'Addie', selectedOrganizationId);
+    const resolvedOrg = await resolveAddieOrganization(slackMapping.workos_user_id, 'Addie', selectedOrganizationId, context);
     if (!resolvedOrg) {
       logger.debug({ workosUserId: slackMapping.workos_user_id }, 'Addie: User has no organization');
       return context;
@@ -1301,7 +1344,7 @@ export async function getWebMemberContext(
     }
 
     // Step 3: Resolve the explicitly selected org, or a sole unambiguous org.
-    const resolvedOrg = await resolveAddieOrganization(workosUserId, 'Addie Web', selectedOrganizationId);
+    const resolvedOrg = await resolveAddieOrganization(workosUserId, 'Addie Web', selectedOrganizationId, context);
     if (!resolvedOrg) {
       logger.debug({ workosUserId }, 'Addie Web: User has no organization');
       return context;
@@ -1390,6 +1433,18 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
           lines.push(`Subscription status: ${subStatus} (requires "active" for membership).`);
         }
       }
+    }
+  } else if (context.available_organizations && context.available_organizations.length > 0) {
+    lines.push('They belong to multiple active WorkOS organizations, but no organization is currently selected.');
+    lines.push('Before using organization-scoped context or tools, ask them to choose an organization explicitly. For save_agent, they can provide organization_id or organization_name.');
+    lines.push('Available active organizations:');
+    for (const org of context.available_organizations.slice(0, 10)) {
+      const name = org.name ? promptFact(org.name, 160) : 'Unnamed organization';
+      const role = org.role ? `, role: ${org.role}` : '';
+      lines.push(`- ${name} (organization_id: ${org.workos_organization_id}${role})`);
+    }
+    if (context.available_organizations.length > 10) {
+      lines.push(`- ${context.available_organizations.length - 10} more organizations omitted.`);
     }
   }
 

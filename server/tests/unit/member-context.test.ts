@@ -223,6 +223,41 @@ describe('formatMemberContextForPrompt', () => {
     expect(result).toContain('Subscription status: incomplete (requires "active" for membership).');
   });
 
+  it('lists active organization choices without selecting one for multi-org users', () => {
+    const context: MemberContext = {
+      is_mapped: true,
+      is_member: false,
+      slack_linked: true,
+      workos_user: {
+        workos_user_id: 'user_multi',
+        email: 'multi@example.com',
+        first_name: 'Morgan',
+      },
+      available_organizations: [
+        {
+          workos_organization_id: 'org_alpha',
+          name: 'Alpha Media',
+          role: 'admin',
+          joined_at: new Date('2026-01-01T00:00:00Z'),
+        },
+        {
+          workos_organization_id: 'org_beta',
+          name: 'Beta Brands',
+          role: 'member',
+          joined_at: new Date('2026-02-01T00:00:00Z'),
+        },
+      ],
+    };
+
+    const result = formatMemberContextForPrompt(context);
+    expect(result).toContain('multiple active WorkOS organizations');
+    expect(result).toContain('no organization is currently selected');
+    expect(result).toContain('organization_id: org_alpha');
+    expect(result).toContain('organization_id: org_beta');
+    expect(result).toContain('For save_agent, they can provide organization_id or organization_name');
+    expect(result).not.toContain('They work at');
+  });
+
   it('should include member profile details', () => {
     const context: MemberContext = {
       is_mapped: true,
