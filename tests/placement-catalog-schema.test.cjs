@@ -600,3 +600,61 @@ test('format options can be referenced by publisher domain or product-local ID',
     false
   );
 });
+
+test('placement-definition accepts dooh_placement_attributes and identifiers', async () => {
+  const validate = await compile('/schemas/core/placement-definition.json');
+  const placement = {
+    placement_id: 'times_square_north',
+    name: 'Times Square North LED',
+    property_ids: ['times_square_network'],
+    channels: ['dooh'],
+    identifiers: [
+      { type: 'screen_id', value: 'ts-north-001' },
+      { type: 'openooh_venue_type', value: '1.1.1' }
+    ],
+    dooh_placement_attributes: {
+      slot_duration_seconds: 15,
+      loop_duration_seconds: 120,
+      screen_resolution: { width: 1920, height: 1080 },
+      motion: 'full_motion'
+    }
+  };
+
+  assert.equal(validate(placement), true, JSON.stringify(validate.errors, null, 2));
+});
+
+test('product placement accepts dooh_placement_attributes and identifiers', async () => {
+  const validate = await compile('/schemas/core/placement.json');
+  const placement = {
+    kind: 'seller_inline',
+    placement_id: 'mall_entrance_screen',
+    name: 'Mall Entrance Digital Screen',
+    mode: 'targetable',
+    identifiers: [
+      { type: 'venue_id', value: 'geopath:30961' }
+    ],
+    dooh_placement_attributes: {
+      slot_duration_seconds: 10,
+      loop_duration_seconds: 60,
+      screen_resolution: { width: 3840, height: 2160 },
+      motion: 'full_motion'
+    }
+  };
+
+  assert.equal(validate(placement), true, JSON.stringify(validate.errors, null, 2));
+});
+
+test('dooh_placement_attributes rejects invalid motion type', async () => {
+  const validate = await compile('/schemas/core/placement.json');
+  const placement = {
+    kind: 'seller_inline',
+    placement_id: 'bus_shelter_01',
+    name: 'Bus Shelter Panel',
+    mode: 'targetable',
+    dooh_placement_attributes: {
+      motion: 'invalid_motion_type'
+    }
+  };
+
+  assert.equal(validate(placement), false);
+});
