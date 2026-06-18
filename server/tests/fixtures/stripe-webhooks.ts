@@ -245,3 +245,56 @@ export const createSubscriptionCreatedEvent = (overrides: {
     },
   } as Stripe.Event;
 };
+
+export const createSubscriptionUpdatedEvent = (overrides: {
+  customerId?: string;
+  subscriptionId?: string;
+  status?: string;
+  unitAmount?: number | null;
+  lookupKey?: string | null;
+  interval?: 'month' | 'year';
+} = {}): Stripe.Event => {
+  const timestamp = Math.floor(Date.now() / 1000);
+
+  return {
+    id: `evt_test_${Date.now()}`,
+    object: 'event',
+    api_version: '2023-10-16',
+    created: timestamp,
+    type: 'customer.subscription.updated',
+    livemode: false,
+    pending_webhooks: 0,
+    request: null,
+    data: {
+      object: {
+        id: overrides.subscriptionId || `sub_test_${Date.now()}`,
+        object: 'subscription',
+        customer: overrides.customerId || `cus_test_${Date.now()}`,
+        status: overrides.status || 'active',
+        current_period_start: timestamp,
+        current_period_end: timestamp + (30 * 24 * 60 * 60),
+        canceled_at: null,
+        items: {
+          object: 'list',
+          data: [
+            {
+              id: `si_test_${Date.now()}`,
+              object: 'subscription_item',
+              price: {
+                id: `price_test_${Date.now()}`,
+                product: `prod_test_${Date.now()}`,
+                unit_amount: overrides.unitAmount === undefined ? 2999 : overrides.unitAmount,
+                currency: 'usd',
+                lookup_key: overrides.lookupKey === undefined ? 'aao_membership_professional_250' : overrides.lookupKey,
+                recurring: {
+                  interval: overrides.interval || 'year',
+                },
+              },
+            } as any,
+          ],
+        },
+        metadata: {},
+      } as Stripe.Subscription,
+    },
+  } as Stripe.Event;
+};

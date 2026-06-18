@@ -9,9 +9,9 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 
 ---
 
-## Version 3.1.0 (GA pending)
+## Version 3.1.0
 
-**Status:** Release-candidate validation — minor release. The current published release candidate is `v3.1.0-rc.15`; its wire negotiation value is `"3.1-rc.15"`. The published 3.0.x line remains stable; 3.1 is feature-complete and validating through RC artifacts. SDKs pin to exact release values advertised in `supported_versions` during RC validation and use `"3.1"` at GA.
+**Status:** General availability — minor release. The stable wire negotiation value is `"3.1"`. The published 3.0.x line remains supported for existing integrations; new 3.1 integrations should pin to `"3.1"` and read `supported_versions` before sending 3.1-only fields.
 
 For adoption-oriented framing before the full change list, start with [What's New in AdCP 3.1](/docs/reference/whats-new-in-3-1). For a role-based upgrade checklist, use [Migrating from 3.0 to 3.1](/docs/reference/migration/3-0-to-3-1).
 
@@ -21,7 +21,7 @@ Additive over 3.0 — every existing brand.json publisher continues to validate 
 
 ### 3.1 feature index
 
-- **Versioning and validation:** release-precision `adcp_version`, exact RC pins, `supported_versions`, envelope echo, and version-scoped badges.
+- **Versioning and validation:** release-precision `adcp_version`, stable `"3.1"` wire pin, `supported_versions`, envelope echo, and version-scoped badges.
 - **Brand trust:** distributed `brand.json`, `brand_refs[]`, typed brand constraints, authorized-operator scoping, and signed brand-verification responses.
 - **Signals and wholesale feeds:** enriched signal definitions, `SignalRef`, wholesale signal enumeration, product-scoped signal targeting, conditional fetch, `cache_scope`, and feed webhooks.
 - **Creative formats and generation:** canonical `format_kind`, publisher catalogs, hosted audio/video `duration_ms_range`, published-post references, `list_transformers`, fan-out, evaluator ranking over creative features, spend controls, and per-output pricing receipts.
@@ -30,22 +30,22 @@ Additive over 3.0 — every existing brand.json publisher continues to validate 
 - **SDK and compliance readiness:** named codegen schemas, async-response refs, open-payload markers, capability-gated storyboards, packaged compliance closure, and release-artifact drift checks.
 
 <Info>
-**Upgrading from 3.0.x?** No code changes are required to remain on stable `"3.0"`. To validate or claim 3.1, follow the [3.0 to 3.1 migration guide](/docs/reference/migration/3-0-to-3-1): pin the exact RC during validation, add read-task idempotency keys if you are hand-rolled, tolerate envelope fields, and move to `"3.1"` only at GA. The one publisher-visible behavior change: free-text values for `trademarks[].status` or `trademarks[].countries` now validate against the typed enum / ISO 3166-1 alpha-2 — non-conforming values surface as schema errors.
+**Upgrading from 3.0.x?** No code changes are required to remain on stable `"3.0"`. To claim or consume 3.1, follow the [3.0 to 3.1 migration guide](/docs/reference/migration/3-0-to-3-1): pin `"3.1"` on the wire, add read-task idempotency keys if you are hand-rolled, and tolerate envelope fields. The one publisher-visible behavior change: free-text values for `trademarks[].status` or `trademarks[].countries` now validate against the typed enum / ISO 3166-1 alpha-2 — non-conforming values surface as schema errors.
 </Info>
 
 ### Adopter action
 
 | If you are… | What you need to do |
 |---|---|
-| A 3.0-conformant production agent | Nothing. Stable schemas remain wire-compatible with 3.0.0. During RC validation, pin exact advertised values such as `"3.1-rc.15"`; at GA, move your SDK pin to `"3.1"` when you are ready to consume the new fields. |
+| A 3.0-conformant production agent | Nothing required to remain on 3.0. Stable schemas remain wire-compatible with 3.0.0. Move your SDK pin to `"3.1"` when you are ready to consume the new fields. |
 | A brand on the existing inline `brands[]` shape | Nothing. Pull-based migration — you move out of `brands[]` only when you decide to self-publish. |
 | A sub-brand team that wants self-publish authority | Stand up `/.well-known/brand.json` at your own domain as a Brand Canonical Document. Declare `house_domain: "<parent-house>"`. Ask the parent house team to add `{ domain, brand_id, effective_at }` to their `brand_refs[]`. Mutual assertion completes on the next crawl. |
 | A house running the AAO crawler today (or any consumer that walks brand hierarchy) | Read [`brand.json` § Mutual-assertion trust model](/docs/brand-protocol/brand-json#mutual-assertion-trust-model). The 3-tier read — identity-trusted vs relationship-trusted vs unverified — replaces the binary "is this in my portfolio" check for `brand_refs[]` pointer children. The 180-day TTL is already AAO's reference behavior. |
 | A publisher using free-text `status` or `countries` on `trademarks[]` entries | Move `status` values to the enum (`active`, `pending`, `abandoned`, `cancelled`, `expired`) and `countries` values to ISO 3166-1 alpha-2 codes. The fields were untyped via `additionalProperties: true`; they're now typed. Non-conforming values surface validation errors. |
 | An agency named in a house's `managed_by` claim | Nothing required at the protocol level. Aggregation by `managed_by` ("show me everything BBH manages") is the intended use; trust is not extended through it. Manager-side reciprocation is tracked as a follow-up. |
-| Building an SDK or in-house client against AdCP 3.x | Pin to an exact release value via the constructor (`adcpVersion: "3.1"` / `adcp_version="3.1"` / `WithAdcpVersion("3.1")` at GA; exact prerelease strings before GA) and emit `adcp_version` on every request alongside the `adcp_major_version` mirror. Read `supported_versions` from the seller's `get_adcp_capabilities` response; expect a `VERSION_UNSUPPORTED` typed error when your pin isn't in the list. See [Release-precision version negotiation](#release-precision-version-negotiation--pin-your-release-3493) below. |
+| Building an SDK or in-house client against AdCP 3.x | Pin to an exact release value via the constructor (`adcpVersion: "3.1"` / `adcp_version="3.1"` / `WithAdcpVersion("3.1")`) and emit `adcp_version` on every request alongside the `adcp_major_version` mirror. Read `supported_versions` from the seller's `get_adcp_capabilities` response; expect a `VERSION_UNSUPPORTED` typed error when your pin isn't in the list. See [Release-precision version negotiation](#release-precision-version-negotiation--pin-your-release-3493) below. |
 | A brand agent implementing `verify_brand_claim` or `verify_brand_claims` | Return the required `signed_response` payload-envelope JWS on success. Publish and rotate a per-brand `adcp_use: "response-signing"` JWK, bind the signature to the designated task, resolved brand tenant, responding agent URL, caller/request hash, and `iat`/`exp` window, and retain bulk audit evidence with the original batch request. |
-| A seller using proposals or action discovery | Use `proposal_status` as the per-proposal source of truth. Treat `finalize` as seller commitment, `create_media_buy(proposal_id)` as buyer execution, and `supports_proposals` as a conformance declaration only. Do not emit the pre-GA `requires_proposal` action mode; return `REQUOTE_REQUIRED` when an `update_media_buy` request exceeds the current quoted envelope. Buyers with cached RC action metadata containing `requires_proposal` must invalidate it and re-read the relevant proposal, product, or buy surface rather than mapping it to `requires_approval`. |
+| A seller using proposals or action discovery | Use `proposal_status` as the per-proposal source of truth. Treat `finalize` as seller commitment, `create_media_buy(proposal_id)` as buyer execution, and `supports_proposals` as a conformance declaration only. Do not emit the pre-GA `requires_proposal` action mode; return `REQUOTE_REQUIRED` when an `update_media_buy` request exceeds the current quoted envelope. Buyers with cached prerelease action metadata containing `requires_proposal` must invalidate it and re-read the relevant proposal, product, or buy surface rather than mapping it to `requires_approval`. |
 | A signals agent or buyer orchestrator | Treat `signal-owned` as discovery-only unless the agent also claims marketplace/activation support. `signal-marketplace` requires `activate_signal`; owned-signal conformance no longer requires marketplace activation. Buyers should gate activation calls on the agent's declared specialism/capability, not on the existence of `get_signals` alone. |
 | A seller or creative agent declaring hosted audio/video formats | Use `duration_ms_exact` for fixed-duration slots and `duration_ms_range` for bounded or one-sided ranges. `[null, 60000]` means "up to 60 seconds"; `[15000, null]` means "at least 15 seconds"; `[null, null]` is invalid. Do not add separate bare min/max duration fields. |
 | Maintaining compliance bundles, SDK fixtures, or protocol tarballs | Keep storyboard references inside the packaged `/compliance/{version}/` tree. The build now fails when an authored vector or test-kit reference cannot resolve inside the packaged compliance bundle, including webhook receiver envelope vectors. |
@@ -96,7 +96,7 @@ Product signal targeting also clarifies the broad-feed workflow. Products may se
 
 **Brand designated-task response signing.** `verify_brand_claim` and `verify_brand_claims` success responses now require `signed_response`, a payload-envelope JWS over the canonical task-body response. The envelope binds the response to the designated task, resolved `brand_domain`, responding `agent_url`, caller/request hash, and `iat`/`exp` freshness window. Verifiers resolve the `kid` to a published JWK with `adcp_use: "response-signing"` and reject mismatches between the unsigned response fields and `signed_response.payload.response`. This is ordinary JWS over the JCS-canonicalized payload, not general RFC 9421 transport response signing. See [Brand Protocol § verify_brand_claim](/docs/brand-protocol/tasks/verify_brand_claim#trust-model) and [Security § Designated-task response signing](/docs/building/by-layer/L1/security#designated-task-response-signing). PR [#5192](https://github.com/adcontextprotocol/adcp/pull/5192).
 
-**Proposal lifecycle and action-mode cleanup.** `proposal_status` is the per-proposal source of truth: `draft` requires `get_products` refine/finalize before create, `committed` can be executed with `create_media_buy(proposal_id)` before `expires_at`, and absent status is the legacy ready-to-buy path. `finalize` is seller commitment to firm pricing, terms, and hold; `create_media_buy(proposal_id)` is buyer acceptance/execution. `supports_proposals` remains a conformance grading declaration, not buyer routing logic for an individual proposal. The pre-GA `requires_proposal` action mode is removed; sellers return `REQUOTE_REQUIRED` when an `update_media_buy` request exceeds the current quoted envelope. Buyers with cached RC metadata containing `requires_proposal` treat it as unknown: proposal executability must be re-read from `Proposal.proposal_status`, product action templates from `allowed_actions[]`, and buy runtime action state from `available_actions[]`. 3.1 does not define an amendment-quote artifact for `update_media_buy`.
+**Proposal lifecycle and action-mode cleanup.** `proposal_status` is the per-proposal source of truth: `draft` requires `get_products` refine/finalize before create, `committed` can be executed with `create_media_buy(proposal_id)` before `expires_at`, and absent status is the legacy ready-to-buy path. `finalize` is seller commitment to firm pricing, terms, and hold; `create_media_buy(proposal_id)` is buyer acceptance/execution. `supports_proposals` remains a conformance grading declaration, not buyer routing logic for an individual proposal. The pre-GA `requires_proposal` action mode is removed; sellers return `REQUOTE_REQUIRED` when an `update_media_buy` request exceeds the current quoted envelope. Buyers with cached prerelease metadata containing `requires_proposal` treat it as unknown: proposal executability must be re-read from `Proposal.proposal_status`, product action templates from `allowed_actions[]`, and buy runtime action state from `available_actions[]`. 3.1 does not define an amendment-quote artifact for `update_media_buy`.
 
 **Measurement catalog remains experimental.** The `measurement` capability block is marked `x-status: experimental`. Agents implementing metric-catalog discovery declare `measurement.core` in `experimental_features`; buyers should treat measurement vendor catalog discovery as experimental while the task surface and stable compliance baseline remain unfrozen.
 
@@ -112,7 +112,7 @@ Product signal targeting also clarifies the broad-feed workflow. Products may se
 
 **Canonical format satisfaction at create time.** Media-buy create/update/read surfaces now preserve package-level canonical selectors, including direct `format_kind`/`params` requests. The conformance suite tests that under-specified selectors fail closed instead of matching products by loose overlap. See [Product discovery](/docs/media-buy/product-discovery/media-products).
 
-**Per-version verification badge issuance.** Public verification runs now issue only the selected public AdCP line; the default remains 3.0 while 3.1 prerelease runs are diagnostic. Badges are version-scoped, so 3.0 badges remain active independently of future 3.1 badges. Buyers pinned to a specific AdCP release should read versioned badge data instead of flattening to a single current badge. See [Compliance catalog](/docs/building/verification/compliance-catalog) and [Versioning](/docs/reference/versioning).
+**Per-version verification badge issuance.** Public verification runs issue badges for the selected public AdCP line. Badges are version-scoped, so 3.0 badges remain active independently of 3.1 badges. Buyers pinned to a specific AdCP release should read versioned badge data instead of flattening to a single current badge. See [Compliance catalog](/docs/building/verification/compliance-catalog) and [Versioning](/docs/reference/versioning).
 
 **Discovery precision additions.** Late schema additions are optional and additive: `video_placement_types` and `audio_distribution_types` on products, placements, and `get_products` filters; `pricing_currencies` on `get_products.filters` so buyers can restrict product discovery to media transaction currencies they can use; `ext` on discovery filters for vendor- or seller-specific criteria; time/scoped authorized operators on `brand.json`; and machine-readable brand guideline constraints.
 
@@ -204,7 +204,7 @@ See [Metric lifecycle](/docs/media-buy/media-buys/optimization-reporting#metric-
 
 `adcp_major_version` (the 3.0 integer field) and `adcp.major_versions` remain functional through all of 3.x — additive ship, no required changes for 3.0-conformant agents. The full migration table lives in [Versioning & Governance § Migration timeline](/docs/reference/versioning#migration-timeline).
 
-**Pin your release.** Every SDK exposes a constructor option for the version pin. Through 3.x, the SDK SHOULD also emit `adcp_major_version` automatically so legacy 3.x sellers that only read the integer keep negotiating correctly. During RC validation, use the exact advertised prerelease value such as `"3.1-rc.15"`; after GA, use `"3.1"`. The wire shape is **release-precision only** (`"3.1"`, `"3.1-rc.15"`) — full semver like `"3.1.2"` or `"3.1.0-rc.15"` is invalid on the wire.
+**Pin your release.** Every SDK exposes a constructor option for the version pin. Through 3.x, the SDK SHOULD also emit `adcp_major_version` automatically so legacy 3.x sellers that only read the integer keep negotiating correctly. For 3.1, use `"3.1"`. The wire shape is **release-precision only** (`"3.1"`, `"3.1-rc.15"` for historical prereleases) — full semver like `"3.1.2"` or `"3.1.0-rc.15"` is invalid on the wire.
 
 ```typescript
 // @adcp/sdk (TypeScript)
@@ -212,8 +212,7 @@ import { SingleAgentClient } from "@adcp/sdk";
 
 const client = new SingleAgentClient(
   { agent_uri: "https://sales.example/mcp/", protocol: "mcp" },
-  { adcpVersion: "3.1-rc.15" }, // use "3.1" after GA
-                               // adcp_major_version: 3 mirror auto-emitted
+  { adcpVersion: "3.1" }, // adcp_major_version: 3 mirror auto-emitted
 );
 ```
 
@@ -224,8 +223,7 @@ from adcp.types import AgentConfig, Protocol
 
 client = ADCPClient(
     AgentConfig(agent_uri="https://sales.example/mcp/", protocol=Protocol.MCP),
-    adcp_version="3.1-rc.15",  # use "3.1" after GA
-                              # adcp_major_version: 3 mirror auto-emitted
+    adcp_version="3.1",  # adcp_major_version: 3 mirror auto-emitted
 )
 ```
 

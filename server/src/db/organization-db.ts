@@ -280,15 +280,20 @@ export const MEMBERSHIP_TIER_COLUMNS = [
 
 /**
  * Resolve the effective membership tier for an organization.
- * Fallback chain: cached tier → stored lookup key → amount inference.
+ * Fallback chain: stored lookup key → cached tier → amount inference.
  * Only falls back for tier-preserving statuses (active, past_due, trialing).
+ *
+ * Lookup key is per-price Stripe evidence and can correct stale tier columns.
+ * Amount inference is intentionally only a fallback when no tier column exists,
+ * because discounts/special pricing can make amount lower than the real tier.
  */
 export function resolveMembershipTier(org: MembershipTierRow | null | undefined): MembershipTier | null {
   if (!org) return null;
-  if (org.membership_tier) return org.membership_tier as MembershipTier;
   if (!(TIER_PRESERVING_STATUSES as readonly string[]).includes(org.subscription_status ?? '')) return null;
-  return tierFromLookupKey(org.subscription_price_lookup_key)
-    ?? inferMembershipTier(org.subscription_amount, org.subscription_interval, org.is_personal);
+  const lookupTier = tierFromLookupKey(org.subscription_price_lookup_key);
+  if (lookupTier) return lookupTier;
+  if (org.membership_tier) return org.membership_tier as MembershipTier;
+  return inferMembershipTier(org.subscription_amount, org.subscription_interval, org.is_personal);
 }
 
 /**

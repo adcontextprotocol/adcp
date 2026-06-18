@@ -21,7 +21,14 @@ Runbook for cutting beta releases while `main` is in pre mode, and for exiting p
 4. Merging tags `v3.1.0-beta.N`, creates the GitHub Release, publishes `/protocol/3.1.0-beta.N.tgz`.
 5. `release-docs.yml` fires on `release: published`, snapshots `dist/docs/3.1.0-beta.N/`, opens an auto-merging PR.
 
-`release-docs.yml`'s docs.json updater collapses prerelease versions into a single `3.1-beta` label, so the live docs site shows the latest beta at the `3.1-beta` version selector. The `dist/docs/3.1.0-beta.{N-1}/` directory accumulates in git but isn't linked — periodic cleanup is fine.
+`release-docs.yml`'s docs.json updater collapses prerelease versions into a single `3.1-beta` label, so the live docs site shows the latest beta at the `3.1-beta` version selector. The `dist/docs/3.1.0-beta.{N-1}/` directory accumulates in git but isn't linked.
+
+Do not delete published prerelease artifacts as part of the normal cut. Treat
+`dist/{schemas,compliance,docs,protocol}/3.1.0-{beta,rc}.*` and published npm
+prerelease versions as immutable records for pinned adopters, old links, and
+release forensics. After GA is stable, a separate housekeeping PR may hide
+prerelease selectors from Mintlify navigation, but it must not rewrite or
+delete already published semver artifacts.
 
 ## Curated release notes during the beta cycle
 
@@ -35,6 +42,8 @@ While in beta, that section can carry a `**Status:** Beta — in development` ba
 
 - 3.1.0 is feature-complete; no further `minor` changesets should land before the stable cut
 - Curated 3.1.0 release notes drafted in `docs/reference/release-notes.mdx`
+- GA docs/site wording is ready: no public banner or primary docs page should
+  describe 3.1 as RC/beta once the stable cut lands
 
 ### Freeze main first
 
@@ -63,6 +72,32 @@ Land the exit PR. The next Version Packages cut (any new changesets on main, or 
 
 If the Release workflow fails after merge, recover manually following the same fallback pattern as `cut-major.md` § 4 (manual `git tag` + `gh release create`).
 
+### GA docs + site flip
+
+The stable release is not done until the public docs stop presenting 3.1 as a
+prerelease. Include these edits in the exit PR or the immediately following
+GA docs PR, and land them before announcements:
+
+- `docs.json` banner says 3.1 is released, or the prerelease banner is removed.
+- Mintlify navigation exposes `3.1`, not `3.1-rc` or `3.1-beta`, as the stable
+  3.1 line. After `release-docs.yml` snapshots `dist/docs/3.1.0/`, point the
+  version selector at that final snapshot.
+- The default docs selector is intentionally set for the release policy
+  (`3.1` if the new minor should be primary immediately; otherwise document why
+  `3.0` remains default during a short rollout window).
+- `docs/reference/release-notes.mdx`, `docs/reference/versions.mdx`,
+  `docs/reference/whats-new-in-3-1.mdx`, and
+  `docs/reference/migration/3-0-to-3-1.mdx` describe GA behavior. Remove
+  "release-candidate validation", "use the exact RC", and "move to 3.1 at GA"
+  wording from GA-facing paths.
+- Code snippets and SDK examples use the stable wire pin (`"3.1"`) on
+  GA-facing pages. Keep RC examples only in prerelease migration/archive pages.
+- npm dist-tags are updated after publish: `adcp-3.1` points at the stable SDK
+  intended for 3.1 users, while old beta/RC versions remain available.
+- Public smoke checks confirm that `docs.adcontextprotocol.org` no longer shows
+  RC/beta language on the main 3.1 release notes, versions, what-new, and
+  migration pages.
+
 ### CHANGELOG.md at exit time
 
 When you exit pre mode, the CHANGELOG.md ends up looking like:
@@ -86,7 +121,11 @@ The `3.1.0` block doesn't aggregate everything since `3.0.0` — each beta consu
 - [ ] Release body references cosign verification + SHA-256
 - [ ] 4 artifacts attached: `.tgz`, `.tgz.crt`, `.tgz.sha256`, `.tgz.sig`
 - [ ] `release-docs.yml` ran (snapshots `docs/` into `dist/docs/3.1.0/`)
-- [ ] `docs.json` updated — `3.1` is now a stable version (not `3.1-beta`)
+- [ ] `docs.json` updated — `3.1` is now a stable version (not `3.1-rc` or `3.1-beta`)
+- [ ] Mintlify public docs no longer present 3.1 as a release candidate
+- [ ] Release notes, versions, what's-new, and 3.0-to-3.1 migration pages use GA wording
+- [ ] npm `adcp-3.1` dist-tag points at the stable 3.1 SDK
+- [ ] Published beta/RC artifacts are preserved, not deleted or rewritten
 - [ ] `https://adcontextprotocol.org/protocol/3.1.0.tgz` serves
 - [ ] `https://adcontextprotocol.org/protocol/` listing shows `3.1.0` in `versions[]`
 - [ ] `release-notes.mdx` curated `## Version 3.1.0` section written

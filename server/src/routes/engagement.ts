@@ -88,6 +88,7 @@ export function createEngagementRouter(config: EngagementRoutesConfig): Router {
           journey_stage: string | null;
           community_points: number | null;
           membership_tier: string | null;
+          subscription_price_lookup_key: string | null;
           subscription_amount: number | null;
           subscription_interval: string | null;
           subscription_status: string | null;
@@ -98,6 +99,7 @@ export function createEngagementRouter(config: EngagementRoutesConfig): Router {
         }>(
           `SELECT o.name, o.persona, o.aspiration_persona, o.persona_source,
                   o.journey_stage, o.membership_tier,
+                  o.subscription_price_lookup_key,
                   o.subscription_amount, o.subscription_interval, o.subscription_status,
                   o.is_personal, o.stripe_customer_id, o.created_at,
                   (SELECT COUNT(*) FROM organization_memberships om

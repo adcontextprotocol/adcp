@@ -6485,6 +6485,7 @@ export class HTTPServer {
                          THEN '/api/perspectives/' || p.slug || '/card.png'
                          ELSE NULL END) AS featured_image_url,
                   p.status, p.published_at,
+                  p.revision_notes, p.rejection_reason,
                   p.illustration_id,
                   p.content_origin, p.source_type,
                   wg.slug as committee_slug, wg.name as committee_name
@@ -6557,6 +6558,7 @@ export class HTTPServer {
                          THEN '/api/perspectives/' || p.slug || '/card.png'
                          ELSE NULL END) AS featured_image_url,
                   p.status, p.published_at,
+                  p.revision_notes, p.rejection_reason,
                   p.illustration_id,
                   p.content_origin, p.source_type, p.updated_at,
                   wg.slug as committee_slug, wg.name as committee_name

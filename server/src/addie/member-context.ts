@@ -7,7 +7,7 @@
 
 import { SlackDatabase } from '../db/slack-db.js';
 import { MemberDatabase } from '../db/member-db.js';
-import { OrganizationDatabase } from '../db/organization-db.js';
+import { OrganizationDatabase, resolveMembershipTier } from '../db/organization-db.js';
 import { WorkingGroupDatabase } from '../db/working-group-db.js';
 import { EmailPreferencesDatabase } from '../db/email-preferences-db.js';
 import { AddieDatabase } from '../db/addie-db.js';
@@ -735,7 +735,7 @@ export async function getMemberContext(slackUserId: string, selectedOrganization
         name: org.name,
         subscription_status: org.subscription_status,
         is_personal: org.is_personal,
-        membership_tier: org.membership_tier,
+        membership_tier: resolveMembershipTier(org),
       };
 
       // Check membership including inheritance through brand hierarchy
@@ -978,7 +978,7 @@ async function resolveContextFromLocalDb(
       name: org.name,
       subscription_status: org.subscription_status,
       is_personal: org.is_personal,
-      membership_tier: org.membership_tier,
+      membership_tier: resolveMembershipTier(org),
     };
 
     const membership = await resolveEffectiveMembership(organizationId);

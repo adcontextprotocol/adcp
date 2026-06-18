@@ -3,6 +3,7 @@ import { createLogger } from '../logger.js';
 import { notifySystemError } from '../addie/error-notifier.js';
 import { getPool } from '../db/client.js';
 import { isStripeNotFound } from '../audit/integrity/stripe-helpers.js';
+import { pickMembershipSubWithProductFetch } from './membership-prices.js';
 
 const logger = createLogger('stripe-client');
 
@@ -396,9 +397,17 @@ export async function getStripeSubscriptionInfo(
       return { status: 'none' };
     }
 
+    const picked = await pickMembershipSubWithProductFetch(
+      subscriptions.data as Stripe.Subscription[],
+      (productId) => stripe.products.retrieve(productId),
+    );
+    if (!picked) {
+      return { status: 'none' };
+    }
+
     // The subscription from customer.subscriptions is a limited object
     // We need to fetch the full subscription with latest_invoice expanded to get current_period_end
-    const subscriptionId = subscriptions.data[0].id;
+    const subscriptionId = picked.sub.id;
     const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
       expand: ['items.data.price.product', 'latest_invoice'],
     });
@@ -1429,6 +1438,28 @@ export async function updateCustomerEmail(
     return { success: true };
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
+    if (isStripeNotFound(error)) {
+      let linkedOrg: { workos_organization_id: string; name: string } | null = null;
+      try {
+        const result = await getPool().query<{ workos_organization_id: string; name: string }>(
+          `SELECT workos_organization_id, name
+             FROM organizations
+            WHERE stripe_customer_id = $1`,
+          [customerId],
+        );
+        linkedOrg = result.rows[0] ?? null;
+      } catch (lookupError) {
+        logger.warn({ err: lookupError, customerId }, 'Failed to look up org linked to missing Stripe customer');
+      }
+      logger.warn({ err: error, customerId, linkedOrg }, 'Cannot update missing Stripe customer email');
+      const linkedOrgDetail = linkedOrg
+        ? ' A stale organization link exists.'
+        : '';
+      return {
+        success: false,
+        error: `Stripe customer ${customerId} was not found.${linkedOrgDetail} Unlink the stale customer or relink the organization to a current Stripe customer before updating the billing email.`,
+      };
+    }
     logger.error({ err: error, customerId }, 'Failed to update customer email');
     return { success: false, error: msg };
   }

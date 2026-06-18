@@ -1,5 +1,6 @@
 import { getPool } from './client.js';
 import { createLogger } from '../logger.js';
+import { resolveMembershipTier, type MembershipTierRow } from './organization-db.js';
 
 const logger = createLogger('org-filters');
 
@@ -222,6 +223,10 @@ export async function resolveEffectiveMembership(orgId: string): Promise<Effecti
       subscription_status: string | null;
       subscription_canceled_at: Date | null;
       membership_tier: string | null;
+      subscription_price_lookup_key: string | null;
+      subscription_amount: number | null;
+      subscription_interval: string | null;
+      is_personal: boolean;
       auto_provision_hierarchy: boolean;
       depth: number;
     }>(`
@@ -229,7 +234,8 @@ export async function resolveEffectiveMembership(orgId: string): Promise<Effecti
         -- Start: the org in question
         SELECT o.workos_organization_id, o.email_domain, o.name,
                o.subscription_status, o.subscription_canceled_at,
-               o.membership_tier,
+               o.membership_tier, o.subscription_price_lookup_key,
+               o.subscription_amount, o.subscription_interval, o.is_personal,
                COALESCE(o.auto_provision_brand_hierarchy_children, false) AS auto_provision_hierarchy,
                1 as depth,
                ARRAY[o.email_domain]::TEXT[] as visited
@@ -242,7 +248,8 @@ export async function resolveEffectiveMembership(orgId: string): Promise<Effecti
         -- findPayingOrgForDomain — high-confidence only, 180-day freshness.
         SELECT parent_o.workos_organization_id, parent_o.email_domain, parent_o.name,
                parent_o.subscription_status, parent_o.subscription_canceled_at,
-               parent_o.membership_tier,
+               parent_o.membership_tier, parent_o.subscription_price_lookup_key,
+               parent_o.subscription_amount, parent_o.subscription_interval, parent_o.is_personal,
                COALESCE(parent_o.auto_provision_brand_hierarchy_children, false) AS auto_provision_hierarchy,
                oc.depth + 1,
                oc.visited || parent_o.email_domain
@@ -258,7 +265,9 @@ export async function resolveEffectiveMembership(orgId: string): Promise<Effecti
       )
       SELECT workos_organization_id, email_domain, name,
              subscription_status, subscription_canceled_at,
-             membership_tier, auto_provision_hierarchy, depth
+             membership_tier, subscription_price_lookup_key,
+             subscription_amount, subscription_interval, is_personal,
+             auto_provision_hierarchy, depth
       FROM org_chain
       ORDER BY depth ASC
     `, [orgId]);
@@ -288,7 +297,7 @@ export async function resolveEffectiveMembership(orgId: string): Promise<Effecti
         paying_org_id: self.workos_organization_id,
         paying_org_name: self.name,
         hierarchy_chain: [self.email_domain].filter(Boolean) as string[],
-        membership_tier: self.membership_tier,
+        membership_tier: resolveMembershipTier(self as MembershipTierRow),
       };
       membershipCache.set(orgId, { result: directResult, expires_at: Date.now() + CACHE_TTL_MS });
       return directResult;
@@ -310,7 +319,7 @@ export async function resolveEffectiveMembership(orgId: string): Promise<Effecti
           paying_org_id: row.workos_organization_id,
           paying_org_name: row.name,
           hierarchy_chain: chain,
-          membership_tier: row.membership_tier,
+          membership_tier: resolveMembershipTier(row as MembershipTierRow),
         };
         membershipCache.set(orgId, { result: inheritedResult, expires_at: Date.now() + CACHE_TTL_MS });
         return inheritedResult;

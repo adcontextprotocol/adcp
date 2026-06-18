@@ -58,7 +58,7 @@ function parseNameStatus(output) {
     });
 }
 
-function findImmutableArtifactViolations(changes, hasPathAtBase) {
+function findImmutableArtifactViolations(changes, hasPathAtBase, isReleasedVersion = () => true) {
   const violations = [];
 
   for (const change of changes) {
@@ -68,6 +68,7 @@ function findImmutableArtifactViolations(changes, hasPathAtBase) {
 
       const existedAtBase = artifact.probePaths.some(hasPathAtBase);
       if (!existedAtBase) continue;
+      if (!isReleasedVersion(artifact.version)) continue;
 
       violations.push({
         status: change.status,
@@ -87,6 +88,15 @@ function git(args) {
 function pathExistsAtRef(ref, repoPath) {
   try {
     execFileSync('git', ['cat-file', '-e', `${ref}:${repoPath}`], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function versionHasGitTag(version) {
+  try {
+    execFileSync('git', ['rev-parse', '-q', '--verify', `refs/tags/v${version}`], { stdio: 'ignore' });
     return true;
   } catch {
     return false;
@@ -117,8 +127,10 @@ function run(argv = process.argv.slice(2)) {
   const baseRef = argv[0] || defaultBaseRef();
   const diffOutput = git(['diff', '--name-status', '--find-renames', `${baseRef}...HEAD`]);
   const changes = parseNameStatus(diffOutput);
-  const violations = findImmutableArtifactViolations(changes, repoPath =>
-    pathExistsAtRef(baseRef, repoPath)
+  const violations = findImmutableArtifactViolations(
+    changes,
+    repoPath => pathExistsAtRef(baseRef, repoPath),
+    versionHasGitTag
   );
 
   if (violations.length > 0) {
