@@ -30,28 +30,30 @@ export interface IntegrityInvariantsJobResult {
   durationMs: number;
 }
 
+function skippedResult(skippedReason: string): IntegrityInvariantsJobResult {
+  notifySystemError({
+    source: 'integrity-invariants',
+    errorMessage: `Integrity invariants skipped: ${skippedReason}`,
+  });
+
+  return {
+    ran: false,
+    skippedReason,
+    totalViolations: 0,
+    criticalViolations: 0,
+    warningViolations: 0,
+    durationMs: 0,
+  };
+}
+
 export async function runIntegrityInvariantsJob(): Promise<IntegrityInvariantsJobResult> {
   const mismatch = detectEnvMismatch();
   if (mismatch) {
     logger.warn({ reason: mismatch }, 'Skipping integrity run due to environment mismatch');
-    return {
-      ran: false,
-      skippedReason: mismatch,
-      totalViolations: 0,
-      criticalViolations: 0,
-      warningViolations: 0,
-      durationMs: 0,
-    };
+    return skippedResult(mismatch);
   }
   if (!stripe) {
-    return {
-      ran: false,
-      skippedReason: 'STRIPE_SECRET_KEY not set',
-      totalViolations: 0,
-      criticalViolations: 0,
-      warningViolations: 0,
-      durationMs: 0,
-    };
+    return skippedResult('STRIPE_SECRET_KEY not set');
   }
 
   const ctx: InvariantContext = {

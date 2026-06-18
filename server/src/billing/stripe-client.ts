@@ -1429,6 +1429,28 @@ export async function updateCustomerEmail(
     return { success: true };
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
+    if (isStripeNotFound(error)) {
+      let linkedOrg: { workos_organization_id: string; name: string } | null = null;
+      try {
+        const result = await getPool().query<{ workos_organization_id: string; name: string }>(
+          `SELECT workos_organization_id, name
+             FROM organizations
+            WHERE stripe_customer_id = $1`,
+          [customerId],
+        );
+        linkedOrg = result.rows[0] ?? null;
+      } catch (lookupError) {
+        logger.warn({ err: lookupError, customerId }, 'Failed to look up org linked to missing Stripe customer');
+      }
+      logger.warn({ err: error, customerId, linkedOrg }, 'Cannot update missing Stripe customer email');
+      const linkedOrgDetail = linkedOrg
+        ? ' A stale organization link exists.'
+        : '';
+      return {
+        success: false,
+        error: `Stripe customer ${customerId} was not found.${linkedOrgDetail} Unlink the stale customer or relink the organization to a current Stripe customer before updating the billing email.`,
+      };
+    }
     logger.error({ err: error, customerId }, 'Failed to update customer email');
     return { success: false, error: msg };
   }
