@@ -4,6 +4,7 @@ const assert = require('assert');
 const {
   changesetTargetsProtocol,
   findChangesetProtocolScopeViolations,
+  hasProtocolScopedChanges,
   isChangesetDeleteOnlyCleanup,
   isChangesetStatusExemptMaintenance,
   isProtocolScopedPath,
@@ -35,6 +36,16 @@ assert.strictEqual(isProtocolScopedPath('static/compliance/source/universal/secu
 assert.strictEqual(isProtocolScopedPath('docs/reference/versioning.mdx'), true);
 assert.strictEqual(isProtocolScopedPath('server/src/billing/subscription-sync.ts'), false);
 assert.strictEqual(isProtocolScopedPath('.changeset/billing-fix.md'), false);
+assert.strictEqual(
+  hasProtocolScopedChanges([{ status: 'M', paths: ['server/src/billing/subscription-sync.ts'] }]),
+  false,
+  'App-only changes do not require changesets status'
+);
+assert.strictEqual(
+  hasProtocolScopedChanges([{ status: 'M', paths: ['docs/reference/versioning.mdx'] }]),
+  true,
+  'Normative reference docs require changesets status'
+);
 
 assert.deepStrictEqual(
   parseNameStatus('M\tserver/src/billing/subscription-sync.ts\nA\t.changeset/billing-fix.md\n'),
@@ -69,7 +80,7 @@ violations = findChangesetProtocolScopeViolations(
   ],
   readFiles({ '.changeset/empty.md': emptyChangeset })
 );
-assert.deepStrictEqual(violations, [], 'Empty/non-package changesets are not treated as protocol releases');
+assert.strictEqual(violations.length, 1, 'App-only changes with an empty changeset must fail');
 
 violations = findChangesetProtocolScopeViolations(
   [{ status: 'D', paths: ['.changeset/old-app-fix.md'] }],
