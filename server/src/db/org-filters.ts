@@ -1,6 +1,6 @@
 import { getPool } from './client.js';
 import { createLogger } from '../logger.js';
-import { resolveMembershipTier, type MembershipTierRow } from './organization-db.js';
+import { resolveMembershipTier, TIER_PRESERVING_STATUSES, type MembershipTierRow } from './organization-db.js';
 
 const logger = createLogger('org-filters');
 
@@ -37,6 +37,21 @@ export function isPayingMembership(row: {
   subscription_canceled_at: Date | null;
 }): boolean {
   return row.subscription_status === 'active' && row.subscription_canceled_at === null;
+}
+
+/**
+ * Subscription statuses that keep member entitlements available. This is
+ * intentionally broader than `isPayingMembership`: `past_due` and `trialing`
+ * preserve tiers during Stripe dunning/trial windows.
+ */
+function hasEntitledSubscription(row: {
+  subscription_status: string | null;
+  subscription_canceled_at: Date | null;
+}): boolean {
+  return (
+    (TIER_PRESERVING_STATUSES as readonly string[]).includes(row.subscription_status ?? '') &&
+    row.subscription_canceled_at === null
+  );
 }
 
 /** Organization has at least one user (site account or Slack user) */
@@ -187,8 +202,9 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
  * Resolve effective membership for an organization, including inheritance
  * through the brand registry hierarchy (house_domain chain).
  *
- * If the org itself is a paying member, returns direct membership.
- * Otherwise, walks up the house_domain chain looking for a paying ancestor.
+ * If the org itself has an entitlement-preserving subscription, returns direct
+ * membership. Otherwise, walks up the house_domain chain looking for an
+ * entitled/paying ancestor.
  *
  * Trust gates on inheritance — same shape as findPayingOrgForDomain so the
  * pre-link auto-provisioning path and post-link is_member resolution agree
@@ -197,7 +213,7 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
  *   - cycle protection via visited-domain array
  *   - only edges classified at confidence='high' (LLM classifier output)
  *   - 180-day TTL on the brand classification
- *   - inherited match only counts if the paying ancestor has opted into
+ *   - inherited match only counts if the entitled/paying ancestor has opted into
  *     auto_provision_brand_hierarchy_children (default false). Without
  *     opt-in, the child org's is_member stays false even if the brand
  *     registry says it's a subsidiary.
@@ -288,9 +304,9 @@ export async function resolveEffectiveMembership(orgId: string): Promise<Effecti
     }
 
     // Check the org itself first (depth 1) — opt-in flag does not apply to
-    // self; an org's own paying subscription always counts.
+    // self; an org's own entitlement-preserving subscription always counts.
     const self = rows[0];
-    if (self.subscription_status === 'active' && !self.subscription_canceled_at) {
+    if (hasEntitledSubscription(self)) {
       const directResult: EffectiveMembership = {
         is_member: true,
         is_inherited: false,
@@ -303,11 +319,11 @@ export async function resolveEffectiveMembership(orgId: string): Promise<Effecti
       return directResult;
     }
 
-    // Check ancestors (depth > 1) for a paying member that has opted into
+    // Check ancestors (depth > 1) for an entitled/paying member that has opted into
     // hierarchy inheritance. An ancestor that didn't consent to children
     // auto-joining doesn't grant is_member to those children either.
     for (const row of rows.slice(1)) {
-      if (row.subscription_status === 'active' && !row.subscription_canceled_at && row.auto_provision_hierarchy) {
+      if (hasEntitledSubscription(row) && row.auto_provision_hierarchy) {
         const chain = rows
           .filter(r => r.depth <= row.depth)
           .map(r => r.email_domain)
@@ -326,7 +342,7 @@ export async function resolveEffectiveMembership(orgId: string): Promise<Effecti
       }
     }
 
-    // No paying member in chain
+    // No entitled/paying member in chain
     const noMemberResult: EffectiveMembership = {
       is_member: false,
       is_inherited: false,
@@ -385,13 +401,13 @@ export interface DomainOwnerOrg {
 }
 
 /**
- * Find the paying organization that "owns" a raw email domain — directly via a
- * verified `organization_domains` row or transitively up the brand registry's
- * `house_domain` chain.
+ * Find the entitled/paying organization that "owns" a raw email domain —
+ * directly via a verified `organization_domains` row or transitively up the
+ * brand registry's `house_domain` chain.
  *
  * Returns the closest match: a direct verified-domain hit on the input wins
  * over an inherited one. When two ancestors at different depths both have
- * paying orgs, the shallower one wins.
+ * entitled/paying orgs, the shallower one wins.
  *
  * Trust gates on the inheritance walk:
  *   - max 4 hops up from the input domain
@@ -457,13 +473,13 @@ export async function findPayingOrgForDomain(domain: string): Promise<DomainOwne
         JOIN organization_domains od ON LOWER(od.domain) = LOWER(dc.domain)
         JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
         WHERE od.verified = true
-          AND o.subscription_status = 'active'
+          AND o.subscription_status = ANY($2::text[])
           AND o.subscription_canceled_at IS NULL
         ORDER BY dc.depth ASC  -- direct match (depth 1) wins over inherited
         LIMIT 1
       )
       SELECT * FROM paying_match
-    `, [normalizedDomain]);
+    `, [normalizedDomain, TIER_PRESERVING_STATUSES]);
 
     if (result.rows.length === 0) return null;
 

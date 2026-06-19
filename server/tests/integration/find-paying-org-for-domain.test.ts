@@ -155,6 +155,16 @@ describe('findPayingOrgForDomain', () => {
     expect(result!.auto_provision_hierarchy_allowed).toBe(false); // default
   });
 
+  it('treats past_due as an entitlement-preserving verified-domain match', async () => {
+    await seedPayingOrg(pool, TEST_DIRECT_ORG, CHILD_DOMAIN, { subscription_status: 'past_due' });
+
+    const result = await findPayingOrgForDomain(CHILD_DOMAIN);
+
+    expect(result).not.toBeNull();
+    expect(result!.organization_id).toBe(TEST_DIRECT_ORG);
+    expect(result!.matched_domain).toBe(CHILD_DOMAIN);
+  });
+
   it('walks brands.house_domain to inherit from a paying parent', async () => {
     await seedPayingOrg(pool, TEST_PARENT_ORG, PARENT_DOMAIN);
     await seedBrandHierarchy(pool, CHILD_DOMAIN, PARENT_DOMAIN);
@@ -367,6 +377,22 @@ describe('resolveEffectiveMembership coherence with findPayingOrgForDomain', () 
     expect(result.is_member).toBe(true);
     expect(result.is_inherited).toBe(false);
     expect(result.membership_tier).toBe('individual_professional');
+  });
+
+  it('resolves past_due direct membership during the Stripe dunning window', async () => {
+    await seedPayingOrg(pool, TEST_DIRECT_ORG, CHILD_DOMAIN, {
+      subscription_status: 'past_due',
+      membership_tier: 'company_icl',
+      subscription_amount: 700000,
+      subscription_interval: 'year',
+      is_personal: false,
+    });
+
+    const result = await resolveEffectiveMembership(TEST_DIRECT_ORG);
+
+    expect(result.is_member).toBe(true);
+    expect(result.is_inherited).toBe(false);
+    expect(result.membership_tier).toBe('company_icl');
   });
 
   it('resolves direct membership tier through amount fallback when lookup key is absent', async () => {

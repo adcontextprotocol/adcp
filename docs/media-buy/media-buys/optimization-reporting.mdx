@@ -466,6 +466,8 @@ For channels where billing-grade data is produced in **phases** rather than arri
 
 Each window's numbers supersede the previous one. One window is typically the `is_guarantee_basis` — the number both sides reconcile against. The measurement vendor's processing time is captured in `expected_availability_days` on each window (it includes both accumulation and processing).
 
+For broadcast, delayed or sparse early-window data is usually a measurement-vendor settlement issue, not a seller-side metadata problem. Nielsen, Comscore, VideoAmp, or another named vendor may publish Live, C3, C7, Live+5, or market-level results in waves. During that period, sellers should label delivery as provisional or awaiting measurement-vendor finalization, preserve the `measurement_window`, and use `is_final`, `finalized_at`, `supersedes_window`, and delayed/window-update notifications to show what changed. Buyers should not fork creative records or product metadata to represent partial affiliate or station visibility; aggregate the seller's delivery rows by market, placement, daypart, creative, and measurement window instead.
+
 Sellers set `expected_delay_minutes` on their products to reflect the first-available data pipeline. The `measurement_windows` array on `reporting_capabilities` provides per-window timelines.
 
 Delivery data for products with measurement windows includes three fields on each package:

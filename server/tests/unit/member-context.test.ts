@@ -128,7 +128,7 @@ describe('formatMemberContextForPrompt', () => {
 
     const result = formatMemberContextForPrompt(context);
     expect(result).toContain('Acme Corp');
-    expect(result).toContain('active AgenticAdvertising.org member');
+    expect(result).toContain('currently has AgenticAdvertising.org member access');
   });
 
   it('should indicate individual member status for personal org members', () => {
@@ -151,7 +151,7 @@ describe('formatMemberContextForPrompt', () => {
 
     const result = formatMemberContextForPrompt(context);
     expect(result).toContain('individual account');
-    expect(result).toContain('AgenticAdvertising.org individual member');
+    expect(result).toContain('AgenticAdvertising.org individual member access');
   });
 
   it('should indicate non-member status', () => {
@@ -177,7 +177,7 @@ describe('formatMemberContextForPrompt', () => {
     expect(result).not.toContain('Subscription status:');
   });
 
-  it('should include subscription status diagnostic for non-members with subscription data', () => {
+  it('should include subscription status diagnostic for non-members with subscription data without active-only policy text', () => {
     const context: MemberContext = {
       is_mapped: true,
       is_member: false,
@@ -197,7 +197,8 @@ describe('formatMemberContextForPrompt', () => {
 
     const result = formatMemberContextForPrompt(context);
     expect(result).toContain('not currently an AgenticAdvertising.org member');
-    expect(result).toContain('Subscription status: past_due (requires "active" for membership).');
+    expect(result).toContain('Subscription status: past_due (not currently granting membership access).');
+    expect(result).not.toContain('requires "active"');
   });
 
   it('should include subscription status diagnostic for non-member individual accounts', () => {
@@ -220,7 +221,7 @@ describe('formatMemberContextForPrompt', () => {
 
     const result = formatMemberContextForPrompt(context);
     expect(result).toContain('not currently an AgenticAdvertising.org member');
-    expect(result).toContain('Subscription status: incomplete (requires "active" for membership).');
+    expect(result).toContain('Subscription status: incomplete (not currently granting membership access).');
   });
 
   it('lists active organization choices without selecting one for multi-org users', () => {

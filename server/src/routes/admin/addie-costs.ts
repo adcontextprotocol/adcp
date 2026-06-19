@@ -18,8 +18,8 @@
  * The `inferred_tier` column reflects the most-lenient cap the caller
  * would have been subject to at the time of the call. For bare WorkOS
  * IDs we join through `organization_memberships` + `organizations` so
- * active-subscription members show `member_paid`; for everyone else we
- * fall back to the namespace-level inference (email/mcp/tavus/anon →
+ * entitlement-preserving subscriptions show `member_paid`; for everyone else
+ * we fall back to the namespace-level inference (email/mcp/tavus/anon →
  * anonymous, slack/workos → member_free). WorkOS users in the
  * `aao-admin` governance group or AgenticAdvertising.org org show
  * `aao_team` and are uncapped.
@@ -29,6 +29,7 @@ import { Router } from 'express';
 import { createLogger } from '../../logger.js';
 import { requireGlobalAdmin } from '../../middleware/auth.js';
 import { getPool } from '../../db/client.js';
+import { TIER_PRESERVING_STATUSES } from '../../db/organization-db.js';
 import { DAILY_BUDGET_USD } from '../../addie/claude-cost-tracker.js';
 import {
   inferDisplayTier,
@@ -178,7 +179,7 @@ export function setupAddieCostRoutes(apiRouter: Router): void {
         member_last_name: string | null;
         member_email: string | null;
         org_name: string | null;
-        org_has_active_subscription: boolean | null;
+        org_has_entitled_subscription: boolean | null;
         is_aao_team: boolean | null;
       }>(
         `WITH scope_totals AS (
@@ -207,7 +208,7 @@ export function setupAddieCostRoutes(apiRouter: Router): void {
            u.last_name  AS member_last_name,
            u.email      AS member_email,
            best_org.name AS org_name,
-           best_org.has_active_subscription AS org_has_active_subscription,
+           best_org.has_entitled_subscription AS org_has_entitled_subscription,
            (
              ${namespaceCaseSql('t.scope_key')} = 'workos'
              AND (
@@ -234,22 +235,22 @@ export function setupAddieCostRoutes(apiRouter: Router): void {
          LEFT JOIN LATERAL (
            SELECT
              o.name,
-             (o.subscription_status = 'active' AND o.subscription_canceled_at IS NULL) AS has_active_subscription
+             (o.subscription_status = ANY($3::text[]) AND o.subscription_canceled_at IS NULL) AS has_entitled_subscription
            FROM organization_memberships om
            JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
            WHERE om.workos_user_id = t.scope_key
            ORDER BY
-             CASE WHEN o.subscription_status = 'active' AND o.subscription_canceled_at IS NULL THEN 0 ELSE 1 END,
+             CASE WHEN o.subscription_status = ANY($3::text[]) AND o.subscription_canceled_at IS NULL THEN 0 ELSE 1 END,
              o.workos_organization_id
            LIMIT 1
          ) best_org ON true
          ORDER BY t.total_micros DESC, t.scope_key`,
-        [windowHours, limit],
+        [windowHours, limit, TIER_PRESERVING_STATUSES],
       );
 
       const leaderboard = rows.map(row => {
         const namespace = row.namespace;
-        const inferredTier = inferDisplayTier(namespace, row.org_has_active_subscription, row.is_aao_team);
+        const inferredTier = inferDisplayTier(namespace, row.org_has_entitled_subscription, row.is_aao_team);
         const capUsd = inferredTier === 'aao_team' ? null : DAILY_BUDGET_USD[inferredTier];
         const spentUsd = microsToUsd(Number(row.total_micros));
         const percentOfCap = capUsd && capUsd > 0 ? Math.round((spentUsd / capUsd) * 1000) / 10 : null;
@@ -270,7 +271,7 @@ export function setupAddieCostRoutes(apiRouter: Router): void {
           member_name: displayName,
           member_email: row.member_email,
           org_name: row.org_name,
-          has_active_subscription: row.org_has_active_subscription,
+          has_active_subscription: row.org_has_entitled_subscription,
         };
       });
 

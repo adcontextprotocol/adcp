@@ -44,6 +44,7 @@
 
 import { createLogger } from '../logger.js';
 import { query } from '../db/client.js';
+import { TIER_PRESERVING_STATUSES } from '../db/organization-db.js';
 import { costUsdMicros, type ClaudeUsage } from './claude-pricing.js';
 import { SYSTEM_USER_IDS } from './system-identities.js';
 import type { MemberContext } from './member-context.js';
@@ -334,12 +335,10 @@ function writeCachedTier(userId: string, tier: UserTier): void {
  * back to `member_free` so a transient outage doesn't accidentally grant
  * the $25/day ceiling or uncapped staff access to unverified callers.
  *
- * The SQL predicate here (`subscription_status = 'active' AND
- * subscription_canceled_at IS NULL`) matches `MEMBER_FILTER` in
- * `db/org-filters.ts` — the two must stay in sync so admin views and
- * the cap agree on who counts as a paying member. Trialing / past_due /
- * comped-$0 states all correctly fall through to `member_free`; if
- * future policy promotes any of those, update `MEMBER_FILTER` first.
+ * The SQL predicate here uses `TIER_PRESERVING_STATUSES`
+ * (active/past_due/trialing) so the cap agrees with billing entitlement
+ * policy. `past_due` keeps paid headroom during Stripe dunning instead
+ * of framing the member as unpaid mid-retry.
  *
  * This is the async, DB-touching counterpart to the pure
  * `resolveUserTier` above — the `FromDb` suffix is deliberate so a
@@ -357,7 +356,7 @@ export async function resolveUserTierFromDb(userId: string | null | undefined): 
   try {
     const { rows } = await query<{
       is_aao_team: boolean;
-      has_active_subscription: boolean;
+      has_entitled_subscription: boolean;
     }>(
       `SELECT
           (
@@ -383,15 +382,15 @@ export async function resolveUserTierFromDb(userId: string | null | undefined): 
               FROM organization_memberships om
               JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
              WHERE om.workos_user_id = $1
-               AND o.subscription_status = 'active'
+               AND o.subscription_status = ANY($2::text[])
                AND o.subscription_canceled_at IS NULL
-          ) AS has_active_subscription`,
-      [userId],
+          ) AS has_entitled_subscription`,
+      [userId, TIER_PRESERVING_STATUSES],
     );
     const row = rows[0];
     const tier = resolveUserTier({
       isAAOTeam: row?.is_aao_team === true,
-      hasActiveSubscription: row?.has_active_subscription === true,
+      hasActiveSubscription: row?.has_entitled_subscription === true,
     });
     writeCachedTier(userId, tier);
     return tier;
