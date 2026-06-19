@@ -7109,14 +7109,33 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           steps_total: 0,
         };
         const serializedStoryboardStatus = serializeStoryboardRunStatus(storyboardStatus);
-        const isControllerCoverageGapScenario = (scenario: { steps?: any[] }): boolean => {
+        const isRunnerApplicabilitySkip = (scenarioId: string, step: {
+          skip_reason?: string;
+          step_id?: unknown;
+          requirement?: unknown;
+        }): boolean => {
+          switch (step.skip_reason) {
+            case 'capability_unsupported':
+              return true;
+            case 'missing_test_kit_contract':
+              return scenarioId === 'idempotency/rate_limit_replay_invariant' &&
+                step.step_id === 'expect_rate_limit_not_replayed';
+            case 'requirement_unmet':
+              return step.requirement === 'webhook_receiver';
+            default:
+              return false;
+          }
+        };
+        const isControllerCoverageGapScenario = (scenario: { scenario?: unknown; steps?: any[] }): boolean => {
           const steps = Array.isArray(scenario.steps) ? scenario.steps : [];
+          const scenarioId = typeof scenario.scenario === 'string' ? scenario.scenario : '';
           return steps.length > 0 && steps.every((step) => {
             if (!step?.skipped) return false;
             return step.skip_reason === 'peer_branch_taken' ||
               step.skip_reason === 'peer_substituted' ||
               step.skip_reason === 'missing_test_controller' ||
-              (step.skip_reason === 'requirement_unmet' && step.requirement === 'controller');
+              (step.skip_reason === 'requirement_unmet' && step.requirement === 'controller') ||
+              isRunnerApplicabilitySkip(scenarioId, step);
           });
         };
         const uiDiagnostics = (dbInput.step_diagnostics ?? []).map((diagnostic) => ({
