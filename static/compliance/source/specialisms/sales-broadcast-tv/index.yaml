@@ -75,12 +75,12 @@ fixtures:
   products:
     - product_id: "primetime_30s_mf"
       delivery_type: "guaranteed"
-      channels: ["video"]
+      channels: ["linear_tv"]
       format_ids:
         - id: "broadcast_spot_30s"
     - product_id: "late_fringe_15s_mf"
       delivery_type: "guaranteed"
-      channels: ["video"]
+      channels: ["linear_tv"]
       format_ids:
         - id: "broadcast_spot_15s"
   pricing_options:

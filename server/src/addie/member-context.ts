@@ -1412,25 +1412,33 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
     if (context.organization.is_personal) {
       lines.push('They have an individual account (not a company account).');
       if (context.is_member) {
-        lines.push('They are an active AgenticAdvertising.org individual member.');
+        lines.push('They currently have AgenticAdvertising.org individual member access.');
+        const subStatus = safeSubscriptionStatus(context.organization.subscription_status);
+        if (subStatus && subStatus !== 'active' && subStatus !== 'none') {
+          lines.push(`Subscription status: ${subStatus}.`);
+        }
       } else {
         lines.push('They are not currently an AgenticAdvertising.org member.');
         const subStatus = safeSubscriptionStatus(context.organization.subscription_status);
         if (subStatus && subStatus !== 'none') {
-          lines.push(`Subscription status: ${subStatus} (requires "active" for membership).`);
+          lines.push(`Subscription status: ${subStatus} (not currently granting membership access).`);
         }
       }
     } else {
       lines.push(`They work at ${promptFact(context.organization.name, 200)}.`);
 
       if (context.is_member) {
-        lines.push('Their organization is an active AgenticAdvertising.org member.');
+        lines.push('Their organization currently has AgenticAdvertising.org member access.');
+        const subStatus = safeSubscriptionStatus(context.organization.subscription_status);
+        if (subStatus && subStatus !== 'active' && subStatus !== 'none') {
+          lines.push(`Subscription status: ${subStatus}.`);
+        }
       } else {
         lines.push('Their organization is not currently an AgenticAdvertising.org member.');
         // Include subscription status when available to help diagnose membership issues
         const subStatus = safeSubscriptionStatus(context.organization.subscription_status);
         if (subStatus && subStatus !== 'none') {
-          lines.push(`Subscription status: ${subStatus} (requires "active" for membership).`);
+          lines.push(`Subscription status: ${subStatus} (not currently granting membership access).`);
         }
       }
     }
