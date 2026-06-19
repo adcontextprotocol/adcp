@@ -945,6 +945,7 @@ describe('createMemberToolHandlers', () => {
         declaredSpecialisms: ['sales-catalog-driven'],
         runId: 'run_123',
         adcpVersions: ['3.0'],
+        supportedVersions: ['3.0'],
       }));
     });
 
