@@ -431,12 +431,31 @@ function isExplicitRequiresToolMissingSkip(step: {
   return detail?.startsWith('Required tool "') === true && detail.includes('" not advertised');
 }
 
+function isRunnerApplicabilitySkip(step: {
+  skip_reason?: string;
+  step_id?: unknown;
+  requirement?: unknown;
+}, scenario?: unknown): boolean {
+  switch (step.skip_reason) {
+    case 'capability_unsupported':
+      return true;
+    case 'missing_test_kit_contract':
+      return scenario === 'idempotency/rate_limit_replay_invariant' &&
+        firstString(step.step_id) === 'expect_rate_limit_not_replayed';
+    case 'requirement_unmet':
+      return firstString(step.requirement) === 'webhook_receiver';
+    default:
+      return false;
+  }
+}
+
 function skipReasonIsCoverageGap(
   reason: string | undefined,
   step?: {
     skip_reason?: string;
     step?: unknown;
     step_id?: unknown;
+    requirement?: unknown;
     details?: unknown;
     error?: unknown;
     warnings?: unknown;
@@ -446,6 +465,7 @@ function skipReasonIsCoverageGap(
 ): boolean {
   if (step && isSyntheticRequiredToolsMissingSkip(step, scenario)) return false;
   if (step && isExplicitRequiresToolMissingSkip(step)) return false;
+  if (step && isRunnerApplicabilitySkip(step, scenario)) return false;
   switch (reason) {
     case 'not_applicable':
     case 'peer_branch_taken':
@@ -579,6 +599,7 @@ export function deriveStoryboardStatuses(
       details?: unknown;
       error?: unknown;
       warnings?: unknown;
+      requirement?: unknown;
       skip?: { detail?: unknown };
     },
     scenario: string,
@@ -590,6 +611,7 @@ export function deriveStoryboardStatuses(
     // out of scope for this agent, not that a claimed production step failed.
     if (isSyntheticRequiredToolsMissingSkip(step, scenario)) return true;
     if (isExplicitRequiresToolMissingSkip(step)) return true;
+    if (isRunnerApplicabilitySkip(step, scenario)) return true;
 
     return false;
   };
