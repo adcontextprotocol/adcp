@@ -60,10 +60,12 @@ prerequisites:
     not echoes of the agent's own prior emission. The assertions test receipt acceptance and
     rejection semantics, not principal-matching against the agent's own declaration.
 
-    The acme-outdoor test kit is a natural fixture — it matches the catalog the reference
-    implementation (bragent) ships and is already used by other SI scenarios. A conformant
-    brand agent that prefers a different identity may substitute its own kit; the assertions
-    below are configuration-independent.
+    The acme-outdoor test kit is the fixture this storyboard is scoped to — it matches the
+    catalog the reference implementation (bragent) ships and is already used by other SI
+    scenarios. The receipt literals above are fixed to the Acme identity
+    (`acmeoutdoor.example` / "Acme Outdoor"), so this is not configuration-independent: a
+    brand agent under a different identity would need the receipt literals updated to match,
+    or the receipt's principal no longer corresponds to the agent's own declaration.
   test_kit: "test-kits/acme-outdoor.yaml"
 
 phases:
@@ -149,10 +151,10 @@ phases:
       - id: si_send_message_presentation_accepted
         title: "si_send_message with a matching accepted receipt"
         narrative: |
-          The host echoes the brand's sponsored_context back inside a receipt whose
-          `accepted_context_use` matches the declared value. A conformant brand agent accepts
-          the receipt, persists it for audit, and emits a fresh sponsored_context on the
-          response.
+          The receipt is a fixed Acme literal whose `accepted_context_use` matches the value
+          declared in the prior turn — it is not an echo of the agent's own emission. A
+          conformant brand agent accepts the receipt, persists it for audit, and emits a
+          fresh sponsored_context on the response.
         task: si_send_message
         schema_ref: "sponsored-intelligence/si-send-message-request.json"
         response_schema_ref: "sponsored-intelligence/si-send-message-response.json"
