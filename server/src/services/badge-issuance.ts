@@ -214,8 +214,10 @@ export async function runBadgeFanOut(params: {
   runId?: string | null;
   /** Public AdCP badge versions this compliance run is authoritative for. */
   adcpVersions?: readonly string[];
+  /** Current get_adcp_capabilities.adcp.supported_versions snapshot for revoking unsupported public badges. */
+  supportedVersions?: readonly string[];
 }): Promise<BadgeIssuanceResult> {
-  const { complianceDb, agentUrl, declaredSpecialisms, runId } = params;
+  const { complianceDb, agentUrl, declaredSpecialisms, runId, supportedVersions } = params;
   const adcpVersions = (params.adcpVersions === undefined ? [DEFAULT_BADGE_ADCP_VERSION] : params.adcpVersions)
     .filter((version): version is string => typeof version === 'string' && version.length > 0);
   const aggregate: BadgeIssuanceResult = { issued: [], revoked: [], degraded: [], unchanged: [] };
@@ -280,13 +282,22 @@ export async function runBadgeFanOut(params: {
   const supportedBadgeVersions = new Set<string>(SUPPORTED_BADGE_VERSIONS);
   const existingBadges = await complianceDb.getBadgesForAgent(agentUrl);
   for (const badge of existingBadges) {
-    if (supportedBadgeVersions.has(badge.adcp_version)) continue;
-    const reason = `AdCP ${badge.adcp_version} public badge issuance is not currently enabled`;
+    let reason: string | undefined;
+    if (!supportedBadgeVersions.has(badge.adcp_version)) {
+      reason = `AdCP ${badge.adcp_version} public badge issuance is not currently enabled`;
+    } else if (
+      supportedVersions?.length &&
+      !advertisesPublicBadgeVersion(supportedVersions, badge.adcp_version)
+    ) {
+      reason = `Agent no longer advertises AdCP ${badge.adcp_version} support`;
+    }
+    if (!reason) continue;
+
     await complianceDb.revokeBadge(agentUrl, badge.role, badge.adcp_version, reason);
     aggregate.revoked.push({ role: badge.role, reason, adcp_version: badge.adcp_version });
     logger.info(
       { agentUrl, role: badge.role, adcpVersion: badge.adcp_version },
-      'Badge revoked — version no longer publicly badge-eligible',
+      'Badge revoked — version is no longer supported by the public badge policy or agent capabilities',
     );
   }
 

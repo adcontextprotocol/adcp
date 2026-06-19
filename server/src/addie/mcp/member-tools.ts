@@ -148,7 +148,7 @@ function targetFromInput(input: Record<string, unknown>): ReturnType<typeof host
       ? hostedComplianceTarget(requested.trim())
       : complianceTarget;
   } catch {
-    throw new ToolError('Invalid compliance_target. Use 3.0, 3.1-rc, 3.1-beta, or an exact bundled version.');
+    throw new ToolError('Invalid compliance_target. Use 3.1, 3.0, 3.1-rc, 3.1-beta, or an exact bundled version.');
   }
 }
 
@@ -1742,7 +1742,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       properties: {
         agent_url: { type: 'string', description: 'Agent URL to evaluate' },
         tracks: { type: 'array', items: { type: 'string', enum: ['core', 'products', 'media_buy', 'creative', 'reporting', 'governance', 'signals', 'si', 'audiences'] }, description: 'Specific compliance tracks to run (default: all applicable, driven by the agent\'s get_adcp_capabilities response)' },
-        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0" for a badge-eligible stable line or "3.1-rc"/"3.1-beta" for explicit prerelease diagnostics. Defaults to the canonical badge-eligible target when advertised.' },
+        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.1" or "3.0" for badge-eligible stable lines, or "3.1-rc"/"3.1-beta" for explicit prerelease diagnostics. Defaults to the canonical badge-eligible target when advertised.' },
       },
       required: ['agent_url'],
     },
@@ -1849,7 +1849,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       type: 'object',
       properties: {
         agent_url: { type: 'string', description: 'Agent URL to discover and recommend storyboards for' },
-        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.0", "3.1-rc", or "3.1-beta". Defaults to the canonical badge-eligible target when advertised. Explicit non-3.0 targets only run when the agent advertises support.' },
+        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.1", "3.0", "3.1-rc", or "3.1-beta". Defaults to the canonical badge-eligible target when advertised. Explicit targets only run when the agent advertises support.' },
       },
       required: ['agent_url'],
     },
@@ -1863,7 +1863,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       type: 'object',
       properties: {
         storyboard_id: { type: 'string', description: 'Storyboard ID (from recommend_storyboards)' },
-        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.0", "3.1-rc", or "3.1-beta". Defaults to 3.0.' },
+        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.1", "3.0", "3.1-rc", or "3.1-beta". Defaults to 3.0.' },
       },
       required: ['storyboard_id'],
     },
@@ -1879,7 +1879,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
         agent_url: { type: 'string', description: 'Agent URL to test' },
         storyboard_id: { type: 'string', description: 'Storyboard ID to run' },
         dry_run: { type: 'boolean', description: 'If true (default), use test data that won\'t affect production state', default: true },
-        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0", "3.1-rc", or "3.1-beta". Defaults to the canonical badge-eligible target when advertised. Explicit non-3.0 targets are diagnostic-only and only run when the agent advertises support.' },
+        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.1", "3.0", "3.1-rc", or "3.1-beta". Defaults to the canonical badge-eligible target when advertised. Explicit prerelease targets are diagnostic-only and only run when the agent advertises support.' },
       },
       required: ['agent_url', 'storyboard_id'],
     },
@@ -1905,7 +1905,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
           additionalProperties: false,
         },
         dry_run: { type: 'boolean', description: 'If true (default), use test data', default: true },
-        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0", "3.1-rc", or "3.1-beta". Defaults to the canonical badge-eligible target when advertised. Explicit non-3.0 targets are diagnostic-only and only run when the agent advertises support.' },
+        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.1", "3.0", "3.1-rc", or "3.1-beta". Defaults to the canonical badge-eligible target when advertised. Explicit prerelease targets are diagnostic-only and only run when the agent advertises support.' },
       },
       required: ['agent_url', 'storyboard_id', 'step_id'],
     },
@@ -4495,6 +4495,7 @@ export function createMemberToolHandlers(
                     declaredSpecialisms,
                     runId: tracks ? null : run.id,
                     adcpVersions: badgeEligibleAdcpVersions,
+                    supportedVersions: result.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
                   });
                 } catch (badgeError) {
                   logger.warn({ badgeError, agentUrl: resolved.resolvedUrl }, 'Badge fan-out failed after owner_test run');
