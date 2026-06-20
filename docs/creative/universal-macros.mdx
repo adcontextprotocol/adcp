@@ -569,6 +569,15 @@ Behavior:
   omit a tracker the agent can't fill than to emit a broken one.
 - **Already-minted parameters pass through untouched** — `pkg_id=123456` (no macro) is
   left exactly as-is.
+- **Map only build-time AdCP identifiers (`{MEDIA_BUY_ID}`, `{PACKAGE_ID}`,
+  `{CREATIVE_ID}`) as `value`** — every impression-time macro (privacy/consent macros
+  like `{GDPR_CONSENT}`, `{US_PRIVACY}`, `{GPP_STRING}`, plus device, geo,
+  `{CACHEBUSTER}`, and `{TIMESTAMP}`) needs `native` instead, since the real value
+  differs per impression. Mapping a consent macro to a fixed `value` would freeze one
+  user's consent string into every impression it's served.
+- **`native` strings are inserted without encoding or validation** — only point them at
+  ad-server config tokens you control, never at buyer-supplied input, since `native`
+  bypasses the RFC-3986 encoding that protects `value` entries from injection.
 
 ### 4. Impression Time
 
