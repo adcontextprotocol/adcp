@@ -546,8 +546,8 @@ export async function canAddSeat(
     const used = seatType === 'contributor' ? usage.contributor : usage.community_only;
 
     if (limit === -1) return { allowed: true };
-    if (limit === 0) return { allowed: false, reason: `Your membership tier does not include ${seatType === 'contributor' ? 'contributor' : 'community'} seats. Upgrade at /membership.` };
-    if (used >= limit) return { allowed: false, reason: `All ${limit} ${seatType === 'contributor' ? 'contributor' : 'community'} seats are in use. Upgrade at /membership to add more.` };
+    if (limit === 0) return { allowed: false, reason: `Your membership tier does not include ${seatType === 'contributor' ? 'contributor' : 'community'} seats. Upgrade at https://agenticadvertising.org/dashboard/membership.` };
+    if (used >= limit) return { allowed: false, reason: `All ${limit} ${seatType === 'contributor' ? 'contributor' : 'community'} seats are in use. Upgrade at https://agenticadvertising.org/dashboard/membership to add more.` };
     return { allowed: true };
   } catch (error) {
     await client.query('ROLLBACK');

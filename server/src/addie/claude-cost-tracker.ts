@@ -241,25 +241,12 @@ export function formatCapExceededMessage(result: CostCheckResult): string {
   if (tier === 'aao_team') {
     return 'AAO team usage is uncapped.';
   }
-  const capUsd = DAILY_BUDGET_USD[tier];
-  const spentUsd = ((result.spentCents ?? 0) / 100).toFixed(2);
-  // Render the wait as hours when a user trips the cap early in the
-  // window — "reset in ~1440 minutes" reads as noise. Minutes only
-  // below 2 hours; rounded hours beyond that. The number is already
-  // approximate (the user can retry sooner as individual charges
-  // drop out), so hours-as-round-numbers is honest.
-  const retryMs = result.retryAfterMs ?? 60_000;
-  const retryMinutes = Math.max(1, Math.ceil(retryMs / 60_000));
-  const humanReset = retryMinutes >= 120
-    ? `~${Math.ceil(retryMinutes / 60)} hour${retryMinutes >= 180 ? 's' : ''}`
-    : `~${retryMinutes} minute${retryMinutes === 1 ? '' : 's'}`;
   return (
-    `You've hit today's Claude API usage cap (${capUsd} USD) — ` +
-    `spent ≈ $${spentUsd} in the last 24 hours. ` +
-    `You can try again in ${humanReset}. ` +
+    `You've reached your daily conversation limit with Addie. ` +
+    `Please try again tomorrow. ` +
     (tier === 'member_paid'
       ? 'Ping the AgenticAdvertising.org team if you need a higher ceiling for legitimate work.'
-      : 'Upgrade your membership at /membership for a higher daily ceiling.')
+      : 'Upgrade your membership at https://agenticadvertising.org/dashboard/membership for a higher daily limit.')
   );
 }
 
