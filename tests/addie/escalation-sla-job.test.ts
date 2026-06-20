@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const {
   mockAddSystemEscalationUpdate,
   mockGetEscalationChannel,
+  mockGetClient,
+  mockDbClient,
   mockListEscalationsForSlaEnforcement,
   mockMarkEscalationSlaNotified,
   mockSendChannelMessage,
@@ -10,10 +12,19 @@ const {
 } = vi.hoisted(() => ({
   mockAddSystemEscalationUpdate: vi.fn<any>(),
   mockGetEscalationChannel: vi.fn<any>(),
+  mockDbClient: {
+    query: vi.fn<any>(),
+    release: vi.fn<any>(),
+  },
+  mockGetClient: vi.fn<any>(),
   mockListEscalationsForSlaEnforcement: vi.fn<any>(),
   mockMarkEscalationSlaNotified: vi.fn<any>(),
   mockSendChannelMessage: vi.fn<any>(),
   mockSendDirectMessage: vi.fn<any>(),
+}));
+
+vi.mock('../../server/src/db/client.js', () => ({
+  getClient: () => mockGetClient(),
 }));
 
 vi.mock('../../server/src/db/escalation-db.js', () => ({
@@ -71,12 +82,25 @@ function escalation(overrides: Partial<any> = {}) {
 
 beforeEach(() => {
   mockAddSystemEscalationUpdate.mockReset();
+  mockDbClient.query.mockReset();
+  mockDbClient.release.mockReset();
+  mockGetClient.mockReset();
   mockGetEscalationChannel.mockReset();
   mockListEscalationsForSlaEnforcement.mockReset();
   mockMarkEscalationSlaNotified.mockReset();
   mockSendChannelMessage.mockReset();
   mockSendDirectMessage.mockReset();
 
+  mockGetClient.mockResolvedValue(mockDbClient);
+  mockDbClient.query.mockImplementation(async (sql: string) => {
+    if (sql.includes('pg_try_advisory_lock')) {
+      return { rows: [{ pg_try_advisory_lock: true }] };
+    }
+    if (sql.includes('pg_advisory_unlock')) {
+      return { rows: [{ pg_advisory_unlock: true }] };
+    }
+    return { rows: [] };
+  });
   mockGetEscalationChannel.mockResolvedValue({ channel_id: 'C_NEW' });
   mockSendChannelMessage.mockResolvedValue({ ok: true, ts: '1710000001.000' });
 });
