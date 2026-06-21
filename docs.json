@@ -699,6 +699,7 @@
                   "docs/reference/whats-new-in-3-1",
                   "docs/reference/migration/v3-readiness",
                   "docs/reference/migration/index",
+                  "docs/reference/migration/3-0-to-3-1",
                   "docs/reference/migration/prerelease-upgrades",
                   "docs/reference/migration/channels",
                   "docs/reference/migration/pricing",
@@ -1317,7 +1318,8 @@
                   "docs/reference/migration/brand-identity",
                   "docs/reference/migration/signals",
                   "docs/reference/migration/audiences",
-                  "docs/reference/migration/attribution"
+                  "docs/reference/migration/attribution",
+                  "docs/reference/migration/media-buy-status"
                 ]
               },
               "docs/protocol/architecture",
