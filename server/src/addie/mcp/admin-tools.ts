@@ -56,7 +56,12 @@ import {
   type PendingInvoice,
   type OpenInvoiceWithCustomer,
 } from "../../billing/stripe-client.js";
-import { invalidateMembershipCache } from "../../db/org-filters.js";
+import {
+  ENGAGED_FILTER_ALIASED,
+  MEMBER_FILTER_ALIASED,
+  REGISTERED_FILTER_ALIASED,
+  invalidateMembershipCache,
+} from "../../db/org-filters.js";
 import {
   pickMembershipSubWithProductFetch,
   type PickedMembershipSub,
@@ -898,6 +903,16 @@ Actions:
       "Get statistics about industry feeds - total feeds, active feeds, articles collected, processing status, etc.",
     input_schema: {
       type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "get_platform_stats",
+    description:
+      "Get an authoritative platform-wide snapshot for admins: deduplicated person count, organization counts, organization lifecycle tiers, membership tiers, and subscription statuses. Use this instead of paginating list_organizations_by_users when asked how many members, users, or organizations AAO has.",
+    input_schema: {
+      type: "object" as const,
       properties: {},
       required: [],
     },
@@ -5459,6 +5474,203 @@ export function createAdminToolHandlers(
     } catch (error) {
       logger.error({ error }, "Error getting feed stats");
       return "❌ Failed to get feed statistics. Please try again.";
+    }
+  });
+
+  handlers.set("get_platform_stats", async () => {
+    const pool = getPool();
+
+    try {
+      const stats = await pool.query<{
+        snapshot_at: Date;
+        users_total: string;
+        users_with_attributed_org: string;
+        users_without_attributed_org: string;
+        users_member: string;
+        users_engaged: string;
+        users_registered: string;
+        users_prospect: string;
+        orgs_total: string;
+        orgs_corporate: string;
+        orgs_individual: string;
+        orgs_member: string;
+        orgs_engaged: string;
+        orgs_registered: string;
+        orgs_prospect: string;
+        subscription_active: string;
+        subscription_trialing: string;
+        subscription_past_due: string;
+        subscription_canceled: string;
+        subscription_none: string;
+        membership_tiers: Record<string, number> | null;
+      }>(`
+        WITH person_sources AS (
+          SELECT
+            COALESCE(iwu.identity_id::text, u.workos_user_id) AS person_id,
+            u.workos_user_id,
+            u.primary_organization_id
+          FROM users u
+          LEFT JOIN identity_workos_users iwu
+            ON iwu.workos_user_id = u.workos_user_id
+        ),
+        person_org_candidates AS (
+          SELECT
+            ps.person_id,
+            o.workos_organization_id,
+            o.subscription_status,
+            o.subscription_canceled_at,
+            o.is_personal,
+            EXISTS (
+              SELECT 1 FROM organization_memberships om_user
+              WHERE om_user.workos_organization_id = o.workos_organization_id
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM slack_user_mappings sm
+              JOIN organization_domains od
+                ON LOWER(SPLIT_PART(sm.slack_email, '@', 2)) = LOWER(od.domain)
+              WHERE od.workos_organization_id = o.workos_organization_id
+                AND sm.slack_is_bot = false
+                AND sm.slack_is_deleted = false
+            ) AS has_users,
+            EXISTS (
+              SELECT 1
+              FROM organization_memberships om_engaged
+              JOIN community_points cp ON cp.workos_user_id = om_engaged.workos_user_id
+              WHERE om_engaged.workos_organization_id = o.workos_organization_id
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM slack_user_mappings sm
+              JOIN organization_domains od
+                ON LOWER(SPLIT_PART(sm.slack_email, '@', 2)) = LOWER(od.domain)
+              WHERE od.workos_organization_id = o.workos_organization_id
+                AND sm.slack_is_bot = false
+                AND sm.slack_is_deleted = false
+                AND sm.last_slack_activity_at >= CURRENT_DATE - INTERVAL '30 days'
+            ) AS has_engaged_users,
+            CASE
+              WHEN o.workos_organization_id IS NULL THEN 9
+              WHEN o.is_personal = false AND (${MEMBER_FILTER_ALIASED}) THEN 0
+              WHEN o.is_personal = false AND o.workos_organization_id = ps.primary_organization_id THEN 1
+              WHEN o.is_personal = false THEN 2
+              WHEN (${MEMBER_FILTER_ALIASED}) THEN 3
+              WHEN o.workos_organization_id = ps.primary_organization_id THEN 4
+              ELSE 5
+            END AS attribution_rank
+          FROM person_sources ps
+          LEFT JOIN organization_memberships om
+            ON om.workos_user_id = ps.workos_user_id
+          LEFT JOIN organizations o
+            ON o.workos_organization_id = ps.primary_organization_id
+            OR o.workos_organization_id = om.workos_organization_id
+        ),
+        attributed_people AS (
+          SELECT DISTINCT ON (person_id)
+            person_id,
+            workos_organization_id,
+            subscription_status,
+            subscription_canceled_at,
+            has_users,
+            has_engaged_users,
+            CASE
+              WHEN workos_organization_id IS NULL THEN 'no_attributed_org'
+              WHEN subscription_status = 'active' AND subscription_canceled_at IS NULL THEN 'member'
+              WHEN has_engaged_users THEN 'engaged'
+              WHEN has_users THEN 'registered'
+              ELSE 'prospect'
+            END AS platform_tier
+          FROM person_org_candidates
+          ORDER BY person_id, attribution_rank
+        ),
+        org_rows AS (
+          SELECT
+            o.*,
+            CASE
+              WHEN ${MEMBER_FILTER_ALIASED} THEN 'member'
+              WHEN ${ENGAGED_FILTER_ALIASED} THEN 'engaged'
+              WHEN ${REGISTERED_FILTER_ALIASED} THEN 'registered'
+              ELSE 'prospect'
+            END AS platform_tier
+          FROM organizations o
+        ),
+        membership_tiers AS (
+          SELECT COALESCE(jsonb_object_agg(tier, count ORDER BY tier), '{}'::jsonb) AS by_tier
+          FROM (
+            SELECT COALESCE(membership_tier, 'none') AS tier, COUNT(*)::int AS count
+            FROM org_rows
+            GROUP BY COALESCE(membership_tier, 'none')
+          ) tiers
+        )
+        SELECT
+          NOW() AS snapshot_at,
+          (SELECT COUNT(*) FROM attributed_people)::text AS users_total,
+          (SELECT COUNT(*) FROM attributed_people WHERE workos_organization_id IS NOT NULL)::text AS users_with_attributed_org,
+          (SELECT COUNT(*) FROM attributed_people WHERE workos_organization_id IS NULL)::text AS users_without_attributed_org,
+          (SELECT COUNT(*) FROM attributed_people WHERE platform_tier = 'member')::text AS users_member,
+          (SELECT COUNT(*) FROM attributed_people WHERE platform_tier = 'engaged')::text AS users_engaged,
+          (SELECT COUNT(*) FROM attributed_people WHERE platform_tier = 'registered')::text AS users_registered,
+          (SELECT COUNT(*) FROM attributed_people WHERE platform_tier IN ('prospect', 'no_attributed_org'))::text AS users_prospect,
+          (SELECT COUNT(*) FROM org_rows)::text AS orgs_total,
+          (SELECT COUNT(*) FROM org_rows WHERE is_personal IS NOT TRUE)::text AS orgs_corporate,
+          (SELECT COUNT(*) FROM org_rows WHERE is_personal IS TRUE)::text AS orgs_individual,
+          (SELECT COUNT(*) FROM org_rows WHERE platform_tier = 'member')::text AS orgs_member,
+          (SELECT COUNT(*) FROM org_rows WHERE platform_tier = 'engaged')::text AS orgs_engaged,
+          (SELECT COUNT(*) FROM org_rows WHERE platform_tier = 'registered')::text AS orgs_registered,
+          (SELECT COUNT(*) FROM org_rows WHERE platform_tier = 'prospect')::text AS orgs_prospect,
+          (SELECT COUNT(*) FROM org_rows WHERE subscription_status = 'active' AND subscription_canceled_at IS NULL)::text AS subscription_active,
+          (SELECT COUNT(*) FROM org_rows WHERE subscription_status = 'trialing' AND subscription_canceled_at IS NULL)::text AS subscription_trialing,
+          (SELECT COUNT(*) FROM org_rows WHERE subscription_status = 'past_due' AND subscription_canceled_at IS NULL)::text AS subscription_past_due,
+          (SELECT COUNT(*) FROM org_rows WHERE subscription_status = 'canceled' OR subscription_canceled_at IS NOT NULL)::text AS subscription_canceled,
+          (SELECT COUNT(*) FROM org_rows WHERE subscription_status IS NULL AND subscription_canceled_at IS NULL)::text AS subscription_none,
+          (SELECT by_tier FROM membership_tiers) AS membership_tiers
+      `);
+
+      const row = stats.rows[0];
+      const toInt = (value: string | number | null | undefined): number =>
+        Number.parseInt(String(value ?? "0"), 10);
+      const snapshot = {
+        users: {
+          total: toInt(row.users_total),
+          deduplicated: true,
+          deduplication_key: "identity_id_fallback_workos_user_id",
+          attributed_to_org: toInt(row.users_with_attributed_org),
+          without_attributed_org: toInt(row.users_without_attributed_org),
+          by_platform_tier: {
+            member: toInt(row.users_member),
+            engaged: toInt(row.users_engaged),
+            registered: toInt(row.users_registered),
+            prospect: toInt(row.users_prospect),
+          },
+        },
+        organizations: {
+          total: toInt(row.orgs_total),
+          by_type: {
+            corporate: toInt(row.orgs_corporate),
+            individual: toInt(row.orgs_individual),
+          },
+          by_platform_tier: {
+            member: toInt(row.orgs_member),
+            engaged: toInt(row.orgs_engaged),
+            registered: toInt(row.orgs_registered),
+            prospect: toInt(row.orgs_prospect),
+          },
+          by_membership_tier: row.membership_tiers ?? {},
+        },
+        memberships: {
+          active: toInt(row.subscription_active),
+          trialing: toInt(row.subscription_trialing),
+          past_due: toInt(row.subscription_past_due),
+          canceled: toInt(row.subscription_canceled),
+          none: toInt(row.subscription_none),
+        },
+        snapshot_at: row.snapshot_at.toISOString(),
+      };
+
+      return `## Platform Stats\n\n\`\`\`json\n${JSON.stringify(snapshot, null, 2)}\n\`\`\``;
+    } catch (error) {
+      logger.error({ error }, "Error getting platform stats");
+      return "❌ Failed to get platform statistics. Please try again.";
     }
   });
 

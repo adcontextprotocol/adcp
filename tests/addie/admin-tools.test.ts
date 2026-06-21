@@ -158,6 +158,12 @@ vi.mock("../../server/src/billing/stripe-client.js", () => ({
 }));
 
 vi.mock("../../server/src/db/org-filters.js", () => ({
+  MEMBER_FILTER_ALIASED:
+    "o.subscription_status = 'active' AND o.subscription_canceled_at IS NULL",
+  ENGAGED_FILTER_ALIASED:
+    "NOT (o.subscription_status = 'active' AND o.subscription_canceled_at IS NULL) AND TRUE",
+  REGISTERED_FILTER_ALIASED:
+    "NOT (o.subscription_status = 'active' AND o.subscription_canceled_at IS NULL) AND NOT FALSE AND TRUE",
   invalidateMembershipCache: mockInvalidateMembershipCache,
 }));
 
@@ -571,6 +577,23 @@ describe("ADMIN_TOOLS definitions", () => {
       expect(props.new_customer_id).toMatchObject({ pattern: "^cus_" });
     });
   });
+
+  describe("get_platform_stats tool", () => {
+    let tool: (typeof ADMIN_TOOLS)[number] | undefined;
+
+    beforeEach(() => {
+      tool = ADMIN_TOOLS.find((t) => t.name === "get_platform_stats");
+    });
+
+    it("exists in ADMIN_TOOLS", () => {
+      expect(tool).toBeDefined();
+    });
+
+    it("takes no required input", () => {
+      expect(tool?.input_schema.required).toEqual([]);
+      expect(tool?.input_schema.properties).toEqual({});
+    });
+  });
 });
 
 // ── org Stripe customer update handler tests ──────────────────────────────────
@@ -942,6 +965,97 @@ describe("log_conversation handler", () => {
 
     expect(typeof result).toBe("string");
     expect(result).toContain("❌");
+  });
+});
+
+// ── platform stats handler tests ─────────────────────────────────────────────
+describe("get_platform_stats handler", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns a deduplicated platform-wide JSON snapshot", async () => {
+    mockPoolQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          snapshot_at: new Date("2026-06-21T12:00:00Z"),
+          users_total: "10",
+          users_with_attributed_org: "8",
+          users_without_attributed_org: "2",
+          users_member: "4",
+          users_engaged: "3",
+          users_registered: "1",
+          users_prospect: "2",
+          orgs_total: "6",
+          orgs_corporate: "4",
+          orgs_individual: "2",
+          orgs_member: "2",
+          orgs_engaged: "1",
+          orgs_registered: "1",
+          orgs_prospect: "2",
+          subscription_active: "2",
+          subscription_trialing: "1",
+          subscription_past_due: "1",
+          subscription_canceled: "1",
+          subscription_none: "1",
+          membership_tiers: {
+            company_standard: 2,
+            individual_professional: 1,
+            none: 3,
+          },
+        },
+      ],
+    });
+
+    const handlers = createAdminToolHandlers(adminMemberContext);
+    const result = await handlers.get("get_platform_stats")!({});
+    const json = result.match(/```json\n([\s\S]+)\n```/)?.[1];
+
+    expect(json).toBeDefined();
+    const snapshot = JSON.parse(json!);
+    expect(snapshot.users).toMatchObject({
+      total: 10,
+      deduplicated: true,
+      deduplication_key: "identity_id_fallback_workos_user_id",
+      attributed_to_org: 8,
+      without_attributed_org: 2,
+      by_platform_tier: {
+        member: 4,
+        engaged: 3,
+        registered: 1,
+        prospect: 2,
+      },
+    });
+    expect(snapshot.organizations).toMatchObject({
+      total: 6,
+      by_type: { corporate: 4, individual: 2 },
+      by_platform_tier: {
+        member: 2,
+        engaged: 1,
+        registered: 1,
+        prospect: 2,
+      },
+      by_membership_tier: {
+        company_standard: 2,
+        individual_professional: 1,
+        none: 3,
+      },
+    });
+    expect(snapshot.memberships).toEqual({
+      active: 2,
+      trialing: 1,
+      past_due: 1,
+      canceled: 1,
+      none: 1,
+    });
+    expect(snapshot.snapshot_at).toBe("2026-06-21T12:00:00.000Z");
+
+    const sql = mockPoolQuery.mock.calls[0]?.[0] as string;
+    expect(sql).toContain("identity_workos_users");
+    expect(sql).toContain("primary_organization_id");
+    expect(sql).toContain(
+      "subscription_status = 'active' AND subscription_canceled_at IS NULL",
+    );
   });
 });
 
