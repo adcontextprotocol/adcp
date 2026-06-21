@@ -92,7 +92,7 @@ During migration, sellers can accept both v2 and v3 traffic and buyers can route
 2. **Branch by seller** — Route v3-capable sellers through your v3 integration and v2-only sellers through your existing v2 code.
 3. **Migrate incrementally** — Start with the rename changes (pricing fields, channel updates), then tackle structural changes (creative assignments, optimization goals), then adopt new capabilities (accounts, governance) as needed.
 
-## Deep-dive pages
+## Breaking migrations (v2 → v3.0)
 
 <CardGroup cols={2}>
   <Card title="Channels" icon="tv" href="/docs/reference/migration/channels">
@@ -124,5 +124,21 @@ During migration, sellers can accept both v2 and v3 traffic and buyers can route
   </Card>
   <Card title="Attribution" icon="link" href="/docs/reference/migration/attribution">
     Integer days to structured `Duration` objects
+  </Card>
+</CardGroup>
+
+## 3.1 badge prep guides
+
+You can stay on 3.0 without breaking compatibility. To claim the 3.1 badge, complete this short prep checklist.
+
+<CardGroup cols={2}>
+  <Card title="3.1 badge checklist" icon="rocket" href="/docs/reference/migration/3-0-to-3-1">
+    Additive prep for buyers, sellers, agents, SDKs, and compliance workflows
+  </Card>
+  <Card title="Creative transformers" icon="wand-magic-sparkles" href="/docs/reference/migration/creative-transformers">
+    Move build capability discovery and pricing from formats to transformers
+  </Card>
+  <Card title="Media buy status" icon="circle-check" href="/docs/reference/migration/media-buy-status">
+    Split body-level buy status from envelope task status on success responses
   </Card>
 </CardGroup>
