@@ -112,18 +112,20 @@ describe('recordCost', () => {
 });
 
 describe('formatCapExceededMessage', () => {
-  it('includes the tier cap, current spend, and reset time', () => {
+  it('gives a clean member-facing message without internal dollar amounts', () => {
     const msg = formatCapExceededMessage({
       ok: false,
       spentCents: 550,
       remainingUsd: 0,
-      retryAfterMs: 45 * 60 * 1000, // 45 min
+      retryAfterMs: 45 * 60 * 1000,
       tier: 'member_free',
     });
-    expect(msg).toContain('5 USD'); // member_free cap
-    expect(msg).toContain('$5.50'); // current spend
-    expect(msg).toContain('45 minutes');
-    expect(msg).toContain('Upgrade'); // CTA for non-paying
+    expect(msg).toContain('daily conversation limit');
+    expect(msg).toContain('try again tomorrow');
+    expect(msg).toContain('/dashboard/membership');
+    expect(msg).toContain('Upgrade');
+    expect(msg).not.toContain('$5.50');
+    expect(msg).not.toContain('5 USD');
   });
 
   it('tells paying members to ping the team instead of upgrade', () => {

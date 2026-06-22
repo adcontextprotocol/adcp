@@ -60,7 +60,7 @@ describe('claude-client entry-gate behavior (#2790)', () => {
 
     expect(response.flagged).toBe(true);
     expect(response.flag_reason).toBe('cost_cap_exceeded');
-    expect(response.text).toMatch(/usage cap/);
+    expect(response.text).toMatch(/conversation limit/);
     // No token usage because no Claude call fired.
     expect(response.usage).toBeUndefined();
     expect(anthropicCall).not.toHaveBeenCalled();
