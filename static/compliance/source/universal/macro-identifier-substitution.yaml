@@ -1,0 +1,108 @@
+id: macro_identifier_substitution
+version: "1.0.0"
+title: "Media-buy identifier substitution in tracking URLs"
+category: macro_identifier_substitution
+summary: "Seller substitutes {MEDIA_BUY_ID} and {PACKAGE_ID} with the real values in creative tracking URLs."
+track: media_buy
+
+narrative: |
+  Build-time-known AdCP identifiers must appear as real values in a served creative's
+  tracking URLs. When a buyer includes {MEDIA_BUY_ID} and {PACKAGE_ID} in an impression
+  tracker, the seller assigns those identifiers at create_media_buy time and is expected
+  to substitute them — not the platform ad server at impression time. This storyboard
+  creates a media buy, submits a creative whose tracker uses both macros, and asserts the
+  rendered output carries the actual ids.
+
+  Verification requires an observable rendered surface. A seller that does not expose a
+  creative preview (preview_html) is recorded as not_applicable for the substitution
+  assertion rather than failed — the behavior simply isn't observable.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+  examples:
+    - "Any AdCP seller that renders creatives"
+    - "Creative ad servers"
+
+caller:
+  role: buyer_agent
+  example: "Scope3 (DSP)"
+
+prerequisites:
+  description: |
+    A seller that can create a media buy and return a rendered creative preview
+    (creative_manifest.preview_html).
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+required_tools:
+  - create_media_buy
+  - build_creative
+
+phases:
+  - id: substitution
+    title: "Identifier substitution"
+    narrative: |
+      The buyer creates a media buy, then submits a creative whose impression tracker uses
+      {MEDIA_BUY_ID} and {PACKAGE_ID}. The seller MUST render both as the real identifiers.
+
+    steps:
+      - id: create_buy
+        title: "Create a media buy"
+        narrative: |
+          The buyer creates a media buy. The response carries the seller-assigned
+          media_buy_id and the package_id the creative will be assigned to — these are the
+          expected substitution values for the assertion below.
+        task: create_media_buy
+        comply_scenario: media_buy_seller/create_media_buy
+        stateful: true
+        expected: |
+          Create the media buy and return media_buy_id and at least one package with a
+          package_id.
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
+          - name: package_id
+            path: "packages[0].package_id"
+        validations:
+          - check: field_present
+            path: "media_buy_id"
+          - check: field_present
+            path: "packages[0].package_id"
+
+      - id: build_with_macros
+        title: "Build a creative with identifier macros in the tracker URL"
+        narrative: |
+          The buyer submits a display creative whose impression tracker uses both
+          {MEDIA_BUY_ID} and {PACKAGE_ID}. The seller renders the creative; the rendered
+          preview must carry the substituted identifiers.
+        task: build_creative
+        comply_scenario: media_buy_seller/build_creative
+        stateful: false
+        expected: |
+          Render the creative and return creative_manifest.preview_html containing the
+          impression tracker with {MEDIA_BUY_ID} and {PACKAGE_ID} replaced by the real ids.
+        sample_request:
+          message: >-
+            Build a display ad. Use this exact impression tracker:
+            https://track.example/imp?mb={MEDIA_BUY_ID}&pkg={PACKAGE_ID}
+        validations:
+          - check: field_present
+            path: "creative_manifest/preview_html"
+
+      - id: assert_ids_substituted
+        title: "Assert {MEDIA_BUY_ID} and {PACKAGE_ID} are substituted with the real values"
+        narrative: |
+          The runner inspects the prior step's rendered preview, aligns the impression
+          tracker template against the observed tracker URLs, and asserts each macro
+          position carries the identifier captured from create_media_buy. Neutral-skips
+          (no_preview_surface) when no rendered HTML is present.
+        task: expect_universal_macro_substituted
+        source: prior_step
+        source_path: "/creative_manifest/preview_html"
+        macro_template: "https://track.example/imp?mb={MEDIA_BUY_ID}&pkg={PACKAGE_ID}"
+        macro_bindings:
+          - macro: "{MEDIA_BUY_ID}"
+            context_key: media_buy_id
+          - macro: "{PACKAGE_ID}"
+            context_key: package_id
