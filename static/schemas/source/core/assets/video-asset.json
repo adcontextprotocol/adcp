@@ -2,7 +2,8 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/assets/video-asset.json",
   "title": "Video Asset",
-  "description": "Video asset with URL and technical specifications including audio track properties",
+  "description": "A hosted video file delivered directly (e.g., an MP4 you host), with URL and technical specifications including audio track properties. `width` and `height` are required because a hosted video file has intrinsic, native pixel dimensions that are known when the file is created. Tag-delivered video uses the separate `vast` asset, which carries no `width`/`height`: a VAST response resolves geometry per-`MediaFile` at serve time, so there is no single width/height for the ad. Aspect-ratio and size *constraints* (what a placement accepts) belong on the format/requirements layer, not on the asset.",
+  "$comment": "Dimension policy is deliberate and differs by asset type: a hosted `video` asset requires width/height (intrinsic pixels of a concrete file), while the `vast` asset omits them entirely (renditions are selected per-MediaFile by the player at serve time). Do not infer that AdCP forces a single width/height onto all video — only onto hosted files.",
   "type": "object",
   "properties": {
     "asset_type": {
@@ -18,12 +19,12 @@
     "width": {
       "type": "integer",
       "minimum": 1,
-      "description": "Width in pixels"
+      "description": "Width in pixels — the video file's intrinsic native width. Required: a hosted file always has concrete dimensions. (Tag-delivered video carries no width; see the `vast` asset.)"
     },
     "height": {
       "type": "integer",
       "minimum": 1,
-      "description": "Height in pixels"
+      "description": "Height in pixels — the video file's intrinsic native height. Required: a hosted file always has concrete dimensions. (Tag-delivered video carries no height; see the `vast` asset.)"
     },
     "duration_ms": {
       "type": "integer",
