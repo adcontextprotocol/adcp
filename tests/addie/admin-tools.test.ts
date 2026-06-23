@@ -161,9 +161,9 @@ vi.mock("../../server/src/db/org-filters.js", () => ({
   MEMBER_FILTER_ALIASED:
     "o.subscription_status = 'active' AND o.subscription_canceled_at IS NULL",
   ENGAGED_FILTER_ALIASED:
-    "NOT (o.subscription_status = 'active' AND o.subscription_canceled_at IS NULL) AND TRUE",
+    "(o.subscription_status IS DISTINCT FROM 'active' OR o.subscription_canceled_at IS NOT NULL) AND TRUE",
   REGISTERED_FILTER_ALIASED:
-    "NOT (o.subscription_status = 'active' AND o.subscription_canceled_at IS NULL) AND NOT FALSE AND TRUE",
+    "(o.subscription_status IS DISTINCT FROM 'active' OR o.subscription_canceled_at IS NOT NULL) AND NOT FALSE AND TRUE",
   invalidateMembershipCache: mockInvalidateMembershipCache,
 }));
 
@@ -1016,7 +1016,7 @@ describe("get_platform_stats handler", () => {
     expect(snapshot.users).toMatchObject({
       total: 10,
       deduplicated: true,
-      deduplication_key: "identity_id_fallback_workos_user_id",
+      deduplication_key: "identity_id_fallback_workos_user_id_or_slack_user_id",
       attributed_to_org: 8,
       without_attributed_org: 2,
       by_platform_tier: {
@@ -1053,9 +1053,16 @@ describe("get_platform_stats handler", () => {
     const sql = mockPoolQuery.mock.calls[0]?.[0] as string;
     expect(sql).toContain("identity_workos_users");
     expect(sql).toContain("primary_organization_id");
+    expect(sql).toContain("'slack:' || sm.slack_user_id");
+    expect(sql).toContain(
+      "sm.pending_organization_id AS primary_organization_id",
+    );
+    expect(sql).toContain("sm.mapping_status = 'unmapped'");
+    expect(sql).toContain("sm.workos_user_id IS NULL");
     expect(sql).toContain(
       "subscription_status = 'active' AND subscription_canceled_at IS NULL",
     );
+    expect(sql).toContain("subscription_status IS DISTINCT FROM 'active'");
   });
 });
 

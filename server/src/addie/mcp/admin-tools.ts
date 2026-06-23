@@ -5512,6 +5512,17 @@ export function createAdminToolHandlers(
           FROM users u
           LEFT JOIN identity_workos_users iwu
             ON iwu.workos_user_id = u.workos_user_id
+          UNION ALL
+          SELECT
+            'slack:' || sm.slack_user_id AS person_id,
+            NULL::text AS workos_user_id,
+            sm.pending_organization_id AS primary_organization_id
+          FROM slack_user_mappings sm
+          WHERE sm.pending_organization_id IS NOT NULL
+            AND sm.mapping_status = 'unmapped'
+            AND sm.workos_user_id IS NULL
+            AND sm.slack_is_bot = false
+            AND sm.slack_is_deleted = false
         ),
         person_org_candidates AS (
           SELECT
@@ -5633,7 +5644,7 @@ export function createAdminToolHandlers(
         users: {
           total: toInt(row.users_total),
           deduplicated: true,
-          deduplication_key: "identity_id_fallback_workos_user_id",
+          deduplication_key: "identity_id_fallback_workos_user_id_or_slack_user_id",
           attributed_to_org: toInt(row.users_with_attributed_org),
           without_attributed_org: toInt(row.users_without_attributed_org),
           by_platform_tier: {
