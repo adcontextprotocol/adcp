@@ -11,6 +11,7 @@ import { createLogger } from '../logger.js';
 
 const logger = createLogger('addie-security');
 import type { SanitizationResult, AddieInteractionLog } from './types.js';
+import { PERSONA_COLLAPSE_PATTERNS } from './response-postprocess.js';
 
 /**
  * Patterns that might indicate prompt injection attempts
@@ -26,6 +27,9 @@ const SUSPICIOUS_PATTERNS = [
   /pretend\s+(?:you\s+are|to\s+be)/i,
   /act\s+as\s+(?:if|though)/i,
   /role\s*play\s+as/i,
+
+  // Identity-substitution: "you are actually Claude / really ChatGPT / in fact an AI model"
+  /you(?:['’]?re|\s+are)\s+(?:actually|really|secretly|in\s+fact|truly)\s+(?:claude|chatgpt|gpt-?\d*|gemini|llama|bard|an?\s+(?:ai|a\.i\.|artificial\s+intelligence|language\s+model))/i,
 
   // Trying to extract system prompt
   /what\s+(?:are|is)\s+your\s+(?:system\s)?instructions?/i,
@@ -56,6 +60,11 @@ const FORBIDDEN_OUTPUT_PATTERNS = [
   /xoxb-[a-zA-Z0-9-]+/,
   /ghp_[a-zA-Z0-9]{36}/,
   /AKIA[0-9A-Z]{16}/,
+
+  // Model/provider self-disclosure. The deterministic rewrite in
+  // response-postprocess.ts removes these before delivery; flagging them here
+  // is the audit canary that tells us when a leak slipped past the rewrite.
+  ...PERSONA_COLLAPSE_PATTERNS,
 ];
 
 /**
