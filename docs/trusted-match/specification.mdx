@@ -51,7 +51,7 @@ Sent by the publisher (via router) to buyer agents. Contains content context. MU
 | `request_id` | string | Yes | Unique request identifier for logging. MUST NOT correlate with any Identity Match request_id. |
 | `property_rid` | UUID | Yes | Property catalog UUID (v7). Globally unique, stable. |
 | `property_id` | string | No | Publisher's human-readable slug. Optional when `property_rid` is present. |
-| `property_type` | enum | Yes | One of: `website`, `mobile_app`, `ctv_app`, `desktop_app`, `dooh`, `podcast`, `radio`, `streaming_audio`, `ai_assistant`. See `property-type` enum. |
+| `property_type` | enum | Yes | One of: `website`, `mobile_app`, `ctv_app`, `desktop_app`, `dooh`, `podcast`, `radio`, `linear_tv`, `streaming_audio`, `ai_assistant`. See `property-type` enum. |
 | `placement_id` | string | Yes | Placement identifier from the publisher's placement registry in `adagents.json`. One placement per request. |
 | `seller_agent_url` | string (URI) | Yes | API endpoint URL of the seller agent issuing this request. The provider resolves the active package set it has synced for this seller against it; an unsynced seller MUST yield an empty offer set, never a fall-back to another seller's set. A single per-placement value carrying no user identity. Compared with AdCP URL canonicalization. Consistent with `seller_agent_url` on the Identity Match request and `agent_url` in `adagents.json`. |
 | `artifact` | Artifact | No | Full content artifact adjacent to this ad opportunity. Same schema as content standards evaluation. The publisher sends the full artifact when they want the buyer to evaluate the actual content. Contractual protections govern buyer use. TEE deployment upgrades contractual trust to cryptographic verification. |
@@ -133,6 +133,7 @@ Returned by the buyer agent. Contains offers for matched packages and optional r
 | `type` | string | Yes | `"context_match_response"`. Message type discriminator for deserialization. |
 | `request_id` | string | Yes | Echo of the request's `request_id`. |
 | `offers` | List\<Offer\> | Yes | Offers from the buyer, one per activated package. Empty list means no packages matched. |
+| `cache_ttl` | integer | No | Provider override (in seconds) for the router's default Context Match response cache TTL. When present, routers MUST use this value instead of their default. `0` disables caching (e.g., when targeting configuration has just changed); schema-enforced maximum is 86400 seconds. See [Caching](#caching). |
 | `signals` | Signals | No | Response-level targeting signals for ad server pass-through. Not per-offer — applies to the response as a whole. In the GAM case, these carry the key-value pairs that trigger line items. |
 
 #### Offer
