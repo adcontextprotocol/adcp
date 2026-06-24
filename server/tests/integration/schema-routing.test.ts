@@ -116,6 +116,64 @@ describe("/schemas HTTP routing", () => {
     });
   });
 
+  describe("missing pinned version fallback (docs-only version bumps)", () => {
+    // A docs snapshot can be cut at a version whose schema content was
+    // unchanged from the last published release on the same line (e.g. a
+    // 3.0.19 docs snapshot built against the existing 3.0.18 schemas), so no
+    // matching schema directory is ever produced. The snapshot's link rewrite
+    // still pins schema URLs to /schemas/<docs-version>/..., which must resolve
+    // rather than 404.
+    let missingPatch: string | undefined;
+    let resolvedTarget: string | undefined;
+
+    beforeAll(() => {
+      // Synthesize a "one patch above the latest published 3.0.x" version that
+      // is guaranteed not to have a directory, and compute what it should
+      // resolve to (the latest published 3.0.x).
+      const latest30 = versions
+        .filter((v) => v.startsWith("3.0.") && !v.includes("-"))
+        .sort((a, b) => semver.rcompare(a, b))[0];
+      if (latest30) {
+        resolvedTarget = latest30;
+        const p = semver.parse(latest30)!;
+        missingPatch = `${p.major}.${p.minor}.${p.patch + 1}`;
+        // Guard: the synthesized version must genuinely be absent.
+        if (versions.includes(missingPatch)) missingPatch = undefined;
+      }
+    });
+
+    it("serves a missing pinned patch from the nearest published release on the same line", async () => {
+      if (!missingPatch) return;
+      const res = await request(app).get(
+        `/schemas/${missingPatch}/media-buy/get-media-buy-delivery-request.json`,
+      );
+      expect(res.status).toBe(200);
+      expect(res.headers["content-type"]).toMatch(/application\/json/);
+    });
+
+    it("marks resolved-fallback responses no-cache (the target can change as patches land)", async () => {
+      if (!missingPatch) return;
+      const res = await request(app).get(
+        `/schemas/${missingPatch}/media-buy/get-media-buy-delivery-request.json`,
+      );
+      expect(res.status).toBe(200);
+      expect(res.headers["cache-control"] ?? "").not.toContain("immutable");
+      expect(res.headers["cache-control"] ?? "").toContain("no-cache");
+    });
+
+    it("redirects a missing bare pinned directory to the resolved index.json", async () => {
+      if (!missingPatch || !resolvedTarget) return;
+      const res = await request(app).get(`/schemas/${missingPatch}/`);
+      expect(res.status).toBe(302);
+      expect(res.headers["location"]).toBe(`/schemas/${resolvedTarget}/index.json`);
+    });
+
+    it("still 404s a pinned version with no published release in its major line", async () => {
+      const res = await request(app).get("/schemas/99.9.9/adagents.json");
+      expect(res.status).toBe(404);
+    });
+  });
+
   describe("cache-control policy", () => {
     // Aliases and /latest/ must force revalidation — they retarget over time,
     // and edge caches serving stale copies cause version drift for consumers
