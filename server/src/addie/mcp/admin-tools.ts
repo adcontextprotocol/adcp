@@ -910,7 +910,7 @@ Actions:
   {
     name: "get_platform_stats",
     description:
-      "Get an authoritative platform-wide snapshot for admins: deduplicated person count, organization counts, organization lifecycle tiers, membership tiers, and subscription statuses. Use this instead of paginating list_organizations_by_users when asked how many members, users, or organizations AAO has.",
+      "Get admin platform stats: deduplicated people totals plus organization counts by lifecycle tier, membership tier, and subscription status. Use for platform-level member, user, or organization counts.",
     input_schema: {
       type: "object" as const,
       properties: {},
