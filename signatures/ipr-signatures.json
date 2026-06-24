@@ -429,6 +429,16 @@
       "pullRequestNo": 5576,
       "comment_id": 4732823205,
       "comment_url": "https://github.com/adcontextprotocol/adcp/pull/5576#issuecomment-4732823205"
+    },
+    {
+      "name": "danyliukmykola",
+      "id": 126093455,
+      "created_at": "2026-06-24T08:38:27Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 5675,
+      "comment_id": 4787411756,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/5675#issuecomment-4787411756"
     }
   ]
 }
