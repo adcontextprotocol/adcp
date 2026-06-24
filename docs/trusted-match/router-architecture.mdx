@@ -158,6 +158,8 @@ The router filters Identity Match providers by country and identity type:
 
 Duplicate `package_id` across providers is a configuration error — packages come from media buys and are provider-specific. If it occurs, the router applies conservative merging: the package is only eligible if it appears in `eligible_package_ids` from both providers. The router uses the minimum `serve_window_sec` across providers and SHOULD log a warning.
 
+**TMPX collection.** Each identity provider that resolves enough identity material to mint a TMPX token returns one in its `tmpx` field. The router MUST collect those tokens into the response's `tmpx_providers` map, keyed by the emitting provider's `provider_id`, so per-provider impression accounting survives the fan-out — the publisher fires each provider's token through its own `{TMPX_<provider_id>}`-style macro. The router MUST NOT collapse multiple providers' tokens into a single `tmpx` string; doing so loses attribution and is not recoverable downstream. For back-compat with consumers that read the deprecated singular `tmpx` field, routers MAY also populate `tmpx` with one provider's token; when both fields are present, `tmpx_providers` is authoritative. A provider that does not emit a TMPX (e.g. no eligible packages) MUST be omitted from the map rather than represented by an empty string.
+
 ### Timeout handling
 
 The router manages two distinct timeout values:
