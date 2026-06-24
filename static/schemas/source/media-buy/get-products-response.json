@@ -299,7 +299,8 @@
       ]
     },
     "pagination": {
-      "$ref": "/schemas/core/pagination-response.json"
+      "$ref": "/schemas/core/pagination-response.json",
+      "description": "Cursor metadata for paginated get_products responses. In brief/refine mode, continuation pages bound returned products[] for the seller's curated or refined answer; proposals may accompany a page as plan metadata but are not independently counted by this pagination envelope, and pagination does not convert the response into an exhaustive feed contract. In wholesale mode, continuation pages walk the wholesale product feed."
     },
     "wholesale_feed_version": {
       "type": "string",

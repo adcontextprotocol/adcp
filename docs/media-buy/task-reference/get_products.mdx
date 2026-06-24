@@ -140,8 +140,8 @@ asyncio.run(discover_with_filters())
 | `filters` | Filters | No | Structured filters (see below) |
 | `fields` | string[] | No | Specific product fields to include in the response for lightweight discovery. When requesting signal metadata, buyers SHOULD request `included_signals` for non-selectable bundled/planned signals, and `signal_targeting_allowed`, `signal_targeting_options`, and `signal_targeting_rules` for package-level signal selection. |
 | `property_list` | PropertyListRef | No | [AdCP 3.0] Reference to a property list for filtering. See [Property Lists](/docs/governance/property/tasks/property_lists) |
-| `pagination` | PaginationRequest | No | Cursor-based pagination for large product result sets and wholesale product feeds (see below) |
-| `if_wholesale_feed_version` | string | No | Opaque `wholesale_feed_version` token from a prior `get_products` response. When provided, the seller compares against its current wholesale product feed version and MAY return `unchanged: true` (with `products` omitted) if nothing has changed. Versions are scoped to the (agent, account, filters, `buying_mode`, `property_list`, `catalog`) tuple. See [Wholesale feed versioning](#wholesale-feed-versioning). |
+| `pagination` | PaginationRequest | No | Cursor-based pagination to cap returned `products[]` in curated/refined responses or walk wholesale product feeds (see below) |
+| `if_wholesale_feed_version` | string | No | Opaque `wholesale_feed_version` token from a prior wholesale-mode `get_products` response from this agent. Only valid with `buying_mode: "wholesale"`. When provided, the seller compares against its current wholesale product feed version for the buyer's `cache_scope` and MAY return `unchanged: true` (with `products` omitted) if nothing has changed. Version scope excludes `pagination.cursor`: `public` is keyed by (agent, `buying_mode`, `filters`, `property_list`, `catalog`); `account` adds account identity. See [Wholesale feed versioning](#wholesale-feed-versioning). |
 | `if_pricing_version` | string | No | Opaque `pricing_version` token from a prior response. MUST only be sent together with `if_wholesale_feed_version`. Evaluation order: `if_wholesale_feed_version` mismatch → full payload; `if_wholesale_feed_version` matches but `if_pricing_version` mismatches → full payload (so the buyer sees updated `pricing_options`); both match → seller MAY return `unchanged: true`. Sellers that don't track pricing separately ignore this. |
 | `time_budget` | Duration | No | Maximum time the buyer will commit to this request. The seller returns the best results achievable within this budget and does not start processes (human approvals, expensive external queries) that cannot complete in time. When omitted, the seller decides timing. Example: `{"interval": 30, "unit": "seconds"}`. |
 | `push_notification_config` | PushNotificationConfig | No | Optional webhook channel for async terminal completion/failure notifications on `brief` / `refine` curated discovery. `submitted` responses with a `task_id` remain pollable through `get_task_status` (legacy `tasks/get`) whether or not this field is present. If the request includes this field and the seller returns `submitted`, the seller MUST deliver at least the terminal completion/failure notification to the configured webhook; intermediate progress notifications are MAY. If the seller cannot honor the webhook channel, it MUST reject the request with a structured error instead of silently accepting. Ignored for `wholesale`; sellers MUST NOT route wholesale reads through the Submitted arm because this field is present. |
@@ -404,7 +404,23 @@ Each `ForecastPoint` is one forecast row. Composite slices are encoded by multip
 
 ### Pagination
 
-For large product result sets and wholesale product feeds, use cursor-based pagination:
+`pagination` is valid in all `get_products` modes, but its meaning follows the
+buying mode:
+
+- In `brief` mode, pagination bounds the seller's curated answer to the brief.
+  A page is not a promise that every product matching the words in the brief has
+  been enumerated.
+- In `refine` mode, pagination bounds the refined `products[]` result implied by
+  the `refine` array and current filters. Proposals may accompany the page as
+  plan metadata, but `pagination.max_results`, `has_more`, `cursor`, and
+  `total_count` are scoped to the product result set, not to a separate
+  proposal list or a combined product/proposal count.
+- In `wholesale` mode, pagination walks the wholesale product feed. This is the
+  exhaustive/feed-style read and is the mode that pairs with wholesale feed
+  versioning.
+
+Use cursor-based pagination to cap returned products in curated/refined
+responses or walk wholesale product feeds:
 
 | Request Parameter | Type | Description |
 |---|---|---|
@@ -415,9 +431,13 @@ For large product result sets and wholesale product feeds, use cursor-based pagi
 |---|---|---|
 | `pagination.has_more` | boolean | Whether more products are available |
 | `pagination.cursor` | string | Cursor to pass for the next page |
-| `pagination.total_count` | integer | Total matching products (optional, not all backends support this) |
+| `pagination.total_count` | integer | Total products in this paginated result set (optional, not all backends support this). In `brief` / `refine`, this is the curated/refined product set, not the full seller catalog. |
 
-Pagination is optional. When omitted, the server returns all results (or a server-chosen default page). When the response includes `pagination.has_more: true`, pass `pagination.cursor` in the next request to get the next page.
+Pagination is optional. When omitted, the server returns the complete result set
+or a server-chosen default page. When the response includes
+`pagination.has_more: true`, pass `pagination.cursor` in the next request to get
+the next page using the same result-defining request context, except for the
+updated `pagination.cursor`.
 
 ### Response Metadata
 
@@ -428,7 +448,7 @@ Pagination is optional. When omitted, the server returns all results (or a serve
 | `refinement_applied` | [RefinementResult[]](#refinement_applied-response) | Seller acknowledgment of each `refine` entry, matched by position. Only present when `buying_mode` is `"refine"`. See [refinement_applied](#refinement_applied-response) above. |
 | `incomplete` | [IncompleteEntry[]](#incomplete-array) | Declares what the seller could not finish within the `time_budget` or due to internal limits. Each entry identifies a scope with a human-readable explanation. Absent when the response is fully complete. See [incomplete array](#incomplete-array) below. |
 | `filter_diagnostics` | object | Optional non-fatal observability block describing how `filters` narrowed the candidate set — `total_candidates` plus per-filter `excluded_by` counts (keyed by filter name). Disambiguates "no inventory" from "your filter excluded everything" when the result list is empty or unexpectedly small. Counts only — never product names — to avoid leaking competitive intelligence. See [filter_diagnostics](#filter_diagnostics) below. |
-| `wholesale_feed_version` | string | Opaque token representing the version of the wholesale product feed state used to compose this response. Sellers implementing conditional-fetch (`if_wholesale_feed_version`) MUST return this on every response so buyers can cache and probe later. Treat as opaque — no format, no ordering, no inspection. See [Wholesale feed versioning](#wholesale-feed-versioning). |
+| `wholesale_feed_version` | string | Opaque token representing the version of the wholesale product feed state used to compose this response. Sellers implementing conditional-fetch (`if_wholesale_feed_version`) MUST return this on every wholesale-mode response so buyers can cache and probe later. Treat as opaque — no format, no ordering, no inspection. See [Wholesale feed versioning](#wholesale-feed-versioning). |
 | `pricing_version` | string | Optional opaque token representing the version of the pricing layer, including product `pricing_options` and nested `signal_targeting_options[].pricing_options`. When the seller supports independent pricing versioning, `pricing_version` changes when prices move but `wholesale_feed_version` changes only when structure/metadata moves. Sellers not separating these MAY omit `pricing_version` and use `wholesale_feed_version` for both. |
 | `cache_scope` | string | `"public"` or `"account"`. **REQUIRED on every response** (schema-enforced — the safety property of the two-layer cache depends on it). When the request had no `account`, MUST be `"public"`. When the request had `account`, the seller declares either `"public"` (account prices off the rate card — buyer dedupes) or `"account"` (account-specific overrides). See [Cache layering](#cache-layering). |
 | `unchanged` | boolean | Present and `true` ONLY when the request carried `if_wholesale_feed_version` (and/or `if_pricing_version`) matching the seller's current version for the buyer's `cache_scope`, in which case `products[]` MUST be omitted; `wholesale_feed_version`, `cache_scope`, and `pricing_version` (when used) MUST still be echoed. Sellers MUST NOT emit `unchanged: false` — absence of the field IS the "response carries products" signal (one shape per state). Buyers receiving `unchanged: true` MUST NOT mutate their local wholesale product mirror. |
@@ -474,7 +494,7 @@ When the seller cannot complete all work within the `time_budget` (or due to its
 
 ### Wholesale feed versioning
 
-A buyer that just synced a seller's wholesale product feed can ask "has anything changed since version X?" in one cheap call, regardless of feed size. Sellers return an opaque `wholesale_feed_version` on every response; buyers pass it back via `if_wholesale_feed_version` on the next call and the seller MAY short-circuit with `unchanged: true` — no products payload, no per-page diff. Patterned on HTTP `ETag` / `If-None-Match`.
+A buyer that just synced a seller's wholesale product feed can ask "has anything changed since version X?" in one cheap call, regardless of feed size. Sellers return an opaque `wholesale_feed_version` on every wholesale-mode response; buyers pass it back via `if_wholesale_feed_version` on the next call and the seller MAY short-circuit with `unchanged: true` — no products payload, no per-page diff. Patterned on HTTP `ETag` / `If-None-Match`.
 
 This is the seller-side wholesale product feed returned by `get_products`. It is not a `sync_catalogs` feed; `sync_catalogs` manages buyer-provided campaign input feeds on the seller account.
 

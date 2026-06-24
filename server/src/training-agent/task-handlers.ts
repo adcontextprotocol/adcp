@@ -562,6 +562,22 @@ function applyPricingCurrenciesFilterToProducts(products: Product[], currencies:
     .filter((product): product is Product => product !== null);
 }
 
+function productMatchesAnyFormatId(product: Product, requestedFormatIds: FormatID[]): boolean {
+  if (!Array.isArray(product.format_ids) || product.format_ids.length === 0) return false;
+  return product.format_ids.some(actual => {
+    if (!actual?.id) return false;
+    return requestedFormatIds.some(wanted => {
+      if (!wanted?.id || actual.id !== wanted.id) return false;
+      if (!wanted.agent_url || !actual.agent_url) return true;
+      return canonicalizeAgentUrl(actual.agent_url) === canonicalizeAgentUrl(wanted.agent_url);
+    });
+  });
+}
+
+function applyFormatIdsFilterToProducts(products: Product[], requestedFormatIds: FormatID[]): Product[] {
+  return products.filter(product => productMatchesAnyFormatId(product, requestedFormatIds));
+}
+
 function mandatoryProductSignalChargesSatisfied(product: Product, currencies: Set<string>): boolean {
   const rules = (product as unknown as { signal_targeting_rules?: { selection_mode?: unknown } }).signal_targeting_rules;
   if (rules?.selection_mode !== 'fixed') return true;
@@ -2893,6 +2909,10 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
         products = products.filter(p => seededIds.has(p.product_id));
       }
       products = applyPricingCurrenciesFilterToProducts(products, pricingCurrencies);
+    }
+    const formatIdsFilter = req.filters.format_ids;
+    if (formatIdsFilter?.length) {
+      products = applyFormatIdsFilterToProducts(products, formatIdsFilter);
     }
     const channelFilter = req.filters.channels;
     if (channelFilter?.length) {
