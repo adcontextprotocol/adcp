@@ -84,6 +84,29 @@ async function versionedArtifactResponse(request, env, ctx, mount, pathname) {
     }
   }
 
+  // Pinned semver path whose exact version directory is absent from R2: resolve
+  // to the nearest published release on the same line (e.g. a 3.0.19 docs
+  // snapshot's links to /schemas/3.0.19/... resolve to the 3.0.18 artifacts it
+  // was built against). Mirrors the Fly schemas middleware so docs-only version
+  // bumps don't 404 when no schema directory is published for them. Tracks
+  // whether the exact directory exists so the cache policy below stays correct.
+  let exactPinnedHit = false;
+  if (!isAlias) {
+    const semverMatch = requestPath.match(SEMVER_PATH);
+    if (semverMatch) {
+      const requestedVersion = semverMatch[1];
+      const versions = await getVersions(env.ARTIFACTS, mount);
+      if (versions.includes(requestedVersion)) {
+        exactPinnedHit = true;
+      } else {
+        const fallback = resolvePinnedFallback(versions, requestedVersion);
+        if (fallback) {
+          resolvedPath = `/${fallback}${requestPath.slice(requestedVersion.length + 1)}`;
+        }
+      }
+    }
+  }
+
   const bareVersionMatch = resolvedPath.match(/^\/([^/]+)$/);
   if (bareVersionMatch && (bareVersionMatch[1] === "latest" || parseSemver(bareVersionMatch[1]))) {
     return redirect(`/${mount}${resolvedPath}/`, 301);
@@ -94,7 +117,10 @@ async function versionedArtifactResponse(request, env, ctx, mount, pathname) {
     return redirect(`/${mount}${resolvedPath}index.json`, 302);
   }
 
-  const isImmutableArtifact = !isAlias && SEMVER_PATH.test(requestPath);
+  // Only an exact pinned directory hit is immutable. Resolved fallbacks (like
+  // aliases) revalidate, since the version they point at can shift as patches
+  // land on the line.
+  const isImmutableArtifact = exactPinnedHit;
   const cacheControl = isImmutableArtifact
     ? IMMUTABLE_CACHE_CONTROL
     : REVALIDATE_CACHE_CONTROL;
@@ -286,6 +312,39 @@ export function findMatchingVersion(versions, requestedMajor, requestedMinor) {
     if (!parsed || parsed.major !== requestedMajor) return false;
     return requestedMinor === undefined || parsed.minor === requestedMinor;
   });
+}
+
+/**
+ * Resolve a pinned semver whose exact version directory is not published to the
+ * nearest release it should map to: the highest release at-or-below the request
+ * on the same major.minor line, falling back to the highest at-or-below release
+ * in the same major. Staying at-or-below keeps a frozen 3.0.x doc pointing at
+ * 3.0.x artifacts rather than jumping forward to a newer minor.
+ *
+ * A stable request excludes prerelease candidates so a missing stable pin never
+ * silently resolves to a release candidate; a prerelease request also accepts
+ * lower prereleases (and stables) on the line. Returns undefined when nothing in
+ * the same major qualifies.
+ */
+export function resolvePinnedFallback(versions, requested) {
+  const parsed = parseSemver(requested);
+  if (!parsed) return undefined;
+
+  const wantStable = parsed.prerelease.length === 0;
+  const eligible = (candidate) => {
+    const p = parseSemver(candidate);
+    if (!p || p.major !== parsed.major) return false;
+    if (wantStable && p.prerelease.length > 0) return false;
+    return compareVersions(candidate, requested) <= 0;
+  };
+
+  const sameMinor = versions
+    .filter((candidate) => eligible(candidate) && parseSemver(candidate).minor === parsed.minor)
+    .sort((a, b) => compareVersions(b, a));
+  if (sameMinor[0]) return sameMinor[0];
+
+  const sameMajor = versions.filter(eligible).sort((a, b) => compareVersions(b, a));
+  return sameMajor[0];
 }
 
 export function clearVersionCacheForTests() {
