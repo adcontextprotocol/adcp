@@ -24,7 +24,15 @@ narrative: |
   (e.g., via `--context` on `adcp storyboard run` once the CLI supports it).
 
 context:
-  governance_agent_url: "https://test-agent.adcontextprotocol.org"
+  # Option B (#5665): default the governance agent to a seller-local stub served
+  # by the seller's own comply_test_controller, instead of the external training
+  # agent. This removes the counterparty-supplied-URL egress/SSRF surface (the
+  # seller calls its own controller) and lets sellers without an external
+  # governance agent still exercise the denial path. NOTE: depends on the runner
+  # exposing a controller-self-URL placeholder (cf. {{runner.webhook_url:...}});
+  # {{runner.controller_url}} does not exist yet — adcp-client support required.
+  # An explicit --context governance_agent_url still overrides this default.
+  governance_agent_url: "{{runner.controller_url}}/stub-governance-agent"
 
 agent:
   interaction_model: media_buy_seller
