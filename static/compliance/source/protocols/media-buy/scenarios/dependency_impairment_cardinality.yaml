@@ -12,6 +12,17 @@ required_tools:
   - update_media_buy
   - comply_test_controller
 
+# Capability gate: this scenario grades the snapshot-coherence surface, so it
+# runs only for sellers that declare media_buy.propagation_surfaces including
+# "snapshot". Webhook-only or out_of_band sellers grade not_applicable instead
+# of false-failing on a contract that does not apply to them — the opt-out the
+# propagation_surfaces schema already documents (get-adcp-capabilities-response.json)
+# but that was never wired into this scenario. Requires runner support for the
+# `contains:` matcher (adcp-client >= 7.70).
+requires_capability:
+  path: media_buy.propagation_surfaces
+  contains: "snapshot"
+
 narrative: |
   The base dependency_impairment scenario tests forward + inverse + health-iff
   with one creative on one package — a malicious or buggy seller can pass the
