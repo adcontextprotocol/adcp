@@ -26,6 +26,9 @@ const logger = createLogger('org-filters');
 /** Organization has an active, non-canceled subscription */
 export const MEMBER_FILTER = `subscription_status = 'active' AND subscription_canceled_at IS NULL`;
 
+/** Not a member (for prospect/non-member queries) */
+export const NOT_MEMBER = `(subscription_status IS DISTINCT FROM 'active' OR subscription_canceled_at IS NOT NULL)`;
+
 /**
  * TS-side mirror of MEMBER_FILTER for callers that already have the row in
  * memory and don't want to round-trip through SQL. A canceled-but-still-in-
@@ -87,13 +90,10 @@ export const HAS_ENGAGED_USER = `(
 )`;
 
 /** Engaged tier: not a member, but has engaged users */
-export const ENGAGED_FILTER = `NOT (${MEMBER_FILTER}) AND ${HAS_ENGAGED_USER}`;
+export const ENGAGED_FILTER = `${NOT_MEMBER} AND ${HAS_ENGAGED_USER}`;
 
 /** Registered tier: not a member, no engaged users, but has at least one user */
-export const REGISTERED_FILTER = `NOT (${MEMBER_FILTER}) AND NOT ${HAS_ENGAGED_USER} AND ${HAS_USER}`;
-
-/** Not a member (for prospect/non-member queries) */
-export const NOT_MEMBER = `NOT (${MEMBER_FILTER})`;
+export const REGISTERED_FILTER = `${NOT_MEMBER} AND NOT ${HAS_ENGAGED_USER} AND ${HAS_USER}`;
 
 // =============================================================================
 // Aliased filters (for use with 'o' alias, common in admin routes)
@@ -101,6 +101,9 @@ export const NOT_MEMBER = `NOT (${MEMBER_FILTER})`;
 
 /** Organization has an active, non-canceled subscription (aliased) */
 export const MEMBER_FILTER_ALIASED = `o.subscription_status = 'active' AND o.subscription_canceled_at IS NULL`;
+
+/** Not a member (for prospect/non-member queries) (aliased) */
+export const NOT_MEMBER_ALIASED = `(o.subscription_status IS DISTINCT FROM 'active' OR o.subscription_canceled_at IS NOT NULL)`;
 
 /** Organization has at least one user (site account or Slack user) (aliased) */
 export const HAS_USER_ALIASED = `(
@@ -135,13 +138,10 @@ export const HAS_ENGAGED_USER_ALIASED = `(
 )`;
 
 /** Engaged tier: not a member, but has engaged users (aliased) */
-export const ENGAGED_FILTER_ALIASED = `NOT (${MEMBER_FILTER_ALIASED}) AND ${HAS_ENGAGED_USER_ALIASED}`;
+export const ENGAGED_FILTER_ALIASED = `${NOT_MEMBER_ALIASED} AND ${HAS_ENGAGED_USER_ALIASED}`;
 
 /** Registered tier: not a member, no engaged users, but has at least one user (aliased) */
-export const REGISTERED_FILTER_ALIASED = `NOT (${MEMBER_FILTER_ALIASED}) AND NOT ${HAS_ENGAGED_USER_ALIASED} AND ${HAS_USER_ALIASED}`;
-
-/** Not a member (for prospect/non-member queries) (aliased) */
-export const NOT_MEMBER_ALIASED = `NOT (${MEMBER_FILTER_ALIASED})`;
+export const REGISTERED_FILTER_ALIASED = `${NOT_MEMBER_ALIASED} AND NOT ${HAS_ENGAGED_USER_ALIASED} AND ${HAS_USER_ALIASED}`;
 
 // =============================================================================
 // Helper types
