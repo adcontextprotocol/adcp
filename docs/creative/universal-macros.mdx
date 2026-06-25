@@ -689,7 +689,16 @@ Sales agents must translate universal macros to their ad server's native syntax.
 
 ### Click Tracker Insertion
 
-Sales agents must automatically insert click tracking macros into clickable elements:
+A click on a creative produces two distinct signals, and AdCP models them as **separate asset slots**:
+
+| Slot | Asset | Role | OpenRTB Native parallel |
+|------|-------|------|--------------------------|
+| `landing_page_url` | `url` | The single terminal destination the user navigates to. | `link.url` |
+| `click_tracker` | `pixel_tracker` (`event: click`) | A measurement hop that fires on click **without** navigating the user there. Any number may be present. | `link.clicktrackers[]` |
+
+This separation is inherited from IAB OpenRTB Native: a click has **exactly one destination** and **N fire-and-forget click trackers** (the `link.fallback` deeplink is an alternative form of that one destination, not a second one). At serve time the sales agent fires every `click_tracker` as a count beacon and navigates the user to the one `landing_page_url`. Both slots are defined in [Asset Types](/docs/creative/asset-types).
+
+**Macro insertion.** Sales agents insert their ad server's click-tracking macro ahead of the destination so the platform records the click and forwards the user. The destination encoding is ad-server-specific (GAM uses append-style `%%CLICK_URL_UNESC%%<landing>`; other servers ship a self-contained `?...&rurl=<encoded-landing>` form):
 
 **Original creative**:
 ```html
@@ -700,6 +709,12 @@ Sales agents must automatically insert click tracking macros into clickable elem
 ```html
 <a href="%%CLICK_URL_UNESC%%https://brand.com/product">Click here</a>
 ```
+
+**Preserving the buyer's clickthrough parameters.** Inserting a click macro can strip query parameters already present on the buyer-supplied clickthrough URL — including ones the agent does not recognize, such as a buyer-side vendor's click identifier — which silently breaks downstream attribution. An agent that forwards these parameters applies the encoding discipline [Substitution safety](#substitution-safety-catalog-item-macros) defines for catalog-item values (Unicode NFC normalization, then percent-encoding to the RFC 3986 `unreserved` set) to any value derived from buyer- or third-party-supplied data, so preservation does not reopen URL-context breakout, CRLF injection, or bidi spoofing. Whether to make parameter preservation a normative requirement is part of the click-tracking proposal under working-group review ([#5693](https://github.com/adcontextprotocol/adcp/issues/5693)).
+
+**Getting a buyer's click identifier onto the landing.** A `click_tracker` is a count beacon: it records the click but does not place its identifier into the user's landing session, because only `landing_page_url` is navigated. When a buyer needs its click identifier to reach the landing (for click-level conversion attribution), the reliable, redirect-free pattern is to put that identifier directly on the `landing_page_url` it supplies — either as a literal value (`&buyer_click_id=abc123`) or composed from an AdCP macro the buyer controls (`&buyer_click_id={CREATIVE_ID}`, expanded by the sales agent at serve time). `{buyer_click_id}` is not itself an AdCP macro — the macro set is a closed registry (see [Available Macros](#available-macros-by-format)), so the buyer supplies the value, not a new token. Because the identifier rides on the one navigated URL, no party's redirect has to be the terminal hop. This works for any identifier the buyer can supply or derive ahead of serve time, and avoids multi-party redirect chaining entirely.
+
+Identifiers that can only be minted at click time (inside a vendor's own redirect) cannot survive on a count beacon, and routing the user *through* the vendor's redirect so its identifier lands requires a chaining contract AdCP does not define. A buyer-declarable "this tracker must be in the navigation path" slot semantic is under working-group discussion ([#5693](https://github.com/adcontextprotocol/adcp/issues/5693)); until it lands, the count beacon is the default and in-path identifier survival is out of scope.
 
 ### Mapping Storage
 
