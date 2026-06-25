@@ -11,7 +11,7 @@ You don't need to read this page to use AdCP. You do need to read it to extend i
 
 This is the meta-protocol — the philosophical framework behind the calls we made. Each principle is a load-bearing decision that shows up the moment someone proposes "just add this one field." We've made these calls deliberately, and we revisit them deliberately. The goal here is to give contributors enough context to either propose something that fits the existing shape or to argue, with both feet on the ground, for changing the shape itself.
 
-Two principles bounce most RFCs that reach the working group: **the schema is the spec** and **compose before adding a task**. They sit first because they're load-bearing for the rest. Five supporting principles follow. A "where the surface doesn't yet follow these" section at the end names the contradictions we know about — the principles are credible only to the extent that we're honest about them.
+Two principles bounce most RFCs that reach the working group: **the schema is the spec** and **compose before adding a task**. They sit first because they're load-bearing for the rest. Six supporting principles follow. A "where the surface doesn't yet follow these" section at the end names the contradictions we know about — the principles are credible only to the extent that we're honest about them.
 
 Each principle has the same structure: the rule, why we chose it, what it rules out, and the exception path — when pushing back on the principle is the right move.
 
@@ -45,7 +45,7 @@ Every new top-level task is a permanent surface every implementer eventually has
 
 ---
 
-## Five supporting principles
+## Six supporting principles
 
 ### 3. The brief drives discovery; targeting is an input, not a step
 
@@ -118,6 +118,22 @@ A related invariant lives at the account boundary: **account ownership, not crea
 **When you'd be right to push.** When the asymmetry is bad enough that a per-deployer policy doesn't solve the coordination problem — when buyers and sellers can't economically agree on enforcement without a protocol-level rule. Schema-level enforcement is rare and earned; argue for it when you have it, not as the first move.
 
 → See [Trust & Security — Governance](/docs/trust#governance) for what AdCP provides versus what it explicitly does not, and [Governance — Embedded human judgment](/docs/governance/embedded-human-judgment) for how HITL surfaces in the protocol.
+
+---
+
+### 8. Reference data: own the namespace and the resolution contract, not the corpus
+
+AdCP defines the **namespace** (which classification systems exist and the shape of their IDs) and the **resolution contract** (resolve a name against a declared source rather than infer an identifier from a model's training data, and surface ambiguity rather than pick one). It does not publish the underlying code↔name tables — the **corpus** — unless AdCP is itself the authority that mints the values. A code is identity and travels losslessly on the wire; a name is a *rendering* of that code, reconstituted at the edge by whoever displays it, from a lookup they already hold.
+
+**Why we chose it.** The durable asset is the contract, not the corpus. Publishing someone else's reference table makes the registry a downstream mirror that has to track an external publisher forever — owning its correctness, its refresh cadence, and its license exposure, with no ops function behind any of it. And a wrong-but-canonical table is worse than no table: agents hallucinate, and they trust an authority stamp precisely when they shouldn't, so a stale or fabricated entry misdirects real spend silently. The name doesn't need to travel or be centralized — it's a dimension attribute, replicated to the edge once and joined locally, not denormalized onto every request and not fetched from a central service per lookup.
+
+**What this rules out.** A canonical geo-metro registry — a versioned DMA `code → name` table the ecosystem fetches as source of truth (proposed and declined). The proposal's first commit shipped fabricated codes numbered sequentially by market rank — contradicting both the source authority and this repo's own examples — and only a human reviewer caught it. There is no automated authority check, so that error class recurs. The names are also a proprietary, trademarked corpus the project has no license to redistribute. The protocol already handles the read direction correctly: `geo-delivery-metrics` carries an optional `geo_name` beside the required `geo_code`, so a seller *can* render from its own catalog rather than force the buyer to reconstruct a name from a bare code. It equally rules out the opposite over-correction — stapling display names onto targeting values as authoritative. "Albany" names two different DMAs (NY and GA); targeting values are IDs in a declared namespace, and a name rides along only as a non-authoritative label, if at all.
+
+**When you'd be right to push.** When AdCP itself mints the values, owning the table is interop, not data-ops — `v1-canonical-mapping.json` is the legitimate example: AdCP defined both the v1 format vocabulary and the v2 canonical it projects to, the set is additive (entries are never removed, only deprecated), and there is no external rights-holder. And when a single external authority publishes openly (ISO 3166, Eurostat NUTS, ONS ITL, GeoNames under CC-BY), the project *may* ship a thin **generated** mirror with provenance and a regeneration script — a projection, explicitly non-authoritative, demoted the moment the source drifts or a second source disagrees. The bar: name the authority, name the license, and explain why a fetch-once-cache-locally lookup doesn't already solve it.
+
+**Reviewer test.** Is there a single external authority for these values, and is it us? If an external body owns the truth, AdCP declares the namespace and the resolution contract and defers the bytes. "Everyone re-implements this annoying mapping" is a library opportunity, not a protocol mandate.
+
+→ The same anti-centralization instinct as principle 5, applied to reference data instead of trust: the [Registry](/docs/registry) helps resolve and discover, it does not become the ecosystem's lookup table.
 
 ---
 
