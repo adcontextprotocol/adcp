@@ -527,6 +527,60 @@ When you create a media buy via `create_media_buy`, the sales agent:
 
 4. **Leaves VAST macros unchanged** (for video formats)
 
+#### Implementing translation with the SDK
+
+Sales agents don't have to hand-roll the rewrite. The `@adcp/sdk` package ships a
+`translateUniversalMacros` helper that applies a per-macro mapping to a tracking
+URL's query-parameter values. Each macro maps to either a **native** ad-server token
+(left raw, filled by the ad server at impression time) or a concrete **value** the
+agent already knows (substituted now, percent-encoded per RFC 3986):
+
+```typescript
+import { translateUniversalMacros } from '@adcp/sdk';
+
+const mapping = {
+  // AdCP identifiers the agent knows at media-buy creation → concrete values
+  '{MEDIA_BUY_ID}': { value: 'mb_spring_2025' },
+  '{PACKAGE_ID}': { value: 'pkg_ctv_prime' },
+  // Runtime macros → the ad server's native syntax (Google Ad Manager shown)
+  '{CACHEBUSTER}': { native: '%%CACHEBUSTER%%' },
+  '{DEVICE_ID}': { native: '%%ADVERTISING_IDENTIFIER_PLAIN%%' },
+};
+
+const { url, dropped_params, unmapped_macros, dropped_consent_macros, suspect_native_values } =
+  translateUniversalMacros(
+    'https://track.brand.com/imp?buy={MEDIA_BUY_ID}&pkg={PACKAGE_ID}&cb={CACHEBUSTER}&device={DEVICE_ID}',
+    mapping,
+  );
+
+// url:
+//   https://track.brand.com/imp?buy=mb_spring_2025&pkg=pkg_ctv_prime&cb=%%CACHEBUSTER%%&device=%%ADVERTISING_IDENTIFIER_PLAIN%%
+// dropped_params: []           (every macro was mapped)
+// unmapped_macros: []
+// dropped_consent_macros: []   (no consent macro was dropped)
+// suspect_native_values: []    (no value entry looks like a native token)
+```
+
+Behavior:
+
+- **`native` entries are inserted verbatim** — `%%CACHEBUSTER%%` is not percent-encoded,
+  so the ad server still recognizes it.
+- **`value` entries are RFC-3986 percent-encoded**, so a value containing reserved
+  characters can't break or inject into the URL.
+- **A parameter whose universal macro the agent does not support is dropped entirely**
+  (its key is reported in `dropped_params`, the macro in `unmapped_macros`) — better to
+  omit a tracker the agent can't fill than to emit a broken one. A dropped
+  consent/privacy macro (`{GDPR_CONSENT}`, `{US_PRIVACY}`, …) is also surfaced in
+  **`dropped_consent_macros`** — **inspect it** so a forgotten mapping doesn't silently
+  ship a consent-degraded pixel.
+- **Already-minted parameters pass through untouched** — `pkg_id=123456` (no macro) is
+  left exactly as-is.
+- **`suspect_native_values`** flags any `value` entry shaped like a native token
+  (`%%…%%`, `{{…}}`, `${…}`, `[UPPER_SNAKE]`) — almost always a mapping that should have
+  used the `native` arm.
+- Only query-parameter **values** are translated; a macro in a key position is left
+  untouched.
+
 ### 4. Impression Time
 
 The publisher's ad server replaces remaining macros with actual values:
