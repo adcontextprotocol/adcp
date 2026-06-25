@@ -12,6 +12,10 @@ required_tools:
   - update_media_buy
   - comply_test_controller
 
+requires_capability:
+  path: media_buy.propagation_surfaces
+  contains: "snapshot"
+
 narrative: |
   Per the dependency-impairment surface ([adcp#2855](https://github.com/adcontextprotocol/adcp/issues/2855)
   and `core/impairment.json`), sellers MUST propagate resource-state transitions

@@ -12,6 +12,10 @@ required_tools:
   - update_media_buy
   - comply_test_controller
 
+requires_capability:
+  path: media_buy.propagation_surfaces
+  contains: "snapshot"
+
 narrative: |
   The base dependency_impairment scenario tests forward + inverse + health-iff
   with one creative on one package — a malicious or buggy seller can pass the
