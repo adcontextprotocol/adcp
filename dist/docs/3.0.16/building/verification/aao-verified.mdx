@@ -1,0 +1,319 @@
+---
+title: AAO Verified
+sidebarTitle: AAO Verified
+description: "The public trust mark for AdCP agents. Two qualifiers — Verified (Spec) for wire-format conformance, Verified (Sandbox) for production-surface sandbox tolerance. Earn either or both."
+"og:title": "AdCP — AAO Verified"
+---
+
+**Status**: Request for Comments
+**Last Updated**: May 11, 2026
+
+**AAO Verified** is the public trust mark for AdCP agents. It carries one of two qualifiers in parens — **(Spec)** or **(Sandbox)** — and may carry both. The qualifier names *which axis* of verification an agent has earned.
+
+It is two axes, not two tiers. The qualifiers answer different questions:
+
+- **Verified (Spec)** — your AdCP protocol implementation matches the spec. Storyboards pass somewhere — could be a test deployment, could be local dev. Wire format, task shape, error semantics, state-machine transitions all check out. Attests *wire-format conformance*, not production tolerance.
+- **Verified (Sandbox)** — your **real production endpoint** correctly honors `account.sandbox: true`. AAO runs the full storyboard suite against your registered `agent_url` with sandbox-flagged traffic; your prod stack processes it with schema-valid responses, correct lifecycle transitions, proper error envelopes, and **no real-world side effects** (no real spend, no real persistence, no real platform calls). Attests *the production code path tolerates test traffic correctly*.
+
+An agent can earn either axis or both. A pure protocol wrapper around a stub ad server is honestly **Verified (Spec)** — that's what test agents and dev environments *are*. A real production seller whose prod URL handles sandbox traffic across the full storyboard suite earns **Verified (Spec + Sandbox)**, the strongest claim available.
+
+The two axes are **orthogonal** — neither is a prerequisite for the other. A seller without a separate test deployment (production-only platforms that have no test-mode surface) can earn **(Sandbox)** directly by exposing their prod URL to AAO's runner with sandbox flagging — no separate test endpoint needed. Conversely, a test agent that can never serve real impressions earns **(Spec)** as a complete claim.
+
+The badge surfaces whichever qualifiers are earned.
+
+<Tip>
+**TL;DR for sellers.** Both qualifiers run the same storyboards through the same AAO compliance heartbeat. The difference is *where* the runner targets and *what* the seller's stack does with sandbox-flagged traffic:
+
+- **(Spec)** runs storyboards against a test deployment / local dev / a sandbox endpoint. The agent's prod surface is not exercised.
+- **(Sandbox)** runs storyboards against the seller's registered production `agent_url` with `account.sandbox: true` on every request. The seller's prod stack MUST honor the flag — return schema-valid responses, transition state correctly, surface errors properly, and have **zero real-world side effects** (no billing, no persistence beyond the sandbox account, no third-party platform calls).
+
+The seller-side sandbox gate is normative: every sandbox-flagged production request must resolve to a persisted sandbox account, not a live account wearing a `sandbox: true` claim. See [comply_test_controller](/dist/docs/3.0.16/building/by-layer/L3/comply-test-controller) for the dev-side deterministic-testing affordance; Sandbox grading itself does not require or use the controller.
+</Tip>
+
+## What each axis certifies
+
+### Verified (Spec)
+
+| | |
+|---|---|
+| **Tested against** | Any endpoint the agent owner registers — test deployment, local dev, sandbox-only stack. The runner does not distinguish. |
+| **What it proves** | AdCP wire format, task shape, error semantics, state-machine transitions, declared specialisms map to working tools, schema conformance, filter behavior, idempotency semantics — exercised in isolation from real-world production state. |
+| **How** | Storyboards from the [Compliance Catalog](/dist/docs/3.0.16/building/verification/compliance-catalog) run against the registered agent URL on AAO's compliance heartbeat. |
+| **Cadence** | ~1h heartbeat |
+| **Eligibility** | Any agent that passes the storyboards for its declared specialisms + holds an active AAO membership with API-access tier |
+| **Status** | **Available now** |
+
+### Verified (Sandbox)
+
+| | |
+|---|---|
+| **Tested against** | Your registered production `agent_url`, with `account.sandbox: true` on every request. |
+| **What it proves** | Your production code path correctly honors sandbox flagging — same storyboards as (Spec), but exercised against the real prod stack buyers actually hit. Schema-valid responses, correct lifecycle transitions, proper error envelopes, **zero real-world side effects**. |
+| **How** | Same storyboard suite as (Spec), driven against the seller's registered URL with sandbox-flagged traffic. No separate canonical-campaign infrastructure. |
+| **Cadence** | Same ~1h heartbeat as (Spec) |
+| **Eligibility** | Same as (Spec), PLUS the seller's prod surface accepts `account.sandbox: true` requests and processes them without persisting real state, calling third-party platforms, or billing |
+| **Status** | **Foundation shipping** in [#4382](https://github.com/adcontextprotocol/adcp/pull/4382) (account.sandbox schema gate), [#4384](https://github.com/adcontextprotocol/adcp/pull/4384) (live-mode denial storyboard). Full grading framework following. |
+
+The (Sandbox) qualifier replaces the earlier draft's `Verified (Live)` framing. The change: instead of attesting "your real-money production code path delivers impressions correctly" (canonical campaigns running through your stack), (Sandbox) attests "your real production code path correctly handles sandbox-flagged traffic across the full storyboard suite." Both are real-prod-surface claims; the difference is what gets tested. (Sandbox) is universally achievable across specialisms with no new AAO operational infrastructure. See [#4379](https://github.com/adcontextprotocol/adcp/issues/4379) for the reframe verdict.
+
+<Note>
+**Re: `comply_test_controller`**: the controller is a **dev/staging-only** affordance for adopters' own integration testing. AAO's (Sandbox) grading does not require or use it. Sellers MAY implement controller endpoints in their dev environment to support deterministic local testing, but the production stack does not need to expose `comply_test_controller` to earn (Sandbox). The seller-side sandbox gate is what (Sandbox) attests — schema and lifecycle correctness under flagged traffic, on real prod. How the dev-time test surface itself is stood up — DB-backed `seed_*` for state-local sellers vs the SDK's `TestControllerBridge` for upstream-proxy sellers — is covered in [Test surfaces and the storyboard loop](/dist/docs/3.0.16/building/verification/conformance#test-surfaces-and-the-storyboard-loop).
+</Note>
+
+## Naming history
+
+Earlier drafts (#3001) proposed "AdCP Conformant" and "AAO Verified" as two distinct mark names — one per axis. This page uses a **single brand mark with axis qualifiers in parens** instead. Same shape, different naming convention:
+
+| Earlier draft | Current |
+|---|---|
+| AdCP Conformant | AAO Verified (Spec) |
+| AAO Verified | AAO Verified (Live) |
+| AdCP Conformant + AAO Verified | AAO Verified (Spec + Live) |
+
+The reasoning behind the rename: a single brand word ("Verified") with composable qualifiers is cleaner for buyer messaging. Buyers don't have to learn two distinct marks; they read the qualifier inline. Test agents earning **Verified (Spec)** is a complete, dignified claim — they're test agents, that's the whole point — rather than a "junior" Conformant tier. The wire format reflects this: a single `verification_modes: string[]` array in the JWT and registry API, where an agent might have `["spec"]` or `["spec", "sandbox"]`. One badge URL per agent + role; the qualifier evolves as axes are earned, embedded badges automatically reflect the current state.
+
+The earlier draft's rejection of "Tier 1 / Tier 2" remains correct: tiering the same word — *verified* — across two different kinds of claim muddies the message. The two-axis qualifier framing inherits that rejection while keeping the brand word singular.
+
+## Coverage gaps are explicit
+
+Under the (Sandbox) framing, every applicable storyboard is attempted against the seller's production endpoint with sandbox-flagged traffic. There's no observability carve-out — universal storyboards (`signed_requests`, `pagination_integrity`, etc.) run as part of the standard suite. The registry keeps not-selected items separate from selected-but-skipped items: run-mode exclusions ("this was a sandbox-only run, so live-only probes were not selected"), declined optional capabilities ("the seller did not claim this feature"), and deterministic-test-surface gaps ("the production endpoint correctly omits `comply_test_controller`"). Those are different asks of the seller and MUST NOT be collapsed into one generic "skipped optional things" bucket. The (Sandbox) qualifier is a verification profile over that evidence: it defines which not-selected and skipped classes are acceptable for the Sandbox badge and which remain blockers. See [#4379](https://github.com/adcontextprotocol/adcp/issues/4379) for the framing decision that replaced the earlier (Live) observability model.
+
+## Reading a badge
+
+Badges render as a single shields.io-style image with the qualifiers in parens:
+
+| Display | Meaning |
+|---|---|
+| `AAO Verified Sales Agent (Spec)` | Storyboards pass for declared media-buy specialisms against a test deployment / dev / sandbox-only endpoint. Wire format and protocol semantics are correct; production-stack sandbox tolerance is not yet attested. Common for test agents and pre-production rollouts. |
+| `AAO Verified Sales Agent (Spec + Sandbox)` | Both axes earned. The strongest claim. The agent's registered production URL handles the full storyboard suite under sandbox-flagged traffic with no real-world side effects. |
+| `AAO Verified Sales Agent (Sandbox)` | Storyboards pass against the seller's registered production endpoint under `account.sandbox: true`. The seller's prod stack correctly honors the sandbox gate. Common for production-only sellers without a separate test deployment. |
+| `AAO Verified — Not Verified` | No badge issued for this agent + role, or the badge has been revoked. |
+
+The badge URL is stable per agent + role. As an agent earns or loses an axis, the SVG content updates without changing the URL — embedded badges automatically reflect the current state.
+
+## Declare specialisms
+
+```json
+// agent declares its claims in get_adcp_capabilities
+{
+  "supported_protocols": ["media_buy", "creative"],
+  "specialisms": [
+    "sales-broadcast-tv",
+    "sales-guaranteed",
+    "creative-ad-server"
+  ]
+}
+```
+
+`specialisms` is the badge-routing field. Omitting it means the agent still runs
+the universal and protocol-baseline storyboards implied by `supported_protocols`,
+but no specialism badge can be issued because the verification engine has no
+narrow claim to evaluate.
+
+## How agents earn each axis
+
+The axes are verification profiles over storyboard evidence, not separate runner implementations. The runner records what passed, failed, or skipped and why; the Spec and Sandbox profiles decide whether that evidence is sufficient for the public qualifier.
+
+Buyer-specific requirements are separate. A buyer can require a public qualifier, a declared protocol or specialism, one or more optional capabilities, and a stricter position on skips. For example, a buyer that needs proposal workflows can reject an otherwise clean run where `media_buy.supports_proposals: false` caused proposal storyboards to skip. A buyer doing deterministic integration testing can ask for a dev/staging endpoint with `comply_test_controller` even though the production Sandbox qualifier does not require exposing that controller.
+
+### To earn Verified (Spec):
+
+1. Implement AdCP for your declared specialisms.
+2. Pass the storyboards on your test-mode endpoint. (Run them locally first via `@adcp/sdk/testing` to see what's failing.)
+3. Hold an active AAO membership at an API-access tier.
+
+The compliance heartbeat picks it up automatically — no manual enrollment needed beyond [registering your agent](/dist/docs/3.0.16/building/index).
+
+### To earn Verified (Sandbox):
+
+A seller earns (Sandbox) by:
+
+1. Registering their **production `agent_url`** with AAO. This is the same registration that earns (Spec) — no separate "compliance account" or "test deployment" needed.
+2. Implementing the **sandbox-account gate** in their production stack: when a request arrives with `account.sandbox: true`, the seller verifies the targeted account is a sandbox account in the persisted record (not trusting the field), and processes the request with full schema/lifecycle correctness while producing **zero real-world side effects** — no real spend, no real ad-server orders, no third-party platform calls, no production persistence beyond the sandbox account's bounded state.
+3. Holding an active AAO membership at an API-access tier.
+
+That's it. The compliance heartbeat runs the same storyboards as (Spec), but targets the registered production URL with `account.sandbox: true` on every request. Pass → (Sandbox) qualifier issues.
+
+**Key requirement: sandbox-account isolation.** Sellers MUST persist a clear sandbox/live distinction at the account level. A request asserting `sandbox: true` against a live account MUST be refused with a structured error — see [#4028](https://github.com/adcontextprotocol/adcp/issues/4028) and the `comply-controller-mode-gate` storyboard for the canonical denial check. Cross-mode leakage is the failure mode (Sandbox) attests against.
+
+## Decentralized verification
+
+Each badge is backed by a signed JWT (EdDSA / Ed25519). AAO publishes its public key set at `/.well-known/jwks.json` so any third party can verify a badge's authenticity without calling AAO's API.
+
+The token claims:
+
+```json
+{
+  "iss": "https://aao.org",
+  "sub": "https://your-agent.example.com/mcp",
+  "aud": "aao-verification",
+  "jti": "<uuid>",
+  "iat": 1745510400,
+  "exp": 1748102400,
+  "role": "media-buy",
+  "adcp_version": "3.0",
+  "verified_specialisms": ["sales-broadcast-tv", "sales-guaranteed"],
+  "verification_modes": ["spec"],
+  "protocol_version": "3.0.0"
+}
+```
+
+`adcp_version` is the AdCP release this badge was issued against (`MAJOR.MINOR`). Pairs with the `(agent_url, role, adcp_version)` identity used by the badge URL routes. **Verifiers MUST check `adcp_version` against the AdCP version they care about** — a 3.0 token presented as proof of 3.1 conformance is not authoritative. The signed claim is shape-validated at signing time (`^[1-9][0-9]*\.[0-9]+$`); verifiers SHOULD apply the same regex defensively.
+
+`verification_modes` is the array of axes earned. `["spec"]` for test-deployment storyboard pass only; `["spec", "sandbox"]` for agents whose production endpoint also passes under sandbox-flagged traffic. `protocol_version` is the full semver of the spec build the badge was tested against — informational metadata for support and audits.
+
+Runner coverage is reported separately from badge mode. A production-path sandbox run can have zero failed assertions and still be `partial` when selected controller-dependent scenarios skip because the production endpoint correctly omits `comply_test_controller`. That is useful evidence, but badge issuance uses the registry's per-storyboard status, not-selected reasons, and skip reasons, not just the failed-step count. Expected sandbox-mode exclusions, optional-capability skips, and missing-required-surface skips remain visible as separate signals so buyers can tell "not part of this run" from "selected but not executed" from "not implemented by this seller."
+
+The registry API is authoritative for real-time status; the JWT is a 30-day cacheable proof.
+
+## Lifecycle
+
+Verification is continuously re-evaluated, not a one-time certificate.
+
+### (Spec)
+- **Issued** — first heartbeat with all declared-specialism storyboards passing + active membership.
+- **Active** — re-checked every heartbeat; JWT auto-renewed.
+- **Degraded** — first storyboard regression starts a 48-hour grace; the badge continues to render (Spec) while the operator investigates.
+- **Revoked** — 48h continuous failure → `(Spec)` qualifier drops from the badge. (Sandbox), if held, is unaffected — the axes are independent.
+- **Recovery** — passing storyboards reissue (Spec) automatically.
+
+### (Sandbox)
+- **Issued** — first heartbeat whose Sandbox verification profile passes against the registered production URL under `account.sandbox: true` + active membership. The profile requires all buyer-visible sandbox-path assertions to pass, treats production-forbidden controller phases as not-selected run-mode exclusions, and keeps optional-capability skips visible.
+- **Active** — re-checked every heartbeat; JWT auto-renewed.
+- **Degraded** — first Sandbox-profile regression starts a 48-hour grace; the badge continues to render (Sandbox) while the operator investigates. Cross-mode leakage (a sandbox request producing real-world side effects, or a live account accepting sandbox-flagged traffic) MAY skip the grace period and revoke immediately — that's the (Sandbox) attestation's whole point.
+- **Revoked** — 48h continuous failure → `(Sandbox)` qualifier drops. (Spec), if held, is unaffected.
+- **Recovery** — passing the Sandbox profile reissues (Sandbox).
+
+Membership lapse revokes the entire badge regardless of test results — public trust marks require active membership.
+
+## Mark semantics
+
+A seller MAY hold:
+
+- **(Spec) only** — storyboards pass on a test-mode endpoint; (Sandbox) not enrolled, or the production endpoint has not yet passed under sandbox-flagged traffic. Common for test agents, sandboxes, and pre-production rollouts.
+- **(Sandbox) only** — storyboards pass against the registered production endpoint under `account.sandbox: true`. Common for production-only platforms with no separate test-mode surface.
+- **(Spec + Sandbox)** — the strongest claim. Both axes verified independently.
+- **Neither**
+
+The two axes are evaluated independently. A storyboard regression on the test endpoint revokes (Spec) without affecting (Sandbox); a sandbox-path regression on the production endpoint revokes (Sandbox) without affecting (Spec). Sellers can earn either in either order.
+
+## Per-version badges
+
+Each badge is identified by **(agent, role, AdCP version)** — a third axis on top of (Spec) and (Sandbox). An agent can hold parallel badges across AdCP releases. For example, a media-buy agent that ships an upgrade for AdCP 3.1 might hold both:
+
+- `AAO Verified Media Buy Agent 3.0 (Spec)` — earned earlier, still valid
+- `AAO Verified Media Buy Agent 3.1 (Spec + Sandbox)` — earned after upgrading
+
+Each version is evaluated independently. A 3.0 storyboard regression revokes the 3.0 badge without touching 3.1, and vice versa. Membership lapse revokes every version of an agent's badges atomically (the trust mark is agent-level, not version-level).
+
+The badge label embeds the AdCP version inline between the role and the qualifier: `Media Buy Agent 3.1 (Spec + Sandbox)`.
+
+## Display
+
+### SVG badge
+
+Two URL shapes:
+
+```
+# Legacy: auto-upgrades to the highest active version
+https://agenticadvertising.org/api/registry/agents/{url-encoded-agent-url}/badge/{role}.svg
+
+# Version-pinned: freezes on a specific AdCP release
+https://agenticadvertising.org/api/registry/agents/{url-encoded-agent-url}/badge/{role}/{adcp-version}.svg
+```
+
+Buyers who want auto-upgrade behavior (the embedded image flips from `Media Buy Agent 3.0 (Spec)` to `Media Buy Agent 3.1 (Spec + Sandbox)` automatically when the agent earns 3.1) embed the legacy URL. Buyers who want to call out "verified for AdCP 3.0" specifically embed the version-pinned URL.
+
+Both return a shields.io-style SVG with `Content-Security-Policy: script-src 'none'` and 5-minute caching. Renders teal when verified, grey when not. Unknown agents, unknown roles, and revoked badges all return a grey "Not Verified" variant — the URL never 404s, which makes it safe to embed. Version-pinned URLs at versions the agent never earned also return "Not Verified" (vs. the legacy URL, which shows the current best mark).
+
+### Embed snippet
+
+```bash
+# Legacy (auto-upgrading)
+curl https://agenticadvertising.org/api/registry/agents/{url-encoded-agent-url}/badge/media-buy/embed
+
+# Version-pinned
+curl https://agenticadvertising.org/api/registry/agents/{url-encoded-agent-url}/badge/media-buy/3.0/embed
+```
+
+Returns HTML and Markdown snippets that wrap the SVG in a link back to the agent's AgenticAdvertising.org registry listing. Safe for READMEs, docs, landing pages, and social profiles. As an agent's verification axes or AdCP versions change, the legacy embed automatically reflects the current state — no embed swap needed when (Sandbox) lights up or when the agent ships a new AdCP version.
+
+### Registry filter
+
+The agent registry surfaces filters on either axis independently:
+
+- **"Show me agents that implement AdCP correctly"** → filter by `verification_modes contains 'spec'`
+- **"Show me production endpoints that pass under sandbox-flagged traffic"** → filter by `verification_modes contains 'sandbox'`
+- **"Show me agents with both"** → filter by both
+
+Both queries are valid. Buyers comparing options use (Sandbox); orchestrator developers integrating new agents use (Spec).
+
+### brand.json enrichment
+
+When AgenticAdvertising.org serves brand.json data for a registered brand, agent entries get an `aao_verification` block with full per-version detail:
+
+```json
+"aao_verification": {
+  "verified": true,
+  "verified_at": "2026-04-29T12:34:56.000Z",
+  "badges": [
+    { "role": "media-buy", "adcp_version": "3.1", "verification_modes": ["spec", "sandbox"], "verified_at": "..." },
+    { "role": "media-buy", "adcp_version": "3.0", "verification_modes": ["spec"], "verified_at": "..." }
+  ],
+  "roles": ["media-buy"],
+  "modes_by_role": { "media-buy": ["spec", "sandbox"] },
+  "deprecation_notice": "roles[] and modes_by_role reflect the highest-version badge per role only. A buyer pinned to a specific AdCP version SHOULD read badges[] and filter by adcp_version. Both fields will be removed in AdCP 4.0."
+}
+```
+
+`badges[]` is the canonical shape — one entry per `(role, adcp_version)`, ordered version-DESC. Buyers pinned to a specific AdCP version MUST filter by `adcp_version` rather than reading `modes_by_role` (which flattens to the highest-version entry per role and could mislead a 3.0 buyer into thinking the agent has Sandbox for them when only the 3.1 badge has Sandbox).
+
+`roles[]` and `modes_by_role` are kept as **deprecated aliases** for one release. **Removal target: AdCP 4.0.**
+
+## How to claim each qualifier
+
+### To claim **(Spec)**
+
+1. Hold an active AAO membership with API-access tier.
+2. Declare your `supported_protocols` and `specialisms` in `get_adcp_capabilities`.
+3. Pass the storyboards your declarations obligate (universal + protocol baselines + specialism baselines) at a specific AdCP major version.
+4. The AAO compliance heartbeat issues **AAO Verified (Spec)** automatically and re-verifies on each heartbeat cycle.
+
+### To claim **(Sandbox)**
+
+(Sandbox) is **independent of (Spec)** — sellers without a separate test deployment can earn (Sandbox) directly by exposing their production endpoint to AgenticAdvertising.org's runner with sandbox flagging.
+
+1. Hold an active AAO membership with API-access tier.
+2. Declare your `supported_protocols` and `specialisms` in `get_adcp_capabilities` (same as (Spec)).
+3. Register your **production `agent_url`** with AgenticAdvertising.org. The compliance heartbeat will target it with `account.sandbox: true` on every storyboard request.
+4. Implement the sandbox-account gate in your production stack: verify the targeted account is sandbox in your persisted records (not by trusting the field), and process the request with full schema/lifecycle correctness while producing **zero real-world side effects** — no real spend, no real ad-server orders, no third-party platform calls, no production persistence beyond the bounded sandbox account state.
+5. Pass the Sandbox verification profile: buyer-visible sandbox-path storyboards must pass, not-selected run-mode exclusions are allowed, and optional-capability skips remain visible as scope choices. The production endpoint is not expected to expose `comply_test_controller`; selected controller-dependent deterministic phases are not a Sandbox-badge blocker when the controller is absent from production as required.
+6. If you run a shared production surface that exposes `comply_test_controller` to sandbox principals, pass the [`comply-controller-mode-gate`](https://adcontextprotocol.org/compliance/latest/universal/comply-controller-mode-gate) check for that surface. Canonical two-deployment sellers satisfy the same isolation requirement by not advertising the controller on production at all.
+7. The AgenticAdvertising.org compliance heartbeat issues **AAO Verified (Sandbox)** when the Sandbox profile passes against the registered URL with sandbox-flagged traffic.
+
+Same storyboards as (Spec). Same heartbeat cadence. Different attestation surface: prod, with sandbox flagging, instead of any-registered-endpoint.
+
+## What AAO Verified is not
+
+- **Not a regulatory or financial attestation.** SOC 2, ISO 27001, ISAE 3402 and similar frameworks address operational and financial-control posture — distinct questions, with their own audit paths. AAO Verified is wire-and-delivery correctness for AdCP.
+- **Not hard ground-truth reconciliation.** (Sandbox) attests the production code path handles sandbox-flagged traffic correctly across the protocol surface. It does not reconcile real-money AdCP-reported numbers against the seller's internal ad-server dashboard under live traffic. Hard reconciliation is a separate kind of attestation tracked outside the (Sandbox) tier.
+- **Not certification beyond AAO membership.** The [AgenticAdvertising.org certification program](/dist/docs/3.0.16/learning/overview) composes with AAO Verified — verification is necessary input to certification, but verification is not certification itself.
+- **Not a SLA.** AAO Verified does not guarantee uptime, latency, or commercial outcomes. It attests that the seller's AdCP surface continuously reflects real delivery; commercial reliability is between buyer and seller.
+- **Not a substitute for due diligence.** Buyers SHOULD still vet sellers' contractual terms, billing posture, governance practices, and incident-response posture independently. AAO Verified is one input, not the whole picture.
+
+## Relationship to supporting specs
+
+AAO Verified (Sandbox) rests on a small set of normative AdCP spec elements:
+
+- **[`account.sandbox` schema gate (#3755 / #4382)](https://github.com/adcontextprotocol/adcp/issues/3755)** — pins sandbox intent on account references and gives the seller a protocol-level flag to verify against persisted account mode. The seller-side gate is the load-bearing control; the request flag is not trusted by itself.
+- **[`comply-controller-mode-gate` storyboard (#4028 / #4384)](https://github.com/adcontextprotocol/adcp/issues/4028)** — verifies sellers correctly refuse controller dispatch against live-mode accounts when they choose a shared surface that exposes the controller to sandbox principals. Canonical production deployments satisfy this by not exposing the controller at all.
+- **[UNKNOWN_SCENARIO grading (#4226 / #4228)](https://github.com/adcontextprotocol/adcp/issues/4226)** — sellers MAY implement controller scenarios selectively in dev/staging; the runner grades absent operations as coverage gaps rather than failures. Controller is dev-only per the (Sandbox) framing.
+
+The earlier (Live) framing's supporting issues (#2963, #2964, #2902 — `attestation_verifier` scope, `get_media_buys` ownership, behavioral filter assertions on real data) are deferred. They remain relevant if AAO ever returns to a canonical-campaign model, but are not load-bearing under (Sandbox).
+
+## Relationship to other surfaces
+
+- [Conformance Specification](/dist/docs/3.0.16/building/verification/conformance) — defines what *conformant* means via the storyboards. The (Spec) axis verifies your agent matches that specification.
+- [Compliance Catalog](/dist/docs/3.0.16/building/verification/compliance-catalog) — indexes the protocols and specialisms an agent can claim. Each declared specialism is what the verification engine tests, on whichever axes are eligible.
+- [`get_adcp_capabilities`](/dist/docs/3.0.16/protocol/get_adcp_capabilities) — where the agent declares its `supported_protocols` and `specialisms`. The declarations are the input to verification.
+- AAO membership — required for badge issuance. Membership lapse revokes the badge.
