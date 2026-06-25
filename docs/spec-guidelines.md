@@ -95,6 +95,42 @@ When the same concept appears in multiple places with different subsets:
 - Adding new values is non-breaking
 - Documentation clarifies typical usage without restricting capability
 
+## Specialist Module Naming
+
+### Core Principle
+
+Specialist module names must reflect the **technical capability** being taught — what practitioners verify, resolve, or operate — not the business or marketing category.
+
+A module titled "Brand" is ambiguous: does it teach brand-safety policy, brand-identity schema validation, or brand-campaign strategy? A module titled "Brand Identity & Verification" tells a developer exactly what they will learn to do.
+
+### Naming Consistency
+
+The module name must be consistent across all four surfaces where it appears:
+
+1. **Page title** — the `title:` frontmatter in the module's `.mdx` file
+2. **Badge** — the `adcp_specialist_*` credential suffix (e.g., `adcp_specialist_signals`)
+3. **Sidebar navigation** — the `sidebarTitle:` frontmatter
+4. **Specialist overview table** — the row in the certification overview page
+
+If any of these diverge, implementers looking at one surface form a different mental model than those reading another. Keep all four in sync.
+
+### Good vs. Bad Names
+
+| Avoid | Prefer | Why |
+|-------|--------|-----|
+| Brand | Brand Identity & Verification | "Brand" reads as marketing; the module teaches schema validation and identity resolution |
+| Ads | Creative Asset Management | "Ads" is too broad; the module covers creative formats, asset pipelines, and approval flows |
+| Data | Signals & Audience Activation | "Data" is generic; the module teaches signal discovery, privacy controls, and activation loops |
+
+### Naming Checklist
+
+Before proposing a new specialist module:
+
+- [ ] Does the name describe the technical workflow, not the business domain?
+- [ ] Would a developer unfamiliar with AdCP understand what the module teaches from the name alone?
+- [ ] Is the name consistent across page title, badge, sidebar, and overview table?
+- [ ] Does the badge suffix (`adcp_specialist_*`) read naturally in a credential context?
+
 ## Enum Design
 
 ### Enum File Structure
