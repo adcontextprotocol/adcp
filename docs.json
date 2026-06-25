@@ -2,12 +2,12 @@
   "$schema": "https://mintlify.com/schema.json",
   "name": "AdCP - Ad Context Protocol",
   "banner": {
-    "content": "AdCP 3.1 is released — [see what's new →](/docs/reference/whats-new-in-3-1)",
+    "content": "AdCP 3.1 is released \u2014 [see what's new \u2192](/docs/reference/whats-new-in-3-1)",
     "dismissible": true
   },
   "description": "AdCP (Ad Context Protocol) is the open standard for agentic advertising. It defines how AI agents buy media, generate creatives, activate audiences, and enforce governance across platforms.",
   "metadata": {
-    "og:site_name": "AdCP — Ad Context Protocol",
+    "og:site_name": "AdCP \u2014 Ad Context Protocol",
     "og:image": "https://docs.adcontextprotocol.org/images/concepts/protocol-domain-map.png",
     "og:image:width": "1200",
     "og:image:height": "630",
@@ -81,6 +81,7 @@
             "expanded": false,
             "pages": [
               "dist/docs/3.0.19/building/index",
+              "dist/docs/3.0.19/building/schemas-and-sdks",
               {
                 "group": "AdCP 3.x",
                 "expanded": false,
@@ -128,7 +129,7 @@
                 "group": "Build by layer",
                 "pages": [
                   {
-                    "group": "L4 — Business logic",
+                    "group": "L4 \u2014 Business logic",
                     "pages": [
                       "dist/docs/3.0.19/building/by-layer/L4/index",
                       "dist/docs/3.0.19/building/by-layer/L4/choose-your-sdk",
@@ -138,7 +139,7 @@
                     ]
                   },
                   {
-                    "group": "L3 — Protocol semantics",
+                    "group": "L3 \u2014 Protocol semantics",
                     "expanded": false,
                     "pages": [
                       "dist/docs/3.0.19/building/by-layer/L3/index",
@@ -150,7 +151,7 @@
                     ]
                   },
                   {
-                    "group": "L2 — Auth & registry",
+                    "group": "L2 \u2014 Auth & registry",
                     "expanded": false,
                     "pages": [
                       "dist/docs/3.0.19/building/by-layer/L2/index",
@@ -161,7 +162,7 @@
                     ]
                   },
                   {
-                    "group": "L1 — Identity & signing",
+                    "group": "L1 \u2014 Identity & signing",
                     "expanded": false,
                     "pages": [
                       "dist/docs/3.0.19/building/by-layer/L1/index",
@@ -171,7 +172,7 @@
                     ]
                   },
                   {
-                    "group": "L0 — Wire & transport",
+                    "group": "L0 \u2014 Wire & transport",
                     "expanded": false,
                     "pages": [
                       "dist/docs/3.0.19/building/by-layer/L0/index",
@@ -691,6 +692,7 @@
             "expanded": false,
             "pages": [
               "docs/building/index",
+              "docs/building/schemas-and-sdks",
               {
                 "group": "AdCP 3.x",
                 "expanded": false,
@@ -739,7 +741,7 @@
                 "group": "Build by layer",
                 "pages": [
                   {
-                    "group": "L4 — Business logic",
+                    "group": "L4 \u2014 Business logic",
                     "pages": [
                       "docs/building/by-layer/L4/index",
                       "docs/building/by-layer/L4/choose-your-sdk",
@@ -749,7 +751,7 @@
                     ]
                   },
                   {
-                    "group": "L3 — Protocol semantics",
+                    "group": "L3 \u2014 Protocol semantics",
                     "expanded": false,
                     "pages": [
                       "docs/building/by-layer/L3/index",
@@ -761,7 +763,7 @@
                     ]
                   },
                   {
-                    "group": "L2 — Auth & registry",
+                    "group": "L2 \u2014 Auth & registry",
                     "expanded": false,
                     "pages": [
                       "docs/building/by-layer/L2/index",
@@ -772,7 +774,7 @@
                     ]
                   },
                   {
-                    "group": "L1 — Identity & signing",
+                    "group": "L1 \u2014 Identity & signing",
                     "expanded": false,
                     "pages": [
                       "docs/building/by-layer/L1/index",
@@ -782,7 +784,7 @@
                     ]
                   },
                   {
-                    "group": "L0 — Wire & transport",
+                    "group": "L0 \u2014 Wire & transport",
                     "expanded": false,
                     "pages": [
                       "docs/building/by-layer/L0/index",
@@ -1298,6 +1300,7 @@
             "expanded": false,
             "pages": [
               "docs/building/index",
+              "docs/building/schemas-and-sdks",
               {
                 "group": "AdCP 3.x",
                 "expanded": false,
@@ -1342,7 +1345,7 @@
                 "group": "Build by layer",
                 "pages": [
                   {
-                    "group": "L4 — Business logic",
+                    "group": "L4 \u2014 Business logic",
                     "pages": [
                       "docs/building/by-layer/L4/index",
                       "docs/building/by-layer/L4/choose-your-sdk",
@@ -1352,7 +1355,7 @@
                     ]
                   },
                   {
-                    "group": "L3 — Protocol semantics",
+                    "group": "L3 \u2014 Protocol semantics",
                     "expanded": false,
                     "pages": [
                       "docs/building/by-layer/L3/index",
@@ -1364,7 +1367,7 @@
                     ]
                   },
                   {
-                    "group": "L2 — Auth & registry",
+                    "group": "L2 \u2014 Auth & registry",
                     "expanded": false,
                     "pages": [
                       "docs/building/by-layer/L2/index",
@@ -1375,7 +1378,7 @@
                     ]
                   },
                   {
-                    "group": "L1 — Identity & signing",
+                    "group": "L1 \u2014 Identity & signing",
                     "expanded": false,
                     "pages": [
                       "docs/building/by-layer/L1/index",
@@ -1385,7 +1388,7 @@
                     ]
                   },
                   {
-                    "group": "L0 — Wire & transport",
+                    "group": "L0 \u2014 Wire & transport",
                     "expanded": false,
                     "pages": [
                       "docs/building/by-layer/L0/index",
@@ -2100,7 +2103,7 @@
         ]
       }
     ],
-    "message": "AI-authored and AI-assisted. AgenticAdvertising.org's public content and code involve Addie, Sage, and other AI agents — see the AI Disclosure for what's written by AI, what's assisted, and how to request human review."
+    "message": "AI-authored and AI-assisted. AgenticAdvertising.org's public content and code involve Addie, Sage, and other AI agents \u2014 see the AI Disclosure for what's written by AI, what's assisted, and how to request human review."
   },
   "socials": {
     "linkedin": "https://www.linkedin.com/company/ad-context-protocol/",
