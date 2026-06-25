@@ -65,6 +65,22 @@ function isPrivateIpv4(address: string): boolean {
   );
 }
 
+/** Extract the embedded IPv4 from an IPv4-mapped IPv6 address. Node's URL
+ *  parser canonicalizes `::ffff:10.0.0.1` to the compressed hex form
+ *  `::ffff:a00:1`, so matching only the dotted-quad text would miss it. Read
+ *  the trailing 32 bits regardless of which canonical form the parser chose. */
+function mappedIpv4(v: string): string | null {
+  const dotted = v.match(/^::ffff:([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)$/);
+  if (dotted) return dotted[1];
+  const hex = v.match(/^::ffff:([0-9a-f]{1,4})(?::([0-9a-f]{1,4}))?$/);
+  if (!hex) return null;
+  const first = parseInt(hex[1], 16);
+  const hasSecond = hex[2] !== undefined;
+  const high = hasSecond ? first : 0;
+  const low = hasSecond ? parseInt(hex[2], 16) : first;
+  return `${(high >> 8) & 0xff}.${high & 0xff}.${(low >> 8) & 0xff}.${low & 0xff}`;
+}
+
 function isPrivateIpAddress(address: string): boolean {
   const version = isIP(address);
   if (version === 4) return isPrivateIpv4(address);
@@ -76,9 +92,8 @@ function isPrivateIpAddress(address: string): boolean {
     if (v.startsWith('ff')) return true;                               // multicast ff00::/8
     if (v.startsWith('64:ff9b:')) return true;                         // NAT64 well-known
     if (v.startsWith('2001:db8:')) return true;                        // documentation
-    // IPv4-mapped (::ffff:a.b.c.d). Node's URL parser canonicalizes to this form.
-    const mapped = v.match(/^::ffff:([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)$/);
-    if (mapped && isPrivateIpv4(mapped[1])) return true;
+    const mapped = mappedIpv4(v);
+    if (mapped && isPrivateIpv4(mapped)) return true;
     return false;
   }
   return false;
@@ -100,9 +115,14 @@ export async function assertPublicTarget(url: URL): Promise<void> {
   // Scheme refusal is handled by the wrapper before this is called (so it
   // applies unconditionally, including under `allowPrivateIp: true`). By the
   // time we get here the URL is already known to be http(s).
-  // `url.hostname` strips brackets from `[::1]` → `::1`. Userinfo (user:pass@)
-  // never leaks into hostname per WHATWG, so we don't need to scrub that.
-  const hostname = url.hostname;
+  // `url.hostname` keeps the brackets on IPv6 literals (`[::1]`), so strip
+  // them before classification — `isIP('[::1]')` returns 0, which would route
+  // a literal private v6 address into the DNS-lookup path and let it through.
+  // Userinfo (user:pass@) never leaks into hostname per WHATWG, so we don't
+  // need to scrub that.
+  const hostname = url.hostname.startsWith('[') && url.hostname.endsWith(']')
+    ? url.hostname.slice(1, -1)
+    : url.hostname;
   if (!hostname || hostname === 'localhost' || hostname.endsWith('.localhost')) {
     throw new SsrfRefusedError(url.toString(), 'hostname resolves to loopback');
   }
