@@ -11,7 +11,7 @@
  * `req.apiKey`/`req.params` shape that auth-and-routing would have set
  * by the time control reaches `requireAdmin`.
  */
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, afterAll, beforeAll } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
@@ -29,7 +29,12 @@ const {
   requireGlobalAdmin,
   refuseAnyApiKeyOnGlobalAdmin,
   refuseCrossTenantAdminApiKey,
+  stopAuthTimers,
 } = await import('../../src/middleware/auth.js');
+
+afterAll(() => {
+  stopAuthTimers();
+});
 
 describe('requireAdmin cross-tenant API key defense', () => {
   let app: express.Application;
