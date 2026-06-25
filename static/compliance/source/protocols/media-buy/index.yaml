@@ -64,29 +64,37 @@ prerequisites:
   test_kit: "test-kits/acme-outdoor.yaml"
   controller_seeding: true
 
+# The base media-buy lifecycle exercises the universal NON-GUARANTEED
+# (auction-based) path so that every media-buy seller can run it — including
+# sellers that declare only `specialisms: ["sales-non-guaranteed"]`. A
+# non-guaranteed-only seller correctly rejects a guaranteed buy with
+# DELIVERY_MODE_NOT_SUPPORTED, so guaranteed-only fixtures here failed the whole
+# base flow (create_buy + the dependent steps) for that entire seller class. The
+# guaranteed lifecycle (human IO approval, proposal_finalize) is covered by the
+# `sales-guaranteed` specialism bundle, which carries its own guaranteed fixtures.
 fixtures:
   products:
     - product_id: "sports_preroll_q2"
-      delivery_type: "guaranteed"
+      delivery_type: "non_guaranteed"
       channels: ["video"]
       format_ids:
         - id: "video_30s"
     - product_id: "lifestyle_display_q2"
-      delivery_type: "guaranteed"
+      delivery_type: "non_guaranteed"
       channels: ["display"]
       format_ids:
         - id: "display_300x250"
   pricing_options:
     - product_id: "sports_preroll_q2"
-      pricing_option_id: "cpm_guaranteed"
+      pricing_option_id: "cpm_non_guaranteed"
       pricing_model: "cpm"
       currency: "USD"
-      fixed_price: 22.0
+      floor_price: 22.0
     - product_id: "lifestyle_display_q2"
       pricing_option_id: "cpm_standard"
       pricing_model: "cpm"
       currency: "USD"
-      fixed_price: 8.0
+      floor_price: 8.0
 
 phases:
   - id: capability_discovery
@@ -485,7 +493,7 @@ phases:
           packages:
             - product_id: "sports_preroll_q2"
               budget: 25000
-              pricing_option_id: "cpm_guaranteed"
+              pricing_option_id: "cpm_non_guaranteed"
               creative_assignments:
                 - creative_id: "video_30s_trail_pro"
             - product_id: "lifestyle_display_q2"
