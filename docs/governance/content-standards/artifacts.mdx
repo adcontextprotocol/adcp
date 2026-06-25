@@ -223,7 +223,7 @@ This happens during the activation phase when the seller first receives content 
 
 ### Per-Asset Authentication
 
-When pre-configuration isn't possible, include access credentials with individual assets:
+When pre-configured identity access isn't possible, attach a short-lived, asset-scoped token to individual assets:
 
 ```json
 {
@@ -248,11 +248,13 @@ The `url` field is the access URL - it may differ from the artifact's canonical/
 
 | Method | Use Case |
 |--------|----------|
-| `bearer_token` | OAuth2 bearer token in Authorization header |
-| `service_account` | GCP/AWS service account credentials |
-| `signed_url` | Pre-signed URL with embedded credentials (URL itself is the credential) |
+| `bearer_token` | Short-lived, asset-scoped OAuth2 token in the Authorization header. The only method that carries a live secret in the payload — treat it as a secret (never log it or place it in model context). |
+| `service_account` | Identity-based access. The seller pre-authorizes the caller's own service account; **no credentials are transmitted**. |
+| `signed_url` | Pre-signed URL — the URL itself is the (time-limited) credential. |
 
-### Service Account Setup
+### Service Account Access
+
+`service_account` is **identity-based** — no credentials are sent in the response. During onboarding the seller grants the buyer's (or verification agent's) own service account read access to the asset store; at fetch time the client authenticates with that identity using the cloud provider's normal credential chain (GCP Application Default Credentials, AWS SigV4).
 
 For GCP:
 
@@ -260,14 +262,7 @@ For GCP:
 {
   "access": {
     "method": "service_account",
-    "provider": "gcp",
-    "credentials": {
-      "type": "service_account",
-      "project_id": "my-project",
-      "private_key_id": "...",
-      "private_key": "-----BEGIN PRIVATE KEY-----\n...",
-      "client_email": "verification-agent@my-project.iam.gserviceaccount.com"
-    }
+    "provider": "gcp"
   }
 }
 ```
@@ -278,15 +273,12 @@ For AWS:
 {
   "access": {
     "method": "service_account",
-    "provider": "aws",
-    "credentials": {
-      "access_key_id": "AKIAIOSFODNN7EXAMPLE",
-      "secret_access_key": "...",
-      "region": "us-east-1"
-    }
+    "provider": "aws"
   }
 }
 ```
+
+**Never place service-account keys, private keys, or access secrets in a response payload** — they would travel across agent transport, logs, and model context. Identity-based access keeps secrets off the wire entirely.
 
 ### Pre-Signed URLs
 
