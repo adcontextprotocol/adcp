@@ -1368,6 +1368,64 @@ describe('get_products handler', () => {
     expect(next.proposals).toBeUndefined();
   });
 
+  it('filters seeded wholesale products by format_ids before paginating', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = {
+      brand: { domain: 'wholesale-format-pagination.example' },
+      operator: 'pinnacle-agency.example',
+    };
+    const formatId = {
+      agent_url: 'https://compliance.adcontextprotocol.org',
+      id: 'get_products_pagination_integrity_display',
+    };
+    const seededIds = ['format_pagination_seed_1', 'format_pagination_seed_2'];
+
+    for (const productId of seededIds) {
+      const { result } = await simulateCallTool(server, 'comply_test_controller', {
+        account,
+        brand: account.brand,
+        scenario: 'seed_product',
+        params: {
+          product_id: productId,
+          fixture: {
+            delivery_type: 'non_guaranteed',
+            channels: ['display'],
+            format_ids: [formatId],
+          },
+        },
+      });
+      expect(result.success).toBe(true);
+    }
+
+    const { result: first } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      account,
+      filters: { format_ids: [formatId] },
+      pagination: { max_results: 1 },
+    });
+
+    expect((first.products as unknown[])).toHaveLength(1);
+    expect(seededIds).toContain((first.products as Array<Record<string, unknown>>)[0].product_id);
+    expect(first.pagination).toMatchObject({ has_more: true, total_count: 2 });
+    expect((first.pagination as Record<string, unknown>).cursor).toBeDefined();
+
+    const { result: terminal } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      account,
+      filters: { format_ids: [formatId] },
+      pagination: {
+        max_results: 1,
+        cursor: (first.pagination as Record<string, unknown>).cursor,
+      },
+    });
+
+    expect((terminal.products as unknown[])).toHaveLength(1);
+    expect(seededIds).toContain((terminal.products as Array<Record<string, unknown>>)[0].product_id);
+    expect((terminal.products as Array<Record<string, unknown>>)[0].product_id)
+      .not.toBe((first.products as Array<Record<string, unknown>>)[0].product_id);
+    expect(terminal.pagination).toEqual({ has_more: false, total_count: 2 });
+  });
+
   it('rejects standalone wholesale product pricing tokens', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const standalonePricing = await simulateCallTool(server, 'get_products', {
