@@ -268,15 +268,15 @@ describe('resolveMembershipTier — lookup key fallback', () => {
     })).toBe('individual_professional');
   });
 
-  test('cached tier takes priority over everything', () => {
+  test('lookup key corrects a stale cached tier', () => {
     expect(resolveMembershipTier({
-      membership_tier: 'company_leader',
+      membership_tier: 'individual_academic',
       subscription_price_lookup_key: 'aao_membership_builder_2500',
       subscription_status: 'active',
       subscription_amount: 250000,
       subscription_interval: 'year',
       is_personal: false,
-    })).toBe('company_leader');
+    })).toBe('company_standard');
   });
 });
 

@@ -3071,6 +3071,12 @@
         return fetch(url, { ...options, headers, credentials: 'include' });
       }
 
+      function getSelectedOrganizationId() {
+        const urlOrg = new URLSearchParams(window.location.search).get('org');
+        if (urlOrg) return urlOrg;
+        return localStorage.getItem('selectedOrgId') || null;
+      }
+
       // Check for impersonation and authentication
       async function checkImpersonation() {
         try {
@@ -3670,7 +3676,9 @@
         addieHomeContent.innerHTML = '';
 
         try {
-          const response = await authFetch('/api/me/addie-home?format=html');
+          const selectedOrgId = getSelectedOrganizationId();
+          const orgParam = selectedOrgId ? `&org=${encodeURIComponent(selectedOrgId)}` : '';
+          const response = await authFetch(`/api/me/addie-home?format=html${orgParam}`);
           if (!response.ok) {
             throw new Error('Failed to load home content');
           }
@@ -4827,6 +4835,7 @@
               message,
               conversation_id: conversationId,
               message_source: messageSource,
+              organization_id: getSelectedOrganizationId(),
               attachments: buildAttachmentPayload(attachmentsToSend),
             }),
           });

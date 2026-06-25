@@ -48,7 +48,7 @@ const VALID_PRICING_MODELS = [
 ] as const;
 
 const TEST_AGENT_URL = 'http://localhost:3000/api/training-agent';
-const CURRENT_ADCP_VERSION = '3.1-rc.14';
+const CURRENT_ADCP_VERSION = '3.1-rc.15';
 
 const DEFAULT_CTX: TrainingContext = { mode: 'open' };
 
@@ -1366,6 +1366,64 @@ describe('get_products handler', () => {
     expect((next.products as unknown[])).toHaveLength(1);
     expect(first.proposals).toBeUndefined();
     expect(next.proposals).toBeUndefined();
+  });
+
+  it('filters seeded wholesale products by format_ids before paginating', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = {
+      brand: { domain: 'wholesale-format-pagination.example' },
+      operator: 'pinnacle-agency.example',
+    };
+    const formatId = {
+      agent_url: 'https://compliance.adcontextprotocol.org',
+      id: 'get_products_pagination_integrity_display',
+    };
+    const seededIds = ['format_pagination_seed_1', 'format_pagination_seed_2'];
+
+    for (const productId of seededIds) {
+      const { result } = await simulateCallTool(server, 'comply_test_controller', {
+        account,
+        brand: account.brand,
+        scenario: 'seed_product',
+        params: {
+          product_id: productId,
+          fixture: {
+            delivery_type: 'non_guaranteed',
+            channels: ['display'],
+            format_ids: [formatId],
+          },
+        },
+      });
+      expect(result.success).toBe(true);
+    }
+
+    const { result: first } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      account,
+      filters: { format_ids: [formatId] },
+      pagination: { max_results: 1 },
+    });
+
+    expect((first.products as unknown[])).toHaveLength(1);
+    expect(seededIds).toContain((first.products as Array<Record<string, unknown>>)[0].product_id);
+    expect(first.pagination).toMatchObject({ has_more: true, total_count: 2 });
+    expect((first.pagination as Record<string, unknown>).cursor).toBeDefined();
+
+    const { result: terminal } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      account,
+      filters: { format_ids: [formatId] },
+      pagination: {
+        max_results: 1,
+        cursor: (first.pagination as Record<string, unknown>).cursor,
+      },
+    });
+
+    expect((terminal.products as unknown[])).toHaveLength(1);
+    expect(seededIds).toContain((terminal.products as Array<Record<string, unknown>>)[0].product_id);
+    expect((terminal.products as Array<Record<string, unknown>>)[0].product_id)
+      .not.toBe((first.products as Array<Record<string, unknown>>)[0].product_id);
+    expect(terminal.pagination).toEqual({ has_more: false, total_count: 2 });
   });
 
   it('rejects standalone wholesale product pricing tokens', async () => {
@@ -7953,7 +8011,7 @@ describe('get_adcp_capabilities handler', () => {
 
     expect(result.adcp).toMatchObject({
       major_versions: [3],
-      supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14'],
+      supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15'],
       idempotency: { supported: true, replay_ttl_seconds: 86400 },
     });
     expect(result.adcp_version).toBe('3.0');
@@ -8868,7 +8926,7 @@ describe('MCP Tasks protocol', () => {
         code: -32602,
         data: {
           adcp_version: '99.0',
-          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14'],
+          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15'],
           supported_majors: [3],
           context: { correlation_id: 'task-version-unsupported' },
           adcp_error: {
@@ -10693,7 +10751,7 @@ describe('AdCP protocol compliance', () => {
     expect(parsed.adcp_version).toBe('3.0');
     expect(parsed.adcp).toMatchObject({
       major_versions: [3],
-      supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14'],
+      supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15'],
     });
   });
 
@@ -10714,7 +10772,7 @@ describe('AdCP protocol compliance', () => {
   it('echoes exact supported pre-release adcp_version pins', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
 
-    for (const adcpVersion of ['3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14']) {
+    for (const adcpVersion of ['3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15']) {
       const { parsed, isError } = await simulateCallToolRaw(server, 'get_products', {
         adcp_version: adcpVersion,
         adcp_major_version: 3,
@@ -10758,7 +10816,7 @@ describe('AdCP protocol compliance', () => {
       details: {
         adcp_version: '4.0',
         adcp_major_version: 4,
-        supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14'],
+        supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15'],
         supported_majors: [3],
       },
     });
@@ -10779,7 +10837,7 @@ describe('AdCP protocol compliance', () => {
       field: 'adcp_version',
       details: {
         adcp_version: '3.1-beta',
-        supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14'],
+        supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15'],
         supported_majors: [3],
       },
     });

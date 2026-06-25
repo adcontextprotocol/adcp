@@ -1,0 +1,125 @@
+id: capability_discovery
+version: "1.0.0"
+title: "Capability discovery"
+category: capability_discovery
+summary: "Buyer calls get_adcp_capabilities to discover what an agent supports before making any buying or creative decisions."
+track: core
+
+narrative: |
+  Before doing anything else, a buyer agent calls get_adcp_capabilities to learn what your
+  platform supports. This is the first call in any new relationship — the buyer needs to know
+  your protocol version, supported domains (media buy, creative, governance, signals, SI),
+  pricing models, targeting capabilities, and creative specs.
+
+  The response shapes every subsequent call. If you declare media_buy support, the buyer knows
+  it can send briefs and create media buys. If you declare creative support, the buyer knows
+  it can sync or build creatives. The buyer uses this to decide which storyboards apply to your
+  agent and what flows to attempt.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+  examples:
+    - "Any AdCP-compliant agent"
+    - "Publisher platforms"
+    - "Creative ad servers"
+    - "DSPs"
+
+caller:
+  role: buyer_agent
+  example: "Scope3 (DSP)"
+
+prerequisites:
+  description: |
+    No prerequisites. This is the very first call a buyer makes to any agent.
+    The test kit provides brand context but it is not required for this storyboard.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: protocol_discovery
+    title: "Protocol and capability discovery"
+    narrative: |
+      The buyer calls get_adcp_capabilities to learn what your agent supports. This call
+      takes no required arguments — it is a read-only introspection of the agent's
+      capabilities. The buyer may optionally filter by protocol domain or major version.
+
+    steps:
+      - id: get_capabilities
+        title: "Discover agent capabilities"
+        narrative: |
+          The buyer calls get_adcp_capabilities with no arguments. Your agent returns its
+          full capability declaration: protocol version, supported domains, pricing models,
+          targeting options, creative specs, and any extensions.
+
+          This response is the source of truth for what the buyer can do with your agent.
+          Every field the buyer reads here determines which tasks it will call next.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return your agent's full capability declaration:
+          - adcp.major_versions: which protocol versions you support (e.g., [3])
+          - supported_protocols: which domains are available (media_buy, creative, governance, signals, sponsored_intelligence)
+          - media_buy: pricing models, delivery types, targeting, reporting features
+          - creative: library support, generation, transformation capabilities
+          - governance: property and creative features the governance agent can evaluate
+          - account: auth model, billing support, sandbox mode
+
+        sample_request:
+          context:
+            correlation_id: "capability_discovery--get_capabilities"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "adcp.major_versions"
+            description: "Agent declares supported protocol versions"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares which protocol domains it supports"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "capability_discovery--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+      - id: get_capabilities_filtered
+        title: "Discover capabilities filtered by protocol"
+        narrative: |
+          The buyer calls get_adcp_capabilities again, this time filtering for a specific
+          protocol domain. This is useful when the buyer already knows what it wants and
+          only needs details for one domain (e.g., just media_buy capabilities).
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities filtered to the requested protocol domain. The response
+          should include the same structure but only the requested domain details.
+
+        sample_request:
+          protocols:
+            - "media_buy"
+
+          context:
+            correlation_id: "capability_discovery--get_capabilities_filtered"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "capability_discovery--get_capabilities_filtered"
+            description: "Context correlation_id returned unchanged"

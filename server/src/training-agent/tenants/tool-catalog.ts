@@ -99,6 +99,8 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
 
   // brand
   get_brand_identity: ['brand'],
+  verify_brand_claim: ['brand'],
+  verify_brand_claims: ['brand'],
   get_rights: ['brand'],
   acquire_rights: ['brand'],
   update_rights: ['brand'],

@@ -1,0 +1,255 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0/media-buy/build-creative-request.json",
+  "title": "Build Creative Request",
+  "description": "Request to transform, generate, refine, or retrieve a creative manifest. Supports four modes: (1) generation from a brief or seed assets, (2) transformation of an existing manifest, (3) refinement of a prior produced variant via refine_from_build_variant_id (re-build with a natural-language message + config delta), (4) retrieval from a creative library by creative_id. Produces target manifest(s) in the specified format(s). Provide either target_format_id for a single format or target_format_ids for multiple formats.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/3.1.0/core/version-envelope.json"
+    },
+    {
+      "$comment": "target_format_id and target_format_ids are mutually exclusive (single vs multi).",
+      "not": { "required": ["target_format_id", "target_format_ids"] }
+    },
+    {
+      "$comment": "Refinement targets one prior creative, not a catalog fan-out.",
+      "not": { "required": ["refine_from_build_variant_id", "max_creatives"] }
+    }
+  ],
+  "x-mutates-state": true,
+  "properties": {
+    "message": {
+      "type": "string",
+      "description": "Natural language instructions for the transformation or generation. For pure generation, this is the creative brief. For transformation, this provides guidance on how to adapt the creative. For refinement, this describes the desired changes."
+    },
+    "creative_manifest": {
+      "$ref": "/schemas/3.1.0/core/creative-manifest.json",
+      "description": "Creative manifest to transform or generate from. For pure generation, this should include the target format_id and any required input assets. For transformation (e.g., resizing, reformatting), this is the complete creative to adapt. When creative_id is provided, the agent resolves the creative from its library and this field is ignored."
+    },
+    "creative_id": {
+      "type": "string",
+      "description": "Reference to a creative in the agent's library. The creative agent resolves this to a manifest from its library. Use this instead of creative_manifest when retrieving an existing creative for tag generation or format adaptation.",
+      "x-entity": "creative"
+    },
+    "concept_id": {
+      "type": "string",
+      "description": "Creative concept containing the creative. Creative agents SHOULD assign globally unique creative_id values; when they cannot guarantee uniqueness, concept_id is REQUIRED to disambiguate."
+    },
+    "media_buy_id": {
+      "type": "string",
+      "description": "Media buy identifier for tag generation context. When the creative agent is also the ad server, this provides the trafficking context needed to generate placement-specific tags (e.g., CM360 placement ID). Not needed when tags are generated at the creative level (most creative platforms).",
+      "x-entity": "media_buy"
+    },
+    "package_id": {
+      "type": "string",
+      "description": "Package identifier within the media buy. Used with media_buy_id when the creative agent needs line-item-level context for tag generation. Omit to get a tag not scoped to a specific package.",
+      "x-entity": "package"
+    },
+    "target_format_id": {
+      "$ref": "/schemas/3.1.0/core/format-id.json",
+      "description": "Single format ID to generate. Mutually exclusive with target_format_ids. The format definition specifies required input assets and output structure."
+    },
+    "target_format_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/3.1.0/core/format-id.json"
+      },
+      "minItems": 1,
+      "description": "Array of format IDs to generate in a single call. Mutually exclusive with target_format_id. The creative agent produces one manifest per format. Each format definition specifies its own required input assets and output structure."
+    },
+    "transformer_id": {
+      "type": "string",
+      "x-entity": "transformer",
+      "description": "Selects an account-scoped transformer (discovered via list_transformers) to perform the build. One transformer per call. When present, the build uses this transformer and target_format_id/target_format_ids select which of its outputs to produce — they MUST be a subset of the transformer's output_format_ids. Render configuration goes in `config`."
+    },
+    "config": {
+      "type": "object",
+      "description": "Typed render configuration for the selected transformer, keyed by each param's `field` (from the transformer's params[] in list_transformers). Example: { \"voice\": \"isaac\", \"speaking_rate\": 1.1, \"mastering_preset\": \"podcast\" }. The agent MUST validate `config` against the transformer's live params for this account and reject unrecognized keys and out-of-range / non-enumerated values with a field-attributed error (e.g. `config.voice`) rather than silently ignoring them — config drives a paid render. Genuinely vendor-specific or experimental knobs not declared as params belong in `ext`, not here. (The schema leaves this object open because legal keys are dynamic per transformer; strict validation is a normative agent obligation.) When `refine_from_build_variant_id` is set, `config` is applied as a DELTA over the parent leaf's config.",
+      "additionalProperties": true
+    },
+    "refine_from_build_variant_id": {
+      "type": "string",
+      "x-entity": "build_variant",
+      "description": "Refine a previously produced variant: re-build from the referenced `build_variant_id`, applying the natural-language instruction in `message` and any `config` delta, and return NEW lineage-linked variant(s) — each with `parent_build_variant_id` set to this id. A refinement is never a mutation; the parent leaf is unchanged. The `transformer_id` and target format(s) are inherited from the parent and need not be repeated; passing a `transformer_id` or `target_format_id`/`target_format_ids` that differs from the parent's is rejected with `INVALID_REQUEST`. Composes with `max_variants` / `variant_axis` (produces N refined alternatives), but is mutually exclusive with `max_creatives` / catalog fan-out (you refine one prior creative, not a catalog). Requires the agent to advertise `creative.supports_refinement: true` in get_adcp_capabilities; agents that do not retain prior builds reject with `UNSUPPORTED_FEATURE`. A ref that is unknown or no longer retained (agents retain produced leaves for an agent-defined window) is rejected with `REFERENCE_NOT_FOUND`, with `error.field` set to `refine_from_build_variant_id`. To refine a buyer-held manifest when the agent retains nothing, use the transform path instead (`creative_manifest` + `message`)."
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["execute", "estimate"],
+      "default": "execute",
+      "description": "`execute` (default) produces and bills the creative(s). `estimate` is a DRY RUN: the agent produces nothing and bills nothing, and returns a BuildCreativeEstimate with a projected cost band (cost_low/cost_high) computed against THIS request's actual inputs (script length, brief, catalog size, max_creatives × max_variants) — the band the buyer cannot derive itself, since per_unit gives the rate but not the unit count. Requires the agent to advertise `creative.supports_spend_controls`; otherwise rejected with `UNSUPPORTED_FEATURE`."
+    },
+    "max_spend": {
+      "type": "object",
+      "description": "Hard per-call spend ceiling. The agent produces leaves until the NEXT leaf would push the run's aggregate vendor_cost over `amount`, then STOPS and returns the partial BuildCreativeVariantSuccess produced so far with `budget_status: \"capped\"` (every returned leaf is real, trafficable, and billed — nothing produced is discarded; the leaf shortfall is `leaves_returned` < `leaves_total`). If even the first leaf would exceed the cap, the call fails with BUDGET_CAP_REACHED. `currency` MUST match the rate card's currency (the agent does not FX-convert) or the request is rejected with INVALID_REQUEST (error.field `max_spend.currency`). Requires `creative.supports_spend_controls`. Caps a SINGLE call — to bound a refinement loop, track aggregate vendor_cost across calls and stop issuing them (buyer responsibility in this revision). max_spend bounds only build-time vendor_cost: CPM-priced builds (estimate basis `cpm_deferred`) have build-time vendor_cost 0 and accrue at serve time, so max_spend never engages for them — bound a CPM fan-out with max_creatives instead.",
+      "properties": {
+        "amount": { "type": "number", "minimum": 0, "description": "Maximum aggregate vendor_cost to incur on this call, in `currency`." },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$", "description": "ISO 4217 currency; MUST match the rate card." }
+      },
+      "required": ["amount", "currency"],
+      "additionalProperties": true
+    },
+    "max_creatives": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Caps how many DISTINCT creatives to produce along the catalog/item fan-out axis — one creative per catalog item. Use it to sample a large catalog (e.g. send 150 job openings, set max_creatives: 5 to preview five). Distinct from item_limit, which caps how many catalog items a SINGLE creative consumes (DCO-style). Omitted with a catalog input means one creative per item up to the catalog/format bound; omitted without a catalog collapses to a single creative. Large fan-outs may return asynchronously. Mutually exclusive with `refine_from_build_variant_id` (refinement targets one prior creative, not a catalog fan-out). Supported only when the agent advertises `creative.multiplicity.supports_catalog_fanout`; values above `max_creatives_limit` are clamped. Pair with `max_spend` to bound the bill of a large fan-out."
+    },
+    "signal_conditions": {
+      "type": "array",
+      "x-status": "experimental",
+      "minItems": 1,
+      "items": {
+        "allOf": [
+          { "$ref": "/schemas/3.1.0/core/signal-targeting.json" },
+          {
+            "properties": {
+              "signal_agent_segment_id": {
+                "type": "string",
+                "x-entity": "signal_activation_id",
+                "description": "Optional opaque resolved-segment handle for this fan-out condition — the RESOLVED condition identity, distinct from signal_ref's DEFINITION identity. When get_signals or a product signal_targeting_options entry exposed a signal_agent_segment_id for the targeted signal, echo it here verbatim so the produced creative's signal_condition carries the resolved-segment identity that the trafficking-compatibility check (SIGNAL_TARGETING_INCOMPATIBLE) matches on exactly. Providers MAY namespace it (e.g. provider_a:weather:rain_realtime vs provider_b:precip:high) so cross-provider conditions stay distinct without a shared taxonomy registry; treat as opaque, do not parse the namespace for business logic. Prefer it over reconstructing condition identity from categorical values — categorical {signal_ref,value} identity is the weaker fallback, appropriate only for inherently-categorical signals with no resolved handle, and never a cross-provider equivalence claim."
+              }
+            }
+          }
+        ]
+      },
+      "x-entity": "signal",
+      "description": "Advisory keep-all PRODUCTION axis: produce one distinct creative group per signal condition, each kept and trafficked with its own signal targeting (e.g. a rain creative AND a sun creative). Sibling to max_creatives (catalog axis), NOT a variant_axis value (which is choose-among). Each item reuses SignalTargeting (value_type-discriminated binary/categorical/numeric over signal_ref) so the produced group's signal_condition resolves condition identity through the SAME schema the sales-side package targeting uses, plus an optional signal_agent_segment_id carrying the RESOLVED-segment identity (vs signal_ref's definition identity) — echo a provider-exposed handle verbatim; it is the primary trafficking-compatibility key, with categorical signal_ref+value as the weaker fallback. Per #5280 this is an ADVISORY context pointer — it informs production and MUST NOT hard-block at the build_creative layer; trafficking-compatibility (a sun creative MUST NOT serve into rain-targeted packages) is enforced reject-at-trafficking on the sales side (SIGNAL_TARGETING_INCOMPATIBLE), not here. Triggers the BuildCreativeVariantSuccess shape. Supported only when the agent advertises creative.multiplicity.supports_signal_fanout; condition counts above max_signal_conditions_limit are CLAMPED (not rejected), consistent with max_creatives. Composes with max_creatives (catalog × conditions cross-product) and max_variants (variants per group)."
+    },
+    "max_variants": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1,
+      "description": "Caps how many ALTERNATIVES to produce per creative (different voices, themes, best-of-N, etc.). Default 1 preserves single-output behavior. Each variant is a real, independently-billed build (you pay for all produced); the buyer keeps one or many. When variant_axis.values[] is provided, its length is authoritative over max_variants. Resolutions/quality tiers are NOT variants — request them as additional target formats."
+    },
+    "variant_axis": {
+      "type": "object",
+      "description": "Declares the dimension along which variants differ. When `values` is provided, the agent produces exactly one variant per value (e.g. an A/B of two voices). When only `dimension` is provided, the agent chooses up to max_variants variants along that dimension (e.g. best-of-N, themes).",
+      "properties": {
+        "dimension": {
+          "type": "string",
+          "enum": ["voice", "theme", "best_of_n", "transformer_config", "custom"],
+          "description": "What varies across variants. `transformer_config` varies a named config param (name it in `field`); `best_of_n` lets the agent explore and rank; `custom` is agent-defined (describe in `label`)."
+        },
+        "field": {
+          "type": "string",
+          "description": "The transformer `config` param `field` this axis sweeps. REQUIRED when `dimension` is `transformer_config`; `values[]` are then interpreted as values for `config[field]`. Omit for other dimensions."
+        },
+        "values": {
+          "type": "array",
+          "description": "Caller-fixed set of values for the axis (e.g. [\"isaac\", \"sara\"] for dimension `voice`). When present, len(values) is the variant count and is authoritative over max_variants.",
+          "items": {},
+          "minItems": 1
+        },
+        "label": {
+          "type": "string",
+          "description": "Human-readable description of the axis, especially for `custom`."
+        }
+      },
+      "required": ["dimension"],
+      "additionalProperties": true
+    },
+    "keep_mode": {
+      "type": "string",
+      "enum": ["keep_all", "keep_one", "keep_some"],
+      "default": "keep_all",
+      "description": "Advisory hint for how the buyer intends to use the variants. `keep_one` (best-of-N) and `keep_some` signal the agent to set `recommended`/`rank` on returned variants. Advisory only — it does not change what is returned or billed; every produced variant is returned and charged. Keeping is a client act of trafficking the chosen build_variant_id(s)."
+    },
+    "selection_strategy": {
+      "$ref": "/schemas/3.1.0/enums/creative-selection-strategy.json",
+      "x-status": "experimental",
+      "description": "Governs HOW the agent samples when max_creatives < items_total (folds #5262). audience_relevance draws its ranking input from the SAME signal_ref pointers in signal_conditions / package targeting — NOT a parallel signals[] array. proximity takes a location input (geo shape TBD — WG open). inventory_priority is seller-side catalog metadata (margin/overstock/promo; no buyer input). random is the status-quo default. Per-creative selection ordering surfaces on the existing rank / recommended fields of creatives[].variants[], not a new selection_rank. Advisory; absent => agent default (random)."
+    },
+    "account": {
+      "$ref": "/schemas/3.1.0/core/account-ref.json",
+      "description": "Account reference for pricing and billing. When present, the creative agent applies account-specific pricing from the rate card, records the build against the account for billing, and can enforce account-level quotas or entitlements. Required by creative agents that charge for their services."
+    },
+    "brand": {
+      "$ref": "/schemas/3.1.0/core/brand-ref.json",
+      "description": "Brand reference for creative generation. Resolved to full brand identity (colors, logos, tone) at execution time."
+    },
+    "quality": {
+      "$ref": "/schemas/3.1.0/enums/creative-quality.json",
+      "description": "Quality tier for generation. 'draft' produces fast, lower-fidelity output for iteration and review. 'production' produces full-quality output for final delivery. If omitted, the creative agent uses its own default. For non-generative transforms (e.g., format resizing), creative agents MAY ignore this field."
+    },
+    "evaluator": {
+      "$ref": "/schemas/3.1.0/core/evaluator-spec.json",
+      "x-status": "experimental",
+      "description": "Optional advisory evaluator (buyer-attached pointer, #5280) declaring how produced variants should be evaluated and ranked — the rank-side of the get_creative_features feature oracle. Experimental (x-status: experimental): the whole evaluator surface is new and unfrozen, and requires creative.supports_evaluator, which sellers MUST pair with `creative.evaluator` in experimental_features. Drives the producing agent's gate-then-rank pipeline over its best_of_n exploration: per leaf, evaluate (the chosen form) → optionally GATE (`evaluator.feature_requirement[]`, drop fails — internal pruning of which leaves the agent recommends, never an AdCP-layer block of an already-produced billable leaf) → RANK survivors (`evaluator.rank_by`, an explicit {feature_id, direction} ordering). Feature discovery uses get_adcp_capabilities governance.creative_features for rank_by, feature_requirement, and eval.features[]; evaluator_id is a pre-provisioned/account-arranged preset, not an ID discovered from that catalog. Populates a per-leaf `eval` block of creative-feature values (creative-feature-result[]) when supports_evaluator. When the evaluator names an external agent (`evaluator.feature_agent.agent_url` or the agent-form `agent_url`), that agent MUST appear in the seller's `creative_policy.accepted_verifiers[]` (the same allowlist #5280 established for provenance verify_agent); an off-list agent is rejected with `EVALUATOR_AGENT_NOT_ACCEPTED`. The outbound evaluator call authenticates on the transport (request signing/JWKS, mTLS, or a pre-provisioned static credential); credentials and caller-supplied trust material MUST NOT appear in evaluator, context, ext, or creative payload fields, and credential- or trust-material keys should be rejected with `CREDENTIAL_IN_ARGS`. With no `feature_requirement`, evaluation is advisory only and does not change what is produced or billed; an unreachable/unknown on-list agent degrades to seller-default ranking (advisory errors[] note), not a failure. Requires creative.supports_evaluator; otherwise ignored."
+    },
+    "item_limit": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum number of catalog items a SINGLE creative consumes when generating (DCO-style — e.g. how many items fill one carousel/feed creative). When a catalog asset contains more items than this limit, the creative agent selects the top items based on relevance or catalog ordering. When item_limit exceeds the format's max_items, the creative agent SHOULD use the lesser of the two. Ignored when the manifest contains no catalog assets. Distinct from `max_creatives`, which fans OUT across catalog items to produce one distinct creative per item."
+    },
+    "include_preview": {
+      "type": "boolean",
+      "description": "When true, requests the creative agent to include preview renders in the response alongside the manifest. Agents that support this return a 'preview' object in the response using the same structure as preview_creative. Agents that do not support inline preview simply omit the field. This avoids a separate preview_creative round trip for platforms that generate previews as a byproduct of building."
+    },
+    "preview_inputs": {
+      "type": "array",
+      "description": "Input sets for preview generation when include_preview is true. Each input set defines macros and context values for one preview variant. If include_preview is true but this is omitted, the agent generates a single default preview. Only supported with target_format_id (single-format requests). Ignored when using target_format_ids — multi-format requests generate one default preview per format. Ignored when include_preview is false or omitted.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Human-readable name for this input set (e.g., 'Sunny morning on mobile', 'Evening podcast ad')"
+          },
+          "macros": {
+            "type": "object",
+            "description": "Macro values to use for this preview variant",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "context_description": {
+            "type": "string",
+            "description": "Natural language description of the context for AI-generated content"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": true
+      },
+      "minItems": 1
+    },
+    "preview_quality": {
+      "$ref": "/schemas/3.1.0/enums/creative-quality.json",
+      "description": "Render quality for inline preview when include_preview is true. 'draft' produces fast, lower-fidelity renderings. 'production' produces full-quality renderings. Independent of the build quality parameter — you can build at draft quality and preview at production quality, or vice versa. If omitted, the creative agent uses its own default. Ignored when include_preview is false or omitted."
+    },
+    "preview_output_format": {
+      "$ref": "/schemas/3.1.0/enums/preview-output-format.json",
+      "default": "url",
+      "description": "Output format for preview renders when include_preview is true. 'url' returns preview_url (iframe-embeddable URL), 'html' returns preview_html (raw HTML). Ignored when include_preview is false or omitted."
+    },
+    "macro_values": {
+      "type": "object",
+      "description": "Macro values to pre-substitute into the output manifest's assets. Keys are universal macro names (e.g., CLICK_URL, CACHEBUSTER); values are the substitution strings. The creative agent translates universal macros to its platform's native syntax. Substitution is literal — all occurrences of each macro in output assets are replaced with the provided value. The caller is responsible for URL-encoding values if the output context requires it. Macros not provided here remain as {MACRO} placeholders for the sales agent to resolve at serve time. Creative agents MUST ignore keys they do not recognize — unknown macro names are not an error.",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for this request. Prevents duplicate creative generation on retries. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "push_notification_config": {
+      "$ref": "/schemas/3.1.0/core/push-notification-config.json",
+      "description": "Optional webhook configuration for async terminal completion/failure notifications on build_creative. Meaningful only when the request enters the async lifecycle and returns a Submitted envelope. Submitted envelopes with `task_id` remain pollable through `get_task_status` (legacy `tasks/get`) whether or not this field is present. If a request includes this field and the agent returns a Submitted envelope, the agent MUST deliver at least the terminal completion/failure notification to the configured URL; intermediate progress notifications are MAY. If the agent cannot honor the webhook channel, it MUST reject the request with a structured error instead of silently accepting. This field does not change response timing semantics: agents MUST NOT route a request through the async/Submitted arm or emit async delivery solely because `push_notification_config` is present; requests that can be completed inline still return the synchronous success shape."
+    },
+    "context": {
+      "$ref": "/schemas/3.1.0/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key"
+  ],
+  "additionalProperties": true
+}

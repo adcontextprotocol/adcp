@@ -119,6 +119,7 @@
     .content-table tr { cursor: pointer; }
     .content-table tr:hover td { background: var(--color-bg-row-hover); }
     .content-title-cell { max-width: 300px; color: var(--color-text-heading); font-weight: var(--font-semibold); }
+    .content-title-cell .review-note-badges { display: flex; gap: var(--space-1); flex-wrap: wrap; margin-top: var(--space-1); }
     .table-pagination { display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); font-size: var(--text-sm); color: var(--color-text-secondary); }
     .table-pagination button { padding: var(--space-1_5) var(--space-3); border: var(--border-1) solid var(--color-border-strong); border-radius: var(--radius-md); background: var(--color-bg-card); cursor: pointer; font-size: var(--text-sm); }
     .table-pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -590,6 +591,7 @@
         </div>
       </div>
       <img id="articleHero" class="article-hero" style="display:none;" alt="">
+      <div id="articleReviewNotes"></div>
       <div id="articleDetailContent" class="article-content"></div>
     </div>
   </div>
@@ -1138,6 +1140,10 @@
         const statusClass = 'badge-' + esc(item.status || 'draft');
         const date = item.published_at ? new Date(item.published_at).toLocaleDateString() : '-';
         const sectionLabel = SECTION_LABELS[item.content_origin] || item.content_origin || '-';
+        const reviewNoteBadges = [
+          item.revision_notes ? '<span class="badge badge-needs_revisions">Notes</span>' : '',
+          item.rejection_reason ? '<span class="badge badge-rejected">Reason</span>' : '',
+        ].filter(Boolean).join('');
         const isArticle = item.content_type === 'article';
         const heroState = isArticle
           ? (item.featured_image_url
@@ -1147,7 +1153,10 @@
               : `<button class="btn btn-small btn-outline" type="button" onclick="regenerateHeroFromTable(event, '${safeId(item.id)}')">Generate Hero</button>`)
           : 'N/A';
         return `<tr onclick="openDetailModal('${safeId(item.id)}')">
-          <td class="content-title-cell">${esc(item.title)}</td>
+          <td class="content-title-cell">
+            ${esc(item.title)}
+            ${reviewNoteBadges ? `<div class="review-note-badges">${reviewNoteBadges}</div>` : ''}
+          </td>
           <td>${esc(sectionLabel)}</td>
           <td>${esc(item.category || '-')}</td>
           <td>${esc(item.author_name || '-')}</td>
@@ -1179,7 +1188,10 @@
 
       try {
         const res = await fetch(`/api/admin/content/${encodeURIComponent(item.id)}`, { credentials: 'include' });
-        if (res.ok) { const full = await res.json(); item.content = full.content; item.tags = full.tags; }
+        if (res.ok) {
+          const full = await res.json();
+          Object.assign(item, full);
+        }
       } catch (e) { console.error('Failed to load full content:', e); }
 
       currentDetailItem = item;
@@ -1202,6 +1214,15 @@
       heroImg.onerror = function() { this.style.display = 'none'; };
 
       document.getElementById('heroBtnLabel').textContent = item.featured_image_url ? 'Regenerate Hero' : 'Generate Hero';
+
+      const reviewNotes = document.getElementById('articleReviewNotes');
+      const rejectionInfo = item.rejection_reason
+        ? `<div class="rejection-reason"><strong>Rejection reason:</strong> ${esc(item.rejection_reason)}</div>`
+        : '';
+      const revisionInfo = item.revision_notes
+        ? `<div class="rejection-reason" style="border-color: var(--color-warning-300); color: var(--color-warning-700); background: var(--color-warning-50);"><strong>Revision notes:</strong> ${esc(item.revision_notes)}</div>`
+        : '';
+      reviewNotes.innerHTML = `${rejectionInfo}${revisionInfo}`;
 
       const html = item.content ? marked.parse(item.content) : '<p><em>No content available.</em></p>';
       document.getElementById('articleDetailContent').innerHTML = DOMPurify.sanitize(html);

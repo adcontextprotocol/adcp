@@ -390,8 +390,10 @@ export class CapabilityDiscovery {
         logger.info({ url, hasOAuth: error.hasOAuth }, 'MCP agent requires OAuth authentication');
         throw error;
       }
-      // For generic 401 errors, wrap in AuthenticationRequiredError
-      if (is401Error(error)) {
+      // For generic 401 errors, unauthenticated probes can offer the OAuth
+      // affordance. Authed probes should surface as credential failures
+      // instead of relabeling a sent-but-rejected bearer as "OAuth required."
+      if (is401Error(error) && !auth) {
         logger.info({ url }, 'MCP agent returned 401');
         throw new AuthenticationRequiredError(url, undefined, 'Agent requires authentication');
       }
@@ -429,8 +431,10 @@ export class CapabilityDiscovery {
         logger.info({ url, hasOAuth: error.hasOAuth }, 'A2A agent requires OAuth authentication');
         throw error;
       }
-      // For generic 401 errors, wrap in AuthenticationRequiredError
-      if (is401Error(error)) {
+      // For generic 401 errors, unauthenticated probes can offer the OAuth
+      // affordance. Authed probes should surface as credential failures
+      // instead of relabeling a sent-but-rejected bearer as "OAuth required."
+      if (is401Error(error) && !auth) {
         logger.info({ url }, 'A2A agent returned 401');
         throw new AuthenticationRequiredError(url, undefined, 'Agent requires authentication');
       }

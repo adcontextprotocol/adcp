@@ -10,6 +10,6 @@
   ],
   "enumDescriptions": {
     "guaranteed": "Reserved inventory with guaranteed delivery",
-    "non_guaranteed": "Auction-based inventory without delivery guarantees"
+    "non_guaranteed": "Inventory without reserved or guaranteed delivery, commonly auction-based or otherwise best-effort. Do not use for scheduled broadcast buys solely because final audience delivery is estimated from historical ranges or settles through third-party measurement."
   }
 }

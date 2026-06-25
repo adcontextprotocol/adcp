@@ -99,6 +99,15 @@ describe('stripe-client', () => {
             subscriptions: {
               data: [{
                 id: 'sub_123',
+                status: 'active',
+                items: {
+                  data: [{
+                    price: {
+                      lookup_key: 'aao_membership_test',
+                      product: 'prod_123',
+                    },
+                  }],
+                },
               }],
             },
           }),

@@ -146,6 +146,30 @@ async function isHostUnreachableDns(url: string, timeoutMs = 1500): Promise<bool
   }
 }
 
+function healthProbeHeaders(auth?: SdkAuth): Record<string, string> {
+  const headers: Record<string, string> = { 'User-Agent': AAO_UA_HEALTH_CHECK };
+  const authFields = agentConfigAuthFields(auth);
+  if (authFields.auth_token) {
+    headers['Authorization'] = `Bearer ${authFields.auth_token}`;
+  } else if (authFields.headers?.Authorization) {
+    headers['Authorization'] = authFields.headers.Authorization;
+  } else if (authFields.oauth_tokens?.access_token) {
+    headers['Authorization'] = `Bearer ${authFields.oauth_tokens.access_token}`;
+  }
+  return headers;
+}
+
+function shouldSendHealthFallbackAuth(agent: Agent): boolean {
+  if (!agent.health_check_url) return false;
+  try {
+    const healthUrl = new URL(agent.health_check_url);
+    const agentUrl = new URL(agent.url);
+    return healthUrl.protocol === 'https:' && healthUrl.origin === agentUrl.origin;
+  } catch {
+    return false;
+  }
+}
+
 export class HealthChecker {
   private healthCache: Cache<AgentHealth>;
   private statsCache: Cache<AgentStats>;
@@ -230,7 +254,7 @@ export class HealthChecker {
           raw: classified.raw,
         };
       }
-      const fallback = await this.tryHealthCheckFallback(agent, startTime, classified);
+      const fallback = await this.tryHealthCheckFallback(agent, startTime, classified, auth);
       if (fallback) return fallback;
       return {
         online: false,
@@ -256,12 +280,13 @@ export class HealthChecker {
     agent: Agent,
     startTime: number,
     classified: ClassifiedProbeError,
+    auth?: SdkAuth,
   ): Promise<AgentHealth | null> {
     if (!agent.health_check_url) return null;
     try {
       const response = await safeFetch(agent.health_check_url, {
         method: "GET",
-        headers: { 'User-Agent': AAO_UA_HEALTH_CHECK },
+        headers: healthProbeHeaders(shouldSendHealthFallbackAuth(agent) ? auth : undefined),
         signal: AbortSignal.timeout(5000),
         maxRedirects: 0,
       });
@@ -289,15 +314,7 @@ export class HealthChecker {
     try {
       // Check for A2A agent card at /.well-known/agent.json
       const agentCardUrl = `${agent.url.replace(/\/$/, "")}/.well-known/agent.json`;
-      const headers: Record<string, string> = { 'User-Agent': AAO_UA_HEALTH_CHECK };
-      const authFields = agentConfigAuthFields(auth);
-      if (authFields.auth_token) {
-        headers['Authorization'] = `Bearer ${authFields.auth_token}`;
-      } else if (authFields.headers?.Authorization) {
-        headers['Authorization'] = authFields.headers.Authorization;
-      } else if (authFields.oauth_tokens?.access_token) {
-        headers['Authorization'] = `Bearer ${authFields.oauth_tokens.access_token}`;
-      }
+      const headers = healthProbeHeaders(auth);
       const response = await fetch(agentCardUrl, {
         headers,
         signal: AbortSignal.timeout(5000),

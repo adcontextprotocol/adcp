@@ -226,6 +226,60 @@ describe('artifact CDN Worker', () => {
     assert.equal(response.headers.get('cache-control'), 'public, max-age=31536000, immutable');
   });
 
+  it('resolves a pinned docs-only version bump to the nearest published release', async () => {
+    const response = await fetchPath('/schemas/3.0.19/foo.json');
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { version: '3.0.12' });
+    assert.equal(response.headers.get('cache-control'), 'public, no-cache, must-revalidate');
+    assert.equal(response.headers.get('access-control-allow-origin'), '*');
+  });
+
+  it('redirects a bare pinned-fallback version directory to the resolved index.json', async () => {
+    const response = await fetchPath('/schemas/3.0.19/');
+
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get('location'), '/schemas/3.0.12/index.json');
+  });
+
+  it('never resolves a stable pin to a prerelease on the same line', async () => {
+    // 3.1.x has only a prerelease published (3.1.0-beta.3); a stable 3.1.5 pin
+    // must fall back to the highest stable in the major (3.0.12), not the beta.
+    const response = await fetchPath('/schemas/3.1.5/foo.json');
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { version: '3.0.12' });
+    assert.equal(response.headers.get('cache-control'), 'public, no-cache, must-revalidate');
+  });
+
+  it('does not edge-cache resolved pinned fallbacks', async () => {
+    const { clearVersionCacheForTests, handleRequest } = await loadWorker();
+    const testEnv = env();
+    const edgeCache = new MockEdgeCache();
+    const ctx = { waitUntil: () => assert.fail('resolved fallbacks should not write to edge cache') };
+    clearVersionCacheForTests();
+
+    await withMockEdgeCache(edgeCache, async () => {
+      const response = await handleRequest(
+        new Request('https://artifacts.example/schemas/3.0.19/foo.json'),
+        testEnv,
+        ctx,
+      );
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { version: '3.0.12' });
+    });
+
+    assert.equal(edgeCache.matches, 0);
+    assert.equal(edgeCache.puts, 0);
+  });
+
+  it('404s a pinned version with no resolvable release in its major', async () => {
+    const response = await fetchPath('/schemas/4.0.0/foo.json');
+
+    assert.equal(response.status, 404);
+    assert.equal(await response.text(), 'Not Found');
+  });
+
   it('uses edge cache for immutable versioned schema objects', async () => {
     const { clearVersionCacheForTests, handleRequest } = await loadWorker();
     const testEnv = env();

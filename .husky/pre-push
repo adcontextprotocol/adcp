@@ -14,15 +14,22 @@ case "$BRANCH_NAME" in
   *)
     CHANGESET_BASE="${ADCP_CHANGESET_BASE:-origin/main}"
     if git rev-parse --verify --quiet "$CHANGESET_BASE" >/dev/null; then
-      echo "🔍 Checking for changeset since $CHANGESET_BASE..."
-      if ! git diff --name-only --diff-filter=ACMR "$CHANGESET_BASE"...HEAD -- .changeset |
+      echo "🔍 Checking changeset policy since $CHANGESET_BASE..."
+      node scripts/check-changeset-protocol-scope.cjs "$CHANGESET_BASE" || exit 1
+
+      if node scripts/check-changeset-protocol-scope.cjs "$CHANGESET_BASE" --is-status-exempt-maintenance; then
+        echo "⏭  Changeset policy maintenance — skipping local changeset presence check"
+      elif ! node scripts/check-changeset-protocol-scope.cjs "$CHANGESET_BASE" --has-protocol-scoped-changes; then
+        echo "⏭  No protocol release-surface changes — skipping local changeset presence check"
+      elif ! git diff --name-only --diff-filter=ACMR "$CHANGESET_BASE"...HEAD -- .changeset |
         grep -Eq '^\.changeset/[^/]+\.md$'; then
-        echo "Missing changeset. Add one with 'npx changeset --empty' before pushing."
+        echo "Missing protocol changeset. Add one with 'npx changeset' before pushing."
         echo "Run the full CI-equivalent check with:"
         echo "  npx --yes @changesets/cli@^2.31.0 status --since=$CHANGESET_BASE"
         exit 1
+      else
+        echo "✅ Protocol changeset present"
       fi
-      echo "✅ Changeset present"
     else
       echo "⏭  $CHANGESET_BASE not found — skipping local changeset check"
     fi

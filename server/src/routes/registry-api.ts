@@ -321,7 +321,7 @@ const badgeEligibilityMetadata = (eligibleVersions: readonly string[]) => ({
   badge_eligible_adcp_versions: [...eligibleVersions],
 });
 const INVALID_COMPLIANCE_TARGET_MESSAGE =
-  "Invalid compliance_target. Use 3.0, 3.1-rc, 3.1-beta, or an exact bundled version.";
+  "Invalid compliance_target. Use 3.1, 3.0, 3.1-rc, 3.1-beta, or an exact bundled version.";
 
 class InvalidComplianceTargetError extends Error {}
 
@@ -2866,7 +2866,7 @@ registry.registerPath({
               ran: z.boolean().openapi({ description: "True if the full storyboard suite ran and agent_storyboard_status was updated. False when ownership couldn't be resolved, the agent reported auth_required, or the compliance call itself failed." }),
               run_id: z.string().optional().openapi({ description: "Compliance run id written by this refresh. Use with /compliance/diagnostics?run_id=... to inspect failing-step wire evidence." }),
               test_session_id: z.string().optional().openapi({ description: "Fresh test session id used for the compliance run. Useful when matching seller-side logs to the refresh." }),
-              requested_compliance_target: z.string().optional().openapi({ description: "Requested compliance target before alias resolution, e.g. 3.0, 3.1-rc, or 3.1-beta. Present when `ran` is true." }),
+              requested_compliance_target: z.string().optional().openapi({ description: "Requested compliance target before alias resolution, e.g. 3.1, 3.0, 3.1-rc, or 3.1-beta. Present when `ran` is true." }),
               adcp_version: z.string().optional().openapi({ description: "Concrete AdCP compliance bundle version used for the run, e.g. 3.0.12 or 3.1.0-beta.7. Present when `ran` is true." }),
               badge_eligible: z.boolean().optional().openapi({ description: "True when this run can update public badge state." }),
               badge_eligible_adcp_versions: z.array(z.string()).optional().openapi({ description: "Public badge versions this run can issue, e.g. ['3.0']." }),
@@ -3163,7 +3163,7 @@ registry.registerPath({
   request: {
     query: z.object({
       category: z.string().optional().openapi({ description: "Filter by storyboard category" }),
-      compliance_target: z.string().optional().openapi({ description: "Compliance target to inspect, e.g. 3.0, 3.1-rc, or 3.1-beta" }),
+      compliance_target: z.string().optional().openapi({ description: "Compliance target to inspect, e.g. 3.1, 3.0, 3.1-rc, or 3.1-beta" }),
     }),
   },
   responses: {
@@ -3197,7 +3197,7 @@ registry.registerPath({
       id: z.string().openapi({ description: "Storyboard ID" }),
     }),
     query: z.object({
-      compliance_target: z.string().optional().openapi({ description: "Compliance target to inspect, e.g. 3.0, 3.1-rc, or 3.1-beta" }),
+      compliance_target: z.string().optional().openapi({ description: "Compliance target to inspect, e.g. 3.1, 3.0, 3.1-rc, or 3.1-beta" }),
     }),
   },
   responses: {
@@ -3455,7 +3455,7 @@ registry.registerPath({
       storyboardId: z.string(),
     }),
     query: z.object({
-      compliance_target: z.string().optional().openapi({ description: "Compliance target to inspect, e.g. 3.0, 3.1-rc, or 3.1-beta" }),
+      compliance_target: z.string().optional().openapi({ description: "Compliance target to inspect, e.g. 3.1, 3.0, 3.1-rc, or 3.1-beta" }),
     }),
   },
   responses: {
@@ -6125,7 +6125,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
       let probeResult: Awaited<ReturnType<typeof crawler.refreshSingleAgent>>;
       try {
-        probeResult = await crawler.refreshSingleAgent(agentUrl, { auth: resolvedAuth });
+        probeResult = await crawler.refreshSingleAgent(agentUrl, {
+          auth: resolvedAuth,
+          ...(ownerOrgId ? { ownerOrgId } : {}),
+        });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Probe failed';
         if (/Monitoring paused/i.test(message)) {
@@ -6231,6 +6234,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
                   declaredSpecialisms,
                   runId: run.id,
                   adcpVersions: runBadgeEligibleVersions,
+                  supportedVersions: complyResult.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
                 });
               } catch (badgeError) {
                 logger.warn({ err: badgeError, agentUrl }, 'Badge fan-out failed after manual refresh');
@@ -6507,7 +6511,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         try {
           const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
           const resolvedAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `connect:${agentUrl}` });
-          refreshed = await crawler.refreshSingleAgent(agentUrl, { auth: resolvedAuth });
+          refreshed = await crawler.refreshSingleAgent(agentUrl, { auth: resolvedAuth, ownerOrgId: orgId });
         } catch (refreshErr) {
           logger.warn(
             { err: refreshErr, agentUrl },
@@ -6591,7 +6595,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         try {
           const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
           const resolvedAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `connect-cc:${agentUrl}` });
-          refreshed = await crawler.refreshSingleAgent(agentUrl, { auth: resolvedAuth });
+          refreshed = await crawler.refreshSingleAgent(agentUrl, { auth: resolvedAuth, ownerOrgId: orgId });
         } catch (refreshErr) {
           logger.warn(
             { err: refreshErr, agentUrl },
@@ -7083,6 +7087,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
               agentUrl,
               declaredSpecialisms,
               adcpVersions: runBadgeEligibleVersions,
+              supportedVersions: complyResult.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
             });
           } catch (badgeError) {
             logger.warn({ err: badgeError, agentUrl }, 'Badge fan-out failed after storyboard-run');
@@ -7106,14 +7111,33 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           steps_total: 0,
         };
         const serializedStoryboardStatus = serializeStoryboardRunStatus(storyboardStatus);
-        const isControllerCoverageGapScenario = (scenario: { steps?: any[] }): boolean => {
+        const isRunnerApplicabilitySkip = (scenarioId: string, step: {
+          skip_reason?: string;
+          step_id?: unknown;
+          requirement?: unknown;
+        }): boolean => {
+          switch (step.skip_reason) {
+            case 'capability_unsupported':
+              return true;
+            case 'missing_test_kit_contract':
+              return scenarioId === 'idempotency/rate_limit_replay_invariant' &&
+                step.step_id === 'expect_rate_limit_not_replayed';
+            case 'requirement_unmet':
+              return step.requirement === 'webhook_receiver';
+            default:
+              return false;
+          }
+        };
+        const isControllerCoverageGapScenario = (scenario: { scenario?: unknown; steps?: any[] }): boolean => {
           const steps = Array.isArray(scenario.steps) ? scenario.steps : [];
+          const scenarioId = typeof scenario.scenario === 'string' ? scenario.scenario : '';
           return steps.length > 0 && steps.every((step) => {
             if (!step?.skipped) return false;
             return step.skip_reason === 'peer_branch_taken' ||
               step.skip_reason === 'peer_substituted' ||
               step.skip_reason === 'missing_test_controller' ||
-              (step.skip_reason === 'requirement_unmet' && step.requirement === 'controller');
+              (step.skip_reason === 'requirement_unmet' && step.requirement === 'controller') ||
+              isRunnerApplicabilitySkip(scenarioId, step);
           });
         };
         const uiDiagnostics = (dbInput.step_diagnostics ?? []).map((diagnostic) => ({

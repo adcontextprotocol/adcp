@@ -87,7 +87,8 @@ what changed status) and
 `Session: https://claude.ai/code/${CLAUDE_CODE_REMOTE_SESSION_ID}`.
 Don't write prose — a reviewer should be able to skim the body in 30
 seconds without reading the file diff.
-Include an empty changeset (`npx changeset --empty`, renamed).
+Do not include a changeset; current-context refreshes are non-protocol
+maintenance.
 Draft PR, not ready-for-review. `.agents/current-context.md` is
 covered by CODEOWNERS — a human must approve before merge.
 

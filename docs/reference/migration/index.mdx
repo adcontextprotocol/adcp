@@ -9,6 +9,10 @@ description: "A complete guide to migrating AdCP integrations from v2.x to v3.0,
 
 This page covers every breaking change when upgrading from AdCP 2.x to 3.0, with effort estimates and links to detailed migration pages. For new features see [What's new in v3](/docs/reference/whats-new-in-v3); for release-candidate deltas see [prerelease upgrade notes](/docs/reference/migration/prerelease-upgrades); for SDK versions that support 3.0 see [Schemas and SDKs](/docs/building/schemas-and-sdks#adcp-3-0-support).
 
+<Info>
+**Upgrading from 3.0 to 3.1?** Use the [3.0 to 3.1 migration guide](/docs/reference/migration/3-0-to-3-1). This page is for the breaking v2.x to 3.0 upgrade.
+</Info>
+
 <Warning>
 **v2 is unsupported as of 3.0 GA and fully deprecated on August 1, 2026 (UTC).** See the [v2 sunset page](/docs/reference/v2-sunset) for the full timeline, AAO registry policy, and why v2 is not safe for interoperable production.
 </Warning>
@@ -62,7 +66,7 @@ Each row is a breaking change. **Effort** indicates the typical work involved:
 | Regulatory invariants | GDPR Art 22 / EU AI Act Annex III enforced via schema `if/then` | New requirement | [Governance § Annex III obligations](/docs/governance/annex-iii-obligations) |
 
 <Warning>
-`buying_mode` on `get_products` is checked by storyboard testing. Sellers must handle all three buying modes (`browse`, `brief`, `refine`). See the [v3 readiness checklist](/docs/reference/migration/v3-readiness) for details.
+`buying_mode` on `get_products` is checked by storyboard testing. `brief` is the baseline mode; sellers that declare `wholesale` or `refine` in capabilities must handle those mode semantics. See the [v3 readiness checklist](/docs/reference/migration/v3-readiness) for details.
 </Warning>
 
 ## New in v3 — required vs optional
@@ -88,7 +92,7 @@ During migration, sellers can accept both v2 and v3 traffic and buyers can route
 2. **Branch by seller** — Route v3-capable sellers through your v3 integration and v2-only sellers through your existing v2 code.
 3. **Migrate incrementally** — Start with the rename changes (pricing fields, channel updates), then tackle structural changes (creative assignments, optimization goals), then adopt new capabilities (accounts, governance) as needed.
 
-## Deep-dive pages
+## Breaking migrations (v2 → v3.0)
 
 <CardGroup cols={2}>
   <Card title="Channels" icon="tv" href="/docs/reference/migration/channels">
@@ -120,5 +124,21 @@ During migration, sellers can accept both v2 and v3 traffic and buyers can route
   </Card>
   <Card title="Attribution" icon="link" href="/docs/reference/migration/attribution">
     Integer days to structured `Duration` objects
+  </Card>
+</CardGroup>
+
+## 3.1 badge prep guides
+
+You can stay on 3.0 without breaking compatibility. To claim the 3.1 badge, complete this short prep checklist.
+
+<CardGroup cols={2}>
+  <Card title="3.1 badge checklist" icon="rocket" href="/docs/reference/migration/3-0-to-3-1">
+    Additive prep for buyers, sellers, agents, SDKs, and compliance workflows
+  </Card>
+  <Card title="Creative transformers" icon="wand-magic-sparkles" href="/docs/reference/migration/creative-transformers">
+    Move build capability discovery and pricing from formats to transformers
+  </Card>
+  <Card title="Media buy status" icon="circle-check" href="/docs/reference/migration/media-buy-status">
+    Split body-level buy status from envelope task status on success responses
   </Card>
 </CardGroup>

@@ -1,0 +1,87 @@
+---
+title: Buyer and Seller Responsibilities
+description: "How buyer-side orchestrators, sellers, and governance agents share responsibility in AdCP Campaign Governance."
+"og:title": "AdCP — Campaign governance buyer and seller responsibilities"
+sidebarTitle: Responsibilities
+---
+
+# Governance responsibilities: buyer vs. seller
+
+Campaign Governance uses the same `check_governance` task from two different positions in the transaction. The buyer-side orchestrator checks intent before it sends an action. The seller checks execution before it commits or changes delivery. Both checks go to the buyer's configured governance agent, but they carry different evidence.
+
+## Roles
+
+| Role | Responsibility |
+|------|----------------|
+| Buyer-side orchestrator | Creates or updates plans, checks intended actions, sends approved requests to sellers, and reports outcomes back to the governance agent. |
+| Seller | Verifies the buyer supplied a valid governance context, checks planned delivery before execution, and refuses governed actions that are missing or denied by governance. |
+| Governance agent | Applies the plan and policy rules, returns `approved`, `conditions`, or `denied`, signs governance context, and records audit state. |
+
+## Setup: bind the seller to the governance agent
+
+Before a seller can make seller-side checks, the buyer account must sync governance agent endpoints with the seller via [`sync_governance`](/dist/docs/3.1.0/accounts/tasks/sync_governance). This is account setup, not per-buy negotiation.
+
+The seller stores the configured governance agent endpoint and credentials for the account. Later, when a governed request arrives, the seller knows where to call `check_governance`.
+
+## Buyer-side intent check
+
+The buyer-side orchestrator calls [`check_governance`](/dist/docs/3.1.0/governance/campaign/tasks/check_governance) before every spend-commit action on a governed plan.
+
+The intent check sends:
+
+| Field | Required | Purpose |
+|-------|----------|---------|
+| `plan_id` | Yes | Identifies the campaign plan being enforced. |
+| `caller` | Yes | Identifies the buyer-side orchestrator making the governance check. |
+| `tool` | Yes | Names the action the orchestrator intends to perform, such as `create_media_buy`, `update_media_buy`, `activate_signal`, or `build_creative`. |
+| `payload` | Yes | Carries the exact request body the orchestrator intends to send. |
+| `governance_context` | Later calls | Maintains lifecycle continuity after the first approved check. |
+
+If the governance agent returns `approved` or `conditions`, it returns a `governance_context` token. The orchestrator attaches that token to the request it sends to the seller. If the response is `conditions`, the orchestrator must apply the conditions and re-check before proceeding.
+
+## Seller-side execution check
+
+When a seller receives a governed spend-commit request, it performs an independent execution check before confirming the action.
+
+The seller-side check sends:
+
+| Field | Required | Purpose |
+|-------|----------|---------|
+| `plan_id` | Yes | Identifies the campaign plan being enforced. |
+| `caller` | Yes | Identifies the seller making the execution check. |
+| `governance_context` | Yes | The signed context token from the buyer-side intent check. |
+| `planned_delivery` | Yes | The seller's actual planned execution: budget, dates, channels, geography, placements, pacing, and other delivery parameters. |
+| `phase` | Yes for lifecycle clarity | Indicates whether this is a purchase, modification, or delivery check. |
+| `delivery_metrics` | Delivery phase | Required when `phase` is `delivery`; carries actual delivery performance data for pacing, spend, geography, channel, and audience-drift checks. |
+
+The seller must not treat the buyer's intent check as sufficient by itself. The seller checks what it will actually deliver, which may differ from the buyer's request because of inventory availability, seller defaults, or implementation constraints.
+
+If the governance agent denies the execution check, the seller must not proceed. If the governance agent returns conditions, the seller must adjust planned delivery and re-check before confirming.
+
+## Outcome reporting
+
+After a seller responds, the buyer-side orchestrator calls [`report_plan_outcome`](/dist/docs/3.1.0/governance/campaign/tasks/report_plan_outcome). This lets the governance agent reconcile the approved action with the seller's actual response and update budget state from confirmed outcomes.
+
+Outcome reporting is what prevents the governance agent from counting attempted actions as committed spend. The governance agent tracks the state that actually happened.
+
+## Common mistakes
+
+| Mistake | Correct behavior |
+|---------|------------------|
+| Buyer skips `check_governance` because the seller will check later | Buyer must perform the intent check first so it can attach a valid governance context. |
+| Seller accepts a request with no governance context on a governed account | Seller rejects the request before execution. |
+| Seller checks the buyer's requested payload instead of `planned_delivery` | Seller checks the delivery it will actually run. |
+| Orchestrator treats `conditions` as approval | Orchestrator or seller applies the conditions and calls `check_governance` again. |
+| Orchestrator omits `report_plan_outcome` | Governance budget and audit state drift from what actually happened. |
+
+## Minimal sequence
+
+1. Buyer configures governance on the account with `sync_governance`.
+2. Buyer creates or updates a plan with `sync_plans`.
+3. Buyer calls `check_governance` with `tool` and `payload`.
+4. Buyer sends the seller request with `governance_context`.
+5. Seller verifies the context and calls `check_governance` with `plan_id`, `caller`, and `planned_delivery`.
+6. Seller confirms, rejects, or adjusts based on the governance verdict.
+7. Buyer calls `report_plan_outcome` with the seller result.
+
+See the [`check_governance` task reference](/dist/docs/3.1.0/governance/campaign/tasks/check_governance) for request and response fields, and the [Campaign Governance specification](/dist/docs/3.1.0/governance/campaign/specification) for lifecycle and token validation details.

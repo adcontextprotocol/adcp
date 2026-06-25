@@ -1141,6 +1141,7 @@ export interface FederatedAgent {
   name?: string;
   type?: AgentType;
   protocol?: 'mcp' | 'a2a';
+  health_check_url?: string;
   member?: {
     slug: string;
     display_name: string;

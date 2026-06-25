@@ -215,6 +215,7 @@ When executing a proposal, `proposal_status` on the returned proposal determines
 | Field | Description |
 |-------|-------------|
 | `media_buy_id` | Seller's unique identifier |
+| `account` | Resolved account billed for this media buy, echoed as a full [Account](/docs/building/integration/accounts-and-agents#account-references) object (includes `account_id`, `name`, `status`, and the resolved `brand`/`operator`). When the request used implicit resolution (`brand` + `operator`), this confirms the account the seller resolved. Optional. |
 | `confirmed_at` | ISO 8601 timestamp when the seller committed to the media buy. Stable after it is set. May be `null` in deferred/manual approval flows until seller commitment occurs. |
 | `creative_deadline` | ISO 8601 timestamp for creative upload deadline |
 | `revision` | Initial media-buy revision. Use this value as the `revision` token on the next `update_media_buy` call intended to change state. |
@@ -1237,6 +1238,13 @@ const response = await session.call('create_media_buy', {
 {
   "status": "completed",
   "media_buy_id": "mb_12345",
+  "account": {
+    "account_id": "acc_acme_direct",
+    "name": "Acme",
+    "status": "active",
+    "brand": { "domain": "acmecorp.com" },
+    "operator": "acmecorp.com"
+  },
   "media_buy_status": "active",
   "confirmed_at": "2025-06-01T10:00:00Z",
   "creative_deadline": "2025-06-15T23:59:59Z",
@@ -1300,6 +1308,13 @@ const response = await session.call('create_media_buy',
   "message": "Media buy approved and created",
   "result": {
     "media_buy_id": "mb_67890",
+    "account": {
+      "account_id": "acc_acme_direct",
+      "name": "Acme",
+      "status": "active",
+      "brand": { "domain": "acmecorp.com" },
+      "operator": "acmecorp.com"
+    },
     "confirmed_at": "2025-01-22T14:30:00Z",
     "creative_deadline": "2025-06-20T23:59:59Z",
     "revision": 1,

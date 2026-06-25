@@ -340,6 +340,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       "search_industry_feeds",
       "add_industry_feed",
       "get_feed_stats",
+      "get_platform_stats",
       "list_feed_proposals",
       "approve_feed_proposal",
       "reject_feed_proposal",

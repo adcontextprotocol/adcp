@@ -38,6 +38,15 @@ describe('worker-watchdog', () => {
     await _internals.tick();
     await _internals.tick();
     expect(errorSpy).toHaveBeenCalledOnce();
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recovery: expect.objectContaining({
+          attempted: false,
+          reason: 'FLY_API_TOKEN not set',
+        }),
+      }),
+      expect.any(String),
+    );
     expect(_internals.getState().alerted).toBe(true);
   });
 

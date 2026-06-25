@@ -345,10 +345,18 @@ export function selectCanonicalHostedComplianceTargetForSupportedVersions(
 ): HostedComplianceTarget {
   if (!supportedVersions?.length) return fallback;
 
-  const stableTarget = hostedComplianceTarget(DEFAULT_HOSTED_COMPLIANCE_LINE);
-  const hostedStableLineAlias = hostedStableLineAliasForVersion(stableTarget, stableTarget.version);
-  if (isComplianceVersionSupported(stableTarget.version, supportedVersions, { hostedStableLineAlias })) {
-    return stableTarget;
+  for (const line of SUPPORTED_BADGE_VERSIONS) {
+    try {
+      const stableTarget = hostedComplianceTarget(line);
+      const hostedStableLineAlias = hostedStableLineAliasForVersion(stableTarget, stableTarget.version);
+      if (isComplianceVersionSupported(stableTarget.version, supportedVersions, { hostedStableLineAlias })) {
+        return stableTarget;
+      }
+    } catch {
+      // A badge line may be configured before its compliance artifacts are
+      // present on a release branch. Skip it and keep looking for a usable
+      // public target.
+    }
   }
 
   return selectHostedComplianceTargetForSupportedVersions(supportedVersions, fallback);

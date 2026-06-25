@@ -159,8 +159,9 @@ export async function checkContentSubmissionTier(userId: string): Promise<boolea
   const membership = await resolveEffectiveMembership(orgId);
 
   // resolveEffectiveMembership walks the brand hierarchy and sets is_member
-  // only when the org (or a consenting ancestor) has an active, non-canceled
-  // subscription — so is_member already encodes subscription-status validity.
-  // We additionally require the tier to be in API_ACCESS_TIERS (Professional+).
+  // only when the org (or a consenting ancestor) has an entitlement-preserving,
+  // non-canceled subscription — so is_member already encodes subscription-status
+  // validity. We additionally require the tier to be in API_ACCESS_TIERS
+  // (Professional+).
   return membership.is_member && isApiAccessTier(membership.membership_tier);
 }

@@ -51,7 +51,7 @@ Sent by the publisher (via router) to buyer agents. Contains content context. MU
 | `request_id` | string | Yes | Unique request identifier for logging. MUST NOT correlate with any Identity Match request_id. |
 | `property_rid` | UUID | Yes | Property catalog UUID (v7). Globally unique, stable. |
 | `property_id` | string | No | Publisher's human-readable slug. Optional when `property_rid` is present. |
-| `property_type` | enum | Yes | One of: `website`, `mobile_app`, `ctv_app`, `desktop_app`, `dooh`, `podcast`, `radio`, `streaming_audio`, `ai_assistant`. See `property-type` enum. |
+| `property_type` | enum | Yes | One of: `website`, `mobile_app`, `ctv_app`, `desktop_app`, `dooh`, `podcast`, `radio`, `linear_tv`, `streaming_audio`, `ai_assistant`. See `property-type` enum. |
 | `placement_id` | string | Yes | Placement identifier from the publisher's placement registry in `adagents.json`. One placement per request. |
 | `seller_agent_url` | string (URI) | Yes | API endpoint URL of the seller agent issuing this request. The provider resolves the active package set it has synced for this seller against it; an unsynced seller MUST yield an empty offer set, never a fall-back to another seller's set. A single per-placement value carrying no user identity. Compared with AdCP URL canonicalization. Consistent with `seller_agent_url` on the Identity Match request and `agent_url` in `adagents.json`. |
 | `artifact` | Artifact | No | Full content artifact adjacent to this ad opportunity. Same schema as content standards evaluation. The publisher sends the full artifact when they want the buyer to evaluate the actual content. Contractual protections govern buyer use. TEE deployment upgrades contractual trust to cryptographic verification. |
@@ -133,6 +133,7 @@ Returned by the buyer agent. Contains offers for matched packages and optional r
 | `type` | string | Yes | `"context_match_response"`. Message type discriminator for deserialization. |
 | `request_id` | string | Yes | Echo of the request's `request_id`. |
 | `offers` | List\<Offer\> | Yes | Offers from the buyer, one per activated package. Empty list means no packages matched. |
+| `cache_ttl` | integer | No | Provider override (in seconds) for the router's default Context Match response cache TTL. When present, routers MUST use this value instead of their default. `0` disables caching (e.g., when targeting configuration has just changed); schema-enforced maximum is 86400 seconds. See [Caching](#caching). |
 | `signals` | Signals | No | Response-level targeting signals for ad server pass-through. Not per-offer — applies to the response as a whole. In the GAM case, these carry the key-value pairs that trigger line items. |
 
 #### Offer
@@ -498,6 +499,8 @@ The router signs all requests using Ed25519. Both Context Match and Identity Mat
 
 Signatures bind the request to a specific provider. The router signs a separate signature per fan-out target using the provider's endpoint URL from the router's provider registration. Providers MUST verify that the signed `provider_endpoint_url` matches their own advertised endpoint and reject the request otherwise. This prevents a captured signature from being replayed against a different provider in the registry within the epoch.
 
+Signatures also bind to `seller_agent_url`, the asking seller's agent URL. `seller_agent_url` selects which seller's registered active package set the receiver evaluates against (see [Seller Agent Attribution](#seller-agent-attribution)) and is the lookup key receivers use to resolve the publisher's signing keys for verification. Including it in the signed bytes prevents a captured signature from being replayed under a different seller's identity to read another seller's offers or active package set.
+
 The daily epoch provides replay protection — a captured signature is valid for at most ~48 hours (current + previous epoch accepted by verifiers).
 
 ### Signature envelope
@@ -516,6 +519,7 @@ Concatenated in this order, UTF-8, newline-separated:
 | Field | Source |
 |---|---|
 | `type` | `context_match_request` |
+| `seller_agent_url` | From the request body, compared using the [AdCP URL canonicalization rules](/docs/reference/url-canonicalization). Binds the signature to the asking seller — reusing a signature under a different `seller_agent_url` fails verification. |
 | `property_rid` | From the request body |
 | `placement_id` | From the request body |
 | `package_ids` | Sorted, comma-separated list of active package IDs |
@@ -524,7 +528,7 @@ Concatenated in this order, UTF-8, newline-separated:
 
 When `package_ids` is absent from the request, the signature MUST use an empty string for that field in the signed payload.
 
-Because the signed fields are static per placement per provider, the same signature can be cached and reused for all requests to the same `(placement_id, provider_endpoint_url)` pair within a 24-hour epoch. Cache keys MUST include `provider_endpoint_url` — reusing a signature across providers violates the binding and will fail verification.
+Because the signed fields are static per seller per placement per provider, the same signature can be cached and reused for all requests to the same `(seller_agent_url, placement_id, provider_endpoint_url)` triple within a 24-hour epoch. Cache keys MUST include `seller_agent_url` and `provider_endpoint_url` — reusing a signature across sellers or providers violates the binding and will fail verification.
 
 #### Identity Match signed fields
 
@@ -534,6 +538,7 @@ The signed input is the hex-encoded SHA-256 of the [RFC 8785 JCS](https://datatr
 |---|---|
 | `type` | `"identity_match_request"` |
 | `request_id` | From the request body |
+| `seller_agent_url` | From the request body, compared using the [AdCP URL canonicalization rules](/docs/reference/url-canonicalization). Binds the signature to the asking seller — reusing a signature under a different `seller_agent_url` fails verification. |
 | `identities_hash` | Hex-encoded SHA-256 of the canonical `identities` bytes (see below) |
 | `consent` | The request's `consent` object verbatim, or `null` when absent |
 | `package_ids` | The request's `package_ids` sorted lexicographically by UTF-8 byte order |

@@ -22,6 +22,7 @@ import {
   startWebOAuthFlow,
   completeWebOAuthFlow,
   safeReturnTo,
+  type PendingWebFlowStore,
   AgentVanishedDuringFlowError,
   ConfidentialClientNotAllowedError,
   InvalidOrExpiredFlowError,
@@ -34,7 +35,7 @@ import {
 import { createLogger } from '../logger.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AgentContextDatabase } from '../db/agent-context-db.js';
-import { getWebMemberContext } from '../addie/member-context.js';
+import { getWorkos } from '../auth/workos-client.js';
 import { createWebOAuthAdapters, AgentOAuthPendingFlowStore } from './helpers/web-oauth-stores.js';
 
 const logger = createLogger('agent-oauth');
@@ -56,6 +57,82 @@ function getCallbackUrl(req: Request): string {
   const protocol = req.headers['x-forwarded-proto'] || req.protocol;
   const host = req.headers['x-forwarded-host'] || req.get('host');
   return `${protocol}://${host}/api/oauth/agent/callback`;
+}
+
+async function hasActiveWorkosMembership(workosUserId: string, organizationId: string): Promise<boolean> {
+  let after: string | undefined;
+
+  do {
+    const page = await getWorkos().userManagement.listOrganizationMemberships({
+      userId: workosUserId,
+      organizationId,
+      statuses: ['active'],
+      limit: 100,
+      after,
+    });
+
+    if ((page.data ?? []).some((membership) =>
+      membership.userId === workosUserId &&
+      membership.organizationId === organizationId &&
+      membership.status === 'active',
+    )) {
+      return true;
+    }
+
+    after = page.listMetadata?.after ?? undefined;
+  } while (after);
+
+  return false;
+}
+
+async function requireAgentContextAccess(
+  agentContextDb: AgentContextDatabase,
+  agentContextId: string,
+  workosUserId: string,
+): Promise<
+  | { ok: true; agentContext: NonNullable<Awaited<ReturnType<AgentContextDatabase['getById']>>> }
+  | { ok: false; status: number; error: string }
+> {
+  const agentContext = await agentContextDb.getById(agentContextId);
+  if (!agentContext) {
+    return { ok: false, status: 404, error: 'Agent context not found' };
+  }
+
+  if (!(await hasActiveWorkosMembership(workosUserId, agentContext.organization_id))) {
+    return { ok: false, status: 403, error: 'Access denied' };
+  }
+
+  return { ok: true, agentContext };
+}
+
+export function createMembershipGuardedPendingFlowStore(
+  baseStore: PendingWebFlowStore,
+  workosUserId: string,
+): PendingWebFlowStore {
+  return {
+    put: (flow) => baseStore.put(flow),
+    ...(baseStore.cleanupExpired && {
+      cleanupExpired: () => baseStore.cleanupExpired!(),
+    }),
+    async consume(state) {
+      const flow = await baseStore.consume(state);
+      if (!flow) return null;
+
+      const flowOrgId = flow.carry?.organization_id;
+      if (
+        typeof flowOrgId !== 'string' ||
+        !(await hasActiveWorkosMembership(workosUserId, flowOrgId))
+      ) {
+        logger.warn(
+          { agentId: flow.agentId, flowOrgIdPresent: typeof flowOrgId === 'string' },
+          'OAuth callback org mismatch before token exchange',
+        );
+        return null;
+      }
+
+      return flow;
+    },
+  };
 }
 
 // Periodic cleanup of expired pending-flow rows (the SDK deletes on
@@ -115,19 +192,12 @@ export function createAgentOAuthRouter(): Router {
         return res.status(401).json({ error: 'Not authenticated' });
       }
 
-      const memberContext = await getWebMemberContext(userId);
-      if (!memberContext?.organization?.workos_organization_id) {
-        return res.status(401).json({ error: 'No organization found' });
+      const access = await requireAgentContextAccess(agentContextDb, agent_context_id, userId);
+      if (!access.ok) {
+        return res.status(access.status).json({ error: access.error });
       }
-      const organizationId = memberContext.organization.workos_organization_id;
-
-      const agentContext = await agentContextDb.getById(agent_context_id);
-      if (!agentContext) {
-        return res.status(404).json({ error: 'Agent context not found' });
-      }
-      if (agentContext.organization_id !== organizationId) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
+      const agentContext = access.agentContext;
+      const organizationId = agentContext.organization_id;
 
       const redirectUri = getCallbackUrl(req);
 
@@ -221,9 +291,9 @@ export function createAgentOAuthRouter(): Router {
    *   1. `requireAuth` — must have a live session, not just a state value.
    *   2. `expectedState` — mandatory; the cookie set on /start must match
    *      what the AS bounced back. Missing cookie aborts the flow.
-   *   3. Post-consume org check — `flow.carry.organization_id` must equal
-   *      the calling user's org. Stops cross-org token landing even if
-   *      the cookie binding were ever to weaken.
+   *   3. Pre-token-exchange org check — `flow.carry.organization_id` must
+   *      still be an active org for the calling user before the SDK can
+   *      exchange the code or persist tokens.
    */
   router.get('/callback', requireAuth, async (req: Request, res: Response) => {
     const clearStateCookie = () => res.clearCookie(STATE_COOKIE, { path: '/api/oauth/agent/callback' });
@@ -262,36 +332,30 @@ export function createAgentOAuthRouter(): Router {
       // requireAuth should already have rejected — defensive only.
       return res.status(401).json({ error: 'Not authenticated' });
     }
-    const memberContext = await getWebMemberContext(userId);
-    const callerOrgId = memberContext?.organization?.workos_organization_id;
-    if (!callerOrgId) {
-      return res.status(401).json({ error: 'No organization found' });
-    }
-
     const redirectUri = getCallbackUrl(req);
     const { pendingFlowStore, agentStorage } = createWebOAuthAdapters({
       agentContextDb,
       redirectUri,
     });
+    const guardedPendingFlowStore = createMembershipGuardedPendingFlowStore(pendingFlowStore, userId);
 
     try {
       const result = await completeWebOAuthFlow({
         state,
         code,
-        pendingFlowStore,
+        pendingFlowStore: guardedPendingFlowStore,
         agentStorage,
         expectedState,
       });
 
-      // Post-consume cross-org guard. The flow carries the org that
-      // initiated /start; reject if the browser session finishing the
-      // flow doesn't belong to it. The pending row is already deleted at
-      // this point — the user will need to restart, which is the right
-      // outcome for a session/org mismatch.
+      // Defense in depth: the guarded pending-flow store already checked
+      // active membership before token exchange/persistence. At this point
+      // only reject malformed carry data without making another external
+      // WorkOS call after tokens may have been saved.
       const flowOrgId = result.carry?.organization_id;
-      if (typeof flowOrgId !== 'string' || flowOrgId !== callerOrgId) {
+      if (typeof flowOrgId !== 'string') {
         logger.warn(
-          { agentUrl: result.agentUrl, callerOrgId, flowOrgIdPresent: typeof flowOrgId === 'string' },
+          { agentUrl: result.agentUrl, flowOrgIdPresent: typeof flowOrgId === 'string' },
           'OAuth callback org mismatch — refusing token persistence path',
         );
         // Tokens were just persisted by the SDK; immediately revoke
@@ -361,16 +425,9 @@ export function createAgentOAuthRouter(): Router {
       const userId = req.user?.id;
       if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
-      const memberContext = await getWebMemberContext(userId);
-      if (!memberContext?.organization?.workos_organization_id) {
-        return res.status(401).json({ error: 'No organization found' });
-      }
-      const organizationId = memberContext.organization.workos_organization_id;
-
-      const agentContext = await agentContextDb.getById(agent_context_id);
-      if (!agentContext) return res.status(404).json({ error: 'Agent context not found' });
-      if (agentContext.organization_id !== organizationId) {
-        return res.status(403).json({ error: 'Access denied' });
+      const access = await requireAgentContextAccess(agentContextDb, agent_context_id, userId);
+      if (!access.ok) {
+        return res.status(access.status).json({ error: access.error });
       }
 
       await agentContextDb.removeOAuthTokens(agent_context_id);
@@ -396,17 +453,11 @@ export function createAgentOAuthRouter(): Router {
       const userId = req.user?.id;
       if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
-      const memberContext = await getWebMemberContext(userId);
-      if (!memberContext?.organization?.workos_organization_id) {
-        return res.status(401).json({ error: 'No organization found' });
+      const access = await requireAgentContextAccess(agentContextDb, agent_context_id, userId);
+      if (!access.ok) {
+        return res.status(access.status).json({ error: access.error });
       }
-      const organizationId = memberContext.organization.workos_organization_id;
-
-      const agentContext = await agentContextDb.getById(agent_context_id);
-      if (!agentContext) return res.status(404).json({ error: 'Agent context not found' });
-      if (agentContext.organization_id !== organizationId) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
+      const agentContext = access.agentContext;
 
       const metadata = await discoverOAuthMetadata(agentContext.agent_url);
       const agentSupportsOAuth = !!metadata;

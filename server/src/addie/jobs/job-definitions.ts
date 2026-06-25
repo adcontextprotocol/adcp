@@ -27,6 +27,7 @@ import { SlackDatabase } from '../../db/slack-db.js';
 import { runPersonaInferenceJob } from '../services/persona-inference.js';
 import { runJourneyComputationJob } from '../services/journey-computation.js';
 import { runKnowledgeStalenessJob } from './knowledge-staleness.js';
+import { runDocsIndexRefreshJob } from './docs-index-refresh.js';
 import { runGeoMonitorJob } from './geo-monitor.js';
 import { runGeoSnapshotJob } from './geo-snapshot.js';
 import { runGeoContentPlannerJob } from './geo-content-planner.js';
@@ -36,6 +37,7 @@ import { runSocialPostIdeasJob } from './social-post-ideas.js';
 import { runConversationInsightsJob } from './conversation-insights.js';
 import { autoLinkUnmappedSlackUsers, autoAddVerifiedDomainUsersAsMembers } from '../../slack/sync.js';
 import { runCredentialDigestJob } from './credential-digest.js';
+import { runCertificationRecoveryJob } from './certification-recovery.js';
 import { runBrandLogoDigestJob } from './brand-logo-digest.js';
 import { runWgDigestJob, runWgDigestPrepJob } from './wg-digest.js';
 import { runComplianceHeartbeatJob } from './compliance-heartbeat.js';
@@ -43,6 +45,7 @@ import { runShadowEvaluatorJob } from './shadow-evaluator.js';
 import { runAddieCorrectedCaptureJob } from './shadow-corrected-capture.js';
 import { runKnowledgeGapCloserJob } from './knowledge-gap-closer.js';
 import { runEscalationTriageJob } from './escalation-triage.js';
+import { runEscalationSlaJob } from './escalation-sla.js';
 import { runInviteExpirySweep } from './invite-expiry-sweep.js';
 import { runIntegrityInvariantsJob } from './integrity-invariants.js';
 import { generateNetworkConsistencyReports } from '../../services/network-consistency-reporter.js';
@@ -313,6 +316,16 @@ export function registerAllJobs(): void {
     shouldLogResult: (r) => r.staleEntries > 0,
   });
 
+  // Addie docs index refresh - re-walks protocol docs, website pages, and DB-backed content
+  jobScheduler.register({
+    name: 'addie-docs-index-refresh',
+    description: 'Addie docs index refresh',
+    interval: { value: 24, unit: 'hours' },
+    initialDelay: { value: 12, unit: 'minutes' },
+    runner: runDocsIndexRefreshJob,
+    shouldLogResult: (r) => r.docsIndexed === 0,
+  });
+
   // Prospect triage - assesses unmapped Slack domains and creates prospects
   jobScheduler.register({
     name: 'prospect-triage',
@@ -379,6 +392,22 @@ export function registerAllJobs(): void {
     failureThreshold: 1,
     businessHours: { startHour: 9, endHour: 11, skipWeekends: true },
     shouldLogResult: (r) => r.posted || r.awardsFound > 0,
+  });
+
+  // Certification recovery - repairs passed attempts that missed module or
+  // credential reconciliation, and escalates only when automatic repair fails.
+  jobScheduler.register({
+    name: 'certification-recovery',
+    description: 'Certification completion recovery',
+    interval: { value: 6, unit: 'hours' },
+    initialDelay: { value: 18, unit: 'minutes' },
+    runner: runCertificationRecoveryJob,
+    options: { limit: 25 },
+    shouldLogResult: (r) =>
+      r.repaired > 0 ||
+      r.escalated > 0 ||
+      r.skipped_no_channel > 0 ||
+      r.errors > 0,
   });
 
   // Brand logo pending-review digest - daily reminder when items are stuck
@@ -843,6 +872,22 @@ export function registerAllJobs(): void {
     shouldLogResult: (r) => r.suggested > 0 || r.errors > 0,
   });
 
+  // Escalation SLA enforcement - re-surfaces overdue active support requests
+  // to admins and writes requester-visible "still open" updates after 24h.
+  jobScheduler.register({
+    name: 'escalation-sla',
+    description: 'Escalation SLA enforcement',
+    interval: { value: 60, unit: 'minutes' },
+    initialDelay: { value: 20, unit: 'minutes' },
+    runner: runEscalationSlaJob,
+    options: { limit: 50 },
+    shouldLogResult: (r) =>
+      r.admin_alerted > 0 ||
+      r.requester_updated > 0 ||
+      r.skipped_no_channel > 0 ||
+      r.errors > 0,
+  });
+
   // Integrity invariants - scheduled run of the framework that previously
   // only existed at GET /api/admin/integrity/check. Without this, classes
   // of drift like "org references a non-existent Stripe customer" only
@@ -874,12 +919,14 @@ export const JOB_NAMES = {
   PERSONA_INFERENCE: 'persona-inference',
   JOURNEY_COMPUTATION: 'journey-computation',
   KNOWLEDGE_STALENESS: 'knowledge-staleness',
+  ADDIE_DOCS_INDEX_REFRESH: 'addie-docs-index-refresh',
   PROSPECT_TRIAGE: 'prospect-triage',
   PROSPECT_ESCALATION: 'prospect-escalation',
   WEEKLY_DIGEST: 'weekly-digest',
   WG_DIGEST: 'wg-digest',
   WG_DIGEST_PREP: 'wg-digest-prep',
   CREDENTIAL_DIGEST: 'credential-digest',
+  CERTIFICATION_RECOVERY: 'certification-recovery',
   BRAND_LOGO_DIGEST: 'brand-logo-digest',
   SOCIAL_POST_IDEAS: 'social-post-ideas',
   CONVERSATION_INSIGHTS: 'conversation-insights',
@@ -900,4 +947,5 @@ export const JOB_NAMES = {
   OUTBOUND_LOG_CLEANUP: 'outbound-log-cleanup',
   NETWORK_CONSISTENCY_REPORTER: 'network-consistency-reporter',
   ESCALATION_TRIAGE: 'escalation-triage',
+  ESCALATION_SLA: 'escalation-sla',
 } as const;

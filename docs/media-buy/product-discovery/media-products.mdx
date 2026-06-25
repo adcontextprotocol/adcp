@@ -1563,6 +1563,14 @@ Broadcast TV sellers offer distinct inventory packages rather than impressions a
 
 Each point represents a distinct package — different dayparts, unit types, and flight structures — not the same product at three spend levels. The `label` field lets buyer agents reference packages by name when negotiating or requesting specific options. The `measurement_source: "nielsen"` tells the buyer agent that the impression and GRP numbers are modeled against Nielsen data, not the broadcaster's own measurement. The `measured_impressions` metric expresses delivery as counted by Nielsen — paired with `method: "modeled"`, these are Nielsen-measured estimates. To make them contractual commitments, the seller would use `method: "guaranteed"` instead.
 
+Broadcast buying shape determines product shape:
+
+- **Network or rep-firm package**: model as one seller product when one seller commits the order and fulfills across multiple markets or affiliates. The affiliates are fulfillment surfaces, not independent AdCP hops.
+- **Local spot or station-group inventory**: model separate products or packages when inventory is sold by distinct stations, station groups, or market sellers.
+- **Market-by-market syndication**: model by the party that sells and commits the inventory. If multiple sellers commit separately, the buyer aggregates their delivery reports across media buys.
+
+Use `delivery_type: "guaranteed"` when spots, units, or inventory are reserved or scheduled. Use `forecast.method: "modeled"` for historical audience ranges and `forecast.method: "guaranteed"` only when the seller is contractually committing to make good delivery outside the stated range. Do not use `non_guaranteed` merely because final measured impressions depend on historical ranges or third-party measurement settlement.
+
 If packages share the same inventory pool and differ only in volume or mix, use `package` forecast points on one product. If they represent fundamentally different inventory (different shows, properties, or dayparts with no overlap), create separate products with their own forecasts.
 
 Sellers expressing the same inventory in multiple measurement currencies (e.g., both Nielsen and VideoAmp) should provide separate DeliveryForecast objects, one per `measurement_source`.

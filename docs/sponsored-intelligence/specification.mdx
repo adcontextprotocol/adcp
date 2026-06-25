@@ -142,6 +142,17 @@ Offering responses and session responses MAY include `sponsored_context` when th
 | `context_use` | Declared host-side use mode: `presentation_only`, `comparison_set`, or `reasoning_context` |
 | `disclosure_obligation` | Disclosure the host must either accept and satisfy or reject before using the context |
 
+Sponsored context accountability has four handoff points:
+
+| Handoff point | Accountability fact |
+|---------------|---------------------|
+| Provider declaration | The brand/seller declares `sponsored_context`, including `paying_principal`, `context_use`, and `disclosure_obligation`, before the context crosses into the host surface. |
+| Host receipt | The host records whether it accepted or rejected the sponsored context, and for accepted context, the declared use mode and disclosure commitment it accepted. |
+| User-facing disclosure | When `disclosure_obligation.required` is true, the host is accountable for rendering an appropriate disclosure on the user-facing surface before or alongside the sponsored context. |
+| Audit evidence | The parties can retain an evidence trail linking the paying principal, declared use mode, disclosure obligation, host receipt, and any rendered disclosure evidence the host records. |
+
+This model separates **presentation disclosure** from **reasoning influence**. Presentation disclosure is the user-visible label, card treatment, notice, or equivalent disclosure the host renders when required. Reasoning influence is whether the sponsored context may shape a comparison set, ranking, generated answer, plan, or model/orchestration context. `context_use` declares the allowed influence boundary; `disclosure_obligation` declares the user-facing disclosure obligation.
+
 | `context_use` | Applies when |
 |---------------|--------------|
 | `presentation_only` | The context is rendered or offered as a distinct labeled unit, such as a sponsored card, answer block, or brand-agent handoff. |

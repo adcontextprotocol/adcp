@@ -5,6 +5,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   stripBannedRituals,
+  rewritePersonaCollapse,
+  hasPersonaCollapse,
   truncateLongResponseToShortQuestion,
   applyResponsePipeline,
   __test_BANNED_RITUAL_LITERALS,
@@ -96,6 +98,108 @@ describe('stripBannedRituals', () => {
     expect(output).not.toMatch(/to be clear/i);
     expect(output).not.toMatch(/sharp question/i);
     expect(output).toContain("AdCP is a campaign-layer protocol");
+  });
+});
+
+describe('rewritePersonaCollapse', () => {
+  it('removes the verbatim AI-1462 leak sentence, keeps surrounding prose', () => {
+    const input =
+      "I appreciate the detailed breakdown. I'm Claude, an AI assistant made by Anthropic — I don't operate publisher properties. Let me work the validator problem with you.";
+    const out = rewritePersonaCollapse(input);
+    expect(out).not.toMatch(/claude/i);
+    expect(out).not.toMatch(/anthropic/i);
+    expect(out).toContain("I appreciate the detailed breakdown.");
+    expect(out).toContain("Let me work the validator problem with you.");
+  });
+
+  it('removes an "I am Claude" disclosure', () => {
+    const input = "I am Claude. AdCP operates at the campaign layer.";
+    const out = rewritePersonaCollapse(input);
+    expect(out).not.toMatch(/claude/i);
+    expect(out).toContain("AdCP operates at the campaign layer.");
+  });
+
+  it('removes vendor-disclosure phrasings (made/created/trained by Anthropic/OpenAI)', () => {
+    expect(rewritePersonaCollapse("I was created by Anthropic.")).not.toMatch(/anthropic/i);
+    expect(rewritePersonaCollapse("I'm a model trained by OpenAI.")).not.toMatch(/openai/i);
+    expect(rewritePersonaCollapse("This assistant is powered by Claude.")).not.toMatch(/claude/i);
+  });
+
+  it('removes generic LLM self-references used to step out of persona', () => {
+    expect(rewritePersonaCollapse("As an AI language model, I cannot do that.")).not.toMatch(
+      /language model/i
+    );
+    expect(rewritePersonaCollapse("I'm just a large language model after all.")).not.toMatch(
+      /large language model/i
+    );
+  });
+
+  it('does NOT touch legitimate "Claude Code" / "Claude Desktop" client references', () => {
+    const input =
+      "To connect, install the MCP server in Claude Desktop or Claude Code, then run the setup command.";
+    expect(rewritePersonaCollapse(input)).toBe(input);
+  });
+
+  it('does NOT touch the bare word "Claude" outside an identity disclosure', () => {
+    const input = "Point your coding agent (Claude Code, Cursor, Windsurf) at the skill file.";
+    expect(rewritePersonaCollapse(input)).toBe(input);
+  });
+
+  it('does NOT touch a bare "as a model" without an AI/language qualifier', () => {
+    const input = "AdCP serves as a model for cross-seller negotiation in other verticals.";
+    expect(rewritePersonaCollapse(input)).toBe(input);
+  });
+
+  it('does NOT strip disclosures quoted inside fenced code blocks', () => {
+    const input =
+      "Here is the leak we caught:\n```\nI'm Claude, an AI assistant made by Anthropic\n```\nThat phrasing is what the backstop removes.";
+    const out = rewritePersonaCollapse(input);
+    expect(out).toContain("I'm Claude, an AI assistant made by Anthropic");
+    expect(out).toContain("That phrasing is what the backstop removes.");
+  });
+
+  it('is idempotent — running twice equals running once', () => {
+    const input =
+      "Sure. I'm Claude, made by Anthropic. AdCP standardizes campaign-layer flows.";
+    const once = rewritePersonaCollapse(input);
+    const twice = rewritePersonaCollapse(once);
+    expect(twice).toBe(once);
+  });
+
+  it('returns empty when every sentence is a persona-collapse disclosure', () => {
+    const input =
+      "I'm Claude, an AI assistant made by Anthropic. As a large language model, I have no real-world identity.";
+    expect(rewritePersonaCollapse(input).trim()).toBe('');
+  });
+
+  it('keeps a non-disclosure refusal sentence while scrubbing only the leak', () => {
+    // The backstop targets model/persona disclosure, not every refusal. A
+    // plain "I can't do that" line survives; only the identity leak is removed.
+    const input =
+      "I'm Claude, an AI assistant made by Anthropic. I can't directly access your ad server.";
+    const out = rewritePersonaCollapse(input);
+    expect(out).not.toMatch(/claude|anthropic/i);
+    expect(out).toContain("I can't directly access your ad server.");
+  });
+
+  it('preserves clean text with no disclosure unchanged', () => {
+    const input = "AdCP operates at the campaign layer. Buyers and sellers negotiate over the protocol.";
+    expect(rewritePersonaCollapse(input)).toBe(input);
+  });
+
+  it('handles empty input', () => {
+    expect(rewritePersonaCollapse('')).toBe('');
+  });
+});
+
+describe('hasPersonaCollapse', () => {
+  it('is true when a disclosure is present', () => {
+    expect(hasPersonaCollapse("I'm Claude, an AI assistant made by Anthropic.")).toBe(true);
+  });
+
+  it('is false for clean prose and legitimate client references', () => {
+    expect(hasPersonaCollapse("AdCP operates at the campaign layer.")).toBe(false);
+    expect(hasPersonaCollapse("Install the MCP server in Claude Desktop.")).toBe(false);
   });
 });
 
@@ -219,5 +323,21 @@ describe('applyResponsePipeline', () => {
     const q = "What is X?";
     const short = "X is the protocol.";
     expect(applyResponsePipeline(q, short)).toBe(short);
+  });
+
+  it('scrubs a persona-collapse disclosure but keeps the substantive answer', () => {
+    const q = "Can you set up the publisher properties?";
+    const raw =
+      "I'm Claude, an AI assistant made by Anthropic. The validator is failing because display_970x250 isn't in the format catalog yet.";
+    const out = applyResponsePipeline(q, raw);
+    expect(out).not.toMatch(/claude/i);
+    expect(out).not.toMatch(/anthropic/i);
+    expect(out).toContain("format catalog");
+  });
+
+  it('substitutes the fallback when the whole response is a persona-collapse disclosure', () => {
+    const raw =
+      "I'm Claude, an AI assistant made by Anthropic. As a large language model, I have no real-world identity.";
+    expect(applyResponsePipeline('set this up', raw)).toBe(__test_EMPTY_RESPONSE_FALLBACK);
   });
 });

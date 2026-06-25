@@ -562,6 +562,22 @@ function applyPricingCurrenciesFilterToProducts(products: Product[], currencies:
     .filter((product): product is Product => product !== null);
 }
 
+function productMatchesAnyFormatId(product: Product, requestedFormatIds: FormatID[]): boolean {
+  if (!Array.isArray(product.format_ids) || product.format_ids.length === 0) return false;
+  return product.format_ids.some(actual => {
+    if (!actual?.id) return false;
+    return requestedFormatIds.some(wanted => {
+      if (!wanted?.id || actual.id !== wanted.id) return false;
+      if (!wanted.agent_url || !actual.agent_url) return true;
+      return canonicalizeAgentUrl(actual.agent_url) === canonicalizeAgentUrl(wanted.agent_url);
+    });
+  });
+}
+
+function applyFormatIdsFilterToProducts(products: Product[], requestedFormatIds: FormatID[]): Product[] {
+  return products.filter(product => productMatchesAnyFormatId(product, requestedFormatIds));
+}
+
 function mandatoryProductSignalChargesSatisfied(product: Product, currencies: Set<string>): boolean {
   const rules = (product as unknown as { signal_targeting_rules?: { selection_mode?: unknown } }).signal_targeting_rules;
   if (rules?.selection_mode !== 'fixed') return true;
@@ -717,9 +733,9 @@ import { maybeEmitCompletionWebhook } from './webhooks.js';
 import { selectSigningCapability } from './request-signing.js';
 
 const SUPPORTED_MAJOR_VERSIONS = [3] as const;
-const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14'] as const;
+const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15'] as const;
 const DEFAULT_ADCP_VERSION = '3.0';
-const CURRENT_ADCP_VERSION = '3.1-rc.14';
+const CURRENT_ADCP_VERSION = '3.1-rc.15';
 const MAX_PACKAGES_PER_BUY = 50;
 
 interface ParsedAdcpReleaseVersion {
@@ -2893,6 +2909,10 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
         products = products.filter(p => seededIds.has(p.product_id));
       }
       products = applyPricingCurrenciesFilterToProducts(products, pricingCurrencies);
+    }
+    const formatIdsFilter = req.filters.format_ids;
+    if (formatIdsFilter?.length) {
+      products = applyFormatIdsFilterToProducts(products, formatIdsFilter);
     }
     const channelFilter = req.filters.channels;
     if (channelFilter?.length) {

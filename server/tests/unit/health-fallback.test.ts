@@ -163,6 +163,55 @@ describe('HealthChecker.tryMCP — health_check_url fallback', () => {
     expect(opts.method).toBe('GET');
   });
 
+  it('sends saved bearer auth to health_check_url fallback', async () => {
+    mockGetAgentInfo.mockRejectedValue(new Error('Failed to discover MCP endpoint'));
+    mockSafeFetch.mockResolvedValue(new Response('ok', { status: 200 }));
+    const checker = new HealthChecker(0);
+    const health = await checker.checkHealth(
+      baseAgent({ health_check_url: 'https://agent.example.com/health' }),
+      { type: 'bearer', token: 'saved-static-token' },
+    );
+    expect(health.online).toBe(true);
+    expect(health.error).toMatch(/Liveness via health_check_url/);
+    expect(health.tools_count).toBeUndefined();
+    expect(mockSafeFetch).toHaveBeenCalledTimes(1);
+    const [, opts] = mockSafeFetch.mock.calls[0];
+    expect(opts.headers).toMatchObject({
+      'User-Agent': 'AAO-HealthCheck/1.0 (+https://agenticadvertising.org/docs/monitoring)',
+      Authorization: 'Bearer saved-static-token',
+    });
+    expect(opts.maxRedirects).toBe(0);
+  });
+
+  it('does not send saved auth to cross-origin health_check_url fallback', async () => {
+    mockGetAgentInfo.mockRejectedValue(new Error('Failed to discover MCP endpoint'));
+    mockSafeFetch.mockResolvedValue(new Response('ok', { status: 200 }));
+    const checker = new HealthChecker(0);
+    const health = await checker.checkHealth(
+      baseAgent({ health_check_url: 'https://status.example.net/agent-health' }),
+      { type: 'bearer', token: 'saved-static-token' },
+    );
+    expect(health.online).toBe(true);
+    const [, opts] = mockSafeFetch.mock.calls[0];
+    expect(opts.headers).toMatchObject({
+      'User-Agent': 'AAO-HealthCheck/1.0 (+https://agenticadvertising.org/docs/monitoring)',
+    });
+    expect(opts.headers).not.toHaveProperty('Authorization');
+  });
+
+  it('does not send saved auth to plaintext health_check_url fallback', async () => {
+    mockGetAgentInfo.mockRejectedValue(new Error('Failed to discover MCP endpoint'));
+    mockSafeFetch.mockResolvedValue(new Response('ok', { status: 200 }));
+    const checker = new HealthChecker(0);
+    const health = await checker.checkHealth(
+      baseAgent({ health_check_url: 'http://agent.example.com/health' }),
+      { type: 'bearer', token: 'saved-static-token' },
+    );
+    expect(health.online).toBe(true);
+    const [, opts] = mockSafeFetch.mock.calls[0];
+    expect(opts.headers).not.toHaveProperty('Authorization');
+  });
+
   it('marks offline when MCP fails and health_check_url returns non-2xx', async () => {
     mockGetAgentInfo.mockRejectedValue(new Error('Failed to discover MCP endpoint'));
     mockSafeFetch.mockResolvedValue(new Response('not found', { status: 404 }));

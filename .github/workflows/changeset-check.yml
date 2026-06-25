@@ -49,5 +49,17 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Check changeset protocol scope
+        run: node scripts/check-changeset-protocol-scope.cjs origin/${{ github.base_ref }}
+
       - name: Check for changeset
-        run: npx --yes @changesets/cli@^2.31.0 status --since=origin/${{ github.base_ref }}
+        run: |
+          if node scripts/check-changeset-protocol-scope.cjs origin/${{ github.base_ref }} --is-status-exempt-maintenance; then
+            echo "Skipping changesets status for changeset policy maintenance."
+            exit 0
+          fi
+          if ! node scripts/check-changeset-protocol-scope.cjs origin/${{ github.base_ref }} --has-protocol-scoped-changes; then
+            echo "Skipping changesets status because this PR does not touch the protocol release surface."
+            exit 0
+          fi
+          npx --yes @changesets/cli@^2.31.0 status --since=origin/${{ github.base_ref }}

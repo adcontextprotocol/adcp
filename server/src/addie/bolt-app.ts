@@ -108,6 +108,8 @@ import {
   splitMrkdwnIntoSections,
   truncateNotificationText,
   decideStreamAppend,
+  planStreamStopFailureFallback,
+  STREAM_DELIVERY_UNCERTAIN_NOTICE,
   DEFAULT_STREAM_SOFT_CAP,
 } from './slack-blocks.js';
 
@@ -1913,30 +1915,39 @@ async function handleUserMessage({
         // Stream was closed mid-flow (length-cap stop failed, or upstream
         // interruption with a successful recovery banner). Skip the second
         // stop attempt — it would throw and we'd just land in the same
-        // chunked-say fallback. Ship the full reply directly here unless
-        // the stream_error branch already posted a recovery banner.
+        // fallback branch. If answer text already reached Slack, post only a
+        // delivery notice so we do not duplicate the streamed response.
         if (!streamWasInterrupted) {
-          try {
-            const guarded = guardBareJsonEnvelope(fullText, { pathTag: 'dm-streaming-stop-failed' });
-            const fallbackValidation = validateOutput(guarded.text);
-            const { text: fallbackText, images: fallbackImages } = extractMarkdownImages(fallbackValidation.sanitized);
-            const slackText = wrapUrlsForSlack(fallbackText);
-            if (slackText.trim()) {
-              await say({
-                text: truncateNotificationText(slackText),
-                blocks: [
-                  ...splitMrkdwnIntoSections(slackText),
-                  ...fallbackImages.slice(0, 3).map(img => ({
-                    type: 'image' as const,
-                    image_url: img.url,
-                    alt_text: img.alt,
-                  })),
-                  buildFeedbackBlock(),
-                ],
-              });
+          const fallbackPlan = planStreamStopFailureFallback(streamedLen);
+          if (fallbackPlan === 'delivery-notice') {
+            try {
+              await say(STREAM_DELIVERY_UNCERTAIN_NOTICE);
+            } catch (noticeError) {
+              logger.warn({ noticeError, streamedLen, fullTextLen: fullText.length }, 'Addie Bolt: Stream delivery notice say() failed');
             }
-          } catch (fallbackError) {
-            logger.error({ fallbackError, fullTextLen: fullText.length }, 'Addie Bolt: Stop-failed fallback say() also failed');
+          } else {
+            try {
+              const guarded = guardBareJsonEnvelope(fullText, { pathTag: 'dm-streaming-stop-failed' });
+              const fallbackValidation = validateOutput(guarded.text);
+              const { text: fallbackText, images: fallbackImages } = extractMarkdownImages(fallbackValidation.sanitized);
+              const slackText = wrapUrlsForSlack(fallbackText);
+              if (slackText.trim()) {
+                await say({
+                  text: truncateNotificationText(slackText),
+                  blocks: [
+                    ...splitMrkdwnIntoSections(slackText),
+                    ...fallbackImages.slice(0, 3).map(img => ({
+                      type: 'image' as const,
+                      image_url: img.url,
+                      alt_text: img.alt,
+                    })),
+                    buildFeedbackBlock(),
+                  ],
+                });
+              }
+            } catch (fallbackError) {
+              logger.error({ fallbackError, fullTextLen: fullText.length }, 'Addie Bolt: Stop-failed fallback say() also failed');
+            }
           }
         }
       } else {
@@ -1968,42 +1979,51 @@ async function handleUserMessage({
             });
           }
         } catch (stopError) {
-          logger.warn({ stopError }, 'Addie Bolt: Stream stop failed, falling back to say()');
-          // Fallback: send via say() so the user isn't left without a response
-          try {
-            const guarded = guardBareJsonEnvelope(fullText, { pathTag: 'dm-streaming-fallback' });
-            const fallbackValidation = validateOutput(guarded.text);
-            const { text: fallbackText, images: fallbackImages } = extractMarkdownImages(fallbackValidation.sanitized);
-            const slackText = wrapUrlsForSlack(fallbackText);
-            // Slack rejects section blocks with empty mrkdwn text. If streaming
-            // produced nothing (e.g. upstream overload before any deltas), fall
-            // back to a plain apology so the user isn't left silent. For
-            // cost_cap_exceeded, deliver the cap message directly.
-            if (!slackText.trim()) {
-              const apology = response?.flag_reason === 'cost_cap_exceeded'
-                ? response.text
-                : isRetriesExhaustedError(stopError)
-                  ? `${stopError.reason}. Please try again in a moment.`
-                  : "I'm sorry, I encountered an error. Please try again.";
-              await say(apology);
-            } else {
-              await say({
-                text: truncateNotificationText(slackText),
-                blocks: [
-                  ...splitMrkdwnIntoSections(slackText),
-                  ...fallbackImages.slice(0, 3).map(img => ({
-                    type: 'image' as const,
-                    image_url: img.url,
-                    alt_text: img.alt,
-                  })),
-                  buildFeedbackBlock(),
-                ],
-              });
+          logger.warn({ stopError, streamedLen }, 'Addie Bolt: Stream stop failed, planning fallback delivery');
+          const fallbackPlan = planStreamStopFailureFallback(streamedLen);
+          if (fallbackPlan === 'delivery-notice') {
+            try {
+              await say(STREAM_DELIVERY_UNCERTAIN_NOTICE);
+            } catch (noticeError) {
+              logger.warn({ noticeError, stopError, streamedLen }, 'Addie Bolt: Stream delivery notice say() failed');
             }
-          } catch (sayError) {
-            const rootCause = isRetriesExhaustedError(stopError) ? 'retries-exhausted' : 'other';
-            const logLevel = rootCause === 'retries-exhausted' ? 'warn' : 'error';
-            logger[logLevel]({ sayError, stopError, rootCause }, 'Addie Bolt: Fallback say() also failed');
+          } else {
+            // Fallback: send via say() so the user isn't left without a response
+            try {
+              const guarded = guardBareJsonEnvelope(fullText, { pathTag: 'dm-streaming-fallback' });
+              const fallbackValidation = validateOutput(guarded.text);
+              const { text: fallbackText, images: fallbackImages } = extractMarkdownImages(fallbackValidation.sanitized);
+              const slackText = wrapUrlsForSlack(fallbackText);
+              // Slack rejects section blocks with empty mrkdwn text. If streaming
+              // produced nothing (e.g. upstream overload before any deltas), fall
+              // back to a plain apology so the user isn't left silent. For
+              // cost_cap_exceeded, deliver the cap message directly.
+              if (!slackText.trim()) {
+                const apology = response?.flag_reason === 'cost_cap_exceeded'
+                  ? response.text
+                  : isRetriesExhaustedError(stopError)
+                    ? `${stopError.reason}. Please try again in a moment.`
+                    : "I'm sorry, I encountered an error. Please try again.";
+                await say(apology);
+              } else {
+                await say({
+                  text: truncateNotificationText(slackText),
+                  blocks: [
+                    ...splitMrkdwnIntoSections(slackText),
+                    ...fallbackImages.slice(0, 3).map(img => ({
+                      type: 'image' as const,
+                      image_url: img.url,
+                      alt_text: img.alt,
+                    })),
+                    buildFeedbackBlock(),
+                  ],
+                });
+              }
+            } catch (sayError) {
+              const rootCause = isRetriesExhaustedError(stopError) ? 'retries-exhausted' : 'other';
+              const logLevel = rootCause === 'retries-exhausted' ? 'warn' : 'error';
+              logger[logLevel]({ sayError, stopError, rootCause }, 'Addie Bolt: Fallback say() also failed');
+            }
           }
         }
       }
