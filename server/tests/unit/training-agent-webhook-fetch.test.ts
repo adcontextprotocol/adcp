@@ -105,6 +105,19 @@ describe('createWebhookFetch — SSRF guard', () => {
       await expect(fetch('http://[64:ff9b::1]/')).rejects.toBeInstanceOf(SsrfRefusedError);
     });
 
+    it('refuses deprecated IPv4-compatible IPv6 wrapping a private v4 (::a.b.c.d)', async () => {
+      // The URL parser canonicalizes ::127.0.0.1 -> ::7f00:1 and
+      // ::169.254.169.254 -> ::a9fe:a9fe; both must decode to the embedded v4.
+      await expect(fetch('http://[::127.0.0.1]/')).rejects.toBeInstanceOf(SsrfRefusedError);
+      await expect(fetch('http://[::10.0.0.1]/')).rejects.toBeInstanceOf(SsrfRefusedError);
+      await expect(fetch('http://[::169.254.169.254]/')).rejects.toBeInstanceOf(SsrfRefusedError);
+    });
+
+    it('refuses CGNAT shared address space (100.64.0.0/10)', async () => {
+      await expect(fetch('http://100.64.0.1/')).rejects.toBeInstanceOf(SsrfRefusedError);
+      await expect(fetch('http://100.127.255.255/')).rejects.toBeInstanceOf(SsrfRefusedError);
+    });
+
     it('userinfo does not smuggle a private host past the hostname check', async () => {
       // URL parser routes user:pass@ to credentials; the hostname is 169.254.169.254.
       await expect(fetch('http://user:pass@169.254.169.254/')).rejects.toBeInstanceOf(SsrfRefusedError);

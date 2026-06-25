@@ -59,20 +59,23 @@ function isPrivateIpv4(address: string): boolean {
     a === 0 ||
     a === 10 ||
     a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) ||                  // CGNAT 100.64.0.0/10
     (a === 169 && b === 254) ||
     (a === 172 && b >= 16 && b <= 31) ||
     (a === 192 && b === 168)
   );
 }
 
-/** Extract the embedded IPv4 from an IPv4-mapped IPv6 address. Node's URL
- *  parser canonicalizes `::ffff:10.0.0.1` to the compressed hex form
- *  `::ffff:a00:1`, so matching only the dotted-quad text would miss it. Read
- *  the trailing 32 bits regardless of which canonical form the parser chose. */
+/** Extract the embedded IPv4 from an IPv6 address that carries one in its low
+ *  32 bits: IPv4-mapped (`::ffff:a.b.c.d`) and deprecated IPv4-compatible
+ *  (`::a.b.c.d`). Node's URL parser canonicalizes the dotted quad to compressed
+ *  hex (`::ffff:10.0.0.1` -> `::ffff:a00:1`; `::127.0.0.1` -> `::7f00:1`), so
+ *  read the trailing 32 bits regardless of which prefix or form the parser
+ *  produced. The `ffff:` prefix is optional so the compatible form is covered. */
 function mappedIpv4(v: string): string | null {
-  const dotted = v.match(/^::ffff:([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)$/);
+  const dotted = v.match(/^::(?:ffff:)?([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)$/);
   if (dotted) return dotted[1];
-  const hex = v.match(/^::ffff:([0-9a-f]{1,4})(?::([0-9a-f]{1,4}))?$/);
+  const hex = v.match(/^::(?:ffff:)?([0-9a-f]{1,4})(?::([0-9a-f]{1,4}))?$/);
   if (!hex) return null;
   const first = parseInt(hex[1], 16);
   const hasSecond = hex[2] !== undefined;
