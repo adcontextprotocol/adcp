@@ -62,7 +62,12 @@ fixtures:
     - product_id: "available_actions_display"
       name: "Available Actions Display Package"
       description: "Display inventory fixture used to verify product allowed actions become buy available actions."
-      delivery_type: "guaranteed"
+      # Non-guaranteed so this scenario is runnable by sales-non-guaranteed-only
+      # sellers (a guaranteed-only fixture made create_buy_from_product fail with
+      # DELIVERY_MODE_NOT_SUPPORTED, cascading the whole available-actions flow).
+      # The allowed_actions below — what this scenario actually grades — are
+      # delivery-type-agnostic. Mirrors the base media-buy flow fix.
+      delivery_type: "non_guaranteed"
       channels: ["display"]
       format_ids:
         - id: "display_300x250"
@@ -91,7 +96,7 @@ fixtures:
       pricing_option_id: "available_actions_cpm"
       pricing_model: "cpm"
       currency: "USD"
-      fixed_price: 8.0
+      floor_price: 8.0
 
 phases:
   - id: discover_product_action_template
