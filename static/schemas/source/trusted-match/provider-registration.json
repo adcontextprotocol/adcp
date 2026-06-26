@@ -8,7 +8,7 @@
   "properties": {
     "provider_id": {
       "type": "string",
-      "description": "Stable identifier for this provider registration. Used in logs, metrics, cache keys, and as the trailing token in the per-provider TMPX macro name `{TMPX_<provider_id>}` that the publisher trafficks in their ad server. Publishers assign this — it is not the provider's agent_url. Charset is constrained to the intersection of macro-safe characters across GAM, VAST URL parameters, and DOOH play-log fields so `{TMPX_<provider_id>}` is always a legal macro token without further encoding.",
+      "description": "Stable identifier for this provider registration. Used in logs, metrics, cache keys, and as the key in `tmpx_providers` on the identity-match response so the publisher can route each provider's TMPX `macros[]` to that provider's pre-configured ad-server slots (names registered in `tmpx_macros` below — macro names MUST NOT be derived from `provider_id` at runtime). Publishers assign this — it is not the provider's agent_url. Charset is constrained to the intersection of safe characters across GAM, VAST URL parameters, and DOOH play-log fields so the value can appear in those operational surfaces (logs, metrics, fall-back single-token `{TMPX}` substitutions) without additional encoding.",
       "pattern": "^[A-Za-z0-9_]+$",
       "minLength": 1,
       "maxLength": 64
@@ -67,7 +67,7 @@
     },
     "tmpx_macros": {
       "type": "array",
-      "description": "Stable, provider-namespaced ad-server macro names this provider's TMPX response fills, ordered. Publishers traffic these exact names in their ad server (GAM key-values, VAST URL macros, DOOH play-log fields); the router places each provider's TMPX chunks into the matching slots on the identity-match response (`tmpx_providers[provider_id].macros[]`). Names MUST be provider-namespaced so publishers can configure distinct macros per provider (e.g. `PIN_TMPX_1`, `PIN_TMPX_2` for one provider; `NOVA_TMPX_1` for another). Ordered so multi-chunk TMPX values (when the opaque token exceeds one macro slot) are placed deterministically. Capped at 2 entries in v1; the cap MAY be raised in a later version without a shape change. REQUIRED when `identity_match` is true and the provider emits TMPX; OPTIONAL when the provider does not emit TMPX (no macros are trafficked downstream).",
+      "description": "Stable, provider-namespaced ad-server macro names this provider's TMPX response fills, ordered. Publishers traffic these exact names in their ad server (GAM key-values, VAST URL macros, DOOH play-log fields); the router places each provider's TMPX chunks into the matching slots on the identity-match response (`tmpx_providers[provider_id].macros[]`). Names MUST be provider-namespaced so publishers can configure distinct macros per provider (e.g. `PIN_TMPX_1`, `PIN_TMPX_2` for one provider; `NOVA_TMPX_1` for another). Ordered so multi-chunk TMPX values (when the opaque token exceeds one macro slot) are placed deterministically. Capped at 2 entries in v1; the cap MAY be raised in a later version without a shape change. A provider that emits TMPX on its identity-match response (populates `tmpx_macros[]` there) MUST also register this list — otherwise the router has no slot names to forward — but the schema cannot enforce this because \"emits TMPX\" is not a schema-visible predicate. Providers that do not emit TMPX omit this field.",
       "items": {
         "type": "string",
         "pattern": "^[A-Z][A-Z0-9_]*$",
