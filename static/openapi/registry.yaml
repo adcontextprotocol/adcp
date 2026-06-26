@@ -6496,7 +6496,7 @@ paths:
       operationId: getRegistryFeed
       summary: Registry change feed
       description: |-
-        Poll a cursor-based feed of registry changes. Events are ordered by UUID v7 event_id for monotonic cursor progression. The feed retains events for 90 days.
+        Poll a cursor-based feed of registry changes. Events are ordered by UUID v7 event_id for monotonic cursor progression. The feed retains events for 90 days. The `freshness` object reports when the response was generated, the newest matching event currently visible to the feed, and the resulting feed lag.
 
         Type filtering supports glob patterns: `property.*` matches `property.created`, `property.updated`, etc.
       tags:
@@ -6578,10 +6578,39 @@ paths:
                     description: Pass as cursor in the next request to continue polling
                   has_more:
                     type: boolean
+                  freshness:
+                    type: object
+                    properties:
+                      generated_at:
+                        type: string
+                        format: date-time
+                        description: Server timestamp when this feed page was generated.
+                      latest_event_created_at:
+                        type:
+                          - string
+                          - "null"
+                        format: date-time
+                        description: Newest event creation timestamp currently visible in the feed for the requested type filter. Null when no matching event exists inside retention.
+                      lag_seconds:
+                        type:
+                          - integer
+                          - "null"
+                        minimum: 0
+                        description: Seconds between generated_at and latest_event_created_at. Null when no matching event exists.
+                      retention_days:
+                        type: integer
+                        exclusiveMinimum: 0
+                        description: Number of days the registry retains feed cursors and events.
+                    required:
+                      - generated_at
+                      - latest_event_created_at
+                      - lag_seconds
+                      - retention_days
                 required:
                   - events
                   - cursor
                   - has_more
+                  - freshness
         "400":
           description: Invalid cursor format or type filter
           content:
@@ -6596,6 +6625,87 @@ paths:
                 $ref: "#/components/schemas/Error"
         "410":
           description: Cursor expired (older than 90-day retention window)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - cursor_expired
+                  message:
+                    type: string
+                required:
+                  - error
+                  - message
+  /api/registry/feed/stream:
+    get:
+      operationId: streamRegistryFeed
+      summary: Registry change feed stream
+      description: "Subscribe to registry feed pages over Server-Sent Events. This is a push-friendly transport for the same cursor contract as `/api/registry/feed`: clients still persist `cursor`, apply only feed events, and recover from `cursor_expired` by re-bootstrapping. The stream emits `feed` events containing a full feed page, `heartbeat` events while caught up, and `error` before closing when the cursor expires or the server cannot query the feed."
+      tags:
+        - Change Feed
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+            description: Resume after this event ID
+          required: false
+          description: Resume after this event ID
+          name: cursor
+          in: query
+        - schema:
+            type: string
+            description: Comma-separated event type filters with glob support (e.g. property.*)
+            example: authorization.*,publisher.adagents_changed
+          required: false
+          description: Comma-separated event type filters with glob support (e.g. property.*)
+          name: types
+          in: query
+        - schema:
+            type: integer
+            minimum: 1
+            maximum: 10000
+            description: Max events per SSE feed page (default 100, max 10,000)
+          required: false
+          description: Max events per SSE feed page (default 100, max 10,000)
+          name: limit
+          in: query
+        - schema:
+            type: integer
+            minimum: 5
+            maximum: 60
+            description: Server-side interval while caught up (default 15 seconds). Backlog pages are sent without waiting.
+          required: false
+          description: Server-side interval while caught up (default 15 seconds). Backlog pages are sent without waiting.
+          name: poll_interval_seconds
+          in: query
+      responses:
+        "200":
+          description: "SSE stream. `event: feed` data validates as a registry feed page."
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: Server-Sent Events stream. `feed` events carry JSON matching the RegistryFeedPage schema; `heartbeat` events carry `{ generated_at, cursor }`.
+        "400":
+          description: Invalid cursor format, type filter, limit, or poll interval
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "410":
+          description: Initial cursor expired
           content:
             application/json:
               schema:

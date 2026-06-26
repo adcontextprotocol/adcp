@@ -33,6 +33,7 @@ describe('CatalogEventsDatabase', () => {
   beforeEach(() => {
     db = new CatalogEventsDatabase();
     vi.clearAllMocks();
+    mockedQuery.mockResolvedValue(EMPTY_RESULT);
     mockedUuidv7.mockReturnValue('019...-event-001');
   });
 
@@ -156,6 +157,7 @@ describe('CatalogEventsDatabase', () => {
       mockedQuery.mockResolvedValueOnce(mockResult([{ status: 'valid' }]));
       // feed query (2 rows, no extra = has_more false)
       mockedQuery.mockResolvedValueOnce(mockResult(events));
+      mockedQuery.mockResolvedValueOnce(mockResult([{ latest_event_created_at: now }]));
 
       const result = await db.queryFeed('cursor-abc', null, 100);
 
@@ -164,6 +166,9 @@ describe('CatalogEventsDatabase', () => {
         expect(result.events).toHaveLength(2);
         expect(result.cursor).toBe('e2');
         expect(result.has_more).toBe(false);
+        expect(result.freshness.latest_event_created_at).toBe(now.toISOString());
+        expect(result.freshness.retention_days).toBe(90);
+        expect(result.freshness.lag_seconds).toEqual(expect.any(Number));
       }
     });
 
@@ -220,6 +225,39 @@ describe('CatalogEventsDatabase', () => {
       const params = mockedQuery.mock.calls[0][1] as unknown[];
       expect(params).toContain('property.%');
       expect(params).toContain('agent.%');
+    });
+
+    it('computes freshness with the same type filters and retention window', async () => {
+      const latest = new Date('2026-03-31T10:00:00.000Z');
+      mockedQuery
+        .mockResolvedValueOnce(mockResult([]))
+        .mockResolvedValueOnce(mockResult([{ latest_event_created_at: latest }]));
+
+      const result = await db.queryFeed(null, ['property.*']);
+
+      expect('error' in result).toBe(false);
+      if (!('error' in result)) {
+        expect(result.freshness.latest_event_created_at).toBe(latest.toISOString());
+      }
+      const freshnessSql = mockedQuery.mock.calls[1][0] as string;
+      const freshnessParams = mockedQuery.mock.calls[1][1] as unknown[];
+      expect(freshnessSql).toContain("created_at >= NOW() - INTERVAL '1 day' * $1");
+      expect(freshnessSql).toContain('event_type LIKE $2');
+      expect(freshnessParams).toEqual([90, 'property.%']);
+    });
+
+    it('returns null freshness when no matching retained event exists', async () => {
+      mockedQuery
+        .mockResolvedValueOnce(mockResult([]))
+        .mockResolvedValueOnce(mockResult([{ latest_event_created_at: null }]));
+
+      const result = await db.queryFeed(null, ['nonexistent.*']);
+
+      expect('error' in result).toBe(false);
+      if (!('error' in result)) {
+        expect(result.freshness.latest_event_created_at).toBeNull();
+        expect(result.freshness.lag_seconds).toBeNull();
+      }
     });
 
     it('caps limit at 10000', async () => {
