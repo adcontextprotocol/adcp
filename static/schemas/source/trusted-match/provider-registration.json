@@ -65,6 +65,18 @@
       "minimum": 0,
       "default": 0
     },
+    "tmpx_macros": {
+      "type": "array",
+      "description": "Stable, provider-namespaced ad-server macro names this provider's TMPX response fills, ordered. Publishers traffic these exact names in their ad server (GAM key-values, VAST URL macros, DOOH play-log fields); the router places each provider's TMPX chunks into the matching slots on the identity-match response (`tmpx_providers[provider_id].macros[]`). Names MUST be provider-namespaced so publishers can configure distinct macros per provider (e.g. `PIN_TMPX_1`, `PIN_TMPX_2` for one provider; `NOVA_TMPX_1` for another). Ordered so multi-chunk TMPX values (when the opaque token exceeds one macro slot) are placed deterministically. Capped at 2 entries in v1; the cap MAY be raised in a later version without a shape change. REQUIRED when `identity_match` is true and the provider emits TMPX; OPTIONAL when the provider does not emit TMPX (no macros are trafficked downstream).",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]*$",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "minItems": 1,
+      "maxItems": 2
+    },
     "status": {
       "type": "string",
       "description": "Provider lifecycle status. Active providers receive requests. Inactive providers are skipped entirely. Draining providers stop receiving new requests but in-flight requests complete normally.",

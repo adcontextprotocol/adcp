@@ -1,0 +1,11 @@
+---
+"adcontextprotocol": minor
+---
+
+TMP: provider-scoped TMPX macro trafficking with declared macro names + multi-chunk support. Builds on the `tmpx_providers` map shipped in #5689; reframes the contract to communicate exact macro/value pairs (not provider_id→token strings) and supports values that exceed a single ad-server macro slot.
+
+Provider registrations declare a stable, provider-namespaced list of ad-server macro names in `tmpx_macros` (e.g. `["PIN_TMPX_1", "PIN_TMPX_2"]`) — the names the publisher actually trafficks in GAM / VAST URLs / DOOH play logs. The identity-agent response emits `tmpx_macros[]` as ordered `{name, value}` pairs filling those slots. The router merges per-provider into `tmpx_providers: { provider_id: { macros: [{name, value}] } }` on the response so the publisher walks each provider's pairs and substitutes each `value` verbatim into the slot named by `name`. Multi-chunk values are capped at 2 per provider in v1; the cap MAY rise without a shape change. Macro names MUST NOT be derived from `provider_id` at runtime — trafficking is configured against the registered names ahead of time.
+
+**Breaking change to an experimental surface (sanctioned by `x-status: experimental`)**: `tmpx_providers` was introduced in #5689 as `Map<provider_id, string>` (opaque token per provider). It is reshaped here to `Map<provider_id, {macros: [TmpxMacro]}>`. Consumers that adopted the v1 shape between #5689 and this change MUST migrate to read each provider's `macros[*].value` rather than a single string. The legacy singular `tmpx` field remains supported through 3.x (removed in 4.0).
+
+Schema updates: `tmp/provider-registration.json` adds `tmpx_macros`; `tmp/identity-match-response.json` adds `tmpx_macros` (provider-side) and reshapes `tmpx_providers` (router-merged), plus a shared `TmpxMacro` definition. Spec narrative: IdentityMatchResponse and Provider Registration field tables surface the new fields and the reshape; `§Inventory-specific behavior` walks the per-macro substitution flow; `§Identity Match fan-out` in router-architecture.mdx gets a rewritten normative TMPX-collection paragraph.
