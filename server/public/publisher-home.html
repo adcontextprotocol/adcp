@@ -447,6 +447,14 @@
         border-radius: var(--radius-lg);
         background: var(--color-bg-card);
         overflow: hidden;
+        cursor: pointer;
+        transition: var(--transition-all);
+      }
+      .format-card:hover,
+      .format-card:focus {
+        border-color: var(--color-brand);
+        box-shadow: var(--shadow-sm);
+        outline: none;
       }
       .format-preview {
         display: grid;
@@ -547,6 +555,130 @@
         color: var(--color-text-secondary);
         overflow-wrap: anywhere;
       }
+      .format-card__actions {
+        display: flex;
+        gap: var(--space-2);
+        margin-top: var(--space-3);
+      }
+      .format-card__sample-state {
+        font-size: var(--text-xs);
+        font-weight: var(--font-semibold);
+        color: var(--color-brand);
+      }
+      .format-dialog {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        display: grid;
+        place-items: center;
+        padding: var(--space-4);
+        background: var(--modal-backdrop);
+      }
+      .format-dialog__panel {
+        width: min(720px, 100%);
+        max-height: min(760px, calc(100vh - 32px));
+        overflow: auto;
+        border-radius: var(--radius-lg);
+        border: var(--border-1) solid var(--color-border);
+        background: var(--color-bg-card);
+        box-shadow: var(--shadow-xl);
+      }
+      .format-dialog__header {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        display: flex;
+        justify-content: space-between;
+        gap: var(--space-4);
+        align-items: flex-start;
+        padding: var(--space-5);
+        border-bottom: var(--border-1) solid var(--color-border-light);
+        background: var(--color-bg-card);
+      }
+      .format-dialog__title {
+        margin: 0;
+        font-size: var(--text-xl);
+        font-weight: var(--font-bold);
+        color: var(--color-text-heading);
+      }
+      .format-dialog__subtitle {
+        margin-top: 2px;
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+        color: var(--color-text-secondary);
+        overflow-wrap: anywhere;
+      }
+      .format-dialog__close {
+        border: var(--border-1) solid var(--color-border);
+        border-radius: var(--radius-md);
+        background: var(--color-bg-subtle);
+        color: var(--color-text);
+        cursor: pointer;
+        font-size: var(--text-lg);
+        line-height: 1;
+        padding: var(--space-2);
+      }
+      .format-dialog__body {
+        padding: var(--space-5);
+      }
+      .format-dialog__preview {
+        margin-bottom: var(--space-5);
+      }
+      .format-dialog__actions {
+        display: flex;
+        gap: var(--space-3);
+        flex-wrap: wrap;
+        margin-bottom: var(--space-5);
+      }
+      .format-dialog__primary {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 38px;
+        padding: 0 var(--space-4);
+        border-radius: var(--radius-md);
+        background: var(--color-brand);
+        color: var(--color-bg-card);
+        text-decoration: none;
+        font-weight: var(--font-semibold);
+      }
+      .format-dialog__empty {
+        margin: 0;
+        color: var(--color-text-secondary);
+        font-size: var(--text-sm);
+      }
+      .format-dialog__section {
+        margin-top: var(--space-5);
+      }
+      .format-dialog__section h4 {
+        margin: 0 0 var(--space-3);
+        font-size: var(--text-sm);
+        font-weight: var(--font-semibold);
+        color: var(--color-text-heading);
+      }
+      .format-detail-list {
+        display: grid;
+        gap: var(--space-2);
+        margin: 0;
+      }
+      .format-detail-list div {
+        display: grid;
+        grid-template-columns: minmax(120px, 0.35fr) minmax(0, 1fr);
+        gap: var(--space-3);
+        padding: var(--space-2) 0;
+        border-bottom: var(--border-1) solid var(--color-border-light);
+      }
+      .format-detail-list dt {
+        color: var(--color-text-secondary);
+        font-size: var(--text-xs);
+        font-weight: var(--font-semibold);
+      }
+      .format-detail-list dd {
+        margin: 0;
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+        overflow-wrap: anywhere;
+      }
 
       @media (max-width: 760px) {
         .publisher-profile__grid {
@@ -567,6 +699,10 @@
         }
         .publisher-formats__intro {
           margin-top: var(--space-2);
+        }
+        .format-detail-list div {
+          grid-template-columns: 1fr;
+          gap: var(--space-1);
         }
       }
 
@@ -757,6 +893,16 @@
         String(s ?? '')
           .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
           .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+      function safeHttpsUrl(raw) {
+        if (!raw) return '';
+        try {
+          const url = new URL(String(raw));
+          return url.protocol === 'https:' ? url.href : '';
+        } catch (_) {
+          return '';
+        }
+      }
 
       function getDomain() {
         const path = window.location.pathname;
@@ -1297,6 +1443,43 @@
         return chips.slice(0, 5);
       }
 
+      function formatParamValue(value) {
+        if (value === null || value === undefined) return '';
+        if (Array.isArray(value) || typeof value === 'object') {
+          return JSON.stringify(value);
+        }
+        return String(value);
+      }
+
+      function renderFormatParams(params) {
+        const entries = Object.entries(params || {})
+          .filter(([, value]) => value !== undefined && value !== null)
+          .slice(0, 32);
+        if (!entries.length) return '<p class="format-dialog__empty">No canonical parameters published.</p>';
+        return `<dl class="format-detail-list">${
+          entries.map(([key, value]) => `<div>
+            <dt>${escapeHtml(compactIdentifier(key))}</dt>
+            <dd>${escapeHtml(formatParamValue(value))}</dd>
+          </div>`).join('')
+        }</dl>`;
+      }
+
+      function renderFormatDetailList(format, scope) {
+        const rows = [
+          ['Format kind', compactKind(format.format_kind)],
+          ['Format option ID', format.format_option_id || 'not published'],
+          ['Scope', scope],
+          ['Seller preference', format.seller_preference || 'not set'],
+          ['Experimental', format.experimental ? 'yes' : 'no'],
+        ];
+        return `<dl class="format-detail-list">${
+          rows.map(([label, value]) => `<div>
+            <dt>${escapeHtml(label)}</dt>
+            <dd>${escapeHtml(value)}</dd>
+          </div>`).join('')
+        }</dl>`;
+      }
+
       function previewShape(format) {
         const kind = format.format_kind || '';
         const params = format.params || {};
@@ -1336,6 +1519,131 @@
         </div>`;
       }
 
+      function formatScopeLabel(format, props) {
+        const propertyNames = new Map(
+          props
+            .filter((p) => p.id)
+            .map((p) => [p.id, p.name || p.id])
+        );
+        const scopedIds = Array.isArray(format.applies_to_property_ids) ? format.applies_to_property_ids : [];
+        const scopedTags = Array.isArray(format.applies_to_property_tags) ? format.applies_to_property_tags : [];
+        if (scopedIds.length) {
+          return `Applies to ${scopedIds.map((id) => propertyNames.get(id) || compactIdentifier(id)).join(', ')}`;
+        }
+        if (scopedTags.length) {
+          return `Applies to ${scopedTags.map((tag) => compactIdentifier(tag)).join(', ')} properties`;
+        }
+        return 'Applies to all listed properties';
+      }
+
+      let formatDialogTrigger = null;
+
+      function closeFormatDialog(options = {}) {
+        const { restoreFocus = true } = options;
+        const existing = document.getElementById('format-detail-dialog');
+        if (existing) existing.remove();
+        document.removeEventListener('keydown', handleFormatDialogKeydown);
+        if (restoreFocus && formatDialogTrigger instanceof HTMLElement) {
+          formatDialogTrigger.focus();
+        }
+        formatDialogTrigger = null;
+      }
+
+      function handleFormatDialogKeydown(event) {
+        if (event.key === 'Escape') {
+          closeFormatDialog();
+          return;
+        }
+        if (event.key !== 'Tab') return;
+        const dialog = document.getElementById('format-detail-dialog');
+        if (!dialog) return;
+        const focusable = Array.from(dialog.querySelectorAll('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+          .filter((el) => el instanceof HTMLElement);
+        if (!focusable.length) {
+          event.preventDefault();
+          return;
+        }
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+
+      function showFormatDetails(format, scope, trigger) {
+        closeFormatDialog({ restoreFocus: false });
+        formatDialogTrigger = trigger instanceof HTMLElement ? trigger : null;
+        const sampleRenderUrl = safeHttpsUrl(format.sample_render_url);
+        const title = format.display_name || format.format_option_id || compactKind(format.format_kind);
+        const chips = formatChips(format);
+        const dialog = document.createElement('div');
+        dialog.id = 'format-detail-dialog';
+        dialog.className = 'format-dialog';
+        dialog.innerHTML = `
+          <section class="format-dialog__panel" role="dialog" aria-modal="true" aria-labelledby="format-dialog-title">
+            <header class="format-dialog__header">
+              <div>
+                <h3 class="format-dialog__title" id="format-dialog-title">${escapeHtml(title)}</h3>
+                <div class="format-dialog__subtitle">${escapeHtml(compactKind(format.format_kind))}</div>
+              </div>
+              <button class="format-dialog__close" type="button" aria-label="Close format details">×</button>
+            </header>
+            <div class="format-dialog__body">
+              <div class="format-dialog__preview">${renderFormatPreview(format)}</div>
+              ${chips.length ? `<div class="format-card__chips">${
+                chips.map((chip) => `<span class="format-chip">${escapeHtml(chip)}</span>`).join('')
+              }</div>` : ''}
+              <div class="format-dialog__actions">
+                ${sampleRenderUrl
+                  ? `<a class="format-dialog__primary" href="${escapeHtml(sampleRenderUrl)}" target="_blank" rel="noopener noreferrer">Open sample render</a>`
+                  : '<p class="format-dialog__empty">No sample render is published for this format.</p>'}
+              </div>
+              <div class="format-dialog__section">
+                <h4>Declaration</h4>
+                ${renderFormatDetailList(format, scope)}
+              </div>
+              <div class="format-dialog__section">
+                <h4>Canonical parameters</h4>
+                ${renderFormatParams(format.params || {})}
+              </div>
+            </div>
+          </section>
+        `;
+        dialog.addEventListener('click', (event) => {
+          if (event.target === dialog) closeFormatDialog();
+        });
+        dialog.querySelector('.format-dialog__close').addEventListener('click', closeFormatDialog);
+        document.addEventListener('keydown', handleFormatDialogKeydown);
+        document.body.appendChild(dialog);
+        dialog.querySelector('.format-dialog__close').focus();
+      }
+
+      function bindFormatCards(formats, props) {
+        const grid = document.getElementById('publisher-formats-grid');
+        if (!grid) return;
+        grid.querySelectorAll('.format-card[data-format-index]').forEach((card) => {
+          const open = () => {
+            const index = Number(card.getAttribute('data-format-index'));
+            const format = formats[index];
+            if (!format) return;
+            showFormatDetails(format, formatScopeLabel(format, props), card);
+          };
+          card.addEventListener('click', (event) => {
+            if (event.target instanceof Element && event.target.closest('a')) return;
+            open();
+          });
+          card.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            open();
+          });
+        });
+      }
+
       function renderFormats(formats, props, agents) {
         const intro = document.getElementById('publisher-formats-intro');
         const grid = document.getElementById('publisher-formats-grid');
@@ -1351,32 +1659,27 @@
           grid.innerHTML = `${note}<div class="on-file__empty">No creative format declarations recorded yet.</div>`;
           return;
         }
-        const propertyNames = new Map(
-          props
-            .filter((p) => p.id)
-            .map((p) => [p.id, p.name || p.id])
-        );
-        grid.innerHTML = note + formats.map((format) => {
+        grid.innerHTML = note + formats.map((format, index) => {
           const chips = formatChips(format);
-          const scopedIds = Array.isArray(format.applies_to_property_ids) ? format.applies_to_property_ids : [];
-          const scopedTags = Array.isArray(format.applies_to_property_tags) ? format.applies_to_property_tags : [];
-          const scope = scopedIds.length
-            ? `Applies to ${scopedIds.map((id) => escapeHtml(propertyNames.get(id) || compactIdentifier(id))).join(', ')}`
-            : scopedTags.length
-              ? `Applies to ${scopedTags.map((tag) => escapeHtml(compactIdentifier(tag))).join(', ')} properties`
-              : 'Applies to all listed properties';
-          return `<article class="format-card">
+          const scope = formatScopeLabel(format, props);
+          const sampleRenderUrl = safeHttpsUrl(format.sample_render_url);
+          const title = format.display_name || format.format_option_id || compactKind(format.format_kind);
+          return `<article class="format-card" role="button" tabindex="0" data-format-index="${index}" aria-label="Open details for ${escapeHtml(title)}">
             <div class="format-preview">${renderFormatPreview(format)}</div>
             <div class="format-card__body">
-              <h3 class="format-card__title">${escapeHtml(format.display_name || format.format_option_id || compactKind(format.format_kind))}</h3>
+              <h3 class="format-card__title">${escapeHtml(title)}</h3>
               <div class="format-card__kind">${format.format_option_id ? `${escapeHtml(compactIdentifier(format.format_option_id))} · ` : ''}${escapeHtml(compactKind(format.format_kind))}</div>
               ${chips.length ? `<div class="format-card__chips">${
                 chips.map((chip) => `<span class="format-chip">${escapeHtml(chip)}</span>`).join('')
               }</div>` : ''}
-              <div class="format-card__scope">${scope}</div>
+              <div class="format-card__scope">${escapeHtml(scope)}</div>
+              ${sampleRenderUrl ? `<div class="format-card__actions">
+                <span class="format-card__sample-state">Sample render available</span>
+              </div>` : ''}
             </div>
           </article>`;
         }).join('');
+        bindFormatCards(formats, props);
       }
 
       // ─── On-file: adagents.json + brand.json file cards ─────────
