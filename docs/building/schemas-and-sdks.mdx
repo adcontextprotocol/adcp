@@ -29,14 +29,13 @@ For the layered model behind the SDKs — what L0 through L4 each contain and wh
 
 ## Schema URLs
 
-AdCP schemas are published at `https://adcontextprotocol.org/schemas/` under two URL patterns:
+AdCP schemas are published at `https://adcontextprotocol.org/schemas/` under the current major-version alias:
 
 | Pattern | Example | Use |
 |---|---|---|
-| **Versioned** | `https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-request.json` | Pin to a release for production validators |
-| **Latest** | `https://adcontextprotocol.org/schemas/latest/media-buy/create-media-buy-request.json` | Track HEAD for development and testing |
+| **Current major** | `https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-request.json` | Pin validators to the AdCP 3.x schema family |
 
-Schemas cover every task's request and response, shared enums, governance objects, creative formats, and signal definitions. Use the versioned URL in production and CI; use `latest` during development to catch upcoming changes early.
+Schemas cover every task's request and response, shared enums, governance objects, creative formats, and signal definitions. Use the current major-version URL in production and CI so links stay stable across major releases.
 
 For how wire-level `adcp_protocol_version` relates to schema bundle versions, and why those are different things, see [Versioning & governance](/docs/reference/versioning).
 
