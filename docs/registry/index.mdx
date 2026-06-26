@@ -189,6 +189,7 @@ curl "https://agenticadvertising.org/api/registry/agents?type=measurement&accred
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/registry/feed` | Poll cursor-based registry change feed (auth required) |
+| GET | `/api/registry/feed/stream` | Stream cursor-based registry feed pages over Server-Sent Events (auth required) |
 
 
 ### Lookups & Authorization
@@ -483,7 +484,7 @@ result = requests.post(
 
 `GET /api/registry/feed`
 
-Poll a cursor-based feed of registry changes. Use this to keep a local copy of the registry in sync without re-fetching the full dataset. Events are ordered by UUID v7 `event_id`, providing monotonic cursor progression. The feed retains events for 90 days — expired cursors return `410 Gone`.
+Poll a cursor-based feed of registry changes. Use this to keep a local copy of the registry in sync without re-fetching the full dataset. Events are ordered by UUID v7 `event_id`, providing monotonic cursor progression. The feed retains events for 90 days — expired cursors return `410 Gone`. Each response includes `freshness` metadata so consumers can measure feed lag for the requested type filter.
 
 **Schema:** [`core/registry-feed-response.json`](https://adcontextprotocol.org/schemas/v3/core/registry-feed-response.json) wraps [`core/registry-event.json`](https://adcontextprotocol.org/schemas/v3/core/registry-event.json) items.
 
@@ -570,11 +571,21 @@ feed = requests.get(
     }
   ],
   "cursor": "019539a0-1234-7000-8000-000000000001",
-  "has_more": true
+  "has_more": true,
+  "freshness": {
+    "generated_at": "2026-03-31T10:00:15.000Z",
+    "latest_event_created_at": "2026-03-31T10:00:00.000Z",
+    "lag_seconds": 15,
+    "retention_days": 90
+  }
 }
 ```
 
 When `has_more` is `true`, pass the returned `cursor` value in the next request to continue polling. When `false`, you've reached the end of the current feed — poll again later with the same cursor to pick up new events.
+
+`latest_event_created_at` is the newest matching event currently visible to the feed. `lag_seconds` is computed against `generated_at`; alert on it according to your own mirror freshness target.
+
+`GET /api/registry/feed/stream` provides the same feed pages over Server-Sent Events. Reconnect with your last persisted cursor after disconnects. The stream emits `event: feed` with the same JSON shape shown above and `event: heartbeat` while caught up. Cursors are tied to the same logical `types` subscription; changing filters while reusing a cursor can skip events that were filtered out previously. The stream carries the resume cursor in JSON `data.cursor`, not SSE `id`, so browser `EventSource` clients must reconnect with `?cursor=...`.
 
 If the cursor has expired (older than 90 days or not found), the response is `410 Gone`:
 

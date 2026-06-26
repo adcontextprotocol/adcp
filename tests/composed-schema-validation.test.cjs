@@ -1470,7 +1470,13 @@ async function runTests() {
         }
       ],
       cursor: '019539a0-1234-7000-8000-000000000013',
-      has_more: false
+      has_more: false,
+      freshness: {
+        generated_at: '2026-03-31T10:03:15.000Z',
+        latest_event_created_at: '2026-03-31T10:03:00.000Z',
+        lag_seconds: 15,
+        retention_days: 90
+      }
     },
     'Registry feed response validates typed property, collection, authorization, and compliance events'
   );

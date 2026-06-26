@@ -6,6 +6,7 @@
  */
 
 import { Router } from "express";
+import { once } from "node:events";
 import type { Request, RequestHandler } from "express";
 import { z } from "zod";
 import escapeHtml from "escape-html";
@@ -1903,13 +1904,43 @@ registry.registerPath({
 });
 
 // Change Feed & Sync
+const RegistryFeedFreshnessSchema = z.object({
+  generated_at: z.string().datetime().openapi({
+    description: "Server timestamp when this feed page was generated.",
+  }),
+  latest_event_created_at: z.string().datetime().nullable().openapi({
+    description: "Newest event creation timestamp currently visible in the feed for the requested type filter. Null when no matching event exists inside retention.",
+  }),
+  lag_seconds: z.number().int().nonnegative().nullable().openapi({
+    description: "Seconds between generated_at and latest_event_created_at. Null when no matching event exists.",
+  }),
+  retention_days: z.number().int().positive().openapi({
+    description: "Number of days the registry retains feed cursors and events.",
+  }),
+});
+
+const RegistryFeedPageSchema = z.object({
+  events: z.array(z.object({
+    event_id: z.string().uuid(),
+    event_type: z.string().openapi({ example: "property.created" }),
+    entity_type: z.string().openapi({ example: "property" }),
+    entity_id: z.string(),
+    payload: z.record(z.string(), z.unknown()),
+    actor: z.string(),
+    created_at: z.string().datetime(),
+  })),
+  cursor: z.string().uuid().nullable().openapi({ description: "Pass as cursor in the next request to continue polling" }),
+  has_more: z.boolean(),
+  freshness: RegistryFeedFreshnessSchema,
+});
+
 registry.registerPath({
   method: "get",
   path: "/api/registry/feed",
   operationId: "getRegistryFeed",
   summary: "Registry change feed",
   description:
-    "Poll a cursor-based feed of registry changes. Events are ordered by UUID v7 event_id for monotonic cursor progression. The feed retains events for 90 days.\n\nType filtering supports glob patterns: `property.*` matches `property.created`, `property.updated`, etc.",
+    "Poll a cursor-based feed of registry changes. Events are ordered by UUID v7 event_id for monotonic cursor progression. The feed retains events for 90 days. The `freshness` object reports when the response was generated, the newest matching event currently visible to the feed, and the resulting feed lag.\n\nType filtering supports glob patterns: `property.*` matches `property.created`, `property.updated`, etc.",
   tags: ["Change Feed"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -1924,19 +1955,7 @@ registry.registerPath({
       description: "Feed page",
       content: {
         "application/json": {
-          schema: z.object({
-            events: z.array(z.object({
-              event_id: z.string().uuid(),
-              event_type: z.string().openapi({ example: "property.created" }),
-              entity_type: z.string().openapi({ example: "property" }),
-              entity_id: z.string(),
-              payload: z.record(z.string(), z.unknown()),
-              actor: z.string(),
-              created_at: z.string().datetime(),
-            })),
-            cursor: z.string().uuid().nullable().openapi({ description: "Pass as cursor in the next request to continue polling" }),
-            has_more: z.boolean(),
-          }),
+          schema: RegistryFeedPageSchema,
         },
       },
     },
@@ -1953,6 +1972,40 @@ registry.registerPath({
         },
       },
     },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/feed/stream",
+  operationId: "streamRegistryFeed",
+  summary: "Registry change feed stream",
+  description:
+    "Subscribe to registry feed pages over Server-Sent Events. This is a push-friendly transport for the same cursor contract as `/api/registry/feed`: clients still persist `cursor`, apply only feed events, and recover from `cursor_expired` by re-bootstrapping. The stream emits `feed` events containing a full feed page, `heartbeat` events while caught up, and `error` before closing when the cursor expires or the server cannot query the feed.",
+  tags: ["Change Feed"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    query: z.object({
+      cursor: z.string().uuid().optional().openapi({ description: "Resume after this event ID" }),
+      types: z.string().optional().openapi({ description: "Comma-separated event type filters with glob support (e.g. property.*)", example: "authorization.*,publisher.adagents_changed" }),
+      limit: z.coerce.number().int().min(1).max(10000).optional().openapi({ description: "Max events per SSE feed page (default 100, max 10,000)" }),
+      poll_interval_seconds: z.coerce.number().int().min(5).max(60).optional().openapi({ description: "Server-side interval while caught up (default 15 seconds). Backlog pages are sent without waiting." }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "SSE stream. `event: feed` data validates as a registry feed page.",
+      content: {
+        "text/event-stream": {
+          schema: z.string().openapi({
+            description: "Server-Sent Events stream. `feed` events carry JSON matching the RegistryFeedPage schema; `heartbeat` events carry `{ generated_at, cursor }`.",
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid cursor format, type filter, limit, or poll interval", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    410: { description: "Initial cursor expired", content: { "application/json": { schema: z.object({ error: z.literal("cursor_expired"), message: z.string() }) } } },
   },
 });
 
@@ -9089,34 +9142,131 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
   if (config.eventsDb) {
     if (!authMiddleware) throw new Error('requireAuth middleware is required when eventsDb is provided');
     const eventsDb = config.eventsDb;
+    const VALID_FEED_TYPE = /^[a-z][a-z0-9_.]*(\*)?$/;
+    const MAX_ACTIVE_FEED_STREAMS = 100;
+    const MAX_BACKLOG_PAGES_PER_TICK = 10;
+    const BACKLOG_YIELD_MS = 100;
+    let activeFeedStreams = 0;
 
-    router.get("/registry/feed", authMiddleware, async (req, res) => {
-      try {
-        const cursor = (req.query.cursor as string) || null;
-        const typesParam = req.query.types as string | undefined;
-        const types = typesParam ? typesParam.split(',').map(t => t.trim()).filter(Boolean) : null;
-        const rawLimit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+    function getSingleQueryParam(value: unknown, name: string): { value?: string; error?: string } {
+      if (value == null) return {};
+      if (Array.isArray(value)) {
+        return { error: `${name} must be provided only once` };
+      }
+      if (typeof value !== "string") {
+        return { error: `${name} must be a string` };
+      }
+      return { value };
+    }
 
-        // Validate cursor format (should be a UUID if provided)
-        if (cursor && !isUuid(cursor)) {
-          return res.status(400).json({ error: "Invalid cursor format. Must be a UUID." });
-        }
+    function parseIntegerQueryParam(
+      value: unknown,
+      name: string,
+      min: number,
+      max: number,
+    ): { value?: number; error?: string } {
+      const single = getSingleQueryParam(value, name);
+      if (single.error) return { error: single.error };
+      if (single.value == null || single.value === "") return {};
+      if (!/^\d+$/.test(single.value)) {
+        return { error: `${name} must be an integer` };
+      }
+      const parsed = Number(single.value);
+      if (!Number.isSafeInteger(parsed)) {
+        return { error: `${name} must be a safe integer` };
+      }
+      if (parsed < min || parsed > max) {
+        return { error: `${name} must be between ${min} and ${max}` };
+      }
+      return { value: parsed };
+    }
 
-        if (rawLimit !== undefined && isNaN(rawLimit)) {
-          return res.status(400).json({ error: "limit must be a number" });
-        }
+    function parseRegistryFeedQuery(req: Request, options: { parsePollInterval?: boolean } = {}): {
+      cursor: string | null;
+      types: string[] | null;
+      limit?: number;
+      pollIntervalMs: number;
+      error?: string;
+    } {
+      const cursorParam = getSingleQueryParam(req.query.cursor, "cursor");
+      if (cursorParam.error) {
+        return { cursor: null, types: null, pollIntervalMs: 15_000, error: cursorParam.error };
+      }
+      const typesParamResult = getSingleQueryParam(req.query.types, "types");
+      if (typesParamResult.error) {
+        return { cursor: null, types: null, pollIntervalMs: 15_000, error: typesParamResult.error };
+      }
+      const cursor = cursorParam.value || null;
+      const typesParam = typesParamResult.value;
+      const types = typesParam ? typesParam.split(',').map(t => t.trim()).filter(Boolean) : null;
+      const limit = parseIntegerQueryParam(req.query.limit, "limit", 1, 10_000);
+      if (limit.error) {
+        return { cursor, types, pollIntervalMs: 15_000, error: limit.error };
+      }
+      const pollInterval: { value?: number; error?: string } = options.parsePollInterval
+        ? parseIntegerQueryParam(req.query.poll_interval_seconds, "poll_interval_seconds", 5, 60)
+        : {};
+      if (pollInterval.error) {
+        return { cursor, types, limit: limit.value, pollIntervalMs: 15_000, error: pollInterval.error };
+      }
 
-        // Validate type filter values — only allow safe glob patterns
-        const VALID_TYPE = /^[a-z][a-z0-9_.]*(\*)?$/;
-        if (types) {
-          for (const t of types) {
-            if (!VALID_TYPE.test(t)) {
-              return res.status(400).json({ error: `Invalid type filter: ${t}` });
-            }
+      if (cursor && !isUuid(cursor)) {
+        return { cursor, types, limit: limit.value, pollIntervalMs: 15_000, error: "Invalid cursor format. Must be a UUID." };
+      }
+
+      if (types) {
+        for (const t of types) {
+          if (!VALID_FEED_TYPE.test(t)) {
+            return { cursor, types, limit: limit.value, pollIntervalMs: 15_000, error: `Invalid type filter: ${t}` };
           }
         }
+      }
 
-        const result = await eventsDb.queryFeed(cursor, types, rawLimit);
+      return {
+        cursor,
+        types,
+        limit: limit.value,
+        pollIntervalMs: (pollInterval.value ?? 15) * 1000,
+      };
+    }
+
+    async function writeSse(
+      res: import("express").Response,
+      event: string,
+      data: unknown,
+      isClosed: () => boolean,
+    ): Promise<void> {
+      if (isClosed() || res.writableEnded) return;
+      const ok = res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      if (!ok && !isClosed() && !res.writableEnded) {
+        await Promise.race([once(res, "drain"), once(res, "close")]);
+      }
+    }
+
+    function waitForSseInterval(res: import("express").Response, ms: number, isClosed: () => boolean): Promise<void> {
+      return new Promise(resolve => {
+        if (isClosed()) return resolve();
+        const onClose = () => {
+          clearTimeout(timeout);
+          resolve();
+        };
+        const timeout = setTimeout(() => {
+          res.removeListener("close", onClose);
+          resolve();
+        }, ms);
+        timeout.unref?.();
+        res.once("close", onClose);
+      });
+    }
+
+    router.get("/registry/feed", authMiddleware, registryReadRateLimiter, async (req, res) => {
+      try {
+        const parsed = parseRegistryFeedQuery(req);
+        if (parsed.error) {
+          return res.status(400).json({ error: parsed.error });
+        }
+
+        const result = await eventsDb.queryFeed(parsed.cursor, parsed.types, parsed.limit);
 
         if ('error' in result) {
           return res.status(410).json(result);
@@ -9126,6 +9276,85 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       } catch (error) {
         logger.error({ error }, "Failed to query registry feed");
         return res.status(500).json({ error: "Failed to query registry feed" });
+      }
+    });
+
+    router.get("/registry/feed/stream", authMiddleware, registryReadRateLimiter, async (req, res) => {
+      const parsed = parseRegistryFeedQuery(req, { parsePollInterval: true });
+      if (parsed.error) {
+        return res.status(400).json({ error: parsed.error });
+      }
+      if (activeFeedStreams >= MAX_ACTIVE_FEED_STREAMS) {
+        return res.status(429).json({ error: "Too many active registry feed streams" });
+      }
+      activeFeedStreams++;
+
+      let cursor = parsed.cursor;
+      let closed = false;
+      let streamStarted = false;
+      res.on("close", () => {
+        closed = true;
+      });
+
+      try {
+        const initial = await eventsDb.queryFeed(cursor, parsed.types, parsed.limit);
+        if ('error' in initial) {
+          return res.status(410).json(initial);
+        }
+        if (closed) return;
+
+        res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+        res.setHeader("Cache-Control", "no-cache, no-transform");
+        res.setHeader("Connection", "keep-alive");
+        res.setHeader("X-Accel-Buffering", "no");
+        res.flushHeaders?.();
+        streamStarted = true;
+
+        let pending: import('../db/catalog-events-db.js').FeedResult | null = initial;
+        let backlogPages = 0;
+
+        while (!closed) {
+          const result = pending ?? await eventsDb.queryFeed(cursor, parsed.types, parsed.limit);
+          pending = null;
+
+          if ('error' in result) {
+            await writeSse(res, "error", result, () => closed);
+            break;
+          }
+
+          if (result.events.length > 0) {
+            await writeSse(res, "feed", result, () => closed);
+            cursor = result.cursor;
+          } else {
+            await writeSse(res, "heartbeat", {
+              generated_at: result.freshness.generated_at,
+              cursor: result.cursor,
+              freshness: result.freshness,
+            }, () => closed);
+          }
+
+          if (result.has_more) {
+            backlogPages++;
+            if (backlogPages >= MAX_BACKLOG_PAGES_PER_TICK) {
+              backlogPages = 0;
+              await waitForSseInterval(res, BACKLOG_YIELD_MS, () => closed);
+            }
+            continue;
+          }
+          backlogPages = 0;
+          await waitForSseInterval(res, parsed.pollIntervalMs, () => closed);
+        }
+      } catch (error) {
+        logger.error({ error }, "Failed to stream registry feed");
+        if (!closed && !res.headersSent) {
+          return res.status(500).json({ error: "Failed to query registry feed" });
+        }
+        if (!closed) {
+          await writeSse(res, "error", { error: "feed_stream_error", message: "Failed to query registry feed" }, () => closed);
+        }
+      } finally {
+        activeFeedStreams--;
+        if (streamStarted && !closed && !res.writableEnded) res.end();
       }
     });
   }
