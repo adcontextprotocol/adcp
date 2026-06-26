@@ -350,7 +350,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         if (!(BOOTSTRAP_ALLOWED_MEMBERSHIP_TIERS as readonly string[]).includes(membership_tier)) {
           return res.status(400).json({
             error: 'Paid tier requires checkout',
-            message: `membership_tier '${membership_tier}' requires a Stripe checkout session — it cannot be claimed via this endpoint. Either omit, set 'individual_academic', or complete checkout via /membership and let the webhook stamp the paid tier on the org.`,
+            message: `membership_tier '${membership_tier}' requires a Stripe checkout session — it cannot be claimed via this endpoint. Either omit, set 'individual_academic', or complete checkout via /dashboard/membership and let the webhook stamp the paid tier on the org.`,
           });
         }
       }
