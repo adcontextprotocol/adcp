@@ -9,6 +9,7 @@ required_tools:
   - create_media_buy
   - get_media_buys
   - sync_creatives
+  - list_creatives
   - update_media_buy
   - comply_test_controller
 
@@ -17,8 +18,11 @@ required_tools:
 # "snapshot". Webhook-only or out_of_band sellers grade not_applicable instead
 # of false-failing on a contract that does not apply to them — the opt-out the
 # propagation_surfaces schema already documents (get-adcp-capabilities-response.json)
-# but that was never wired into this scenario. Requires runner support for the
-# `contains:` matcher (adcp-client >= 7.70).
+# but that was never wired into this scenario. Requires the `contains:` matcher
+# (@adcp/sdk >= 7.70). Sellers that OMIT propagation_surfaces inherit the
+# ["snapshot"] default and are graded here only on @adcp/sdk >= 9.2.0, which
+# materializes capability-gate schema defaults; earlier runners skip them as
+# not_applicable (adcp-client#2278).
 requires_capability:
   path: media_buy.propagation_surfaces
   contains: "snapshot"
@@ -462,6 +466,10 @@ phases:
           - check: response_schema
             description: "Response matches list-creatives-response.json schema"
           - check: field_value
+            path: "creatives[0].creative_id"
+            value: "acme_card_banner_a"
+            description: "Filter returned creative A specifically — proves the rejected status below is A's, not creative B (also rejected by the cardinality-2 point)"
+          - check: field_value
             path: "creatives[0].status"
             value: "rejected"
             description: "Creative observed as rejected on the wire — closes the impairment.coherence ledger for the impaired read that follows"
@@ -586,6 +594,10 @@ phases:
         validations:
           - check: response_schema
             description: "Response matches list-creatives-response.json schema"
+          - check: field_value
+            path: "creatives[0].creative_id"
+            value: "acme_card_banner_b"
+            description: "Filter returned creative B specifically — proves the rejected status below is B's, not creative A (also rejected at this point)"
           - check: field_value
             path: "creatives[0].status"
             value: "rejected"
