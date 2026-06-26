@@ -294,8 +294,7 @@ A platform that implements AdCP does not need to replace its existing API. AdCP 
     [`sync_governance`](/docs/accounts/tasks/sync_governance). Rotation or replacement of a compromised credential
     is done by re-syncing the account with updated authentication — the new configuration replaces the prior one.
     Note that governance approvals (`governance_context`) are carried as a signed token per the AdCP JWS profile so
-    sellers can verify authenticity and freshness; signing keys are purpose-separated (a request-signing key is not
-    reused for webhook signing). This is part of the AdCP 3.0 experimental governance surface.
+    sellers can verify authenticity and freshness. This is part of the AdCP 3.0 experimental governance surface.
   </Accordion>
 
   <Accordion title="Do sellers have to validate domains, and how do agents prove they're authorized?">
