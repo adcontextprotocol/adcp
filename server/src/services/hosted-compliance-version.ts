@@ -52,6 +52,7 @@ type HostedComplianceProfile = {
 
 const DEFAULT_HOSTED_AUTH_PROBE_TASK = 'list_creatives';
 const HOSTED_AUTH_PROBE_TASKS_BY_PROTOCOL: Readonly<Record<string, readonly string[]>> = {
+  media_buy: ['list_creatives', 'get_media_buy_delivery'],
   'media-buy': ['list_creatives', 'get_media_buy_delivery'],
   creative: ['list_creatives'],
   signals: ['get_signals'],
@@ -70,6 +71,19 @@ const HOSTED_AUTH_PROBE_TASK_FALLBACKS = [
   'list_authorized_properties',
   'list_si_sessions',
 ] as const;
+const HOSTED_STATIC_API_KEY_BY_PROTOCOL: ReadonlyArray<{
+  protocols: readonly string[];
+  apiKey: string;
+}> = [
+  {
+    protocols: ['media_buy', 'media-buy', 'creative', 'governance'],
+    apiKey: 'demo-acme-outdoor-v1',
+  },
+  {
+    protocols: ['signals', 'brand', 'sponsored_intelligence', 'sponsored-intelligence'],
+    apiKey: 'demo-nova-motors-v1',
+  },
+];
 
 function repoPath(...parts: string[]): string {
   return resolve(process.cwd(), ...parts);
@@ -478,9 +492,22 @@ export function hostedAuthProbeTaskForProfile(
   return HOSTED_AUTH_PROBE_TASK_FALLBACKS.find(task => tools.has(task)) ?? DEFAULT_HOSTED_AUTH_PROBE_TASK;
 }
 
+export function hostedStaticApiKeyForProfile(
+  profile: HostedAuthProbeProfile | undefined,
+): string | undefined {
+  const protocols = new Set(profile?.supported_protocols ?? []);
+  for (const entry of HOSTED_STATIC_API_KEY_BY_PROTOCOL) {
+    if (entry.protocols.some(protocol => protocols.has(protocol))) {
+      return entry.apiKey;
+    }
+  }
+  return undefined;
+}
+
 export function withHostedAuthTestKit<T extends Partial<TestOptions> | undefined>(
   options: T,
   defaultProbeTask = DEFAULT_HOSTED_AUTH_PROBE_TASK,
+  defaultApiKey?: string,
 ): (T extends undefined ? TestOptions : NonNullable<T> & TestOptions) {
   const input = (options ?? {}) as Partial<TestOptions>;
   const auth = input.auth;
@@ -494,6 +521,9 @@ export function withHostedAuthTestKit<T extends Partial<TestOptions> | undefined
     changed = true;
   } else if (auth?.type === 'basic' && !nextAuth.basic) {
     nextAuth.basic = { username: auth.username, password: auth.password };
+    changed = true;
+  } else if (defaultApiKey && !nextAuth.api_key && !nextAuth.basic) {
+    nextAuth.api_key = defaultApiKey;
     changed = true;
   }
 
@@ -520,8 +550,9 @@ export function withHostedComplianceRunOptions<T extends Partial<ComplyOptions> 
   options: T,
   target: HostedComplianceTarget,
   defaultAuthProbeTask?: string,
+  defaultApiKey?: string,
 ): (T extends undefined ? ComplyOptions : NonNullable<T> & ComplyOptions) {
-  const input = withHostedAuthTestKit(options, defaultAuthProbeTask) as Partial<ComplyOptions>;
+  const input = withHostedAuthTestKit(options, defaultAuthProbeTask, defaultApiKey) as Partial<ComplyOptions>;
   return withHostedComplianceOptions(input, target) as T extends undefined
     ? ComplyOptions
     : NonNullable<T> & ComplyOptions;
@@ -531,8 +562,9 @@ export function withHostedStoryboardRunOptions<T extends Partial<StoryboardRunOp
   options: T,
   target: HostedComplianceTarget,
   defaultAuthProbeTask?: string,
+  defaultApiKey?: string,
 ): (T extends undefined ? StoryboardRunOptions : NonNullable<T> & StoryboardRunOptions) {
-  const input = withHostedAuthTestKit(options, defaultAuthProbeTask) as Partial<StoryboardRunOptions>;
+  const input = withHostedAuthTestKit(options, defaultAuthProbeTask, defaultApiKey) as Partial<StoryboardRunOptions>;
   const version = resolveHostedComplianceVersion(input.adcpVersion ?? target.version);
   assertHostedArtifacts(version);
   const hostedStableLineAlias = hostedStableLineAliasForVersion(target, version);
@@ -549,8 +581,9 @@ export function withHostedTestOptions<T extends Partial<TestOptions> | undefined
   options: T,
   target: HostedComplianceTarget,
   defaultAuthProbeTask?: string,
+  defaultApiKey?: string,
 ): (T extends undefined ? TestOptions : NonNullable<T> & TestOptions) {
-  const input = withHostedAuthTestKit(options, defaultAuthProbeTask);
+  const input = withHostedAuthTestKit(options, defaultAuthProbeTask, defaultApiKey);
   const version = resolveHostedComplianceVersion(input.adcpVersion ?? target.version);
   assertHostedArtifacts(version);
   const hostedStableLineAlias = hostedStableLineAliasForVersion(target, version);
