@@ -9,6 +9,16 @@ required_tools:
   - get_products
   - create_media_buy
 
+# Capability gate: this scenario asserts the seller consults a registered
+# governance agent (check_governance) and echoes the governance_context token
+# on the buy, so it runs only for sellers that declare
+# media_buy.governance_aware: true. Sellers without outbound governance
+# consultation grade not_applicable rather than false-failing on a handshake
+# they do not implement.
+requires_capability:
+  path: media_buy.governance_aware
+  equals: true
+
 narrative: |
   This is a multi-agent test. The test harness sets up a governance plan on a governance
   agent with custom policies that trigger conditions (e.g., "CTV buys require weekly
@@ -202,3 +212,6 @@ phases:
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"
+          - check: envelope_field_present
+            path: governance_context
+            description: "Seller echoes the governance_context token issued by check_governance, proving it consulted the registered governance agent before attaching conditions"
