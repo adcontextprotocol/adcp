@@ -12,6 +12,17 @@ required_tools:
   - update_media_buy
   - comply_test_controller
 
+# Capability gate: this scenario grades the snapshot-coherence surface, so it
+# runs only for sellers that declare media_buy.propagation_surfaces including
+# "snapshot". Webhook-only or out_of_band sellers grade not_applicable instead
+# of false-failing on a contract that does not apply to them — the opt-out the
+# propagation_surfaces schema already documents (get-adcp-capabilities-response.json)
+# but that was never wired into this scenario. Requires runner support for the
+# `contains:` matcher (adcp-client >= 7.70).
+requires_capability:
+  path: media_buy.propagation_surfaces
+  contains: "snapshot"
+
 narrative: |
   Per the dependency-impairment surface ([adcp#2855](https://github.com/adcontextprotocol/adcp/issues/2855)
   and `core/impairment.json`), sellers MUST propagate resource-state transitions
@@ -417,6 +428,44 @@ phases:
       invariant grades the cross-resource match.
 
     steps:
+      - id: reread_creative_rejected
+        title: "Re-read the creative — runner observes rejected (closes impairment.coherence)"
+        narrative: |
+          The impairment.coherence invariant ledgers each resource's last status
+          OBSERVED ON THE WIRE (sync_creatives / list_creatives), not the
+          comply_test_controller force directive (the runner has no observation
+          hook for the forced transition). Without this re-read the creative's
+          last observed status stays its pre-rejection value (e.g. pending_review
+          from the sync step), so the next get_media_buys — which correctly
+          reports health: impaired — trips coherence because impairments[]
+          references a creative the ledger still considers online. This re-read
+          surfaces the rejected status so the ledger and the buy agree.
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives"
+        comply_scenario: creative_library
+        stateful: true
+        expected: |
+          The rejected creative is returned with status: rejected.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          filters:
+            creative_ids:
+              - "acme_dep_banner_001"
+          context:
+            correlation_id: "dependency_impairment--reread_creative_rejected"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json schema"
+          - check: field_value
+            path: "creatives[0].status"
+            value: "rejected"
+            description: "Creative observed as rejected on the wire — closes the impairment.coherence ledger for the impaired read that follows"
+
       - id: get_buy_impaired
         title: "Read the buy — health: impaired, impairment entry present"
         task: get_media_buys
