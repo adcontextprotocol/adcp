@@ -133,6 +133,10 @@ import { getWorkos } from '../../auth/workos-client.js';
 import { resolveUserRole } from '../../utils/resolve-user-role.js';
 import { recordAgentTestRun } from '../../db/agent-test-db.js';
 import { canonicalizeAgentUrl } from '../../db/publisher-db.js';
+import {
+  guardPersonalWorkspaceDomainSelection,
+  type PersonalWorkspaceDomainSelectionResult,
+} from '../../services/org-selection-guard.js';
 
 const logger = createLogger('addie-member-tools');
 const complianceTarget = hostedComplianceTarget();
@@ -982,8 +986,57 @@ function formatOrgChoice(org: { organizationId: string; name?: string | null }):
 }
 
 type SaveAgentOrgResolution =
-  | { ok: true; organizationId: string; organizationName: string | null }
+  | {
+      ok: true;
+      organizationId: string;
+      organizationName: string | null;
+      organizationIsPersonal?: boolean | null;
+    }
   | { ok: false; message: string };
+
+function memberContextForOrgGuard(
+  memberContext: MemberContext,
+  orgResolution: Extract<SaveAgentOrgResolution, { ok: true }>,
+): MemberContext {
+  if (typeof orgResolution.organizationIsPersonal !== 'boolean') {
+    return memberContext;
+  }
+
+  return {
+    ...memberContext,
+    organization: {
+      ...memberContext.organization,
+      workos_organization_id: orgResolution.organizationId,
+      name: orgResolution.organizationName ?? memberContext.organization?.name ?? '',
+      subscription_status: memberContext.organization?.subscription_status ?? null,
+      is_personal: orgResolution.organizationIsPersonal,
+      membership_tier: memberContext.organization?.membership_tier ?? null,
+    },
+  };
+}
+
+function agentUrlBaseDomain(agentUrl: string): string | null {
+  try {
+    return canonicalizeBrandDomain(new URL(agentUrl).hostname);
+  } catch {
+    return null;
+  }
+}
+
+function formatOrgSelectionRequiredMessage(
+  result: Extract<PersonalWorkspaceDomainSelectionResult, { ok: false }>,
+  action: string,
+): string {
+  const choices = result.companyOrgs.map(formatOrgChoice).join(', ');
+  const selectedName = result.selectedOrg.name
+    ? formatOrgNameForTool(result.selectedOrg.name)
+    : result.selectedOrg.organizationId;
+  return (
+    `I need you to choose the company organization before I ${action}. ` +
+    `Right now the selected organization is your personal workspace (${selectedName}), but ${result.domain} matches company org ${choices}. ` +
+    `Reply with the organization_id for the company org, or select it in the dashboard, and I will continue there. I will not issue domain challenges or save agents against the personal workspace for this company domain.`
+  );
+}
 
 type ActiveSaveAgentMembership = {
   userId: string;
@@ -1037,6 +1090,7 @@ async function listActiveWorkosMembershipsForSaveAgent(
 async function resolveSaveAgentOrganization(
   memberContext: MemberContext,
   input: Record<string, unknown>,
+  actionLabel = 'save to',
 ): Promise<SaveAgentOrgResolution> {
   const workosUserId = memberContext.workos_user?.workos_user_id;
   if (!workosUserId) {
@@ -1052,7 +1106,7 @@ async function resolveSaveAgentOrganization(
   if (requestedOrgId && requestedOrgName) {
     return {
       ok: false,
-      message: 'Use either organization_id or organization_name for save_agent, not both.',
+      message: `Use either organization_id or organization_name to ${actionLabel}, not both.`,
     };
   }
 
@@ -1061,20 +1115,21 @@ async function resolveSaveAgentOrganization(
     if (!contextOrgId) {
       return {
         ok: false,
-        message: 'This feature requires an organization. If you belong to multiple organizations, say which one to save to, or use the organization_id / organization_name field.',
+        message: `This feature requires an organization. If you belong to multiple organizations, say which one to ${actionLabel}, or use the organization_id / organization_name field.`,
       };
     }
     const activeMemberships = await listActiveWorkosMembershipsForSaveAgent(workosUserId, contextOrgId);
     if (activeMemberships.length === 0) {
       return {
         ok: false,
-        message: `I can't save to ${contextOrgId} because your account is not an active member of that organization.`,
+        message: `I can't ${actionLabel} ${contextOrgId} because your account is not an active member of that organization.`,
       };
     }
     return {
       ok: true,
       organizationId: contextOrgId,
       organizationName: memberContext.organization?.name || null,
+      organizationIsPersonal: memberContext.organization?.is_personal ?? null,
     };
   }
 
@@ -1089,7 +1144,7 @@ async function resolveSaveAgentOrganization(
     if (activeOrgIds.length === 0) {
       return {
         ok: false,
-        message: `I can't save to ${requestedOrgId} because your account is not an active member of that organization.`,
+        message: `I can't ${actionLabel} ${requestedOrgId} because your account is not an active member of that organization.`,
       };
     }
     const org = await orgDb.getOrganization(requestedOrgId).catch(() => null);
@@ -1101,6 +1156,7 @@ async function resolveSaveAgentOrganization(
       ok: true,
       organizationId: requestedOrgId,
       organizationName: org?.name || workosOrg?.name || ambientOrgName || null,
+      organizationIsPersonal: org?.is_personal ?? null,
     };
   }
 
@@ -1111,7 +1167,7 @@ async function resolveSaveAgentOrganization(
       const workosOrg = await getWorkos().organizations.getOrganization(organizationId).catch(() => null);
       name = workosOrg?.name ?? null;
     }
-    return { organizationId, name };
+    return { organizationId, name, isPersonal: localOrg?.is_personal ?? null };
   }));
 
   const requestedName = normalizeOrgNameForMatch(requestedOrgName!);
@@ -1125,6 +1181,7 @@ async function resolveSaveAgentOrganization(
       ok: true,
       organizationId: matches[0].organizationId,
       organizationName: matches[0].name ?? null,
+      organizationIsPersonal: matches[0].isPersonal ?? null,
     };
   }
 
@@ -1140,8 +1197,8 @@ async function resolveSaveAgentOrganization(
   return {
     ok: false,
     message: visibleChoices
-      ? `I couldn't find an active organization named "${sanitizeInline(requestedOrgName!)}" for your account. Active organizations I can save to: ${visibleChoices}.`
-      : `I couldn't find any active organizations for your account, so I can't save to "${sanitizeInline(requestedOrgName!)}".`,
+      ? `I couldn't find an active organization named "${sanitizeInline(requestedOrgName!)}" for your account. Active organizations I can ${actionLabel}: ${visibleChoices}.`
+      : `I couldn't find any active organizations for your account, so I can't ${actionLabel} "${sanitizeInline(requestedOrgName!)}".`,
   };
 }
 
@@ -1421,8 +1478,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'request_brand_domain_challenge',
     description:
-      "Issue a DNS TXT challenge so the caller's organization can claim a brand domain currently registered to another org or unregistered. Returns the verification record (Name/Type/Value) for the user to publish at their DNS host. DO NOT use when: the domain is already owned by the caller's org (already linked in their member profile); the user is just asking what their domain is; the user is asking generic 'is my domain set up?' questions. Pair with verify_brand_domain_challenge ONLY after the user confirms they've published the record. Response begins with an HTML comment '<!-- STATUS: <code> -->' for machine parsing (invisible in rendered markdown) — codes: dns_record_issued, already_verified, collision, invalid_domain, workos_error, not_authenticated, no_org, not_admin, missing_domain.",
-    usage_hints: 'Use when the user explicitly asks to claim a domain they control but cannot link (cross-org dispute, "claim nike.com for us"). Do NOT call speculatively or as a status check.',
+      "Issue a DNS TXT challenge so the caller's selected organization can claim a brand domain currently registered to another org or unregistered. Returns the verification record (Name/Type/Value) for the user to publish at their DNS host. DO NOT use when: the domain is already owned by the caller's org (already linked in their member profile); the user is just asking what their domain is; the user is asking generic 'is my domain set up?' questions. If the caller belongs to multiple organizations, or the current org is a personal workspace while the domain matches a company org, STOP and ask them to choose the company organization_id before issuing a challenge. Pair with verify_brand_domain_challenge ONLY after the user confirms they've published the record. Response begins with an HTML comment '<!-- STATUS: <code> -->' for machine parsing (invisible in rendered markdown) — codes: dns_record_issued, already_verified, collision, invalid_domain, workos_error, not_authenticated, no_org, org_selection_required, not_admin, missing_domain.",
+    usage_hints: 'Use when the user explicitly asks to claim a domain they control but cannot link (cross-org dispute, "claim nike.com for us"). Do NOT call speculatively or as a status check. Include organization_id when the user has selected a specific org.',
     input_schema: {
       type: 'object',
       properties: {
@@ -1430,6 +1487,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
           type: 'string',
           description: 'The brand domain to claim (e.g., "acme.com"). The caller must control DNS for this domain.',
         },
+        organization_id: { type: 'string', description: 'Optional explicit WorkOS organization ID to issue the challenge under. Required when the caller must choose between a personal workspace and a company org.' },
+        organization_name: { type: 'string', description: 'Optional explicit organization name. Must match exactly one active organization for the caller. Prefer organization_id when available.' },
       },
       required: ['domain'],
     },
@@ -1437,8 +1496,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'verify_brand_domain_challenge',
     description:
-      "Run the WorkOS DNS lookup against a previously-issued challenge and, on success, apply the brand-registry update. ONLY call after request_brand_domain_challenge returned DNS instructions in this same conversation AND the user has explicitly confirmed they published the record. NEVER call speculatively, as a 'check status' tool, or in a retry loop — DNS propagation takes minutes and the server enforces a cooldown that will return still_pending if you call again too soon. If the call returns still_pending, STOP and ask the user to confirm before any retry. Response begins with an HTML comment '<!-- STATUS: <code> -->' (invisible in rendered markdown) — codes: verified, still_pending, no_challenge, workos_error, not_authenticated, no_org, not_admin, missing_domain. After 'verified' the claim is complete; after 'still_pending' STOP and ask the user to confirm before retrying.",
-    usage_hints: 'Use only after the user confirms publication. Pass adopt_prior_manifest=true ONLY when the prior request_brand_domain_challenge response indicated prior_manifest_exists=true AND the user explicitly asked to inherit the prior identity (acquisition/handoff case). Default false.',
+      "Run the WorkOS DNS lookup against a previously-issued challenge for the selected organization and, on success, apply the brand-registry update. ONLY call after request_brand_domain_challenge returned DNS instructions in this same conversation AND the user has explicitly confirmed they published the record. NEVER call speculatively, as a 'check status' tool, or in a retry loop — DNS propagation takes minutes and the server enforces a cooldown that will return still_pending if you call again too soon. If the call returns still_pending, STOP and ask the user to confirm before any retry. Response begins with an HTML comment '<!-- STATUS: <code> -->' (invisible in rendered markdown) — codes: verified, still_pending, no_challenge, workos_error, not_authenticated, no_org, org_selection_required, not_admin, missing_domain. After 'verified' the claim is complete; after 'still_pending' STOP and ask the user to confirm before retrying.",
+    usage_hints: 'Use only after the user confirms publication. Include organization_id when the original challenge was issued under a selected org. Pass adopt_prior_manifest=true ONLY when the prior request_brand_domain_challenge response indicated prior_manifest_exists=true AND the user explicitly asked to inherit the prior identity (acquisition/handoff case). Default false.',
     input_schema: {
       type: 'object',
       properties: {
@@ -1446,6 +1505,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
           type: 'string',
           description: 'The brand domain being verified.',
         },
+        organization_id: { type: 'string', description: 'Optional explicit WorkOS organization ID for the challenge to verify. Use the same org that issued the challenge.' },
+        organization_name: { type: 'string', description: 'Optional explicit organization name. Must match exactly one active organization for the caller. Prefer organization_id when available.' },
         adopt_prior_manifest: {
           type: 'boolean',
           description: 'Set true ONLY when the issue response had prior_manifest_exists=true AND the user explicitly asked to keep the existing brand record (logos, colors, agents). Default false starts fresh — this is the right choice for most claims, including reclaiming a domain from a squatter or first-time registration.',
@@ -3070,16 +3131,25 @@ export function createMemberToolHandlers(
     if (!memberContext?.workos_user?.workos_user_id) {
       return '<!-- STATUS: not_authenticated -->\n\nYou need to be logged in to claim a brand domain. Please sign in at https://agenticadvertising.org and try again.';
     }
-    const orgId = memberContext.organization?.workos_organization_id;
-    if (!orgId) {
-      return '<!-- STATUS: no_org -->\n\nYour account isn\'t linked to an organization yet. Set up your company on https://agenticadvertising.org/member-profile first.';
+    const rawDomain = typeof input.domain === 'string' ? input.domain.trim() : '';
+    if (!rawDomain) return '<!-- STATUS: missing_domain -->\n\nTell me the brand domain you want to claim (e.g., "acme.com").';
+
+    const orgResolution = await resolveSaveAgentOrganization(memberContext, input, 'issue a DNS challenge under');
+    if (!orgResolution.ok) {
+      return `<!-- STATUS: no_org -->\n\n${orgResolution.message}`;
+    }
+    const orgId = orgResolution.organizationId;
+    const orgGuard = await guardPersonalWorkspaceDomainSelection({
+      memberContext: memberContextForOrgGuard(memberContext, orgResolution),
+      selectedOrgId: orgId,
+      rawDomain,
+    });
+    if (!orgGuard.ok) {
+      return `<!-- STATUS: org_selection_required -->\n\n${formatOrgSelectionRequiredMessage(orgGuard, `issue a DNS challenge for ${rawDomain}`)}`;
     }
     if (!(await callerIsOrgAdmin(memberContext.workos_user.workos_user_id, orgId))) {
       return '<!-- STATUS: not_admin -->\n\nOnly your organization\'s admin or owner can claim a brand domain. Ask one of them to run this.';
     }
-
-    const rawDomain = typeof input.domain === 'string' ? input.domain.trim() : '';
-    if (!rawDomain) return '<!-- STATUS: missing_domain -->\n\nTell me the brand domain you want to claim (e.g., "acme.com").';
 
     const result = await issueDomainChallenge({ workos: getWorkos(), brandDb, orgId, rawDomain });
 
@@ -3121,6 +3191,8 @@ export function createMemberToolHandlers(
       `- Value: \`${result.verification_token}\``,
       `- TTL: \`300\` (or your registrar's minimum)`,
       ``,
+      `Organization: ${orgResolution.organizationName ? `${formatOrgNameForTool(orgResolution.organizationName)} (${orgId})` : orgId}`,
+      ``,
       `DNS propagation usually takes 5–15 minutes; some registrars take an hour. Once you've published it AND confirmed it's live, tell me and I'll run \`verify_brand_domain_challenge\`. Don't ask me to verify before then — the call will just fail and the server enforces a 60s cooldown between attempts.`,
     ];
     if (result.prior_manifest_exists) {
@@ -3136,17 +3208,26 @@ export function createMemberToolHandlers(
     if (!memberContext?.workos_user?.workos_user_id) {
       return '<!-- STATUS: not_authenticated -->\n\nYou need to be logged in to verify a brand domain claim.';
     }
-    const orgId = memberContext.organization?.workos_organization_id;
-    if (!orgId) {
-      return '<!-- STATUS: no_org -->\n\nYour account isn\'t linked to an organization yet.';
+    const rawDomain = typeof input.domain === 'string' ? input.domain.trim() : '';
+    if (!rawDomain) return '<!-- STATUS: missing_domain -->\n\nWhich domain should I verify? Pass the domain you ran `request_brand_domain_challenge` for.';
+    const adoptPriorManifest = input.adopt_prior_manifest === true;
+
+    const orgResolution = await resolveSaveAgentOrganization(memberContext, input, 'verify a DNS challenge under');
+    if (!orgResolution.ok) {
+      return `<!-- STATUS: no_org -->\n\n${orgResolution.message}`;
+    }
+    const orgId = orgResolution.organizationId;
+    const orgGuard = await guardPersonalWorkspaceDomainSelection({
+      memberContext: memberContextForOrgGuard(memberContext, orgResolution),
+      selectedOrgId: orgId,
+      rawDomain,
+    });
+    if (!orgGuard.ok) {
+      return `<!-- STATUS: org_selection_required -->\n\n${formatOrgSelectionRequiredMessage(orgGuard, `verify ${rawDomain}`)}`;
     }
     if (!(await callerIsOrgAdmin(memberContext.workos_user.workos_user_id, orgId))) {
       return '<!-- STATUS: not_admin -->\n\nOnly your organization\'s admin or owner can verify a brand domain claim.';
     }
-
-    const rawDomain = typeof input.domain === 'string' ? input.domain.trim() : '';
-    if (!rawDomain) return '<!-- STATUS: missing_domain -->\n\nWhich domain should I verify? Pass the domain you ran `request_brand_domain_challenge` for.';
-    const adoptPriorManifest = input.adopt_prior_manifest === true;
 
     const result = await verifyDomainChallenge({
       workos: getWorkos(),
@@ -6727,6 +6808,18 @@ export function createMemberToolHandlers(
     // rather than `string | null` — TS can't carry the narrowing across the
     // function boundary.
     const agentUrl: string = canonical;
+
+    const agentDomain = agentUrlBaseDomain(agentUrl);
+    if (agentDomain) {
+      const orgGuard = await guardPersonalWorkspaceDomainSelection({
+        memberContext: memberContextForOrgGuard(memberContext, saveOrg),
+        selectedOrgId: saveOrgId,
+        rawDomain: agentDomain,
+      });
+      if (!orgGuard.ok) {
+        return formatOrgSelectionRequiredMessage(orgGuard, `save agent ${agentUrl}`);
+      }
+    }
 
     // Hostname ownership check (#4499 MVP). Mirrors the REST POST
     // /api/me/agents gate. See `agent-hostname-verification.ts` for the

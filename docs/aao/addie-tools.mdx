@@ -134,13 +134,13 @@ If the brand domain was previously registered by another organization, the tool 
 
 ### `request_brand_domain_challenge`
 
-Issue a DNS TXT challenge so the caller's organization can claim a brand domain currently registered to another org or unregistered. Returns the verification record (Name/Type/Value) for the user to publish at their DNS host. DO NOT use when: the domain is already owned by the caller's org (already linked in their member profile); the user is just asking what their domain is; the user is asking generic 'is my domain set up?' questions. Pair with verify_brand_domain_challenge ONLY after the user confirms they've published the record. Response begins with an HTML comment '&lt;!-- STATUS: &lt;code> -->' for machine parsing (invisible in rendered markdown) — codes: dns_record_issued, already_verified, collision, invalid_domain, workos_error, not_authenticated, no_org, not_admin, missing_domain.
+Issue a DNS TXT challenge so the caller's selected organization can claim a brand domain currently registered to another org or unregistered. Returns the verification record (Name/Type/Value) for the user to publish at their DNS host. DO NOT use when: the domain is already owned by the caller's org (already linked in their member profile); the user is just asking what their domain is; the user is asking generic 'is my domain set up?' questions. If the caller belongs to multiple organizations, or the current org is a personal workspace while the domain matches a company org, STOP and ask them to choose the company organization_id before issuing a challenge. Pair with verify_brand_domain_challenge ONLY after the user confirms they've published the record. Response begins with an HTML comment '&lt;!-- STATUS: &lt;code> -->' for machine parsing (invisible in rendered markdown) — codes: dns_record_issued, already_verified, collision, invalid_domain, workos_error, not_authenticated, no_org, org_selection_required, not_admin, missing_domain.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
 ### `verify_brand_domain_challenge`
 
-Run the WorkOS DNS lookup against a previously-issued challenge and, on success, apply the brand-registry update. ONLY call after request_brand_domain_challenge returned DNS instructions in this same conversation AND the user has explicitly confirmed they published the record. NEVER call speculatively, as a 'check status' tool, or in a retry loop — DNS propagation takes minutes and the server enforces a cooldown that will return still_pending if you call again too soon. If the call returns still_pending, STOP and ask the user to confirm before any retry. Response begins with an HTML comment '&lt;!-- STATUS: &lt;code> -->' (invisible in rendered markdown) — codes: verified, still_pending, no_challenge, workos_error, not_authenticated, no_org, not_admin, missing_domain. After 'verified' the claim is complete; after 'still_pending' STOP and ask the user to confirm before retrying.
+Run the WorkOS DNS lookup against a previously-issued challenge for the selected organization and, on success, apply the brand-registry update. ONLY call after request_brand_domain_challenge returned DNS instructions in this same conversation AND the user has explicitly confirmed they published the record. NEVER call speculatively, as a 'check status' tool, or in a retry loop — DNS propagation takes minutes and the server enforces a cooldown that will return still_pending if you call again too soon. If the call returns still_pending, STOP and ask the user to confirm before any retry. Response begins with an HTML comment '&lt;!-- STATUS: &lt;code> -->' (invisible in rendered markdown) — codes: verified, still_pending, no_challenge, workos_error, not_authenticated, no_org, org_selection_required, not_admin, missing_domain. After 'verified' the claim is complete; after 'still_pending' STOP and ask the user to confirm before retrying.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
@@ -1038,7 +1038,7 @@ Check domain health for data quality issues: orphan domains, conflicts, misalign
 
 ### `manage_organization_domains`
 
-Add, remove, or list verified domains for an organization. Syncs to WorkOS.
+Add, remove, list, set primary, or reconcile verified domains for an organization. Syncs to WorkOS.
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 

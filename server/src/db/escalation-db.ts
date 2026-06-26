@@ -5,6 +5,7 @@
 
 import { query } from './client.js';
 import { createLogger } from '../logger.js';
+import { redactSupportSecrets } from '../services/support-redaction.js';
 
 const logger = createLogger('escalation-db');
 
@@ -182,6 +183,10 @@ export async function createEscalation(input: EscalationInput): Promise<Escalati
     if (existing) return existing;
   }
 
+  const summary = redactSupportSecrets(input.summary) ?? input.summary;
+  const originalRequest = redactSupportSecrets(input.original_request);
+  const addieContext = redactSupportSecrets(input.addie_context);
+
   try {
     const result = await query<Escalation>(
       `INSERT INTO addie_escalations (
@@ -201,9 +206,9 @@ export async function createEscalation(input: EscalationInput): Promise<Escalati
         input.user_slack_handle || null,
         input.category,
         input.priority || 'normal',
-        input.summary,
-        input.original_request || null,
-        input.addie_context || null,
+        summary,
+        originalRequest || null,
+        addieContext || null,
         input.perspective_id || null,
         input.perspective_slug || null,
         input.dedup_key || null,

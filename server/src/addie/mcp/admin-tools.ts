@@ -133,6 +133,7 @@ import {
   buildResolutionNotificationMessage,
   type EscalationStatus,
 } from "../../db/escalation-db.js";
+import { guardEscalationResolution } from "../../services/escalation-resolution-guard.js";
 import { sendDirectMessage } from "../../slack/client.js";
 import { sendEscalationResolutionEmail } from "../../notifications/email.js";
 import {
@@ -1409,14 +1410,14 @@ Actions:
   {
     name: "manage_organization_domains",
     description:
-      "Add, remove, or list verified domains for an organization. Syncs to WorkOS.",
-    usage_hints: 'Use "list" first. Add/remove sync to WorkOS.',
+      "Add, remove, list, set primary, or reconcile verified domains for an organization. Syncs to WorkOS.",
+    usage_hints: 'Use "list" first. Use "reconcile_workos" when WorkOS and local organization_domains are out of sync.',
     input_schema: {
       type: "object" as const,
       properties: {
         action: {
           type: "string",
-          enum: ["list", "add", "remove", "set_primary"],
+          enum: ["list", "add", "remove", "set_primary", "reconcile_workos"],
           description: "Action",
         },
         organization_id: {
@@ -7600,6 +7601,28 @@ Use add_committee_leader to assign a leader.`;
           return response;
         }
 
+        case "reconcile_workos": {
+          const { reconcileWorkosOrganizationDomains } = await import("../../services/workos-domain-reconciliation.js");
+          const result = await reconcileWorkosOrganizationDomains({ workos, orgId: organizationId });
+          const invalidate = await import("../member-context.js").then((m) => m.invalidateMemberContextCache).catch(() => null);
+          invalidate?.();
+
+          let response = `## WorkOS domain reconciliation for ${orgName}\n\n`;
+          response += `WorkOS domains: ${result.workos_domains.length}\n`;
+          response += `Before mismatches: ${result.before_mismatches.length}\n`;
+          response += `After mismatches: ${result.after_mismatches.length}\n`;
+          response += `Changed local state: ${result.changed ? "yes" : "no"}\n`;
+          if (result.after_mismatches.length > 0) {
+            response += `\nRemaining blockers:\n`;
+            for (const mismatch of result.after_mismatches) {
+              response += `- ${mismatch.domain}: ${mismatch.reason} (WorkOS: ${mismatch.workos_state})\n`;
+            }
+          } else {
+            response += `\nLocal organization_domains now mirrors WorkOS for this org's domains.`;
+          }
+          return response;
+        }
+
         case "add": {
           if (!domain) {
             return '❌ domain is required for the "add" action. Example: "acme.com"';
@@ -10074,6 +10097,19 @@ Use add_committee_leader to assign a leader.`;
 
       if (escalation.status === "resolved" || escalation.status === "wont_do") {
         return `ℹ️ Escalation #${escalationId} is already ${escalation.status}.`;
+      }
+
+      const guard = await guardEscalationResolution({ escalation, status });
+      if (!guard.ok) {
+        const blockers = guard.blockers
+          .map((b) => `- ${b.domain ? `${b.domain}: ` : ""}${b.message}`)
+          .join("\n");
+        return (
+          `❌ Escalation #${escalationId} looks like registry/domain propagation work, ` +
+          `but local registry state is not resolved yet.\n\n${blockers}\n\n` +
+          `Use manage_organization_domains with action "reconcile_workos" or the admin domain verify recovery path, then retry. ` +
+          `If the request is invalid or malicious, resolve it as wont_do instead.`
+        );
       }
 
       // Get resolver info

@@ -382,7 +382,7 @@ describe('createMemberToolHandler', () => {
       organization_name: 'Example Org',
     });
 
-    expect(result).toContain('Use either organization_id or organization_name for save_agent, not both.');
+    expect(result).toContain('Use either organization_id or organization_name to save to, not both.');
     expect(createSpy).not.toHaveBeenCalled();
   });
 

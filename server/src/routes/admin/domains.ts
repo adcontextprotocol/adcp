@@ -13,7 +13,7 @@ import {
   unlinkDomainAndReselectPrimary,
 } from "../../db/organization-domains-db.js";
 import { createLogger } from "../../logger.js";
-import { requireAuth, requireAdmin } from "../../middleware/auth.js";
+import { requireAuth, requireAdmin, requireGlobalAdmin } from "../../middleware/auth.js";
 import { SlackDatabase } from "../../db/slack-db.js";
 import { enrichOrganization } from "../../services/enrichment.js";
 import { trackBackground } from "../../services/brand-enrichment.js";
@@ -27,6 +27,7 @@ import { resolveOrgsByDomains } from "../../db/domain-resolution-db.js";
 import { complete, isLLMConfigured } from "../../utils/llm.js";
 import { BrandDatabase } from "../../db/brand-db.js";
 import { verifyDomainChallenge } from "../../services/brand-claim.js";
+import { reconcileWorkosOrganizationDomains } from "../../services/workos-domain-reconciliation.js";
 import {
   FREE_EMAIL_PROVIDER_DOMAINS,
   canonicalizeBrandDomain,
@@ -91,11 +92,281 @@ interface DomainRoutesConfig {
   workos: WorkOS | null;
 }
 
+type RepairActionStatus = "available" | "blocked" | "manual";
+
+interface DomainSplitRepairAction {
+  id: string;
+  status: RepairActionStatus;
+  message: string;
+  endpoint?: string;
+  tool?: string;
+  body?: Record<string, unknown>;
+  blockers?: string[];
+}
+
+function findWorkosDomainState(
+  org: Awaited<ReturnType<WorkOS["organizations"]["getOrganization"]>> | null,
+  domain: string,
+): string | null {
+  return org?.domains?.find((d) => d.domain.toLowerCase() === domain)?.state ?? null;
+}
+
 export function setupDomainRoutes(
   apiRouter: Router,
   config: DomainRoutesConfig
 ): void {
   const { workos } = config;
+
+  // POST /api/admin/domain-split-repair/preview
+  //
+  // Read-only incident helper for the personal-workspace/company-org split
+  // state seen in registry/domain escalations. It intentionally previews
+  // repair actions only: WorkOS-verified domain reconciliation can be
+  // committed through the existing reconcile endpoint; billing relinks still
+  // require their own preview/confirm flow.
+	  apiRouter.post(
+	    "/domain-split-repair/preview",
+	    ...requireGlobalAdmin,
+	    async (req, res) => {
+      try {
+        const rawDomain = typeof req.body?.domain === "string" ? req.body.domain : "";
+        const companyOrgId = typeof req.body?.company_org_id === "string" ? req.body.company_org_id.trim() : "";
+        const personalOrgId = typeof req.body?.personal_org_id === "string" ? req.body.personal_org_id.trim() : "";
+        const workosUserId = typeof req.body?.workos_user_id === "string" ? req.body.workos_user_id.trim() : "";
+
+	        if (!rawDomain || !companyOrgId) {
+	          return res.status(400).json({
+	            error: "domain_and_company_org_required",
+	            message: "Provide domain and company_org_id.",
+	          });
+	        }
+	        if (personalOrgId && personalOrgId === companyOrgId) {
+	          return res.status(400).json({
+	            error: "company_and_personal_org_must_differ",
+	            message: "company_org_id and personal_org_id must be different organizations.",
+	          });
+	        }
+
+        const domain = canonicalizeBrandDomain(rawDomain);
+        const orgIds = [...new Set([companyOrgId, personalOrgId].filter(Boolean))];
+        const pool = getPool();
+
+        const [orgResult, localDomainResult, memberProfileResult, membershipResult] =
+          await Promise.all([
+            pool.query<{
+              workos_organization_id: string;
+              name: string;
+              is_personal: boolean | null;
+              email_domain: string | null;
+              member_status: string | null;
+              subscription_status: string | null;
+              subscription_canceled_at: Date | null;
+              membership_tier: string | null;
+              stripe_customer_id: string | null;
+              stripe_subscription_id: string | null;
+            }>(
+              `SELECT workos_organization_id, name, is_personal, email_domain,
+                      member_status, subscription_status, subscription_canceled_at,
+                      membership_tier, stripe_customer_id, stripe_subscription_id
+                 FROM organizations
+                WHERE workos_organization_id = ANY($1::text[])`,
+              [orgIds],
+            ),
+            pool.query<{
+              domain: string;
+              workos_organization_id: string;
+              organization_name: string | null;
+              is_personal: boolean | null;
+              verified: boolean;
+              is_primary: boolean;
+              source: string;
+            }>(
+              `SELECT od.domain, od.workos_organization_id, o.name AS organization_name,
+                      o.is_personal, od.verified, od.is_primary, od.source
+                 FROM organization_domains od
+                 LEFT JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
+                WHERE od.domain = $1
+                   OR od.workos_organization_id = ANY($2::text[])
+                ORDER BY od.domain ASC, od.workos_organization_id ASC`,
+              [domain, orgIds],
+            ),
+            pool.query<{ workos_organization_id: string; id: string }>(
+              `SELECT workos_organization_id, id
+                 FROM member_profiles
+                WHERE workos_organization_id = ANY($1::text[])`,
+              [orgIds],
+            ),
+            workosUserId
+              ? pool.query<{
+                  workos_organization_id: string;
+                  role: string | null;
+                  joined_at: Date | null;
+                }>(
+                  `SELECT workos_organization_id, role, joined_at
+                     FROM organization_memberships
+                    WHERE workos_user_id = $1
+                      AND workos_organization_id = ANY($2::text[])`,
+                  [workosUserId, orgIds],
+                )
+              : Promise.resolve({ rows: [] }),
+          ]);
+
+        const orgById = new Map(orgResult.rows.map((row) => [row.workos_organization_id, row]));
+        const companyOrg = orgById.get(companyOrgId);
+        const personalOrg = personalOrgId ? orgById.get(personalOrgId) : null;
+
+        if (!companyOrg) {
+          return res.status(404).json({
+            error: "company_org_not_found",
+            message: `Company organization ${companyOrgId} was not found locally.`,
+          });
+        }
+	        if (personalOrgId && !personalOrg) {
+	          return res.status(404).json({
+	            error: "personal_org_not_found",
+	            message: `Personal organization ${personalOrgId} was not found locally.`,
+	          });
+	        }
+	        if (companyOrg.is_personal === true) {
+	          return res.status(400).json({
+	            error: "company_org_is_personal",
+	            message: `${companyOrgId} is marked as a personal workspace. Provide the non-personal company organization as company_org_id.`,
+	          });
+	        }
+	        if (personalOrg && personalOrg.is_personal !== true) {
+	          return res.status(400).json({
+	            error: "personal_org_is_not_personal",
+	            message: `${personalOrgId} is not marked as a personal workspace. Provide the user's personal workspace as personal_org_id, or omit it.`,
+	          });
+	        }
+
+        const workosOrgs = new Map<string, unknown>();
+        const workosFailures = new Map<string, string>();
+        const [companyWorkosOrg, personalWorkosOrg] = workos
+          ? await Promise.all([
+              workos.organizations.getOrganization(companyOrgId).catch((err) => {
+                workosFailures.set(companyOrgId, err instanceof Error ? err.message : "WorkOS lookup failed");
+                return null;
+              }),
+              personalOrgId
+                ? workos.organizations.getOrganization(personalOrgId).catch((err) => {
+                    workosFailures.set(personalOrgId, err instanceof Error ? err.message : "WorkOS lookup failed");
+                    return null;
+                  })
+                : Promise.resolve(null),
+            ])
+          : [null, null];
+
+        for (const org of [companyWorkosOrg, personalWorkosOrg]) {
+          if (org) {
+            workosOrgs.set(org.id, {
+              id: org.id,
+              name: org.name,
+              domains: org.domains.map((d) => ({ domain: d.domain, state: d.state })),
+            });
+          }
+        }
+
+        const companyWorkosState = findWorkosDomainState(companyWorkosOrg, domain);
+        const personalWorkosState = findWorkosDomainState(personalWorkosOrg, domain);
+        const companyHasVerifiedWorkosDomain =
+          companyWorkosState === "verified" || companyWorkosState === "legacy_verified";
+        const companyProfileExists = memberProfileResult.rows.some(
+          (row) => row.workos_organization_id === companyOrgId,
+        );
+        const companyMembership = membershipResult.rows.find(
+          (row) => row.workos_organization_id === companyOrgId,
+        );
+
+        const actions: DomainSplitRepairAction[] = [];
+        if (companyHasVerifiedWorkosDomain) {
+          actions.push({
+            id: "reconcile_company_workos_domains",
+            status: "available",
+            message:
+              "WorkOS already marks this domain verified for the company org. Run reconciliation to mirror WorkOS into organization_domains.",
+            endpoint: `/api/admin/organizations/${companyOrgId}/domains/reconcile`,
+            body: {},
+          });
+        } else {
+          actions.push({
+            id: "prove_company_domain_control",
+            status: "blocked",
+            message:
+              "Do not mark this domain verified manually. Issue and verify a DNS challenge under the company org, then rerun this preview.",
+            blockers: [
+              `WorkOS company-org domain state is ${companyWorkosState ?? "missing"}.`,
+            ],
+          });
+        }
+
+        if (!companyProfileExists) {
+          actions.push({
+            id: "create_member_profile",
+            status: "manual",
+            message:
+              "The company org has no member profile, so registry/operator can still return member:null after domain reconciliation. Create or backfill the profile through the normal member-profile path.",
+          });
+        }
+
+	        if (workosUserId && !companyMembership) {
+	          actions.push({
+	            id: "confirm_company_org_membership",
+            status: "blocked",
+            message:
+              "The supplied user is not a local member of the company org. Stop and ask for org selection/invite before repairing state for this user.",
+	          });
+	        }
+	        const blockers = actions.filter((action) => action.status === "blocked");
+	        const safeToReconcile = companyHasVerifiedWorkosDomain && blockers.length === 0;
+
+	        if (personalOrg?.stripe_customer_id && personalOrg.stripe_customer_id !== companyOrg.stripe_customer_id) {
+	          actions.push({
+            id: "billing_relink_requires_separate_preview",
+            status: "manual",
+            message:
+              "Billing appears attached to the personal workspace. Do not move it in this domain repair path. Use the Stripe customer relink preview/confirm flow after deciding whether the customer really belongs on the company org.",
+            tool: "preview_org_stripe_customer_update",
+            body: {
+              org_id: companyOrgId,
+              new_customer_id: personalOrg.stripe_customer_id,
+            },
+            blockers: [
+              "If the Stripe customer is still linked to the personal org locally, the relink preview will refuse it until an operator safely unlinks or merges duplicate account state.",
+            ],
+          });
+        }
+
+        res.json({
+          success: true,
+          domain,
+          company_org: companyOrg,
+          personal_org: personalOrg,
+          local_domains: localDomainResult.rows,
+	          member_profiles: memberProfileResult.rows,
+	          memberships: membershipResult.rows,
+	          safe_to_reconcile: safeToReconcile,
+	          next_safe_action: safeToReconcile
+	            ? "Run the company WorkOS-domain reconciliation endpoint."
+	            : blockers[0]?.message ?? "Review manual actions before making production changes.",
+	          workos: {
+	            configured: Boolean(workos),
+	            orgs: Object.fromEntries(workosOrgs),
+	            failures: Object.fromEntries(workosFailures),
+            company_domain_state: companyWorkosState,
+            personal_domain_state: personalWorkosState,
+          },
+          actions,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Failed to preview domain split repair");
+	        res.status(500).json({
+	          error: "domain_split_repair_preview_failed",
+	          message: "Unable to preview repair.",
+	        });
+      }
+    },
+  );
 
   // =========================================================================
   // SLACK DOMAIN DISCOVERY FOR PROSPECT IDENTIFICATION
@@ -1256,6 +1527,48 @@ export function setupDomainRoutes(
         return res.status(500).json({ error: "Internal server error" });
       }
     }
+  );
+
+  // POST /api/admin/organizations/:orgId/domains/reconcile
+  // Replay WorkOS as the source of truth for this org's domain list. This is
+  // the recovery path for missed organization_domain.* webhooks: it mirrors
+  // WorkOS domains into organization_domains and re-runs verified-domain brand
+  // registry sync without inventing verification locally.
+  apiRouter.post(
+    "/organizations/:orgId/domains/reconcile",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      const { orgId } = req.params;
+      if (!workos) {
+        return res.status(503).json({ error: "WorkOS not configured" });
+      }
+
+      try {
+        const result = await reconcileWorkosOrganizationDomains({ workos, orgId });
+        invalidateMemberContextCache();
+        logger.info(
+          {
+            orgId,
+            actor: req.user?.id,
+            beforeMismatches: result.before_mismatches.length,
+            afterMismatches: result.after_mismatches.length,
+            changed: result.changed,
+          },
+          "Admin reconciled organization domains from WorkOS",
+        );
+        return res.json({
+          success: result.after_mismatches.length === 0,
+          ...result,
+        });
+      } catch (error) {
+        logger.error({ err: error, orgId }, "Admin WorkOS domain reconciliation failed");
+        return res.status(502).json({
+          error: "workos_error",
+          message: "Failed to reconcile organization domains from WorkOS.",
+        });
+      }
+    },
   );
 
   // POST /api/admin/organizations/:orgId/domains/:domain/verify
