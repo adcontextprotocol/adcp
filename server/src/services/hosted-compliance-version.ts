@@ -516,14 +516,14 @@ export function withHostedAuthTestKit<T extends Partial<TestOptions> | undefined
   const nextAuth: RuntimeTestKitAuth = { ...currentAuth };
   let changed = false;
 
-  if (defaultApiKey && !nextAuth.api_key && !nextAuth.basic) {
-    nextAuth.api_key = defaultApiKey;
-    changed = true;
-  } else if (auth?.type === 'bearer' && !nextAuth.api_key) {
+  if (auth?.type === 'bearer' && !nextAuth.api_key) {
     nextAuth.api_key = auth.token;
     changed = true;
   } else if (auth?.type === 'basic' && !nextAuth.basic) {
     nextAuth.basic = { username: auth.username, password: auth.password };
+    changed = true;
+  } else if (defaultApiKey && !nextAuth.api_key && !nextAuth.basic) {
+    nextAuth.api_key = defaultApiKey;
     changed = true;
   }
 

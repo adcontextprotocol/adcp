@@ -140,7 +140,7 @@
 #   different topologies.)
 #
 # requires: string[] (optional — storyboard-level runtime requirement gate.
-#   Known values: controller | seeded_state | real_wire | webhook_receiver (forward-compat:
+#   Known values: controller | seeded_state | real_wire | webhook_receiver | multi_agent (forward-compat:
 #   unrecognized values are NOT schema violations — runners emit
 #   requirement_unmet at runtime; see Forward compatibility below).
 #   Default when absent: [real_wire] — untagged storyboards run unchanged.
@@ -226,6 +226,19 @@
 #                    This value may be declared explicitly on storyboards such
 #                    as webhook-emission; runners may also infer it from
 #                    webhook URL substitutions in sample_request payloads.
+#
+#     multi_agent  — gate on the runner being configured with every logical
+#                    agent key required by this storyboard's `default_agent`
+#                    and step-level `agent:` declarations. Available when the
+#                    runner receives an `agents` map containing at least two
+#                    logical agents and all authored route keys used by the
+#                    storyboard resolve against that map. When unmet, the
+#                    runner MUST emit skip_result.reason: requirement_unmet
+#                    with detail naming "multi_agent" rather than failing a
+#                    routed step with default_agent_unresolved or unrouted_step.
+#                    Storyboards SHOULD declare this when the scenario's setup
+#                    and execution require distinct logical tenants, such as a
+#                    seller agent plus a governance agent.
 #
 #   Forward compatibility: runners encountering a requires value they do not
 #   recognize MUST emit skip_result.reason: requirement_unmet (not fail-load)

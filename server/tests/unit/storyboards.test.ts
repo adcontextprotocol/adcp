@@ -305,13 +305,25 @@ describe('wrapper contract', () => {
     expect(options.test_kit?.auth?.probe_task).toBe('list_creatives');
   });
 
-  it('keeps hosted static fixture auth distinct from operator transport auth', () => {
+  it('does not override operator bearer auth with hosted static fixture auth', () => {
     const options = withHostedAuthTestKit({
       auth: { type: 'bearer', token: 'secret-token' },
     }, 'list_creatives', 'demo-acme-outdoor-v1');
 
     expect(options.auth).toEqual({ type: 'bearer', token: 'secret-token' });
-    expect(options.test_kit?.auth?.api_key).toBe('demo-acme-outdoor-v1');
+    expect(options.test_kit?.auth?.api_key).toBe('secret-token');
+  });
+
+  it('does not override operator basic auth with hosted static fixture auth', () => {
+    const options = withHostedAuthTestKit({
+      auth: { type: 'basic', username: 'agent-user', password: 'agent-pass' },
+    }, 'list_creatives', 'demo-acme-outdoor-v1');
+
+    expect((options.test_kit?.auth as any)?.basic).toEqual({
+      username: 'agent-user',
+      password: 'agent-pass',
+    });
+    expect(options.test_kit?.auth?.api_key).toBeUndefined();
   });
 
   it('selects hosted static fixture auth from the discovered protocol profile', () => {

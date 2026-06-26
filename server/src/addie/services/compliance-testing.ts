@@ -94,7 +94,9 @@ async function hostedAuthDefaultsForRun(
   agentUrl: string,
   options: ComplyOptions,
 ): Promise<{ probeTask?: string; apiKey?: string }> {
-  const shouldInferStaticFixture = !options.test_kit?.auth?.api_key && !options.test_kit?.auth?.basic;
+  const hasOperatorTransportAuth = options.auth?.type === 'bearer' || options.auth?.type === 'basic';
+  const shouldInferStaticFixture =
+    !hasOperatorTransportAuth && !options.test_kit?.auth?.api_key && !options.test_kit?.auth?.basic;
   if (options.test_kit?.auth?.probe_task && !shouldInferStaticFixture) {
     return { probeTask: options.test_kit.auth.probe_task };
   }
