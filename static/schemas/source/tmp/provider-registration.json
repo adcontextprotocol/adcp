@@ -8,7 +8,10 @@
   "properties": {
     "provider_id": {
       "type": "string",
-      "description": "Stable identifier for this provider registration. Used in logs, metrics, and cache keys. Publishers assign this — it is not the provider's agent_url."
+      "description": "Stable identifier for this provider registration. Used in logs, metrics, cache keys, and as the trailing token in the per-provider TMPX macro name `{TMPX_<provider_id>}` that the publisher trafficks in their ad server. Publishers assign this — it is not the provider's agent_url. Charset is constrained to the intersection of macro-safe characters across GAM, VAST URL parameters, and DOOH play-log fields so `{TMPX_<provider_id>}` is always a legal macro token without further encoding.",
+      "pattern": "^[A-Za-z0-9_]+$",
+      "minLength": 1,
+      "maxLength": 64
     },
     "endpoint": {
       "type": "string",
@@ -61,18 +64,6 @@
       "description": "Provider ordering for merge conflict resolution. Lower values have higher priority. When two providers return offers for the same package_id (a configuration error), the router keeps the offer from the higher-priority provider. Also used for adaptive timeout allocation — higher-priority providers receive a larger share of the latency budget.",
       "minimum": 0,
       "default": 0
-    },
-    "tmpx_macros": {
-      "type": "array",
-      "description": "Stable ad-server macro names this provider's TMPX response fills, ordered. Publishers traffic these names in their ad server (GAM key-values, VAST URL macros, DOOH play-log fields, etc.); the router places each provider's TMPX chunks into the matching slots on the identity-match response (`tmpx_providers[provider_id].macros[]`). Names MUST be provider-namespaced so publishers can configure distinct macros per provider (e.g. `S3_TMPX_1`, `S3_TMPX_2` for one provider; `WMC_TMPX_1` for another) — deriving macro names from `provider_id` is forbidden because the trafficked name in GAM is part of operational setup, not protocol-synthesized. Ordered so multi-chunk TMPX values (when the opaque token exceeds one macro slot) are placed deterministically. Capped at 2 entries in v1; the cap MAY be raised in a later version without a shape change. REQUIRED when `identity_match` is true and the provider emits TMPX; OPTIONAL when the provider does not emit TMPX (no macros are trafficked downstream).",
-      "items": {
-        "type": "string",
-        "pattern": "^[A-Z][A-Z0-9_]*$",
-        "minLength": 1,
-        "maxLength": 64
-      },
-      "minItems": 1,
-      "maxItems": 2
     },
     "status": {
       "type": "string",
