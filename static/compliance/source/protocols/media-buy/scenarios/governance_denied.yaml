@@ -9,6 +9,15 @@ required_tools:
   - get_products
   - create_media_buy
 
+# Capability gate: this scenario asserts the seller produces GOVERNANCE_DENIED
+# after consulting a registered governance agent, so it runs only for sellers
+# that declare media_buy.governance_aware: true. Sellers without outbound
+# governance consultation grade not_applicable rather than false-failing on a
+# denial they have no mechanism to produce.
+requires_capability:
+  path: media_buy.governance_aware
+  equals: true
+
 narrative: |
   This is a multi-agent test. The test harness sets up a governance plan on a governance
   agent with a strict $10K budget, then registers that agent with the seller. The buyer
