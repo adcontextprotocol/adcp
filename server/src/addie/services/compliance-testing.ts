@@ -23,6 +23,7 @@ import {
 import {
   hostedComplianceTarget,
   hostedAuthProbeTaskForProfile,
+  hostedStaticApiKeyForProfile,
   agentAdvertisesBadgeEligibleHostedComplianceTarget,
   badgeEligibleVersionsForHostedComplianceTarget,
   selectCanonicalHostedComplianceTargetForProfile,
@@ -89,20 +90,27 @@ export type {
   SampleBrief,
 };
 
-async function hostedAuthProbeTaskForRun(
+async function hostedAuthDefaultsForRun(
   agentUrl: string,
   options: ComplyOptions,
-): Promise<string | undefined> {
-  const auth = options.auth;
-  if (auth?.type !== 'bearer' && auth?.type !== 'basic') return undefined;
-  if (options.test_kit?.auth?.probe_task) return options.test_kit.auth.probe_task;
+): Promise<{ probeTask?: string; apiKey?: string }> {
+  const shouldInferStaticFixture = !options.test_kit?.auth?.api_key && !options.test_kit?.auth?.basic;
+  if (options.test_kit?.auth?.probe_task && !shouldInferStaticFixture) {
+    return { probeTask: options.test_kit.auth.probe_task };
+  }
 
   try {
     const discovery = await testCapabilityDiscovery(agentUrl, options);
-    return hostedAuthProbeTaskForProfile(discovery.profile);
+    const apiKey = shouldInferStaticFixture
+      ? hostedStaticApiKeyForProfile(discovery.profile)
+      : undefined;
+    return {
+      probeTask: options.test_kit?.auth?.probe_task ?? hostedAuthProbeTaskForProfile(discovery.profile),
+      ...(apiKey ? { apiKey } : {}),
+    };
   } catch (err) {
-    logger.warn({ err, agentUrl }, 'Could not pre-discover hosted auth probe task; using default');
-    return undefined;
+    logger.warn({ err, agentUrl }, 'Could not pre-discover hosted auth defaults; using default probe task only');
+    return {};
   }
 }
 
@@ -111,8 +119,11 @@ export async function comply(
   options: ComplyOptions,
   target: HostedComplianceTarget,
 ): Promise<ComplianceResult> {
-  const authProbeTask = await hostedAuthProbeTaskForRun(agentUrl, options);
-  const result = await sdkComply(agentUrl, withHostedComplianceRunOptions(options, target, authProbeTask));
+  const authDefaults = await hostedAuthDefaultsForRun(agentUrl, options);
+  const result = await sdkComply(
+    agentUrl,
+    withHostedComplianceRunOptions(options, target, authDefaults.probeTask, authDefaults.apiKey),
+  );
   result.adcp_version ??= target.version;
   (result as ComplianceResult & { requested_compliance_target?: string }).requested_compliance_target = target.requested;
   return result;

@@ -17,6 +17,7 @@ import {
   HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
   badgeEligibleVersionsForHostedComplianceTarget,
   hostedAuthProbeTaskForProfile,
+  hostedStaticApiKeyForProfile,
   hostedComplianceOptions,
   hostedComplianceTargetPreference,
   hostedComplianceTarget,
@@ -293,6 +294,38 @@ describe('wrapper contract', () => {
     expect(options.test_kit?.auth?.probe_task).toBe('list_creatives');
   });
 
+  it('threads hosted static fixture auth into the runtime test kit when no operator auth is supplied', () => {
+    const apiKey = hostedStaticApiKeyForProfile({
+      tools: ['get_adcp_capabilities', 'get_products'],
+      supported_protocols: ['media_buy'],
+    });
+    const options = withHostedAuthTestKit({}, 'list_creatives', apiKey);
+
+    expect(options.test_kit?.auth?.api_key).toBe('demo-acme-outdoor-v1');
+    expect(options.test_kit?.auth?.probe_task).toBe('list_creatives');
+  });
+
+  it('keeps hosted static fixture auth distinct from operator transport auth', () => {
+    const options = withHostedAuthTestKit({
+      auth: { type: 'bearer', token: 'secret-token' },
+    }, 'list_creatives', 'demo-acme-outdoor-v1');
+
+    expect(options.auth).toEqual({ type: 'bearer', token: 'secret-token' });
+    expect(options.test_kit?.auth?.api_key).toBe('demo-acme-outdoor-v1');
+  });
+
+  it('selects hosted static fixture auth from the discovered protocol profile', () => {
+    expect(hostedStaticApiKeyForProfile({
+      supported_protocols: ['media_buy'],
+    })).toBe('demo-acme-outdoor-v1');
+    expect(hostedStaticApiKeyForProfile({
+      supported_protocols: ['signals'],
+    })).toBe('demo-nova-motors-v1');
+    expect(hostedStaticApiKeyForProfile({
+      supported_protocols: ['unknown'],
+    })).toBeUndefined();
+  });
+
   it('threads Basic auth into the hosted runtime test kit', () => {
     const options = withHostedAuthTestKit({
       auth: { type: 'basic', username: 'agent-user', password: 'agent-pass' },
@@ -306,6 +339,11 @@ describe('wrapper contract', () => {
   });
 
   it('selects a hosted auth probe task from the discovered agent profile', () => {
+    expect(hostedAuthProbeTaskForProfile({
+      tools: ['get_adcp_capabilities', 'get_media_buy_delivery'],
+      supported_protocols: ['media_buy'],
+    })).toBe('get_media_buy_delivery');
+
     expect(hostedAuthProbeTaskForProfile({
       tools: ['get_adcp_capabilities', 'get_signals'],
       supported_protocols: ['signals'],
