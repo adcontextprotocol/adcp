@@ -1058,6 +1058,10 @@ components:
               format_kind:
                 type: string
                 description: Canonical format discriminator, such as `image`, `video_hosted`, `native_in_feed`, or `custom`.
+              sample_render_url:
+                type: string
+                pattern: ^https:\/\/
+                description: Optional HTTPS page where a human can inspect a sample render of this catalog format using publisher- or registry-provided example assets. Informational only; this is not a renderer endpoint, buyer-asset preview, validation result, creative approval, or live delivery guarantee.
               params:
                 type: object
                 additionalProperties: {}
