@@ -10116,7 +10116,7 @@ paths:
 
         - **Already-active conflict**: the org exists and is already claimed by another paying member or a previously joined user. Returns `409` with the existing org id so the caller can switch to a join-request flow (`POST /api/organizations/:orgId/join-requests`) instead of trying to register a duplicate.
 
-        Tier transitions happen via the billing flow only — there is no `membership_tier` field on this endpoint. After org creation, send the user to `POST /api/checkout-session` (or the dashboard `/membership` page) to start a subscription; the Stripe webhook is the sole writer of `organizations.membership_tier`.
+        Tier transitions happen via the billing flow only — there is no `membership_tier` field on this endpoint. After org creation, send the user to `POST /api/checkout-session` (or the `/dashboard/membership` page) to start a subscription; the Stripe webhook is the sole writer of `organizations.membership_tier`.
 
         Rate-limited per user: `15` failed attempts per hour; successful calls do not count against the limit so a legitimate registration is never penalized by earlier validation errors.
       tags:
