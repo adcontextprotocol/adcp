@@ -130,6 +130,29 @@ export function isPrivateHostname(hostname: string): boolean {
     if ((groups[0] & 0xfe00) === 0xfc00) return true;
     // fec0::/10 deprecated site-local (RFC 3879) — first group is fec0..feff
     if ((groups[0] & 0xffc0) === 0xfec0) return true;
+    // Deprecated IPv4-compatible ::a.b.c.d (RFC 4291 §2.5.5.1) — high 96 bits
+    // zero (and not ::ffff:, handled above); classify the embedded v4 so a
+    // private v4 tunneled through the compatible form is rejected.
+    if (groups.slice(0, 6).every((n) => n === 0)) {
+      const v4 = `${(groups[6] >> 8) & 0xff}.${groups[6] & 0xff}.${(groups[7] >> 8) & 0xff}.${groups[7] & 0xff}`;
+      if (isPrivateHostname(v4)) return true;
+    }
+    // 6to4 2002:V4::/16 (RFC 3056) — the embedded v4 is groups[1:2].
+    if (groups[0] === 0x2002) {
+      const v4 = `${(groups[1] >> 8) & 0xff}.${groups[1] & 0xff}.${(groups[2] >> 8) & 0xff}.${groups[2] & 0xff}`;
+      if (isPrivateHostname(v4)) return true;
+    }
+    // NAT64 well-known 64:ff9b::/96 (RFC 6052) — embedded v4 in groups[6:7];
+    // classify it so a NAT64-wrapped private v4 is rejected while a wrapped
+    // public v4 stays reachable.
+    if (groups[0] === 0x0064 && groups[1] === 0xff9b && groups.slice(2, 6).every((n) => n === 0)) {
+      const v4 = `${(groups[6] >> 8) & 0xff}.${groups[6] & 0xff}.${(groups[7] >> 8) & 0xff}.${groups[7] & 0xff}`;
+      if (isPrivateHostname(v4)) return true;
+    }
+    // Scope: this classifier covers private/internal *reachability*. Multicast
+    // (ff00::/8) and documentation (2001:db8::/32) are intentionally NOT flagged
+    // here — they aren't reachable internal targets, and the dns-rebind suite
+    // asserts ff00::1 is allowed. Don't add them without updating that test.
   }
 
   return false;
