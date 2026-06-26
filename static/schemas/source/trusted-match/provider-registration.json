@@ -8,7 +8,7 @@
   "properties": {
     "provider_id": {
       "type": "string",
-      "description": "Stable identifier for this provider registration. Used in logs, metrics, cache keys, and as the key in `tmpx_providers` on the identity-match response so the publisher can route each provider's TMPX `macros[]` to that provider's pre-configured ad-server slots (names registered in `tmpx_macros` below — macro names MUST NOT be derived from `provider_id` at runtime). Publishers assign this — it is not the provider's agent_url. Charset is constrained to the intersection of safe characters across GAM, VAST URL parameters, and DOOH play-log fields so the value can appear in those operational surfaces (logs, metrics, fall-back single-token `{TMPX}` substitutions) without additional encoding.",
+      "description": "Stable identifier for this provider registration. Used in logs, metrics, cache keys, and as the key in `tmpx_providers` on the identity-match response so the publisher can route each provider's TMPX `macros[]` to that provider's pre-configured ad-server slots (names registered in `tmpx_macros` below — macro names MUST NOT be derived from `provider_id` at runtime). Publishers assign this — it is not the provider's agent_url. Charset is constrained to a safe alphanumeric/underscore set so the value can appear in operational surfaces (logs, metrics, dashboards) without quoting.",
       "pattern": "^[A-Za-z0-9_]+$",
       "minLength": 1,
       "maxLength": 64
