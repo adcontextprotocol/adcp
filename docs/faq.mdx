@@ -260,6 +260,52 @@ A platform that implements AdCP does not need to replace its existing API. AdCP 
 
 </AccordionGroup>
 
+## Trust, identity & governance
+
+<AccordionGroup>
+  <Accordion title="What is a governance agent, and who runs it?">
+    A governance agent is an external service that an advertiser/buyer configures on their account to validate
+    campaign actions before they execute — budget limits, brand safety, regulatory compliance. Both the
+    orchestrator (buy side) and the seller call [`check_governance`](/docs/governance/campaign/tasks/check_governance)
+    against it; it is the universal validation gate. Campaign governance
+    (`sync_plans`, `check_governance`, `report_plan_outcome`, `get_plan_audit_logs`) is an **AdCP 3.0 experimental**
+    surface — sellers implementing it declare `governance.campaign` in `experimental_features`.
+  </Accordion>
+
+  <Accordion title="As a seller, what do I have to do for governance?">
+    Your role is **validate and fulfill**. You receive the governance agent's endpoint and credentials when the
+    account is synced via [`sync_governance`](/docs/accounts/tasks/sync_governance), call
+    [`check_governance`](/docs/governance/campaign/tasks/check_governance) before processing a media buy, honor the
+    verdict (you can't override a governance decision or modify budgets), and fulfill as approved. You do **not**
+    report outcomes to the governance agent — the orchestrator reports acceptance, committed budget, and delivery.
+  </Accordion>
+
+  <Accordion title="Where is the audit trail kept — do sellers need to retain audit logs for governance?">
+    The **governance agent** holds the consolidated audit trail — a first-class, structured, timestamped,
+    attributable record of every decision, approval, and outcome, served via
+    [`get_plan_audit_logs`](/docs/governance/campaign/tasks/get_plan_audit_logs). A seller is **not** required to
+    maintain or hand over a governance audit-log store; the seller validates via `check_governance` and fulfills,
+    and the orchestrator reports outcomes. (Operational logging a seller keeps for its own business is separate
+    from the governance audit trail.)
+  </Accordion>
+
+  <Accordion title="How are governance-agent credentials rotated or replaced if compromised?">
+    A governance agent's endpoint and credentials are provisioned to the seller through
+    [`sync_governance`](/docs/accounts/tasks/sync_governance). Rotation or replacement of a compromised credential
+    is done by re-syncing the account with updated authentication — the new configuration replaces the prior one.
+    Note that governance approvals (`governance_context`) are carried as a signed token per the AdCP JWS profile so
+    sellers can verify authenticity and freshness. This is part of the AdCP 3.0 experimental governance surface.
+  </Accordion>
+
+  <Accordion title="Do sellers have to validate domains, and how do agents prove they're authorized?">
+    Publishers declare which sales agents may sell their inventory in a `/.well-known/adagents.json` file on their
+    own domain (with `ads.txt` `managerdomain` delegation for network-managed properties). Authorization is bound
+    to the publisher domain — a seller's job is to publish an accurate declaration, and an agent proves
+    authorization by being granted a property on the queried domain (presence in `authorized_agents[]` alone is not
+    sufficient). See the property/authorization docs for the resolution rules.
+  </Accordion>
+</AccordionGroup>
+
 ## Certification
 
 <AccordionGroup>
