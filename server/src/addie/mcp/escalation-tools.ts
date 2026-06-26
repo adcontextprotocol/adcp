@@ -22,6 +22,7 @@ import {
 import { getThreadService } from '../thread-service.js';
 import { sendChannelMessage } from '../../slack/client.js';
 import { getEscalationChannel } from '../../db/system-settings-db.js';
+import { redactSupportSecrets } from '../../services/support-redaction.js';
 
 const logger = createLogger('addie-escalation-tools');
 
@@ -281,11 +282,11 @@ export function createEscalationToolHandlers(
       throw new ToolError(`priority must be one of: ${validPriorities.join(', ')}`);
     }
 
-    const summary = input.summary as string;
+    const summary = redactSupportSecrets(input.summary as string) ?? '';
     const category = input.category as EscalationCategory;
     const priority = (input.priority as EscalationPriority) || 'normal';
-    const originalRequest = input.original_request as string | undefined;
-    const addieContext = input.addie_context as string | undefined;
+    const originalRequest = redactSupportSecrets(input.original_request as string | undefined);
+    const addieContext = redactSupportSecrets(input.addie_context as string | undefined);
     const userEmail = input.user_email as string | undefined;
     const userSlackHandle = input.user_slack_handle as string | undefined;
     const perspectiveId = input.perspective_id as string | undefined;

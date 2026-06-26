@@ -57,6 +57,23 @@ Use admin domain verification recovery when a member has published the WorkOS DN
 
 This is an internal support workflow. Use authenticated admin domain tooling or the private ops runbook; public docs should not expose admin endpoint paths, bearer-token examples, or WorkOS challenge-token handling.
 
+Before closing a registry/domain escalation as resolved, confirm the registry state, not just the AAO UI:
+
+- The target domain has a local `organization_domains` row for the intended org.
+- That row is `verified=true`.
+- The row is not attached to the member's personal workspace when the support request is for a company org.
+- The registry no longer returns `member:null` for the relevant domain.
+- The requested agent hostname is covered by a verified domain row on the registering org.
+
+If WorkOS shows a verified domain but the local rows are missing, stale, or attached to another org, run the WorkOS-domain reconciliation action for the intended org. This replays WorkOS as the source of truth, mirrors domains into `organization_domains`, and re-runs brand-registry sync for verified domains. It does not bypass DNS verification; WorkOS still has to know the domain/challenge first.
+
+For personal-workspace/company-org split incidents, run the read-only admin preview first:
+
+- Use the private domain-split preview from the internal ops runbook or admin UI.
+- The preview reports WorkOS state, local `organization_domains`, member-profile presence, org membership, and the next safe action.
+- Only run the reconciliation action when the preview says WorkOS already verifies the domain for the company org.
+- If billing appears attached to the personal workspace, use the separate Stripe customer preview/confirm workflow after human review; do not move billing in the domain repair path.
+
 Outcomes:
 
 - `success: true`: WorkOS confirmed DNS and local `organization_domains` was reconciled.
@@ -64,6 +81,8 @@ Outcomes:
 - `no_challenge`: issue a new domain challenge from the member domain settings or admin domain tooling.
 
 DNS propagation normally takes minutes, but stale provider caches can last longer. Do not keep retrying every few seconds; fix the DNS record and retry after propagation.
+
+If the request is invalid or suspicious, close it as `wont_do` with notes. Do not mark a registry/domain escalation `resolved` while the local domain row is missing, unverified, or attached to the wrong org.
 
 ## Registry and heartbeat recovery
 

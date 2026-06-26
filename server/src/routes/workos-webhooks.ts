@@ -96,7 +96,7 @@ export interface OrganizationDomainEventData {
   state: 'verified' | 'pending' | 'failed';
 }
 
-interface OrganizationData {
+export interface OrganizationData {
   id: string;
   name: string;
   domains: OrganizationDomainData[];

@@ -57,6 +57,7 @@ import {
   getInsightByWeek,
 } from "../db/conversation-insights-db.js";
 import { runConversationInsightsJob } from "../addie/jobs/conversation-insights.js";
+import { guardEscalationResolution } from "../services/escalation-resolution-guard.js";
 
 const logger = createLogger("addie-admin-routes");
 const addieDb = new AddieDatabase();
@@ -1858,6 +1859,20 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
             });
           }
 
+          const escalation = await getEscalation(suggestion.escalation_id);
+          if (!escalation) {
+            return res.status(404).json({ error: "Escalation not found" });
+          }
+          const guard = await guardEscalationResolution({ escalation, status: 'resolved' });
+          if (!guard.ok) {
+            return res.status(409).json({
+              error: "registry_state_not_resolved",
+              message:
+                "This escalation looks like registry/domain propagation work, but local registry state still has blockers. File a GitHub issue without resolving only after human review, or repair/reconcile the listed state before accepting this suggestion.",
+              blockers: guard.blockers,
+            });
+          }
+
           // Reserve the suggestion atomically before calling GitHub, so
           // two concurrent clicks can't both file an issue. If GitHub
           // fails, release the reservation so a retry can claim it.
@@ -1899,6 +1914,22 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
             escalation: resolvedEsc ?? updatedEsc,
             issue: filed,
           });
+        }
+
+        if (suggestion.suggested_status === 'resolved') {
+          const escalation = await getEscalation(suggestion.escalation_id);
+          if (!escalation) {
+            return res.status(404).json({ error: "Escalation not found" });
+          }
+          const guard = await guardEscalationResolution({ escalation, status: 'resolved' });
+          if (!guard.ok) {
+            return res.status(409).json({
+              error: "registry_state_not_resolved",
+              message:
+                "This escalation looks like registry/domain propagation work, but local registry state still has blockers. Resolve as wont_do if invalid, or repair/reconcile the listed state before accepting this suggestion.",
+              blockers: guard.blockers,
+            });
+          }
         }
 
         const notes = `Triage suggestion #${id}: ${suggestion.reasoning}`;
@@ -2014,6 +2045,16 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       const escalation = await getEscalation(id);
       if (!escalation) {
         return res.status(404).json({ error: "Not found", message: "Escalation not found" });
+      }
+
+      const guard = await guardEscalationResolution({ escalation, status });
+      if (!guard.ok) {
+        return res.status(409).json({
+          error: "registry_state_not_resolved",
+          message:
+            "This escalation looks like registry/domain propagation work, but local registry state still has blockers. Resolve as wont_do if the request is invalid, or repair/reconcile the listed state before marking resolved.",
+          blockers: guard.blockers,
+        });
       }
 
       const updated = await updateEscalationStatus(id, status, resolvedBy, notes);

@@ -6,6 +6,7 @@
  */
 
 import { createLogger } from '../../logger.js';
+import { redactSupportSecrets } from '../../services/support-redaction.js';
 
 const logger = createLogger('github-filer');
 
@@ -51,8 +52,8 @@ export async function fileGitHubIssue(input: FileIssueInput): Promise<FiledIssue
         'User-Agent': 'aao-escalation-triage/1.0',
       },
       body: JSON.stringify({
-        title: input.title,
-        body: input.body,
+        title: redactSupportSecrets(input.title) ?? '',
+        body: redactSupportSecrets(input.body) ?? '',
         labels: input.labels ?? [],
       }),
     });
