@@ -33,7 +33,7 @@
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { fetch as undiciFetch, type Dispatcher } from 'undici';
-import { buildSsrfSafeDispatcher } from '../utils/url-security.js';
+import { buildSsrfSafeDispatcher, isPrivateHostname } from '../utils/url-security.js';
 
 type FetchInitWithDispatcher = Omit<RequestInit, 'dispatcher'> & { dispatcher?: Dispatcher };
 
@@ -53,51 +53,22 @@ export class SsrfRefusedError extends Error {
   }
 }
 
-function isPrivateIpv4(address: string): boolean {
-  const [a, b] = address.split('.').map(Number);
-  return (
-    a === 0 ||
-    a === 10 ||
-    a === 127 ||
-    (a === 100 && b >= 64 && b <= 127) ||                  // CGNAT 100.64.0.0/10
-    (a === 169 && b === 254) ||
-    (a === 172 && b >= 16 && b <= 31) ||
-    (a === 192 && b === 168)
-  );
-}
-
-/** Extract the embedded IPv4 from an IPv6 address that carries one in its low
- *  32 bits: IPv4-mapped (`::ffff:a.b.c.d`) and deprecated IPv4-compatible
- *  (`::a.b.c.d`). Node's URL parser canonicalizes the dotted quad to compressed
- *  hex (`::ffff:10.0.0.1` -> `::ffff:a00:1`; `::127.0.0.1` -> `::7f00:1`), so
- *  read the trailing 32 bits regardless of which prefix or form the parser
- *  produced. The `ffff:` prefix is optional so the compatible form is covered. */
-function mappedIpv4(v: string): string | null {
-  const dotted = v.match(/^::(?:ffff:)?([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)$/);
-  if (dotted) return dotted[1];
-  const hex = v.match(/^::(?:ffff:)?([0-9a-f]{1,4})(?::([0-9a-f]{1,4}))?$/);
-  if (!hex) return null;
-  const first = parseInt(hex[1], 16);
-  const hasSecond = hex[2] !== undefined;
-  const high = hasSecond ? first : 0;
-  const low = hasSecond ? parseInt(hex[2], 16) : first;
-  return `${(high >> 8) & 0xff}.${high & 0xff}.${(low >> 8) & 0xff}.${low & 0xff}`;
-}
-
-function isPrivateIpAddress(address: string): boolean {
-  const version = isIP(address);
-  if (version === 4) return isPrivateIpv4(address);
-  if (version === 6) {
+/** A literal IP or resolved address is an unsafe webhook target if it is either:
+ *  - private/internal — delegated to the shared `isPrivateHostname` so this
+ *    pre-flight check and the connect-time `ssrfSafeLookup` dispatcher use ONE
+ *    classifier and cannot drift. It covers IPv4 private/CGNAT and the IPv6
+ *    loopback/link-local/ULA/site-local plus the IPv6-encoded private-v4 forms
+ *    (IPv4-mapped, IPv4-compatible, 6to4, NAT64) via canonicalization; or
+ *  - a reserved range that is never a valid delivery destination. Multicast
+ *    (ff00::/8) and documentation (2001:db8::/32) aren't "private" — the shared
+ *    classifier deliberately scopes them out — but a webhook must never POST to
+ *    them, so they're refused here. */
+function isUnsafeTarget(address: string): boolean {
+  if (isPrivateHostname(address)) return true;
+  if (isIP(address) === 6) {
     const v = address.toLowerCase();
-    if (v === '::1' || v === '::') return true;
-    if (v.startsWith('fe80:')) return true;
-    if (v.startsWith('fc') || v.startsWith('fd')) return true;        // ULA fc00::/7
-    if (v.startsWith('ff')) return true;                               // multicast ff00::/8
-    if (v.startsWith('64:ff9b:')) return true;                         // NAT64 well-known
-    if (v.startsWith('2001:db8:')) return true;                        // documentation
-    const mapped = mappedIpv4(v);
-    if (mapped && isPrivateIpv4(mapped)) return true;
-    return false;
+    if (v.startsWith('ff')) return true;          // multicast ff00::/8
+    if (v.startsWith('2001:db8:')) return true;   // documentation (RFC 3849)
   }
   return false;
 }
@@ -131,7 +102,7 @@ export async function assertPublicTarget(url: URL): Promise<void> {
   }
   const version = isIP(hostname);
   if (version !== 0) {
-    if (isPrivateIpAddress(hostname)) {
+    if (isUnsafeTarget(hostname)) {
       throw new SsrfRefusedError(url.toString(), 'literal private/loopback address');
     }
     return;
@@ -144,7 +115,7 @@ export async function assertPublicTarget(url: URL): Promise<void> {
     if (records.length === 0) {
       throw new SsrfRefusedError(url.toString(), 'hostname did not resolve');
     }
-    if (records.some(r => isPrivateIpAddress(r.address))) {
+    if (records.some(r => isUnsafeTarget(r.address))) {
       throw new SsrfRefusedError(url.toString(), 'hostname resolves to private address');
     }
   } catch (err) {

@@ -118,6 +118,18 @@ describe('createWebhookFetch — SSRF guard', () => {
       await expect(fetch('http://100.127.255.255/')).rejects.toBeInstanceOf(SsrfRefusedError);
     });
 
+    it('refuses 6to4 (2002::/16) wrapping a private v4', async () => {
+      // 2002:V4::/16 embeds an IPv4 in groups[1:2]: 2002:7f00:1:: -> 127.0.0.1,
+      // 2002:a9fe:a9fe:: -> 169.254.169.254 (metadata).
+      await expect(fetch('http://[2002:7f00:1::]/')).rejects.toBeInstanceOf(SsrfRefusedError);
+      await expect(fetch('http://[2002:a9fe:a9fe::]/')).rejects.toBeInstanceOf(SsrfRefusedError);
+    });
+
+    it('allows 6to4 wrapping a public v4', async () => {
+      // 2002:808:808:: embeds public 8.8.8.8 — must reach the underlying fetch.
+      await expect(fetch('http://[2002:808:808::]/')).resolves.toBeInstanceOf(Response);
+    });
+
     it('userinfo does not smuggle a private host past the hostname check', async () => {
       // URL parser routes user:pass@ to credentials; the hostname is 169.254.169.254.
       await expect(fetch('http://user:pass@169.254.169.254/')).rejects.toBeInstanceOf(SsrfRefusedError);
