@@ -81,6 +81,7 @@
             "expanded": false,
             "pages": [
               "dist/docs/3.0.19/building/index",
+              "dist/docs/3.0.19/building/schemas-and-sdks",
               {
                 "group": "AdCP 3.x",
                 "expanded": false,
@@ -692,6 +693,7 @@
             "expanded": false,
             "pages": [
               "docs/building/index",
+              "docs/building/schemas-and-sdks",
               {
                 "group": "AdCP 3.x",
                 "expanded": false,
@@ -1300,6 +1302,7 @@
             "expanded": false,
             "pages": [
               "docs/building/index",
+              "docs/building/schemas-and-sdks",
               {
                 "group": "AdCP 3.x",
                 "expanded": false,
