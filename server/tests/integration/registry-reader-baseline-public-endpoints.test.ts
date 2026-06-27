@@ -108,7 +108,9 @@ const PUB_B = `${DOMAIN_PREFIX}pinnacle${DOMAIN_SUFFIX}`;
 const AGENT_X = `${AGENT_PREFIX}sales-x.registry-baseline.example`;
 const AGENT_Y = `${AGENT_PREFIX}sales-y.registry-baseline.example`;
 const ORG_ID = 'org_endpoint_registry_baseline';
+const ORG_ID_EXACT = 'org_endpoint_registry_baseline_exact';
 const MEMBER_SLUG = 'endpoint-acme-baseline';
+const MEMBER_SLUG_EXACT = 'endpoint-acme-exact-baseline';
 
 describe('Registry reader baseline — public endpoints', () => {
   let server: HTTPServer;
@@ -146,9 +148,9 @@ describe('Registry reader baseline — public endpoints', () => {
       'DELETE FROM discovered_agents WHERE agent_url LIKE $1',
       [AGENT_LIKE]
     );
-    await pool.query('DELETE FROM organization_domains WHERE workos_organization_id = $1 OR domain LIKE $2', [ORG_ID, DOMAIN_LIKE]);
-    await pool.query('DELETE FROM member_profiles WHERE workos_organization_id = $1', [ORG_ID]);
-    await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [ORG_ID]);
+    await pool.query('DELETE FROM organization_domains WHERE workos_organization_id LIKE $1 OR domain LIKE $2', [`${ORG_ID}%`, DOMAIN_LIKE]);
+    await pool.query('DELETE FROM member_profiles WHERE workos_organization_id LIKE $1', [`${ORG_ID}%`]);
+    await pool.query('DELETE FROM organizations WHERE workos_organization_id LIKE $1', [`${ORG_ID}%`]);
   }
 
   async function seedBrandPrimary(orgId: string, domain: string) {
@@ -538,6 +540,142 @@ describe('Registry reader baseline — public endpoints', () => {
         publisher_domain: PUB_A,
         authorized_for: 'all',
         source: 'adagents_json',
+      });
+    });
+
+    it('GET /api/registry/operator falls back from subdomain to verified parent domain', async () => {
+      await pool.query(
+        `INSERT INTO organizations (workos_organization_id, name, created_at, updated_at)
+         VALUES ($1, 'Endpoint Parent Org', NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO NOTHING`,
+        [ORG_ID],
+      );
+      await pool.query(
+        `INSERT INTO member_profiles (
+           workos_organization_id, display_name, slug,
+           agents, is_public, created_at, updated_at
+         ) VALUES ($1, 'Endpoint Parent Org', $2, $3::jsonb, true, NOW(), NOW())`,
+        [
+          ORG_ID,
+          MEMBER_SLUG,
+          JSON.stringify([
+            { url: AGENT_X, name: 'Endpoint Sales X', type: 'sales', visibility: 'public' },
+          ]),
+        ],
+      );
+      await seedBrandPrimary(ORG_ID, PUB_A);
+
+      const subdomain = `sales.${PUB_A}`;
+      const res = await request(app).get(
+        `/api/registry/operator?domain=${encodeURIComponent(subdomain)}`,
+      );
+      expect(res.status).toBe(200);
+      expect(res.body.domain).toBe(subdomain);
+      expect(res.body.member).toMatchObject({
+        slug: MEMBER_SLUG,
+        display_name: 'Endpoint Parent Org',
+      });
+      expect(res.body.agents[0]).toMatchObject({ url: AGENT_X });
+    });
+
+    it('GET /api/registry/operator does not fall back through an unverified parent domain', async () => {
+      await pool.query(
+        `INSERT INTO organizations (workos_organization_id, name, created_at, updated_at)
+         VALUES ($1, 'Endpoint Unverified Org', NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO NOTHING`,
+        [ORG_ID],
+      );
+      await pool.query(
+        `INSERT INTO member_profiles (
+           workos_organization_id, display_name, slug,
+           agents, is_public, created_at, updated_at
+         ) VALUES ($1, 'Endpoint Unverified Org', $2, '[]'::jsonb, true, NOW(), NOW())`,
+        [ORG_ID, MEMBER_SLUG],
+      );
+      await pool.query(
+        `INSERT INTO organization_domains
+           (workos_organization_id, domain, verified, is_primary, source, created_at, updated_at)
+         VALUES ($1, $2, false, true, 'test', NOW(), NOW())`,
+        [ORG_ID, PUB_A],
+      );
+
+      const res = await request(app).get(
+        `/api/registry/operator?domain=${encodeURIComponent(`sales.${PUB_A}`)}`,
+      );
+      expect(res.status).toBe(200);
+      expect(res.body.member).toBeNull();
+      expect(res.body.agents).toEqual([]);
+    });
+
+    it('GET /api/registry/operator prefers a verified exact linked subdomain over a verified parent domain', async () => {
+      const exactDomain = `sales.${PUB_A}`;
+      await pool.query(
+        `INSERT INTO organizations (workos_organization_id, name, created_at, updated_at)
+         VALUES
+           ($1, 'Endpoint Parent Org', NOW(), NOW()),
+           ($2, 'Endpoint Exact Org', NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO NOTHING`,
+        [ORG_ID, ORG_ID_EXACT],
+      );
+      await pool.query(
+        `INSERT INTO member_profiles (
+           workos_organization_id, display_name, slug,
+           agents, is_public, created_at, updated_at
+         ) VALUES
+           ($1, 'Endpoint Parent Org', $2, '[]'::jsonb, true, NOW(), NOW()),
+           ($3, 'Endpoint Exact Org', $4, '[]'::jsonb, true, NOW(), NOW())`,
+        [ORG_ID, MEMBER_SLUG, ORG_ID_EXACT, MEMBER_SLUG_EXACT],
+      );
+      await seedBrandPrimary(ORG_ID, PUB_A);
+      await pool.query(
+        `INSERT INTO organization_domains
+           (workos_organization_id, domain, verified, is_primary, source, created_at, updated_at)
+         VALUES ($1, $2, true, true, 'test', NOW(), NOW())`,
+        [ORG_ID_EXACT, exactDomain],
+      );
+
+      const res = await request(app).get(
+        `/api/registry/operator?domain=${encodeURIComponent(exactDomain)}`,
+      );
+      expect(res.status).toBe(200);
+      expect(res.body.member).toMatchObject({
+        slug: MEMBER_SLUG_EXACT,
+        display_name: 'Endpoint Exact Org',
+      });
+    });
+
+    it('GET /api/registry/operator ignores an unverified exact linked domain and falls back to a verified parent', async () => {
+      const exactDomain = `sales.${PUB_A}`;
+      await pool.query(
+        `INSERT INTO organizations (workos_organization_id, name, created_at, updated_at)
+         VALUES
+           ($1, 'Endpoint Parent Org', NOW(), NOW()),
+           ($2, 'Endpoint Exact Org', NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO NOTHING`,
+        [ORG_ID, ORG_ID_EXACT],
+      );
+      await pool.query(
+        `INSERT INTO member_profiles (
+           workos_organization_id, display_name, slug,
+           agents, is_public, created_at, updated_at
+         ) VALUES ($1, 'Endpoint Parent Org', $2, '[]'::jsonb, true, NOW(), NOW())`,
+        [ORG_ID, MEMBER_SLUG],
+      );
+      await seedBrandPrimary(ORG_ID, PUB_A);
+      await pool.query(
+        `INSERT INTO organization_domains
+           (workos_organization_id, domain, verified, is_primary, source, created_at, updated_at)
+         VALUES ($1, $2, false, true, 'test', NOW(), NOW())`,
+        [ORG_ID_EXACT, exactDomain],
+      );
+
+      const res = await request(app).get(
+        `/api/registry/operator?domain=${encodeURIComponent(exactDomain)}`,
+      );
+      expect(res.status).toBe(200);
+      expect(res.body.member).toMatchObject({
+        slug: MEMBER_SLUG,
+        display_name: 'Endpoint Parent Org',
       });
     });
 

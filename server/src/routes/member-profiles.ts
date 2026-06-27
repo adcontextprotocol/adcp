@@ -2167,9 +2167,6 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         }
         return res.status(500).json({ error: 'Failed to issue domain verification challenge', code: 'workos_error' });
       }
-      const dnsRecordName = result.verification_prefix
-        ? `${result.verification_prefix}.${result.domain}`
-        : result.domain;
       const requestedOrgId = typeof req.query.org === 'string' && req.query.org.length > 0
         ? req.query.org
         : null;
@@ -2182,12 +2179,14 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         verification_strategy: result.verification_strategy,
         verification_token: result.verification_token,
         verification_prefix: result.verification_prefix,
-        dns_record_name: dnsRecordName,
+        dns_record_name: result.dns_record_name,
+        dns_record_type: result.dns_record_type,
+        dns_record_value: result.dns_record_value,
         prior_manifest_exists: result.prior_manifest_exists,
         instructions: result.already_verified
           ? `Domain is already verified. Run POST ${verifyPath} to sync the brand registry, or call PUT /brand-identity directly.`
-          : dnsRecordName
-            ? `Publish a DNS TXT record at ${dnsRecordName} with the value ${result.verification_token}, then call POST ${verifyPath}.`
+          : result.dns_record_name
+            ? `Publish a DNS TXT record at ${result.dns_record_name} with the value ${result.dns_record_value}, then call POST ${verifyPath}.`
             : `Publish a DNS TXT record at ${result.domain} with the value <verification_token>, then call POST ${verifyPath}.`,
       });
     } catch (error) {

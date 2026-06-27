@@ -130,12 +130,26 @@ export class MemberDatabase {
    * return `member: null` for legitimate members.
    */
   async getProfileByDomain(domain: string): Promise<MemberProfile | null> {
+    const exactDomain = await query<{ workos_organization_id: string }>(
+      `SELECT workos_organization_id
+         FROM organization_domains
+        WHERE LOWER(domain) = LOWER($1)
+          AND verified = true
+        LIMIT 1`,
+      [domain],
+    );
+    if (exactDomain.rows[0]) {
+      return this.getProfileByOrgId(exactDomain.rows[0].workos_organization_id);
+    }
+
     const result = await query<MemberProfile>(
       `SELECT mp.*
          FROM member_profiles mp
          JOIN organization_domains od
            ON od.workos_organization_id = mp.workos_organization_id
-        WHERE LOWER(od.domain) = LOWER($1)
+        WHERE od.verified = true
+          AND LOWER($1) LIKE '%.' || LOWER(od.domain)
+        ORDER BY LENGTH(od.domain) DESC
         LIMIT 1`,
       [domain]
     );

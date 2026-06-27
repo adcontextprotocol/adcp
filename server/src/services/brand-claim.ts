@@ -27,6 +27,9 @@ export type IssueChallengeResult =
       verification_strategy: string | null;
       verification_token: string | null;
       verification_prefix: string | null;
+      dns_record_name: string;
+      dns_record_type: 'TXT';
+      dns_record_value: string | null;
       already_verified: boolean;
       // True when a brand row exists for this domain with an orphaned manifest
       // (a prior owner relinquished). Tells callers whether to surface the
@@ -169,6 +172,9 @@ export async function issueDomainChallenge(input: {
           verification_strategy: existingDomain.verificationStrategy ?? null,
           verification_token: existingDomain.verificationToken ?? null,
           verification_prefix: existingDomain.verificationPrefix ?? null,
+          dns_record_name: dnsRecordName(domain, existingDomain.verificationPrefix),
+          dns_record_type: 'TXT',
+          dns_record_value: existingDomain.verificationToken ?? null,
           already_verified: verified,
           prior_manifest_exists: priorManifestExists,
         };
@@ -188,6 +194,9 @@ export async function issueDomainChallenge(input: {
       verification_strategy: created.verificationStrategy ?? 'dns',
       verification_token: created.verificationToken ?? null,
       verification_prefix: created.verificationPrefix ?? null,
+      dns_record_name: dnsRecordName(domain, created.verificationPrefix),
+      dns_record_type: 'TXT',
+      dns_record_value: created.verificationToken ?? null,
       already_verified: isVerifiedState(created.state),
       prior_manifest_exists: priorManifestExists,
     };

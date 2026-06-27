@@ -3176,9 +3176,6 @@ export function createMemberToolHandlers(
       return `<!-- STATUS: workos_error -->\n\nIssued a challenge for ${result.domain}, but WorkOS did not return a DNS TXT value. Ask the AgenticAdvertising.org team to verify ${result.domain} manually for you.`;
     }
 
-    const recordName = result.verification_prefix
-      ? `${result.verification_prefix}.${result.domain}`
-      : result.domain;
     const lines = [
       `<!-- STATUS: dns_record_issued -->`,
       ``,
@@ -3186,9 +3183,9 @@ export function createMemberToolHandlers(
       ``,
       `**Publish this DNS TXT record:**`,
       ``,
-      `- Name: \`${recordName}\``,
-      `- Type: \`TXT\``,
-      `- Value: \`${result.verification_token}\``,
+      `- Name: \`${result.dns_record_name}\``,
+      `- Type: \`${result.dns_record_type}\``,
+      `- Value: \`${result.dns_record_value}\``,
       `- TTL: \`300\` (or your registrar's minimum)`,
       ``,
       `Organization: ${orgResolution.organizationName ? `${formatOrgNameForTool(orgResolution.organizationName)} (${orgId})` : orgId}`,
