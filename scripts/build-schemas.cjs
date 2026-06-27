@@ -114,7 +114,7 @@ function getMinorVersion(version) {
   return `${parts[0]}.${parts[1]}`;
 }
 
-function getReleaseMetadata(version) {
+function getReleaseMetadata(version, knownVersions = []) {
   if (version === 'latest') {
     return {
       stability: 'development',
@@ -138,11 +138,17 @@ function getReleaseMetadata(version) {
   }
 
   const label = prerelease.split('.')[0].toLowerCase();
-  return {
+  const stableVersion = String(version).split('-')[0];
+  const supersededBy = knownVersions.includes(stableVersion) ? stableVersion : undefined;
+  const metadata = {
     stability: label === 'rc' ? 'rc' : label === 'beta' ? 'beta' : 'prerelease',
     prerelease: true,
-    deprecated: false,
+    deprecated: Boolean(supersededBy),
   };
+  if (supersededBy) {
+    metadata.superseded_by = supersededBy;
+  }
+  return metadata;
 }
 
 function buildRootSchemaDiscovery() {
@@ -179,7 +185,7 @@ function buildRootSchemaDiscovery() {
     latest_by_minor: latestByMinor,
     versions: allVersions.map((version) => ({
       version,
-      ...getReleaseMetadata(version),
+      ...getReleaseMetadata(version, allVersions),
       path: `/schemas/${version}/`,
       index: `/schemas/${version}/index.json`,
     })),
@@ -783,7 +789,7 @@ function buildExtensions(sourceDir, targetDir, version) {
 const MANIFEST_PROTOCOLS = new Set([
   'media-buy', 'signals', 'governance', 'account', 'creative',
   'brand', 'content-standards', 'property', 'collection',
-  'sponsored-intelligence', 'protocol', 'compliance', 'tmp', 'a2ui'
+  'sponsored-intelligence', 'protocol', 'compliance', 'trusted-match', 'a2ui'
 ]);
 
 // Strip the `Recovery: <verdict>(...).` sentence from an error-code
@@ -1107,7 +1113,21 @@ function copyAndTransformSchemas(sourceDir, targetDir, version) {
         schema.adcp_version = version;
         schema.lastUpdated = new Date().toISOString().split('T')[0];
         schema.baseUrl = `/schemas/${version}`;
-        Object.assign(schema, getReleaseMetadata(version));
+        schema.protocol_layers = [
+          {
+            id: 'negotiation',
+            title: 'Negotiation layer',
+            description: 'Planning-time protocols for discovery, buying, creative, signals, accounts, governance, brand identity, and sponsored intelligence.',
+            schema_groups: ['media-buy', 'creative', 'signals', 'account', 'governance', 'brand', 'sponsored-intelligence']
+          },
+          {
+            id: 'decisioning-serving',
+            title: 'Decisioning and serving layer',
+            description: 'Trusted Match Protocol schemas for serve-time Context Match and Identity Match decisions.',
+            schema_groups: ['trusted-match']
+          }
+        ];
+        Object.assign(schema, getReleaseMetadata(version, getAllSchemaVersions()));
         if (!schema.versioning) {
           schema.versioning = {};
         }

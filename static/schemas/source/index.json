@@ -10,6 +10,33 @@
   },
   "lastUpdated": "2026-06-05",
   "baseUrl": "/schemas/latest",
+  "stability": "development",
+  "prerelease": false,
+  "deprecated": false,
+  "protocol_layers": [
+    {
+      "id": "negotiation",
+      "title": "Negotiation layer",
+      "description": "Planning-time protocols for discovery, buying, creative, signals, accounts, governance, brand identity, and sponsored intelligence.",
+      "schema_groups": [
+        "media-buy",
+        "creative",
+        "signals",
+        "account",
+        "governance",
+        "brand",
+        "sponsored-intelligence"
+      ]
+    },
+    {
+      "id": "decisioning-serving",
+      "title": "Decisioning and serving layer",
+      "description": "Trusted Match Protocol schemas for serve-time Context Match and Identity Match decisions.",
+      "schema_groups": [
+        "trusted-match"
+      ]
+    }
+  ],
   "schemas": {
     "core": {
       "description": "Core data models used throughout AdCP",
@@ -1804,44 +1831,44 @@
       "description": "Trusted Match Protocol (TMP) — real-time execution layer for activating pre-negotiated packages across any surface. Conformance invariants are normative in docs/trusted-match/specification.mdx; the cap-fire boundary contract is at docs/trusted-match/identity-match-implementation.mdx; a non-normative impression-tracker implementation reference (multi-identity dedup, fcap_keys labels, log-based data model, SDK primitives) is at docs/trusted-match/impression-tracker-implementation.mdx. Storage backend is an implementation choice; conformant services may use any store that satisfies the invariants.",
       "supporting-schemas": {
         "available-package": {
-          "$ref": "/schemas/tmp/available-package.json",
+          "$ref": "/schemas/trusted-match/available-package.json",
           "description": "A package available for contextual matching on a given impression opportunity"
         },
         "offer": {
-          "$ref": "/schemas/tmp/offer.json",
+          "$ref": "/schemas/trusted-match/offer.json",
           "description": "Buyer's response to a context match — ranges from simple activation (package_id only) to rich offers with brand, price, summary, and creative manifest"
         },
         "offer-price": {
-          "$ref": "/schemas/tmp/offer-price.json",
+          "$ref": "/schemas/trusted-match/offer-price.json",
           "description": "Lightweight price for variable-priced offers"
         },
         "error": {
-          "$ref": "/schemas/tmp/error.json",
+          "$ref": "/schemas/trusted-match/error.json",
           "description": "Error response from a TMP provider or router when a request cannot be processed"
         },
         "provider-registration": {
-          "$ref": "/schemas/tmp/provider-registration.json",
+          "$ref": "/schemas/trusted-match/provider-registration.json",
           "description": "TMP provider registration — endpoint, capabilities, and operational parameters for router configuration"
         }
       },
       "operations": {
         "context-match": {
           "request": {
-            "$ref": "/schemas/tmp/context-match-request.json",
+            "$ref": "/schemas/trusted-match/context-match-request.json",
             "description": "Evaluate available packages against content context. Contains no user identity."
           },
           "response": {
-            "$ref": "/schemas/tmp/context-match-response.json",
+            "$ref": "/schemas/trusted-match/context-match-response.json",
             "description": "Offers for matched packages with optional brand, price, summary, creative manifest, and targeting signals"
           }
         },
         "identity-match": {
           "request": {
-            "$ref": "/schemas/tmp/identity-match-request.json",
+            "$ref": "/schemas/trusted-match/identity-match-request.json",
             "description": "Evaluate user eligibility for packages using an opaque identity token. Contains no page context."
           },
           "response": {
-            "$ref": "/schemas/tmp/identity-match-response.json",
+            "$ref": "/schemas/trusted-match/identity-match-response.json",
             "description": "Per-package eligibility — boolean eligible plus optional intent score"
           }
         }

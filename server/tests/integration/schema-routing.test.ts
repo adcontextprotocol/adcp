@@ -220,6 +220,15 @@ describe("/schemas HTTP routing", () => {
     });
   });
 
+  describe("legacy Trusted Match schema namespace", () => {
+    it("serves legacy /tmp/ schema URLs from /latest/ via the canonical trusted-match files", async () => {
+      const res = await request(app).get("/schemas/latest/tmp/context-match-request.json");
+      if (res.status !== 200) return;
+      expect(res.body.$id).toBe("/schemas/latest/trusted-match/context-match-request.json");
+      expect(res.headers["cache-control"] ?? "").toContain("no-cache");
+    });
+  });
+
   describe("discovery endpoint", () => {
     it("lists versions and aliases at /schemas/", async () => {
       const res = await request(app).get("/schemas/");

@@ -990,7 +990,7 @@ async function runTests() {
         { "type": "url", "value": "https://streamhaus.example/articles/hiking-gear-2026" }
       ]
     },
-    '/schemas/tmp/context-match-request.json',
+    '/schemas/trusted-match/context-match-request.json',
     'TMP Context Match request — web (overview walkthrough)'
   );
 
@@ -1006,7 +1006,7 @@ async function runTests() {
         }
       ]
     },
-    '/schemas/tmp/context-match-response.json',
+    '/schemas/trusted-match/context-match-response.json',
     'TMP Context Match response — web (overview walkthrough)'
   );
 
@@ -1026,7 +1026,7 @@ async function runTests() {
         "pkg-outdoor-audio"
       ]
     },
-    '/schemas/tmp/identity-match-request.json',
+    '/schemas/trusted-match/identity-match-request.json',
     'TMP Identity Match request — web (overview walkthrough)'
   );
 
@@ -1039,7 +1039,7 @@ async function runTests() {
       "eligible_package_ids": ["pkg-outdoor-audio"],
       "serve_window_sec": 60
     },
-    '/schemas/tmp/identity-match-response.json',
+    '/schemas/trusted-match/identity-match-response.json',
     'TMP Identity Match response — web (overview walkthrough)'
   );
 
@@ -1062,7 +1062,7 @@ async function runTests() {
         "summary": "User seeking trail shoe recommendations for rocky terrain with ankle support"
       }
     },
-    '/schemas/tmp/context-match-request.json',
+    '/schemas/trusted-match/context-match-request.json',
     'TMP Context Match request — AI assistant (ai-mediation walkthrough)'
   );
 
@@ -1087,7 +1087,7 @@ async function runTests() {
         }
       ]
     },
-    '/schemas/tmp/context-match-response.json',
+    '/schemas/trusted-match/context-match-response.json',
     'TMP Context Match response — AI assistant with creative manifest (ai-mediation walkthrough)'
   );
 
@@ -1108,7 +1108,7 @@ async function runTests() {
       },
       "package_ids": ["pkg-A", "pkg-B", "pkg-C"]
     },
-    '/schemas/tmp/identity-match-request.json',
+    '/schemas/trusted-match/identity-match-request.json',
     'TMP Identity Match request with consent (context-and-identity walkthrough)'
   );
 
@@ -1123,7 +1123,7 @@ async function runTests() {
       ],
       "package_ids": ["pkg-sneaker-reco", "pkg-fashion-native"]
     },
-    '/schemas/tmp/identity-match-request.json',
+    '/schemas/trusted-match/identity-match-request.json',
     'TMP Identity Match request — single identity (ai-assistant walkthrough)'
   );
 
@@ -1141,7 +1141,7 @@ async function runTests() {
       ],
       "package_ids": ["pkg-1"]
     },
-    '/schemas/tmp/identity-match-request.json',
+    '/schemas/trusted-match/identity-match-request.json',
     'TMP Identity Match request — 4 identities rejected (maxItems:3 boundary)'
   );
 

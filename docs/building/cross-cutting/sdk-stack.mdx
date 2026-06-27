@@ -6,7 +6,7 @@ description: "Layered reference for AdCP implementers. The five layers (L0 wire,
 ---
 
 <Note>
-**AdCP is the transaction and control plane** — planning, deal creation, creative submission, reporting. Impression-time decisioning happens in adjacent protocols ([TMP](/docs/trusted-match), RTB, VAST). AdCP latency budgets are seconds, often async-by-design — not the millisecond budgets you'd expect from a serve-time protocol. If you came here looking for a serve-time auction surface, you want [TMP](/docs/trusted-match).
+**AdCP spans the transaction/control plane and its own serve-time execution layer.** Planning, deal creation, creative submission, and reporting use AdCP's MCP/A2A task surfaces. Impression-time activation of pre-negotiated packages uses [Trusted Match Protocol](/docs/trusted-match), while auctions and rendering still sit in adjacent protocols such as RTB and VAST. Most AdCP task latency budgets are seconds and often async-by-design; TMP is the AdCP surface built for millisecond serve-time decisions.
 </Note>
 
 The first question when you sit down to build an AdCP agent is **where you want to spend your engineering time**. By the time a buyer's `create_media_buy` reaches your business logic, it has crossed five distinct layers — wire format, signing, auth, protocol semantics, and finally what you actually want to build. The lower you start, the more of the stack you own.

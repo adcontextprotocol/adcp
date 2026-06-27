@@ -16,7 +16,7 @@
  * the regression.
  *
  * Scope: this lint inspects only the schema's root `allOf` array. Schemas
- * that need strict-mode (e.g. tmp/identity-match-request.json's privacy
+ * that need strict-mode (e.g. trusted-match/identity-match-request.json's privacy
  * boundary) intentionally don't compose the envelope via allOf — they
  * inline `adcp_version` / `adcp_major_version` in `properties`. The lint
  * does not (and should not) detect indirect composition through `oneOf`
