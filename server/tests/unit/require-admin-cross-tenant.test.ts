@@ -74,6 +74,14 @@ describe('requireAdmin cross-tenant API key defense', () => {
       },
     );
 
+    app.post(
+      '/api/admin/accounts/:orgId/agents',
+      requireAdmin,
+      (_req, res) => {
+        res.json({ ok: true });
+      },
+    );
+
     // Route without :orgId — gate should NOT engage even with a
     // tenant-scoped API key; this proves the check is opt-in by path
     // convention rather than blanket-deny.
@@ -110,6 +118,15 @@ describe('requireAdmin cross-tenant API key defense', () => {
     expect(res.body.error).toBe('cross_tenant_api_key');
   });
 
+  it('refuses cross-tenant on POST the same way as GET', async () => {
+    const res = await request(app)
+      .post('/api/admin/accounts/org_target/agents')
+      .set('x-test-api-key-org-id', 'org_caller');
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('cross_tenant_api_key');
+  });
+
   it('does NOT engage on routes without a :orgId path param', async () => {
     // A tenant-scoped key with admin:* hitting a non-tenant-scoped admin
     // route should still pass — the check is convention-based on the
@@ -135,6 +152,16 @@ describe('requireAdmin cross-tenant API key defense', () => {
     // not sufficient for writes.
     const res = await request(app)
       .delete('/api/admin/accounts/org_same/agents/some_url')
+      .set('x-test-api-key-org-id', 'org_same')
+      .set('x-test-api-key-perms', 'admin:read');
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('Insufficient permissions');
+  });
+
+  it('still rejects admin:read for same-tenant POST operations', async () => {
+    const res = await request(app)
+      .post('/api/admin/accounts/org_same/agents')
       .set('x-test-api-key-org-id', 'org_same')
       .set('x-test-api-key-perms', 'admin:read');
 
