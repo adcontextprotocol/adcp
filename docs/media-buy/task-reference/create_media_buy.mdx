@@ -157,7 +157,7 @@ npx @adcp/sdk@latest \
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `account` | [account-ref](/docs/building/integration/accounts-and-agents#account-references) | Yes | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. Required for billing and policy evaluation. |
+| `account` | [account-ref](/docs/building/by-layer/L2/accounts-and-agents#account-references) | Yes | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. Required for billing and policy evaluation. |
 | `proposal_id` | string | No* | ID of a committed proposal from `get_products` to execute. Alternative to providing packages. Draft proposals must be finalized first; sellers reject draft proposal execution with `PROPOSAL_NOT_COMMITTED`. |
 | `total_budget` | TotalBudget | No* | Total budget when executing a proposal. Publisher applies allocation percentages. |
 | `packages` | Package[] | No* | Array of package configurations (see below). Required when not using proposal_id. |
@@ -165,7 +165,7 @@ npx @adcp/sdk@latest \
 | `start_time` | string | Yes | `"asap"` or ISO 8601 date-time. For new media buys, concrete date-times must not be in the past. |
 | `end_time` | string | Yes | ISO 8601 date-time (UTC unless timezone specified) |
 | `paused` | boolean | No | Create the media buy with delivery held. When true and the buy would otherwise be active, `media_buy_status` is `paused`. Setup blockers still take precedence: missing creatives yield `pending_creatives`, and future flights yield `pending_start`; the hold becomes visible as `paused` after those blockers clear. |
-| `invoice_recipient` | [BusinessEntity](/docs/building/integration/accounts-and-agents#billing-entity-and-invoice-recipient) | No | Override the account's default billing entity for this buy. The seller MUST validate the recipient is authorized and include it in `check_governance` when governance agents are configured. |
+| `invoice_recipient` | [BusinessEntity](/docs/building/by-layer/L2/accounts-and-agents#billing-entity-and-invoice-recipient) | No | Override the account's default billing entity for this buy. The seller MUST validate the recipient is authorized and include it in `check_governance` when governance agents are configured. |
 | `po_number` | string | No | Purchase order number |
 | `idempotency_key` | string | No | Unique key for safe retries. If a request with the same key and account has already been processed, the seller returns the existing media buy. MUST be unique per (seller, request) pair. Min 16 chars. |
 | `context` | object | No | Opaque correlation data echoed unchanged in the response. Use for internal tracking, trace IDs, or other caller-specific identifiers. |
@@ -215,7 +215,7 @@ When executing a proposal, `proposal_status` on the returned proposal determines
 | Field | Description |
 |-------|-------------|
 | `media_buy_id` | Seller's unique identifier |
-| `account` | Resolved account billed for this media buy, echoed as a full [Account](/docs/building/integration/accounts-and-agents#account-references) object (includes `account_id`, `name`, `status`, and the resolved `brand`/`operator`). When the request used implicit resolution (`brand` + `operator`), this confirms the account the seller resolved. Optional. |
+| `account` | Resolved account billed for this media buy, echoed as a full [Account](/docs/building/by-layer/L2/accounts-and-agents#account-references) object (includes `account_id`, `name`, `status`, and the resolved `brand`/`operator`). When the request used implicit resolution (`brand` + `operator`), this confirms the account the seller resolved. Optional. |
 | `confirmed_at` | ISO 8601 timestamp when the seller committed to the media buy. Stable after it is set. May be `null` in deferred/manual approval flows until seller commitment occurs. |
 | `creative_deadline` | ISO 8601 timestamp for creative upload deadline |
 | `revision` | Initial media-buy revision. Use this value as the `revision` token on the next `update_media_buy` call intended to change state. |
@@ -1210,7 +1210,7 @@ This task can complete instantly or take days depending on complexity and approv
 | `input-required` | Needs your input | Read message, respond with info |
 | `failed` | Error occurred | Handle the error |
 
-**Note:** For the complete status list see [Task Lifecycle](/docs/building/implementation/task-lifecycle).
+**Note:** For the complete status list see [Task Lifecycle](/docs/building/by-layer/L3/task-lifecycle).
 
 <Tabs>
   <Tab title="MCP">
@@ -1561,7 +1561,7 @@ await a2a.send({
   </Tab>
 </Tabs>
 
-For complete async handling patterns, see [Async Operations](/docs/building/implementation/async-operations).
+For complete async handling patterns, see [Async Operations](/docs/building/by-layer/L3/async-operations).
 
 ## Usage Notes
 

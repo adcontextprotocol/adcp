@@ -177,7 +177,7 @@ When this call was initiated by `build_creative` and the evaluator is unreachabl
 
 ## Async evaluation
 
-Some evaluations (e.g., sandboxed malware scanning) take time. The agent returns `status: "working"` and delivers results via webhook when complete. This uses the standard [async task pattern](/docs/building/implementation/async-operations) — no custom status values needed.
+Some evaluations (e.g., sandboxed malware scanning) take time. The agent returns `status: "working"` and delivers results via webhook when complete. This uses the standard [async task pattern](/docs/building/by-layer/L3/async-operations) — no custom status values needed.
 
 ## Orchestrator logic
 
