@@ -34,10 +34,8 @@ export const personalMemberCompanyOrgSplitInvariant: Invariant = {
         SELECT workos_organization_id, name
         FROM organizations
         WHERE COALESCE(is_personal, false) = true
-          AND (
-            subscription_status IN ('active', 'trialing', 'past_due')
-            OR member_status = 'member'
-          )
+          AND subscription_status = 'active'
+          AND subscription_canceled_at IS NULL
       )
       SELECT DISTINCT
         po.workos_organization_id AS personal_org_id,
@@ -47,7 +45,11 @@ export const personalMemberCompanyOrgSplitInvariant: Invariant = {
         pod.domain,
         pod.verified AS domain_verified,
         pom.email AS user_email,
-        co.member_status AS company_member_status,
+        CASE
+          WHEN co.subscription_status = 'active' AND co.subscription_canceled_at IS NULL THEN 'member'
+          WHEN co.subscription_status = 'canceled' OR co.subscription_canceled_at IS NOT NULL THEN 'churned'
+          ELSE 'prospect'
+        END AS company_member_status,
         co.subscription_status AS company_subscription_status
       FROM live_personal_orgs po
       JOIN organization_domains pod
