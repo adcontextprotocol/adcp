@@ -166,7 +166,12 @@ export function setupDomainRoutes(
               stripe_subscription_id: string | null;
             }>(
               `SELECT workos_organization_id, name, is_personal, email_domain,
-                      member_status, subscription_status, subscription_canceled_at,
+                      CASE
+                        WHEN subscription_status = 'active' AND subscription_canceled_at IS NULL THEN 'member'
+                        WHEN subscription_status = 'canceled' OR subscription_canceled_at IS NOT NULL THEN 'churned'
+                        ELSE 'prospect'
+                      END AS member_status,
+                      subscription_status, subscription_canceled_at,
                       membership_tier, stripe_customer_id, stripe_subscription_id
                  FROM organizations
                 WHERE workos_organization_id = ANY($1::text[])`,

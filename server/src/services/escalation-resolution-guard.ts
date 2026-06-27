@@ -123,7 +123,11 @@ export async function guardEscalationResolution(input: {
        o.name AS organization_name,
        o.is_personal,
        od.verified,
-       o.member_status,
+       CASE
+         WHEN o.subscription_status = 'active' AND o.subscription_canceled_at IS NULL THEN 'member'
+         WHEN o.subscription_status = 'canceled' OR o.subscription_canceled_at IS NOT NULL THEN 'churned'
+         ELSE 'prospect'
+       END AS member_status,
        o.subscription_status
      FROM organization_domains od
      LEFT JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
