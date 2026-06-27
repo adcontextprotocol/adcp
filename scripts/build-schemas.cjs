@@ -30,6 +30,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const semver = require('semver');
 
 const SOURCE_DIR = path.join(__dirname, '../static/schemas/source');
 const DIST_DIR = path.join(__dirname, '../dist/schemas');
@@ -56,16 +57,21 @@ function getAllReleasedVersions() {
 
   const entries = fs.readdirSync(DIST_DIR, { withFileTypes: true });
   return entries
-    .filter(e => e.isDirectory() && /^\d+\.\d+\.\d+$/.test(e.name))
+    .filter(e => e.isDirectory() && semver.valid(e.name) !== null && semver.prerelease(e.name) === null)
     .map(e => e.name)
-    .sort((a, b) => {
-      // Sort by semver (descending)
-      const [aMajor, aMinor, aPatch] = a.split('.').map(Number);
-      const [bMajor, bMinor, bPatch] = b.split('.').map(Number);
-      if (aMajor !== bMajor) return bMajor - aMajor;
-      if (aMinor !== bMinor) return bMinor - aMinor;
-      return bPatch - aPatch;
-    });
+    .sort(semver.rcompare);
+}
+
+function getAllSchemaVersions() {
+  if (!fs.existsSync(DIST_DIR)) {
+    return [];
+  }
+
+  const entries = fs.readdirSync(DIST_DIR, { withFileTypes: true });
+  return entries
+    .filter(e => e.isDirectory() && semver.valid(e.name) !== null)
+    .map(e => e.name)
+    .sort(semver.rcompare);
 }
 
 /**
@@ -106,6 +112,101 @@ function getMinorVersion(version) {
     throw new Error(`Invalid semantic version: ${version}. Expected format: major.minor.patch`);
   }
   return `${parts[0]}.${parts[1]}`;
+}
+
+function getReleaseMetadata(version) {
+  if (version === 'latest') {
+    return {
+      stability: 'development',
+      prerelease: false,
+      deprecated: false,
+    };
+  }
+
+  const match = String(version).match(/^\d+\.\d+\.\d+(?:-([0-9A-Za-z.-]+))?$/);
+  if (!match) {
+    throw new Error(`Invalid semantic version: ${version}. Expected format: major.minor.patch[-prerelease]`);
+  }
+
+  const prerelease = match[1] || '';
+  if (!prerelease) {
+    return {
+      stability: 'stable',
+      prerelease: false,
+      deprecated: false,
+    };
+  }
+
+  const label = prerelease.split('.')[0].toLowerCase();
+  return {
+    stability: label === 'rc' ? 'rc' : label === 'beta' ? 'beta' : 'prerelease',
+    prerelease: true,
+    deprecated: false,
+  };
+}
+
+function buildRootSchemaDiscovery() {
+  const stableVersions = getAllReleasedVersions();
+  const allVersions = getAllSchemaVersions();
+  const latestStable = stableVersions[0] || null;
+  const latestByMajor = {};
+  const latestByMinor = {};
+  const aliases = {};
+
+  for (const version of stableVersions) {
+    const major = getMajorVersion(version);
+    const minor = getMinorVersion(version);
+    if (!latestByMajor[major]) {
+      latestByMajor[major] = version;
+      aliases[`v${major}`] = version;
+    }
+    if (!latestByMinor[minor]) {
+      latestByMinor[minor] = version;
+      aliases[`v${minor}`] = version;
+    }
+  }
+
+  return {
+    $schema: 'http://json-schema.org/draft-07/schema#',
+    $id: '/schemas/index.json',
+    title: 'AdCP Schema Discovery',
+    description: 'Root discovery document for file-based AdCP schema consumers. Use latest_stable or a major/minor alias target instead of choosing by directory listing.',
+    latest: latestStable,
+    latest_stable: latestStable,
+    channel: 'stable',
+    aliases,
+    latest_by_major: latestByMajor,
+    latest_by_minor: latestByMinor,
+    versions: allVersions.map((version) => ({
+      version,
+      ...getReleaseMetadata(version),
+      path: `/schemas/${version}/`,
+      index: `/schemas/${version}/index.json`,
+    })),
+  };
+}
+
+function writeRootSchemaDiscovery() {
+  const discovery = buildRootSchemaDiscovery();
+  ensureDir(DIST_DIR);
+
+  fs.writeFileSync(
+    path.join(DIST_DIR, 'index.json'),
+    JSON.stringify(discovery, null, 2) + '\n',
+    'utf8'
+  );
+
+  fs.writeFileSync(
+    path.join(DIST_DIR, 'latest.json'),
+    JSON.stringify({
+      latest: discovery.latest_stable,
+      latest_stable: discovery.latest_stable,
+      channel: 'stable',
+      path: discovery.latest_stable ? `/schemas/${discovery.latest_stable}/` : null,
+      index: discovery.latest_stable ? `/schemas/${discovery.latest_stable}/index.json` : null,
+    }, null, 2) + '\n',
+    'utf8'
+  );
 }
 
 function ensureDir(dir) {
@@ -1006,10 +1107,11 @@ function copyAndTransformSchemas(sourceDir, targetDir, version) {
         schema.adcp_version = version;
         schema.lastUpdated = new Date().toISOString().split('T')[0];
         schema.baseUrl = `/schemas/${version}`;
+        Object.assign(schema, getReleaseMetadata(version));
         if (!schema.versioning) {
           schema.versioning = {};
         }
-        schema.versioning.note = `AdCP uses build-time versioning. This directory contains schemas for AdCP ${version}. Full semantic versions are available at /schemas/{version}/ (e.g., /schemas/2.5.0/). Major version aliases point to the latest release: /schemas/v${getMajorVersion(version)}/ → /schemas/${version}/.`;
+        schema.versioning.note = `AdCP uses build-time versioning. This directory contains schemas for AdCP ${version}. Full semantic versions are available at /schemas/{version}/ (e.g., /schemas/2.5.0/). Major version aliases point to the latest stable release in that major line; use /schemas/index.json or /schemas/latest.json for the canonical file-based pointer.`;
         content = JSON.stringify(schema, null, 2);
       }
 
@@ -1968,9 +2070,10 @@ async function main() {
 
     // Stage the new versioned directory for git commit
     // This is needed for the changesets workflow to include it in the version commit
+    writeRootSchemaDiscovery();
     console.log(`📝 Staging dist/schemas/${version}/ for git commit`);
     try {
-      execSync(`git add dist/schemas/${version}/`, { cwd: path.join(__dirname, '..'), stdio: 'inherit' });
+      execSync(`git add dist/schemas/${version}/ dist/schemas/index.json dist/schemas/latest.json`, { cwd: path.join(__dirname, '..'), stdio: 'inherit' });
     } catch (error) {
       // Not in a git repo or git add failed - that's okay for non-CI builds
       console.log(`   (git add skipped - not in git context or git not available)`);
@@ -2032,6 +2135,7 @@ async function main() {
 
     // Note: Version aliases (v2, v2.5, v1) are handled by HTTP middleware
     // No symlinks needed - the server rewrites URLs dynamically
+    writeRootSchemaDiscovery();
 
     // Show available paths
     const latestPerMinor = getLatestPatchPerMinor();

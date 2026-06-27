@@ -137,8 +137,9 @@ async function discoveryResponse(bucket, mount) {
     const versions = await getVersions(bucket, mount);
     const aliases = buildAliases(versions, mount);
     return jsonResponse({
-      versions: versions.map((version) => ({ version, path: `/${mount}/${version}/` })),
+      versions: versions.map((version) => versionEntry(version, `/${mount}`)),
       aliases,
+      latest_stable: latestStableVersion(versions),
       latest: {
         path: `/${mount}/latest/`,
         note: "Development version, may differ from released versions",
@@ -310,6 +311,7 @@ export function findMatchingVersion(versions, requestedMajor, requestedMinor) {
   return versions.find((version) => {
     const parsed = parseSemver(version);
     if (!parsed || parsed.major !== requestedMajor) return false;
+    if (parsed.prerelease.length > 0) return false;
     return requestedMinor === undefined || parsed.minor === requestedMinor;
   });
 }
@@ -352,23 +354,24 @@ export function clearVersionCacheForTests() {
 }
 
 function buildAliases(versions, mount) {
+  const latestPerMajor = {};
   const latestPerMinor = {};
-  let latestMajorVersion;
 
   for (const version of versions) {
     const parsed = parseSemver(version);
     if (!parsed) continue;
+    if (parsed.prerelease.length > 0) continue;
+    const majorKey = `${parsed.major}`;
     const minorKey = `${parsed.major}.${parsed.minor}`;
-    if (!latestMajorVersion) latestMajorVersion = version;
+    if (!latestPerMajor[majorKey]) latestPerMajor[majorKey] = version;
     if (!latestPerMinor[minorKey]) latestPerMinor[minorKey] = version;
   }
 
   const aliases = [];
-  if (latestMajorVersion) {
-    const major = parseSemver(latestMajorVersion).major;
+  for (const [major, version] of Object.entries(latestPerMajor)) {
     aliases.push({
       alias: `v${major}`,
-      resolves_to: latestMajorVersion,
+      resolves_to: version,
       path: `/${mount}/v${major}/`,
     });
   }
@@ -382,6 +385,26 @@ function buildAliases(versions, mount) {
   }
 
   return aliases.sort((a, b) => a.alias.localeCompare(b.alias, undefined, { numeric: true }));
+}
+
+function versionEntry(version, mountPath) {
+  const parsed = parseSemver(version);
+  const prerelease = !!parsed && parsed.prerelease.length > 0;
+  const label = prerelease ? String(parsed.prerelease[0]).toLowerCase() : "";
+  return {
+    version,
+    stability: prerelease ? (label === "rc" || label === "beta" ? label : "prerelease") : "stable",
+    prerelease,
+    deprecated: false,
+    path: `${mountPath}/${version}/`,
+  };
+}
+
+function latestStableVersion(versions) {
+  return versions.find((version) => {
+    const parsed = parseSemver(version);
+    return parsed && parsed.prerelease.length === 0;
+  }) || null;
 }
 
 function parseSemver(version) {

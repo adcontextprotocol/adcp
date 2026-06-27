@@ -17,7 +17,8 @@ describe("/schemas HTTP routing", () => {
   let app: express.Express;
   let versions: string[] = [];
   let latestStableMajor2: string | undefined;
-  let latestMajor3: string | undefined;
+  let latestStableMajor3: string | undefined;
+  let latestPrereleaseMajor3: string | undefined;
 
   beforeAll(() => {
     versions = fs
@@ -29,16 +30,19 @@ describe("/schemas HTTP routing", () => {
       throw new Error(`No schema versions found under ${schemasPath}. Run \`npm run build:schemas\` first.`);
     }
 
-    // Sort with semver semantics so the test's notion of "latest in 3.x"
-    // matches the alias-rewrite middleware (which uses semver.rcompare and
-    // therefore prefers stable releases over prereleases at the same X.Y.Z).
+    // Sort with semver semantics, then split stable from prerelease. Major and
+    // minor aliases must resolve only to stable releases; prerelease directories
+    // remain directly accessible by exact version.
     const semverDesc = (a: string, b: string) => semver.rcompare(a, b);
 
     latestStableMajor2 = versions
       .filter((v) => v.startsWith("2.") && !v.includes("-"))
       .sort(semverDesc)[0];
-    latestMajor3 = versions
-      .filter((v) => v.startsWith("3."))
+    latestStableMajor3 = versions
+      .filter((v) => v.startsWith("3.") && !v.includes("-"))
+      .sort(semverDesc)[0];
+    latestPrereleaseMajor3 = versions
+      .filter((v) => v.startsWith("3.") && v.includes("-"))
       .sort(semverDesc)[0];
 
     app = express();
@@ -55,8 +59,8 @@ describe("/schemas HTTP routing", () => {
     });
 
     it("serves files from a concrete prerelease version", async () => {
-      if (!latestMajor3) return;
-      const res = await request(app).get(`/schemas/${latestMajor3}/adagents.json`);
+      if (!latestPrereleaseMajor3) return;
+      const res = await request(app).get(`/schemas/${latestPrereleaseMajor3}/adagents.json`);
       expect(res.status).toBe(200);
       expect(res.headers["cache-control"]).toContain("immutable");
     });
@@ -69,10 +73,10 @@ describe("/schemas HTTP routing", () => {
     });
 
     it("redirects a bare prerelease directory to index.json under /schemas", async () => {
-      if (!latestMajor3) return;
-      const res = await request(app).get(`/schemas/${latestMajor3}/`);
+      if (!latestPrereleaseMajor3) return;
+      const res = await request(app).get(`/schemas/${latestPrereleaseMajor3}/`);
       expect(res.status).toBe(302);
-      expect(res.headers["location"]).toBe(`/schemas/${latestMajor3}/index.json`);
+      expect(res.headers["location"]).toBe(`/schemas/${latestPrereleaseMajor3}/index.json`);
     });
   });
 
@@ -91,7 +95,7 @@ describe("/schemas HTTP routing", () => {
     });
 
     it("serves /schemas/v3/adagents.json via alias rewrite", async () => {
-      if (!latestMajor3) return;
+      if (!latestStableMajor3) return;
       const res = await request(app).get("/schemas/v3/adagents.json");
       expect(res.status).toBe(200);
     });
@@ -104,10 +108,10 @@ describe("/schemas HTTP routing", () => {
     });
 
     it("redirects /schemas/v3/ to the resolved index.json", async () => {
-      if (!latestMajor3) return;
+      if (!latestStableMajor3) return;
       const res = await request(app).get("/schemas/v3/");
       expect(res.status).toBe(302);
-      expect(res.headers["location"]).toBe(`/schemas/${latestMajor3}/index.json`);
+      expect(res.headers["location"]).toBe(`/schemas/${latestStableMajor3}/index.json`);
     });
 
     it("returns 404 for an alias with no matching major version", async () => {
@@ -223,6 +227,10 @@ describe("/schemas HTTP routing", () => {
       expect(Array.isArray(res.body.versions)).toBe(true);
       expect(Array.isArray(res.body.aliases)).toBe(true);
       expect(res.body.latest).toMatchObject({ path: "/schemas/latest/" });
+      expect(res.body.latest_stable).toBe(latestStableMajor3);
+      expect(res.body.aliases.find((a: { alias: string }) => a.alias === "v3")).toMatchObject({
+        resolves_to: latestStableMajor3,
+      });
     });
   });
 });
