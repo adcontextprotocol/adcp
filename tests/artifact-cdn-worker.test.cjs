@@ -111,12 +111,26 @@ function env() {
         contentType: 'application/json; charset=utf-8',
         cacheControl: 'public, max-age=31536000, immutable',
       }),
+      object('schemas/3.1.0/index.json', '{"version":"3.1.0"}', {
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('schemas/3.1.0/foo.json', '{"version":"3.1.0"}', {
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('schemas/index.json', '{"latest_stable":"3.1.0"}', { contentType: 'application/json; charset=utf-8' }),
+      object('schemas/latest.json', '{"latest_stable":"3.1.0"}', { contentType: 'application/json; charset=utf-8' }),
       object('schemas/latest/foo.json', '{"version":"latest"}', { contentType: 'application/json; charset=utf-8' }),
       object('compliance/3.0.12/index.json', '{"version":"3.0.12"}', {
         contentType: 'application/json; charset=utf-8',
         cacheControl: 'public, max-age=31536000, immutable',
       }),
       object('compliance/3.1.0-beta.3/index.json', '{"version":"3.1.0-beta.3"}', {
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('compliance/3.1.0/index.json', '{"version":"3.1.0"}', {
         contentType: 'application/json; charset=utf-8',
         cacheControl: 'public, max-age=31536000, immutable',
       }),
@@ -156,6 +170,7 @@ function paginatedEnv() {
       object('schemas/3.0.2/a.json', 'old'),
       object('schemas/3.0.3/a.json', 'old'),
       object('schemas/3.1.0-beta.3/foo.json', '{"version":"3.1.0-beta.3"}'),
+      object('schemas/3.1.0/foo.json', '{"version":"3.1.0"}'),
     ], { pageSize: 2 }),
   };
 }
@@ -186,7 +201,7 @@ describe('artifact CDN Worker', () => {
     const response = await fetchPath('/schemas/v3/foo.json');
 
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { version: '3.1.0-beta.3' });
+    assert.deepEqual(await response.json(), { version: '3.1.0' });
     assert.equal(response.headers.get('cache-control'), 'public, no-cache, must-revalidate');
     assert.equal(response.headers.get('access-control-allow-origin'), '*');
   });
@@ -201,7 +216,7 @@ describe('artifact CDN Worker', () => {
     );
 
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { version: '3.1.0-beta.3' });
+    assert.deepEqual(await response.json(), { version: '3.1.0' });
   });
 
   it('rewrites minor aliases to the latest patch in that minor', async () => {
@@ -217,6 +232,19 @@ describe('artifact CDN Worker', () => {
 
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { version: 'latest' });
+  });
+
+  it('serves root schema discovery files as revalidated mutable artifacts', async () => {
+    const index = await fetchPath('/schemas/index.json');
+    const latest = await fetchPath('/schemas/latest.json');
+
+    assert.equal(index.status, 200);
+    assert.deepEqual(await index.json(), { latest_stable: '3.1.0' });
+    assert.equal(index.headers.get('cache-control'), 'public, no-cache, must-revalidate');
+
+    assert.equal(latest.status, 200);
+    assert.deepEqual(await latest.json(), { latest_stable: '3.1.0' });
+    assert.equal(latest.headers.get('cache-control'), 'public, no-cache, must-revalidate');
   });
 
   it('keeps pinned semver paths immutable', async () => {
@@ -243,12 +271,12 @@ describe('artifact CDN Worker', () => {
   });
 
   it('never resolves a stable pin to a prerelease on the same line', async () => {
-    // 3.1.x has only a prerelease published (3.1.0-beta.3); a stable 3.1.5 pin
-    // must fall back to the highest stable in the major (3.0.12), not the beta.
-    const response = await fetchPath('/schemas/3.1.5/foo.json');
+    // 3.2.x has no stable release published; a stable 3.2.5 pin must fall
+    // back to the highest stable in the major (3.1.0), not a prerelease.
+    const response = await fetchPath('/schemas/3.2.5/foo.json');
 
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { version: '3.0.12' });
+    assert.deepEqual(await response.json(), { version: '3.1.0' });
     assert.equal(response.headers.get('cache-control'), 'public, no-cache, must-revalidate');
   });
 
@@ -325,11 +353,11 @@ describe('artifact CDN Worker', () => {
 
       assert.equal(first.status, 200);
       assert.equal(second.status, 200);
-      assert.deepEqual(await first.json(), { version: '3.1.0-beta.3' });
-      assert.deepEqual(await second.json(), { version: '3.1.0-beta.3' });
+      assert.deepEqual(await first.json(), { version: '3.1.0' });
+      assert.deepEqual(await second.json(), { version: '3.1.0' });
     });
 
-    assert.equal(testEnv.ARTIFACTS.getCalls.get('schemas/3.1.0-beta.3/foo.json'), 2);
+    assert.equal(testEnv.ARTIFACTS.getCalls.get('schemas/3.1.0/foo.json'), 2);
     assert.equal(edgeCache.matches, 0);
     assert.equal(edgeCache.puts, 0);
   });
@@ -338,7 +366,7 @@ describe('artifact CDN Worker', () => {
     const response = await fetchPath('/schemas/v3/');
 
     assert.equal(response.status, 302);
-    assert.equal(response.headers.get('location'), '/schemas/3.1.0-beta.3/index.json');
+    assert.equal(response.headers.get('location'), '/schemas/3.1.0/index.json');
   });
 
   it('redirects bare version paths before serving index.json', async () => {
@@ -353,12 +381,13 @@ describe('artifact CDN Worker', () => {
     const body = await response.json();
 
     assert.equal(response.status, 200);
-    assert.deepEqual(body.versions.map((entry) => entry.version), ['3.1.0-beta.3', '3.0.12']);
+    assert.deepEqual(body.versions.map((entry) => entry.version), ['3.1.0', '3.1.0-beta.3', '3.0.12']);
     assert.deepEqual(body.aliases, [
-      { alias: 'v3', resolves_to: '3.1.0-beta.3', path: '/schemas/v3/' },
+      { alias: 'v3', resolves_to: '3.1.0', path: '/schemas/v3/' },
       { alias: 'v3.0', resolves_to: '3.0.12', path: '/schemas/v3.0/' },
-      { alias: 'v3.1', resolves_to: '3.1.0-beta.3', path: '/schemas/v3.1/' },
+      { alias: 'v3.1', resolves_to: '3.1.0', path: '/schemas/v3.1/' },
     ]);
+    assert.equal(body.latest_stable, '3.1.0');
     assert.deepEqual(body.latest, {
       path: '/schemas/latest/',
       note: 'Development version, may differ from released versions',

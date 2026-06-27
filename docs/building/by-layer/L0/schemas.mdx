@@ -217,13 +217,21 @@ See the [schema registry](https://adcontextprotocol.org/schemas/v3/index.json) f
 ## Version discovery
 
 ```bash
-# Get the full semver of the published schema bundle.
+# Get the canonical stable schema bundle and registry URL.
+curl https://adcontextprotocol.org/schemas/latest.json | jq '{version: .latest_stable, index}'
+
+# Or read the full file-based discovery index.
+curl https://adcontextprotocol.org/schemas/index.json | jq '.aliases'
+
+# The versioned registry also carries the full semver of its bundle.
 # (Note: `published_version` carries full semver including patch.
 # It's distinct from the per-request/response wire `adcp_version`
 # field defined in core/version-envelope.json, which uses
 # release-precision — never send `published_version` on the wire.)
 curl https://adcontextprotocol.org/schemas/v3/index.json | jq '.published_version'
 ```
+
+Do not infer the canonical version from directory order or `versions[0]`; pre-release artifacts remain discoverable for pinned historical builds. Use `latest_stable` or the `aliases` map for canonical stable selection.
 
 Check [Release Notes](/docs/reference/release-notes) for version history and migration guides.
 

@@ -64,10 +64,33 @@ export function findMatchingVersion(
   return versions.find((v) => {
     const parsed = semver.parse(v);
     if (!parsed) return false;
+    if (parsed.prerelease.length > 0) return false;
     if (parsed.major !== requestedMajor) return false;
     if (requestedMinor !== undefined && parsed.minor !== requestedMinor) return false;
     return true;
   });
+}
+
+function latestStableVersion(versions: string[]): string | null {
+  return versions.find((v) => {
+    const parsed = semver.parse(v);
+    return parsed && parsed.prerelease.length === 0;
+  }) ?? null;
+}
+
+function versionEntry(version: string, mountPath: string) {
+  const parsed = semver.parse(version);
+  const prerelease = !!parsed && parsed.prerelease.length > 0;
+  const label = prerelease ? String(parsed.prerelease[0]).toLowerCase() : "";
+  return {
+    version,
+    stability: prerelease
+      ? (label === "rc" || label === "beta" ? label : "prerelease")
+      : "stable",
+    prerelease,
+    deprecated: false,
+    path: `${mountPath}/${version}/`,
+  };
 }
 
 /**
@@ -364,14 +387,16 @@ function mountVersionedStaticRoutes(
   app.get(mountPath + "/", async (_req, res) => {
     try {
       const versions = await getSchemaVersions();
+      const latestPerMajor: Record<string, string> = {};
       const latestPerMinor: Record<string, string> = {};
-      let latestMajorVersion: string | undefined;
 
       for (const version of versions) {
         const parsed = semver.parse(version);
         if (!parsed) continue;
+        if (parsed.prerelease.length > 0) continue;
+        const majorKey = `${parsed.major}`;
         const minorKey = `${parsed.major}.${parsed.minor}`;
-        if (!latestMajorVersion) latestMajorVersion = version;
+        if (!latestPerMajor[majorKey]) latestPerMajor[majorKey] = version;
         if (!latestPerMinor[minorKey]) latestPerMinor[minorKey] = version;
       }
 
@@ -381,15 +406,12 @@ function mountVersionedStaticRoutes(
         path: string;
       }> = [];
 
-      if (latestMajorVersion) {
-        const major = semver.parse(latestMajorVersion)?.major;
-        if (major !== undefined) {
-          aliases.push({
-            alias: `v${major}`,
-            resolves_to: latestMajorVersion,
-            path: `${mountPath}/v${major}/`,
-          });
-        }
+      for (const [major, version] of Object.entries(latestPerMajor)) {
+        aliases.push({
+          alias: `v${major}`,
+          resolves_to: version,
+          path: `${mountPath}/v${major}/`,
+        });
       }
 
       for (const [minorKey, version] of Object.entries(latestPerMinor)) {
@@ -405,8 +427,9 @@ function mountVersionedStaticRoutes(
       );
 
       res.json({
-        versions: versions.map((v) => ({ version: v, path: `${mountPath}/${v}/` })),
+        versions: versions.map((v) => versionEntry(v, mountPath)),
         aliases,
+        latest_stable: latestStableVersion(versions),
         latest: {
           path: `${mountPath}/latest/`,
           note: "Development version, may differ from released versions",
