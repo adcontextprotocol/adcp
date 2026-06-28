@@ -1,5 +1,5 @@
 ---
-"adcontextprotocol": minor
+"adcontextprotocol": patch
 ---
 
 TMP: provider-scoped TMPX macro trafficking with declared macro names + multi-chunk support. Builds on the `tmpx_providers` map shipped in #5689; reframes the contract to communicate exact macro/value pairs (not provider_id→token strings) and supports values that exceed a single ad-server macro slot.
