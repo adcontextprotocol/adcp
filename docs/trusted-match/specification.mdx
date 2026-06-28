@@ -321,7 +321,7 @@ The router SHOULD exclude providers that return errors from the merged response 
 
 TMP providers are registered with the router via publisher configuration. The publisher specifies which providers the router should call, along with each provider's endpoint and supported capabilities. This is an operational relationship — the publisher trusts the provider to run code in their ad decisioning path.
 
-The standard registration path is **static configuration** — the publisher declares providers in their Prebid module config, router YAML, or equivalent surface-specific configuration. Dynamic registration (API-driven, database-backed) is an equally valid variant for publishers who manage many providers or need runtime updates. Both approaches use the same provider registration schema (`/schemas/tmp/provider-registration.json`).
+The standard registration path is **static configuration** — the publisher declares providers in their Prebid module config, router YAML, or equivalent surface-specific configuration. Dynamic registration (API-driven, database-backed) is an equally valid variant for publishers who manage many providers or need runtime updates. Both approaches use the same provider registration schema (`/schemas/trusted-match/provider-registration.json`).
 
 | Setting | Type | Required | Description |
 |---|---|---|---|

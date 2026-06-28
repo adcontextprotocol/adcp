@@ -86,6 +86,9 @@ test('dist schema root discovery marks prereleases but points canonical aliases 
   }
 
   assert.ok(discovery.versions.some((entry) => entry.prerelease === true), 'historical prerelease dirs should remain discoverable');
+  const stableVersions = new Set(discovery.versions
+    .filter((entry) => stableVersion.test(entry.version))
+    .map((entry) => entry.version));
   for (const entry of discovery.versions) {
     if (stableVersion.test(entry.version)) {
       assert.equal(entry.stability, 'stable');
@@ -94,6 +97,11 @@ test('dist schema root discovery marks prereleases but points canonical aliases 
       assert.match(entry.version, /^\d+\.\d+\.\d+-[0-9A-Za-z.-]+$/);
       assert.notEqual(entry.stability, 'stable');
       assert.equal(entry.prerelease, true);
+      const finalVersion = entry.version.split('-')[0];
+      if (stableVersions.has(finalVersion)) {
+        assert.equal(entry.deprecated, true, `${entry.version} should be marked deprecated after ${finalVersion}`);
+        assert.equal(entry.superseded_by, finalVersion, `${entry.version} should point at the stable superseding release`);
+      }
     }
   }
 });

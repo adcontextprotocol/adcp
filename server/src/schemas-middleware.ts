@@ -8,6 +8,27 @@ const logger = createLogger("schemas-middleware");
 
 // Alias paths like "/v2/...", "/v2.5/...", "/v12/..." (v1 is a special case → latest).
 const ALIAS_PATH = /^\/v(\d+)(?:\.(\d+))?(\/.*)?$/;
+const LEGACY_TMP_SCHEMA_PATH =
+  /^\/(latest|\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\/tmp\/([A-Za-z0-9._-]+\.json)$/;
+const TRUSTED_MATCH_SCHEMA_FILENAMES = [
+  "available-package.json",
+  "context-match-request.json",
+  "context-match-response.json",
+  "error.json",
+  "identity-match-request.json",
+  "identity-match-response.json",
+  "offer-price.json",
+  "offer.json",
+  "provider-registration.json",
+] as const;
+
+type TrustedMatchSchemaFilename = (typeof TRUSTED_MATCH_SCHEMA_FILENAMES)[number];
+
+type LegacyTmpSchemaPath = {
+  version: string;
+  filename: TrustedMatchSchemaFilename;
+  trustedMatchPath: string;
+};
 
 function isPinnedVersionPath(requestPath: string): boolean {
   // /X.Y.Z(-prerelease)?/... where the first segment is a valid semver.
@@ -76,6 +97,54 @@ function latestStableVersion(versions: string[]): string | null {
     const parsed = semver.parse(v);
     return parsed && parsed.prerelease.length === 0;
   }) ?? null;
+}
+
+function legacyTmpPathInfo(requestPath: string): LegacyTmpSchemaPath | null {
+  const match = requestPath.match(LEGACY_TMP_SCHEMA_PATH);
+  if (!match) return null;
+  const [, version, filename] = match;
+  const trustedMatchFilename = TRUSTED_MATCH_SCHEMA_FILENAMES.find(
+    (candidate) => candidate === filename,
+  );
+  if (!trustedMatchFilename) return null;
+  return {
+    version,
+    filename: trustedMatchFilename,
+    trustedMatchPath: `/${version}/trusted-match/${trustedMatchFilename}`,
+  };
+}
+
+async function legacyTmpSchemaFileExists(
+  rootPath: string,
+  version: string,
+  filename: TrustedMatchSchemaFilename,
+): Promise<boolean> {
+  if (semver.valid(version) === null) return false;
+
+  try {
+    const stat = await fs.stat(`${rootPath}/${version}/tmp/${filename}`);
+    return stat.isFile();
+  } catch {
+    return false;
+  }
+}
+
+async function legacyTmpSchemaFileExistsForPath(
+  rootPath: string,
+  getSchemaVersions: () => Promise<string[]>,
+  legacyPath: LegacyTmpSchemaPath,
+): Promise<boolean> {
+  if (legacyPath.version === "latest") return false;
+
+  try {
+    const versions = await getSchemaVersions();
+    const resolvedVersion = versions.find((version) => version === legacyPath.version);
+    return resolvedVersion
+      ? legacyTmpSchemaFileExists(rootPath, resolvedVersion, legacyPath.filename)
+      : false;
+  } catch {
+    return false;
+  }
 }
 
 function versionEntry(version: string, mountPath: string) {
@@ -340,14 +409,16 @@ function mountVersionedStaticRoutes(
     //    to the nearest published release on the same line (e.g. a 3.0.19 docs
     //    snapshot's links to /schemas/3.0.19/... resolve to the 3.0.18 schemas
     //    they were built against). Without this, frozen doc snapshots that pin
-    //    schema links to a docs-only version bump 404. Tracks whether the exact
-    //    directory was hit so the cache policy below stays correct.
+    //    schema links to a docs-only version bump 404. Tracks whether the
+    //    original request was an exact published directory hit so the cache
+    //    policy below stays correct.
     let exactPinnedHit = false;
     if (!isAlias && isPinnedVersionPath(originalPath)) {
       const requestedVersion = originalPath.split("/")[1];
       try {
         const versions = await getSchemaVersions();
-        if (versions.includes(requestedVersion)) {
+        const exactVersion = versions.find((version) => version === requestedVersion);
+        if (exactVersion) {
           exactPinnedHit = true;
         } else {
           const fallback = resolvePinnedFallback(versions, requestedVersion);
@@ -376,7 +447,26 @@ function mountVersionedStaticRoutes(
       res.setHeader("Cache-Control", "public, no-cache, must-revalidate");
     }
 
-    // 4. Redirect bare version directories to their index.json.
+    // 4. Compatibility fallback: old Trusted Match schema URLs used `/tmp/`.
+    // Keep existing released `/tmp/` files authoritative when present, but
+    // allow latest/future releases to serve the canonical `/trusted-match/`
+    // files without keeping a misleading source directory alive.
+    if (mountPath === "/schemas") {
+      const currentPath = req.path;
+      const legacyPath = legacyTmpPathInfo(currentPath);
+      if (legacyPath) {
+        const legacyFileExists = await legacyTmpSchemaFileExistsForPath(
+          rootPath,
+          getSchemaVersions,
+          legacyPath,
+        );
+        if (!legacyFileExists) {
+          req.url = legacyPath.trustedMatchPath + req.url.slice(currentPath.length);
+        }
+      }
+    }
+
+    // 5. Redirect bare version directories to their index.json.
     if (matchVersionedDir(req.path)) {
       return res.redirect(mountPath + req.path + "index.json");
     }

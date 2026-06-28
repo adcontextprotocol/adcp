@@ -3,6 +3,18 @@ const VERSION_DIR_PATH = /^\/([^/]+)\/$/;
 const SEMVER_PATH = /^\/(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)(?:\/|$)/;
 const PINNED_TARBALL = /(?:^|\/)(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\.tgz$/;
 const PINNED_TARBALL_SIDECAR = /(?:^|\/)(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\.tgz\.(?:sha256|sig|crt)$/;
+const LEGACY_TMP_SCHEMA_KEY = /^schemas\/(latest|\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\/tmp\/([A-Za-z0-9._-]+\.json)$/;
+const TRUSTED_MATCH_SCHEMA_FILES = new Set([
+  "available-package.json",
+  "context-match-request.json",
+  "context-match-response.json",
+  "error.json",
+  "identity-match-request.json",
+  "identity-match-response.json",
+  "offer-price.json",
+  "offer.json",
+  "provider-registration.json",
+]);
 
 const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
 const REVALIDATE_CACHE_CONTROL = "public, no-cache, must-revalidate";
@@ -125,9 +137,11 @@ async function versionedArtifactResponse(request, env, ctx, mount, pathname) {
     ? IMMUTABLE_CACHE_CONTROL
     : REVALIDATE_CACHE_CONTROL;
 
-  return r2ArtifactResponse(request, env, `${mount}${resolvedPath}`, cacheControl, {
+  const key = `${mount}${resolvedPath}`;
+  return r2ArtifactResponse(request, env, key, cacheControl, {
     edgeCache: isImmutableArtifact,
     overrideCacheControl: true,
+    fallbackKey: mount === "schemas" ? legacyTmpFallbackKey(key) : undefined,
     ctx,
   });
 }
@@ -137,7 +151,7 @@ async function discoveryResponse(bucket, mount) {
     const versions = await getVersions(bucket, mount);
     const aliases = buildAliases(versions, mount);
     return jsonResponse({
-      versions: versions.map((version) => versionEntry(version, `/${mount}`)),
+      versions: versions.map((version) => versionEntry(version, `/${mount}`, versions)),
       aliases,
       latest_stable: latestStableVersion(versions),
       latest: {
@@ -207,9 +221,14 @@ async function r2ArtifactResponse(request, env, key, fallbackCacheControl, optio
     if (cached) return cached;
   }
 
-  const object = request.method === "HEAD"
+  let object = request.method === "HEAD"
     ? await env.ARTIFACTS.head(key)
     : await env.ARTIFACTS.get(key);
+  if (!object && options.fallbackKey) {
+    object = request.method === "HEAD"
+      ? await env.ARTIFACTS.head(options.fallbackKey)
+      : await env.ARTIFACTS.get(options.fallbackKey);
+  }
 
   if (!object) {
     return fallbackResponse(request, env);
@@ -387,15 +406,18 @@ function buildAliases(versions, mount) {
   return aliases.sort((a, b) => a.alias.localeCompare(b.alias, undefined, { numeric: true }));
 }
 
-function versionEntry(version, mountPath) {
+function versionEntry(version, mountPath, knownVersions = []) {
   const parsed = parseSemver(version);
   const prerelease = !!parsed && parsed.prerelease.length > 0;
   const label = prerelease ? String(parsed.prerelease[0]).toLowerCase() : "";
+  const stableVersion = prerelease ? version.split("-")[0] : undefined;
+  const supersededBy = stableVersion && knownVersions.includes(stableVersion) ? stableVersion : undefined;
   return {
     version,
     stability: prerelease ? (label === "rc" || label === "beta" ? label : "prerelease") : "stable",
     prerelease,
-    deprecated: false,
+    deprecated: Boolean(supersededBy),
+    ...(supersededBy ? { superseded_by: supersededBy } : {}),
     path: `${mountPath}/${version}/`,
   };
 }
@@ -464,6 +486,14 @@ function edgeCacheKey(request) {
   const url = new URL(request.url);
   url.search = "";
   return new Request(url.toString(), { method: "GET" });
+}
+
+function legacyTmpFallbackKey(key) {
+  const match = key.match(LEGACY_TMP_SCHEMA_KEY);
+  if (!match) return undefined;
+  const [, version, filename] = match;
+  if (!TRUSTED_MATCH_SCHEMA_FILES.has(filename)) return undefined;
+  return `schemas/${version}/trusted-match/${filename}`;
 }
 
 function contentTypeForKey(key) {

@@ -119,9 +119,20 @@ function env() {
         contentType: 'application/json; charset=utf-8',
         cacheControl: 'public, max-age=31536000, immutable',
       }),
+      object('schemas/3.1.0/tmp/context-match-request.json', '{"namespace":"legacy-tmp"}', {
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('schemas/3.1.0/trusted-match/context-match-request.json', '{"namespace":"trusted-match"}', {
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
       object('schemas/index.json', '{"latest_stable":"3.1.0"}', { contentType: 'application/json; charset=utf-8' }),
       object('schemas/latest.json', '{"latest_stable":"3.1.0"}', { contentType: 'application/json; charset=utf-8' }),
       object('schemas/latest/foo.json', '{"version":"latest"}', { contentType: 'application/json; charset=utf-8' }),
+      object('schemas/latest/trusted-match/context-match-request.json', '{"namespace":"latest-trusted-match"}', {
+        contentType: 'application/json; charset=utf-8',
+      }),
       object('compliance/3.0.12/index.json', '{"version":"3.0.12"}', {
         contentType: 'application/json; charset=utf-8',
         cacheControl: 'public, max-age=31536000, immutable',
@@ -249,9 +260,89 @@ describe('artifact CDN Worker', () => {
 
   it('keeps pinned semver paths immutable', async () => {
     const response = await fetchPath('/schemas/3.0.12/foo.json');
+    const index = await fetchPath('/schemas/3.0.12/index.json');
 
     assert.equal(response.status, 200);
     assert.equal(response.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+    assert.equal(index.status, 200);
+    assert.equal(index.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+  });
+
+  it('serves legacy /tmp/ schema paths when existing release artifacts still have them', async () => {
+    const response = await fetchPath('/schemas/3.1.0/tmp/context-match-request.json');
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { namespace: 'legacy-tmp' });
+    assert.equal(response.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+  });
+
+  it('falls back legacy /tmp/ schema paths to canonical trusted-match artifacts', async () => {
+    const response = await fetchPath('/schemas/latest/tmp/context-match-request.json');
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { namespace: 'latest-trusted-match' });
+    assert.equal(response.headers.get('cache-control'), 'public, no-cache, must-revalidate');
+  });
+
+  it('falls back exact pinned /tmp/ schema paths when only trusted-match artifacts exist', async () => {
+    const { clearVersionCacheForTests, handleRequest } = await loadWorker();
+    const testEnv = env();
+    clearVersionCacheForTests();
+    testEnv.ARTIFACTS.entries.set(
+      'schemas/9.9.9/trusted-match/context-match-request.json',
+      new MockR2Object(
+        'schemas/9.9.9/trusted-match/context-match-request.json',
+        '{"namespace":"future-trusted-match"}',
+        { contentType: 'application/json; charset=utf-8' },
+      ),
+    );
+
+    const response = await handleRequest(
+      new Request('https://artifacts.example/schemas/9.9.9/tmp/context-match-request.json'),
+      testEnv,
+      {},
+    );
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { namespace: 'future-trusted-match' });
+    assert.equal(response.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+    assert.equal(testEnv.ARTIFACTS.getCalls.get('schemas/9.9.9/tmp/context-match-request.json'), 1);
+    assert.equal(
+      testEnv.ARTIFACTS.getCalls.get('schemas/9.9.9/trusted-match/context-match-request.json'),
+      1,
+    );
+  });
+
+  it('does not rewrite malformed legacy /tmp/ schema paths', async () => {
+    const { clearVersionCacheForTests, handleRequest } = await loadWorker();
+    const testEnv = env();
+    clearVersionCacheForTests();
+    testEnv.ARTIFACTS.entries.set(
+      'schemas/latest/core/trusted-match/context-match-request.json',
+      new MockR2Object(
+        'schemas/latest/core/trusted-match/context-match-request.json',
+        '{"namespace":"wrong-segment"}',
+        { contentType: 'application/json; charset=utf-8' },
+      ),
+    );
+
+    const encodedTraversal = await handleRequest(
+      new Request('https://artifacts.example/schemas/latest/tmp/%2e%2e/%2e%2e/etc/passwd'),
+      testEnv,
+      {},
+    );
+    const midPathTmp = await handleRequest(
+      new Request('https://artifacts.example/schemas/latest/core/tmp/context-match-request.json'),
+      testEnv,
+      {},
+    );
+
+    assert.equal(encodedTraversal.status, 404);
+    assert.equal(midPathTmp.status, 404);
+    assert.equal(
+      testEnv.ARTIFACTS.getCalls.get('schemas/latest/core/trusted-match/context-match-request.json') ?? 0,
+      0,
+    );
   });
 
   it('resolves a pinned docs-only version bump to the nearest published release', async () => {
@@ -381,7 +472,30 @@ describe('artifact CDN Worker', () => {
     const body = await response.json();
 
     assert.equal(response.status, 200);
-    assert.deepEqual(body.versions.map((entry) => entry.version), ['3.1.0', '3.1.0-beta.3', '3.0.12']);
+    assert.deepEqual(body.versions, [
+      {
+        version: '3.1.0',
+        stability: 'stable',
+        prerelease: false,
+        deprecated: false,
+        path: '/schemas/3.1.0/',
+      },
+      {
+        version: '3.1.0-beta.3',
+        stability: 'beta',
+        prerelease: true,
+        deprecated: true,
+        superseded_by: '3.1.0',
+        path: '/schemas/3.1.0-beta.3/',
+      },
+      {
+        version: '3.0.12',
+        stability: 'stable',
+        prerelease: false,
+        deprecated: false,
+        path: '/schemas/3.0.12/',
+      },
+    ]);
     assert.deepEqual(body.aliases, [
       { alias: 'v3', resolves_to: '3.1.0', path: '/schemas/v3/' },
       { alias: 'v3.0', resolves_to: '3.0.12', path: '/schemas/v3.0/' },

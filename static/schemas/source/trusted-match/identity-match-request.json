@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/tmp/identity-match-request.json",
+  "$id": "/schemas/trusted-match/identity-match-request.json",
   "title": "Identity Match Request",
   "description": "Sent by publisher to evaluate user eligibility for packages using an opaque identity token. MUST NOT contain page context. The request_id MUST NOT correlate with any context match request_id. The buyer resolves the active package set for this seller from `seller_agent_url`; if `package_ids` is provided, its composition MUST be independent of the current placement (e.g., all-active or fuzzed; see field description) to prevent set-correlation attacks. Extension fields (ext, context) are intentionally omitted to prevent data leakage across the identity privacy boundary. The optional `attestation` (per identity) and `sealed_credentials` (top-level) fields carry verifiable proof ABOUT the identity — on the identity side of that boundary, not page context — so they are a deliberate, reviewed widening of this otherwise-closed schema, not a leak.",
   "type": "object",

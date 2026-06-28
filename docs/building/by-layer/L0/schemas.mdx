@@ -193,9 +193,12 @@ dist/schemas/{VERSION}/
 │   ├── protocol/                 # Protocol tasks
 │   └── core/                     # Core shared schemas and legacy task lifecycle schemas
 ├── core/                         # Modular schemas with $ref
+├── trusted-match/                # Serve-time Context Match and Identity Match schemas
 ├── media-buy/
 └── index.json                    # Schema registry
 ```
+
+`index.json` is the directory authority. It declares the bundle's `published_version`, stability metadata, and `protocol_layers`: the negotiation layer (`media-buy`, `creative`, `signals`, `account`, `governance`, `brand`, `sponsored-intelligence`) and the decisioning/serving layer (`trusted-match`).
 
 ### Bundled schema categories
 

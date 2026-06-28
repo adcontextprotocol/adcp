@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/tmp/offer-price.json",
+  "$id": "/schemas/trusted-match/offer-price.json",
   "title": "Offer Price",
   "description": "Lightweight price for a TMP offer. Used when the product supports variable pricing and the buyer specifies a price at match time.",
   "x-status": "experimental",

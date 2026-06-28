@@ -1,21 +1,28 @@
 # AdCP - Advertising Context Protocol
 
-**Open standard for advertising automation over MCP and A2A protocols**
+**Open standard for advertising automation across negotiation and serve-time decisioning**
 
 [![Documentation](https://img.shields.io/badge/docs-adcontextprotocol.org-blue)](https://docs.adcontextprotocol.org)
 [![GitHub stars](https://img.shields.io/github/stars/adcontextprotocol/adcp?style=social)](https://github.com/adcontextprotocol/adcp)
 [![MCP Compatible](https://img.shields.io/badge/MCP-compatible-green)](https://modelcontextprotocol.io)
 
-AdCP is an open standard that enables AI agents to discover inventory, buy media, build creatives, activate audiences, and manage accounts across advertising platforms. It defines domain-specific tasks and schemas that work over [MCP](https://modelcontextprotocol.io) and [A2A](https://a2a-protocol.org/) as transports.
+AdCP is an open standard that enables AI agents to discover inventory, buy media, build creatives, activate audiences, manage accounts, and activate pre-negotiated packages at serve time across advertising platforms. Planning-time tasks use [MCP](https://modelcontextprotocol.io) and [A2A](https://a2a-protocol.org/) transports; serve-time decisions use the Trusted Match HTTP profile where the latency budget is impression-time.
 
 ## Documentation
 
 **[docs.adcontextprotocol.org](https://docs.adcontextprotocol.org)** — Full protocol specification, integration guides, and task reference.
 
-## Protocols
+## Protocol layers
 
-| Protocol | Description | Key tasks |
-|----------|-------------|-----------|
+AdCP is one protocol spanning two layers:
+
+| Layer | Protocol surfaces | Purpose |
+|-------|-------------------|---------|
+| **Negotiation layer** | Media Buy, Creative, Signals, Accounts, Governance, Brand, Sponsored Intelligence | Discovery, planning, commercial setup, creative preparation, audience activation, governance, and reporting |
+| **Decisioning and serving layer** | Trusted Match Protocol (Context Match, Identity Match) | Serve-time activation of pre-negotiated packages across web, mobile, CTV, AI assistants, and retail media |
+
+| Surface | Description | Key tasks or schemas |
+|---------|-------------|----------------------|
 | **Media Buy** | Inventory discovery, campaign creation, delivery reporting | `get_products`, `create_media_buy`, `get_media_buy_delivery` |
 | **Creative** | Ad creative management across channels | `build_creative`, `preview_creative`, `list_creative_formats` |
 | **Signals** | Audience and targeting data activation | `get_signals`, `activate_signal` |
@@ -23,7 +30,14 @@ AdCP is an open standard that enables AI agents to discover inventory, buy media
 | **Governance** | Brand suitability and content standards | `create_content_standards`, `calibrate_content` |
 | **Brand** | Brand identity discovery and resolution | `brand.json` well-known file |
 | **Sponsored Intelligence** | Conversational brand experiences | `si_initiate_session`, `si_send_message` |
+| **Trusted Match** | Real-time execution layer for package activation | `trusted-match/context-match-request.json`, `trusted-match/identity-match-request.json` |
 | **Curation** | Media inventory curation | Coming soon |
+
+## Conformance and normativity
+
+The schemas in `static/schemas/source/` and the protocol documents in `docs/` define the normative AdCP contract. The `server/` implementation is an illustrative registry/API/MCP implementation, not the specification. Conformance is measured independently by the grader and storyboards in `dist/compliance/`; the compliance runner tests any agent that claims the corresponding protocols or specialisms.
+
+The AgenticAdvertising.org registry is ecosystem infrastructure around AdCP, not a task surface inside the protocol. It resolves brands and properties, discovers agents, and validates publisher authorization so buyers and orchestrators know which AdCP endpoints to call.
 
 ## Repository structure
 
@@ -41,8 +55,11 @@ adcontextprotocol/
 │   ├── src/               # TypeScript source
 │   └── public/            # Static pages (homepage, registry UI)
 ├── static/
-│   ├── schemas/           # JSON schemas
+│   ├── schemas/           # JSON schemas, including trusted-match serve-time schemas
 │   └── openapi/           # OpenAPI specs
+├── dist/
+│   ├── schemas/           # Versioned release schema artifacts; use index.json/latest.json to resolve canonical versions
+│   └── compliance/        # Versioned implementation-independent conformance grader artifacts
 ├── tests/                 # Schema validation and integration tests
 └── scripts/               # Build and release tooling
 ```
@@ -81,6 +98,7 @@ Schemas are available at `/schemas/latest/`:
 - **Registry**: `/schemas/latest/index.json`
 - **Core objects**: `/schemas/latest/core/*.json`
 - **Task schemas**: `/schemas/latest/media-buy/*.json`, `/schemas/latest/signals/*.json`
+- **Trusted Match**: `/schemas/latest/trusted-match/*.json`
 - **Enums**: `/schemas/latest/enums/*.json`
 
 See [static/schemas/README.md](./static/schemas/README.md) for validation examples.

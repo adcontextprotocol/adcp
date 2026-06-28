@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/tmp/offer.json",
+  "$id": "/schemas/trusted-match/offer.json",
   "title": "Offer",
   "description": "A buyer's response to a context match request. Generalizes package activation — a simple activation is an offer with just package_id. A rich response includes brand, price, summary, and optionally an inline creative manifest.",
   "x-status": "experimental",
@@ -19,7 +19,7 @@
       "description": "Brand for this offer. Required when the product allows dynamic brands (brand selected at match time rather than fixed on the package). For single-brand packages, the brand is already known from the media buy."
     },
     "price": {
-      "$ref": "/schemas/tmp/offer-price.json",
+      "$ref": "/schemas/trusted-match/offer-price.json",
       "description": "Price for this offer. Only present when the product supports variable pricing. For fixed-price packages, price is already set on the media buy."
     },
     "summary": {

@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/tmp/identity-match-response.json",
+  "$id": "/schemas/trusted-match/identity-match-response.json",
   "title": "Identity Match Response",
   "description": "Response indicating which packages the user is eligible for. The serve_window_sec field defines a per-package single-shot fcap: after serving the user one impression on each eligible package, the publisher MUST re-query Identity Match before serving from those packages again. Extension fields (ext, context) are intentionally omitted to prevent data leakage across the identity privacy boundary.",
   "type": "object",
