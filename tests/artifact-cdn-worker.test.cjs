@@ -284,6 +284,67 @@ describe('artifact CDN Worker', () => {
     assert.equal(response.headers.get('cache-control'), 'public, no-cache, must-revalidate');
   });
 
+  it('falls back exact pinned /tmp/ schema paths when only trusted-match artifacts exist', async () => {
+    const { clearVersionCacheForTests, handleRequest } = await loadWorker();
+    const testEnv = env();
+    clearVersionCacheForTests();
+    testEnv.ARTIFACTS.entries.set(
+      'schemas/9.9.9/trusted-match/context-match-request.json',
+      new MockR2Object(
+        'schemas/9.9.9/trusted-match/context-match-request.json',
+        '{"namespace":"future-trusted-match"}',
+        { contentType: 'application/json; charset=utf-8' },
+      ),
+    );
+
+    const response = await handleRequest(
+      new Request('https://artifacts.example/schemas/9.9.9/tmp/context-match-request.json'),
+      testEnv,
+      {},
+    );
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { namespace: 'future-trusted-match' });
+    assert.equal(response.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+    assert.equal(testEnv.ARTIFACTS.getCalls.get('schemas/9.9.9/tmp/context-match-request.json'), 1);
+    assert.equal(
+      testEnv.ARTIFACTS.getCalls.get('schemas/9.9.9/trusted-match/context-match-request.json'),
+      1,
+    );
+  });
+
+  it('does not rewrite malformed legacy /tmp/ schema paths', async () => {
+    const { clearVersionCacheForTests, handleRequest } = await loadWorker();
+    const testEnv = env();
+    clearVersionCacheForTests();
+    testEnv.ARTIFACTS.entries.set(
+      'schemas/latest/core/trusted-match/context-match-request.json',
+      new MockR2Object(
+        'schemas/latest/core/trusted-match/context-match-request.json',
+        '{"namespace":"wrong-segment"}',
+        { contentType: 'application/json; charset=utf-8' },
+      ),
+    );
+
+    const encodedTraversal = await handleRequest(
+      new Request('https://artifacts.example/schemas/latest/tmp/%2e%2e/%2e%2e/etc/passwd'),
+      testEnv,
+      {},
+    );
+    const midPathTmp = await handleRequest(
+      new Request('https://artifacts.example/schemas/latest/core/tmp/context-match-request.json'),
+      testEnv,
+      {},
+    );
+
+    assert.equal(encodedTraversal.status, 404);
+    assert.equal(midPathTmp.status, 404);
+    assert.equal(
+      testEnv.ARTIFACTS.getCalls.get('schemas/latest/core/trusted-match/context-match-request.json') ?? 0,
+      0,
+    );
+  });
+
   it('resolves a pinned docs-only version bump to the nearest published release', async () => {
     const response = await fetchPath('/schemas/3.0.19/foo.json');
 

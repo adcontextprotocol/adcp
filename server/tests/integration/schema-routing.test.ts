@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import express from "express";
 import request from "supertest";
 import fs from "fs";
+import os from "os";
 import path from "path";
 import semver from "semver";
 import { mountSchemasRoutes } from "../../src/schemas-middleware.js";
@@ -222,10 +223,31 @@ describe("/schemas HTTP routing", () => {
 
   describe("legacy Trusted Match schema namespace", () => {
     it("serves legacy /tmp/ schema URLs from /latest/ via the canonical trusted-match files", async () => {
-      const res = await request(app).get("/schemas/latest/tmp/context-match-request.json");
-      if (res.status !== 200) return;
-      expect(res.body.$id).toBe("/schemas/latest/trusted-match/context-match-request.json");
-      expect(res.headers["cache-control"] ?? "").toContain("no-cache");
+      const tempSchemasPath = fs.mkdtempSync(path.join(os.tmpdir(), "schema-routing-"));
+
+      try {
+        fs.mkdirSync(path.join(tempSchemasPath, "latest", "trusted-match"), {
+          recursive: true,
+        });
+        fs.writeFileSync(
+          path.join(tempSchemasPath, "latest", "trusted-match", "context-match-request.json"),
+          JSON.stringify({
+            $id: "/schemas/latest/trusted-match/context-match-request.json",
+          }),
+        );
+
+        const tempApp = express();
+        mountSchemasRoutes(tempApp, tempSchemasPath);
+
+        const res = await request(tempApp).get(
+          "/schemas/latest/tmp/context-match-request.json",
+        );
+        expect(res.status).toBe(200);
+        expect(res.body.$id).toBe("/schemas/latest/trusted-match/context-match-request.json");
+        expect(res.headers["cache-control"] ?? "").toContain("no-cache");
+      } finally {
+        fs.rmSync(tempSchemasPath, { recursive: true, force: true });
+      }
     });
 
     it("keeps exact pinned /tmp/ schema artifacts authoritative when present", async () => {
@@ -233,6 +255,56 @@ describe("/schemas HTTP routing", () => {
       expect(res.status).toBe(200);
       expect(res.body.$id).toBe("/schemas/3.1.0/tmp/context-match-request.json");
       expect(res.headers["cache-control"] ?? "").toContain("immutable");
+    });
+
+    it("keeps resolved pinned /tmp/ schema artifacts authoritative when present", async () => {
+      expect(versions).toContain("3.1.0");
+      expect(versions).not.toContain("3.1.1");
+
+      const res = await request(app).get("/schemas/3.1.1/tmp/offer.json");
+      expect(res.status).toBe(200);
+      expect(res.body.$id).toBe("/schemas/3.1.0/tmp/offer.json");
+      expect(res.headers["cache-control"] ?? "").toContain("no-cache");
+    });
+
+    it("falls back an exact pinned /tmp/ URL when the release only has trusted-match files", async () => {
+      const tempSchemasPath = fs.mkdtempSync(path.join(os.tmpdir(), "schema-routing-"));
+      const version = "9.9.9";
+
+      try {
+        fs.mkdirSync(path.join(tempSchemasPath, version, "trusted-match"), {
+          recursive: true,
+        });
+        fs.writeFileSync(
+          path.join(tempSchemasPath, version, "trusted-match", "context-match-request.json"),
+          JSON.stringify({
+            $id: `/schemas/${version}/trusted-match/context-match-request.json`,
+          }),
+        );
+
+        const tempApp = express();
+        mountSchemasRoutes(tempApp, tempSchemasPath);
+
+        const res = await request(tempApp).get(
+          `/schemas/${version}/tmp/context-match-request.json`,
+        );
+        expect(res.status).toBe(200);
+        expect(res.body.$id).toBe(
+          `/schemas/${version}/trusted-match/context-match-request.json`,
+        );
+        expect(res.headers["cache-control"] ?? "").toContain("immutable");
+      } finally {
+        fs.rmSync(tempSchemasPath, { recursive: true, force: true });
+      }
+    });
+
+    it.each([
+      "/schemas/latest/tmp/../../../../etc/passwd",
+      "/schemas/latest/tmp/%2e%2e/%2e%2e/%2e%2e/%2e%2e/etc/passwd",
+      "/schemas/latest/core/tmp/context-match-request.json",
+    ])("does not rewrite malformed legacy /tmp/ path %s", async (url) => {
+      const res = await request(app).get(url);
+      expect(res.status).toBe(404);
     });
   });
 

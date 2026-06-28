@@ -3,7 +3,18 @@ const VERSION_DIR_PATH = /^\/([^/]+)\/$/;
 const SEMVER_PATH = /^\/(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)(?:\/|$)/;
 const PINNED_TARBALL = /(?:^|\/)(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\.tgz$/;
 const PINNED_TARBALL_SIDECAR = /(?:^|\/)(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\.tgz\.(?:sha256|sig|crt)$/;
-const LEGACY_TMP_SCHEMA_PATH = /\/tmp\//;
+const LEGACY_TMP_SCHEMA_KEY = /^schemas\/(latest|\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\/tmp\/([A-Za-z0-9._-]+\.json)$/;
+const TRUSTED_MATCH_SCHEMA_FILES = new Set([
+  "available-package.json",
+  "context-match-request.json",
+  "context-match-response.json",
+  "error.json",
+  "identity-match-request.json",
+  "identity-match-response.json",
+  "offer-price.json",
+  "offer.json",
+  "provider-registration.json",
+]);
 
 const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
 const REVALIDATE_CACHE_CONTROL = "public, no-cache, must-revalidate";
@@ -478,9 +489,11 @@ function edgeCacheKey(request) {
 }
 
 function legacyTmpFallbackKey(key) {
-  return LEGACY_TMP_SCHEMA_PATH.test(key)
-    ? key.replace(LEGACY_TMP_SCHEMA_PATH, "/trusted-match/")
-    : undefined;
+  const match = key.match(LEGACY_TMP_SCHEMA_KEY);
+  if (!match) return undefined;
+  const [, version, filename] = match;
+  if (!TRUSTED_MATCH_SCHEMA_FILES.has(filename)) return undefined;
+  return `schemas/${version}/trusted-match/${filename}`;
 }
 
 function contentTypeForKey(key) {
