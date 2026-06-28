@@ -19,7 +19,7 @@ jobs:
     # headroom without masking real regressions.
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6.0.3
+      - uses: actions/checkout@v7.0.0
         with:
           fetch-depth: 0
 
@@ -147,7 +147,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://ci_runner:ci_runner_throwaway_no_secret_value@127.0.0.1:5432/adcp_test
     steps:
-      - uses: actions/checkout@v6.0.3
+      - uses: actions/checkout@v7.0.0
 
       - name: Setup Node.js
         uses: actions/setup-node@v6

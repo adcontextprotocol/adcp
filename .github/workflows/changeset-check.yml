@@ -11,7 +11,7 @@ jobs:
     # Keep the release-machinery exceptions aligned with the changeset check below.
     if: ${{ !startsWith(github.head_ref, 'changeset-release/') && !startsWith(github.head_ref, 'forward-merge/') && !startsWith(github.head_ref, 'auto/docs-v') }}
     steps:
-      - uses: actions/checkout@v6.0.3
+      - uses: actions/checkout@v7.0.0
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -40,7 +40,7 @@ jobs:
     #   already-published version and do not represent a new package release.
     if: ${{ !startsWith(github.head_ref, 'changeset-release/') && !startsWith(github.head_ref, 'forward-merge/') && !startsWith(github.head_ref, 'auto/docs-v') }}
     steps:
-      - uses: actions/checkout@v6.0.3
+      - uses: actions/checkout@v7.0.0
         with:
           fetch-depth: 0
 

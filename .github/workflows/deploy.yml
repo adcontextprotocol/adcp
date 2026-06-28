@@ -18,7 +18,7 @@ jobs:
     name: Preflight
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6.0.3
+      - uses: actions/checkout@v7.0.0
       - name: No duplicate migration numbers
         run: |
           dupes=$(ls server/src/db/migrations/*.sql \
@@ -44,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6.0.3
+        uses: actions/checkout@v7.0.0
 
       - name: Setup Fly CLI
         uses: superfly/flyctl-actions/setup-flyctl@1.6
