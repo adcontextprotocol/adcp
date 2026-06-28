@@ -843,7 +843,7 @@ registry.registerPath({
   operationId: "saveProperty",
   summary: "Save property",
   description:
-    "Save or update a hosted property in the registry. Requires authentication. For existing properties, creates a revision-tracked edit. For new properties, creates the property directly. Cannot edit authoritative properties managed via adagents.json.",
+    "Save or update a hosted property in the registry. Requires authentication. For existing properties, creates a revision-tracked edit. For new properties, creates the property directly. Cannot edit authoritative properties managed via adagents.json.\n\nThis is an identity-only write surface: the stored document always carries `authorized_agents: []`. Sales authorization lives solely in the publisher's own origin `adagents.json`; the community registry cannot mint or carry it. Any `authorized_agents` sent in the request body is ignored.",
   tags: ["Property Resolution"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -852,7 +852,11 @@ registry.registerPath({
         "application/json": {
           schema: z.object({
             publisher_domain: z.string().openapi({ example: "examplepub.com" }),
-            authorized_agents: z.array(z.object({ url: z.string(), authorized_for: z.string().optional() })).openapi({ example: [{ url: "https://agent.example.com" }] }),
+            authorized_agents: z.array(z.object({ url: z.string(), authorized_for: z.string().optional() })).optional().openapi({
+              description:
+                "Ignored. Community-registry rows never assert sales authorization — the owner's origin adagents.json is the sole authorization source — so any value here is dropped and the stored document carries authorized_agents:[].",
+              example: [],
+            }),
             properties: z.array(z.object({ type: z.string(), name: z.string() })).optional().openapi({ example: [{ type: "website", name: "Example Publisher" }] }),
             contact: z.object({ name: z.string().optional(), email: z.string().optional() }).optional(),
           }),
@@ -4455,14 +4459,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
   router.post("/properties/save", ...saveMiddleware, async (req, res) => {
     try {
-      const { authorized_agents, properties, contact } = req.body;
+      const { properties, contact } = req.body;
       const rawDomain = req.body.publisher_domain as string;
 
       if (!rawDomain || typeof rawDomain !== "string") {
         return res.status(400).json({ error: "publisher_domain is required" });
-      }
-      if (!Array.isArray(authorized_agents)) {
-        return res.status(400).json({ error: "authorized_agents array is required" });
       }
 
       const publisher_domain = extractDomain(rawDomain);
@@ -4471,9 +4472,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         return res.status(400).json({ error: "Invalid domain format" });
       }
 
+      // Identity, not authorization: a community-registry row never asserts
+      // sales authorization. The owner's origin adagents.json is the sole
+      // authorization source, so caller-supplied authorized_agents is dropped
+      // and the stored document always carries authorized_agents:[] — matching
+      // the community-mirror write path (community-mirrors.ts) and the
+      // adagents.json spec, where an empty array asserts "no sales authorization".
       const adagentsJson: Record<string, unknown> = {
         $schema: "https://adcontextprotocol.org/schemas/latest/adagents.json",
-        authorized_agents,
+        authorized_agents: [],
         properties: properties || [],
       };
       if (contact) {

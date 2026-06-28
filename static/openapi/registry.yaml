@@ -4017,7 +4017,10 @@ paths:
     post:
       operationId: saveProperty
       summary: Save property
-      description: Save or update a hosted property in the registry. Requires authentication. For existing properties, creates a revision-tracked edit. For new properties, creates the property directly. Cannot edit authoritative properties managed via adagents.json.
+      description: |-
+        Save or update a hosted property in the registry. Requires authentication. For existing properties, creates a revision-tracked edit. For new properties, creates the property directly. Cannot edit authoritative properties managed via adagents.json.
+
+        This is an identity-only write surface: the stored document always carries `authorized_agents: []`. Sales authorization lives solely in the publisher's own origin `adagents.json`; the community registry cannot mint or carry it. Any `authorized_agents` sent in the request body is ignored.
       tags:
         - Property Resolution
       security:
@@ -4043,8 +4046,8 @@ paths:
                         type: string
                     required:
                       - url
-                  example:
-                    - url: https://agent.example.com
+                  description: Ignored. Community-registry rows never assert sales authorization — the owner's origin adagents.json is the sole authorization source — so any value here is dropped and the stored document carries authorized_agents:[].
+                  example: []
                 properties:
                   type: array
                   items:
@@ -4069,7 +4072,6 @@ paths:
                       type: string
               required:
                 - publisher_domain
-                - authorized_agents
       responses:
         "200":
           description: Property saved or updated

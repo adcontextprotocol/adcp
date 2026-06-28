@@ -395,14 +395,13 @@ result = requests.post(
 
 Save or update a hosted property in the registry. For existing properties, creates a revision-tracked edit. Cannot edit authoritative properties managed via `adagents.json` — those return `409 Conflict`.
 
+This is an identity-only write surface: the stored document always carries `authorized_agents: []`. Sales authorization lives solely in the publisher's own origin `adagents.json` — the community registry cannot mint or carry it — so any `authorized_agents` sent in the request body is ignored.
+
 **Request body:**
 
 ```json
 {
   "publisher_domain": "examplepub.com",
-  "authorized_agents": [
-    { "url": "https://agent.example.com", "authorized_for": "sell" }
-  ],
   "properties": [
     { "type": "website", "name": "Example Publisher" }
   ],
@@ -413,7 +412,7 @@ Save or update a hosted property in the registry. For existing properties, creat
 }
 ```
 
-`publisher_domain` and `authorized_agents` (each with a required `url` and optional `authorized_for`) are required. `properties` (each requiring `type` and `name`) and `contact` are optional. Domains are normalized (protocol stripped, lowercased).
+`publisher_domain` is required. `properties` (each requiring `type` and `name`) and `contact` are optional. Domains are normalized (protocol stripped, lowercased).
 
 <CodeGroup>
 
@@ -423,7 +422,6 @@ curl -X POST "https://agenticadvertising.org/api/properties/save" \
   -H "Content-Type: application/json" \
   -d '{
     "publisher_domain": "examplepub.com",
-    "authorized_agents": [{"url": "https://agent.example.com", "authorized_for": "sell"}],
     "properties": [{"type": "website", "name": "Example Publisher"}]
   }'
 ```
@@ -439,7 +437,6 @@ const res = await fetch(
     },
     body: JSON.stringify({
       publisher_domain: "examplepub.com",
-      authorized_agents: [{ url: "https://agent.example.com", authorized_for: "sell" }],
       properties: [{ type: "website", name: "Example Publisher" }],
     }),
   }
@@ -455,7 +452,6 @@ result = requests.post(
     headers={"Authorization": "Bearer YOUR_API_KEY"},
     json={
         "publisher_domain": "examplepub.com",
-        "authorized_agents": [{"url": "https://agent.example.com", "authorized_for": "sell"}],
         "properties": [{"type": "website", "name": "Example Publisher"}],
     },
 ).json()
