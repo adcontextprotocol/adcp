@@ -227,6 +227,13 @@ describe("/schemas HTTP routing", () => {
       expect(res.body.$id).toBe("/schemas/latest/trusted-match/context-match-request.json");
       expect(res.headers["cache-control"] ?? "").toContain("no-cache");
     });
+
+    it("keeps exact pinned /tmp/ schema artifacts authoritative when present", async () => {
+      const res = await request(app).get("/schemas/3.1.0/tmp/context-match-request.json");
+      expect(res.status).toBe(200);
+      expect(res.body.$id).toBe("/schemas/3.1.0/tmp/context-match-request.json");
+      expect(res.headers["cache-control"] ?? "").toContain("immutable");
+    });
   });
 
   describe("discovery endpoint", () => {

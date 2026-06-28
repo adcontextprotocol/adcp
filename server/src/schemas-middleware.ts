@@ -1,7 +1,6 @@
 import type { Application } from "express";
 import express from "express";
 import * as fs from "fs/promises";
-import path from "path";
 import semver from "semver";
 import { createLogger } from "./logger.js";
 
@@ -9,7 +8,8 @@ const logger = createLogger("schemas-middleware");
 
 // Alias paths like "/v2/...", "/v2.5/...", "/v12/..." (v1 is a special case → latest).
 const ALIAS_PATH = /^\/v(\d+)(?:\.(\d+))?(\/.*)?$/;
-const LEGACY_TMP_SCHEMA_PATH = /\/tmp\//;
+const LEGACY_TMP_SCHEMA_PATH =
+  /^\/(latest|\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\/tmp\/([A-Za-z0-9._-]+\.json)$/;
 
 function isPinnedVersionPath(requestPath: string): boolean {
   // /X.Y.Z(-prerelease)?/... where the first segment is a valid semver.
@@ -33,15 +33,6 @@ function matchVersionedDir(requestPath: string): string | null {
   const seg = m[1];
   if (seg === "latest" || semver.valid(seg) !== null) return seg;
   return null;
-}
-
-async function pathExists(filePath: string): Promise<boolean> {
-  try {
-    await fs.stat(filePath);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -87,6 +78,12 @@ function latestStableVersion(versions: string[]): string | null {
     const parsed = semver.parse(v);
     return parsed && parsed.prerelease.length === 0;
   }) ?? null;
+}
+
+function legacyTmpPathToTrustedMatch(requestPath: string): string | null {
+  const match = requestPath.match(LEGACY_TMP_SCHEMA_PATH);
+  if (!match) return null;
+  return `/${match[1]}/trusted-match/${match[2]}`;
 }
 
 function versionEntry(version: string, mountPath: string) {
@@ -391,10 +388,11 @@ function mountVersionedStaticRoutes(
     // Keep existing released `/tmp/` files authoritative when present, but
     // allow latest/future releases to serve the canonical `/trusted-match/`
     // files without keeping a misleading source directory alive.
-    if (LEGACY_TMP_SCHEMA_PATH.test(req.path)) {
-      const currentFile = path.join(rootPath, req.path);
-      if (!(await pathExists(currentFile))) {
-        req.url = req.url.replace(LEGACY_TMP_SCHEMA_PATH, "/trusted-match/");
+    if (!exactPinnedHit) {
+      const currentPath = req.path;
+      const trustedMatchPath = legacyTmpPathToTrustedMatch(currentPath);
+      if (trustedMatchPath) {
+        req.url = trustedMatchPath + req.url.slice(currentPath.length);
       }
     }
 
