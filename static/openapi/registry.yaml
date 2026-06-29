@@ -4118,6 +4118,73 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/properties/hosted/{domain}/claim:
+    post:
+      operationId: claimHostedPropertyDomain
+      summary: Claim a domain for bind-on-verify
+      description: |-
+        Issue a pending domain claim for the caller's organization and return a claim-specific `authoritative_location` URL (`…/adagents.json?adcp_claim=<token>`). The caller places that single pointer at their own origin `/.well-known/adagents.json`; a subsequent verify-origin reads the token and binds the domain to the caller's org. The token is the per-account artifact that proves WHICH account owns the domain — a plain domain-keyed pointer proves only that the origin endorses AAO hosting, not who the owner is.
+
+        The community write surface stays open; this does not gate writes — it establishes ownership on successful verification. Refused with 409 only when the domain is already verified and locked to a different owner.
+      tags:
+        - Property Resolution
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      parameters:
+        - schema:
+            type: string
+            example: examplepub.com
+          required: true
+          name: domain
+          in: path
+      responses:
+        "200":
+          description: Claim issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum:
+                      - true
+                  domain:
+                    type: string
+                  authoritative_location:
+                    type: string
+                  instructions:
+                    type: string
+                required:
+                  - success
+                  - domain
+                  - authoritative_location
+                  - instructions
+        "400":
+          description: Invalid domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Caller is not a member of any organization
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Domain already verified and locked to another owner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/properties/hosted/{domain}/verify-origin:
     post:
       operationId: verifyHostedPropertyOrigin
@@ -4125,7 +4192,7 @@ paths:
       description: |-
         Trigger origin verification for an AAO-hosted publisher: fetches the publisher's own `/.well-known/adagents.json` and checks for an `authoritative_location` field pointing at the AAO-hosted URL. On success, promotes `agent_publisher_authorizations` rows from `source='aao_hosted'` to `source='adagents_json'` for the manifest's authorized agents — buyers reading the registry then see them as origin-attested.
 
-        Requires authentication and either AAO admin OR org-membership matching the hosted property's owner. Fail-closed on NULL ownership.
+        Bind-on-verify: when the pointer carries an `adcp_claim` token (see the claim endpoint), a successful verification binds the domain to that claim's organization and returns `bound_org_id`. Binding is driven by which token the origin pointer carries, never by who triggers verification, so any authenticated caller may trigger it and a squatter cannot bind a domain they don't control. An existing verified owner is never overwritten.
 
         Failure classification:
         - `not_found`: publisher origin returned 404 (permanent — demotes if previously verified).
@@ -4168,6 +4235,8 @@ paths:
                     type: string
                   detail:
                     type: string
+                  bound_org_id:
+                    type: string
                 required:
                   - verified
                   - reason
@@ -4180,12 +4249,6 @@ paths:
                 $ref: "#/components/schemas/Error"
         "401":
           description: Authentication required
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "403":
-          description: Caller does not own this hosted property (and is not an AAO admin)
           content:
             application/json:
               schema:

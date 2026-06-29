@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import { query, getClient } from './client.js';
 import type { HostedProperty, ResolvedProperty, RegistryRevision } from '../types.js';
 
@@ -896,6 +897,93 @@ export class PropertyDatabase {
       [publisherDomain.toLowerCase()],
     );
     return result.rows[0] ? this.deserializeHostedProperty(result.rows[0]) : null;
+  }
+
+  /**
+   * Issue a pending domain claim for `claimantOrgId`. Creates the hosted row
+   * if absent (community / private / pending) and stamps a fresh claim token.
+   * The caller pastes a pointer carrying this token at their origin; a later
+   * `verify-origin` binds the owner via {@link bindOwnerFromVerifiedClaim}.
+   *
+   * Refuses to issue a claim for a domain already locked to a DIFFERENT org (a
+   * verified owner exists) — returns `{ token: null, lockedToOrgId }`.
+   */
+  async issueDomainClaim(
+    publisherDomain: string,
+    claimantOrgId: string,
+  ): Promise<{ token: string | null; lockedToOrgId?: string }> {
+    const domain = publisherDomain.toLowerCase();
+    const existing = await this.getHostedPropertyByDomain(domain);
+
+    // A row is "locked" once a verified owner is bound. Issuing a claim to a
+    // different org would be a takeover attempt — refuse. (Same org may re-issue.)
+    if (
+      existing?.origin_verified_at &&
+      existing.workos_organization_id &&
+      existing.workos_organization_id !== claimantOrgId
+    ) {
+      return { token: null, lockedToOrgId: existing.workos_organization_id };
+    }
+
+    const token = randomBytes(32).toString('base64url');
+
+    if (existing) {
+      await query(
+        `UPDATE hosted_properties
+            SET claim_token = $2, claimant_org_id = $3
+          WHERE publisher_domain = $1`,
+        [domain, token, claimantOrgId],
+      );
+    } else {
+      await this.createHostedProperty({
+        publisher_domain: domain,
+        adagents_json: {
+          $schema: 'https://adcontextprotocol.org/schemas/latest/adagents.json',
+          authorized_agents: [],
+          properties: [],
+        },
+        source_type: 'community',
+      });
+      await query(
+        `UPDATE hosted_properties
+            SET claim_token = $2, claimant_org_id = $3
+          WHERE publisher_domain = $1`,
+        [domain, token, claimantOrgId],
+      );
+    }
+    return { token };
+  }
+
+  /**
+   * Bind the owner from a verified claim. Sets `workos_organization_id` to the
+   * pending `claimant_org_id` and consumes the token — but ONLY when `token`
+   * matches the pending `claim_token` and the row is not already locked to a
+   * different org. Binding is therefore driven by which token the origin
+   * pointer carries, never by who triggers verification.
+   *
+   * Returns the bound org id, or null when no matching pending claim binds.
+   */
+  async bindOwnerFromVerifiedClaim(
+    publisherDomain: string,
+    token: string,
+  ): Promise<{ boundOrgId: string } | null> {
+    // Binding also publishes the row: an origin-verified, owned record is the
+    // publisher's authoritative document, not a pending community contribution.
+    const result = await query<HostedProperty>(
+      `UPDATE hosted_properties
+          SET workos_organization_id = claimant_org_id,
+              claim_token = NULL,
+              is_public = TRUE,
+              review_status = 'approved'
+        WHERE publisher_domain = $1
+          AND claim_token = $2
+          AND claimant_org_id IS NOT NULL
+          AND (workos_organization_id IS NULL OR workos_organization_id = claimant_org_id)
+        RETURNING workos_organization_id`,
+      [publisherDomain.toLowerCase(), token],
+    );
+    const bound = result.rows[0]?.workos_organization_id;
+    return bound ? { boundOrgId: bound } : null;
   }
 }
 
