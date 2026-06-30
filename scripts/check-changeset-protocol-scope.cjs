@@ -4,11 +4,23 @@ const { execFileSync } = require('child_process');
 
 const CHANGESET_FILE_RE = /^\.changeset\/[^/]+[.]md$/;
 const PROTOCOL_CHANGESET_RE = /^["']adcontextprotocol["']\s*:\s*(major|minor|patch)\s*$/m;
+const PROTOCOL_BUMP_RANK = new Map([
+  [null, 0],
+  ['patch', 1],
+  ['minor', 2],
+  ['major', 3],
+]);
+
+const REGISTRY_RELEASE_SCOPED_PATHS = [
+  /^static\/registry\//,
+  /^static\/openapi\/registry[.]yaml$/,
+  /^docs\/registry\//,
+  /^mintlify-docs\/registry\//,
+];
 
 const PROTOCOL_SCOPED_PATHS = [
   /^static\/schemas\/source\//,
   /^static\/compliance\/source\//,
-  /^static\/registry\//,
   /^docs\/reference\//,
   /^mintlify-docs\/reference\//,
   /^dist\/(?:schemas|compliance)\//,
@@ -62,17 +74,93 @@ function isChangesetFile(filePath) {
 }
 
 function changesetTargetsProtocol(content) {
-  return PROTOCOL_CHANGESET_RE.test(String(content || ''));
+  return changesetProtocolBump(content) !== null;
+}
+
+function changesetProtocolBump(content) {
+  const match = String(content || '').match(PROTOCOL_CHANGESET_RE);
+  return match ? match[1] : null;
+}
+
+function protocolBumpRank(bump) {
+  return PROTOCOL_BUMP_RANK.get(bump ?? null) ?? 0;
 }
 
 function isProtocolScopedPath(filePath) {
   const normalized = normalizePath(filePath);
   if (isChangesetFile(normalized)) return false;
+  if (REGISTRY_RELEASE_SCOPED_PATHS.some(pattern => pattern.test(normalized))) return false;
   return PROTOCOL_SCOPED_PATHS.some(pattern => pattern.test(normalized));
 }
 
 function hasProtocolScopedChanges(changes) {
   return changes.some(change => (change.paths || []).some(isProtocolScopedPath));
+}
+
+function isChangesetMaintenancePath(filePath) {
+  const normalized = normalizePath(filePath);
+  return isChangesetFile(normalized) || CHANGESET_POLICY_CODE_PATHS.has(normalized);
+}
+
+function isChangesetEditOnlyMaintenance(changes) {
+  let editedExistingChangeset = false;
+
+  for (const change of changes) {
+    for (const filePath of change.paths || []) {
+      const normalized = normalizePath(filePath);
+
+      if (!isChangesetMaintenancePath(normalized)) return false;
+
+      if (isChangesetFile(normalized)) {
+        if (change.status === 'A') return false;
+        if (change.status !== 'M' && change.status !== 'D') return false;
+        if (change.status === 'M') editedExistingChangeset = true;
+      }
+    }
+  }
+
+  return editedExistingChangeset;
+}
+
+function isChangesetBumpDowngradeOrRemoval(baseContent, headContent) {
+  return protocolBumpRank(changesetProtocolBump(headContent)) < protocolBumpRank(changesetProtocolBump(baseContent));
+}
+
+function isChangesetBumpEscalation(baseContent, headContent) {
+  return protocolBumpRank(changesetProtocolBump(headContent)) > protocolBumpRank(changesetProtocolBump(baseContent));
+}
+
+function isChangesetClassificationMaintenance(changes, readFileAtHead, readFileAtBase) {
+  if (!isChangesetEditOnlyMaintenance(changes)) return false;
+
+  let hasDowngradeOrRemoval = false;
+
+  for (const change of changes) {
+    for (const filePath of change.paths || []) {
+      const normalized = normalizePath(filePath);
+      if (!isChangesetFile(normalized)) continue;
+      if (change.status === 'D') continue;
+      if (change.status !== 'M') return false;
+
+      const headContent = readFileAtHead(normalized);
+      const baseContent = readFileAtBase(normalized);
+
+      if (isChangesetBumpEscalation(baseContent, headContent)) {
+        return false;
+      }
+
+      if (isChangesetBumpDowngradeOrRemoval(baseContent, headContent)) {
+        hasDowngradeOrRemoval = true;
+        continue;
+      }
+
+      if (changesetTargetsProtocol(headContent)) {
+        return false;
+      }
+    }
+  }
+
+  return hasDowngradeOrRemoval;
 }
 
 function isChangesetDeleteOnlyCleanup(changes) {
@@ -125,7 +213,7 @@ function changedPathForHead(change) {
   return change.paths[change.paths.length - 1] || null;
 }
 
-function findChangesetProtocolScopeViolations(changes, readFileAtHead) {
+function findChangesetProtocolScopeViolations(changes, readFileAtHead, readFileAtBase = () => '') {
   const changesetFiles = [];
   const protocolScopedFiles = [];
 
@@ -146,6 +234,10 @@ function findChangesetProtocolScopeViolations(changes, readFileAtHead) {
     });
   }
 
+  if (protocolScopedFiles.length === 0 && isChangesetClassificationMaintenance(changes, readFileAtHead, readFileAtBase)) {
+    return [];
+  }
+
   if (changesetFiles.length === 0 || protocolScopedFiles.length > 0) {
     return [];
   }
@@ -164,6 +256,10 @@ function git(args) {
 
 function readFileAtHead(filePath) {
   return git(['show', `HEAD:${filePath}`]);
+}
+
+function readFileAtRef(ref, filePath) {
+  return git(['show', `${ref}:${filePath}`]);
 }
 
 function defaultBaseRef() {
@@ -221,7 +317,11 @@ function run(argv = process.argv.slice(2)) {
     return 1;
   }
 
-  const violations = findChangesetProtocolScopeViolations(changes, readFileAtHead);
+  const violations = findChangesetProtocolScopeViolations(
+    changes,
+    readFileAtHead,
+    filePath => readFileAtRef(baseRef, filePath)
+  );
 
   if (violations.length > 0) {
     console.error(formatViolationMessage(violations));
@@ -237,11 +337,16 @@ if (require.main === module) {
 }
 
 module.exports = {
+  changesetProtocolBump,
   changesetTargetsProtocol,
   findChangesetProtocolScopeViolations,
   formatViolationMessage,
   hasProtocolScopedChanges,
+  isChangesetBumpDowngradeOrRemoval,
+  isChangesetBumpEscalation,
+  isChangesetClassificationMaintenance,
   isChangesetDeleteOnlyCleanup,
+  isChangesetEditOnlyMaintenance,
   isChangesetStatusExemptMaintenance,
   isProtocolScopedPath,
   parseNameStatus,
