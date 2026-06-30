@@ -938,8 +938,15 @@ export async function handleAcquireRights(
   }
 
   if (campaign.end_date) {
+    // end_date is inclusive through the end of that UTC day — the success path
+    // sets valid_until to 23:59:59Z. Reject only once that whole day is past, so
+    // a campaign ending today (new Date('YYYY-MM-DD') parses to 00:00:00Z) stays
+    // licensable rather than going spuriously "expired" the instant midnight UTC
+    // ticks over.
     const endMs = new Date(campaign.end_date).getTime();
-    if (!Number.isNaN(endMs) && endMs < Date.now()) {
+    const now = new Date(Date.now());
+    const startOfTodayMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    if (!Number.isNaN(endMs) && endMs < startOfTodayMs) {
       return {
         errors: [{
           code: 'INVALID_REQUEST',
