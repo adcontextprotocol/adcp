@@ -413,6 +413,38 @@
                       "minItems": 1
                     }
                   }
+                },
+                "url_allowlist": {
+                  "type": "object",
+                  "description": "URL allowlist targeting capabilities. Presence indicates support for targeting_overlay.url_allowlist. Sellers MUST reject media buys carrying url_allowlist entries whose `type` is not in `supported_types` (rather than silently dropping them).",
+                  "properties": {
+                    "supported_types": {
+                      "type": "array",
+                      "description": "Entry types this seller accepts for url_allowlist. Some sellers accept only pre-hashed values (`url_hash`) to keep raw URLs off the wire; some accept both forms and canonicalize raw URLs on receipt.",
+                      "items": {
+                        "type": "string",
+                        "enum": ["url", "url_hash"]
+                      },
+                      "minItems": 1
+                    }
+                  },
+                  "required": ["supported_types"]
+                },
+                "url_blocklist": {
+                  "type": "object",
+                  "description": "URL blocklist targeting capabilities. Presence indicates support for targeting_overlay.url_blocklist. Sellers MUST reject media buys carrying url_blocklist entries whose `type` is not in `supported_types` (rather than silently dropping them).",
+                  "properties": {
+                    "supported_types": {
+                      "type": "array",
+                      "description": "Entry types this seller accepts for url_blocklist. Some sellers accept only pre-hashed values (`url_hash`); some accept both forms and canonicalize raw URLs on receipt.",
+                      "items": {
+                        "type": "string",
+                        "enum": ["url", "url_hash"]
+                      },
+                      "minItems": 1
+                    }
+                  },
+                  "required": ["supported_types"]
                 }
               }
             }
