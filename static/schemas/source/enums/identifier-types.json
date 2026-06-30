@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/identifier-types.json",
-  "title": "Property Identifier Types",
-  "description": "Valid identifier types for property identification across different media types",
+  "title": "Identifier Types",
+  "description": "Valid identifier types for property and placement identification across different media types",
   "type": "string",
   "enum": [
     "domain",

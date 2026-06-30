@@ -277,6 +277,21 @@ The field is an array because a sellable product can aggregate multiple surfaces
 
 This is a discovery signal, not a verification claim. Buyers can filter for products that can satisfy a requested surface with `get_products.filters.social_placement_surfaces`, but sellers should not return mixed, non-targetable bundles unless they can constrain delivery to the requested surface during planning or purchase.
 
+#### DOOH placement attributes
+
+Digital out-of-home placements can declare structured selling-unit metadata via `dooh_placement_attributes` at the placement level (both in product placements and in `adagents.json` placement definitions). These fields describe the physical screen and ad-loop characteristics that buyers need for creative production and share-of-voice calculations:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `slot_duration_seconds` | integer | Duration of one ad slot in seconds (e.g., 10, 15, 30) |
+| `loop_duration_seconds` | integer | Duration of the full ad loop rotation in seconds. Buyers derive nominal slot share as `slot_duration_seconds / loop_duration_seconds`. This is the canonical source; the pricing-layer field in `flat-rate-option` is superseded |
+| `screen_resolution` | object | Physical screen resolution (`{ width, height }` in pixels). Buyers derive aspect ratio from `width / height` |
+| `motion` | string | Motion capability of the screen: `full_motion` (video), `partial_motion` (animated stills), or `static` (images only) |
+
+All fields are optional. A single screen/frame placement can include all fields; a package or network placement should include only fields that are uniform across the included inventory.
+
+Placements can also carry `identifiers[]` using the same `{ type, value }` shape as property identifiers. DOOH placements commonly use `venue_id`, `screen_id`, and `openooh_venue_type` identifier types. Externally governed IDs should be authority-prefixed (e.g., `geopath:30961`).
+
 #### Format precedence with placements
 
 Product-level `format_ids` and `format_options` define the creative formats accepted by the product as a whole. Placement-level `format_ids` or `format_options`, whether returned inline on the product placement or inherited from a public publisher placement declaration, only narrow that product-wide set for the specific placement.
