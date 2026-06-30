@@ -134,22 +134,41 @@ function canonicalize(url: string): string | null {
  * The verifier classifies these so the caller can decide whether to
  * demote (permanent) or leave state alone (transient).
  */
+function collectErrorText(err: Error): string {
+  const parts: string[] = [];
+  const seen = new Set<object>();
+  let current: unknown = err;
+
+  while (current && typeof current === 'object' && !seen.has(current)) {
+    seen.add(current);
+    const value = current as { message?: unknown; code?: unknown; codes?: unknown; cause?: unknown };
+    if (typeof value.message === 'string') parts.push(value.message);
+    if (typeof value.code === 'string') parts.push(value.code);
+    if (Array.isArray(value.codes)) {
+      for (const code of value.codes) {
+        if (typeof code === 'string') parts.push(code);
+      }
+    }
+    current = value.cause;
+  }
+
+  return parts.join(' ');
+}
+
 function classifyFetchError(err: unknown): 'unresolvable' | 'transient' {
   if (!(err instanceof Error)) return 'transient';
-  const msg = err.message || '';
-  // EAI_AGAIN is a *temporary* resolver failure — always transient, never a
-  // lapse. (Today url-security collapses DNS failures into "Could not resolve
-  // hostname" so this rarely surfaces, but classify it correctly regardless.)
-  if (/EAI_AGAIN/i.test(msg)) return 'transient';
-  // Permanent: SSRF/validation rejections and genuine NXDOMAIN. safeFetch
-  // surfaces NXDOMAIN as "Could not resolve hostname" (utils/url-security.ts),
-  // so a dropped/expired domain lapses its verification and releases the owner
-  // lock for re-claim. A transient DNS blip that slips through here self-heals:
-  // the lapse clears only origin_verified_at (not workos_organization_id), so
-  // the next successful re-verify of the owner's still-present pointer re-stamps
-  // it and re-arms the lock.
+  const text = collectErrorText(err);
+  // Temporary resolver failures may be wrapped in `cause` by safeFetch's DNS
+  // preflight. Preserve the verified state whenever any resolver result was
+  // transient; a later successful re-verify will refresh the stamp.
+  if (/\b(EAI_AGAIN|ESERVFAIL|ETIMEOUT|ECONNREFUSED)\b/i.test(text)) return 'transient';
+  // Permanent: SSRF/validation rejections and genuine NXDOMAIN/no-address DNS.
+  // A generic "Could not resolve hostname" without a DNS code is deliberately
+  // not enough to lapse the lock, because validateHostResolution can collapse
+  // transient resolver failures into that same top-level message.
   if (
-    /private|loopback|link-local|metadata|invalid host|invalid url|invalid scheme|unresolvable|could not resolve hostname|ENOTFOUND|EAI_NONAME/i.test(msg)
+    /private|loopback|link-local|metadata|invalid host|invalid url|invalid scheme|unresolvable/i.test(text) ||
+    /\b(ENOTFOUND|EAI_NONAME|ENODATA|ENONAME|EAI_NODATA)\b/i.test(text)
   ) {
     return 'unresolvable';
   }

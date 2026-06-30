@@ -209,7 +209,7 @@ describe('bind-on-verify domain claims', () => {
     expect((await propertyDb.getHostedPropertyByDomain(PUB))!.workos_organization_id).toBe(ORG_B);
   });
 
-  it('lapses on NXDOMAIN — an expired domain ("Could not resolve hostname") is a permanent failure', async () => {
+  it('lapses on NXDOMAIN — an expired domain is a permanent DNS failure', async () => {
     const { token } = await propertyDb.issueDomainClaim(PUB, ORG_A);
     await verifyHostedPropertyOrigin({
       hosted: (await propertyDb.getHostedPropertyByDomain(PUB))!,
@@ -217,10 +217,14 @@ describe('bind-on-verify domain claims', () => {
     });
     expect((await propertyDb.getHostedPropertyByDomain(PUB))!.origin_verified_at).toBeTruthy();
 
-    // Domain expired → DNS NXDOMAIN → safeFetch throws "Could not resolve hostname".
+    // Domain expired → DNS NXDOMAIN. safeFetch's top-level message is generic,
+    // but validateHostResolution preserves the DNS code in the cause.
+    const nxdomain = Object.assign(new Error(`Could not resolve hostname: ${PUB}`), {
+      cause: { code: 'ENOTFOUND', codes: ['ENOTFOUND'], hostname: PUB },
+    });
     const outcome = await verifyHostedPropertyOrigin({
       hosted: (await propertyDb.getHostedPropertyByDomain(PUB))!,
-      fetchImpl: vi.fn().mockRejectedValue(new Error(`Could not resolve hostname: ${PUB}`)),
+      fetchImpl: vi.fn().mockRejectedValue(nxdomain),
     });
     expect(outcome.verified).toBe(false);
     if (!outcome.verified) expect(outcome.reason).toBe('unresolvable');
