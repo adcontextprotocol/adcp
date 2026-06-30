@@ -21,11 +21,11 @@ The `activate_signal` task handles the entire activation lifecycle, including:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `idempotency_key` | string | Yes | Client-generated unique key for this request. Prevents duplicate activations on retries. MUST be unique per (seller, request) pair. Min 16 chars. See [Idempotency](/docs/building/implementation/security#idempotency) for normative semantics. |
+| `idempotency_key` | string | Yes | Client-generated unique key for this request. Prevents duplicate activations on retries. MUST be unique per (seller, request) pair. Min 16 chars. See [Idempotency](/docs/building/by-layer/L1/security#idempotency) for normative semantics. |
 | `signal_agent_segment_id` | string | Yes | Opaque signal handle from `get_signals` for the signal to activate |
 | `action` | string | No | `"activate"` (default) or `"deactivate"`. Deactivating removes segments from downstream platforms for data governance compliance (GDPR, CCPA). |
 | `destinations` | Destination[] | Yes | Target destination(s) for activation (see Destination Object below) |
-| `account` | [AccountRef](/docs/building/integration/accounts-and-agents#account-references) | No | Account for this activation. Associates with a commercial relationship established via `sync_accounts`. |
+| `account` | [AccountRef](/docs/building/by-layer/L2/accounts-and-agents#account-references) | No | Account for this activation. Associates with a commercial relationship established via `sync_accounts`. |
 | `pricing_option_id` | string | Yes (if signal has pricing options) | The pricing option selected from `pricing_options` in the [`get_signals`](/docs/signals/tasks/get_signals) response. Records the buyer's pricing commitment at activation time. Pass this same value in subsequent `report_usage` calls. |
 
 ### Destination Object
@@ -356,7 +356,7 @@ Authorization: Bearer secret-token
 }
 ```
 
-See **[Webhooks](/docs/building/implementation/webhooks)** for complete details on webhook configuration and reliability.
+See **[Webhooks](/docs/building/by-layer/L3/webhooks)** for complete details on webhook configuration and reliability.
 
 ## Scenarios
 

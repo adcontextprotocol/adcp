@@ -21,7 +21,7 @@ This module covers AdCP-specific controls — the threat model, layered defenses
 
 ## Specialisms this track prepares you to validate
 
-The following `specialisms` fall under the security domain. Each has its own compliance storyboard — see the [Compliance Catalog](/docs/building/compliance-catalog) for the full taxonomy.
+The following `specialisms` fall under the security domain. Each has its own compliance storyboard — see the [Compliance Catalog](/docs/building/verification/compliance-catalog) for the full taxonomy.
 
 | Specialism | Status | What it covers |
 |---|---|---|
@@ -45,10 +45,10 @@ S4 (Governance) covers the 15-step JWS seller verification from the **seller's**
 ## Prerequisite reading
 
 <CardGroup cols={2}>
-  <Card title="Security model" icon="shield" href="/docs/building/understanding/security-model">
+  <Card title="Security model" icon="shield" href="/docs/building/concepts/security-model">
     AdCP's five-layer defense model: identity, isolation, idempotency, signed governance, and auditability.
   </Card>
-  <Card title="Security implementation" icon="lock" href="/docs/building/implementation/security">
+  <Card title="Security implementation" icon="lock" href="/docs/building/by-layer/L1/security">
     Implementation reference: idempotency enforcement, webhook HMAC verification, SSRF discipline, signed governance, principal isolation, and insert-rate ceiling.
   </Card>
   <Card title="Campaign governance specification" icon="file-code" href="/docs/governance/campaign/specification">
@@ -60,7 +60,7 @@ S4 (Governance) covers the 15-step JWS seller verification from the **seller's**
   <Card title="Accounts and security" icon="key" href="/docs/media-buy/advanced-topics/accounts-and-security">
     Principal isolation, account-scoped access, and multi-tenant separation.
   </Card>
-  <Card title="Authentication" icon="fingerprint" href="/docs/building/integration/authentication">
+  <Card title="Authentication" icon="fingerprint" href="/docs/building/by-layer/L2/authentication">
     static-credential enforcement, OAuth discovery, RFC 9728 audience binding, and the authentication baseline specialism.
   </Card>
 </CardGroup>
