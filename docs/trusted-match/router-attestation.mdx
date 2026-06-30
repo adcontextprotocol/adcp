@@ -23,14 +23,14 @@ GET /.well-known/tmp-router-attestation?nonce=<base64url, 16-32 raw bytes>
 - Path: `/.well-known/tmp-router-attestation` (per [RFC 8615](https://datatracker.ietf.org/doc/html/rfc8615)). Public; no authentication.
 - Query parameter: `nonce` — base64url-encoded (RFC 4648 §5, unpadded). The decoded value MUST be at least 16 and at most 32 raw bytes of cryptographically random data (22–43 characters in the encoded form). The router MUST reject requests where `nonce` is shorter than 16 raw bytes, longer than 32 raw bytes, or contains characters outside the base64url alphabet.
 - Method: `GET`. No request body.
-- Response: HTTP `200`, `Content-Type: application/json`, body validating against [`/schemas/trusted-match/router-attestation.json`](/schemas/trusted-match/router-attestation.json).
+- Response: HTTP `200`, `Content-Type: application/json`, body validating against [`/schemas/trusted-match/router-attestation.json`](https://adcontextprotocol.org/schemas/v3/trusted-match/router-attestation.json).
 - Error responses: HTTP `400` for nonce-validation failures, `503` when the enclave is unable to produce an attestation document (e.g., during startup or vendor-side outage). The router MUST NOT return `200` with a partial or malformed envelope.
 
 The endpoint is rate-limit-sensitive (envelope production involves vendor-side cryptographic operations); routers SHOULD rate-limit per source IP (recommended: 10 req/sec) and SHOULD cache nothing — every request produces a fresh envelope so the verifier-supplied nonce binds to this fetch.
 
 ## Envelope
 
-The response is a single object matching [`/schemas/trusted-match/router-attestation.json`](/schemas/trusted-match/router-attestation.json):
+The response is a single object matching [`/schemas/trusted-match/router-attestation.json`](https://adcontextprotocol.org/schemas/v3/trusted-match/router-attestation.json):
 
 ```jsonc
 {
@@ -55,7 +55,7 @@ The response is a single object matching [`/schemas/trusted-match/router-attesta
 | `attestation_format` | enum | Yes | Canonical identifier of the platform attestation format and version. v1 set: `aws_nitro_cose_sign1_v1`, `intel_tdx_quote_v4`, `amd_sev_snp_attestation_v1`, `gcp_confidential_space_v1`. Each value names a single externally-defined attestation format; the verifier kit for the named format parses the document. Extension is via `ext` plus a future enum addition. |
 | `attestation_document` | string | Yes | Base64url-encoded (RFC 4648 §5, unpadded) attestation document in the declared format. Opaque to AdCP. Verifier kits perform vendor-root signature verification, extract measurements, and map the envelope's generic `nonce` and `signing_key` onto the format-specific user-data slot. |
 | `nonce` | string | Yes | Base64url echo of the request's `nonce` query parameter. The verifier MUST compare this value byte-for-byte against the value it sent (Verification step 1) AND MUST confirm it appears in the user-data slot of `attestation_document` (Verification step 4). |
-| `signing_key` | JWK | Yes | The public key the router uses to sign per-provider outbound requests (RFC 9421 path described in [Identity Match signed fields](/docs/trusted-match/specification#identity-match-signed-fields)). Same JWK shape as [`/schemas/core/agent-signing-key.json`](/schemas/core/agent-signing-key.json). Subject to the [binding rule](#binding-rule). |
+| `signing_key` | JWK | Yes | The public key the router uses to sign per-provider outbound requests (RFC 9421 path described in [Identity Match signed fields](/docs/trusted-match/specification#identity-match-signed-fields)). Same JWK shape as [`/schemas/core/agent-signing-key.json`](https://adcontextprotocol.org/schemas/v3/core/agent-signing-key.json). Subject to the [binding rule](#binding-rule). |
 | `expires_at` | string (date-time) | Yes | RFC 3339 timestamp; the router's suggested freshness ceiling. Verifiers MUST reject envelopes where the current time is past this value, and MAY enforce a tighter window via `attestation_requirement.min_freshness_sec` on their provider registration. |
 | `ext` | object | No | Vendor-namespaced extension surface. MUST NOT be used to shadow the binding rule or to carry an alternative attestation document. |
 
@@ -79,7 +79,7 @@ The nonce is the verifier-controlled freshness signal. Without it, a captured en
 
 This rule is the protocol-level invariant that anchors the existing per-provider RFC 9421 signature path to the attested binary. Without it, a router could attest a clean binary and then sign requests with a different (deployment-side) key — every per-provider signature would verify, but no protocol mechanism would detect the swap. With it, every per-provider signature inherits the attestation: the signing key is provably the key the attested enclave committed to.
 
-The bound key is *the same key* the provider already verifies request signatures against ([Identity Match signed fields](/docs/trusted-match/specification#identity-match-signed-fields)). The trust anchor in [`agent-signing-key.json`](/schemas/core/agent-signing-key.json) is the discovery surface for the publishable key; the envelope carries the JWK directly (not the thumbprint) so the verifier can re-derive the canonical form and compare.
+The bound key is *the same key* the provider already verifies request signatures against ([Identity Match signed fields](/docs/trusted-match/specification#identity-match-signed-fields)). The trust anchor in [`agent-signing-key.json`](https://adcontextprotocol.org/schemas/v3/core/agent-signing-key.json) is the discovery surface for the publishable key; the envelope carries the JWK directly (not the thumbprint) so the verifier can re-derive the canonical form and compare.
 
 The slot-projection convention (how the JWK and nonce are laid out in the platform user-data slot) is defined in each verifier kit, not in this schema, because the slot name and concatenation rules differ per platform (Nitro `user_data`, TDX/SEV-SNP `REPORTDATA`, GCP claim format).
 
@@ -104,7 +104,7 @@ The header value is the base64url-encoded (RFC 4648 §5, unpadded) UTF-8 JSON se
 
 A provider that requires attestation:
 
-1. Reads `X-TMP-Attestation`, base64url-decodes, JSON-parses, schema-validates against [`/schemas/trusted-match/router-attestation.json`](/schemas/trusted-match/router-attestation.json).
+1. Reads `X-TMP-Attestation`, base64url-decodes, JSON-parses, schema-validates against [`/schemas/trusted-match/router-attestation.json`](https://adcontextprotocol.org/schemas/v3/trusted-match/router-attestation.json).
 2. Runs the [Verification flow](#verification-flow) below, with the caveat that the per-request nonce check (step 1) is relaxed in favor of the envelope's `expires_at` + the provider's `min_freshness_sec` — per-request nonce is impractical because the provider did not initiate the fetch. Per-request integrity is supplied by the per-provider RFC 9421 signature on the request payload (signed by the same `signing_key` from the envelope), and the binding rule ensures that signing key is the attested one.
 3. Caches the verified envelope by `signing_key` thumbprint for at most `min_freshness_sec`. Subsequent requests under the same `kid` reuse the cached verification; on `kid` change or expiry, re-verify.
 4. On any verification failure ([failure modes](#failure-modes)), rejects the request with HTTP `403` and an `error` body whose `code` reflects the failure class.
@@ -147,7 +147,7 @@ On any rejection, the provider returns HTTP `403` to the calling router with a T
 
 The router already signs per-provider requests over a canonical preimage ([Identity Match signed fields](/docs/trusted-match/specification#identity-match-signed-fields)). The attestation envelope does not replace that signature path; it anchors it.
 
-- The provider's per-request verification path (verify Ed25519 signature against the publisher's trust anchor in [`agent-signing-key.json`](/schemas/core/agent-signing-key.json)) is unchanged.
+- The provider's per-request verification path (verify Ed25519 signature against the publisher's trust anchor in [`agent-signing-key.json`](https://adcontextprotocol.org/schemas/v3/core/agent-signing-key.json)) is unchanged.
 - The router's per-provider re-signing on the [Identity Match fan-out](/docs/trusted-match/router-architecture#identity-match-fan-out) is unchanged.
 - The binding rule (Verification step 7) is added at envelope-verification time: the public key already in the trust anchor MUST byte-equal the public key bound in the platform user-data slot. Once the binding is verified, every subsequent per-request signature from that key inherits the attestation, because the signing key is provably held by the attested binary.
 
