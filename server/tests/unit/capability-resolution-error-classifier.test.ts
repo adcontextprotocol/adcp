@@ -94,6 +94,22 @@ describe('classifyCapabilityResolutionError', () => {
     expect(info?.kind).toBe('specialism_parent_protocol_missing');
   });
 
+  it('classifies hyphenated supported_protocols near-misses as unrecognized protocol values', () => {
+    const err = new Error(
+      'Agent declared specialism "sales-guaranteed" (parent protocol: media_buy) ' +
+      'but did not include "media_buy" in supported_protocols. ' +
+      'Every specialism must roll up to a declared protocol per the AdCP spec.',
+    );
+
+    expect(classifyCapabilityResolutionError(err, ['media-buy'])).toEqual({
+      kind: 'unrecognized_supported_protocol',
+      specialism: 'sales-guaranteed',
+      parentProtocol: 'media_buy',
+      declaredProtocol: 'media-buy',
+      expectedProtocol: 'media_buy',
+    });
+  });
+
   it('requires the match to be anchored at the start (no smuggling via prefix)', () => {
     // An attacker-crafted error that embeds the structure later in the
     // message should not match — otherwise a hostile specialism id could
@@ -222,6 +238,33 @@ describe('presentCapabilityResolutionError', () => {
       error_kind: 'unsupported_adcp_version',
       compliance_version: '3.1.0-beta.5',
       supported_versions: '3.0, 3.1',
+    });
+  });
+
+  it('formats unrecognized supported protocol values for all sinks', () => {
+    const presentation = presentCapabilityResolutionError({
+      kind: 'unrecognized_supported_protocol',
+      specialism: 'sales-guaranteed',
+      parentProtocol: 'media_buy',
+      declaredProtocol: 'media-buy',
+      expectedProtocol: 'media_buy',
+    });
+    expect(presentation.headline).toContain('media-buy');
+    expect(presentation.headline).toContain('media_buy');
+    expect(presentation.headline).not.toMatch(/[\r\n]/);
+    expect(presentation.logMsg).toBe('Agent declared unrecognized supported_protocols value');
+    expect(presentation.logFields).toEqual({
+      specialism: 'sales-guaranteed',
+      parentProtocol: 'media_buy',
+      declaredProtocol: 'media-buy',
+      expectedProtocol: 'media_buy',
+    });
+    expect(presentation.restBody).toEqual({
+      error_kind: 'unrecognized_supported_protocol',
+      specialism: 'sales-guaranteed',
+      parent_protocol: 'media_buy',
+      declared_protocol: 'media-buy',
+      expected_protocol: 'media_buy',
     });
   });
 });

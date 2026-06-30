@@ -48,6 +48,7 @@ import {
   selectComplianceTargetForAgent,
   selectComplianceTargetForAgentSelection,
   type ComplyOptions,
+  type CapabilityResolutionErrorInfo,
   type ComplianceTargetSelection,
   type ComplianceTrack,
 } from '../services/compliance-testing.js';
@@ -573,6 +574,25 @@ async function inferHostedAuthProbeTask(
   } catch (error) {
     logger.warn({ error, agentUrl }, 'Addie: could not infer hosted auth probe task; using default');
     return undefined;
+  }
+}
+
+async function classifyCapabilityResolutionErrorWithDeclaredProtocols(
+  error: unknown,
+  agentUrl: string,
+  auth: ReturnType<typeof buildAuthOption>,
+): Promise<CapabilityResolutionErrorInfo | undefined> {
+  const initial = classifyCapabilityResolutionError(error);
+  if (initial?.kind !== 'specialism_parent_protocol_missing') return initial;
+
+  try {
+    const caps = await testCapabilityDiscovery(agentUrl, {
+      ...(auth && { auth }),
+    });
+    return classifyCapabilityResolutionError(error, caps.profile?.supported_protocols ?? []) ?? initial;
+  } catch (probeError) {
+    logger.warn({ probeError, agentUrl }, 'evaluate_agent_quality: could not reprobe capabilities after resolver error');
+    return initial;
   }
 }
 
@@ -4736,7 +4756,11 @@ export function createMemberToolHandlers(
       return output;
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unknown error';
-      const capsError = classifyCapabilityResolutionError(error);
+      const capsError = await classifyCapabilityResolutionErrorWithDeclaredProtocols(
+        error,
+        resolved.resolvedUrl,
+        authOption,
+      );
 
       // Agent-declared strings (specialism id, parent protocol name) reach
       // the LLM via this tool result, so fence them to neutralise markdown /
@@ -4762,6 +4786,18 @@ export function createMemberToolHandlers(
           );
         }
         const safeSpec = fenceAgentValue(capsError.specialism ?? '', 80);
+        if (capsError.kind === 'unrecognized_supported_protocol') {
+          const safeDeclared = fenceAgentValue(capsError.declaredProtocol ?? '', 80);
+          const safeExpected = fenceAgentValue(capsError.expectedProtocol ?? capsError.parentProtocol ?? '', 80);
+          return (
+            `**Capabilities misconfigured.** The agent at ${resolved.resolvedUrl} declares the ` +
+            `${safeSpec} specialism, but \`supported_protocols\` contains the unrecognized ` +
+            `value ${safeDeclared}.\n\n` +
+            `Use the canonical protocol id ${safeExpected} instead. Protocol ids use underscores, ` +
+            `not hyphens. Update the agent's \`get_adcp_capabilities\` response, redeploy, then ` +
+            `re-run \`evaluate_agent_quality\`.`
+          );
+        }
         if (capsError.kind === 'specialism_parent_protocol_missing') {
           const safeParent = fenceAgentValue(capsError.parentProtocol ?? '', 80);
           return (
@@ -4982,7 +5018,7 @@ export function createMemberToolHandlers(
       const res = resolveStoryboardsForCapabilities(caps, runOptions);
       resolvedBundles = res.bundles;
     } catch (error) {
-      const capsError = classifyCapabilityResolutionError(error);
+      const capsError = classifyCapabilityResolutionError(error, supportedProtocols);
       // specialism ids came from the untrusted agent — fence them so a hostile
       // id string can't break out of the markdown fence.
       const safeDeclared = specialisms.map(s => fenceAgentValue(s, 80)).filter(Boolean).join(', ');
@@ -4999,6 +5035,17 @@ export function createMemberToolHandlers(
             .join(', ');
           output += `**Unsupported compliance target.** The selected compliance target resolves to ${safeVersion}, but the agent advertises \`adcp.supported_versions\`: ${safeSupported || '`(none advertised)`'}.\n\n`;
           output += `Select a compatible compliance target, then re-run \`recommend_storyboards\`.\n`;
+          return output;
+        }
+        if (capsError.kind === 'unrecognized_supported_protocol') {
+          const safeSpec = fenceAgentValue(capsError.specialism ?? '', 80);
+          const safeDeclaredProtocol = fenceAgentValue(capsError.declaredProtocol ?? '', 80);
+          const safeExpectedProtocol = fenceAgentValue(capsError.expectedProtocol ?? capsError.parentProtocol ?? '', 80);
+          output += `**Capabilities misconfigured.** The agent declares the ${safeSpec} specialism, but \`supported_protocols\` contains the unrecognized value ${safeDeclaredProtocol}.\n\n`;
+          if (safeProtocolsDeclared) {
+            output += `Currently declared protocols: ${safeProtocolsDeclared}.\n\n`;
+          }
+          output += `Use the canonical protocol id ${safeExpectedProtocol} instead. Protocol ids use underscores, not hyphens. Update \`get_adcp_capabilities\`, redeploy, then re-run \`recommend_storyboards\`.\n`;
           return output;
         }
         if (capsError.kind === 'specialism_parent_protocol_missing') {

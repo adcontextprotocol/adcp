@@ -220,12 +220,15 @@ export function badgeEligibleVersionsForTargetSelection(
 export type CapabilityResolutionErrorKind =
   | 'specialism_parent_protocol_missing'
   | 'unknown_specialism'
-  | 'unsupported_adcp_version';
+  | 'unsupported_adcp_version'
+  | 'unrecognized_supported_protocol';
 
 export interface CapabilityResolutionErrorInfo {
   kind: CapabilityResolutionErrorKind;
   specialism?: string;
   parentProtocol?: string;
+  declaredProtocol?: string;
+  expectedProtocol?: string;
   complianceVersion?: string;
   supportedVersions?: string[];
 }
@@ -266,7 +269,16 @@ function parseSupportedVersionList(value: string): string[] {
 function knownProtocolsFromIndex(): Set<string> {
   try {
     const index = loadComplianceIndex(defaultComplianceTarget());
-    return new Set(index.specialisms.map(s => s.protocol).filter(Boolean));
+    const protocols = new Set<string>();
+    for (const protocol of index.specialisms.map(s => s.protocol).filter(Boolean)) {
+      protocols.add(protocol);
+      protocols.add(protocol.replace(/-/g, '_'));
+    }
+    for (const protocol of index.protocols?.map(p => p.id).filter(Boolean) ?? []) {
+      protocols.add(protocol);
+      protocols.add(protocol.replace(/-/g, '_'));
+    }
+    return protocols;
   } catch {
     // Cache unavailable — accept the extracted value without cross-check.
     // The anchored regex + sanitizer still bound what can reach downstream.
@@ -274,8 +286,27 @@ function knownProtocolsFromIndex(): Set<string> {
   }
 }
 
+function nearMissProtocolDeclaration(
+  parentProtocol: string,
+  declaredProtocols: readonly unknown[] | undefined,
+): { declaredProtocol: string; expectedProtocol: string } | undefined {
+  if (!declaredProtocols?.length) return undefined;
+
+  for (const raw of declaredProtocols) {
+    if (typeof raw !== 'string') continue;
+    const declaredProtocol = sanitizeClassifiedValue(raw, 80);
+    if (!declaredProtocol || declaredProtocol === parentProtocol) continue;
+    if (declaredProtocol.replace(/-/g, '_') === parentProtocol) {
+      return { declaredProtocol, expectedProtocol: parentProtocol };
+    }
+  }
+
+  return undefined;
+}
+
 export function classifyCapabilityResolutionError(
   err: unknown,
+  declaredProtocols?: readonly unknown[],
 ): CapabilityResolutionErrorInfo | undefined {
   const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
   if (!msg) return undefined;
@@ -302,6 +333,17 @@ export function classifyCapabilityResolutionError(
   if (parentMatch) {
     const specialism = sanitizeClassifiedValue(parentMatch[1]);
     const parentProtocol = sanitizeClassifiedValue(parentMatch[2]);
+    const nearMiss = nearMissProtocolDeclaration(parentProtocol, declaredProtocols);
+    if (nearMiss) {
+      return {
+        kind: 'unrecognized_supported_protocol',
+        specialism,
+        parentProtocol,
+        declaredProtocol: nearMiss.declaredProtocol,
+        expectedProtocol: nearMiss.expectedProtocol,
+      };
+    }
+
     // Defense in depth: the upstream resolver only throws this variant when
     // the specialism exists in the local index, so its parent is a known
     // protocol. If the extracted parent isn't known, the attacker smuggled
@@ -351,6 +393,8 @@ export function presentCapabilityResolutionError(
 ): CapabilityResolutionErrorPresentation {
   const specialism = info.specialism ?? '';
   const parentProtocol = info.parentProtocol ?? '';
+  const declaredProtocol = info.declaredProtocol ?? '';
+  const expectedProtocol = info.expectedProtocol ?? '';
   const complianceVersion = info.complianceVersion ?? '';
   const supportedVersions = info.supportedVersions ?? [];
   const supportedVersionsText = supportedVersions.length > 0 ? supportedVersions.join(', ') : '(none advertised)';
@@ -381,6 +425,23 @@ export function presentCapabilityResolutionError(
         error_kind: 'unsupported_adcp_version',
         compliance_version: complianceVersion,
         supported_versions: supportedVersionsText,
+      },
+    };
+  }
+
+  if (info.kind === 'unrecognized_supported_protocol') {
+    return {
+      headline:
+        `Agent capabilities misconfigured: supported_protocols contains unrecognized ` +
+        `"${declaredProtocol}"; use "${expectedProtocol}" for specialism "${specialism}".`,
+      logMsg: 'Agent declared unrecognized supported_protocols value',
+      logFields: { specialism, parentProtocol, declaredProtocol, expectedProtocol },
+      restBody: {
+        error_kind: 'unrecognized_supported_protocol',
+        specialism,
+        parent_protocol: parentProtocol,
+        declared_protocol: declaredProtocol,
+        expected_protocol: expectedProtocol,
       },
     };
   }
