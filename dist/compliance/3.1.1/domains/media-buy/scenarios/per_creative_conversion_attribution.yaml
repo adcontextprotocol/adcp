@@ -1,0 +1,500 @@
+id: media_buy_seller/per_creative_conversion_attribution
+version: "1.0.0"
+title: "Seller surfaces per-creative conversion attribution in delivery reporting"
+category: media_buy_seller
+summary: "Verifies that a seller advertising conversion_tracking.per_creative_attribution can register two creatives on a single package, accept a media buy with a CPA event-kind goal, ingest conversion events, and surface a populated by_package[].by_creative[] breakdown carrying conversions per creative in get_media_buy_delivery. Sibling to media_buy_seller/performance_buy_flow gated on the per_creative_attribution sub-capability: sellers that report attribution only at the line / package / placement / campaign granularity (retail-media, MMP-mediated mobile, CTV performance) grade not_applicable, not failing."
+track: media_buy
+
+# Gate: scenario runs only when the seller declares
+# conversion_tracking.per_creative_attribution equals true. Sellers that
+# attribute at coarser granularity (retail-media per-line, MMP per-campaign,
+# broadcast/CTV per-placement) grade `not_applicable`, not failing.
+# per_creative_attribution is a sub-capability of conversion_tracking — gating
+# on this bit rather than on conversion_tracking presence is what keeps
+# honest coarser-granularity implementations from failing on the per-creative
+# breakdown that performance_buy_flow deliberately defers.
+requires_capability:
+  path: media_buy.conversion_tracking.per_creative_attribution
+  equals: true
+
+required_tools:
+  - get_products
+  - sync_event_sources
+  - sync_creatives
+  - create_media_buy
+  - log_event
+  - get_media_buy_delivery
+  - comply_test_controller
+
+invariants:
+  - status.monotonic
+
+narrative: |
+  Per-creative conversion attribution is the discriminating capability of
+  sellers whose attribution pipelines can route a logged conversion back to
+  the specific creative that drove it — typically via internal click-id or
+  view-through correlation that ties the event to the served impression. When
+  the seller advertises per_creative_attribution: true, buyers can rely on
+  the by_package[].by_creative[] breakdown in delivery reporting carrying
+  conversions per creative, not just aggregate package totals.
+
+  Most performance sellers cannot do this. Retail-media networks (Criteo,
+  Amazon Ads) typically expose conversions at the line level with creative
+  rotation opaque. MMP-mediated mobile (post-iOS-14) attributes at the
+  campaign / ad-set level. Broadcast and CTV performance products attribute
+  at the placement. Gating this scenario on the explicit sub-capability bit
+  is what keeps honest coarser-granularity implementations from failing on a
+  breakdown they truthfully don't produce.
+
+  This is the deferred half of performance_buy_flow. The CPA scenario
+  deliberately omits per-creative assertions for exactly this reason —
+  honest adopters report at differing granularities. The bit gates the
+  scenario; the scenario asserts the breakdown is populated end-to-end.
+
+  Discriminating behaviors this scenario verifies:
+  1. sync_creatives registers two distinct creatives on the buyer's account,
+     each with its own creative_id and shape-valid display assets.
+  2. create_media_buy accepts a package whose creative_assignments references
+     BOTH creatives and whose optimization_goal is event-kind with a CPA
+     target — the seller commits to rotating across both creatives AND
+     attributing conversions per creative.
+  3. log_event flows conversions back against the registered event source.
+     log_event does not carry creative_id on the event payload (core/event.json) —
+     the seller MUST attribute via its internal click / view-through
+     correlation. Two events with distinct event_ids are logged; the seller
+     spreads attributed conversions across the two creatives per its own
+     correlation, and simulate_delivery's conversions count drives the
+     totals.
+  4. get_media_buy_delivery returns the by_package[].by_creative[] breakdown
+     populated for BOTH creatives, each carrying creative_id and conversions.
+     The discriminating signal is the second row — a single-row breakdown
+     covering only one of the two assigned creatives would be a façade
+     (matching the impression rotation but not the conversion attribution).
+
+  Per-creative conversion_value / roas breakdown is intentionally NOT
+  asserted here. Sellers that compute ROAS at the creative level can declare
+  the per_creative_attribution bit and surface conversion_value on each
+  by_creative row, but the assertion target of this scenario is conversion
+  attribution (the field the bit names); per-creative value is a strict
+  superset that doesn't need an additional gate.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - supports_non_guaranteed
+    - conversion_tracking
+  examples:
+    - "Social platforms with per-ad conversion attribution (Meta, TikTok, Snap)"
+    - "DSPs operating their own attribution graph with creative-level resolution"
+    - "Walled-garden platforms with deterministic per-creative attribution"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller must implement comply_test_controller with simulate_delivery
+    accepting a `conversions` param so the per-creative breakdown is
+    observable via get_media_buy_delivery without a real attribution run.
+
+    The buyer fixture supplies a brand, an operator, a conversion event
+    source definition, and two distinct display creatives sufficient to
+    exercise the per-creative breakdown.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "performance_per_creative_q2"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+  pricing_options:
+    - product_id: "performance_per_creative_q2"
+      pricing_option_id: "auction_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 1.50
+
+phases:
+
+  - id: setup
+    title: "Establish account and discover products"
+    steps:
+      - id: sync_accounts
+        title: "Establish account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the account with account_id and status active.
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+          idempotency_key: "$generate:uuid_v4#per_creative_conversion_attribution_setup_sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+
+      - id: get_products_for_per_creative
+        title: "Discover products supporting per-creative conversion attribution"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        expected: |
+          Return at least one product whose conversion_tracking capabilities
+          include per-creative attribution.
+        sample_request:
+          buying_mode: "brief"
+          brief: "Performance display, US, adults 25-54. Target CPA $35 on purchase events from acmeoutdoor.example. Two creative variants — need per-creative conversion breakdown in delivery reporting."
+          required_capabilities:
+            - "conversion_tracking"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products"
+            description: "Response contains products"
+
+  - id: event_source_binding
+    title: "Register the conversion event source"
+    narrative: |
+      The performance buy cannot be created without a registered event
+      source. This phase exercises the binding — sync_event_sources returns
+      an event_source_id that the next phase's create_media_buy references on
+      the package's optimization_goal.
+
+    steps:
+      - id: sync_event_sources
+        title: "Register a website conversion source"
+        task: sync_event_sources
+        schema_ref: "media-buy/sync-event-sources-request.json"
+        response_schema_ref: "media-buy/sync-event-sources-response.json"
+        doc_ref: "/media-buy/task-reference/sync_event_sources"
+        stateful: true
+        expected: |
+          Return event_sources with event_source_id, setup.snippet, and
+          action: created. The id is captured for the create_media_buy phase.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          event_sources:
+            - event_source_id: "acmeoutdoor_website"
+              name: "Acme Outdoor Website"
+              event_types: ["purchase"]
+              allowed_domains: ["acmeoutdoor.example"]
+          idempotency_key: "$generate:uuid_v4#per_creative_conversion_attribution_event_source_binding_sync_event_sources"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-event-sources-response.json schema"
+          - check: field_present
+            path: "event_sources[0].event_source_id"
+            description: "Event source has a platform-assigned ID"
+          # Anti-façade: an adapter that returns a shape-valid
+          # sync_event_sources response without forwarding the source
+          # definition upstream fails this check.
+          - check: upstream_traffic
+            description: "sync_event_sources caused upstream traffic registering the event source"
+            min_count: 1
+            endpoint_pattern: "POST *"
+
+  - id: register_two_creatives_and_create_buy
+    title: "Register two creatives and create a buy assigning both to one package"
+    narrative: |
+      The buyer pushes two distinct display creatives to the seller's
+      creative library via sync_creatives, then creates a media buy whose
+      single package's creative_assignments references BOTH creatives. The
+      package carries an event-kind optimization_goal binding to the
+      registered event source with a CPA target — the seller commits to
+      rotating delivery across both creatives AND attributing conversions
+      per creative.
+
+    steps:
+      - id: sync_two_creatives
+        title: "Push two distinct display creatives"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        stateful: true
+        expected: |
+          Accept both creatives and return them in the creatives array with
+          per-creative action (created) and platform-assigned status. Both
+          creative_ids are referenced in the next step's create_media_buy.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          creatives:
+            - creative_id: "creative_acme_1"
+              name: "Acme Outdoor — Trail Pro display 300x250 (variant A)"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "display_300x250"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://test-assets.adcontextprotocol.org/acme-outdoor/trail-pro-a-300x250.jpg"
+                  width: 300
+                  height: 250
+                click_url:
+                  asset_type: "url"
+                  url: "https://acmeoutdoor.example/trail-pro?v=a"
+            - creative_id: "creative_acme_2"
+              name: "Acme Outdoor — Trail Pro display 300x250 (variant B)"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "display_300x250"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://test-assets.adcontextprotocol.org/acme-outdoor/trail-pro-b-300x250.jpg"
+                  width: 300
+                  height: 250
+                click_url:
+                  asset_type: "url"
+                  url: "https://acmeoutdoor.example/trail-pro?v=b"
+          idempotency_key: "$generate:uuid_v4#per_creative_conversion_attribution_register_two_creatives_and_create_buy_sync_creatives"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_present
+            path: "creatives[0].action"
+            description: "First creative has an action (created/updated)"
+          - check: field_present
+            path: "creatives[1].action"
+            description: "Second creative has an action (created/updated) — both must be registered for the per-creative breakdown to be meaningful"
+
+      - id: create_media_buy_two_creatives
+        title: "Create media buy assigning both creatives to one package with a CPA goal"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        expected: |
+          Create the media buy. Response carries a media_buy_id used for
+          subsequent log_event and get_media_buy_delivery calls. Both
+          creative_ids appear in the package's creative_assignments.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: "performance_per_creative_q2"
+              budget: 25000
+              pricing_option_id: "auction_cpm"
+              creative_assignments:
+                - creative_id: "creative_acme_1"
+                - creative_id: "creative_acme_2"
+              optimization_goals:
+                - kind: "event"
+                  event_sources:
+                    - event_source_id: "acmeoutdoor_website"
+                      event_type: "purchase"
+                  target:
+                    kind: "cost_per"
+                    value: 35.00
+                  priority: 1
+          idempotency_key: "$generate:uuid_v4#per_creative_conversion_attribution_register_two_creatives_and_create_buy_create_media_buy"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Media buy has a platform-assigned ID"
+
+  - id: log_conversions_against_both_creatives
+    title: "Log two purchase events against the bound event source"
+    narrative: |
+      The buyer logs two purchase events against the registered event source.
+      log_event's payload (core/event.json) does NOT carry creative_id —
+      attributing the event back to a specific creative is the seller's
+      internal click / view-through correlation responsibility, not the
+      buyer's. The buyer simply emits two events with distinct event_ids;
+      the seller is expected to spread attributed conversions across the
+      two assigned creatives per its own correlation, and simulate_delivery's
+      conversions count drives the totals that surface in by_creative[] in
+      the next phase.
+
+      Two events (rather than one) make the buyer's intent observable: the
+      buyer expects more than one conversion to surface, and the per-creative
+      breakdown should distribute them across creatives rather than
+      collapsing to a single row.
+
+    steps:
+      - id: log_purchase_event_1
+        title: "Log first purchase event"
+        task: log_event
+        schema_ref: "media-buy/log-event-request.json"
+        response_schema_ref: "media-buy/log-event-response.json"
+        doc_ref: "/media-buy/task-reference/log_event"
+        stateful: true
+        expected: |
+          Acknowledge the event with accepted status.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          event_source_id: "acmeoutdoor_website"
+          events:
+            - event_type: "purchase"
+              event_id: "evt_per_creative_001"
+              event_time: "2026-06-05T14:30:00Z"
+              user_match:
+                hashed_email: "a000000000000000000000000000000000000000000000000000000000000030"
+              custom_data:
+                order_total: 99.99
+                currency: "USD"
+          idempotency_key: "$generate:uuid_v4#per_creative_conversion_attribution_log_conversions_against_both_creatives_log_event_1"
+        validations:
+          - check: response_schema
+            description: "Response matches log-event-response.json schema"
+
+      - id: log_purchase_event_2
+        title: "Log second purchase event"
+        task: log_event
+        schema_ref: "media-buy/log-event-request.json"
+        response_schema_ref: "media-buy/log-event-response.json"
+        doc_ref: "/media-buy/task-reference/log_event"
+        stateful: true
+        expected: |
+          Acknowledge the event with accepted status. The seller is expected
+          to spread attributed conversions across the two assigned creatives
+          via internal click / view-through correlation; the discriminating
+          assertion is the populated by_creative[] breakdown in delivery, not
+          the per-event acknowledgement here.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          event_source_id: "acmeoutdoor_website"
+          events:
+            - event_type: "purchase"
+              event_id: "evt_per_creative_002"
+              event_time: "2026-06-06T10:15:00Z"
+              user_match:
+                hashed_email: "a000000000000000000000000000000000000000000000000000000000000031"
+              custom_data:
+                order_total: 149.99
+                currency: "USD"
+          idempotency_key: "$generate:uuid_v4#per_creative_conversion_attribution_log_conversions_against_both_creatives_log_event_2"
+        validations:
+          - check: response_schema
+            description: "Response matches log-event-response.json schema"
+
+  - id: assert_per_creative_breakdown_in_delivery
+    title: "Delivery reporting carries a populated per-creative conversion breakdown"
+    narrative: |
+      The discriminating assertion of per-creative attribution: delivery
+      reporting MUST surface conversions on each by_creative[] row, not just
+      at the package or buy level. The runner injects simulated impressions
+      + conversions + spend via the test controller, then verifies
+      get_media_buy_delivery returns a by_package[].by_creative[] array with
+      at least two rows — one per assigned creative — each carrying
+      creative_id and conversions.
+
+      A single-row breakdown covering only one of the two assigned creatives
+      would be a façade (the seller is rotating impressions but collapsing
+      conversion attribution to whichever creative it tracked first). The
+      second-row assertion is what keeps honest per-creative implementations
+      separated from coarser-granularity ones — sellers that can't attribute
+      per creative don't advertise the bit and grade not_applicable.
+
+    steps:
+      - id: simulate_per_creative_delivery
+        title: "Inject impressions + conversions + spend"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        expected: |
+          The test controller acknowledges the simulated delivery.
+        sample_request:
+          account:
+            sandbox: true
+          scenario: "simulate_delivery"
+          params:
+            media_buy_id: "$context.media_buy_id"
+            impressions: 200000
+            clicks: 4500
+            conversions: 90
+            reported_spend:
+              amount: 3000.00
+              currency: "USD"
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Delivery simulation succeeds"
+
+      - id: get_per_creative_delivery
+        title: "Get delivery and verify the per-creative conversion breakdown"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        stateful: true
+        expected: |
+          Delivery response includes:
+          - totals.conversions at the buy level (still required, same as
+            performance_buy_flow)
+          - by_package[0].by_creative[] array with at least two rows, each
+            carrying creative_id and conversions — the discriminating
+            assertion that the per_creative_attribution bit commits to
+
+          Single-row by_creative[] coverage is a façade signal: the seller
+          is reporting at the package level and labelling it per-creative.
+          The second-row assertion is the asymmetry check.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+          include_package_daily_breakdown: true
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_present
+            path: "media_buy_deliveries[0].totals.conversions"
+            description: "Conversion count surfaced at the buy level"
+          - check: field_present
+            path: "media_buy_deliveries[0].by_package[0].by_creative[0].creative_id"
+            description: "First by_creative row carries creative_id — the breakdown is keyed"
+          - check: field_present
+            path: "media_buy_deliveries[0].by_package[0].by_creative[0].conversions"
+            description: "First by_creative row carries conversions — the discriminating assertion of per_creative_attribution"
+          - check: field_present
+            path: "media_buy_deliveries[0].by_package[0].by_creative[1].conversions"
+            description: "Second by_creative row carries conversions — confirms the breakdown isn't a single-row façade collapsing attribution to one creative when two were assigned"

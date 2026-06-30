@@ -1,5 +1,29 @@
 # Changelog
 
+## 3.1.1
+
+### Patch Changes
+
+- 1a18bbe: Add `media_buy.governance_aware` capability to `get-adcp-capabilities-response` and gate the `governance_denied` / `governance_denied_recovery` storyboards on it, so sellers without outbound governance consultation grade `not_applicable` instead of false-failing on a `GOVERNANCE_DENIED` they cannot produce. Addresses #5665 (Option A).
+- 1a18bbe: Clarify broadcast product/reporting ownership, correct the broadcast compliance channel fixture to `linear_tv`, and document that scheduled broadcast buys should not be modeled as `non_guaranteed` solely because third-party audience measurement settles later.
+- 1a18bbe: Fix hosted compliance auth defaults so static fixture API keys are only inferred for fixture-backed runs, align the async media-buy submitted-state fixture account with the create request, and mark governance-denial storyboards as multi-agent scenarios routed through seller and governance agents.
+- 1a18bbe: Clarify that `get_products` pagination is valid in all buying modes, with `brief` and `refine` pagination bounding returned `products[]` in curated results while `wholesale` pagination walks the product feed. Add conformance coverage for the deterministic wholesale cursor walk without treating brief/refine as exhaustive catalog enumeration.
+- 1a18bbe: Add stable schema discovery pointers at `/schemas/index.json` and `/schemas/latest.json`, mark prerelease schema directories in root discovery metadata, and keep major/minor schema aliases pointed at stable releases.
+- 1a18bbe: Apply residual prose cleanups to the `sponsored_context_accountability` storyboard: the `prerequisites.description` second paragraph and the `si_send_message_presentation_accepted` step narrative both still implied dynamic host-echo / different-identity substitution, contradicting the fixed Acme literal fixture the storyboard actually uses. Reword both spots to scope the prose to the static Acme fixture per @bokelley's #5551 review (2026-06-17 13:15 UTC).
+- 1a18bbe: TMP: provider-scoped TMPX macro trafficking with declared macro names + multi-chunk support. Builds on the `tmpx_providers` map shipped in #5689; reframes the contract to communicate exact macro/value pairs (not provider_id→token strings) and supports values that exceed a single ad-server macro slot.
+
+  Provider registrations declare a stable, provider-namespaced list of ad-server macro names in `tmpx_macros` (e.g. `["PIN_TMPX_1", "PIN_TMPX_2"]`) — the names the publisher actually trafficks in GAM / VAST URLs / DOOH play logs. The identity-agent response emits `tmpx_macros[]` as ordered `{name, value}` pairs filling those slots. The router merges per-provider into `tmpx_providers: { provider_id: { macros: [{name, value}] } }` on the response so the publisher walks each provider's pairs and substitutes each `value` verbatim into the slot named by `name`. Multi-chunk values are capped at 2 per provider in v1; the cap MAY rise without a shape change. Macro names MUST NOT be derived from `provider_id` at runtime — trafficking is configured against the registered names ahead of time.
+
+  **Breaking change to an experimental surface (sanctioned by `x-status: experimental`)**: `tmpx_providers` was introduced in #5689 as `Map<provider_id, string>` (opaque token per provider). It is reshaped here to `Map<provider_id, {macros: [TmpxMacro]}>`. Consumers that adopted the v1 shape between #5689 and this change MUST migrate to read each provider's `macros[*].value` rather than a single string. The legacy singular `tmpx` field remains supported through 3.x (removed in 4.0).
+
+  **Experimental notice window.** `docs/reference/experimental-status.mdx` recommends ~6 weeks of published notice before a breaking change to an experimental surface. `tmpx_providers` shipped in #5689 days ago, so the literal 6-week window can't apply here; in practice nobody could have adopted a field that didn't exist 6 weeks ago, so the risk is bounded. Adopters of the v1 shape (if any) should consult this changeset's migration sketch and pin to the latest schema release before deploying.
+
+  **Dual-shape alias waiver.** The experimental policy asks for an alias accepting both the old (`Map<provider_id, string>`) and new (`Map<provider_id, {macros: [TmpxMacro]}>`) forms "where feasible" — typically via a `oneOf` on `additionalProperties` during transition. Skipped here because the v1 shape is hours old and the surface is `x-status: experimental`; the dual-shape carrying cost (validator complexity, ambiguous consumer code paths, perpetual deprecation tail) outweighs the migration cost for a window where the field had no realistic adopters. Routers that want belt-and-suspenders compatibility for any caller that did read the v1 shape MAY mirror one provider's first-slot `value` into the deprecated singular `tmpx` field; that path is already specified.
+
+  Schema updates: `tmp/provider-registration.json` adds `tmpx_macros`; `tmp/identity-match-response.json` adds `tmpx_macros` (provider-side) and reshapes `tmpx_providers` (router-merged), plus a shared `TmpxMacro` definition. Spec narrative: IdentityMatchResponse and Provider Registration field tables surface the new fields and the reshape; `§Inventory-specific behavior` walks the per-macro substitution flow; `§Identity Match fan-out` in router-architecture.mdx gets a rewritten normative TMPX-collection paragraph.
+
+- 1a18bbe: Rename the canonical Trusted Match schema source directory from `tmp` to `trusted-match`, update registry references and examples to the self-describing path, and add schema discovery metadata for protocol layers plus prerelease supersession. Hosted schema routing keeps legacy `/schemas/{version}/tmp/...` URLs working by falling back to the canonical `trusted-match` files when a historical `tmp` artifact is not present.
+
 ## 3.1.0
 
 ### Minor Changes
