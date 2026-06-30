@@ -212,6 +212,7 @@ export interface StoryboardStatusEntry {
   first_failed_step_title?: string | null;
   first_failed_step_task?: string | null;
   first_failure_message?: string | null;
+  first_failure_validations_jsonb?: unknown;
 }
 
 /**
@@ -1054,6 +1055,7 @@ export class ComplianceDatabase {
     first_failed_step_title: string | null;
     first_failed_step_task: string | null;
     first_failure_message: string | null;
+    first_failure_validations_jsonb: unknown;
     triggered_by: string | null;
   }>> {
     const result = await query(
@@ -1068,8 +1070,23 @@ export class ComplianceDatabase {
        SELECT storyboard_id, requested_compliance_target, adcp_version, status, last_tested_at, last_passed_at, last_failed_at,
               steps_passed, steps_total, failure_count, skipped_count,
               first_failed_step_id, first_failed_step_title, first_failed_step_task, first_failure_message,
+              first_failure_diag.failed_validations_jsonb AS first_failure_validations_jsonb,
               triggered_by
        FROM agent_storyboard_status s
+       LEFT JOIN LATERAL (
+         SELECT d.failed_validations_jsonb
+         FROM agent_compliance_step_diagnostics d
+         WHERE d.agent_url = s.agent_url
+           AND d.run_id = s.run_id
+           AND d.storyboard_id = s.storyboard_id
+           AND d.failed_validations_jsonb IS NOT NULL
+           AND (
+             s.first_failed_step_id IS NULL
+             OR d.step_id = s.first_failed_step_id
+           )
+         ORDER BY d.captured_at DESC, d.id DESC
+         LIMIT 1
+       ) first_failure_diag ON true
        WHERE s.agent_url = $1
          AND ($2::uuid IS NULL OR s.run_id = $2::uuid)
          AND (
@@ -1151,6 +1168,7 @@ export class ComplianceDatabase {
     first_failed_step_title: string | null;
     first_failed_step_task: string | null;
     first_failure_message: string | null;
+    first_failure_validations_jsonb: unknown;
   }>>> {
     if (agentUrls.length === 0) return new Map();
 
@@ -1174,9 +1192,24 @@ export class ComplianceDatabase {
        )
        SELECT s.agent_url, s.storyboard_id, s.requested_compliance_target, s.adcp_version, s.status, s.last_tested_at, s.last_passed_at,
               s.steps_passed, s.steps_total, s.failure_count, s.skipped_count,
-              s.first_failed_step_id, s.first_failed_step_title, s.first_failed_step_task, s.first_failure_message
+              s.first_failed_step_id, s.first_failed_step_title, s.first_failed_step_task, s.first_failure_message,
+              first_failure_diag.failed_validations_jsonb AS first_failure_validations_jsonb
        FROM agent_storyboard_status s
        LEFT JOIN latest_run_flags lf ON lf.agent_url = s.agent_url
+       LEFT JOIN LATERAL (
+         SELECT d.failed_validations_jsonb
+         FROM agent_compliance_step_diagnostics d
+         WHERE d.agent_url = s.agent_url
+           AND d.run_id = s.run_id
+           AND d.storyboard_id = s.storyboard_id
+           AND d.failed_validations_jsonb IS NOT NULL
+           AND (
+             s.first_failed_step_id IS NULL
+             OR d.step_id = s.first_failed_step_id
+           )
+         ORDER BY d.captured_at DESC, d.id DESC
+         LIMIT 1
+       ) first_failure_diag ON true
        WHERE s.agent_url = ANY($1)
          AND COALESCE(lf.has_rows, true) = true
        ORDER BY s.agent_url, s.storyboard_id`,
@@ -1190,6 +1223,7 @@ export class ComplianceDatabase {
       failure_count: number; skipped_count: number;
       first_failed_step_id: string | null; first_failed_step_title: string | null;
       first_failed_step_task: string | null; first_failure_message: string | null;
+      first_failure_validations_jsonb: unknown;
     }>>();
     for (const row of result.rows) {
       if (!map.has(row.agent_url)) map.set(row.agent_url, []);

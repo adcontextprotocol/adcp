@@ -1723,6 +1723,15 @@
         if (statusInfo.first_failure_message) {
           html += '<div class="storyboard-map-detail-message">' + escapeHtml(statusInfo.first_failure_message) + '</div>';
         }
+        const validations = Array.isArray(statusInfo.first_failure_validations)
+          ? statusInfo.first_failure_validations
+          : [];
+        for (const validation of validations.slice(0, 3)) {
+          html += renderDiagnosticValidation(validation);
+        }
+        if (validations.length > 3) {
+          html += '<div class="storyboard-map-detail-message">Showing 3 validation details; ' + escapeHtml(pluralizeCount(validations.length - 3, 'more validation')) + ' remain.</div>';
+        }
         const additionalFailures = Math.max(0, failures - 1);
         if (additionalFailures > 0) {
           html += '<div class="storyboard-map-detail-message">Showing the first failing step; ' + escapeHtml(pluralizeCount(additionalFailures, 'more failure')) + ' remain.</div>';

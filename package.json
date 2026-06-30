@@ -91,7 +91,7 @@
     "test:substitution-vector-names": "node scripts/lint-substitution-vector-names.cjs",
     "test:unit": "vitest run --dir tests/ --pool=threads",
     "test:redteam": "tsx server/src/addie/testing/redteam-cli.ts",
-    "test:server-unit": "vitest run server/tests/unit/",
+    "test:server-unit": "vitest run --config server/vitest.config.ts tests/unit/",
     "test:server-integration": "vitest run server/tests/integration --config server/vitest.config.ts",
     "test:openapi": "tsx scripts/generate-openapi.ts && git diff --exit-code static/openapi/registry.yaml || (echo 'OpenAPI spec is out of date. Run: npm run build:openapi' && exit 1)",
     "test:registry": "vitest run server/tests --exclude 'server/tests/simulation/**'",
@@ -133,7 +133,7 @@
     "docs:json-field-audit": "node scripts/docs-json-field-audit.cjs"
   },
   "dependencies": {
-    "@adcp/sdk": "9.2.0",
+    "@adcp/sdk": "9.3.0",
     "@anthropic-ai/sdk": "^0.104.1",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@contentauth/c2pa-node": "^0.5.4",
