@@ -137,9 +137,19 @@ function canonicalize(url: string): string | null {
 function classifyFetchError(err: unknown): 'unresolvable' | 'transient' {
   if (!(err instanceof Error)) return 'transient';
   const msg = err.message || '';
-  // safeFetch / validateFetchUrl signatures (see utils/url-security.ts)
+  // EAI_AGAIN is a *temporary* resolver failure — always transient, never a
+  // lapse. (Today url-security collapses DNS failures into "Could not resolve
+  // hostname" so this rarely surfaces, but classify it correctly regardless.)
+  if (/EAI_AGAIN/i.test(msg)) return 'transient';
+  // Permanent: SSRF/validation rejections and genuine NXDOMAIN. safeFetch
+  // surfaces NXDOMAIN as "Could not resolve hostname" (utils/url-security.ts),
+  // so a dropped/expired domain lapses its verification and releases the owner
+  // lock for re-claim. A transient DNS blip that slips through here self-heals:
+  // the lapse clears only origin_verified_at (not workos_organization_id), so
+  // the next successful re-verify of the owner's still-present pointer re-stamps
+  // it and re-arms the lock.
   if (
-    /private|loopback|link-local|metadata|invalid host|invalid url|invalid scheme|unresolvable|ENOTFOUND|EAI_/i.test(msg)
+    /private|loopback|link-local|metadata|invalid host|invalid url|invalid scheme|unresolvable|could not resolve hostname|ENOTFOUND|EAI_NONAME/i.test(msg)
   ) {
     return 'unresolvable';
   }
@@ -237,9 +247,9 @@ export async function verifyHostedPropertyOrigin(
 
   // Spec-conformant cache rules (see managed-networks.mdx §security):
   // 5xx and 429 MUST NOT shorten the verified lifetime. Treat as transient.
-  // 3xx — we requested with `redirect: 'manual'`, so a redirect lands
-  // here too. Treat as transient (publisher may have a redirect chain
-  // we don't follow yet) rather than as a hard demote.
+  // 3xx — safeFetch follows up to 5 redirects with per-hop SSRF re-validation,
+  // so a residual 3xx here means the hop budget was exhausted. Treat that as
+  // transient rather than a hard demote.
   if (response.status >= 500 || response.status === 429 || (response.status >= 300 && response.status < 400)) {
     await stampChecked('preserve');
     return {
@@ -300,11 +310,14 @@ export async function verifyHostedPropertyOrigin(
   }
 
   // Verified.
-  await stampChecked(true);
   // Bind-on-verify: if the pointer carried a claim token, bind the domain to
   // the org that requested THAT claim — never the caller who triggered this.
   // bindOwnerFromVerifiedClaim is a no-op unless the token matches the pending
-  // claim and the row isn't already locked to a different org.
+  // claim and the row isn't already verified-locked to a different org. This
+  // runs BEFORE stampChecked(true) so the bind guard sees the pre-verification
+  // `origin_verified_at` state: a lapsed row (origin_verified_at IS NULL) is
+  // re-bindable by a new owner, whereas stamping verified first would re-arm the
+  // lock and block the legitimate re-bind.
   let bound_org_id: string | undefined;
   if (claimToken && propertyDb.bindOwnerFromVerifiedClaim) {
     try {
@@ -315,6 +328,7 @@ export async function verifyHostedPropertyOrigin(
       logger.warn({ err, domain }, 'Origin verified but owner binding failed');
     }
   }
+  await stampChecked(true);
   const manifestAgents = readManifestAgentUrls(hosted.adagents_json || {});
   const promotion = await promoteVerifiedAuthorizations(domain, manifestAgents);
   logger.info({ domain, promoted: promotion.promoted }, 'Origin verified via authoritative_location pointer');

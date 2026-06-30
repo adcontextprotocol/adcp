@@ -19,6 +19,8 @@ import { createLogger } from "./logger.js";
 import type { CatalogEventsDatabase, WriteEventInput } from "./db/catalog-events-db.js";
 import type { AgentInventoryProfilesDatabase, ProfileUpsertInput } from "./db/agent-inventory-profiles-db.js";
 import { query } from "./db/client.js";
+import { PropertyDatabase } from "./db/property-db.js";
+import { verifyHostedPropertyOrigin } from "./services/hosted-property-origin-verifier.js";
 import { insertTypeReclassification } from "./db/type-reclassification-log-db.js";
 import { resolveUserAgentAuth } from "./routes/helpers/resolve-user-agent-auth.js";
 import { adaptAuthForSdk, type SdkAuth } from "./services/sdk-auth-adapter.js";
@@ -2209,6 +2211,71 @@ export class CrawlerService {
       return { processed: rows.length, succeeded, failed };
     } finally {
       this.managerRevalidationProcessing = false;
+    }
+  }
+
+  // ── Hosted-origin Re-verification (bind-on-verify lapse) ──────────
+  //
+  // An AAO-hosted property is bound to its owner only while its origin
+  // pointer still points at AAO (bind-on-verify, #5752). Domains change
+  // hands and publishers remove pointers, so a verified row must be
+  // re-checked on a TTL: when the origin no longer points at us, the
+  // verifier clears origin_verified_at — releasing the owner lock and
+  // making the domain re-claimable (bindOwnerFromVerifiedClaim allows a new
+  // owner once origin_verified_at IS NULL). The row itself is never deleted.
+
+  private hostedReverifyDb = new PropertyDatabase();
+  private hostedReverifyIntervalId: NodeJS.Timeout | null = null;
+  private hostedReverifyProcessing = false;
+
+  startPeriodicHostedOriginReverification(intervalMinutes: number = 60) {
+    this.hostedReverifyIntervalId = setInterval(() => {
+      this.processHostedOriginReverification().catch((err) => {
+        log.error({ err }, 'Hosted-origin re-verification tick failed');
+      });
+    }, intervalMinutes * 60 * 1000);
+    this.hostedReverifyIntervalId?.unref();
+    log.info({ intervalMinutes }, 'Periodic hosted-origin re-verification started');
+  }
+
+  stopPeriodicHostedOriginReverification() {
+    if (this.hostedReverifyIntervalId) {
+      clearInterval(this.hostedReverifyIntervalId);
+      this.hostedReverifyIntervalId = null;
+    }
+  }
+
+  async processHostedOriginReverification(): Promise<{ processed: number; lapsed: number }> {
+    if (this.hostedReverifyProcessing) {
+      log.debug('Hosted-origin re-verification already in progress, skipping tick');
+      return { processed: 0, lapsed: 0 };
+    }
+    this.hostedReverifyProcessing = true;
+    // Re-check each verified origin at most once per TTL; bounded batch per tick
+    // so background re-verification leaves DB/network headroom for foreground.
+    const BATCH_SIZE = 50;
+    const CONCURRENCY = 4;
+    const TTL_HOURS = 24;
+    try {
+      const staleBefore = new Date(Date.now() - TTL_HOURS * 60 * 60 * 1000);
+      const due = await this.hostedReverifyDb.getHostedPropertiesDueForReverification(staleBefore, BATCH_SIZE);
+      if (due.length === 0) {
+        return { processed: 0, lapsed: 0 };
+      }
+
+      const outcomes = await this.processWithConcurrency(due, CONCURRENCY, async (hosted) => {
+        const outcome = await verifyHostedPropertyOrigin({ hosted });
+        // A permanent failure on a previously-verified row clears
+        // origin_verified_at inside the verifier — the owner lock lapses.
+        // Transient failures (5xx / 429 / timeout) leave verified state intact.
+        return !outcome.verified && outcome.reason !== 'transient';
+      });
+      const lapsed = outcomes.filter(Boolean).length;
+
+      log.info({ processed: due.length, lapsed }, 'Hosted-origin re-verification batch complete');
+      return { processed: due.length, lapsed };
+    } finally {
+      this.hostedReverifyProcessing = false;
     }
   }
 

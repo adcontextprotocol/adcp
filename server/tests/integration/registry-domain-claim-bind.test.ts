@@ -176,4 +176,77 @@ describe('bind-on-verify domain claims', () => {
     expect(bind).toBeNull();
     expect((await propertyDb.getHostedPropertyByDomain(PUB))!.workos_organization_id).toBe(ORG_A);
   });
+
+  it('lapses the lock when the origin pointer disappears, letting a NEW owner re-claim and re-bind', async () => {
+    // ORG_A claims, verifies, and is locked.
+    const { token: tokenA } = await propertyDb.issueDomainClaim(PUB, ORG_A);
+    await verifyHostedPropertyOrigin({
+      hosted: (await propertyDb.getHostedPropertyByDomain(PUB))!,
+      fetchImpl: pointerFetch(PUB, tokenA!),
+    });
+    expect((await propertyDb.getHostedPropertyByDomain(PUB))!.origin_verified_at).toBeTruthy();
+
+    // The domain changes hands / the pointer is removed: re-verification now
+    // gets a 404. A permanent failure clears origin_verified_at (lapse).
+    const lapse = await verifyHostedPropertyOrigin({
+      hosted: (await propertyDb.getHostedPropertyByDomain(PUB))!,
+      fetchImpl: vi.fn().mockResolvedValue({ status: 404, body: '' }),
+    });
+    expect(lapse.verified).toBe(false);
+    const lapsed = await propertyDb.getHostedPropertyByDomain(PUB);
+    expect(lapsed!.origin_verified_at).toBeNull(); // lock released
+
+    // ORG_B can now claim (no longer refused — origin_verified_at is null)...
+    const { token: tokenB } = await propertyDb.issueDomainClaim(PUB, ORG_B);
+    expect(tokenB).toBeTruthy();
+    // ...and re-bind, even though the stale workos_organization_id is still ORG_A.
+    const outcome = await verifyHostedPropertyOrigin({
+      hosted: (await propertyDb.getHostedPropertyByDomain(PUB))!,
+      fetchImpl: pointerFetch(PUB, tokenB!),
+    });
+    expect(outcome.verified).toBe(true);
+    if (outcome.verified) expect(outcome.bound_org_id).toBe(ORG_B);
+    expect((await propertyDb.getHostedPropertyByDomain(PUB))!.workos_organization_id).toBe(ORG_B);
+  });
+
+  it('lapses on NXDOMAIN — an expired domain ("Could not resolve hostname") is a permanent failure', async () => {
+    const { token } = await propertyDb.issueDomainClaim(PUB, ORG_A);
+    await verifyHostedPropertyOrigin({
+      hosted: (await propertyDb.getHostedPropertyByDomain(PUB))!,
+      fetchImpl: pointerFetch(PUB, token!),
+    });
+    expect((await propertyDb.getHostedPropertyByDomain(PUB))!.origin_verified_at).toBeTruthy();
+
+    // Domain expired → DNS NXDOMAIN → safeFetch throws "Could not resolve hostname".
+    const outcome = await verifyHostedPropertyOrigin({
+      hosted: (await propertyDb.getHostedPropertyByDomain(PUB))!,
+      fetchImpl: vi.fn().mockRejectedValue(new Error(`Could not resolve hostname: ${PUB}`)),
+    });
+    expect(outcome.verified).toBe(false);
+    if (!outcome.verified) expect(outcome.reason).toBe('unresolvable');
+    // Permanent failure lapses the lock (vs a transient DNS blip, which would not).
+    expect((await propertyDb.getHostedPropertyByDomain(PUB))!.origin_verified_at).toBeNull();
+  });
+
+  it('getHostedPropertiesDueForReverification returns verified rows past the TTL, not fresh or unverified ones', async () => {
+    // Verified + locked, with origin_last_checked_at well in the past.
+    const { token } = await propertyDb.issueDomainClaim(PUB, ORG_A);
+    await verifyHostedPropertyOrigin({
+      hosted: (await propertyDb.getHostedPropertyByDomain(PUB))!,
+      fetchImpl: pointerFetch(PUB, token!),
+    });
+    await pool.query(
+      `UPDATE hosted_properties SET origin_last_checked_at = NOW() - INTERVAL '2 days' WHERE publisher_domain = $1`,
+      [PUB],
+    );
+
+    // A second, unverified community row — must never be a candidate.
+    const UNVERIFIED = `claim-bind-unverified.registry-baseline.example`;
+    await propertyDb.issueDomainClaim(UNVERIFIED, ORG_B);
+
+    const due = await propertyDb.getHostedPropertiesDueForReverification(new Date(Date.now() - 24 * 60 * 60 * 1000), 50);
+    const domains = due.map((r) => r.publisher_domain);
+    expect(domains).toContain(PUB);
+    expect(domains).not.toContain(UNVERIFIED); // origin_verified_at IS NULL → excluded
+  });
 });
