@@ -258,13 +258,29 @@ describe("/schemas HTTP routing", () => {
     });
 
     it("keeps resolved pinned /tmp/ schema artifacts authoritative when present", async () => {
-      expect(versions).toContain("3.1.0");
-      expect(versions).not.toContain("3.1.1");
+      const tempSchemasPath = fs.mkdtempSync(path.join(os.tmpdir(), "schema-routing-"));
 
-      const res = await request(app).get("/schemas/3.1.1/tmp/offer.json");
-      expect(res.status).toBe(200);
-      expect(res.body.$id).toBe("/schemas/3.1.0/tmp/offer.json");
-      expect(res.headers["cache-control"] ?? "").toContain("no-cache");
+      try {
+        fs.mkdirSync(path.join(tempSchemasPath, "3.1.0", "tmp"), {
+          recursive: true,
+        });
+        fs.writeFileSync(
+          path.join(tempSchemasPath, "3.1.0", "tmp", "offer.json"),
+          JSON.stringify({
+            $id: "/schemas/3.1.0/tmp/offer.json",
+          }),
+        );
+
+        const tempApp = express();
+        mountSchemasRoutes(tempApp, tempSchemasPath);
+
+        const res = await request(tempApp).get("/schemas/3.1.1/tmp/offer.json");
+        expect(res.status).toBe(200);
+        expect(res.body.$id).toBe("/schemas/3.1.0/tmp/offer.json");
+        expect(res.headers["cache-control"] ?? "").toContain("no-cache");
+      } finally {
+        fs.rmSync(tempSchemasPath, { recursive: true, force: true });
+      }
     });
 
     it("falls back an exact pinned /tmp/ URL when the release only has trusted-match files", async () => {
