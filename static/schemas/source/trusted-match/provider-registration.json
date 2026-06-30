@@ -82,6 +82,41 @@
       "description": "Provider lifecycle status. Active providers receive requests. Inactive providers are skipped entirely. Draining providers stop receiving new requests but in-flight requests complete normally.",
       "enum": ["active", "inactive", "draining"],
       "default": "active"
+    },
+    "attestation_requirement": {
+      "type": "object",
+      "description": "Experimental (`trusted_match.router_attestation`). When the provider requires the calling router to be TEE-attested, this block declares the provider's policy. When `required` is true, the router MUST attach an `X-TMP-Attestation` header (base64url-encoded JSON of the envelope at /schemas/trusted-match/router-attestation.json) to every outbound POST /context and POST /identity request to this provider, and the provider MUST reject requests that fail the verification flow defined in docs/trusted-match/router-attestation.mdx. Attestation envelopes are not small (Nitro attestation documents alone are ~5KB); operators should account for the per-request size and the cost of re-fetching the envelope on the router side when planning capacity. When this block is absent or `required` is false, providers MUST accept unattested routers — the spec preserves the core TMP trust posture for participants that don't opt into attestation.",
+      "properties": {
+        "required": {
+          "type": "boolean",
+          "description": "When true, the router MUST attach an `X-TMP-Attestation` header to every outbound /context and /identity request to this provider, and the provider rejects requests whose attestation does not verify. When false, the provider accepts requests without attestation; the field MUST be present whenever this block is — callers declare attestation policy explicitly, since the presence of the block itself signals an intent to make a policy statement."
+        },
+        "acceptable_formats": {
+          "type": "array",
+          "description": "Allowed values of the envelope's `attestation_format` for this provider. Enumerated against the same allowlist as `router-attestation.json#/properties/attestation_format`. Required when `required` is true — providers MUST NOT accept arbitrary formats, since the verifier kit is format-specific. Each value names a single externally-defined attestation format and version.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "aws_nitro_cose_sign1_v1",
+              "intel_tdx_quote_v4",
+              "amd_sev_snp_attestation_v1",
+              "gcp_confidential_space_v1"
+            ]
+          },
+          "minItems": 1
+        },
+        "min_freshness_sec": {
+          "type": "integer",
+          "description": "Maximum age, in seconds, the provider accepts for an envelope. Age is verifier-kit-derived from the platform document's format-specific issuance timestamp (Nitro `timestamp`, TDX/SEV-SNP quote issuance, GCP token `iat`); the envelope itself does not carry a uniform `issued_at` field — see specs/tmp-router-attestation.md Open Question §5. Tighter than the router's suggested `expires_at` ceiling. Default: 3600 (one hour). Lower values increase round-trip pressure on /.well-known/tmp-router-attestation; higher values widen the replay window.",
+          "minimum": 60,
+          "maximum": 86400,
+          "default": 3600
+        }
+      },
+      "required": ["required"],
+      "if": { "properties": { "required": { "const": true } }, "required": ["required"] },
+      "then": { "required": ["acceptable_formats"] },
+      "additionalProperties": false
     }
   },
   "required": [

@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/trusted-match/router-attestation.json",
+  "title": "TMP Router Attestation Envelope",
+  "description": "Wire-level envelope returned by a TEE-attested TMP Router at GET /.well-known/tmp-router-attestation?nonce=<base64url, 16-32 raw bytes>. Carries a platform-specific attestation document, the public signing key the router uses for per-provider RFC 9421 re-signing, and a verifier-supplied nonce echoed from the request. The envelope is opaque format-binding — AdCP does not parse the platform `attestation_document`; format-specific parsing and measurement-allowlist policy live in the verifier kit corresponding to `attestation_format`. The load-bearing invariant is that the JWK in `signing_key` MUST appear bound in the platform document's user-data slot alongside the nonce, so that the existing per-provider RFC 9421 signatures defined in docs/trusted-match/specification#identity-match-signed-fields are cryptographically anchored to the attested binary rather than to an out-of-band-deployed key. See docs/trusted-match/router-attestation.mdx for the normative endpoint, nonce, binding, and verification flow.",
+  "x-status": "experimental",
+  "type": "object",
+  "properties": {
+    "attestation_format": {
+      "type": "string",
+      "description": "Canonical identifier of the platform attestation format carried in `attestation_document`. Each value names a single externally-defined attestation format and version (parallel to how `enums/feed-format.json` names externally-defined feed formats); the verifier kit for the named format is responsible for parsing the document and mapping the envelope's generic `nonce` onto the format-specific user-data slot. The v1 set is intentionally small — extension is via the `ext` namespace plus a future enum addition through the normal change process.",
+      "enum": [
+        "aws_nitro_cose_sign1_v1",
+        "intel_tdx_quote_v4",
+        "amd_sev_snp_attestation_v1",
+        "gcp_confidential_space_v1"
+      ]
+    },
+    "attestation_document": {
+      "type": "string",
+      "description": "Base64url-encoded (RFC 4648 §5, unpadded) attestation document in the format declared by `attestation_format`. Opaque to AdCP: this schema neither parses nor validates its contents. The verifier kit corresponding to `attestation_format` performs signature verification against the platform vendor's root, extracts measurements, and projects the format-specific user-data slot to compare against the envelope's `nonce` and `signing_key`."
+    },
+    "nonce": {
+      "type": "string",
+      "description": "Base64url-encoded (RFC 4648 §5, unpadded) echo of the `nonce` query parameter on the originating GET. The verifier MUST have generated this from at least 16 bytes of cryptographically random data per verification (never reused) and MUST compare the response value byte-for-byte against the value it sent. The verifier MUST also confirm that the same nonce appears in the platform-specific user-data slot of `attestation_document` — the slot-projection rule is part of the verifier kit, not this schema. Length range matches the 16–32 raw bytes specified for the request parameter (22–43 base64url-no-pad chars).",
+      "pattern": "^[A-Za-z0-9_-]{22,43}$"
+    },
+    "signing_key": {
+      "$ref": "/schemas/core/agent-signing-key.json",
+      "description": "JWK shape of the public key the router uses to sign outbound provider requests (RFC 9421 / per-provider re-signing — see docs/trusted-match/specification#identity-match-signed-fields). This is the same key shape that appears in `agent-signing-key.json`. The MUST-BIND invariant: this key MUST also appear bound in the platform user-data slot of `attestation_document` alongside `nonce`. Verifiers MUST reject the envelope when the key bound in the attestation does not byte-match this field after canonical JWK serialization; RFC 7638 thumbprint comparison is the acceptable comparison form. Without this binding, the router's existing per-provider signatures only attest to a deployed key, not to an attested binary."
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC 3339 timestamp the router suggests as the freshness ceiling for this envelope. Advisory only — verifiers MAY enforce a shorter window (`min_freshness_sec` on the consumer's `attestation_requirement`), but MUST reject when current time is past `expires_at`. Re-fetching `/.well-known/tmp-router-attestation` with a fresh nonce produces a new envelope."
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json",
+      "description": "Vendor-namespaced extension surface for fields not yet promoted to the protocol (e.g., platform-specific debug aids, deployment metadata). MUST NOT be used to carry alternative attestation documents or shadow the binding rule."
+    }
+  },
+  "required": [
+    "attestation_format",
+    "attestation_document",
+    "nonce",
+    "signing_key",
+    "expires_at"
+  ],
+  "additionalProperties": false
+}

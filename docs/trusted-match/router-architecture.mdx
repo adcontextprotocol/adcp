@@ -48,7 +48,7 @@ The router is a single Go binary with two structurally separate code paths: one 
 
 The separation is in the code and auditable. The context path cannot read identity data because it is not passed to it, not stored in any reachable location, and not referenced in any data structure the context path processes. The same applies in reverse for the identity path. The router is open-source — anyone can verify this by reading the source.
 
-TEE attestation is an upgrade path. Without TEE, you trust that the operator deployed the published binary. With TEE, attestation proves the deployed binary matches the audited source, removing that trust requirement.
+TEE attestation is an upgrade path. Without TEE, you trust that the operator deployed the published binary; with TEE-attested operation, the router exposes a verifiable envelope at `/.well-known/tmp-router-attestation` and providers MAY require it via `attestation_requirement` on their registration. The wire shape, binding rule, and verification flow are defined in [Router Attestation](/docs/trusted-match/router-attestation) (experimental, `trusted_match.router_attestation`).
 
 ## Provider Registration
 
@@ -197,7 +197,7 @@ The TMP Router replaces this with a multi-provider, multi-surface, protocol-stan
 | Discovery | Publisher configuration | Publisher configuration |
 | Surfaces | Web (Prebid Server) | Web, AI, mobile, CTV, retail media |
 | Request format | Full OpenRTB BidRequest (~2-10KB JSON) | TMP ContextMatchRequest (~200-600 bytes JSON) |
-| Privacy | Data masking before sending | Structural separation (TEE-ready) |
+| Privacy | Data masking before sending | Structural separation; TEE-attested operation available via [Router Attestation](/docs/trusted-match/router-attestation) (experimental) |
 | Identity handling | User ID in bid request | Separate Identity Match operation |
 
 For existing Prebid Server deployments, the TMP module replaces vendor-specific RTD modules with a generic TMP client. For surfaces without Prebid, the router's HTTP/2 API provides the same functionality.
