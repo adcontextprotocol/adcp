@@ -422,6 +422,13 @@
         "cta_label": {
           "type": "string",
           "description": "Call-to-action button label."
+        },
+        "reference_assets": {
+          "type": "array",
+          "description": "Typed seller collateral for buyer planning — coverage maps, sample renders, environment photos, media kits. Distinct from hero_image/carousel_images, which are display-oriented.",
+          "items": {
+            "$ref": "/schemas/core/product-card-reference-asset.json"
+          }
         }
       },
       "additionalProperties": true

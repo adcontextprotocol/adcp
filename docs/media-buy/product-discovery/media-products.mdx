@@ -889,6 +889,76 @@ When displaying products in UIs, clients should follow this fallback order:
 
 This ensures a consistent user experience regardless of what product metadata is available.
 
+### Reference Assets
+
+Sellers can attach typed collateral to `product_card_detailed` via the `reference_assets` array. Each entry carries a semantic `role` and a canonical asset payload, giving buyer agents a recognized slot to find and present seller-curated visuals — coverage maps, sample renders, environment photos, and media kits.
+
+This is distinct from `hero_image` and `carousel_images`, which are display-oriented. `reference_assets` is for typed collateral that buyers may inspect or use for planning.
+
+**Supported roles:**
+
+| Role | Description |
+|------|-------------|
+| `coverage_map` | Geographic or audience reach visualization |
+| `sample_render` | Mockup of ad placement in context |
+| `environment_photo` | Photo of the physical or digital environment |
+| `media_kit` | Downloadable media kit or spec sheet |
+| `logo` | Seller or property logo |
+| `other` | Seller-defined role (provide `role_label`) |
+
+**Example:**
+
+```json
+{
+  "product_card_detailed": {
+    "title": "Downtown Commuter Screens",
+    "description": "High-traffic digital screens in metro station concourses...",
+    "hero_image": {
+      "asset_type": "image",
+      "url": "https://cdn.example.com/products/metro_hero.jpg",
+      "width": 1920,
+      "height": 1080,
+      "alt_text": "Metro station digital screen"
+    },
+    "reference_assets": [
+      {
+        "role": "coverage_map",
+        "asset": {
+          "asset_type": "image",
+          "url": "https://assets.example.com/maps/downtown-coverage.png",
+          "width": 1600,
+          "height": 1000,
+          "alt_text": "Coverage map for downtown commuter screens"
+        },
+        "description": "Shows all screen locations across the downtown metro network"
+      },
+      {
+        "role": "sample_render",
+        "asset": {
+          "asset_type": "video",
+          "url": "https://assets.example.com/previews/station-takeover.mp4",
+          "width": 1080,
+          "height": 1920
+        },
+        "description": "15-second sample of a full station takeover"
+      },
+      {
+        "role": "environment_photo",
+        "asset": {
+          "asset_type": "image",
+          "url": "https://assets.example.com/photos/concourse-evening.jpg",
+          "width": 2400,
+          "height": 1600,
+          "alt_text": "Evening foot traffic at Central Station concourse"
+        }
+      }
+    ]
+  }
+}
+```
+
+Each asset uses the canonical asset types (`image`, `video`, `markdown`, `url`) — the same primitives used throughout AdCP creative schemas.
+
 ## Proposals
 
 Publishers can return **proposals** alongside products - structured media plans with budget allocations that buyers can execute through a defined path. Committed proposals execute directly; draft proposals must be finalized first.

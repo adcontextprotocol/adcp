@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/product-card-reference-asset.json",
+  "title": "Product Card Reference Asset",
+  "description": "Typed seller collateral for buyer-facing product cards. Each entry carries a semantic role (coverage_map, sample_render, etc.) and a canonical asset payload. Distinct from hero_image/carousel_images (display-oriented) and from core/reference-asset.json (creative-generation oriented).",
+  "type": "object",
+  "properties": {
+    "role": {
+      "type": "string",
+      "enum": [
+        "coverage_map",
+        "sample_render",
+        "environment_photo",
+        "media_kit",
+        "logo",
+        "other"
+      ],
+      "description": "Semantic role of this asset. coverage_map: geographic or audience reach visualization; sample_render: mockup of ad placement in context; environment_photo: photo of the physical or digital environment; media_kit: downloadable media kit or spec sheet; logo: seller or property logo; other: seller-defined role (provide role_label)."
+    },
+    "role_label": {
+      "type": "string",
+      "description": "Human-readable label for the asset role. Required when role is 'other'; optional otherwise."
+    },
+    "asset": {
+      "oneOf": [
+        { "$ref": "/schemas/core/assets/image-asset.json" },
+        { "$ref": "/schemas/core/assets/video-asset.json" },
+        { "$ref": "/schemas/core/assets/markdown-asset.json" },
+        { "$ref": "/schemas/core/assets/url-asset.json" }
+      ],
+      "description": "The asset payload, discriminated on asset_type (image, video, markdown, url)."
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional human-readable context about this asset."
+    }
+  },
+  "required": [
+    "role",
+    "asset"
+  ],
+  "additionalProperties": true
+}
