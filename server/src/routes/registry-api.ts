@@ -887,11 +887,46 @@ registry.registerPath({
 
 registry.registerPath({
   method: "post",
+  path: "/api/properties/hosted/{domain}/claim",
+  operationId: "claimHostedPropertyDomain",
+  summary: "Claim a domain for bind-on-verify",
+  description:
+    "Issue a pending domain claim for the caller's organization and return a claim-specific `authoritative_location` URL (`…/adagents.json?adcp_claim=<token>`). The caller places that single pointer at their own origin `/.well-known/adagents.json`; a subsequent verify-origin reads the token and binds the domain to the caller's org. The token is the per-account artifact that proves WHICH account owns the domain — a plain domain-keyed pointer proves only that the origin endorses AAO hosting, not who the owner is.\n\nThe community write surface stays open; this does not gate writes — it establishes ownership on successful verification. Refused with 409 only when the domain is already verified and locked to a different owner.",
+  tags: ["Property Resolution"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    params: z.object({
+      domain: z.string().openapi({ example: "examplepub.com" }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Claim issued",
+      content: {
+        "application/json": {
+          schema: z.object({
+            success: z.literal(true),
+            domain: z.string(),
+            authoritative_location: z.string(),
+            instructions: z.string(),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid domain", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Caller is not a member of any organization", content: { "application/json": { schema: ErrorSchema } } },
+    409: { description: "Domain already verified and locked to another owner", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "post",
   path: "/api/properties/hosted/{domain}/verify-origin",
   operationId: "verifyHostedPropertyOrigin",
   summary: "Verify AAO-hosted publisher origin",
   description:
-    "Trigger origin verification for an AAO-hosted publisher: fetches the publisher's own `/.well-known/adagents.json` and checks for an `authoritative_location` field pointing at the AAO-hosted URL. On success, promotes `agent_publisher_authorizations` rows from `source='aao_hosted'` to `source='adagents_json'` for the manifest's authorized agents — buyers reading the registry then see them as origin-attested.\n\nRequires authentication and either AAO admin OR org-membership matching the hosted property's owner. Fail-closed on NULL ownership.\n\nFailure classification:\n- `not_found`: publisher origin returned 404 (permanent — demotes if previously verified).\n- `invalid_json` / `no_authoritative_location` / `authoritative_location_mismatch`: publisher origin returned a parseable response that doesn't satisfy the spec stub pattern (permanent — demotes).\n- `unresolvable`: DNS NXDOMAIN, private IP, or non-http scheme (permanent — demotes).\n- `transient`: 5xx / 429 / 3xx / network timeout (leaves persisted state alone, stamps `origin_last_checked_at`).",
+    "Trigger origin verification for an AAO-hosted publisher: fetches the publisher's own `/.well-known/adagents.json` and checks for an `authoritative_location` field pointing at the AAO-hosted URL. On success, promotes `agent_publisher_authorizations` rows from `source='aao_hosted'` to `source='adagents_json'` for the manifest's authorized agents — buyers reading the registry then see them as origin-attested.\n\nBind-on-verify: when the pointer carries an `adcp_claim` token (see the claim endpoint), a successful verification binds the domain to that claim's organization and returns `bound_org_id`. Binding is driven by which token the origin pointer carries, never by who triggers verification, so any authenticated caller may trigger it and a squatter cannot bind a domain they don't control. An existing verified owner is never overwritten.\n\nFailure classification:\n- `not_found`: publisher origin returned 404 (permanent — demotes if previously verified).\n- `invalid_json` / `no_authoritative_location` / `authoritative_location_mismatch`: publisher origin returned a parseable response that doesn't satisfy the spec stub pattern (permanent — demotes).\n- `unresolvable`: DNS NXDOMAIN, private IP, or non-http scheme (permanent — demotes).\n- `transient`: 5xx / 429 / 3xx / network timeout (leaves persisted state alone, stamps `origin_last_checked_at`).",
   tags: ["Property Resolution"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -917,13 +952,13 @@ registry.registerPath({
             ]),
             checked_at: z.string(),
             detail: z.string().optional(),
+            bound_org_id: z.string().optional(),
           }),
         },
       },
     },
     400: { description: "Invalid domain", content: { "application/json": { schema: ErrorSchema } } },
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
-    403: { description: "Caller does not own this hosted property (and is not an AAO admin)", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "No hosted property for this domain", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
@@ -4505,6 +4540,19 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           });
         }
 
+        // Owner lock: once a domain is origin-verified and bound to an owner
+        // (bind-on-verify), only that owner may edit the record. Unverified
+        // community rows remain openly editable (the contribute-back path).
+        if (existing.origin_verified_at && existing.workos_organization_id) {
+          const callerOrgId = await resolveCallerOrgId(req);
+          if (existing.workos_organization_id !== callerOrgId) {
+            return res.status(403).json({
+              error: "Domain is locked to its verified owner; only the owner can edit this record",
+              domain: publisher_domain,
+            });
+          }
+        }
+
         const { property, revision_number } = await propertyDb.editCommunityProperty(publisher_domain, {
           adagents_json: adagentsJson,
           edit_summary: "API: updated property data",
@@ -4549,6 +4597,47 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     }
   });
 
+  // ── Domain claim (bind-on-verify) ──────────────────────────────
+
+  // Issue a pending claim for the caller's org. Returns the claim-specific
+  // `authoritative_location` URL the caller pastes at their own origin; a later
+  // verify-origin reads the token and binds ownership. The token is the
+  // per-account artifact that proves WHICH account owns the domain — a plain
+  // domain-keyed pointer proves only that the origin endorses AAO hosting.
+  router.post("/properties/hosted/:domain/claim", ...saveMiddleware, async (req, res) => {
+    try {
+      const domain = (req.params.domain || '').toLowerCase();
+      if (!isValidDomain(domain)) {
+        return res.status(400).json({ error: 'Invalid domain' });
+      }
+      const callerOrgId = await resolveCallerOrgId(req);
+      if (!callerOrgId) {
+        return res.status(403).json({ error: 'Claiming a domain requires membership in an organization' });
+      }
+      const { token, lockedToOrgId } = await propertyDb.issueDomainClaim(domain, callerOrgId);
+      if (!token) {
+        return res.status(409).json({
+          error: 'Domain is already verified and locked to another owner',
+          domain,
+          locked_to_org_id: lockedToOrgId,
+        });
+      }
+      const authoritativeLocation = `${aaoHostedAdagentsJsonUrl(domain)}?adcp_claim=${token}`;
+      return res.json({
+        success: true,
+        domain,
+        authoritative_location: authoritativeLocation,
+        instructions:
+          `Place a JSON document at https://${domain}/.well-known/adagents.json with ` +
+          `{"authoritative_location": "${authoritativeLocation}"}, then call verify-origin. ` +
+          `Origin verification binds this domain to your organization.`,
+      });
+    } catch (error) {
+      logger.error({ error }, 'Failed to issue domain claim');
+      return res.status(500).json({ error: 'Failed to issue domain claim' });
+    }
+  });
+
   // ── Origin verification (AAO-hosted publishers) ────────────────
 
   router.post("/properties/hosted/:domain/verify-origin", ...saveMiddleware, async (req, res) => {
@@ -4561,29 +4650,27 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       if (!hosted) {
         return res.status(404).json({ error: 'No hosted property for this domain' });
       }
-      // Org-ownership check fails CLOSED on NULL ownership. The
-      // upstream `/api/properties/save` create path can leave the row
-      // with no `workos_organization_id` (community-edit pattern), and
-      // a "fail open if NULL" check would let any authenticated caller
-      // trigger verification on a squatted/unclaimed row — promoting
-      // source labels for a domain they don't actually own. Require
-      // either an explicit org match OR admin. The broader squatting
-      // risk in the create path is a separate fix (needs DNS / well-
-      // known domain-ownership challenge before write).
-      const callerOrgId = await resolveCallerOrgId(req);
-      const isAdmin = (req.user as { isAdmin?: boolean })?.isAdmin === true;
-      if (!isAdmin) {
-        if (!hosted.workos_organization_id) {
-          return res.status(403).json({
-            error: 'Hosted property has no claimed owner — origin verification requires a claimed owner or an admin trigger',
-            domain,
-          });
-        }
-        if (hosted.workos_organization_id !== callerOrgId) {
-          return res.status(403).json({ error: 'Not authorized to verify this domain' });
+      // Bind-on-verify: ownership is established by the `adcp_claim` token
+      // carried in the publisher's origin pointer, NOT by the caller. Any
+      // authenticated caller may trigger verification; the outcome binds the
+      // claim's org (or no-ops). A squatter cannot make the real origin point
+      // at their token, so they can never bind a domain they don't control.
+      const outcome = await verifyHostedPropertyOrigin({ hosted });
+      if (outcome.verified && outcome.bound_org_id) {
+        // Binding flips the row public (is_public=true, review_status=approved).
+        // Re-read and mirror that state change into the federated index so
+        // /api/registry/publisher reflects it immediately, rather than waiting
+        // for the next save. No-op when the row carries no properties.
+        const bound = await propertyDb.getHostedPropertyByDomain(domain);
+        if (bound) await syncHostedPropertyToFederatedIndex(bound);
+        // Disclose bound_org_id only to the org that bound it. Binding is
+        // token-driven, so a third party may trigger verification — but it
+        // shouldn't learn which org just bound the domain.
+        const callerOrgId = await resolveCallerOrgId(req);
+        if (outcome.bound_org_id !== callerOrgId) {
+          outcome.bound_org_id = undefined;
         }
       }
-      const outcome = await verifyHostedPropertyOrigin({ hosted });
       return res.json(outcome);
     } catch (error) {
       logger.error({ error }, 'Origin verification failed');

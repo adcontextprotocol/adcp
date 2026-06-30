@@ -63,7 +63,7 @@ const MAX_RESPONSE_BYTES = 1_000_000;
 const FETCH_TIMEOUT_MS = 10_000;
 
 export type VerificationOutcome =
-  | { verified: true; reason: 'authoritative_location_pointer'; checked_at: Date }
+  | { verified: true; reason: 'authoritative_location_pointer'; checked_at: Date; bound_org_id?: string }
   | { verified: false; reason: VerificationFailureReason; checked_at: Date; detail?: string };
 
 export type VerificationFailureReason =
@@ -82,7 +82,26 @@ interface VerifyHostedOriginInput {
   propertyDb?: {
     recordOriginVerification: PropertyDatabase['recordOriginVerification'];
     touchOriginLastCheckedAt: PropertyDatabase['touchOriginLastCheckedAt'];
+    bindOwnerFromVerifiedClaim?: PropertyDatabase['bindOwnerFromVerifiedClaim'];
   };
+}
+
+/**
+ * Split an `adcp_claim` token out of a publisher's `authoritative_location`
+ * pointer. The token is the per-account artifact that binds a domain to its
+ * owner; the base URL (everything else) must still match AAO's hosted URL.
+ * Returns the base URL with the `adcp_claim` param removed, and the token.
+ */
+function splitClaim(authLoc: string): { base: string; claimToken: string | null } {
+  try {
+    const u = new URL(authLoc);
+    const claimToken = u.searchParams.get('adcp_claim');
+    u.searchParams.delete('adcp_claim');
+    u.search = u.searchParams.toString();
+    return { base: u.toString(), claimToken: claimToken || null };
+  } catch {
+    return { base: authLoc, claimToken: null };
+  }
 }
 
 /**
@@ -265,7 +284,10 @@ export async function verifyHostedPropertyOrigin(
     return { verified: false, reason: 'no_authoritative_location', checked_at: new Date() };
   }
 
-  const canonicalPublisherPointer = canonicalize(authLoc);
+  // The pointer may carry an `adcp_claim` token that binds the domain to a
+  // specific owner. Split it out and match only the base against our hosted URL.
+  const { base: pointerBase, claimToken } = splitClaim(authLoc);
+  const canonicalPublisherPointer = canonicalize(pointerBase);
   if (!expectedAaoUrl || !canonicalPublisherPointer || canonicalPublisherPointer !== expectedAaoUrl) {
     await stampChecked(false);
     await demoteIfPreviouslyVerified(domain, hosted, propertyDb);
@@ -273,16 +295,30 @@ export async function verifyHostedPropertyOrigin(
       verified: false,
       reason: 'authoritative_location_mismatch',
       checked_at: new Date(),
-      detail: `expected ${expectedAaoUrl ?? '(unparsable AAO URL)'}, got ${canonicalPublisherPointer ?? authLoc}`,
+      detail: `expected ${expectedAaoUrl ?? '(unparsable AAO URL)'}, got ${canonicalPublisherPointer ?? pointerBase}`,
     };
   }
 
   // Verified.
   await stampChecked(true);
+  // Bind-on-verify: if the pointer carried a claim token, bind the domain to
+  // the org that requested THAT claim — never the caller who triggered this.
+  // bindOwnerFromVerifiedClaim is a no-op unless the token matches the pending
+  // claim and the row isn't already locked to a different org.
+  let bound_org_id: string | undefined;
+  if (claimToken && propertyDb.bindOwnerFromVerifiedClaim) {
+    try {
+      const bind = await propertyDb.bindOwnerFromVerifiedClaim(domain, claimToken);
+      bound_org_id = bind?.boundOrgId;
+      if (bound_org_id) logger.info({ domain, bound_org_id }, 'Domain bound to owner via verified claim');
+    } catch (err) {
+      logger.warn({ err, domain }, 'Origin verified but owner binding failed');
+    }
+  }
   const manifestAgents = readManifestAgentUrls(hosted.adagents_json || {});
   const promotion = await promoteVerifiedAuthorizations(domain, manifestAgents);
   logger.info({ domain, promoted: promotion.promoted }, 'Origin verified via authoritative_location pointer');
-  return { verified: true, reason: 'authoritative_location_pointer', checked_at: new Date() };
+  return { verified: true, reason: 'authoritative_location_pointer', checked_at: new Date(), bound_org_id };
 }
 
 /**

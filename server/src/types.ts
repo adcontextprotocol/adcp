@@ -632,6 +632,17 @@ export interface HostedProperty {
    * UI render "checked recently, not yet verified" vs "never checked."
    */
   origin_last_checked_at?: Date | null;
+  /**
+   * Pending domain-claim token. An account claims the domain and pastes a
+   * pointer carrying this token at their origin; verify-origin matches it to
+   * bind the owner. NULL when there is no pending claim.
+   */
+  claim_token?: string | null;
+  /**
+   * Org that requested the pending claim. Becomes `workos_organization_id` on
+   * successful origin verification. NULL when there is no pending claim.
+   */
+  claimant_org_id?: string | null;
   created_at: Date;
   updated_at: Date;
 }

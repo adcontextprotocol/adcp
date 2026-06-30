@@ -8,13 +8,13 @@
  *
  * Squatting risk being guarded:
  *   `/api/properties/save` allows any authenticated caller to create
- *   a hosted_properties row for any publisher_domain, leaving
- *   `workos_organization_id` NULL. A "fail open if NULL" auth check
- *   on verify-origin would let any authenticated caller trigger
- *   verification on those orphan rows — the source-label promotion
- *   would land under the squatter's trigger if the publisher's origin
- *   happens to point at AAO. The fix in registry-api.ts:3470 region
- *   fails closed: NULL ownership → 403 unless admin.
+ *   a hosted_properties row for any publisher_domain. Under bind-on-verify,
+ *   triggering verify-origin is open to any authenticated caller (binding is
+ *   driven by the `adcp_claim` token in the publisher's origin pointer, not by
+ *   the caller). The invariant these tests guard is that triggering
+ *   verification can never bind/rebind an owner without a matching pending
+ *   claim — so a squatter who can't make the origin point at their token can
+ *   never seize a domain, and an existing owner is never overwritten.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import request from 'supertest';
@@ -98,9 +98,8 @@ describe('verify-origin endpoint — non-admin auth (squat prevention)', () => {
     await clearFixtures();
   });
 
-  it('returns 403 when hosted property has NULL ownership (no squat-driven verification)', async () => {
-    // Mirror the create path used by /api/properties/save: no
-    // workos_organization_id passed → row owner is NULL.
+  it('does not bind an owner when verify-origin is triggered on an unclaimed row (squat prevention)', async () => {
+    // Mirror the create path used by /api/properties/save: NULL owner, no pending claim.
     await propertyDb.createHostedProperty({
       publisher_domain: PUB,
       adagents_json: { authorized_agents: [], properties: [] },
@@ -109,14 +108,22 @@ describe('verify-origin endpoint — non-admin auth (squat prevention)', () => {
       // workos_organization_id intentionally omitted
     });
 
+    // Triggering verification is no longer gated on caller ownership (binding is
+    // driven by the claim token in the origin pointer, not the caller). But with
+    // no pending claim, no origin outcome can bind an owner. The fake .example
+    // origin is unresolvable → verified:false.
     const res = await request(app)
       .post(`/api/properties/hosted/${encodeURIComponent(PUB)}/verify-origin`)
       .send({});
-    expect(res.status).toBe(403);
-    expect(String(res.body.error)).toMatch(/no claimed owner/i);
+    expect(res.status).toBe(200);
+    expect(res.body.verified).toBe(false);
+
+    // The invariant that matters: no squat-driven binding.
+    const row = await propertyDb.getHostedPropertyByDomain(PUB);
+    expect(row!.workos_organization_id ?? null).toBeNull();
   });
 
-  it('returns 403 when caller org does not match hosted_property owner', async () => {
+  it('a non-owner trigger never changes the bound owner (the lock holds)', async () => {
     await seedOtherOrg();
     await propertyDb.createHostedProperty({
       publisher_domain: PUB,
@@ -129,6 +136,10 @@ describe('verify-origin endpoint — non-admin auth (squat prevention)', () => {
     const res = await request(app)
       .post(`/api/properties/hosted/${encodeURIComponent(PUB)}/verify-origin`)
       .send({});
-    expect(res.status).toBe(403);
+    // The caller-org gate is gone — triggering is allowed...
+    expect(res.status).toBe(200);
+    // ...but it cannot rebind: ownership is unchanged.
+    const row = await propertyDb.getHostedPropertyByDomain(PUB);
+    expect(row!.workos_organization_id).toBe(OTHER_ORG_ID);
   });
 });

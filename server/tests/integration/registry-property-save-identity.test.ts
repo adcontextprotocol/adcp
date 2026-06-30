@@ -60,6 +60,10 @@ describe('POST /api/properties/save — identity, not authorization', () => {
 
   async function clearFixtures() {
     await pool.query('DELETE FROM hosted_properties WHERE publisher_domain LIKE $1', [DOMAIN_LIKE]);
+    // The edit-path success case calls syncHostedPropertyToFederatedIndex, which
+    // derives a discovered_properties row; clear it too so re-runs against a
+    // persistent DB don't leave a row that trips the "authoritative" 409 guard.
+    await pool.query('DELETE FROM discovered_properties WHERE publisher_domain LIKE $1', [DOMAIN_LIKE]);
   }
 
   beforeAll(async () => {
@@ -71,13 +75,13 @@ describe('POST /api/properties/save — identity, not authorization', () => {
     server = new HTTPServer();
     await server.start(0);
     app = (server as unknown as { app: unknown }).app;
-  });
+  }, 60000);
 
   afterAll(async () => {
     await clearFixtures();
     await server?.stop();
     await closeDatabase();
-  });
+  }, 30000);
 
   beforeEach(async () => {
     await clearFixtures();
