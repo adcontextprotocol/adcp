@@ -381,6 +381,7 @@ type StoryboardStatusLike = {
   first_failed_step_title?: string | null;
   first_failed_step_task?: string | null;
   first_failure_message?: string | null;
+  first_failure_validations_jsonb?: unknown;
   last_tested_at?: Date | string | null;
   last_passed_at?: Date | string | null;
 };
@@ -388,6 +389,11 @@ type StoryboardStatusLike = {
 function serializeDate(value: Date | string | null | undefined): string | null {
   if (!value) return null;
   return value instanceof Date ? value.toISOString() : value;
+}
+
+function normalizeValidationList(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  return value === null || value === undefined ? [] : [value];
 }
 
 function serializeStoryboardRunStatus(
@@ -406,6 +412,9 @@ function serializeStoryboardRunStatus(
     first_failed_step_title: includeDiagnostics ? s.first_failed_step_title ?? null : null,
     first_failed_step_task: includeDiagnostics ? s.first_failed_step_task ?? null : null,
     first_failure_message: includeDiagnostics ? s.first_failure_message ?? null : null,
+    first_failure_validations: includeDiagnostics
+      ? normalizeValidationList(s.first_failure_validations_jsonb)
+      : [],
   };
 }
 
@@ -3580,6 +3589,7 @@ const StoryboardRunStatusResponseSchema = z.object({
   first_failed_step_title: z.string().nullable(),
   first_failed_step_task: z.string().nullable(),
   first_failure_message: z.string().nullable(),
+  first_failure_validations: z.array(z.any()),
 });
 
 const StoryboardRunDiagnosticResponseSchema = z.object({

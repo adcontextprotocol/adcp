@@ -9809,6 +9809,9 @@ paths:
                         type:
                           - string
                           - "null"
+                      first_failure_validations:
+                        type: array
+                        items: {}
                     required:
                       - storyboard_id
                       - status
@@ -9820,6 +9823,7 @@ paths:
                       - first_failed_step_title
                       - first_failed_step_task
                       - first_failure_message
+                      - first_failure_validations
                     description: Persisted storyboard verdict for this run, using the same executable-step semantics as agent_storyboard_status.
                   phases: {}
                   summary: {}
