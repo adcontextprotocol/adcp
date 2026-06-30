@@ -105,6 +105,50 @@
       },
       "minItems": 1
     },
+    "url_allowlist": {
+      "type": "array",
+      "description": "Restrict delivery to content whose canonical URL is in this list. Each entry references a URL by raw form (`type: url`) or by the spec's pre-hashed wire form (`type: url_hash`, 44-char standard-base64 of the Blake3-256 digest of the canonicalized URL). The receiver canonicalizes raw URLs using the AdCP content-URL canonicalization rules (strip scheme, strip `www.`/`m.`/`amp.` host prefix, lowercase, strip query, strip fragment, strip trailing slash) before matching against the publisher's classified content URL. Targets content URLs (the page the impression appears on) — never user-identifying URLs. Seller must declare URL-allowlist support in get_adcp_capabilities. Combine with `url_blocklist` if needed (an entry in `url_blocklist` excludes even when the same URL is in `url_allowlist`).",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["url", "url_hash"],
+            "description": "`url` for a raw URL the receiver canonicalizes; `url_hash` for the spec's pre-hashed wire form. Mirrors the `ArtifactRef.type` discriminator on context match requests so a buyer can carry the same value form a brand-safety vendor or publisher pipeline already supplies."
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Raw URL when `type` is `url` (e.g., `https://oakwood.example.com/2026/03/kitchen-trends`). Spec-canonical hash when `type` is `url_hash` — 44-char standard-base64 of a 32-byte Blake3-256 digest."
+          }
+        },
+        "required": ["type", "value"],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "url_blocklist": {
+      "type": "array",
+      "description": "Reject delivery on content whose canonical URL is in this list. Same item shape and canonicalization rules as `url_allowlist`. Use for brand-safety negative lists supplied by the buyer or a third-party vendor; `url_blocklist` takes precedence over `url_allowlist` so a single entry can prohibit a URL that would otherwise be allowed. Targets content URLs only — not user-identifying URLs. Seller must declare URL-blocklist support in get_adcp_capabilities.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["url", "url_hash"],
+            "description": "`url` for a raw URL the receiver canonicalizes; `url_hash` for the spec's pre-hashed wire form. Mirrors the `ArtifactRef.type` discriminator on context match requests."
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Raw URL when `type` is `url`. Spec-canonical hash when `type` is `url_hash` (44-char standard-base64 of Blake3-256)."
+          }
+        },
+        "required": ["type", "value"],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
     "daypart_targets": {
       "type": "array",
       "description": "Restrict delivery to specific time windows. Each entry specifies days of week and an hour range.",

@@ -216,6 +216,7 @@ Some targeting dimensions appear in both `get_products` filters and `create_medi
 | `postal_areas` | `geo_postal_areas` / `_exclude` | Show products serving these postal codes | Deliver only in these postal codes |
 | `geo_proximity` | `geo_proximity` | Show products with inventory near this point | Deliver only to users near this point |
 | `keywords` | `keyword_targets` / `negative_keywords` | Show products supporting these search terms | Bid on these specific terms |
+| — | `url_allowlist` / `url_blocklist` | (no discovery filter — runtime gate only) | Restrict / reject delivery on specific content URLs |
 
 **Filters** tell the sell-side agent what matters to the buyer so it can curate relevant products. Without a proximity filter, a seller might recommend products that don't support geo_proximity — and the buyer wouldn't discover the gap until `create_media_buy`.
 
@@ -283,6 +284,38 @@ Use geo fields **only** for:
 - `geo_postal_areas_exclude`: Same format as `geo_postal_areas`
 
 **Note**: Inclusion and exclusion can be combined. Metro and postal targeting require specifying the classification system, enabling international support. Not all geographic granularities are supported by all publishers. Country and region are most widely supported.
+
+### URL Allow / Block Lists
+
+Use when delivery must be restricted to (`url_allowlist`) or kept off (`url_blocklist`) specific content URLs:
+
+- **Allowlists**: first-party inventory deals scoped to a fixed set of landing pages or article URLs.
+- **Blocklists**: brand-safety negative lists supplied by the buyer or a third-party vendor, surgical exclusions for sensitive content, or removal of competitor URLs from a broader buy.
+
+Both fields target **content URLs** (the page the impression appears on), never user-identifying URLs — the same boundary that excludes raw `url` artifact refs from `url_hash` storage on TMP. The receiver canonicalizes raw URLs using the AdCP content-URL canonicalization rules ([reference](/docs/reference/url-canonicalization)): strip scheme, strip `www.` / `m.` / `amp.` host prefix, lowercase, strip query, strip fragment, strip trailing slash. The same canonicalization underlies the `url_hash` artifact-ref defined on context-match-request — so `url` and `url_hash` entries dedupe correctly when they reference the same content.
+
+Each list entry is `{ type, value }`:
+
+- `type: "url"` — raw URL the receiver canonicalizes. Example: `{ "type": "url", "value": "https://oakwood.example.com/2026/03/kitchen-trends" }`.
+- `type: "url_hash"` — pre-hashed value in the AdCP wire shape (44-char standard-base64 of a 32-byte Blake3-256 digest). Use when a brand-safety vendor or publisher pipeline already supplies hashes and the raw URLs are not available to the buyer. Example: `{ "type": "url_hash", "value": "KwARbnwpUNNChmpEFqJGMAkJMJoqmsZKPZsPBaHbCno=" }`.
+
+Buyers may mix both forms in a single list. Sellers MUST declare URL-allowlist and URL-blocklist support in `get_adcp_capabilities`; sellers that do not support URL allow/block-lists MUST reject media buys carrying these fields rather than silently dropping them.
+
+**Precedence**: `url_blocklist` takes precedence over `url_allowlist`. A URL present in both lists is rejected — a single blocklist entry can prohibit a URL that would otherwise be allowed.
+
+```json
+{
+  "targeting_overlay": {
+    "url_allowlist": [
+      { "type": "url", "value": "https://oakwood.example.com/spring-catalog" },
+      { "type": "url", "value": "https://oakwood.example.com/dining-tables" }
+    ],
+    "url_blocklist": [
+      { "type": "url_hash", "value": "KwARbnwpUNNChmpEFqJGMAkJMJoqmsZKPZsPBaHbCno=" }
+    ]
+  }
+}
+```
 
 ### Age Restrictions (Compliance)
 Use for **legal compliance** requirements:
