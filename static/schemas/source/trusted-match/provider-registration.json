@@ -107,10 +107,10 @@
         },
         "min_freshness_sec": {
           "type": "integer",
-          "description": "Maximum age, in seconds, the provider accepts for an envelope. Age is verifier-kit-derived from the platform document's format-specific issuance timestamp (Nitro `timestamp`, TDX/SEV-SNP quote issuance, GCP token `iat`); the envelope itself does not carry a uniform `issued_at` field — see specs/tmp-router-attestation.md Open Question §5. Tighter than the router's suggested `expires_at` ceiling. Default: 3600 (one hour). Lower values increase round-trip pressure on /.well-known/tmp-router-attestation; higher values widen the replay window.",
+          "description": "Maximum age, in seconds, the provider accepts for an envelope. Age is verifier-kit-derived from the platform document's format-specific issuance timestamp (Nitro `timestamp`, TDX/SEV-SNP quote issuance, GCP token `iat`); the envelope itself does not carry a uniform `issued_at` field — see specs/tmp-router-attestation.md Open Question §4. Tighter than the router's suggested `expires_at` ceiling. Default: 300 (five minutes), matching the existing TMP signing-key cache TTL at docs/trusted-match/specification#key-rotation. Lower values increase round-trip pressure on /.well-known/tmp-router-attestation; higher values widen the post-revocation window during which a compromised binary's envelopes still verify against cached state.",
           "minimum": 60,
           "maximum": 86400,
-          "default": 3600
+          "default": 300
         }
       },
       "required": ["required"],

@@ -143,6 +143,16 @@ Subsequent per-provider request signatures from the bound `signing_key` are then
 
 On any rejection, the provider returns HTTP `403` to the calling router with a TMP `error` body using the failure name as `code` (or `internal_error` if the failure is not in the table above), and SHOULD log the failure for operator review.
 
+## Caching
+
+Verifier cache discipline for the envelope mirrors the existing TMP signing-key cache discipline at [Key rotation](/docs/trusted-match/specification#key-rotation) — the convention TMP signing keys and TMPX HPKE keys already share. Verifiers SHOULD:
+
+- Cache the verified envelope keyed by the RFC 7638 thumbprint of `signing_key`, for at most the provider's `attestation_requirement.min_freshness_sec` (default 300 seconds, same as the existing signing-key TTL).
+- On a `kid` change, invalidate the cached envelope and re-fetch eagerly — the same eager-re-fetch rule the spec already applies to signing keys at [`specification.mdx#key-rotation`](/docs/trusted-match/specification#key-rotation) ("When a signature fails verification, the router SHOULD re-fetch the key before rejecting — the agent may have rotated").
+- Treat `revoked_at` on the trust-anchor signing key as a revoked envelope: the envelope's `signing_key.kid` is the same `kid` the verifier already looks up against `agent-signing-key.json`, so the existing revocation propagation rules apply unchanged.
+
+The 300-second default is operationally aligned with the rest of the protocol; providers with a genuine reason to cache longer (e.g., very-high-throughput deployments) MAY raise it to up to 86400 seconds via `min_freshness_sec` on their registration. Lower values tighten the post-revocation window at the cost of more frequent envelope production.
+
 ## Interaction with the RFC 9421 signing flow
 
 The router already signs per-provider requests over a canonical preimage ([Identity Match signed fields](/docs/trusted-match/specification#identity-match-signed-fields)). The attestation envelope does not replace that signature path; it anchors it.
@@ -209,7 +219,7 @@ The following examples use fictional entities from the AdCP character bible (Acm
   attestation_requirement:
     required: true
     acceptable_formats: [aws_nitro_cose_sign1_v1, gcp_confidential_space_v1]
-    min_freshness_sec: 3600
+    min_freshness_sec: 300
 ```
 
 A router serving requests on behalf of StreamHaus calling Pinnacle Agency MUST attach `X-TMP-Attestation` to every `POST /context` and `POST /identity` request; Pinnacle Agency runs the verification flow and rejects on any failure.

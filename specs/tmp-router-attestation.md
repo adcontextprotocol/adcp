@@ -115,7 +115,20 @@ When `required: true`, the router MUST attach an `X-TMP-Attestation: <base64url 
 
 **Why a header, not a body field.** The body schema is `additionalProperties: false`. Widening it for an out-of-band envelope would conflate request payload with deployment-level proof. Headers are the right HTTP layer for transport-level deployment metadata.
 
-### 6. No measurement allowlist in the spec
+### 6. Caching
+
+Envelope cache discipline mirrors the existing TMP signing-key cache discipline at [`specification.mdx#key-rotation`](../docs/trusted-match/specification.mdx) — the same convention already shared by TMP signing keys and TMPX HPKE encryption keys ("5-minute cache TTL, kid prefix for versioning"). The attestation envelope is, in operational terms, *the same artifact* as the signing key it binds; aligning its cache rules avoids inventing a parallel discipline.
+
+**Concretely:**
+
+- Verifiers cache verified envelopes keyed by the RFC 7638 thumbprint of `signing_key`.
+- The cache TTL is `attestation_requirement.min_freshness_sec` (default **300 seconds** — same as the existing signing-key TTL).
+- On a `kid` change, the verifier MUST treat the cached envelope as stale and re-fetch eagerly, the same way the existing rule at `specification.mdx:581` already says: "When a signature fails verification, the router SHOULD re-fetch the key before rejecting — the agent may have rotated." The eager re-fetch is what handles rotation inside the freshness window without inventing a separate dual-cache rule.
+- Revocation flows through the existing `revoked_at` mechanism on the trust anchor: a revoked signing key is also a revoked envelope, because the envelope's `signing_key` field carries the same `kid` the verifier already looks up against `agent-signing-key.json`.
+
+**Why default 300, not longer.** Attestation document production is more expensive than signing-key fetch (vendor-side cryptographic operations in the enclave, tens of milliseconds), which is an argument for caching longer. But operational alignment with the rest of the protocol's cache discipline is a stronger argument than per-fetch cost — real deployments batch envelope production behind a refresh loop, so the production cost amortizes regardless of TTL choice. Providers that genuinely need a different value can raise `min_freshness_sec` to up to 86400 seconds on their registration; the schema permits it. The default just matches the rest of the protocol.
+
+### 7. No measurement allowlist in the spec
 
 The spec defines what an attestation envelope **is**. It does not define what a verifier should treat as an *acceptable* measurement (e.g., which PCR values constitute "the audited router binary"). That decision is publisher-side / verifier-side deployment policy:
 
@@ -125,7 +138,7 @@ The spec defines what an attestation envelope **is**. It does not define what a 
 
 The verifier kit corresponding to `attestation_format` extracts the measurements; what the verifier *does* with them — a local allowlist, a remote registry lookup, a co-signed manifest — is local to that verifier. The spec stops at "here is the envelope; here is the nonce + key binding; the rest is yours."
 
-### 7. Feature gate: `trusted_match.router_attestation`
+### 8. Feature gate: `trusted_match.router_attestation`
 
 Declared in `experimental_features` alongside (separate from) `trusted_match.core` and `trusted_match.verified_identity`. Buyers / sellers / providers / routers can support core TMP without committing to attestation. Adding attestation later is purely additive — no existing TMP behavior changes for participants that don't opt in.
 
@@ -214,11 +227,9 @@ Rejected: the binding rule is normative (it's load-bearing — without it the wh
 
 2. **Multi-region routers with rotating keys.** A router deployment with N regional instances (e.g., one per PoP, per `router-architecture.mdx:280`) running N distinct signing keys produces N envelopes, all valid for the same publisher. The trust anchor model already accommodates this (multiple keys in `agent-signing-key.json`). The open question is whether a single envelope can attest multiple bound keys (a JWK array under `signing_key`) for one-trip discovery, or whether one-envelope-per-key is the right factoring. Recommendation: one-envelope-per-key in v1; the verifier already fetches per-key on rotation.
 
-3. **Attestation caching by long-lived providers.** A provider that processes millions of requests per second with a `min_freshness_sec: 3600` policy will see ~1 envelope per router per hour but verify it ~3.6M times by reference. The cache key (signing-key thumbprint) is small but the cache hit/miss boundary is subtle when keys rotate inside a freshness window. The wire spec is silent here; this is a verifier-implementation concern that will affect deployment guides.
+3. **Deprecation flow for a format.** When `aws_nitro_cose_sign1_v1` is superseded by `aws_nitro_cose_sign1_v2` (real, hypothetical or otherwise), the enum gains an entry. Providers that allowlist only `v1` reject `v2`; routers that emit only `v2` are unreachable by those providers. The migration window (during which both must be accepted) is operationally complex. v1 spec leaves this to deployment policy and the experimental contract's break-policy; a future RFC may codify a dual-emit envelope shape if the migration pain is real.
 
-4. **Deprecation flow for a format.** When `aws_nitro_cose_sign1_v1` is superseded by `aws_nitro_cose_sign1_v2` (real, hypothetical or otherwise), the enum gains an entry. Providers that allowlist only `v1` reject `v2`; routers that emit only `v2` are unreachable by those providers. The migration window (during which both must be accepted) is operationally complex. v1 spec leaves this to deployment policy and the experimental contract's break-policy; a future RFC may codify a dual-emit envelope shape if the migration pain is real.
-
-5. **Issued-time semantics for `min_freshness_sec`.** The schema says `min_freshness_sec` is the maximum age, but neither `attestation_document` (opaque to AdCP) nor the envelope carries an issuance timestamp in a uniform way. In practice, each platform document exposes issuance via a format-specific field (Nitro `timestamp`, TDX `quote_timestamp`-equivalent, etc.). The wire spec should either carry an explicit `issued_at` at the envelope layer (duplicating across formats) or accept that "age" is verifier-kit-derived. Recommendation: verifier-kit-derived; document the rule per kit, surface the result in a `verified_age_sec` field of the parsed result for higher-layer consumers.
+4. **Issued-time semantics for `min_freshness_sec`.** The schema says `min_freshness_sec` is the maximum age, but neither `attestation_document` (opaque to AdCP) nor the envelope carries an issuance timestamp in a uniform way. In practice, each platform document exposes issuance via a format-specific field (Nitro `timestamp`, TDX `quote_timestamp`-equivalent, etc.). The wire spec should either carry an explicit `issued_at` at the envelope layer (duplicating across formats) or accept that "age" is verifier-kit-derived. Recommendation: verifier-kit-derived; document the rule per kit, surface the result in a `verified_age_sec` field of the parsed result for higher-layer consumers.
 
 ## Non-goals
 
