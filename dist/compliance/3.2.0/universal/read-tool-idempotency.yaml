@@ -1,0 +1,405 @@
+id: read_tool_idempotency
+version: "1.0.0"
+introduced_in: "3.1"
+title: "Read-tool idempotency_key tolerance"
+category: idempotency
+summary: "Validates that read-only AdCP tasks accept the 3.1 every-request idempotency_key envelope without strict wrapper rejection."
+track: core
+required_tools: []  # protocol-level baseline; read-tool probes gate themselves per step
+
+narrative: |
+  AdCP 3.1 extends the `idempotency_key` request envelope from mutating
+  operations to every task request, including read-only tools. Sellers MUST
+  tolerate the field on reads in 3.1. Tool wrappers must pass it through their
+  envelope normalization layer instead of rejecting it as an unknown
+  task-specific input.
+
+  This storyboard focuses on the 3.1 read-side contract. It sends
+  `idempotency_key`, `context`, and `ext` on representative read tools and
+  verifies that the agent still returns schema-valid responses with context
+  echo intact. The existing `idempotency` storyboard continues to cover
+  mutating replay semantics, conflict detection, TTL declaration, and
+  `replayed: true`.
+
+  The final phase intentionally omits `idempotency_key` on a read request.
+  During the 3.1 grace window, sellers SHOULD reject this omission but MAY
+  accept it for compatibility; therefore the probe is documented here as a
+  future 3.2 switch point rather than a hard failure. The 3.2 storyboard cut
+  should flip that probe to a required rejection.
+
+agent:
+  interaction_model: "*"  # applies to every agent regardless of protocol or specialism
+  examples:
+    - "Any AdCP agent that exposes read-only tools"
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness"
+
+prerequisites:
+  description: |
+    No special seed state is required. Tool-specific read probes are skipped
+    when the agent does not advertise the corresponding tool.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: read_requests_accept_idempotency_key
+    title: "Read requests accept idempotency_key"
+    narrative: |
+      Send representative read requests with the full 3.1 request envelope:
+      `idempotency_key`, `context`, and `ext`. Passing these probes confirms
+      that task wrappers do not treat read request schemas as closed
+      task-specific payloads.
+
+    steps:
+      - id: get_capabilities_with_idempotency_key
+        title: "Capabilities read accepts idempotency_key"
+        narrative: |
+          `get_adcp_capabilities` is the protocol-level read that every agent
+          exposes. The request carries a caller-minted `idempotency_key` plus
+          `context` and `ext`. The agent must accept the envelope and return a
+          normal capabilities response.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: read_tool_idempotency
+        stateful: false
+        expected: |
+          Return capabilities normally. The read wrapper MUST tolerate the
+          3.1 every-request envelope fields and echo context unchanged.
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#read_tools_3_1_capabilities"
+          context:
+            correlation_id: "read_tool_idempotency--get_capabilities_with_key"
+          ext:
+            adcp:
+              storyboard: "read_tool_idempotency"
+              probe: "capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "read_tool_idempotency--get_capabilities_with_key"
+            description: "Context correlation_id returned unchanged"
+
+      - id: get_products_with_idempotency_key
+        title: "Product discovery read accepts idempotency_key"
+        narrative: |
+          `get_products` is the canonical media-buy read. Sellers that expose
+          it must accept the 3.1 every-request envelope even though the field is
+          not part of the task-specific product-discovery payload.
+        task: get_products
+        requires_tool: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: read_tool_idempotency
+        stateful: false
+        expected: |
+          Return product discovery results normally. The presence of
+          `idempotency_key` and `ext` must not trigger strict request-wrapper
+          validation failure.
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#read_tools_3_1_get_products"
+          buying_mode: "brief"
+          brief: "Show available advertising products for an outdoor lifestyle campaign."
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          context:
+            correlation_id: "read_tool_idempotency--get_products_with_key"
+          ext:
+            adcp:
+              storyboard: "read_tool_idempotency"
+              probe: "get_products"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products"
+            description: "Response contains a products array"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "read_tool_idempotency--get_products_with_key"
+            description: "Context correlation_id returned unchanged"
+
+      - id: list_accounts_with_idempotency_key
+        title: "Account listing read accepts idempotency_key"
+        narrative: |
+          `list_accounts` is a read-only account discovery surface. The 3.1
+          request envelope applies here too; account wrappers must not reject
+          `idempotency_key`, `context`, or `ext` as unknown fields.
+        task: list_accounts
+        requires_tool: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/task-reference/list_accounts"
+        comply_scenario: read_tool_idempotency
+        stateful: false
+        expected: |
+          Return account discovery results normally with a schema-valid
+          accounts array and unchanged context echo.
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#read_tools_3_1_list_accounts"
+          sandbox: true
+          pagination:
+            max_results: 10
+          context:
+            correlation_id: "read_tool_idempotency--list_accounts_with_key"
+          ext:
+            adcp:
+              storyboard: "read_tool_idempotency"
+              probe: "list_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches list-accounts-response.json schema"
+          - check: field_present
+            path: "accounts"
+            description: "Response contains an accounts array"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "read_tool_idempotency--list_accounts_with_key"
+            description: "Context correlation_id returned unchanged"
+
+      - id: list_creative_formats_with_idempotency_key
+        title: "Creative format discovery read accepts idempotency_key"
+        narrative: |
+          `list_creative_formats` is the common creative discovery read used by
+          both media-buy and creative agents. The wrapper must accept the 3.1
+          envelope without rejecting the read request before it reaches the
+          handler.
+        task: list_creative_formats
+        requires_tool: list_creative_formats
+        schema_ref: "creative/list-creative-formats-request.json"
+        response_schema_ref: "creative/list-creative-formats-response.json"
+        doc_ref: "/creative/task-reference/list_creative_formats"
+        comply_scenario: read_tool_idempotency
+        stateful: false
+        expected: |
+          Return creative formats normally. The presence of `idempotency_key`,
+          `context`, and `ext` must not trigger wrapper validation failure.
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#read_tools_3_1_list_formats"
+          type: "display"
+          pagination:
+            max_results: 10
+          context:
+            correlation_id: "read_tool_idempotency--list_formats_with_key"
+          ext:
+            adcp:
+              storyboard: "read_tool_idempotency"
+              probe: "list_creative_formats"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creative-formats-response.json schema"
+          - check: field_present
+            path: "formats"
+            description: "Response contains a formats array"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "read_tool_idempotency--list_formats_with_key"
+            description: "Context correlation_id returned unchanged"
+
+      - id: list_creatives_with_idempotency_key
+        title: "Creative library read accepts idempotency_key"
+        narrative: |
+          `list_creatives` covers the creative-library read path. Agents that
+          expose it must accept 3.1 envelope fields on the request even when the
+          task-specific filters are otherwise empty.
+        task: list_creatives
+        requires_tool: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives"
+        comply_scenario: read_tool_idempotency
+        stateful: false
+        expected: |
+          Return creative library results normally with a schema-valid
+          response and unchanged context echo.
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#read_tools_3_1_list_creatives"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          include_snapshot: false
+          pagination:
+            max_results: 10
+          context:
+            correlation_id: "read_tool_idempotency--list_creatives_with_key"
+          ext:
+            adcp:
+              storyboard: "read_tool_idempotency"
+              probe: "list_creatives"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json schema"
+          - check: field_present
+            path: "creatives"
+            description: "Response contains a creatives array"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "read_tool_idempotency--list_creatives_with_key"
+            description: "Context correlation_id returned unchanged"
+
+  - id: omitted_key_grace_accept_path
+    title: "3.1 omitted-key grace window — accept path"
+    narrative: |
+      Exercise the intentional omission vector on a read request. 3.1 sellers
+      SHOULD reject omitted `idempotency_key` values on reads but MAY continue
+      to accept them during the migration window. Passing this path records the
+      compatibility behavior without failing 3.1 acceptance; the peer reject
+      path below records the recommended behavior.
+    optional: true
+    branch_set:
+      id: omitted_key_grace_handled
+      semantics: any_of
+
+    steps:
+      - id: get_capabilities_without_idempotency_key_3_1_accept
+        title: "Capabilities read without idempotency_key may still succeed in 3.1"
+        narrative: |
+          The request intentionally omits `idempotency_key` and sets
+          `omit_idempotency_key: true` so future runners that auto-inject keys
+          for all tasks preserve the missing-key vector. Some 3.1 sellers may
+          still accept this request during migration.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: read_tool_idempotency
+        omit_idempotency_key: true
+        stateful: false
+        contributes: true
+        expected: |
+          3.1 grace-window accept behavior: a seller MAY accept this request
+          and return capabilities normally, but SHOULD prepare to reject omitted
+          `idempotency_key` on read tools. The 3.2 compliance cut should remove
+          this accept branch.
+
+        sample_request:
+          context:
+            correlation_id: "read_tool_idempotency--capabilities_omitted_key_grace"
+          ext:
+            adcp:
+              storyboard: "read_tool_idempotency"
+              probe: "omitted_key_grace"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema during the 3.1 omitted-key grace window"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "read_tool_idempotency--capabilities_omitted_key_grace"
+            description: "Context correlation_id returned unchanged"
+
+  - id: omitted_key_grace_reject_path
+    title: "3.1 omitted-key grace window — reject path"
+    narrative: |
+      Exercise the recommended 3.1 behavior for a read request that omits
+      `idempotency_key`: reject the request with `INVALID_REQUEST`. Passing
+      this path contributes the same branch-set flag as the accept path above,
+      so either behavior is conformant during the 3.1 migration window.
+    optional: true
+    branch_set:
+      id: omitted_key_grace_handled
+      semantics: any_of
+
+    steps:
+      - id: get_capabilities_without_idempotency_key_3_1_reject
+        title: "Capabilities read without idempotency_key may reject in 3.1"
+        narrative: |
+          The request intentionally omits `idempotency_key` and sets
+          `omit_idempotency_key: true`. In 3.1, sellers that already enforce
+          the every-request envelope should reject this with `INVALID_REQUEST`.
+          In 3.2 this becomes the only conformant branch.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: read_tool_idempotency
+        omit_idempotency_key: true
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        contributes: true
+        expected: |
+          3.1 grace-window reject behavior: reject the read request with:
+          - Error code: INVALID_REQUEST
+          - Message indicating idempotency_key is required
+
+        sample_request:
+          context:
+            correlation_id: "read_tool_idempotency--capabilities_omitted_key_grace"
+          ext:
+            adcp:
+              storyboard: "read_tool_idempotency"
+              probe: "omitted_key_grace"
+        validations:
+          - check: error_code
+            value: "INVALID_REQUEST"
+            description: "Missing idempotency_key rejected with INVALID_REQUEST"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "read_tool_idempotency--capabilities_omitted_key_grace"
+            description: "Context correlation_id returned unchanged"
+
+  - id: omitted_key_grace_assertion
+    title: "3.1 omitted-key grace window — require handled outcome"
+    narrative: |
+      Synthetic assertion over the two optional omitted-key branches. In 3.1,
+      either success-path compatibility or recommended `INVALID_REQUEST`
+      rejection satisfies the migration window. A transport failure, unrelated
+      error, or schema-invalid success satisfies neither branch and is
+      non-conformant. The 3.2 storyboard cut should collapse this to the
+      rejection branch only.
+
+    steps:
+      - id: assert_omitted_key_grace_handled
+        title: "Require omitted_key_grace_handled from either path"
+        narrative: |
+          At least one omitted-key branch must pass: the 3.1 compatibility
+          accept path or the 3.1 recommended reject path.
+        task: assert_contribution
+        comply_scenario: read_tool_idempotency
+        stateful: false
+        expected: |
+          At least one of omitted_key_grace_accept_path or
+          omitted_key_grace_reject_path contributed
+          `omitted_key_grace_handled`.
+
+        validations:
+          - check: any_of
+            allowed_values: ["omitted_key_grace_handled"]
+            description: "Agent must either accept the omitted-key read during the 3.1 grace window or reject it with INVALID_REQUEST."

@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.2.0/creative/list-transformers-response.json",
+  "title": "List Transformers Response (Creative Agent)",
+  "description": "Response payload for list_transformers — account-scoped transformer descriptors matching the query, with optional per-param enumerated option values (when expanded) and per-account pricing (when requested).",
+  "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/3.2.0/core/version-envelope.json" },
+    { "$ref": "/schemas/3.2.0/core/protocol-envelope.json" }
+  ],
+  "properties": {
+    "transformers": {
+      "type": "array",
+      "description": "Transformer descriptors matching the query.",
+      "items": { "$ref": "/schemas/3.2.0/core/transformer.json" }
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors and warnings.",
+      "items": { "$ref": "/schemas/3.2.0/core/error.json" }
+    },
+    "pagination": { "$ref": "/schemas/3.2.0/core/pagination-response.json" },
+    "context": { "$ref": "/schemas/3.2.0/core/context.json" },
+    "ext": { "$ref": "/schemas/3.2.0/core/ext.json" }
+  },
+  "required": ["transformers"],
+  "additionalProperties": true
+}
