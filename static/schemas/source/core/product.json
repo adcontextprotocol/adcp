@@ -96,6 +96,10 @@
       "uniqueItems": true,
       "minItems": 1
     },
+    "dooh_inventory_summary": {
+      "$ref": "/schemas/core/dooh-inventory-summary.json",
+      "description": "Optional product-level aggregate geography for DOOH products. Use this for network, regional, or package products where per-screen disclosure is unavailable, impractical, or not useful at discovery time."
+    },
     "delivery_type": {
       "$ref": "/schemas/enums/delivery-type.json"
     },
