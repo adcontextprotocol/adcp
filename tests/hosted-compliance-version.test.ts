@@ -8,17 +8,19 @@ import {
 
 describe('hosted compliance target selection', () => {
   it('selects the 3.1 GA target when an agent advertises both 3.0 and 3.1', () => {
+    const stable31Target = hostedComplianceTarget('3.1');
     const target = selectCanonicalHostedComplianceTargetForSupportedVersions(['3.0', '3.1']);
 
     expect(target.requested).toBe('3.1');
-    expect(target.version).toBe('3.1.0');
+    expect(target.version).toBe(stable31Target.version);
   });
 
   it('selects the 3.1 GA target when an agent advertises patch-form 3.1.0', () => {
+    const stable31Target = hostedComplianceTarget('3.1');
     const target = selectCanonicalHostedComplianceTargetForSupportedVersions(['3.0', '3.1.0']);
 
     expect(target.requested).toBe('3.1');
-    expect(target.version).toBe('3.1.0');
+    expect(target.version).toBe(stable31Target.version);
   });
 
   it('keeps 3.0-only agents on the 3.0 public target', () => {
