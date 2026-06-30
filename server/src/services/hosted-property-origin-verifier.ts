@@ -134,12 +134,41 @@ function canonicalize(url: string): string | null {
  * The verifier classifies these so the caller can decide whether to
  * demote (permanent) or leave state alone (transient).
  */
+function collectErrorText(err: Error): string {
+  const parts: string[] = [];
+  const seen = new Set<object>();
+  let current: unknown = err;
+
+  while (current && typeof current === 'object' && !seen.has(current)) {
+    seen.add(current);
+    const value = current as { message?: unknown; code?: unknown; codes?: unknown; cause?: unknown };
+    if (typeof value.message === 'string') parts.push(value.message);
+    if (typeof value.code === 'string') parts.push(value.code);
+    if (Array.isArray(value.codes)) {
+      for (const code of value.codes) {
+        if (typeof code === 'string') parts.push(code);
+      }
+    }
+    current = value.cause;
+  }
+
+  return parts.join(' ');
+}
+
 function classifyFetchError(err: unknown): 'unresolvable' | 'transient' {
   if (!(err instanceof Error)) return 'transient';
-  const msg = err.message || '';
-  // safeFetch / validateFetchUrl signatures (see utils/url-security.ts)
+  const text = collectErrorText(err);
+  // Temporary resolver failures may be wrapped in `cause` by safeFetch's DNS
+  // preflight. Preserve the verified state whenever any resolver result was
+  // transient; a later successful re-verify will refresh the stamp.
+  if (/\b(EAI_AGAIN|ESERVFAIL|ETIMEOUT|ECONNREFUSED)\b/i.test(text)) return 'transient';
+  // Permanent: SSRF/validation rejections and genuine NXDOMAIN/no-address DNS.
+  // A generic "Could not resolve hostname" without a DNS code is deliberately
+  // not enough to lapse the lock, because validateHostResolution can collapse
+  // transient resolver failures into that same top-level message.
   if (
-    /private|loopback|link-local|metadata|invalid host|invalid url|invalid scheme|unresolvable|ENOTFOUND|EAI_/i.test(msg)
+    /private|loopback|link-local|metadata|invalid host|invalid url|invalid scheme|unresolvable/i.test(text) ||
+    /\b(ENOTFOUND|EAI_NONAME|ENODATA|ENONAME|EAI_NODATA)\b/i.test(text)
   ) {
     return 'unresolvable';
   }
@@ -237,9 +266,9 @@ export async function verifyHostedPropertyOrigin(
 
   // Spec-conformant cache rules (see managed-networks.mdx §security):
   // 5xx and 429 MUST NOT shorten the verified lifetime. Treat as transient.
-  // 3xx — we requested with `redirect: 'manual'`, so a redirect lands
-  // here too. Treat as transient (publisher may have a redirect chain
-  // we don't follow yet) rather than as a hard demote.
+  // 3xx — safeFetch follows up to 5 redirects with per-hop SSRF re-validation,
+  // so a residual 3xx here means the hop budget was exhausted. Treat that as
+  // transient rather than a hard demote.
   if (response.status >= 500 || response.status === 429 || (response.status >= 300 && response.status < 400)) {
     await stampChecked('preserve');
     return {
@@ -300,11 +329,14 @@ export async function verifyHostedPropertyOrigin(
   }
 
   // Verified.
-  await stampChecked(true);
   // Bind-on-verify: if the pointer carried a claim token, bind the domain to
   // the org that requested THAT claim — never the caller who triggered this.
   // bindOwnerFromVerifiedClaim is a no-op unless the token matches the pending
-  // claim and the row isn't already locked to a different org.
+  // claim and the row isn't already verified-locked to a different org. This
+  // runs BEFORE stampChecked(true) so the bind guard sees the pre-verification
+  // `origin_verified_at` state: a lapsed row (origin_verified_at IS NULL) is
+  // re-bindable by a new owner, whereas stamping verified first would re-arm the
+  // lock and block the legitimate re-bind.
   let bound_org_id: string | undefined;
   if (claimToken && propertyDb.bindOwnerFromVerifiedClaim) {
     try {
@@ -315,6 +347,7 @@ export async function verifyHostedPropertyOrigin(
       logger.warn({ err, domain }, 'Origin verified but owner binding failed');
     }
   }
+  await stampChecked(true);
   const manifestAgents = readManifestAgentUrls(hosted.adagents_json || {});
   const promotion = await promoteVerifiedAuthorizations(domain, manifestAgents);
   logger.info({ domain, promoted: promotion.promoted }, 'Origin verified via authoritative_location pointer');

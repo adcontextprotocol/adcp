@@ -7,6 +7,16 @@ import { createLogger } from '../logger.js';
 
 const logger = createLogger('url-security');
 
+const TRANSIENT_DNS_CODES = new Set(['EAI_AGAIN', 'ESERVFAIL', 'ETIMEOUT', 'ECONNREFUSED']);
+const PERMANENT_DNS_CODES = new Set(['ENOTFOUND', 'EAI_NONAME', 'ENODATA', 'ENONAME', 'EAI_NODATA']);
+const DNS_CODE_RE = /\b(EAI_AGAIN|ESERVFAIL|ETIMEOUT|ECONNREFUSED|ENOTFOUND|EAI_NONAME|ENODATA|ENONAME|EAI_NODATA)\b/i;
+
+interface DnsResolutionFailureCause {
+  code?: string;
+  codes: string[];
+  hostname: string;
+}
+
 const fetchWithDispatcher = undiciFetch as unknown as (
   input: string | URL,
   init?: RequestInit & { dispatcher: Dispatcher },
@@ -158,6 +168,45 @@ export function isPrivateHostname(hostname: string): boolean {
   return false;
 }
 
+function extractDnsErrorCode(reason: unknown): string | undefined {
+  if (!reason || typeof reason !== 'object') return undefined;
+  const err = reason as { code?: unknown; message?: unknown };
+  if (typeof err.code === 'string') return err.code.toUpperCase();
+  if (typeof err.message === 'string') {
+    const match = err.message.match(DNS_CODE_RE);
+    if (match) return match[1].toUpperCase();
+  }
+  return undefined;
+}
+
+function dnsResolutionFailureCause(
+  hostname: string,
+  results: readonly PromiseSettledResult<string[]>[],
+): DnsResolutionFailureCause | undefined {
+  const codes = results
+    .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+    .map((result) => extractDnsErrorCode(result.reason))
+    .filter((code): code is string => !!code);
+
+  if (codes.length === 0) return undefined;
+
+  return {
+    hostname,
+    codes,
+    code:
+      codes.find((code) => TRANSIENT_DNS_CODES.has(code)) ??
+      codes.find((code) => PERMANENT_DNS_CODES.has(code)) ??
+      codes[0],
+  };
+}
+
+function unresolvedHostnameError(hostname: string, results: readonly PromiseSettledResult<string[]>[]): Error {
+  const err = new Error('Could not resolve hostname') as Error & { cause?: DnsResolutionFailureCause };
+  const cause = dnsResolutionFailureCause(hostname, results);
+  if (cause) err.cause = cause;
+  return err;
+}
+
 /**
  * Resolve a hostname and verify none of its addresses point to a private network.
  * Checks all A and AAAA records to prevent multi-record bypass attacks.
@@ -182,7 +231,7 @@ export async function validateHostResolution(hostname: string): Promise<void> {
   ];
 
   if (allAddresses.length === 0) {
-    throw new Error('Could not resolve hostname');
+    throw unresolvedHostnameError(hostname, [ipv4Result, ipv6Result]);
   }
 
   for (const address of allAddresses) {

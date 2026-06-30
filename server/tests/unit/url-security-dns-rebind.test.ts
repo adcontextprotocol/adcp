@@ -12,11 +12,60 @@ vi.mock('dns', async () => {
   };
 });
 
+vi.mock('dns/promises', () => {
+  const resolve4 = vi.fn();
+  const resolve6 = vi.fn();
+  return {
+    default: { resolve4, resolve6 },
+    resolve4,
+    resolve6,
+  };
+});
+
 import { lookup as dnsLookup } from 'dns';
-import { ssrfSafeLookup, isPrivateHostname } from '../../src/utils/url-security.js';
+import dnsPromises from 'dns/promises';
+import { ssrfSafeLookup, isPrivateHostname, validateHostResolution } from '../../src/utils/url-security.js';
 
 type LookupCallback = (err: NodeJS.ErrnoException | null, addresses: LookupAddress[]) => void;
 type LookupSingleCallback = (err: NodeJS.ErrnoException | null, address: string, family: number) => void;
+
+describe('validateHostResolution', () => {
+  const resolve4Mock = dnsPromises.resolve4 as unknown as ReturnType<typeof vi.fn>;
+  const resolve6Mock = dnsPromises.resolve6 as unknown as ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    resolve4Mock.mockReset();
+    resolve6Mock.mockReset();
+  });
+
+  it('preserves transient DNS failure codes when hostname resolution collapses to no addresses', async () => {
+    resolve4Mock.mockRejectedValue(Object.assign(new Error('queryA EAI_AGAIN example.com'), { code: 'EAI_AGAIN' }));
+    resolve6Mock.mockRejectedValue(Object.assign(new Error('queryAaaa ENOTFOUND example.com'), { code: 'ENOTFOUND' }));
+
+    await expect(validateHostResolution('example.com')).rejects.toMatchObject({
+      message: 'Could not resolve hostname',
+      cause: {
+        code: 'EAI_AGAIN',
+        codes: ['EAI_AGAIN', 'ENOTFOUND'],
+        hostname: 'example.com',
+      },
+    });
+  });
+
+  it('preserves permanent DNS failure codes for NXDOMAIN/no-address results', async () => {
+    resolve4Mock.mockRejectedValue(Object.assign(new Error('queryA ENOTFOUND missing.example'), { code: 'ENOTFOUND' }));
+    resolve6Mock.mockRejectedValue(Object.assign(new Error('queryAaaa ENODATA missing.example'), { code: 'ENODATA' }));
+
+    await expect(validateHostResolution('missing.example')).rejects.toMatchObject({
+      message: 'Could not resolve hostname',
+      cause: {
+        code: 'ENOTFOUND',
+        codes: ['ENOTFOUND', 'ENODATA'],
+        hostname: 'missing.example',
+      },
+    });
+  });
+});
 
 describe('ssrfSafeLookup', () => {
   const lookupMock = dnsLookup as unknown as ReturnType<typeof vi.fn>;
