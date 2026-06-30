@@ -1,11 +1,11 @@
 {
   "version": 1,
   "schema": "/schemas/media-buy/get-media-buys-response.json",
-  "description": "Positive wire-level vectors for PackageStatus.targeting_overlay echo in get_media_buys responses. Vectors are dedicated JSON payloads that MUST validate against the bundled schema and whose shape is asserted by SDK code generators. Each vector contains a stable `id` (kebab-case; the stable reference for cross-SDK conformance), a human-readable `description`, the `payload` returned by the seller, and `assertions` \u2014 dotted JSON paths that MUST be present with the given value. Downstream tests SHOULD look up vectors by `id`; `description` prose may be revised without notice. Covers the `SHOULD` echo path for plain overlay fields (all sellers) and the `MUST` echo path for sellers claiming the property-lists / collection-lists specialisms. See get-media-buys-response.json \u2192 packages.items.targeting_overlay.",
+  "description": "Positive wire-level vectors for PackageStatus.targeting_overlay echo in get_media_buys responses. Vectors are dedicated JSON payloads that MUST validate against the bundled schema and whose shape is asserted by SDK code generators. Each vector contains a stable `id` (kebab-case; the stable reference for cross-SDK conformance), a human-readable `description`, the `payload` returned by the seller, and `assertions` — dotted JSON paths that MUST be present with the given value. Downstream tests SHOULD look up vectors by `id`; `description` prose may be revised without notice. Covers the `SHOULD` echo path for plain overlay fields (all sellers) and the `MUST` echo path for sellers claiming the property-lists / collection-lists specialisms. See get-media-buys-response.json → packages.items.targeting_overlay.",
   "vectors": [
     {
       "id": "property-and-collection-list-echo",
-      "description": "Specialism MUST \u2014 seller echoes persisted PropertyListReference and CollectionListReference under packages[0].targeting_overlay. Mirrors the create/get/update cycle in the inventory_list_targeting storyboard.",
+      "description": "Specialism MUST — seller echoes persisted PropertyListReference and CollectionListReference under packages[0].targeting_overlay. Mirrors the create/get/update cycle in the inventory_list_targeting storyboard.",
       "payload": {
         "status": "completed",
         "media_buys": [
@@ -64,7 +64,7 @@
     },
     {
       "id": "plain-overlay-fields-echo",
-      "description": "General SHOULD \u2014 seller echoes persisted plain overlay fields (geo_countries, frequency_cap, device_type) under packages[0].targeting_overlay. Exercises the non-specialism path that the inventory_list_targeting storyboard does not cover.",
+      "description": "General SHOULD — seller echoes persisted plain overlay fields (geo_countries, frequency_cap, device_type) under packages[0].targeting_overlay. Exercises the non-specialism path that the inventory_list_targeting storyboard does not cover.",
       "payload": {
         "status": "completed",
         "media_buys": [
@@ -88,13 +88,8 @@
                 "start_time": "2026-06-01T00:00:00Z",
                 "end_time": "2026-08-31T23:59:59Z",
                 "targeting_overlay": {
-                  "geo_countries": [
-                    "US",
-                    "CA"
-                  ],
-                  "device_type": [
-                    "ctv"
-                  ],
+                  "geo_countries": ["US", "CA"],
+                  "device_type": ["ctv"],
                   "frequency_cap": {
                     "max_impressions": 3,
                     "per": "households",
@@ -112,16 +107,11 @@
       "assertions": [
         {
           "path": "media_buys[0].packages[0].targeting_overlay.geo_countries",
-          "value": [
-            "US",
-            "CA"
-          ]
+          "value": ["US", "CA"]
         },
         {
           "path": "media_buys[0].packages[0].targeting_overlay.device_type",
-          "value": [
-            "ctv"
-          ]
+          "value": ["ctv"]
         },
         {
           "path": "media_buys[0].packages[0].targeting_overlay.frequency_cap.max_impressions",
@@ -143,7 +133,7 @@
     },
     {
       "id": "url-allowblock-list-echo",
-      "description": "General SHOULD \u2014 seller echoes persisted url_allowlist (mixed url / url_hash entries) and url_blocklist (url_hash only) under packages[0].targeting_overlay. Exercises the {type, value} item shape and verifies that both raw and pre-hashed forms round-trip in the same list.",
+      "description": "General SHOULD — seller echoes persisted url_allowlist (mixed url / url_hash entries) and url_blocklist (url_hash only) under packages[0].targeting_overlay. Exercises the {type, value} item shape and verifies that both raw and pre-hashed forms round-trip in the same list.",
       "payload": {
         "status": "completed",
         "media_buys": [
@@ -168,24 +158,12 @@
                 "end_time": "2026-09-30T23:59:59Z",
                 "targeting_overlay": {
                   "url_allowlist": [
-                    {
-                      "type": "url",
-                      "value": "https://oakwood.example.com/spring-catalog"
-                    },
-                    {
-                      "type": "url",
-                      "value": "https://oakwood.example.com/dining-tables"
-                    },
-                    {
-                      "type": "url_hash",
-                      "value": "KwARbnwpUNNChmpEFqJGMAkJMJoqmsZKPZsPBaHbCno="
-                    }
+                    { "type": "url", "value": "https://oakwood.example.com/spring-catalog" },
+                    { "type": "url", "value": "https://oakwood.example.com/dining-tables" },
+                    { "type": "url_hash", "value": "KwARbnwpUNNChmpEFqJGMAkJMJoqmsZKPZsPBaHbCno=" }
                   ],
                   "url_blocklist": [
-                    {
-                      "type": "url_hash",
-                      "value": "o/kE6fg/zMbGfmaWnvk6liRaaxGeiXx4FQ1wGO6x+8U="
-                    }
+                    { "type": "url_hash", "value": "o/kE6fg/zMbGfmaWnvk6liRaaxGeiXx4FQ1wGO6x+8U=" }
                   ]
                 }
               }
@@ -222,7 +200,7 @@
     },
     {
       "id": "signal-targeting-groups-echo",
-      "description": "General SHOULD \u2014 seller echoes grouped package-level signal_targeting_groups under packages[0].targeting_overlay so buyers can audit include/exclude signal composition.",
+      "description": "General SHOULD — seller echoes grouped package-level signal_targeting_groups under packages[0].targeting_overlay so buyers can audit include/exclude signal composition.",
       "payload": {
         "status": "completed",
         "media_buys": [
