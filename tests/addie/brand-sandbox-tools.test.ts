@@ -317,6 +317,12 @@ describe('brand protocol tools (training agent)', () => {
     });
 
     it('rights_constraint uses date-time format', async () => {
+      // Use a window in the next calendar year so this exercises the success
+      // path durably. A hardcoded past end_date is (correctly) rejected as
+      // expired, and a hardcoded "today" date is a calendar time-bomb.
+      const year = new Date(Date.now()).getUTCFullYear() + 1;
+      const startDate = `${year}-04-01`;
+      const endDate = `${year}-06-30`;
       const result = await call('acquire_rights', {
         rights_id: 'janssen_likeness_voice',
         pricing_option_id: 'monthly_exclusive',
@@ -324,13 +330,13 @@ describe('brand protocol tools (training agent)', () => {
         campaign: {
           description: 'Restaurant food campaign',
           uses: ['likeness'],
-          start_date: '2026-04-01',
-          end_date: '2026-06-30',
+          start_date: startDate,
+          end_date: endDate,
         },
       });
       const constraint = result.rights_constraint as { valid_from: string; valid_until: string };
-      expect(constraint.valid_from).toBe('2026-04-01T00:00:00Z');
-      expect(constraint.valid_until).toBe('2026-06-30T23:59:59Z');
+      expect(constraint.valid_from).toBe(`${startDate}T00:00:00Z`);
+      expect(constraint.valid_until).toBe(`${endDate}T23:59:59Z`);
     });
 
     it('returns error for unknown rights_id', async () => {
