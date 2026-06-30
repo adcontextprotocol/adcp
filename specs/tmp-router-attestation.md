@@ -28,7 +28,7 @@ Attestation, framed as a separate trust system, would create a second discovery 
 
 > The public key in the attestation's user-data slot MUST byte-equal the public key the provider already uses to verify per-provider request signatures.
 
-That one rule — the **binding rule** — is what makes the rest fall into place. The endpoint returns an envelope (`{ document, signing_key, nonce, expires_at }`). The verifier asks the platform-specific kit: "does this document attest a binary that committed to *this* `signing_key` and *this* nonce?" If yes, every subsequent RFC 9421 signature from that key inherits the attestation. If no, the envelope is rejected and the provider falls back to whatever it accepts (which, per its `attestation_requirement` policy, may be "nothing").
+That one rule — the **binding rule** — is what makes the rest fall into place. The endpoint returns an envelope (`{ document, signing_key, nonce, expires_at }`). The verifier asks the platform-specific kit: "does this document attest a binary that committed to *this* `signing_key` and *this* nonce?" If yes, every subsequent `X-AdCP-Signature` from that key inherits the attestation. If no, the envelope is rejected and the provider falls back to whatever it accepts (which, per its `attestation_requirement` policy, may be "nothing").
 
 This framing keeps the protocol's existing key/signature/epoch machinery as the data-plane mechanism and makes the attestation a low-frequency control-plane attestation of *the key itself* rather than of every request. Per-impression attestation is bandwidth-prohibitive and was considered and rejected (see [Alternatives](#alternatives-considered)).
 
@@ -85,7 +85,7 @@ The nonce is the freshness signal. The platform document is signed by the platfo
 
 > The JWK in `signing_key` MUST appear bound in the platform user-data slot of `attestation_document` alongside the nonce. Verifiers MUST reject if the bound public key doesn't byte-match the envelope's `signing_key` (after canonical JWK serialization — RFC 7638 thumbprint comparison is acceptable).
 
-This is the rule that makes attestation cryptographically meaningful for the existing RFC 9421 per-provider signature path. Without this rule, a router could attest a binary and then sign requests with a different key — the verifier would have no protocol-level way to detect the swap. With this rule:
+This is the rule that makes attestation cryptographically meaningful for the existing `X-AdCP-Signature`/`X-AdCP-Key-Id` per-provider signature path. Without this rule, a router could attest a binary and then sign requests with a different key — the verifier would have no protocol-level way to detect the swap. With this rule:
 
 - The provider already verifies per-provider request signatures against the publisher's trust anchor (`agent-signing-key.json`, fetched per `specification.mdx:601`).
 - The provider periodically (or on first contact, or per its `min_freshness_sec` policy) verifies the router's attestation envelope and checks the binding.
@@ -169,7 +169,7 @@ The nonce + `expires_at` + `min_freshness_sec` triad provides:
 
 ### Compromise model
 
-- **Compromised signing key (no enclave attestation):** the operator can sign anything. RFC 9421 signatures verify; nothing flags the swap. This is today's posture.
+- **Compromised signing key (no enclave attestation):** the operator can sign anything. `X-AdCP-Signature` signatures verify; nothing flags the swap. This is today's posture.
 - **Compromised signing key (with enclave attestation, binding rule enforced):** the binding rule is what catches this. The compromised key, if held outside the enclave, signs requests that verify cryptographically but cannot produce an attestation envelope whose user-data slot binds to it (because the enclave that does produce envelopes is bound to a *different* key — the in-enclave key). The provider rejects on `signing_key_not_bound`.
 - **Compromised platform vendor root:** outside this RFC's threat model. If the AWS Nitro / Intel TDX / AMD SEV-SNP / GCP Confidential Space root CA is compromised, every attestation in that format is forgeable. This is the floor under all TEE attestation systems and is not improvable at the protocol layer.
 
@@ -253,4 +253,4 @@ Rejected: the binding rule is normative (it's load-bearing — without it the wh
 | Verifier sees binary measurements | No | Yes (via verifier kit) |
 | Required to participate in TMP | n/a | No (experimental, opt-in via `trusted_match.router_attestation`) |
 
-The durable protocol contribution is the **binding rule** (Design §4): a one-sentence invariant that turns the existing RFC 9421 signature path from "trust the deployed key" into "trust the attested binary that committed to the key." Everything else in the RFC — the endpoint, the envelope, the per-provider opt-in — is the minimum wire shape required to make that binding inspectable.
+The durable protocol contribution is the **binding rule** (Design §4): a one-sentence invariant that turns the existing `X-AdCP-Signature`/`X-AdCP-Key-Id` signature path from "trust the deployed key" into "trust the attested binary that committed to the key." Everything else in the RFC — the endpoint, the envelope, the per-provider opt-in — is the minimum wire shape required to make that binding inspectable.
