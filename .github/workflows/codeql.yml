@@ -17,7 +17,7 @@ jobs:
       actions: read
       contents: read
     steps:
-      - uses: actions/checkout@v6.0.3
+      - uses: actions/checkout@v7.0.0
       - uses: github/codeql-action/init@v4
         with:
           languages: javascript-typescript
