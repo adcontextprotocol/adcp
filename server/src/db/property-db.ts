@@ -957,9 +957,14 @@ export class PropertyDatabase {
   /**
    * Bind the owner from a verified claim. Sets `workos_organization_id` to the
    * pending `claimant_org_id` and consumes the token — but ONLY when `token`
-   * matches the pending `claim_token` and the row is not already locked to a
-   * different org. Binding is therefore driven by which token the origin
-   * pointer carries, never by who triggers verification.
+   * matches the pending `claim_token` and the row is not currently
+   * verified-locked to a different org. Binding is therefore driven by which
+   * token the origin pointer carries, never by who triggers verification.
+   *
+   * "Verified-locked" means `origin_verified_at IS NOT NULL`. A domain whose
+   * verification has lapsed (origin pointer removed / domain transferred → the
+   * periodic re-verify cleared `origin_verified_at`) is re-claimable: the stale
+   * `workos_organization_id` no longer blocks a new owner from re-binding.
    *
    * Returns the bound org id, or null when no matching pending claim binds.
    */
@@ -978,12 +983,35 @@ export class PropertyDatabase {
         WHERE publisher_domain = $1
           AND claim_token = $2
           AND claimant_org_id IS NOT NULL
-          AND (workos_organization_id IS NULL OR workos_organization_id = claimant_org_id)
+          AND (workos_organization_id IS NULL
+               OR workos_organization_id = claimant_org_id
+               OR origin_verified_at IS NULL)
         RETURNING workos_organization_id`,
       [publisherDomain.toLowerCase(), token],
     );
     const bound = result.rows[0]?.workos_organization_id;
     return bound ? { boundOrgId: bound } : null;
+  }
+
+  /**
+   * Fetch verified hosted properties whose origin hasn't been re-checked since
+   * `staleBefore` — the work-list for the periodic origin re-verification job.
+   * Only rows that are currently verified (`origin_verified_at IS NOT NULL`)
+   * are candidates; an unverified row has no verification state to lapse.
+   */
+  async getHostedPropertiesDueForReverification(
+    staleBefore: Date,
+    limit: number,
+  ): Promise<HostedProperty[]> {
+    const result = await query<HostedProperty>(
+      `SELECT * FROM hosted_properties
+        WHERE origin_verified_at IS NOT NULL
+          AND (origin_last_checked_at IS NULL OR origin_last_checked_at < $1)
+        ORDER BY origin_last_checked_at ASC NULLS FIRST
+        LIMIT $2`,
+      [staleBefore.toISOString(), limit],
+    );
+    return result.rows.map((row) => this.deserializeHostedProperty(row));
   }
 }
 

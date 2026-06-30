@@ -9580,6 +9580,11 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       // re-validation when a manager rotates its adagents.json.
       this.crawler.startPeriodicManagerRevalidation(5); // 5-minute tick
 
+      // Re-verify AAO-hosted origins on a TTL so a transferred domain or a
+      // removed origin pointer lapses the owner lock (bind-on-verify, #5752),
+      // releasing the domain for re-claim.
+      this.crawler.startPeriodicHostedOriginReverification(60); // hourly tick
+
       // Register and start all scheduled jobs
       registerAllJobs();
 
