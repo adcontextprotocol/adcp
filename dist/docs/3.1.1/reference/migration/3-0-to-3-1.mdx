@@ -1,0 +1,105 @@
+---
+title: Migrating from 3.0 to 3.1
+sidebarTitle: 3.0 to 3.1
+description: "A focused upgrade guide for moving AdCP 3.0 integrations to the 3.1 stable release."
+"og:title": "AdCP - Migrating from 3.0 to 3.1"
+---
+
+# Migrating from 3.0 to 3.1
+
+<Info>
+**3.1 is released.** New 3.1 integrations should pin `"3.1"` after confirming the agent advertises it in `supported_versions`. Existing 3.0 integrations can remain pinned to `"3.0"` while they migrate.
+</Info>
+
+3.1 is a minor release over 3.0. The protocol changes are additive: existing 3.0-conformant agents can remain on `"3.0"` without changing request or response shapes. Use this guide when you are preparing an SDK, buyer, seller, creative agent, signal agent, brand agent, or compliance workflow to claim or consume 3.1.
+
+For the feature narrative, start with [What's New in AdCP 3.1](/dist/docs/3.1.1/reference/whats-new-in-3-1). For the full release record, see [Release Notes](/dist/docs/3.1.1/reference/release-notes#version-3-1-0).
+
+## Upgrade checklist
+
+| Step | Who | Action |
+|---|---|---|
+| 1 | Everyone | Decide whether this integration is staying on `"3.0"` for now or moving to `"3.1"`. |
+| 2 | SDKs and hand-rolled clients | Add an `adcp_version` release pin on every request. Send `"3.1"` only to agents that advertise it. |
+| 3 | Sellers and agents | Advertise every accepted release in `get_adcp_capabilities.adcp.supported_versions` and echo the served release at the envelope root. |
+| 4 | Buyers | Decode `VERSION_UNSUPPORTED` and retry only against a version that the seller advertised. |
+| 5 | Hand-rolled buyers | Add `idempotency_key` to read tasks as well as mutating tasks before claiming 3.1 behavior. |
+| 6 | MCP and A2A adapters | Accept envelope fields and transport wrappers without rejecting unknown root members. |
+| 7 | Error handlers | Treat `error.code` as an open string and dispatch on `error.recovery` when present. |
+| 8 | Compliance operators | Run the 3.1 storyboard bundle and keep the 3.0 compatibility line green until the 3.1 badge is issued. |
+
+## Version pinning
+
+3.0 integrations negotiated by major version only. 3.1 adds release-precision negotiation:
+
+- Use `"3.0"` for stable 3.0 traffic.
+- Use `"3.1"` for stable 3.1 traffic after the agent advertises it.
+- Do not send patch values such as `"3.0.19"` or full semver prereleases such as `"3.1.0-rc.15"` on the wire.
+
+Sellers should reject unsupported pins with `VERSION_UNSUPPORTED` and include the supported release list in `error.data.supported_versions`. Buyers should not silently downshift across minor releases. Surface the mismatch or retry against a version the seller explicitly advertised.
+
+## Runtime changes to audit
+
+### Idempotency on every task
+
+3.0 required `idempotency_key` on mutating requests. 3.1 extends the reliability model to every task so retries, replays, and downstream reconciliation behave uniformly. SDK users should pick up this behavior from the SDK release. Hand-rolled buyers should generate a UUID v4 idempotency key for read tasks as well as writes.
+
+When a response is marked `replayed: true`, treat it as the historical result of the original operation. If you need fresh state before acting, re-read the relevant resource after handling the replayed response.
+
+### Envelope tolerance
+
+3.1 relies on transport adapters tolerating the AdCP envelope root. MCP and A2A clients should unwrap the transport-specific wrapper first, then read AdCP fields such as `status`, `result`, `errors`, `adcp_version`, `replayed`, and `context`. Unknown envelope members must not cause rejection.
+
+### Error decoding
+
+The standard error catalog expanded in 3.1, but `error.code` remains an open string. Clients should:
+
+- Accept unknown error codes.
+- Prefer `error.recovery` when present.
+- Apply a bounded transient fallback for unknown legacy errors when `error.recovery` is absent.
+- Handle the auth split between `AUTH_MISSING` and `AUTH_INVALID`.
+- Treat `CREDENTIAL_IN_ARGS` as terminal and move credentials to the proper transport channel before retrying.
+
+### Proposal and action discovery cleanup
+
+3.1 makes `proposal_status` the proposal source of truth and uses structured action discovery on products and buys. Sellers should not emit the pre-GA `requires_proposal` action mode. Buyers with cached prerelease action metadata should invalidate it and re-read the product, proposal, or buy surface.
+
+### Brand verification signing
+
+Brand agents that implement `verify_brand_claim` or `verify_brand_claims` must return signed response evidence. Publish a per-brand response-signing key and bind signatures to the task, resolved brand tenant, responding agent URL, caller/request hash, and validity window.
+
+### Signal targeting
+
+Signal identity moves toward `SignalRef`, with product-scoped `included_signals`, `signal_targeting_options`, and buy-time `signal_targeting_groups`. Owned-signal discovery and marketplace activation are separate capabilities. Buyers should call `activate_signal` only when the agent declares marketplace or activation support.
+
+### Creative formats and transformers
+
+Creative agents should expose canonical `format_kind` values and discover build units through `list_transformers`. Format-attached input/output/pricing declarations are deprecated in favor of transformer-scoped configuration and pricing. Hosted audio/video slots should use `duration_ms_exact` for fixed durations and `duration_ms_range` for bounded or one-sided ranges.
+
+### Reporting and billing
+
+3.1 adds delivery and usage finality markers, reach-window semantics, `viewability.viewed_seconds`, and the `BILLING_OUT_OF_BAND` error for creative billing outside AdCP. Buyers should avoid treating delivery numbers as final until the relevant finality fields say they are final.
+
+## Role-based migration
+
+| Role | Minimum prep before claiming 3.1 |
+|---|---|
+| SDK buyer | Upgrade to an SDK that emits `adcp_version`, pins `"3.1"` when the seller supports it, adds idempotency keys consistently, and accepts open error codes. |
+| Hand-rolled buyer | Add release pins, read-task idempotency keys, envelope tolerance, forward-compatible error decoding, and replay handling. |
+| Seller | Advertise `supported_versions`, echo the served release, tolerate envelope fields, reject unsupported pins with `VERSION_UNSUPPORTED`, and audit idempotency/replay/error behavior. |
+| Creative agent | Move discovery to `list_transformers`, publish canonical formats, and keep legacy format references only as compatibility aliases. |
+| Signal agent | Separate owned-signal discovery from marketplace activation; expose product-scoped targeting options only where buyers can select them. |
+| Brand agent | Publish response-signing keys and return signed evidence for brand verification tasks. |
+| Compliance operator | Run 3.1 storyboards, retain 3.0 compatibility evidence, and issue version-scoped badges only for the release actually tested. |
+
+## Prerelease artifacts
+
+The 3.1 prerelease artifacts remain available for adopters who pinned them during validation, but new integrations should use the stable `"3.1"` wire value. If you built against a prerelease, invalidate cached prerelease-only fields such as `requires_proposal`, re-read current product/proposal/action metadata, and rerun the 3.1 storyboard bundle before claiming the stable release.
+
+## Related
+
+- [What's New in AdCP 3.1](/dist/docs/3.1.1/reference/whats-new-in-3-1)
+- [Release Notes](/dist/docs/3.1.1/reference/release-notes#version-3-1-0)
+- [Versions & Compatibility](/dist/docs/3.1.1/reference/versions)
+- [Versioning & Governance](/dist/docs/3.1.1/reference/versioning)
+- [Version Adaptation](/dist/docs/3.1.1/building/cross-cutting/version-adaptation)
