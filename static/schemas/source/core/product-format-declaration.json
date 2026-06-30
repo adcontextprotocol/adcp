@@ -20,6 +20,12 @@
       "type": "string",
       "description": "Optional seller-controlled human-readable label for this format declaration. Used by buyer dashboards, catalog UIs, and reporting surfaces to show a seller's own naming ('Homepage Takeover', 'Branded Canvas', 'Reels Premium Video') rather than the raw `format_kind` or `format_option_id`. Has no machine semantics — buyer agents route on `format_kind` and `format_option_id`; `display_name` is purely for human presentation. Freeform; no enumeration. Sellers SHOULD keep it stable once published to avoid dashboard churn."
     },
+    "sample_render_url": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://",
+      "description": "Optional human-facing rendered example for this format declaration. Used by registry/catalog UIs to let buyers inspect the unit shape (for example, an AgenticAdvertising.org-translated Snap unit) before constructing a creative manifest. Uses publisher- or registry-provided sample assets, not buyer-submitted creative assets. Informational only: this URL is not a renderer endpoint, validation oracle, creative approval, or guarantee of how submitted creative will render in live delivery. Sellers SHOULD keep the URL stable while the declaration is active."
+    },
     "applies_to_channels": {
       "type": "array",
       "items": { "$ref": "/schemas/enums/channels.json" },

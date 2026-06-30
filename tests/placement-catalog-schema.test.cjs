@@ -413,6 +413,7 @@ test('format options can be referenced by publisher domain or product-local ID',
     validateDeclaration({
       publisher_domain: 'daily-pulse.example',
       format_option_id: 'homepage_image',
+      sample_render_url: 'https://creative.adcontextprotocol.org/translated/snap/samples/story',
       format_kind: 'image',
       params: {
         width: 300,
@@ -421,6 +422,19 @@ test('format options can be referenced by publisher domain or product-local ID',
     }),
     true,
     JSON.stringify(validateDeclaration.errors, null, 2)
+  );
+
+  assert.equal(
+    validateDeclaration({
+      format_option_id: 'homepage_image',
+      sample_render_url: 'http://creative.adcontextprotocol.org/translated/snap/samples/story',
+      format_kind: 'image',
+      params: {
+        width: 300,
+        height: 250
+      }
+    }),
+    false
   );
 
   assert.equal(
