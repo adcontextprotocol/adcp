@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
 <svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="45 -5 240 240" width="512" height="512">
-<rect x="45" y="-5" width="240" height="240" fill="#ffffff"/>
 <g stroke-width="2.00" fill="none" stroke-linecap="butt">
 <path stroke="#9ba3e0" vector-effect="non-scaling-stroke" d="
   M 85.68 140.49
@@ -11,7 +10,7 @@
   Q 98.81 159.98 107.29 151.77
   Q 108.89 150.22 110.71 149.04"
 />
-<path stroke="#9399ca" vector-effect="non-scaling-stroke" d="
+<path stroke="#9399ca" fill="none" vector-effect="non-scaling-stroke" d="
   M 110.71 149.04
   L 117.95 148.86
   A 0.47 0.47 0.0 0 1 118.44 149.37
@@ -23,7 +22,7 @@
   C 127.06 181.26 134.61 176.18 137.95 170.95
   Q 142.37 164.02 145.00 154.82"
 />
-<path stroke="#9399ca" vector-effect="non-scaling-stroke" d="
+<path stroke="#9399ca" fill="none" vector-effect="non-scaling-stroke" d="
   M 145.00 154.82
   L 146.43 149.51
   A 0.87 0.87 0.0 0 1 147.27 148.86
@@ -37,7 +36,7 @@
   C 205.20 179.36 209.75 177.90 211.48 173.97
   C 214.21 167.76 213.69 161.96 213.16 155.24"
 />
-<path stroke="#9399ca" vector-effect="non-scaling-stroke" d="
+<path stroke="#9399ca" fill="none" vector-effect="non-scaling-stroke" d="
   M 213.16 155.24
   L 212.53 149.51
   A 0.49 0.48 86.8 0 1 213.01 148.97
@@ -178,7 +177,7 @@
   Q 164.30 119.14 176.09 111.92"
 />
 </g>
-<path fill="#fbfbfe" d="
+<path fill="none" d="
   M 300.00 0.00
   L 300.00 242.00
   L 0.00 242.00
