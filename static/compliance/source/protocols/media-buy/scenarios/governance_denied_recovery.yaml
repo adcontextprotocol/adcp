@@ -94,7 +94,7 @@ phases:
                 currency: "USD"
                 reallocation_threshold: 5000
               flight:
-                start: "2026-04-01T00:00:00Z"
+                start: "2020-01-01T00:00:00Z"
                 end: "2099-06-30T23:59:59Z"
               countries: ["US"]
         validations:

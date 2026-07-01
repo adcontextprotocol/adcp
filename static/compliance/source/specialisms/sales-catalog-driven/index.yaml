@@ -715,19 +715,19 @@ phases:
           events:
             - event_id: "evt_001"
               event_type: "purchase"
-              event_time: "2026-04-15T19:30:00Z"
+              event_time: "2099-04-15T19:30:00Z"
               content_ids: ["ribeye_36oz"]
               value: 89.00
               currency: "USD"
             - event_id: "evt_002"
               event_type: "lead"
-              event_time: "2026-04-15T20:15:00Z"
+              event_time: "2099-04-15T20:15:00Z"
               content_ids: ["wagyu_flight"]
               value: 195.00
               currency: "USD"
             - event_id: "evt_003"
               event_type: "page_view"
-              event_time: "2026-04-15T20:45:00Z"
+              event_time: "2099-04-15T20:45:00Z"
               content_ids: ["seafood_tower"]
 
           idempotency_key: "$generate:uuid_v4#sales_catalog_driven_conversion_tracking_log_events"
@@ -782,8 +782,8 @@ phases:
             operator: "pinnacle-agency.example"
           media_buy_id: "$context.media_buy_id"
           measurement_period:
-            start: "2026-04-07T00:00:00Z"
-            end: "2026-04-14T23:59:59Z"
+            start: "2099-04-07T00:00:00Z"
+            end: "2099-04-14T23:59:59Z"
           performance_index: 1.4
           metric_type: "conversion_rate"
           feedback_source: "buyer_attribution"

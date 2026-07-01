@@ -79,8 +79,8 @@ fixtures:
         currency: "USD"
         reallocation_threshold: 20000
       flight:
-        start: "2027-04-01T00:00:00Z"
-        end: "2027-06-30T23:59:59Z"
+        start: "2020-01-01T00:00:00Z"
+        end: "2099-06-30T23:59:59Z"
       countries: ["US"]
       custom_policies:
         - policy_id: "weekly_reporting_over_10k"
@@ -260,8 +260,8 @@ phases:
                 currency: "USD"
                 reallocation_threshold: 20000
               flight:
-                start: "2027-04-01T00:00:00Z"
-                end: "2027-06-30T23:59:59Z"
+                start: "2020-01-01T00:00:00Z"
+                end: "2099-06-30T23:59:59Z"
               countries: ["US"]
               custom_policies:
                 - policy_id: "weekly_reporting_over_10k"
@@ -405,8 +405,8 @@ phases:
               operator: "pinnacle-agency.example"
             brand:
               domain: "acmeoutdoor.example"
-            start_time: "2027-01-01T00:00:00Z"
-            end_time: "2027-03-31T23:59:59Z"
+            start_time: "2099-01-01T00:00:00Z"
+            end_time: "2099-03-31T23:59:59Z"
             packages:
               - product_id: "$context.product_1_id"
                 budget: 30000
@@ -480,8 +480,8 @@ phases:
               operator: "pinnacle-agency.example"
             brand:
               domain: "acmeoutdoor.example"
-            start_time: "2027-01-01T00:00:00Z"
-            end_time: "2027-03-31T23:59:59Z"
+            start_time: "2099-01-01T00:00:00Z"
+            end_time: "2099-03-31T23:59:59Z"
             packages:
               - product_id: "$context.product_1_id"
                 budget: 30000

@@ -85,8 +85,8 @@ fixtures:
         currency: "USD"
         reallocation_unlimited: true
       flight:
-        start: "2027-01-01T00:00:00Z"
-        end: "2027-12-31T23:59:59Z"
+        start: "2020-01-01T00:00:00Z"
+        end: "2099-12-31T23:59:59Z"
       countries: ["US"]
       custom_policies:
         - policy_id: "ctv_weekly_reporting"
@@ -178,8 +178,8 @@ phases:
                 currency: "USD"
                 reallocation_unlimited: true
               flight:
-                start: "2027-01-01T00:00:00Z"
-                end: "2027-12-31T23:59:59Z"
+                start: "2020-01-01T00:00:00Z"
+                end: "2099-12-31T23:59:59Z"
               countries: ["US"]
               custom_policies:
                 - policy_id: "ctv_weekly_reporting"

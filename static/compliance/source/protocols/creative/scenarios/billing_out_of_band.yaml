@@ -117,8 +117,8 @@ phases:
             operator: "pinnacle-agency.example"
           idempotency_key: "$generate:uuid_v4#creative_billing_out_of_band_report_usage"
           reporting_period:
-            start: "2026-07-01T00:00:00Z"
-            end: "2026-07-31T23:59:59Z"
+            start: "2099-07-01T00:00:00Z"
+            end: "2099-07-31T23:59:59Z"
           usage:
             - account:
                 account_id: "acct_acme_creative"

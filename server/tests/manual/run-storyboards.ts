@@ -187,11 +187,7 @@ const THREE_ZERO_COMPAT_KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new M
   ],
   [
     'signal_marketplace/governance_denied/activate_signal_denied',
-    '3.0.19 compatibility run under @adcp/sdk 9.6.2: the frozen linked governance-denial storyboard skips governance setup on the signals tenant because sync_plans is not advertised, but still grades activate_signal_denied, where the current signals tenant no longer emits the frozen GOVERNANCE_DENIED shape. Current-source signal governance-denial coverage remains graded by the current matrix.',
-  ],
-  [
-    'media_buy_seller/measurement_terms_rejected/create_media_buy_aggressive_terms',
-    '3.0.19 compatibility run under @adcp/sdk 9.6.2: the frozen measurement-terms storyboard expects TERMS_REJECTED, while the current training-agent 3.0 compatibility handler returns INVALID_REQUEST for that legacy aggressive payload. Current-source media-buy rejection coverage remains graded by the current matrix.',
+    'latest 3.0.x compatibility run under @adcp/sdk 9.6.2: the frozen linked governance-denial storyboard skips governance setup on the signals tenant because sync_plans is not advertised, but still grades activate_signal_denied, where the current signals tenant no longer emits the frozen GOVERNANCE_DENIED shape. Current-source signal governance-denial coverage remains graded by the current matrix.',
   ],
 ]);
 
@@ -246,41 +242,36 @@ function skipThreeZeroSignedVectorsExcept(allowed: string[]): string[] {
     .filter(id => !allowedSet.has(id));
 }
 
-function normalizeThreeZeroCompatFlightDates(value: unknown): void {
+const THREE_ZERO_STALE_STORYBOARD_DATE_RE = /\b(?:2026|2027)-(?=\d{2}-\d{2}(?:T|\b))/g;
+const THREE_ZERO_STALE_DATE_WINDOW_KEYS = new Set([
+  'start_time',
+  'end_time',
+  'start',
+  'end',
+  'start_date',
+  'end_date',
+  'valid_from',
+  'valid_until',
+  'expires_at',
+]);
+
+function normalizeThreeZeroStaleStoryboardDates(value: unknown): void {
   if (!value || typeof value !== 'object') return;
   if (Array.isArray(value)) {
-    for (const item of value) normalizeThreeZeroCompatFlightDates(item);
+    for (let i = 0; i < value.length; i += 1) {
+      normalizeThreeZeroStaleStoryboardDates(value[i]);
+    }
     return;
   }
 
   const obj = value as Record<string, unknown>;
-  if (
-    obj.start_time === '2026-05-01T00:00:00Z'
-    && obj.end_time === '2026-05-31T23:59:59Z'
-  ) {
-    obj.start_time = 'asap';
-    obj.end_time = '2099-05-31T23:59:59Z';
+  for (const [key, child] of Object.entries(obj)) {
+    if (typeof child === 'string' && THREE_ZERO_STALE_DATE_WINDOW_KEYS.has(key)) {
+      obj[key] = child.replace(THREE_ZERO_STALE_STORYBOARD_DATE_RE, '2099-');
+    } else {
+      normalizeThreeZeroStaleStoryboardDates(child);
+    }
   }
-  for (const child of Object.values(obj)) normalizeThreeZeroCompatFlightDates(child);
-}
-
-function normalizeThreeZeroIdempotencyDates(value: unknown): void {
-  if (!value || typeof value !== 'object') return;
-  if (Array.isArray(value)) {
-    for (const item of value) normalizeThreeZeroIdempotencyDates(item);
-    return;
-  }
-
-  const obj = value as Record<string, unknown>;
-  if (obj.start_time === '2026-06-01T00:00:00Z') {
-    obj.start_time = '2099-06-01T00:00:00Z';
-  }
-  if (obj.end_time === '2026-06-30T23:59:59Z') {
-    obj.end_time = '2099-06-30T23:59:59Z';
-  } else if (obj.end_time === '2026-09-30T23:59:59Z') {
-    obj.end_time = '2099-09-30T23:59:59Z';
-  }
-  for (const child of Object.values(obj)) normalizeThreeZeroIdempotencyDates(child);
 }
 
 function patchThreeZeroStoryboard(sb: Storyboard): Storyboard {
@@ -305,9 +296,8 @@ function patchThreeZeroStoryboard(sb: Storyboard): Storyboard {
 
   if (!isThreeZeroCompatRun) return patched;
   patched = structuredClone(patched) as Storyboard;
-  normalizeThreeZeroCompatFlightDates(patched);
+  normalizeThreeZeroStaleStoryboardDates(patched);
   if (sb.id === 'idempotency') {
-    normalizeThreeZeroIdempotencyDates(patched);
     return patched;
   }
   if (sb.id === 'media_buy_seller/pending_creatives_to_start') {

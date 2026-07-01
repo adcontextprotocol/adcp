@@ -173,7 +173,7 @@ phases:
             amount: 50000
             currency: "USD"
           start_time: "asap"
-          end_time: "2027-06-30T23:59:59Z"
+          end_time: "2099-06-30T23:59:59Z"
           idempotency_key: "$generate:uuid_v4#media_buy_seller_proposal_not_found_errors_unknown_proposal_create_create_media_buy_unknown_proposal"
           context:
             correlation_id: "proposal_not_found_errors--create_media_buy_unknown"
@@ -238,7 +238,7 @@ phases:
             amount: 50000
             currency: "USD"
           start_time: "asap"
-          end_time: "2027-06-30T23:59:59Z"
+          end_time: "2099-06-30T23:59:59Z"
           idempotency_key: "$generate:uuid_v4#media_buy_seller_proposal_not_found_errors_expired_proposal_create_create_media_buy_expired_proposal"
           context:
             correlation_id: "proposal_not_found_errors--create_media_buy_expired"
