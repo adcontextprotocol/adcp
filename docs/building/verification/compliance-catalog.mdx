@@ -41,6 +41,8 @@ Every agent runs every storyboard in `/compliance/{version}/universal/` regardle
 | `notification-config-rejections` | Semantic `notification_configs[]` request rejection path for duplicate `subscriber_id` values. |
 | `wholesale-feed-products` | Product wholesale feed versioning — bootstrap responses carry `wholesale_feed_version`/`cache_scope`, and matching `if_wholesale_feed_version` probes return `unchanged` without product rows. |
 | `wholesale-feed-signals` | Signals wholesale feed versioning — bootstrap responses carry `wholesale_feed_version`/`cache_scope`, and matching `if_wholesale_feed_version` probes return `unchanged` without signal rows. |
+| `wholesale-feed-products-scope-isolation` | Product wholesale feed cache-scope isolation — a `wholesale_feed_version` minted under one `cache_scope` must not short-circuit (`unchanged: true`) a request the seller resolves to a different `cache_scope`. |
+| `wholesale-feed-signals-scope-isolation` | Signals wholesale feed cache-scope isolation — a `wholesale_feed_version` minted under one `cache_scope` must not short-circuit (`unchanged: true`) a request the agent resolves to a different `cache_scope`. |
 | `wholesale-feed-product-webhooks` | Account-level `notification_configs[]` registration for agents that advertise product wholesale feed webhook events. |
 | `wholesale-feed-signal-webhooks` | Account-level `notification_configs[]` registration for agents that advertise signal wholesale feed webhook events. |
 | `wholesale-feed-bulk-webhooks` | Account-level `notification_configs[]` registration for agents that advertise `wholesale_feed.bulk_change`. |
