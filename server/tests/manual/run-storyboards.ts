@@ -185,6 +185,14 @@ const THREE_ZERO_COMPAT_KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new M
     'brand_rights/acquire_rights',
     '3.0.13 compatibility run under @adcp/sdk 8.1 beta.13: frozen brand-rights response schema rejects the current training-agent rights envelope. Current-source brand coverage remains graded by the current matrix.',
   ],
+  [
+    'signal_marketplace/governance_denied/activate_signal_denied',
+    '3.0.19 compatibility run under @adcp/sdk 9.6.2: the frozen linked governance-denial storyboard skips governance setup on the signals tenant because sync_plans is not advertised, but still grades activate_signal_denied, where the current signals tenant no longer emits the frozen GOVERNANCE_DENIED shape. Current-source signal governance-denial coverage remains graded by the current matrix.',
+  ],
+  [
+    'media_buy_seller/measurement_terms_rejected/create_media_buy_aggressive_terms',
+    '3.0.19 compatibility run under @adcp/sdk 9.6.2: the frozen measurement-terms storyboard expects TERMS_REJECTED, while the current training-agent 3.0 compatibility handler returns INVALID_REQUEST for that legacy aggressive payload. Current-source media-buy rejection coverage remains graded by the current matrix.',
+  ],
 ]);
 
 const THREE_ZERO_SIGNED_POSITIVE_VECTOR_IDS = [
