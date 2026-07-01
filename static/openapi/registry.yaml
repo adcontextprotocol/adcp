@@ -3415,6 +3415,111 @@ components:
         - status
         - created_at
       additionalProperties: {}
+    CatalogBrowseResponse:
+      type: object
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/CatalogBrowseEntry"
+        total:
+          type: integer
+        next_cursor:
+          type:
+            - string
+            - "null"
+          description: Opaque cursor for the next page; null when exhausted.
+      required:
+        - entries
+        - total
+        - next_cursor
+    CatalogBrowseEntry:
+      type: object
+      properties:
+        property_rid:
+          type: string
+        property_id:
+          type:
+            - string
+            - "null"
+        classification:
+          type: string
+          example: property
+        source:
+          type: string
+          example: adagents_json
+        status:
+          type: string
+          example: active
+        identifiers:
+          type: array
+          items:
+            $ref: "#/components/schemas/CatalogIdentifier"
+      required:
+        - property_rid
+        - property_id
+        - classification
+        - source
+        - status
+        - identifiers
+    CatalogSyncResponse:
+      type: object
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/CatalogSyncEntry"
+        server_timestamp:
+          type: string
+          description: Watermark to pass as `since` on the next sync (avoids clock skew).
+        next_cursor:
+          type:
+            - string
+            - "null"
+      required:
+        - entries
+        - server_timestamp
+        - next_cursor
+    CatalogSyncEntry:
+      type: object
+      properties:
+        property_rid:
+          type: string
+        property_id:
+          type:
+            - string
+            - "null"
+        classification:
+          type: string
+        source:
+          type: string
+        status:
+          type: string
+        adagents_url:
+          type:
+            - string
+            - "null"
+        created_by:
+          type:
+            - string
+            - "null"
+        created_at:
+          type: string
+        updated_at:
+          type: string
+        source_updated_at:
+          type: string
+      required:
+        - property_rid
+        - property_id
+        - classification
+        - source
+        - status
+        - adagents_url
+        - created_by
+        - created_at
+        - updated_at
+        - source_updated_at
     AdagentsJson:
       type: object
       properties:
@@ -10643,6 +10748,113 @@ paths:
                 $ref: "#/components/schemas/CatalogDisputeRecord"
         "404":
           description: Dispute not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/catalog:
+    get:
+      operationId: browseCatalog
+      summary: Browse the property catalog
+      description: Browse the property fact-graph with filters. Cursor-paginated (opaque `cursor` → `next_cursor`). Each entry carries the property's identifiers. `property_rid` is a non-authoritative join/match handle, never an authorization credential.
+      tags:
+        - Property Catalog
+      parameters:
+        - schema:
+            type: string
+            example: property
+          required: false
+          name: classification
+          in: query
+        - schema:
+            type: string
+          required: false
+          name: source
+          in: query
+        - schema:
+            type: string
+            example: active
+          required: false
+          name: status
+          in: query
+        - schema:
+            type: string
+            example: domain
+          required: false
+          name: identifier_type
+          in: query
+        - schema:
+            type: string
+          required: false
+          name: search
+          in: query
+        - schema:
+            type: string
+            description: Minimum lifetime resolve count (integer).
+          required: false
+          description: Minimum lifetime resolve count (integer).
+          name: min_resolves
+          in: query
+        - schema:
+            type: string
+            description: ISO 8601 — only properties with resolve activity since this time.
+          required: false
+          description: ISO 8601 — only properties with resolve activity since this time.
+          name: active_since
+          in: query
+        - schema:
+            type: string
+            description: Page size (integer).
+          required: false
+          description: Page size (integer).
+          name: limit
+          in: query
+        - schema:
+            type: string
+            description: Opaque pagination cursor from a prior `next_cursor`.
+          required: false
+          description: Opaque pagination cursor from a prior `next_cursor`.
+          name: cursor
+          in: query
+      responses:
+        "200":
+          description: Catalog page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogBrowseResponse"
+  /api/registry/catalog/sync:
+    get:
+      operationId: syncCatalog
+      summary: Sync catalog changes since a watermark
+      description: "Delta sync for local mirrors: returns catalog entries created/updated since `since` (a prior `server_timestamp`), capped at 10,000 per page. Pagination is by the returned `server_timestamp` watermark, distinct from browseCatalog's opaque cursor."
+      tags:
+        - Property Catalog
+      parameters:
+        - schema:
+            type: string
+            description: Watermark from a prior response `server_timestamp` (required).
+            example: 2026-03-27T10:00:00Z
+          required: true
+          description: Watermark from a prior response `server_timestamp` (required).
+          name: since
+          in: query
+        - schema:
+            type: string
+            description: Page size, capped at 10,000.
+          required: false
+          description: Page size, capped at 10,000.
+          name: limit
+          in: query
+      responses:
+        "200":
+          description: Catalog delta
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogSyncResponse"
+        "400":
+          description: Missing required `since` parameter
           content:
             application/json:
               schema:
