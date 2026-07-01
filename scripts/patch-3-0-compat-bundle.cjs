@@ -20,70 +20,52 @@ if (!/^3\.0\.\d+$/.test(version)) {
   process.exit(0);
 }
 
-const idempotencyPath = path.join(bundleDir, 'universal', 'idempotency.yaml');
-let idempotencyFd;
-try {
-  idempotencyFd = fs.openSync(idempotencyPath, 'r+');
-} catch (err) {
-  if (err && err.code === 'ENOENT') {
-    process.exit(0);
+function walkYamlFiles(dir) {
+  const out = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      out.push(...walkYamlFiles(fullPath));
+    } else if (entry.isFile() && /\.ya?ml$/i.test(entry.name)) {
+      out.push(fullPath);
+    }
   }
-  throw err;
+  return out;
 }
 
-// The frozen 3.0.15 idempotency storyboard authored fixed 2026 flight dates.
-// Once those dates became stale, @adcp/sdk's fixture-aware create_media_buy
-// enricher replaced them with per-step dynamic defaults. That makes the
-// initial/replay payloads differ before they reach the agent and turns the
-// compatibility check into a runner-fixture failure instead of an idempotency
-// regression check. Patch only the temp compatibility bundle so the old
-// storyboard keeps exercising stable same-payload replay semantics.
-try {
-  const before = fs.readFileSync(idempotencyFd, 'utf8');
-  const after = before.replace(/\b2026-/g, '2099-');
-
-  if (after !== before) {
-    fs.ftruncateSync(idempotencyFd, 0);
-    fs.writeSync(idempotencyFd, after, 0, 'utf8');
-    console.log(`Patched stale 3.0 compatibility dates in ${idempotencyPath}`);
-  }
-} finally {
-  fs.closeSync(idempotencyFd);
-}
-
-for (const rel of [
-  path.join('protocols', 'media-buy', 'scenarios', 'measurement_terms_rejected.yaml'),
-  path.join('domains', 'media-buy', 'scenarios', 'measurement_terms_rejected.yaml'),
-]) {
-  const measurementTermsPath = path.join(bundleDir, rel);
-  let measurementTermsFd;
+function patchFile(filePath, transform, label) {
+  let before;
   try {
-    measurementTermsFd = fs.openSync(measurementTermsPath, 'r+');
+    before = fs.readFileSync(filePath, 'utf8');
   } catch (err) {
-    if (err && err.code === 'ENOENT') continue;
+    if (err && err.code === 'ENOENT') return false;
     throw err;
   }
+  const after = transform(before);
+  if (after === before) return false;
+  fs.writeFileSync(filePath, after, 'utf8');
+  if (label) console.log(label);
+  return true;
+}
 
-  // The frozen 3.0.19 measurement_terms_rejected storyboard hard-codes a
-  // 2026-07-01 flight start. Once that date became stale, create_media_buy
-  // correctly rejected the past start_time with INVALID_REQUEST before it
-  // could exercise the intended TERMS_REJECTED branch. Patch only the temp
-  // compatibility bundle so this legacy fixture keeps testing measurement
-  // term negotiation instead of calendar drift.
-  try {
-    const before = fs.readFileSync(measurementTermsFd, 'utf8');
-    const after = before
-      .replace(/\bstart_time: "2026-07-01T00:00:00Z"/g, 'start_time: "2099-07-01T00:00:00Z"')
-      .replace(/\bend_time: "2026-09-30T23:59:59Z"/g, 'end_time: "2099-09-30T23:59:59Z"');
-
-    if (after !== before) {
-      fs.ftruncateSync(measurementTermsFd, 0);
-      fs.writeSync(measurementTermsFd, after, 0, 'utf8');
-      console.log(`Patched stale 3.0 compatibility dates in ${measurementTermsPath}`);
-    }
-  } finally {
-    fs.closeSync(measurementTermsFd);
+// Frozen 3.0.x storyboards authored concrete 2026/2027 active-window dates.
+// As wall-clock time advances those fixtures start failing calendar guards
+// before they can exercise the protocol behavior they were written for
+// (TERMS_REJECTED, GOVERNANCE_DENIED, idempotency replay, etc.). Patch only
+// window/validity keys in the temp compatibility bundle so legacy storyboards
+// keep testing behavior rather than date drift. Historical/event timestamps
+// such as accepted_at, finalized_at, and event_time are intentionally left
+// alone, and JSON test vectors are excluded because some fixed dates are
+// canonicalization preimages.
+const staleDateLineRe = /^(\s*(?:start_time|end_time|start|end|start_date|end_date|valid_from|valid_until|expires_at):\s*["']?)(?:2026|2027)-(?=\d{2}-\d{2}(?:T|\b))/gm;
+let staleDateFiles = 0;
+for (const yamlPath of walkYamlFiles(bundleDir)) {
+  if (patchFile(yamlPath, text => text.replace(staleDateLineRe, (_match, prefix) => `${prefix}2099-`))) {
+    staleDateFiles += 1;
   }
+}
+if (staleDateFiles > 0) {
+  console.log(`Patched stale 3.0 compatibility dates in ${staleDateFiles} YAML file(s)`);
 }
 
 const schemaValidationPath = path.join(bundleDir, 'universal', 'schema-validation.yaml');
@@ -181,7 +163,9 @@ for (const rel of [
   // the lifecycle field, matching current source without rewriting dist.
   try {
     const before = fs.readFileSync(stateMachineFd, 'utf8');
-    const after = before.replace(/\n            path: "status"\n/g, '\n            path: "media_buy_status"\n');
+    const after = before
+      .replace(/\n          start_time: "2099-05-01T00:00:00Z"\n          end_time: "2099-05-31T23:59:59Z"\n/g, '\n          start_time: "asap"\n          end_time: "2099-05-31T23:59:59Z"\n')
+      .replace(/\n            path: "status"\n/g, '\n            path: "media_buy_status"\n');
 
     if (after !== before) {
       fs.ftruncateSync(stateMachineFd, 0);

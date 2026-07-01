@@ -76,8 +76,8 @@ phases:
                 currency: "USD"
                 reallocation_threshold: 25
               flight:
-                start: "2026-04-01T00:00:00Z"
-                end: "2026-06-30T23:59:59Z"
+                start: "2099-04-01T00:00:00Z"
+                end: "2099-06-30T23:59:59Z"
               countries: ["US"]
           idempotency_key: "$generate:uuid_v4#brand_rights_governance_denied_governance_plan_setup_sync_plans"
         validations:
@@ -195,8 +195,8 @@ phases:
             uses:
               - "likeness"
               - "commercial"
-            start_date: "2026-04-01"
-            end_date: "2026-06-30"
+            start_date: "2099-04-01"
+            end_date: "2099-06-30"
           revocation_webhook:
             url: "https://pinnacle-agency.example/webhooks/revocation"
             authentication:

@@ -369,7 +369,7 @@ phases:
           events:
             - event_type: "purchase"
               event_id: "evt_per_creative_001"
-              event_time: "2026-06-05T14:30:00Z"
+              event_time: "2099-06-05T14:30:00Z"
               user_match:
                 hashed_email: "a000000000000000000000000000000000000000000000000000000000000030"
               custom_data:
@@ -402,7 +402,7 @@ phases:
           events:
             - event_type: "purchase"
               event_id: "evt_per_creative_002"
-              event_time: "2026-06-06T10:15:00Z"
+              event_time: "2099-06-06T10:15:00Z"
               user_match:
                 hashed_email: "a000000000000000000000000000000000000000000000000000000000000031"
               custom_data:
