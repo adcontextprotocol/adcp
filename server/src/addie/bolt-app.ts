@@ -19,6 +19,7 @@ const { App, Assistant, LogLevel } = bolt;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const ExpressReceiver = (bolt as any).default?.ExpressReceiver ?? (bolt as any).ExpressReceiver;
 import type { SlackEventMiddlewareArgs } from '@slack/bolt';
+import type { ChatAppendStreamArguments } from '@slack/web-api';
 // Import internal Assistant types for handler signatures
 import type {
   AssistantThreadStartedMiddlewareArgs,
@@ -112,6 +113,8 @@ import {
   STREAM_DELIVERY_UNCERTAIN_NOTICE,
   DEFAULT_STREAM_SOFT_CAP,
 } from './slack-blocks.js';
+
+type StreamChunk = NonNullable<ChatAppendStreamArguments['chunks']>[number];
 
 /**
  * Slack rejects `chat.stopStream` with `msg_too_long` once the cumulative
@@ -845,6 +848,48 @@ async function getDynamicSuggestedPrompts(userId: string): Promise<SuggestedProm
     logger.warn({ error, userId }, 'Addie Bolt: Failed to build dynamic prompts, using defaults');
     return SUGGESTED_PROMPTS;
   }
+}
+
+async function setAgentViewSuggestedPrompts(client: any, userId: string, channelId?: string): Promise<void> {
+  if (!channelId) {
+    logger.warn({ userId }, 'Addie Bolt: Cannot set agent-view prompts without channel ID');
+    return;
+  }
+
+  const prompts = await getDynamicSuggestedPrompts(userId);
+  await client.assistant.threads.setSuggestedPrompts({
+    channel_id: channelId,
+    prompts: prompts.map(p => ({ title: p.title, message: p.message })),
+    // In Slack's Agent messaging experience, prompts are pinned to the app
+    // Messages tab and do not belong to a specific assistant thread.
+  });
+}
+
+function formatToolTaskTitle(toolName: string): string {
+  return toolName.trim() ? `Call ${toolName}` : 'Call Addie tool';
+}
+
+function buildPlanTitleChunk(): StreamChunk {
+  return {
+    type: 'plan_update',
+    title: 'Addie is working',
+  };
+}
+
+function buildToolTaskChunk(
+  taskId: string,
+  toolName: string,
+  status: 'in_progress' | 'complete' | 'error',
+): StreamChunk {
+  return {
+    type: 'task_update',
+    id: taskId,
+    title: formatToolTaskTitle(toolName),
+    status,
+    ...(status === 'in_progress'
+      ? { details: `Using Addie tool: ${toolName}` }
+      : { output: status === 'error' ? `Tool failed: ${toolName}` : `Tool completed: ${toolName}` }),
+  };
 }
 
 /**
@@ -1729,12 +1774,14 @@ async function handleUserMessage({
         thread_ts: threadTs,
         recipient_team_id: teamId,
         recipient_user_id: userId,
+        task_display_mode: 'plan',
       });
 
       // Process Claude response stream (pass conversation history for context)
       // Track tool invocations for unique task_update IDs (same tool can run multiple times)
       let toolInvocationCount = 0;
       const activeToolTaskIds: string[] = [];
+      let planTitleSent = false;
 
       for await (const event of claudeClient.processMessageStream(inputValidation.sanitized, conversationHistory, routedTools.tools, processOptions)) {
         if (event.type === 'text') {
@@ -1793,15 +1840,15 @@ async function handleUserMessage({
           // won't render for tools that fire after the cap.
           if (streamWriteable) {
             try {
-              // chunks is a Slack streaming API feature not yet in the SDK types
+              const chunks: StreamChunk[] = [];
+              if (!planTitleSent) {
+                chunks.push(buildPlanTitleChunk());
+                planTitleSent = true;
+              }
+              chunks.push(buildToolTaskChunk(taskId, event.tool_name, 'in_progress'));
               await streamer.append({
-                chunks: [{
-                  type: 'task_update',
-                  id: taskId,
-                  title: event.tool_name.replace(/_/g, ' '),
-                  status: 'in_progress',
-                }],
-              } as unknown as Parameters<typeof streamer.append>[0]);
+                chunks,
+              });
             } catch {
               // Ignore stream errors for status updates
             }
@@ -1815,15 +1862,9 @@ async function handleUserMessage({
           const taskId = activeToolTaskIds.pop() || event.tool_name;
           if (streamWriteable) {
             try {
-              // chunks is a Slack streaming API feature not yet in the SDK types
               await streamer.append({
-                chunks: [{
-                  type: 'task_update',
-                  id: taskId,
-                  title: event.tool_name.replace(/_/g, ' '),
-                  status: event.is_error ? 'error' : 'complete',
-                }],
-              } as unknown as Parameters<typeof streamer.append>[0]);
+                chunks: [buildToolTaskChunk(taskId, event.tool_name, event.is_error ? 'error' : 'complete')],
+              });
             } catch {
               // Ignore stream errors for status updates
             }
@@ -4634,13 +4675,26 @@ export async function sendAccountLinkedMessage(
 // ============================================================================
 
 /**
- * Handle app_home_opened event - user opened Addie's App Home tab
+ * Handle app_home_opened event.
+ *
+ * In Slack's Agent messaging experience, opening the Messages tab replaces
+ * assistant_thread_started as the signal to refresh suggested prompts.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function handleAppHomeOpened({ event, client }: any): Promise<void> {
   const userId = event.user;
 
-  logger.debug({ userId }, 'Addie Bolt: App Home opened');
+  logger.debug({ userId, tab: event.tab, channelId: event.channel }, 'Addie Bolt: App Home opened');
+
+  if (event.tab === 'messages') {
+    try {
+      await setAgentViewSuggestedPrompts(client, userId, event.channel);
+      logger.info({ userId, channelId: event.channel }, 'Addie Bolt: Agent messages prompts set');
+    } catch (error) {
+      logger.error({ error, userId, channelId: event.channel }, 'Addie Bolt: Failed to set agent messages prompts');
+    }
+    return;
+  }
 
   try {
     const content = await getHomeContent(userId);

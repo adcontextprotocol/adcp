@@ -148,7 +148,7 @@
     "@opentelemetry/sdk-logs": "^0.219.0",
     "@opentelemetry/semantic-conventions": "^1.40.0",
     "@slack/bolt": "^4.7.3",
-    "@slack/web-api": "^7.17.0",
+    "@slack/web-api": "^7.18.0",
     "@types/jsonwebtoken": "^9.0.10",
     "@workos-inc/node": "^10.7.0",
     "@workos-inc/widgets": "^1.15.0",
