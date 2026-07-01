@@ -291,11 +291,15 @@ Buyers discover AXE support via `get_adcp_capabilities` and filter products to A
 | `language` | boolean | Language targeting (ISO 639-1 codes) |
 | `keyword_targets` | object | Keyword targeting with `supported_match_types` array (`broad`, `phrase`, `exact`). Presence indicates support. |
 | `negative_keywords` | object | Negative keyword targeting with `supported_match_types` array. Presence indicates support. |
+| `collection_list` | boolean | Collection list inclusion targeting. Presence indicates support for `targeting_overlay.collection_list`. |
+| `collection_list_exclude` | boolean | Collection list exclusion targeting. Presence indicates support for `targeting_overlay.collection_list_exclude`. |
+| `property_list` | boolean | Property list inclusion targeting. Presence indicates support for `targeting_overlay.property_list`. |
+| `property_list_exclude` | boolean | Property list exclusion targeting (brand-safety blocklists). Presence indicates support for `targeting_overlay.property_list_exclude`. |
 | `geo_proximity` | object | Proximity targeting from arbitrary coordinates (see below) |
 
 Device platform and device type targeting are implied by `media_buy` support. Audience include/exclude targeting is implied by the presence of the `audience_targeting` capabilities object.
 
-Sellers that support a geographic targeting level SHOULD support both inclusion and exclusion at that level. For example, `geo_metros.nielsen_dma: true` SHOULD mean the seller supports both `geo_metros` and `geo_metros_exclude` with Nielsen DMA codes. If a seller only supports one direction (e.g., inclusion but not exclusion), it MUST return a validation error for unsupported fields rather than silently ignoring them. See [Targeting Overlays](/docs/media-buy/advanced-topics/targeting) for exclusion semantics.
+Sellers that support a geographic targeting level SHOULD support both inclusion and exclusion at that level. For example, `geo_metros.nielsen_dma: true` SHOULD mean the seller supports both `geo_metros` and `geo_metros_exclude` with Nielsen DMA codes. For **any targeting-overlay list dimension** declared in this table — geo, `collection_list`, or `property_list` — if a seller only supports one direction (e.g., inclusion but not exclusion), it MUST return a validation error for unsupported fields rather than silently ignoring them; silently dropping a brand-safety exclusion list is an unsafe failure mode. See [Targeting Overlays](/docs/media-buy/advanced-topics/targeting) for exclusion semantics.
 
 **geo_proximity** specifies which proximity targeting methods are supported:
 
@@ -673,6 +677,10 @@ Agents that declare `supported: true` MUST apply the same account/caller authori
 - `media_buy.execution.targeting.geo_postal_areas.us_zip: true` → Buyer can send the deprecated `{ system: "us_zip", values: [...] }` form, and SDKs can backfill the native `{ country: "US", system: "zip", values: [...] }` form
 - `media_buy.execution.targeting.geo_postal_areas.ZA` contains `postal_code` → Buyer can send normal South African postal codes, seller MUST honor them
 - `media_buy.execution.targeting.geo_metros.nielsen_dma: true` → Buyer can send DMA codes, seller MUST honor them
+- `media_buy.execution.targeting.collection_list: true` → Buyer can send `targeting_overlay.collection_list`, seller MUST honor it
+- `media_buy.execution.targeting.collection_list_exclude: true` → Buyer can send `targeting_overlay.collection_list_exclude`, seller MUST honor it
+- `media_buy.execution.targeting.property_list: true` → Buyer can send `targeting_overlay.property_list`, seller MUST honor it
+- `media_buy.execution.targeting.property_list_exclude: true` → Buyer can send `targeting_overlay.property_list_exclude` (brand-safety blocklists), seller MUST honor them
 - `media_buy.content_standards` object present → Seller MUST apply content standards when provided
 - `media_buy.audience_targeting` object present → Seller MUST support `sync_audiences` and audience targeting overlays
 - `media_buy.conversion_tracking` object present → Seller MUST support `sync_event_sources` and `log_event`
@@ -860,7 +868,7 @@ const buy = await client.createMediaBuy({
 **Two models for product geography:**
 
 | Inventory Type | Filter By | Example |
-|----------------|-----------|---------|
+|----------------|-----------|--------|
 | Digital (display, OLV, CTV) | Capability: `required_geo_targeting` | Products have broad coverage, target at buy time |
 | Local (radio, DOOH, local TV) | Coverage: `metros`, `regions` | Products ARE geographically bound |
 
@@ -1060,7 +1068,7 @@ When `supported_protocols` includes `"creative"`, the buyer can call Creative Pr
 The `list_authorized_properties` task was removed in v3. If migrating from v2:
 
 | Old Field | New Location |
-|-----------|--------------|
+|-----------|-------------|
 | `publisher_domains` | `media_buy.portfolio.publisher_domains` |
 | `primary_channels` | `media_buy.portfolio.primary_channels` |
 | `primary_countries` | `media_buy.portfolio.primary_countries` |
