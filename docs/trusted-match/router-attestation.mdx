@@ -1,0 +1,237 @@
+---
+title: Router Attestation
+description: Normative TEE attestation endpoint, envelope, and verification flow for the TMP Router.
+"og:title": "AdCP TMP Router Attestation"
+---
+
+# Router Attestation
+
+This page defines the wire shape, endpoint, header carrier, and verification flow for TEE attestation of the TMP Router. It is the normative companion to the informative trust framing in [Privacy Architecture](/docs/trusted-match/privacy-architecture) and the router protocol surface in [The TMP Router](/docs/trusted-match/router-architecture). For design rationale, alternatives considered, and security analysis see [`specs/tmp-router-attestation.md`](https://github.com/adcontextprotocol/adcp/blob/main/specs/tmp-router-attestation.md).
+
+<Note>
+**Experimental — declare `trusted_match.router_attestation` in `experimental_features`** (separate from `trusted_match.core` and `trusted_match.verified_identity`, so a participant can implement core TMP without committing to attestation). Fields and behavior on this surface are not subject to deprecation cycles until 3.0.0 GA; the surface may change between 3.x releases with at least 6 weeks' notice. See [experimental status](/docs/reference/experimental-status) for the full contract.
+</Note>
+
+The protocol's privacy guarantee is structural — context and identity flow through code paths that share no state ([Privacy Architecture](/docs/trusted-match/privacy-architecture#the-separation-principle)). Without attestation, that guarantee depends on operational trust that the deployed binary matches the audited source. Attestation removes that trust requirement: the verifier reads an attestation document from the router, verifies it against the platform vendor's root, and confirms that the binary running inside the enclave matches the published, audited source code, subject to the verifier's local measurement allowlist. This page is how the verifier does that.
+
+## Endpoint
+
+```
+GET /.well-known/tmp-router-attestation?nonce=<base64url, 16-32 raw bytes>
+```
+
+- Path: `/.well-known/tmp-router-attestation` (per [RFC 8615](https://datatracker.ietf.org/doc/html/rfc8615)). Public; no authentication.
+- Query parameter: `nonce` — base64url-encoded (RFC 4648 §5, unpadded). The decoded value MUST be at least 16 and at most 32 raw bytes of cryptographically random data (22–43 characters in the encoded form). The router MUST reject requests where `nonce` is shorter than 16 raw bytes, longer than 32 raw bytes, or contains characters outside the base64url alphabet.
+- Method: `GET`. No request body.
+- Response: HTTP `200`, `Content-Type: application/json`, body validating against [`/schemas/trusted-match/router-attestation.json`](https://adcontextprotocol.org/schemas/v3/trusted-match/router-attestation.json).
+- Error responses: HTTP `400` for nonce-validation failures, `503` when the enclave is unable to produce an attestation document (e.g., during startup or vendor-side outage). The router MUST NOT return `200` with a partial or malformed envelope.
+
+The endpoint is rate-limit-sensitive (envelope production involves vendor-side cryptographic operations); routers SHOULD rate-limit per source IP (recommended: 10 req/sec) and SHOULD cache nothing — every request produces a fresh envelope so the verifier-supplied nonce binds to this fetch.
+
+## Envelope
+
+The response is a single object matching [`/schemas/trusted-match/router-attestation.json`](https://adcontextprotocol.org/schemas/v3/trusted-match/router-attestation.json):
+
+```jsonc
+{
+  "attestation_format": "aws_nitro_cose_sign1_v1",
+  "attestation_document": "<base64url(opaque platform document)>",
+  "nonce": "<base64url echo of request nonce>",
+  "signing_key": {
+    "kid": "router-2026-06",
+    "kty": "OKP",
+    "crv": "Ed25519",
+    "alg": "EdDSA",
+    "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
+  },
+  "expires_at": "2026-06-30T18:00:00Z"
+}
+```
+
+### Field reference
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `attestation_format` | enum | Yes | Canonical identifier of the platform attestation format and version. v1 set: `aws_nitro_cose_sign1_v1`, `intel_tdx_quote_v4`, `amd_sev_snp_attestation_v1`, `gcp_confidential_space_v1`. Each value names a single externally-defined attestation format; the verifier kit for the named format parses the document. Extension is via `ext` plus a future enum addition. |
+| `attestation_document` | string | Yes | Base64url-encoded (RFC 4648 §5, unpadded) attestation document in the declared format. Opaque to AdCP. Verifier kits perform vendor-root signature verification, extract measurements, and map the envelope's generic `nonce` and `signing_key` onto the format-specific user-data slot. |
+| `nonce` | string | Yes | Base64url echo of the request's `nonce` query parameter. The verifier MUST compare this value byte-for-byte against the value it sent (Verification step 1) AND MUST confirm it appears in the user-data slot of `attestation_document` (Verification step 4). |
+| `signing_key` | JWK | Yes | The public key the router uses to sign per-provider outbound requests (the `X-AdCP-Signature`/`X-AdCP-Key-Id` path described in [Identity Match signed fields](/docs/trusted-match/specification#identity-match-signed-fields)). Same JWK shape as [`/schemas/core/agent-signing-key.json`](https://adcontextprotocol.org/schemas/v3/core/agent-signing-key.json). Subject to the [binding rule](#binding-rule). |
+| `expires_at` | string (date-time) | Yes | RFC 3339 timestamp; the router's suggested freshness ceiling. Verifiers MUST reject envelopes where the current time is past this value, and MAY enforce a tighter window via `attestation_requirement.min_freshness_sec` on their provider registration. |
+| `ext` | object | No | Vendor-namespaced extension surface. MUST NOT be used to shadow the binding rule or to carry an alternative attestation document. |
+
+The schema declares `additionalProperties: false` at the top level; the `ext` field is the only vendor-extension surface. Receivers MUST reject envelopes with unknown top-level fields.
+
+## Nonce requirements
+
+A verifier MUST:
+
+1. Generate at least 16 bytes (and at most 32 bytes) of cryptographically random data per verification. The verifier MUST NOT reuse a nonce across verifications.
+2. Encode the bytes as base64url (RFC 4648 §5, unpadded; characters `[A-Za-z0-9_-]`, no `=` padding).
+3. Place the encoded value in the `nonce` query parameter on the `GET /.well-known/tmp-router-attestation` request.
+4. After receiving the envelope, byte-compare `envelope.nonce` against the value the verifier sent. A mismatch is an immediate reject (Verification step 1).
+5. Confirm that the platform-specific user-data slot of `attestation_document` contains the same nonce, per the verifier kit's slot-projection rule for `attestation_format` (Verification step 4).
+
+The nonce is the verifier-controlled freshness signal. Without it, a captured envelope is replayable for the lifetime of `expires_at` against any other verifier. The slot-projection check in step 5 is what makes the nonce *cryptographically* — rather than merely textually — bound to the fetched envelope.
+
+## Binding rule
+
+> The JWK in `signing_key` MUST appear bound in the platform user-data slot of `attestation_document` alongside the nonce. Verifiers MUST reject when the bound public key does not byte-match the envelope's `signing_key` after canonical JWK serialization (RFC 7638 JSON Web Key Thumbprint comparison is the acceptable comparison form).
+
+This rule is the protocol-level invariant that anchors the existing per-provider `X-AdCP-Signature`/`X-AdCP-Key-Id` signature path to the attested binary. Without it, a router could attest a clean binary and then sign requests with a different (deployment-side) key — every per-provider signature would verify, but no protocol mechanism would detect the swap. With it, every per-provider signature inherits the attestation: the signing key is provably the key the attested enclave committed to.
+
+The bound key is *the same key* the provider already verifies request signatures against ([Identity Match signed fields](/docs/trusted-match/specification#identity-match-signed-fields)). The trust anchor in [`agent-signing-key.json`](https://adcontextprotocol.org/schemas/v3/core/agent-signing-key.json) is the discovery surface for the publishable key; the envelope carries the JWK directly (not the thumbprint) so the verifier can re-derive the canonical form and compare.
+
+The slot-projection convention (how the JWK and nonce are laid out in the platform user-data slot) is defined in each verifier kit, not in this schema, because the slot name and concatenation rules differ per platform (Nitro `user_data`, TDX/SEV-SNP `REPORTDATA`, GCP claim format).
+
+## Per-request attestation: `X-TMP-Attestation`
+
+When a provider's registration carries `attestation_requirement.required: true`, the router MUST attach an `X-TMP-Attestation` header to every outbound `POST /context` and `POST /identity` request to that provider.
+
+### Header format
+
+```
+X-TMP-Attestation: <base64url-no-pad JSON of the envelope>
+```
+
+The header value is the base64url-encoded (RFC 4648 §5, unpadded) UTF-8 JSON serialization of the same envelope returned by `/.well-known/tmp-router-attestation`. Routers SHOULD fetch and cache a verified envelope keyed by signing-key `kid`, and MUST refresh on rotation or when `expires_at` is past.
+
+### When attached
+
+- When the recipient provider's registration carries `attestation_requirement.required: true` for the calling deployment — MUST attach on every request.
+- When the recipient provider's registration carries `attestation_requirement.required: false` or omits the block — MUST NOT attach (the header adds up to ~10 KB per request depending on `attestation_format` — Nitro is ~5 KB, TDX/SEV-SNP and GCP tokens are ~1-2 KB — and providers that haven't opted in shouldn't pay it).
+
+### Provider-side handling
+
+A provider that requires attestation:
+
+1. Reads `X-TMP-Attestation`, base64url-decodes, JSON-parses, schema-validates against [`/schemas/trusted-match/router-attestation.json`](https://adcontextprotocol.org/schemas/v3/trusted-match/router-attestation.json).
+2. Runs the [Verification flow](#verification-flow) below, with the caveat that the per-request nonce check (step 1) is relaxed in favor of the envelope's `expires_at` + the provider's `min_freshness_sec` — per-request nonce is impractical because the provider did not initiate the fetch. Per-request integrity is supplied by the per-provider `X-AdCP-Signature` on the request payload (signed by the same `signing_key` from the envelope), and the binding rule ensures that signing key is the attested one.
+3. Caches the verified envelope by `signing_key` thumbprint for at most `min_freshness_sec`. Subsequent requests under the same `kid` reuse the cached verification; on `kid` change or expiry, re-verify.
+4. On any verification failure ([failure modes](#failure-modes)), rejects the request with HTTP `403` and an `error` body whose `code` reflects the failure class.
+
+A provider that does not require attestation ignores the header (`attestation_requirement: { required: false }` or absent).
+
+## Verification flow
+
+A verifier (a provider with `attestation_requirement.required: true`, or any actor independently auditing a router) MUST perform the following steps, in order, on each verification:
+
+1. **Nonce echo (envelope-fetch path only).** If the verifier obtained the envelope via `GET /.well-known/tmp-router-attestation`, byte-compare `envelope.nonce` against the value the verifier sent. Mismatch → reject (`nonce_mismatch`). On the per-request `X-TMP-Attestation` path this step is skipped; freshness is enforced by step 3.
+2. **Expiry.** Compare current time to `envelope.expires_at`. If current time is past, reject (`envelope_expired`).
+3. **Min-freshness (provider policy).** If the verifier's `attestation_requirement.min_freshness_sec` is set, compare to the envelope's verifier-derived issuance age (the verifier kit projects an `issued_at` out of the platform document). If age exceeds the policy, reject (`envelope_stale`).
+4. **Format support.** If `envelope.attestation_format` is not in the verifier's `attestation_requirement.acceptable_formats`, reject (`unsupported_format`).
+5. **Platform document verification.** Hand `attestation_document` to the verifier kit for `attestation_format`. The kit MUST: verify the document's signature against the platform vendor's root certificate authority; extract measurements; project the user-data slot.
+6. **Slot-bound nonce.** Compare the nonce in the projected user-data slot to `envelope.nonce`. Mismatch → reject (`slot_nonce_mismatch`).
+7. **Binding rule.** Compare the JWK in the projected user-data slot to `envelope.signing_key` using RFC 7638 thumbprint equality. Mismatch → reject (`signing_key_not_bound`). This is the load-bearing check; without it the envelope provides no protocol-level guarantee that signed requests originate from the attested binary.
+8. **Measurement policy.** Compare the extracted measurements to the verifier's local allowlist. AdCP does not constrain this allowlist (the allowlist is a deploy-side decision per the rationale doc). On allowlist mismatch, reject (`measurement_disallowed`).
+9. **Cache.** On success, cache the verified envelope keyed by `envelope.signing_key`'s RFC 7638 thumbprint for at most `min_freshness_sec`.
+
+Subsequent per-provider request signatures from the bound `signing_key` are then verified per the existing flow in [Request Authentication](/docs/trusted-match/specification#request-authentication). The binding rule is what makes those signatures inherit the attestation.
+
+## Failure modes
+
+| Failure | Cause | Verifier behavior |
+|---|---|---|
+| `nonce_mismatch` | `envelope.nonce` does not byte-equal the value the verifier sent on `/.well-known/tmp-router-attestation`. | Reject. Do not retry against the same envelope. Acceptable to re-fetch with a fresh nonce. |
+| `envelope_expired` | Current time is past `envelope.expires_at`. | Reject. Re-fetch from the router. |
+| `envelope_stale` | Envelope age exceeds the verifier's `min_freshness_sec`. | Reject. Re-fetch from the router. |
+| `unsupported_format` | `envelope.attestation_format` is not in the verifier's `acceptable_formats`. | Reject. The verifier MUST NOT fall back to a different format implicitly; the operator updates the policy or the router emits an acceptable format. |
+| `slot_nonce_mismatch` | The nonce in the platform user-data slot does not match `envelope.nonce`. | Reject. This is a strong signal of envelope tampering or vendor-document replay. |
+| `signing_key_not_bound` | The JWK in the platform user-data slot does not byte-equal `envelope.signing_key` after canonical JWK serialization. | Reject. This is the load-bearing check — failing it means the envelope cannot anchor the per-provider request signatures, regardless of whether the signatures themselves verify. |
+| `measurement_disallowed` | The extracted measurements are not in the verifier's local allowlist. | Reject. The allowlist is a deploy-side decision; the verifier surfaces the failure to its operations channel for build-allowlist review. |
+| `platform_verification_failed` | The verifier kit failed to verify the platform document against the vendor root (signature invalid, vendor cert expired, format malformed). | Reject. Surface to operations. |
+| `network_error` | `/.well-known/tmp-router-attestation` was unreachable, returned a non-`200`, or returned a malformed body. | Verifiers MAY retry with backoff. The verifier MUST NOT serve traffic to the router as if attestation succeeded; on sustained failure, fail closed (treat as a verification failure). |
+
+On any rejection, the provider returns HTTP `403` to the calling router with a TMP `error` body using the failure name as `code` (or `internal_error` if the failure is not in the table above), and SHOULD log the failure for operator review.
+
+## Caching
+
+Verifier cache discipline for the envelope mirrors the existing TMP signing-key cache discipline at [Key rotation](/docs/trusted-match/specification#key-rotation) — the convention TMP signing keys and TMPX HPKE keys already share. Verifiers SHOULD:
+
+- Cache the verified envelope keyed by the RFC 7638 thumbprint of `signing_key`, for at most the provider's `attestation_requirement.min_freshness_sec` (default 300 seconds, same as the existing signing-key TTL).
+- On a `kid` change, invalidate the cached envelope and re-fetch eagerly — the same eager-re-fetch rule the spec already applies to signing keys at [`specification.mdx#key-rotation`](/docs/trusted-match/specification#key-rotation) ("When a signature fails verification, the router SHOULD re-fetch the key before rejecting — the agent may have rotated").
+- Treat `revoked_at` on the trust-anchor signing key as a revoked envelope: the envelope's `signing_key.kid` is the same `kid` the verifier already looks up against `agent-signing-key.json`, so the existing revocation propagation rules apply unchanged.
+
+The 300-second default is operationally aligned with the rest of the protocol; providers with a genuine reason to cache longer (e.g., very-high-throughput deployments) MAY raise it to up to 86400 seconds via `min_freshness_sec` on their registration. Lower values tighten the post-revocation window at the cost of more frequent envelope production.
+
+## Interaction with the per-provider signature flow
+
+The router already signs per-provider requests over a canonical preimage ([Identity Match signed fields](/docs/trusted-match/specification#identity-match-signed-fields)). The attestation envelope does not replace that signature path; it anchors it.
+
+- The provider's per-request verification path (verify Ed25519 signature against the publisher's trust anchor in [`agent-signing-key.json`](https://adcontextprotocol.org/schemas/v3/core/agent-signing-key.json)) is unchanged.
+- The router's per-provider re-signing on the [Identity Match fan-out](/docs/trusted-match/router-architecture#identity-match-fan-out) is unchanged.
+- The binding rule (Verification step 7) is added at envelope-verification time: the public key already in the trust anchor MUST byte-equal the public key bound in the platform user-data slot. Once the binding is verified, every subsequent per-request signature from that key inherits the attestation, because the signing key is provably held by the attested binary.
+
+A provider that supports attestation but the binding check fails MUST reject every subsequent request signed by that `kid` until a fresh, successfully-verified envelope rotates the binding. A captured signing key held outside the enclave cannot satisfy the binding because the enclave that produces envelopes is bound to a different key.
+
+## Conformance
+
+A TMP Router claiming `trusted_match.router_attestation` support MUST:
+
+- Expose `GET /.well-known/tmp-router-attestation` on every host that accepts router traffic.
+- Validate `nonce` length and base64url alphabet on every request to that endpoint; reject malformed nonces with HTTP `400`.
+- Emit envelopes whose `signing_key` is bound in `attestation_document`'s user-data slot alongside `nonce` per the format-specific verifier-kit convention.
+- Attach `X-TMP-Attestation` to every outbound request to a provider whose registration carries `attestation_requirement.required: true`.
+- Refresh the cached envelope on signing-key rotation or when `expires_at` is past.
+
+A provider claiming `trusted_match.router_attestation` support MUST:
+
+- Declare `attestation_requirement` on its provider registration when it requires attestation.
+- Run the [Verification flow](#verification-flow) on the inbound `X-TMP-Attestation` header for every request when `required: true`.
+- Reject with HTTP `403` and a TMP `error` body on any verification failure, using the failure-mode names from the table above.
+- Cache verified envelopes by RFC 7638 thumbprint of the bound `signing_key`, bounded by `min_freshness_sec`.
+
+A verifier (whether a provider or an independent auditor) claiming support MUST run the verification flow in order — the binding rule is not skippable.
+
+## Examples
+
+The following examples use fictional entities from the AdCP character bible (Acme Outdoor, Pinnacle Agency, StreamHaus).
+
+### Envelope (Nitro)
+
+```jsonc
+{
+  "attestation_format": "aws_nitro_cose_sign1_v1",
+  "attestation_document": "g6JpbW9kdWxlX2lkeCdpLTBmZWFkY2FmZWJlZWY... (truncated)",
+  "nonce": "S3JqWHBuQTkydlF6dGZYbg",
+  "signing_key": {
+    "kid": "streamhaus-router-2026-06",
+    "kty": "OKP",
+    "crv": "Ed25519",
+    "alg": "EdDSA",
+    "use": "sig",
+    "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
+  },
+  "expires_at": "2026-06-30T18:00:00Z"
+}
+```
+
+### Provider registration declaring attestation required
+
+```yaml
+- provider_id: pinnacle-agency-us
+  endpoint: https://us.tmp.pinnacle-agency.example/v1
+  context_match: true
+  identity_match: true
+  countries: [US]
+  uid_types: [uid2, rampid, id5]
+  timeout_ms: 40
+  priority: 0
+  attestation_requirement:
+    required: true
+    acceptable_formats: [aws_nitro_cose_sign1_v1, gcp_confidential_space_v1]
+    min_freshness_sec: 300
+```
+
+A router serving requests on behalf of StreamHaus calling Pinnacle Agency MUST attach `X-TMP-Attestation` to every `POST /context` and `POST /identity` request; Pinnacle Agency runs the verification flow and rejects on any failure.
+
+### Provider registration that does not require attestation (default)
+
+```yaml
+- provider_id: acme-outdoor-eu
+  endpoint: https://eu.tmp.acmeoutdoor.example/v1
+  context_match: true
+  identity_match: true
+  countries: [DE, FR, IT, ES, NL]
+  uid_types: [euid, id5]
+  # no attestation_requirement → header is not attached, requests proceed unattested
+```
