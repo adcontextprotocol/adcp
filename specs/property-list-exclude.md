@@ -56,8 +56,10 @@ clean OpenRTB block-list equivalent.
    not subsetting for optimization; a buyer must be able to drop unsafe inventory
    even from a product that disallows property targeting. Exclusion is honored
    where honorable: when exclusion would break a fulfillment commitment or empty
-   the buy entirely, the seller MUST be able to reject or requote (see
-   `signal_targeting_groups → REQUOTE_REQUIRED` precedent, `targeting.json:144`).
+   the buy entirely, the seller MUST be able to reject or requote (the
+   `REQUOTE_REQUIRED` error code, `enums/error-code.json`, already used on
+   `update_media_buy` when a change alters the parameter envelope the quote was
+   priced against, `update_media_buy.mdx:603`).
    _Open Q2: WG confirmation needed on the exact trigger condition._
 4. **Fail loud, backed by capability.** A seller that has not declared support
    for `property_list` and `property_list_exclude` in `get_adcp_capabilities`
