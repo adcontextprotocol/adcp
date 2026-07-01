@@ -57,6 +57,7 @@ import {
   EVENT_READONLY_TOOLS,
   EVENT_ADMIN_TOOLS,
   createEventToolHandlers,
+  EVENT_CREATOR_COMMITTEE_TYPES,
 } from "../addie/mcp/event-tools.js";
 import {
   MEETING_TOOLS,
@@ -124,9 +125,18 @@ import { UsersDatabase } from "../db/users-db.js";
 import { isRetriesExhaustedError } from "../utils/anthropic-retry.js";
 import * as relationshipDb from "../db/relationship-db.js";
 import * as personEvents from "../db/person-events-db.js";
+import {
+  ChatAttachmentValidationError,
+  summarizeAttachmentsForMessage,
+  validateChatAttachments,
+} from "../addie/chat-attachments.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const ATTACHMENT_VALIDATION_CLIENT_MESSAGE =
+  "Attachment could not be processed. Use PNG, JPEG, GIF, WebP, or PDF files under the size limits.";
+export const EMPTY_ASSISTANT_RESPONSE_FALLBACK =
+  "I hit a response delivery issue before I could finish. Please try again in a moment.";
 
 const logger = createLogger("addie-chat-routes");
 
@@ -150,6 +160,15 @@ const ANONYMOUS_MAX_ITERATIONS = 5;
 // Sources the web client is permitted to assert. Voice / email / unknown are
 // set server-side only (tavus.ts, email-conversation-handler.ts, bolt-app.ts).
 const VALID_WEB_SOURCES = new Set<'typed' | 'cta_chip'>(['typed', 'cta_chip']);
+
+export function ensureNonEmptyAssistantResponse(
+  text: string | null | undefined,
+): { text: string; usedFallback: boolean } {
+  if (typeof text === 'string' && text.trim().length > 0) {
+    return { text, usedFallback: false };
+  }
+  return { text: EMPTY_ASSISTANT_RESPONSE_FALLBACK, usedFallback: true };
+}
 
 /**
  * Merge per-request member tools with cached authenticated-only tools,
@@ -451,7 +470,8 @@ export async function prepareRequestWithMemberTools(
   userId: string | undefined,
   threadExternalId: string,
   isAuthenticated: boolean,
-  threadId?: string
+  threadId?: string,
+  selectedOrganizationId?: string | null,
 ): Promise<PreparedRequest> {
   const messageToProcess = sanitizedInput;
   let memberContext: MemberContext | null = null;
@@ -463,7 +483,7 @@ export async function prepareRequestWithMemberTools(
     (async () => {
       try {
         if (userId) {
-          return await getWebMemberContext(userId);
+          return await getWebMemberContext(userId, selectedOrganizationId);
         }
         return null;
       } catch (error) {
@@ -595,15 +615,18 @@ export async function prepareRequestWithMemberTools(
       }
     }
 
-    // Event tools: readonly for all users, admin tools for admins only
-    const eventHandlers = createEventToolHandlers(memberContext);
+    // Event tools: readonly for all users; management tools for admins and committee leaders
+    const eventHandlers = createEventToolHandlers(memberContext, undefined, userIsAdmin);
     allTools.push(...EVENT_READONLY_TOOLS);
     for (const tool of EVENT_READONLY_TOOLS) {
       const handler = eventHandlers.get(tool.name);
       if (handler) combinedHandlers.set(tool.name, handler);
     }
 
-    if (userIsAdmin) {
+    const eventEligibleLedGroups = ledGroups.filter(group =>
+      EVENT_CREATOR_COMMITTEE_TYPES.has(group.committee_type)
+    );
+    if (userIsAdmin || eventEligibleLedGroups.length > 0) {
       allTools.push(...EVENT_ADMIN_TOOLS);
       for (const tool of EVENT_ADMIN_TOOLS) {
         const handler = eventHandlers.get(tool.name);
@@ -721,21 +744,26 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         });
       }
 
-      const { message, conversation_id, user_name, message_source: rawMessageSource } = req.body;
+      const { message, conversation_id, user_name, message_source: rawMessageSource, attachments: rawAttachments, organization_id } = req.body;
+      const attachments = validateChatAttachments(rawAttachments);
 
-      if (!message || typeof message !== "string") {
+      if (typeof message !== "string" || (!message.trim() && attachments.length === 0)) {
         return res.status(400).json({ error: "Message is required" });
       }
+      const attachmentSummary = summarizeAttachmentsForMessage(attachments);
+      const messageForStorage = message.trim()
+        ? `${message.trim()}${attachmentSummary ? `\n\n${attachmentSummary}` : ''}`
+        : attachmentSummary || "[Uploaded attachment]";
 
       // Sanitize input
-      const inputValidation = sanitizeInput(message);
+      const inputValidation = sanitizeInput(messageForStorage);
       if (inputValidation.flagged) {
         logger.warn({ reason: inputValidation.reason }, "Addie Chat: Input flagged");
       }
 
       // Heuristic click telemetry: if the incoming message text matches a
       // known suggested-prompt verbatim, record a click against that rule.
-      const matchedRuleId = matchRuleIdFromMessage(message);
+      const matchedRuleId = matchRuleIdFromMessage(message.trim());
       if (matchedRuleId && req.user?.id) {
         void recordPromptClicked(req.user.id, matchedRuleId);
       }
@@ -812,7 +840,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       await threadService.addMessage({
         thread_id: thread.thread_id,
         role: 'user',
-        content: message,
+        content: messageForStorage,
         content_sanitized: inputValidation.sanitized,
         flagged: inputValidation.flagged,
         flag_reason: inputValidation.reason,
@@ -857,14 +885,16 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         req.user?.id,
         externalId,
         isAuth,
-        thread.thread_id
+        thread.thread_id,
+        typeof organization_id === 'string' ? organization_id : null
       );
       const { requestTools, processOptions, effectiveModel } = buildTieredAccess(memberTools, isAuth);
 
       // Cost-cap scope (#2790 / #2945 f/u). Authenticated callers key
       // off the WorkOS user ID and resolve their tier from
-      // subscription status — paying members land on member_paid
-      // ($25/day), free accounts on member_free ($5). Anonymous
+      // AAO team/admin + subscription status — AAO team users are
+      // uncapped, paying members land on member_paid ($25/day), free
+      // accounts on member_free ($5). Anonymous
       // callers key off a hashed IP; the client-generated
       // `externalId` alone was a bypass vector (an attacker could
       // rotate it to get a fresh budget per request). The per-IP 50
@@ -882,6 +912,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
           threadId: thread.thread_id,
           userDisplayName: displayName || undefined,
           currentSpeakerName: displayName || undefined,
+          inputAttachments: attachments,
           costScope: authedScope ?? { userId: `anon:${hashIp(req.ip)}`, tier: 'anonymous' as const },
         });
       } catch (error) {
@@ -906,8 +937,23 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         };
       }
 
+      const normalizedResponse = ensureNonEmptyAssistantResponse(response.text);
+      if (normalizedResponse.usedFallback) {
+        logger.warn(
+          {
+            threadId: thread.thread_id,
+            toolsUsed: response.tools_used,
+            toolExecutions: response.tool_executions?.length ?? 0,
+          },
+          "Addie Chat: Empty assistant response replaced with fallback"
+        );
+        response.text = normalizedResponse.text;
+        response.flagged = true;
+        response.flag_reason = response.flag_reason || 'Empty assistant response';
+      }
+
       // Validate output
-      const outputValidation = validateOutput(response.text);
+      const outputValidation = validateOutput(normalizedResponse.text);
 
       const latencyMs = Date.now() - startTime;
 
@@ -958,6 +1004,13 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         si_session: siSession,
       });
     } catch (error) {
+      if (error instanceof ChatAttachmentValidationError) {
+        logger.warn({ reason: error.message }, "Addie Chat: Invalid attachment");
+        return res.status(error.statusCode).json({
+          error: "Invalid attachment",
+          message: ATTACHMENT_VALIDATION_CLIENT_MESSAGE,
+        });
+      }
       logger.error({ err: error }, "Addie Chat: Error handling message");
       res.status(500).json({
         error: "Internal server error",
@@ -1016,23 +1069,28 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         return;
       }
 
-      const { message, conversation_id, user_name, message_source: rawMessageSourceStream } = req.body;
+      const { message, conversation_id, user_name, message_source: rawMessageSourceStream, attachments: rawAttachmentsStream, organization_id } = req.body;
+      const attachments = validateChatAttachments(rawAttachmentsStream);
 
-      if (!message || typeof message !== "string") {
+      if (typeof message !== "string" || (!message.trim() && attachments.length === 0)) {
         sendEvent("error", { error: "Message is required" });
         res.end();
         return;
       }
+      const attachmentSummary = summarizeAttachmentsForMessage(attachments);
+      const messageForStorage = message.trim()
+        ? `${message.trim()}${attachmentSummary ? `\n\n${attachmentSummary}` : ''}`
+        : attachmentSummary || "[Uploaded attachment]";
 
       // Sanitize input
-      const inputValidation = sanitizeInput(message);
+      const inputValidation = sanitizeInput(messageForStorage);
       if (inputValidation.flagged) {
         logger.warn({ reason: inputValidation.reason }, "Addie Chat Stream: Input flagged");
       }
 
       // Heuristic click telemetry: if the incoming message text matches a
       // known suggested-prompt verbatim, record a click against that rule.
-      const matchedRuleId = matchRuleIdFromMessage(message);
+      const matchedRuleId = matchRuleIdFromMessage(message.trim());
       if (matchedRuleId && req.user?.id) {
         void recordPromptClicked(req.user.id, matchedRuleId);
       }
@@ -1100,7 +1158,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       await threadService.addMessage({
         thread_id: thread.thread_id,
         role: 'user',
-        content: message,
+        content: messageForStorage,
         content_sanitized: inputValidation.sanitized,
         flagged: inputValidation.flagged,
         flag_reason: inputValidation.reason,
@@ -1147,7 +1205,8 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         req.user?.id,
         externalId,
         isAuth,
-        thread.thread_id
+        thread.thread_id,
+        typeof organization_id === 'string' ? organization_id : null
       );
       const { requestTools, processOptions, effectiveModel } = buildTieredAccess(memberTools, isAuth);
 
@@ -1165,9 +1224,10 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         ...processOptions,
         requestContext,
         threadId: thread.thread_id,
-        userDisplayName: displayName || undefined,
-        currentSpeakerName: displayName || undefined,
-        ...(streamAuthedScope
+          userDisplayName: displayName || undefined,
+          currentSpeakerName: displayName || undefined,
+          inputAttachments: attachments,
+          ...(streamAuthedScope
           ? { costScope: streamAuthedScope }
           : externalId
             ? { costScope: { userId: `anon:${externalId}`, tier: 'anonymous' as const } }
@@ -1193,6 +1253,24 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
             maxRetries: event.maxRetries,
             reason: event.reason,
           });
+        } else if (event.type === 'stream_error') {
+          // Mid-stream upstream failure after partial delivery (#4797). Forward
+          // to the SSE client so it can render a Retry affordance, then end
+          // the response. The underlying throw on the next iteration is caught
+          // by the outer handler — persistence is already skipped because we
+          // never reach addMessage on this path. The partial fullText is
+          // discarded by virtue of returning here.
+          logger.warn(
+            { reason: event.reason, deltasBeforeError: event.deltasBeforeError, fullTextLength: fullText.length },
+            'Addie Chat Stream: Stream interrupted mid-reply — discarding partial turn'
+          );
+          sendEvent("stream_error", {
+            reason: event.reason,
+            deltasBeforeError: event.deltasBeforeError,
+            recoverable: true,
+          });
+          res.end();
+          return;
         } else if (event.type === 'done') {
           response = event.response;
         } else if (event.type === 'error') {
@@ -1201,6 +1279,27 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
           return;
         }
       }
+
+      const finalStreamText = fullText.trim() ? fullText : response?.text;
+      const normalizedStream = ensureNonEmptyAssistantResponse(finalStreamText);
+      if (normalizedStream.usedFallback) {
+        logger.warn(
+          {
+            threadId: thread.thread_id,
+            toolsUsed,
+            toolExecutions: response?.tool_executions?.length ?? 0,
+          },
+          "Addie Chat Stream: Empty assistant response replaced with fallback"
+        );
+        if (!fullText.trim()) {
+          sendEvent("text", { text: normalizedStream.text });
+        }
+        if (response) {
+          response.flagged = true;
+          response.flag_reason = response.flag_reason || 'Empty assistant response';
+        }
+      }
+      fullText = normalizedStream.text;
 
       // Validate output
       const outputValidation = validateOutput(fullText);
@@ -1261,7 +1360,12 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       res.end();
     } catch (error) {
       logger.error({ err: error }, "Addie Chat Stream: Error handling message");
-      sendEvent("error", { error: "Internal server error" });
+      if (error instanceof ChatAttachmentValidationError) {
+        logger.warn({ reason: error.message }, "Addie Chat Stream: Invalid attachment");
+        sendEvent("error", { error: ATTACHMENT_VALIDATION_CLIENT_MESSAGE });
+      } else {
+        sendEvent("error", { error: "Internal server error" });
+      }
       res.end();
     }
   });

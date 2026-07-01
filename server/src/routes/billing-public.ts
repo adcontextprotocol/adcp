@@ -22,8 +22,9 @@ import {
   type InvoiceRequestData,
   type CheckoutSessionData,
 } from "../billing/stripe-client.js";
+import { isStripeNotFound } from "../audit/integrity/stripe-helpers.js";
 import * as referralDb from "../db/referral-codes-db.js";
-import { sanitizeBillingAddress } from "../billing/billing-address.js";
+import { validateBillingAddress } from "../billing/billing-address.js";
 import {
   blockIfActiveSubscription,
   type ActiveSubscriptionBlock,
@@ -36,17 +37,27 @@ import {
   type Organization,
   VALID_REVENUE_TIERS,
 } from "../db/organization-db.js";
+import { UsersDatabase } from "../db/users-db.js";
 import {
   mapIndustryToCompanyType,
   mapRevenueToTier,
 } from "../services/lusha.js";
-import { listEscalationsForUser } from "../db/escalation-db.js";
+import {
+  addRequesterEscalationUpdate,
+  describeEscalationSla,
+  getEscalation,
+  listEscalationsForUser,
+  listPublicEscalationUpdates,
+  resolveEscalationForUser,
+} from "../db/escalation-db.js";
 import { COMPANY_TYPE_VALUES } from "../config/company-types.js";
 import { notifyInvoiceSent } from "../notifications/billing.js";
 import { WorkOS } from "@workos-inc/node";
 
 const logger = createLogger("billing-public-routes");
 const orgDb = new OrganizationDatabase();
+const usersDb = new UsersDatabase();
+const MAX_ESCALATION_NOTE_LENGTH = 2_000;
 
 // Initialize WorkOS client only if authentication is enabled
 const AUTH_ENABLED = !!(
@@ -131,6 +142,36 @@ function getDevUser(req: Request): DevUser | null {
  */
 export function createPublicBillingRouter(): Router {
   const router = Router();
+  const activeEscalationStatuses = new Set(['open', 'acknowledged', 'in_progress']);
+
+  async function toSafeEscalations(rows: Awaited<ReturnType<typeof listEscalationsForUser>>) {
+    const updatesByEscalation = await listPublicEscalationUpdates(rows.map(row => row.id));
+    return rows.map(({ id, summary, status, priority, category, created_at, updated_at, resolved_at }) => ({
+      id,
+      summary,
+      status,
+      priority,
+      category,
+      created_at,
+      updated_at,
+      resolved_at,
+      updates: (updatesByEscalation[id] || []).map(update => ({
+        id: update.id,
+        author_type: update.author_type,
+        body: update.body,
+        created_at: update.created_at,
+      })),
+      sla: describeEscalationSla({ status, priority, created_at, updated_at }),
+      can_resolve: activeEscalationStatuses.has(status),
+      can_add_details: activeEscalationStatuses.has(status),
+    })).sort((a, b) => {
+      const aActive = activeEscalationStatuses.has(a.status);
+      const bActive = activeEscalationStatuses.has(b.status);
+      if (aActive !== bActive) return aActive ? -1 : 1;
+      if (a.sla.needs_follow_up !== b.sla.needs_follow_up) return a.sla.needs_follow_up ? -1 : 1;
+      return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+    });
+  }
 
   // =========================================================================
   // PUBLIC BILLING PRODUCT ROUTES (mounted at /api)
@@ -220,13 +261,14 @@ export function createPublicBillingRouter(): Router {
         });
       }
 
-      const sanitizedAddress = sanitizeBillingAddress(billingAddress);
-      if (!sanitizedAddress) {
+      const addressResult = validateBillingAddress(billingAddress);
+      if (!addressResult.ok) {
         return res.status(400).json({
-          error: "Incomplete billing address",
-          message: "Please provide line1, city, state, postal_code, and country (each ≤ 200 chars)",
+          error: "Invalid billing address",
+          message: addressResult.error,
         });
       }
+      const sanitizedAddress = addressResult.address;
 
       if (!lookupKey.startsWith("aao_")) {
         logger.warn({ lookupKey }, 'Invoice request rejected: invalid lookup key prefix');
@@ -290,12 +332,13 @@ export function createPublicBillingRouter(): Router {
 
       // Agreement gate. If the caller is accepting inline we validate the
       // version against the currently-published agreement. If they're
-      // relying on a previous acceptance we use whatever was stored on the
-      // org. Either way, store the acceptance as "pending"; the webhook on
+      // relying on a previous org-level acceptance, it must still be current;
+      // stale pending agreements are surfaced back to the user for re-accept.
+      // Either way, store the acceptance as "pending"; the webhook on
       // invoice.paid / subscription.created records it permanently.
-      let pendingVersion = org.pending_agreement_version;
+      const currentAgreement = await orgDb.getCurrentAgreementByType('membership');
+      let acceptedVersion = org.pending_agreement_version || org.agreement_version;
       if (agreement_version?.trim()) {
-        const currentAgreement = await orgDb.getCurrentAgreementByType('membership');
         if (!currentAgreement || agreement_version.trim() !== currentAgreement.version) {
           return res.status(400).json({
             error: "Agreement version mismatch",
@@ -304,9 +347,11 @@ export function createPublicBillingRouter(): Router {
             current_version: currentAgreement?.version ?? null,
           });
         }
-        pendingVersion = currentAgreement.version;
+        acceptedVersion = currentAgreement.version;
+      } else if (acceptedVersion && (!currentAgreement || acceptedVersion !== currentAgreement.version)) {
+        acceptedVersion = null;
       }
-      if (!pendingVersion) {
+      if (!acceptedVersion) {
         return res.status(400).json({
           error: "Membership agreement required",
           message:
@@ -319,7 +364,7 @@ export function createPublicBillingRouter(): Router {
       // billing address in a single UPDATE so a partial failure can't leave
       // one set without the other.
       await orgDb.updateOrganization(orgId, {
-        pending_agreement_version: pendingVersion,
+        pending_agreement_version: acceptedVersion,
         pending_agreement_accepted_at: new Date(),
         pending_agreement_user_id: user.id,
         billing_address: sanitizedAddress,
@@ -368,6 +413,7 @@ export function createPublicBillingRouter(): Router {
         billingAddress: sanitizedAddress,
         lookupKey,
         workosOrganizationId: orgId,
+        workosUserId: user.id,
         couponId: invoiceCouponId ?? org.stripe_coupon_id ?? undefined,
       };
 
@@ -666,6 +712,14 @@ export function createPublicBillingRouter(): Router {
             return res.status(404).json({ error: "Organization not found" });
           }
           const isPersonal = devOrg.is_personal || false;
+          const currentAgreement = await orgDb.getCurrentAgreementByType('membership');
+          const agreementState = {
+            agreement_version: devOrg.agreement_version || null,
+            agreement_signed_at: devOrg.agreement_signed_at || null,
+            pending_agreement_version: devOrg.pending_agreement_version || null,
+            pending_agreement_accepted_at: devOrg.pending_agreement_accepted_at || null,
+            current_membership_agreement_version: currentAgreement?.version || null,
+          };
 
           if (devUser.isMember && !isPersonal) {
             // Company org with active membership
@@ -685,6 +739,8 @@ export function createPublicBillingRouter(): Router {
               revenue_tier: "5m_50m",
               is_personal: false,
               pending_invoices: [],
+              billing_address: devOrg.billing_address || null,
+              ...agreementState,
               suggested_company_type: "adtech",
               suggested_revenue_tier: "5m_50m",
             });
@@ -706,6 +762,8 @@ export function createPublicBillingRouter(): Router {
               revenue_tier: null,
               is_personal: true,
               pending_invoices: [],
+              billing_address: devOrg.billing_address || null,
+              ...agreementState,
               suggested_company_type: null,
               suggested_revenue_tier: null,
             });
@@ -719,6 +777,8 @@ export function createPublicBillingRouter(): Router {
               revenue_tier: null,
               is_personal: isPersonal,
               pending_invoices: [],
+              billing_address: devOrg.billing_address || null,
+              ...agreementState,
               suggested_company_type: null,
               suggested_revenue_tier: null,
             });
@@ -735,19 +795,14 @@ export function createPublicBillingRouter(): Router {
               message: "The requested organization does not exist in local database",
             });
           }
-          // Organization not in local DB - try to sync from WorkOS on-demand
+          // Organization not in local DB — sync from WorkOS on-demand.
+          // ensureOrganizationExists mirrors the WorkOS domain list into
+          // organization_domains + email_domain so downstream auto-link /
+          // claim lookups can find the row; an earlier inline shim here
+          // populated email_domain but not organization_domains, leaving
+          // the row partially invisible to findPayingOrgForDomain.
           try {
-            const workosOrg = await workos!.organizations.getOrganization(orgId);
-            if (workosOrg) {
-              org = await orgDb.createOrganization({
-                workos_organization_id: workosOrg.id,
-                name: workosOrg.name,
-              });
-              logger.info(
-                { orgId, name: workosOrg.name },
-                "On-demand synced organization from WorkOS"
-              );
-            }
+            org = await orgDb.ensureOrganizationExists(workos!, orgId);
           } catch (syncError) {
             logger.warn(
               { orgId, err: syncError },
@@ -798,30 +853,52 @@ export function createPublicBillingRouter(): Router {
         // Ensure Stripe customer exists before showing pricing table
         // This is critical: if we don't create the customer first, Stripe Pricing Table
         // will create one without workos_organization_id metadata, breaking the linkage
-        const stripeCustomerId = await orgDb.getOrCreateStripeCustomer(orgId, () =>
+        const makeCustomer = () =>
           createStripeCustomer({
             email: user.email,
             name: org.name,
             metadata: { workos_organization_id: orgId },
-          })
-        );
+          });
+
+        let stripeCustomerId = await orgDb.getOrCreateStripeCustomer(orgId, makeCustomer);
 
         if (!stripeCustomerId) {
           logger.error({ orgId }, "Failed to create Stripe customer for pricing table");
         }
 
-        // Create customer session for pricing table
-        let customerSessionSecret = null;
+        // Create customer session for pricing table. If the stored customer
+        // ID points at a non-existent (deleted/wrong-mode) Stripe customer,
+        // unlink and recreate so the next attempt succeeds — otherwise every
+        // page load 500s and pages the on-call channel.
+        let customerSessionSecret: string | null = null;
+        let pendingInvoices: Awaited<ReturnType<typeof getPendingInvoices>> = [];
         if (stripeCustomerId) {
-          customerSessionSecret = await createCustomerSession(stripeCustomerId);
+          try {
+            customerSessionSecret = await createCustomerSession(stripeCustomerId);
+          } catch (err) {
+            if (isStripeNotFound(err)) {
+              logger.warn(
+                { orgId, staleCustomerId: stripeCustomerId },
+                "Stored Stripe customer no longer exists — unlinking and recreating"
+              );
+              await orgDb.unlinkStripeCustomer(orgId);
+              stripeCustomerId = await orgDb.getOrCreateStripeCustomer(orgId, makeCustomer);
+              if (stripeCustomerId) {
+                customerSessionSecret = await createCustomerSession(stripeCustomerId);
+              }
+            } else {
+              throw err;
+            }
+          }
         }
 
-        // Get pending invoices if customer exists
-        let pendingInvoices: Awaited<ReturnType<typeof getPendingInvoices>> = [];
         if (stripeCustomerId) {
           try {
             pendingInvoices = await getPendingInvoices(stripeCustomerId);
           } catch (err) {
+            // resource_missing here means the customer was deleted between
+            // the auto-heal above and this call — extremely rare, treat as
+            // empty rather than failing the page render.
             logger.warn(
               { err, orgId, stripeCustomerId },
               "Error fetching pending invoices"
@@ -844,6 +921,7 @@ export function createPublicBillingRouter(): Router {
         const suggestedRevenueTier = mapRevenueToTier(
           orgWithEnrichment.enrichment_revenue
         );
+        const currentAgreement = await orgDb.getCurrentAgreementByType('membership');
 
         res.json({
           subscription: subscriptionInfo,
@@ -854,6 +932,11 @@ export function createPublicBillingRouter(): Router {
           is_personal: org.is_personal || false,
           pending_invoices: pendingInvoices,
           billing_address: org.billing_address || null,
+          agreement_version: org.agreement_version || null,
+          agreement_signed_at: org.agreement_signed_at || null,
+          pending_agreement_version: org.pending_agreement_version || null,
+          pending_agreement_accepted_at: org.pending_agreement_accepted_at || null,
+          current_membership_agreement_version: currentAgreement?.version || null,
           // Enrichment-based suggestions for prefilling the profile modal
           suggested_company_type: suggestedCompanyType,
           suggested_revenue_tier: suggestedRevenueTier,
@@ -955,6 +1038,68 @@ export function createPublicBillingRouter(): Router {
     }
   );
 
+  // PUT /api/organizations/:orgId/billing-address - Update org billing address standalone
+  // (no agreement gate, no invoice creation). Lets members set/edit their billing
+  // address from the membership page without going through the full invoice flow.
+  router.put(
+    "/organizations/:orgId/billing-address",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const user = req.user!;
+        const { orgId } = req.params;
+        const addressResult = validateBillingAddress(req.body);
+        if (!addressResult.ok) {
+          return res.status(400).json({
+            error: "Invalid billing address",
+            message: addressResult.error,
+          });
+        }
+        const sanitized = addressResult.address;
+
+        const org = await orgDb.getOrganization(orgId);
+        if (!org) {
+          return res.status(404).json({
+            error: "Organization not found",
+            message: "The requested organization does not exist",
+          });
+        }
+
+        const isDevUserBilling =
+          isDevModeEnabled() &&
+          Object.values(DEV_USERS).some((du) => du.id === user.id) &&
+          orgId.startsWith("org_dev_");
+        if (!isDevUserBilling) {
+          const memberships = await workos!.userManagement.listOrganizationMemberships({
+            userId: user.id,
+            organizationId: orgId,
+          });
+          if (memberships.data.length === 0) {
+            return res.status(403).json({
+              error: "Access denied",
+              message: "You are not a member of this organization",
+            });
+          }
+        }
+
+        await orgDb.updateOrganization(orgId, { billing_address: sanitized });
+
+        logger.info(
+          { orgId, userId: user.id },
+          "Updated organization billing address",
+        );
+
+        res.json({ success: true, billing_address: sanitized });
+      } catch (error) {
+        logger.error({ err: error }, "Update billing address error:");
+        res.status(500).json({
+          error: "Failed to update billing address",
+          message: "An unexpected error occurred. Please try again.",
+        });
+      }
+    },
+  );
+
   // GET /api/user/escalations - Get escalations for the authenticated user
   router.get(
     "/user/escalations",
@@ -962,17 +1107,85 @@ export function createPublicBillingRouter(): Router {
     async (req: Request, res: Response) => {
       try {
         const user = req.user!;
+        const userRecord = await usersDb.getUser(user.id);
+        const slackUserId = userRecord?.primary_slack_user_id || undefined;
         // WorkOS auth doesn't carry a Slack user ID, so escalations created via
-        // Slack before the user linked their WorkOS account won't appear here.
-        const rows = await listEscalationsForUser(user.id, undefined);
+        // Slack before the user linked their WorkOS account are matched through users.primary_slack_user_id.
+        const rows = await listEscalationsForUser(user.id, slackUserId);
         // Return only member-safe fields; addie_context and original_request are internal
-        const escalations = rows.map(({ id, summary, status, created_at, resolution_notes }) => ({
-          id, summary, status, created_at, resolution_notes,
-        }));
+        const escalations = await toSafeEscalations(rows);
         res.json({ escalations });
       } catch (error) {
         logger.error({ err: error }, "Error fetching user escalations");
         res.status(500).json({ error: "Failed to fetch escalations" });
+      }
+    }
+  );
+
+  // PATCH /api/user/escalations/:id - Let a requester update or close their own request
+  router.patch(
+    "/user/escalations/:id",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const user = req.user!;
+        const id = Number(req.params.id);
+        if (!Number.isInteger(id) || id < 1) {
+          return res.status(400).json({ error: "Invalid escalation ID" });
+        }
+
+        const action = req.body?.action;
+        if (action !== 'resolve' && action !== 'add_note') {
+          return res.status(400).json({ error: "Unsupported escalation action" });
+        }
+
+        let updated = null;
+        const userRecord = await usersDb.getUser(user.id);
+        const slackUserId = userRecord?.primary_slack_user_id || undefined;
+        if (action === 'resolve') {
+          const notes = typeof req.body?.notes === 'string' ? req.body.notes.trim() : '';
+          if (notes.length > MAX_ESCALATION_NOTE_LENGTH) {
+            return res.status(413).json({ error: "Notes are too long" });
+          }
+          if (notes) {
+            await addRequesterEscalationUpdate(id, user.id, slackUserId, `Closed request: ${notes}`);
+          }
+          updated = await resolveEscalationForUser(id, user.id, slackUserId, notes);
+          if (!updated) {
+            return res.status(404).json({
+              error: "Escalation not found",
+              message: "This support request is already closed or is not attached to your account.",
+            });
+          }
+        } else {
+          const notes = typeof req.body?.notes === 'string' ? req.body.notes.trim() : '';
+          if (!notes) {
+            return res.status(400).json({ error: "Notes are required" });
+          }
+          if (notes.length > MAX_ESCALATION_NOTE_LENGTH) {
+            return res.status(413).json({ error: "Notes are too long" });
+          }
+          const requesterUpdate = await addRequesterEscalationUpdate(id, user.id, slackUserId, notes);
+          if (!requesterUpdate) {
+            return res.status(404).json({
+              error: "Escalation not found",
+              message: "This support request is already closed or is not attached to your account.",
+            });
+          }
+          updated = await getEscalation(id);
+        }
+
+        if (!updated) {
+          return res.status(404).json({ error: "Escalation not found" });
+        }
+
+        const [safeEscalation] = await toSafeEscalations([updated]);
+        res.json({
+          escalation: safeEscalation,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error updating user escalation");
+        res.status(500).json({ error: "Failed to update escalation" });
       }
     }
   );

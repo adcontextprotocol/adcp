@@ -14,7 +14,19 @@
     },
     "is_fixed_price": {
       "type": "boolean",
-      "description": "Filter by pricing availability: true = products offering fixed pricing (at least one option with fixed_price), false = products offering auction pricing (at least one option without fixed_price). Products with both fixed and auction options match both true and false."
+      "description": "Filter by pricing availability and returned pricing options: true = products offering fixed pricing (at least one option with fixed_price), false = products offering auction pricing (at least one option without fixed_price). Products with both fixed and auction options match both true and false, but sellers MUST return only the pricing_options entries matching the requested pricing type so buyers can deterministically select from the returned options."
+    },
+    "pricing_currencies": {
+      "type": "array",
+      "description": "Filter by currencies the buyer can use for the media product transaction, using ISO 4217 currency codes. Products match when they offer at least one product-level pricing_options entry in one of the requested currencies and any seller-applied or otherwise mandatory product-scoped signal charges are satisfiable in one of those currencies or have no incremental price. Mandatory custom signal pricing without currency is not satisfiable for this filter unless the seller can truthfully treat it as having no incremental price. Sellers MUST return only product pricing_options entries whose currency is in this list so buyers can select deterministically from discovery. This filter does not require pruning optional signal or vendor add-on pricing; buyers should avoid optional add-ons priced only in unsupported currencies.",
+      "items": {
+        "type": "string",
+        "description": "ISO 4217 currency code (e.g., 'USD', 'EUR', 'GBP')",
+        "pattern": "^[A-Z]{3}$"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "x-canonicalization": "set"
     },
     "format_ids": {
       "type": "array",
@@ -126,6 +138,46 @@
       },
       "minItems": 1
     },
+    "video_placement_types": {
+      "type": "array",
+      "description": "Filter video products by acceptable declared video placement types, using IAB Tech Lab/OpenRTB 2.6 video.plcmt definitions with AdCP-native names. Sellers SHOULD return only products they can satisfy with at least one requested type. Products whose only available delivery is a mixed, non-targetable bundle that includes unrequested video placement types SHOULD NOT match unless the seller can constrain delivery to the requested type during planning or purchase. This filter has set semantics for wholesale feed canonicalization.",
+      "items": {
+        "$ref": "/schemas/enums/video-placement-type.json"
+      },
+      "uniqueItems": true,
+      "minItems": 1,
+      "x-canonicalization": "set"
+    },
+    "audio_distribution_types": {
+      "type": "array",
+      "description": "Filter audio products by acceptable declared audio distribution types, using IAB Tech Lab/OpenRTB 2.6 audio.feed definitions with AdCP-native names. Sellers SHOULD return only products they can satisfy with at least one requested type. Products whose only available delivery is a mixed, non-targetable bundle that includes unrequested audio distribution types SHOULD NOT match unless the seller can constrain delivery to the requested type during planning or purchase. This filter has set semantics for wholesale feed canonicalization.",
+      "items": {
+        "$ref": "/schemas/enums/audio-distribution-type.json"
+      },
+      "uniqueItems": true,
+      "minItems": 1,
+      "x-canonicalization": "set"
+    },
+    "sponsored_placement_types": {
+      "type": "array",
+      "description": "Filter retail-media products by acceptable declared sponsored-placement types (sponsored search, sponsored display, or sponsored native). Sellers SHOULD return only products they can satisfy with at least one requested type. Products whose only available delivery is a mixed, non-targetable bundle that includes unrequested sponsored-placement types SHOULD NOT match unless the seller can constrain delivery to the requested type during planning or purchase. This filter has set semantics for wholesale feed canonicalization.",
+      "items": {
+        "$ref": "/schemas/enums/sponsored-placement-type.json"
+      },
+      "uniqueItems": true,
+      "minItems": 1,
+      "x-canonicalization": "set"
+    },
+    "social_placement_surfaces": {
+      "type": "array",
+      "description": "Filter social products by acceptable declared social-placement surfaces (feed, stories, short_video, explore, or search). Sellers SHOULD return only products they can satisfy with at least one requested surface. Products whose only available delivery is a mixed, non-targetable bundle that includes unrequested surfaces SHOULD NOT match unless the seller can constrain delivery to the requested surface during planning or purchase. This filter has set semantics for wholesale feed canonicalization.",
+      "items": {
+        "$ref": "/schemas/enums/social-placement-surface.json"
+      },
+      "uniqueItems": true,
+      "minItems": 1,
+      "x-canonicalization": "set"
+    },
     "required_axe_integrations": {
       "type": "array",
       "description": "Deprecated: Use trusted_match filter instead. Filter to products executable through specific agentic ad exchanges. URLs are canonical identifiers.",
@@ -182,7 +234,7 @@
     },
     "required_geo_targeting": {
       "type": "array",
-      "description": "Filter to products from sellers supporting specific geo targeting capabilities. Each entry specifies a targeting level (country, region, metro, postal_area) and optionally a system for levels that have multiple classification systems.",
+      "description": "Filter to products from sellers supporting specific geo targeting capabilities. Each entry specifies a targeting level (country, region, metro, postal_area) and optionally a system for levels that have multiple classification systems. For native postal_area filters, include country plus the country-local postal system.",
       "items": {
         "type": "object",
         "properties": {
@@ -190,45 +242,114 @@
             "$ref": "/schemas/enums/geo-level.json",
             "description": "Geographic targeting level (country, region, metro, postal_area)"
           },
+          "country": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$",
+            "description": "ISO 3166-1 alpha-2 country code. Required for native postal_area system filters; not applicable to country, region, or metro filters."
+          },
           "system": {
             "type": "string",
-            "description": "Classification system within the level. Required for metro (e.g., 'nielsen_dma') and postal_area (e.g., 'us_zip'). Not applicable for country/region which use ISO standards."
+            "description": "Optional classification system within the level. Use for a specific metro system (e.g., 'nielsen_dma'), native postal_area system (e.g., 'zip' with country 'US'), or deprecated legacy postal alias (e.g., 'us_zip'). Not applicable for country/region which use ISO standards."
           }
         },
         "required": ["level"],
+        "allOf": [
+          {
+            "if": {
+              "properties": { "level": { "enum": ["country", "region"] } },
+              "required": ["level"]
+            },
+            "then": {
+              "not": {
+                "anyOf": [
+                  { "required": ["country"] },
+                  { "required": ["system"] }
+                ]
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": { "level": { "const": "metro" } },
+              "required": ["level"]
+            },
+            "then": {
+              "anyOf": [
+                {
+                  "not": { "required": ["system"] }
+                },
+                {
+                  "properties": {
+                    "system": { "$ref": "/schemas/enums/metro-system.json" }
+                  },
+                  "required": ["system"]
+                }
+              ],
+              "not": { "required": ["country"] }
+            }
+          },
+          {
+            "if": {
+              "properties": { "level": { "const": "postal_area" } },
+              "required": ["level"]
+            },
+            "then": {
+              "anyOf": [
+                {
+                  "not": {
+                    "anyOf": [
+                      { "required": ["country"] },
+                      { "required": ["system"] }
+                    ]
+                  }
+                },
+                {
+                  "$ref": "/schemas/core/postal-country-system.json"
+                },
+                {
+                  "properties": {
+                    "system": { "$ref": "/schemas/enums/legacy-postal-system.json" }
+                  },
+                  "required": ["system"],
+                  "not": { "required": ["country"] }
+                }
+              ]
+            }
+          }
+        ],
         "additionalProperties": false
       },
       "minItems": 1
     },
     "signal_targeting": {
       "type": "array",
-      "description": "Filter to products supporting specific signals from data provider catalogs. Products must have the requested signals in their data_provider_signals and signal_targeting_allowed must be true (or all signals requested).",
+      "description": "Filter to products where the requested signals are buyer-selectable and jointly composable: the signals are available through inline signal_targeting_options and/or through get_signals for wholesale products that allow signal targeting but omit inline options, signal_targeting_allowed is true, and the requested set can coexist under the product's signal_targeting_rules. Each filter entry uses signal_ref, with deprecated signal_id accepted during the SignalRef migration window, and may include targeting_mode='include' or 'exclude' to require the product option or product rules to support that use. When targeting_mode is omitted, include is assumed. SignalRef scope 'product' is seller-local exact option matching only, not a portable semantic identifier across products or sellers; buyers wanting portable discovery should use scope 'data_provider' or get_signals. included_signals and deprecated bundled/non-selectable data_provider_signals do not satisfy this filter because they cannot be selected on create_media_buy.",
       "items": {
-        "$ref": "/schemas/core/signal-targeting.json"
+        "type": "object",
+        "allOf": [
+          {
+            "$ref": "/schemas/core/signal-targeting.json"
+          }
+        ],
+        "properties": {
+          "targeting_mode": {
+            "type": "string",
+            "description": "Desired use of this signal on the product. 'include' requires the product option to allow use in an any group. 'exclude' requires the product option to allow use in a none group.",
+            "enum": [
+              "include",
+              "exclude"
+            ],
+            "default": "include"
+          }
+        }
       },
       "minItems": 1
     },
     "postal_areas": {
       "type": "array",
-      "description": "Filter by postal area coverage for locally-bound inventory (direct mail, DOOH, local campaigns). Use when products have postal-area-specific coverage. For digital inventory where products have broad coverage, use required_geo_targeting instead to filter by seller capability.",
+      "description": "Filter by postal area coverage for locally-bound inventory (direct mail, DOOH, local campaigns). Prefer the native country + postal system form. Deprecated legacy country-fused postal-system tokens remain accepted for compatibility. For digital inventory where products have broad coverage, use required_geo_targeting instead to filter by seller capability.",
       "items": {
-        "type": "object",
-        "properties": {
-          "system": {
-            "$ref": "/schemas/enums/postal-system.json",
-            "description": "Postal code system (e.g., 'us_zip', 'gb_outward')"
-          },
-          "values": {
-            "type": "array",
-            "description": "Postal codes within the system (e.g., ['10001', '10002'] for us_zip)",
-            "items": {
-              "type": "string"
-            },
-            "minItems": 1
-          }
-        },
-        "required": ["system", "values"],
-        "additionalProperties": false
+        "$ref": "/schemas/core/postal-area.json"
       },
       "minItems": 1
     },
@@ -412,6 +533,10 @@
         "additionalProperties": false
       },
       "minItems": 1
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json",
+      "description": "Vendor-namespaced extension parameters for seller-specific filter criteria not covered by standard fields. Keys MUST be namespaced under a vendor or platform key (e.g., ext.gam, ext.platform_x). Sellers MUST treat all values as untrusted buyer input; do not interpolate into LLM prompts, SQL queries, or system commands without sanitization. Persistent use of an extension key across multiple buyers is a signal to propose standardization."
     }
   },
   "additionalProperties": true

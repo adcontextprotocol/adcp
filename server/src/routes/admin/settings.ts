@@ -8,7 +8,7 @@
 
 import { Router, Request, Response } from 'express';
 import { createLogger } from '../../logger.js';
-import { requireAuth, requireAdmin } from '../../middleware/auth.js';
+import { requireGlobalAdmin } from '../../middleware/auth.js';
 import {
   getAllSettings,
   getBillingChannel,
@@ -27,6 +27,8 @@ import {
   setEditorialChannel,
   getAnnouncementChannel,
   setAnnouncementChannel,
+  getS2CanonicalFormatsDeltaRelease,
+  setS2CanonicalFormatsDeltaRelease,
   getSettingAuditHistory,
 } from '../../db/system-settings-db.js';
 import {
@@ -77,11 +79,23 @@ async function requireChannelPrivacy(
   });
 }
 
+function normalizeOptionalDate(value: unknown): string | null | undefined {
+  if (value === null) return null;
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string') return undefined;
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) {
+    return undefined;
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return undefined;
+  return parsed.toISOString();
+}
+
 export function createAdminSettingsRouter(): Router {
   const router = Router();
 
   // GET /api/admin/settings - Get all system settings
-  router.get('/', requireAuth, requireAdmin, async (_req: Request, res: Response) => {
+  router.get('/', ...requireGlobalAdmin, async (_req: Request, res: Response) => {
     try {
       const settings = await getAllSettings();
       const billingChannel = await getBillingChannel();
@@ -93,6 +107,7 @@ export function createAdminSettingsRouter(): Router {
 
       const editorialChannel = await getEditorialChannel();
       const announcementChannel = await getAnnouncementChannel();
+      const s2CanonicalFormatsDeltaRelease = await getS2CanonicalFormatsDeltaRelease();
 
       res.json({
         settings,
@@ -104,6 +119,7 @@ export function createAdminSettingsRouter(): Router {
         error_channel: errorChannel,
         editorial_channel: editorialChannel,
         announcement_channel: announcementChannel,
+        s2_canonical_formats_delta_release: s2CanonicalFormatsDeltaRelease,
       });
     } catch (error) {
       logger.error({ err: error }, 'Failed to get system settings');
@@ -114,7 +130,7 @@ export function createAdminSettingsRouter(): Router {
   });
 
   // GET /api/admin/settings/slack-channels - List available Slack channels for picker
-  router.get('/slack-channels', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  router.get('/slack-channels', ...requireGlobalAdmin, async (req: Request, res: Response) => {
     try {
       if (!isSlackConfigured()) {
         res.status(400).json({
@@ -165,7 +181,7 @@ export function createAdminSettingsRouter(): Router {
   });
 
   // PUT /api/admin/settings/billing-channel - Update billing notification channel
-  router.put('/billing-channel', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  router.put('/billing-channel', ...requireGlobalAdmin, async (req: Request, res: Response) => {
     try {
       const { channel_id, channel_name } = req.body;
 
@@ -214,7 +230,7 @@ export function createAdminSettingsRouter(): Router {
   });
 
   // PUT /api/admin/settings/escalation-channel - Update escalation notification channel
-  router.put('/escalation-channel', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  router.put('/escalation-channel', ...requireGlobalAdmin, async (req: Request, res: Response) => {
     try {
       const { channel_id, channel_name } = req.body;
 
@@ -263,7 +279,7 @@ export function createAdminSettingsRouter(): Router {
   });
 
   // PUT /api/admin/settings/admin-channel - Update admin notification channel
-  router.put('/admin-channel', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  router.put('/admin-channel', ...requireGlobalAdmin, async (req: Request, res: Response) => {
     try {
       const { channel_id, channel_name } = req.body;
 
@@ -306,7 +322,7 @@ export function createAdminSettingsRouter(): Router {
   });
 
   // PUT /api/admin/settings/prospect-channel - Update prospect notification channel
-  router.put('/prospect-channel', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  router.put('/prospect-channel', ...requireGlobalAdmin, async (req: Request, res: Response) => {
     try {
       const { channel_id, channel_name } = req.body;
 
@@ -349,7 +365,7 @@ export function createAdminSettingsRouter(): Router {
   });
 
   // PUT /api/admin/settings/error-channel - Update error notification channel
-  router.put('/error-channel', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  router.put('/error-channel', ...requireGlobalAdmin, async (req: Request, res: Response) => {
     try {
       const { channel_id, channel_name } = req.body;
 
@@ -392,7 +408,7 @@ export function createAdminSettingsRouter(): Router {
   });
 
   // PUT /api/admin/settings/editorial-channel - Update editorial review notification channel
-  router.put('/editorial-channel', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  router.put('/editorial-channel', ...requireGlobalAdmin, async (req: Request, res: Response) => {
     try {
       const { channel_id, channel_name } = req.body;
 
@@ -435,7 +451,7 @@ export function createAdminSettingsRouter(): Router {
   });
 
   // PUT /api/admin/settings/announcement-channel - Update public announcement channel
-  router.put('/announcement-channel', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  router.put('/announcement-channel', ...requireGlobalAdmin, async (req: Request, res: Response) => {
     try {
       const { channel_id, channel_name } = req.body;
 
@@ -479,8 +495,45 @@ export function createAdminSettingsRouter(): Router {
     }
   });
 
+  // PUT /api/admin/settings/s2-canonical-formats-delta-release
+  // TODO: When a second recertification delta registers in
+  // config/recertification-deltas.ts, add a generic
+  // PUT /delta-release/:updateId path that resolves the definition via
+  // getDeltaByUpdateId and writes through setDeltaRelease(def.release_setting_key, ...).
+  // Until then this S2-specific route is the only configured gate.
+  router.put('/s2-canonical-formats-delta-release', ...requireGlobalAdmin, async (req: Request, res: Response) => {
+    try {
+      const adcpGaAt = normalizeOptionalDate(req.body?.adcp_3_1_ga_at);
+      const criteriaDeployedAt = normalizeOptionalDate(req.body?.criteria_deployed_at);
+
+      if (adcpGaAt === undefined || criteriaDeployedAt === undefined) {
+        res.status(400).json({
+          error: 'Invalid release gate',
+          message: 'adcp_3_1_ga_at and criteria_deployed_at must be ISO date strings or null',
+        });
+        return;
+      }
+
+      const userId = req.user?.id;
+      await setS2CanonicalFormatsDeltaRelease({
+        adcp_3_1_ga_at: adcpGaAt,
+        criteria_deployed_at: criteriaDeployedAt,
+      }, userId);
+
+      logger.info({ adcpGaAt, criteriaDeployedAt, userId }, 'S2 canonical formats delta release gates updated');
+
+      const updated = await getS2CanonicalFormatsDeltaRelease();
+      res.json({ success: true, s2_canonical_formats_delta_release: updated });
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to update S2 canonical formats delta release gates');
+      res.status(500).json({
+        error: 'Failed to update release gates',
+      });
+    }
+  });
+
   // GET /api/admin/settings/audit - Recent system settings changes
-  router.get('/audit', requireAuth, requireAdmin, async (_req: Request, res: Response) => {
+  router.get('/audit', ...requireGlobalAdmin, async (_req: Request, res: Response) => {
     try {
       const entries = await getSettingAuditHistory(50);
       res.json({ entries });
@@ -491,7 +544,7 @@ export function createAdminSettingsRouter(): Router {
   });
 
   // PUT /api/admin/settings/prospect-triage-enabled - Toggle automatic triage
-  router.put('/prospect-triage-enabled', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  router.put('/prospect-triage-enabled', ...requireGlobalAdmin, async (req: Request, res: Response) => {
     try {
       const { enabled } = req.body;
 

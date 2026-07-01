@@ -31,9 +31,11 @@ The `adagents.json` file provides a standardized way for publishers to declare t
 }
 ```
 
-This combined model is common for publishers with first-party data — the same domain authorizes sales agents (via `properties`) and declares signal catalogs (via `signals`). The two namespaces are independent: authorization for property sales does not grant signal access, and signal registration does not imply property authorization.
+This combined model is common for publishers with first-party data — the same domain authorizes sales agents (via `properties`) and declares published signal definitions (via `signals`). The two namespaces are independent: authorization for property sales does not grant signal access, and signal registration does not imply property authorization.
 
 See [Signal data providers](/docs/signals/data-providers) for the signals-side documentation.
+
+For the sell-side decision tree that pairs publisher authorization with operator `brand.json` identity and signing-key discovery, see [seller setup](/docs/brand-protocol/seller-setup).
 
 <Tip>
 **[AdAgents.json Builder](https://agenticadvertising.org/adagents/builder)** - Validate existing files or create new ones with guided validation
@@ -66,17 +68,17 @@ For the higher-level framing and a side-by-side example, see [Why adagents.json 
 
 ### Where does sellers.json fit?
 
-In programmatic, `sellers.json` is hosted by the seller/exchange and declares which publishers they represent. AdCP handles this through `brand.json` instead of a separate file. An operator declares properties in their [`brand.json`](/docs/brand-protocol/brand-json) using the `relationship` field, which uses the same values as `delegation_type`: `direct`, `delegated`, or `ad_network`. This creates the same bilateral verification pattern:
+In programmatic, `sellers.json` is hosted by the seller/exchange and declares which publishers they represent. AdCP handles this through `brand.json` instead of a separate file. An operator declares properties in their [`brand.json`](/docs/brand-protocol/brand-json) using the `relationship` field. For first-party inventory, the operator can use `relationship: "owned"`. For delegated or network sell-side paths, `relationship` uses the same values as `delegation_type`: `direct`, `delegated`, or `ad_network`. This creates the same bilateral verification pattern:
 
 | Programmatic | AdCP equivalent | Purpose |
 |---|---|---|
 | `ads.txt` (publisher) | `adagents.json` with `delegation_type` (publisher) | "These agents are authorized, here's the relationship" |
 | `sellers.json` (seller) | `brand.json` properties with `relationship` (operator) | "I sell for these publishers, here's how" |
 
-Both sides must agree — and the `delegation_type` and `relationship` values should match. See [ad networks](/docs/sponsored-intelligence/networks) for how this works in practice.
+For delegated or network paths, both sides must agree — the `delegation_type` and `relationship` values should match. For first-party inventory, `relationship: "owned"` is an inline ownership declaration and has no matching `delegation_type` value. See [ad networks](/docs/sponsored-intelligence/networks) for how this works in practice.
 
 <Note>
-The field is called `delegation_type` in adagents.json and `relationship` in brand.json. The names differ because they describe the same commercial arrangement from different perspectives — the publisher delegates authority (`delegation_type`), the operator declares its relationship to the property (`relationship`). The values are the same: `direct`, `delegated`, `ad_network`.
+The field is called `delegation_type` in adagents.json and `relationship` in brand.json. The names differ because they describe the same commercial arrangement from different perspectives — the publisher delegates authority (`delegation_type`), the operator declares its relationship to the property (`relationship`). Delegated/network values match (`direct`, `delegated`, `ad_network`); `owned` is only a brand.json relationship value.
 </Note>
 
 ## File Location
@@ -88,6 +90,12 @@ https://example.com/.well-known/adagents.json
 ```
 
 Following [RFC 8615](https://datatracker.ietf.org/doc/html/rfc8615) well-known URI conventions, this location ensures consistent discoverability across publishers.
+
+<Note>
+If the publisher origin canonicalizes hostnames with HTTP redirects, deploy the file at the final resolved URL too. For example, if `https://example.com/.well-known/adagents.json` redirects to `https://www.example.com/.well-known/adagents.json`, the `www` URL must serve the JSON file with a `200` response.
+
+A redirect chain that ends in `404` means the file is missing at the canonical host; troubleshoot the terminal status and resolved URL, not only the intermediate `301` or `302`.
+</Note>
 
 ## Basic Structure
 
@@ -139,6 +147,11 @@ The file must be valid JSON with UTF-8 encoding and return HTTP 200 status.
   - **`tag_id`** *(optional)*: TAG Certified Against Fraud ID
   - **`privacy_policy_url`** *(optional)*: URL to entity's privacy policy for consumer consent flows
 
+**`catalog_etag`** *(optional)*: Opaque cache/version token for the public catalog portions of this file
+  - Publishers SHOULD change it whenever `properties`, `collections`, `placements`, `formats`, `signals`, or their tag metadata changes
+  - Buyer SDKs SHOULD cache resolved references by URL plus `catalog_etag` and re-resolve catalog references when the value changes
+  - If absent, buyers fall back to HTTP validators such as `ETag`/`Last-Modified`, then a bounded TTL
+
 **`properties`** *(optional)*: Array of properties covered by this file (canonical property definitions)
   - **`supported_channels`** *(optional)*: Advertising channels this property supports (e.g., `["display", "olv", "social"]`). See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy).
 
@@ -149,7 +162,8 @@ The file must be valid JSON with UTF-8 encoding and return HTTP 200 status.
 **`placements`** *(optional)*: Canonical placement definitions for the properties in this file
   - Products SHOULD reuse these `placement_id` values when declaring `placements`
   - Reusing a registered `placement_id` means the product is referring to the same semantic placement, not inventing a different one with the same ID
-  - Placement definitions can include `tags` for grouping, `property_ids` or `property_tags` for property linkage, and optional `format_ids` for canonical format support
+  - Placement definitions can include `tags`, `property_ids` or `property_tags` for property linkage, `channels`, and `format_options` for creative support
+  - Placements in `adagents.json` are public by definition. Do not publish seller-private placement IDs, source/origin fields, or delivery-system mappings in this file.
   - Authorization entries can narrow scope to specific `placement_ids`
   - Authorization entries can also use `placement_tags` for governed placement groupings such as `programmatic`, `direct_only`, or `managed_by_riverline`
   - Useful for expressing distinctions like "available via this agent only for homepage native feed" or "only for pre-roll"
@@ -160,10 +174,96 @@ The file must be valid JSON with UTF-8 encoding and return HTTP 200 status.
   - Provides human-readable definitions for placement tag values used in `placements[*].tags` and `authorized_agents[*].placement_tags`
   - These are publisher-local concepts, not a global taxonomy
 
-**`authorized_agents`** *(required)*: Array of authorized sales agents
+### Public placement catalog
+
+The `placements[]` array is the publisher's public placement catalog. It defines stable, semantic placement IDs that products and authorization rules can reference. A buyer should not have to interpret a raw ad-server ad unit path, delivery placement ID, video-ad-server zone, or other seller-internal delivery identifier to understand what a product offers.
+
+Publishers that expose placement, format, collection, or property catalogs, or published `signals[]` definitions, should publish `catalog_etag` and update it whenever those entries change. This lets buyer SDKs cache catalog lookups without silently resolving the same `{publisher_domain, placement_id}` or `{publisher_domain, format_option_id}` to different metadata after a publisher deployment.
+
+At minimum, a public placement should describe:
+
+- stable `placement_id`
+- `name` and `description`
+- the `property_ids` or `property_tags` where it can run
+- supported `format_options`, which can reference publisher-owned formats and canonical formats
+- optional `channels`
+
+Placement format support is a new 3.1 catalog feature and uses the 3.1+ canonical format-option model only:
+
+- `format_options[]` may reference declarations in the same file's top-level `formats[]` by `format_option_id`. Those top-level declarations can be publisher-owned custom formats or narrowed canonical formats.
+- `format_options[]` may also carry an inline canonical `ProductFormatDeclaration` when the placement-specific narrowing is not worth a reusable top-level format entry.
+
+The canonical anchor is `format_kind`. A placement entry that carries only `{ "format_option_id": "..." }` inherits the canonical format by resolving that ID to the same file's top-level `formats[]` declaration, then reading its `format_kind`. Outside this file, a buyer-facing `FormatOptionRef` for a publisher-declared format option uses `{ "scope": "publisher", "publisher_domain": "...", "format_option_id": "..." }`.
+
+Placement catalog formats describe what the public placement can support. When a product later references that placement, the product-level `format_ids` or `format_options` remain the buyable creative contract; placement `format_options` narrow that set for the specific placement. If the catalog placement and product declarations disagree, buyers use the intersection and should not treat a catalog-only format as accepted by the product.
+
+```json
+{
+  "catalog_etag": "daily-pulse-2026-05-25",
+  "formats": [
+    {
+      "format_kind": "html5",
+      "format_option_id": "publisher_takeover_html5",
+      "display_name": "Publisher takeover HTML5",
+      "params": {
+        "width": 970,
+        "height": 250,
+        "max_file_size_kb": 200
+      }
+    }
+  ],
+  "placements": [
+    {
+      "placement_id": "homepage_takeover",
+      "name": "Homepage takeover",
+      "description": "High-impact homepage sponsorship across the main article rail and top video module.",
+      "property_ids": ["daily_pulse"],
+      "channels": ["display", "olv"],
+      "format_options": [
+        { "format_option_id": "publisher_takeover_html5" },
+        {
+          "format_kind": "image",
+          "params": {
+            "width": 300,
+            "height": 250,
+            "image_formats": ["jpg", "png"],
+            "max_file_size_kb": 150
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+Because `adagents.json` is public, it is not the place to expose operational inventory internals. Keep source/origin (`synced` vs synthetic), raw ad-server IDs, delivery mappings, and seller-private placement groupings in the seller's internal inventory registry. The public placement catalog should describe only buyer-understandable inventory that the publisher is willing to make discoverable.
+
+### Product targetability
+
+`adagents.json` does not decide whether a placement is targetable in a product. It only publishes stable public placement IDs and their buyer-understandable semantics.
+
+A sales agent decides per product whether a public placement is buyer-selectable or merely part of the product composition. That decision is exposed, when needed, in the sales agent's `get_products` product placement object, not in the publisher's `adagents.json`.
+
+If a product depends on seller-private delivery composition, describe that composition in product prose and keep the underlying placement IDs in the seller system. Do not publish private placement IDs in `adagents.json` or `get_products`.
+
+### Internal mapping
+
+Publishers still need to map public placements to delivery systems, and they may need synthetic internal groupings when the delivery system does not have the right semantic object. That mapping is implementation detail, not public protocol state.
+
+Common internal cases:
+
+- grouping multiple synced placements
+- grouping multiple ad units or zones
+- exposing an ad unit as a buyer-understandable placement
+- mapping ambiguous `1x1`, fluid, native, out-of-page, or video objects to the format they actually render
+- preserving strategic opacity while keeping products free of raw delivery IDs
+
+These internal mappings can produce public `placements[]` entries, but the mapping details themselves remain out of `adagents.json`.
+
+**`authorized_agents`** *(required)*: Array of authorized sales agents. MAY be empty (`[]`) for a **catalog-only community mirror** — a file that publishes `formats`/`properties`/`placements` (typically with a `catalog_etag`) for a platform that has not adopted AdCP, where there is no sales agent to authorize (see [Community mirror lifecycle](#community-mirror-lifecycle)). An empty array asserts **no sales authorization**: validators MUST NOT read it as deny-all, authorize-all, or a revocation, MUST NOT treat its presence as an error, and MUST still consume the catalog arrays. A file with neither sales authorization nor catalog content is invalid. The per-entry fields below apply only when the array is non-empty:
   - **`url`** *(required)*: Agent's API endpoint URL
   - **`authorized_for`** *(required)*: Human-readable authorization description
-  - **`authorization_type`** *(optional)*: One of `property_ids`, `property_tags`, `inline_properties`, `publisher_properties`
+  - **`authorization_type`** *(required)*: Discriminator naming which selector field carries the scope. One of `property_ids`, `property_tags`, `inline_properties`, `publisher_properties` (for properties) or `signal_ids`, `signal_tags` (for signal providers). The corresponding selector field must be present and non-empty — see [Authorization Patterns](#authorization-patterns) below.
   - **`delegation_type`** *(optional)*: Commercial relationship for this path: `direct`, `delegated`, or `ad_network`
   - **`collections`** *(optional)*: Additional collection selectors that narrow authorization to specific content programs
   - **`placement_ids`** *(optional)*: Placement IDs from the top-level `placements` array that narrow authorization to specific placements
@@ -172,7 +272,10 @@ The file must be valid JSON with UTF-8 encoding and return HTTP 200 status.
   - **`effective_from` / `effective_until`** *(optional)*: Time window for the authorization
   - **`exclusive`** *(optional)*: Whether this is the publisher's sole authorized path for the scoped inventory slice
   - **`signing_keys`** *(optional)*: Publisher-attested public keys buyers can pin when verifying signed agent responses
+  - **`last_updated`** *(optional)*: ISO 8601 timestamp when this `authorized_agents[]` entry last changed. Independent of the file-level `last_updated`. Advisory — enables validators to skip unchanged entries on partial walks. See [managed-networks security](/docs/governance/property/managed-networks#security-considerations) for the conditional-refresh protocol it enables.
   - **Additional fields**: Depends on authorization_type (see patterns below)
+
+**`revoked_publisher_domains`** *(optional, managed-network use)*: Top-level array of publisher domains explicitly removed from a managed network's authoritative file. Each entry has `publisher_domain`, `revoked_at` (ISO 8601), and optional `reason`. Validators MUST treat any listed domain as no-longer-authorized regardless of where else it appears in the file. See [Publisher revocation](/docs/governance/property/managed-networks#publisher-revocation-the-exit-lifecycle) for the operational lifecycle and validator-side durability rule.
 
 **`last_updated`** *(optional)*: ISO 8601 timestamp of last modification
 
@@ -183,6 +286,18 @@ The file must be valid JSON with UTF-8 encoding and return HTTP 200 status.
   - **`publisher_id`** *(optional)*: Publisher's identifier at this agent (for lookup)
 
 This field enables **governance agent discovery** - buyers can find which agents have compliance, sustainability, or quality data for properties without querying every possible agent.
+
+## Community mirror lifecycle
+
+When a platform has not adopted AdCP (e.g., a walled garden that hasn't published its own `adagents.json`), the AdCP community registry can publish a **catalog-only community mirror** on the platform's behalf — typically hosted at `https://creative.adcontextprotocol.org/translated/<platform>/adagents.json`. A mirror exists to publish discovery metadata (`formats`, `properties`, `placements`) so buyers can reason about the platform's inventory shapes before the platform self-adopts.
+
+A community mirror:
+
+- Sets **`authorized_agents: []`** — there is no sales agent to authorize, and the mirror MUST NOT fabricate one. An empty array asserts *no sales authorization*; validators MUST NOT read it as deny-all, authorize-all, or a revocation, and MUST still consume the catalog arrays.
+- MUST carry at least one non-empty catalog array (`formats`/`properties`/`placements`/`collections`/`signals`) and SHOULD carry a **`catalog_etag`** cache validator (the validator enforces the array, not `catalog_etag`). A file with neither sales authorization nor catalog content is invalid.
+- Sets **`superseded_by`** once the platform publishes its own authoritative `adagents.json`. Buyer SDKs encountering `superseded_by` SHOULD re-fetch from the named URL rather than serving the stale mirror. The mirror SHOULD continue serving with `superseded_by` set for at least one minor release so buyer caches keyed on the mirror URL get an explicit migration signal.
+
+See the worked example at [`static/examples/adagents/community/meta.json`](https://github.com/adcontextprotocol/adcp/blob/main/static/examples/adagents/community/meta.json).
 
 ## URL Reference Pattern
 
@@ -213,6 +328,42 @@ For publishers with complex infrastructure or CDN distribution, `adagents.json` 
 - **Single Hop**: Only one level of URL indirection is allowed
 
 For a complete guide to deploying this pattern across hundreds or thousands of domains, see [Managed Network Deployment](/docs/governance/property/managed-networks).
+
+## Discovery fallback: ads.txt `managerdomain`
+
+<Warning>
+This is a **legacy compatibility fallback** for existing ads.txt-era publisher-manager setups.
+For managed-network deployments in AdCP, the normative delegation pattern remains
+[`authoritative_location`](/docs/governance/property/managed-networks) in the publisher's own
+`/.well-known/adagents.json` pointer file. New deployments SHOULD use that pattern.
+</Warning>
+
+When `https://{publisher}/.well-known/adagents.json` returns `404`, or returns an S3/CloudFront-style `403` `AccessDenied` XML response, validators MAY attempt a compatibility fallback via `https://{publisher}/ads.txt`:
+
+1. Read `ads.txt` and parse `managerdomain` entries.
+   - Accepted form: `MANAGERDOMAIN=example.com` (IAB directive form only).
+   - Key matching is case-insensitive (`MANAGERDOMAIN`, `managerdomain`, etc.).
+   - Validators that support this fallback SHOULD follow a bounded HTTP redirect chain when fetching `ads.txt`, applying the same SSRF and public-host checks to each redirect hop.
+2. If one or more eligible managerdomain entries remain, use the **last** eligible entry in file order and attempt `https://{managerdomain}/.well-known/adagents.json`.
+3. If that manager file validates **and explicitly scopes authorization to the source publisher domain**, treat it as the discovered authorization source for this lookup.
+
+### Safety rules for this fallback
+
+- **One hop only**: maximum depth is exactly one (`publisher -> managerdomain`). Do not chain managerdomain lookups.
+- **Cycle detection required**: if `managerdomain` points to a visited domain, ignore it.
+- **`#noagents` opt-out**: if a managerdomain line has a trailing comment containing the token `noagents` (case-insensitive), clients MUST ignore that managerdomain for adagents discovery. Example: `MANAGERDOMAIN=example.com #NOAGENTS`.
+- **Trigger statuses are narrow**: validators SHOULD only attempt this fallback when the publisher's direct `adagents.json` fetch returns `404` or an S3/CloudFront-style `403` `AccessDenied` XML response. Other statuses and failures — generic `403` denial, `500`, timeout, malformed JSON, content-type mismatch, or schema validation failure — do not trigger `managerdomain`.
+- **Explicit publisher scoping required**: a manager-hosted `adagents.json` MUST positively name the source publisher domain in a `publisher_domain` field that is reachable from at least one `authorized_agents[]` entry. "Reachable" means one of the following paths resolves to the source domain:
+
+  1. **Per-agent paths.** The agent entry directly carries the publisher domain under `publisher_properties[].publisher_domain`, inside `publisher_properties[].publisher_domains[]` (the compact managed-network form), or under `collections[].publisher_domain`.
+  2. **Property-level paths.** The agent entry references one or more top-level `properties[]` entries — either directly by ID/tag on the agent entry (`property_ids` / `property_tags` authorization_type), or indirectly via a `publisher_properties` selector whose predicate is satisfied by parent-file `properties[]` carrying matching `publisher_domain` (see [Resolution paths](#resolution-paths) below) — and at least one resolved property carries a `publisher_domain` matching the source. This is the shape used in production by Mediavine and other managed networks where a property declares its `publisher_domain` once and many agents reference it indirectly.
+
+  What does **not** satisfy this rule: an `inline_properties` selector whose inline properties omit `publisher_domain`, or a top-level `property_tags` selector whose resolved top-level properties carry no matching `publisher_domain`. If no reachable `publisher_domain` field matches the source, fallback MUST fail closed.
+
+  The attack this protects against is implicit scoping — authorization that does not name the publisher anywhere the manager has to type the domain. Indirection through `properties[].publisher_domain` is safe because the manager has positively spelled the publisher's domain in the same manifest; the gate filters to properties whose `publisher_domain` matches the source before considering the reference.
+- **No success by silence**: if the manager lookup fails, treat the publisher as missing `adagents.json` (same as no fallback).
+
+This fallback is a compatibility affordance for publisher-manager topologies and does not replace the canonical `/.well-known/adagents.json` location.
 
 ### Example Use Case: Multi-Domain Publisher
 
@@ -276,6 +427,44 @@ When AdCP validators encounter a URL reference:
 
 Validators MUST apply the fetch semantics, change-detection, and rollback protection rules in [Managed network security considerations](/docs/governance/property/managed-networks#security-considerations). That section is the canonical source for blast-radius guidance on the authoritative_location pattern.
 
+### Troubleshooting authoritative_location failures
+
+Publishers registering agents through a URL reference commonly encounter these failure modes. Use this checklist before contacting support.
+
+**Origin requires authentication or IP restriction**
+
+Validators fetch `authoritative_location` server-side — CORS response headers are not required for server-to-server requests. However, if your origin requires authentication (e.g., an S3 bucket with a restrictive bucket policy, a CDN with origin protection that blocks unknown IPs) the fetch will be rejected with a `403`. Verify the URL is publicly reachable without authentication.
+
+**Redirect at the authoritative URL**
+
+Validators reject any HTTP redirect on the `authoritative_location` URL. The URL must resolve directly to the JSON file with a `200` response — no `301`, `302`, or other redirect chain. If your CDN or hosting redirects the URL (HTTP→HTTPS canonicalization, `www` redirect, versioned-path redirect), update `authoritative_location` to point to the final destination URL directly.
+
+**Wrong Content-Type**
+
+The response must be served with `Content-Type: application/json`. Servers that return `text/html` or `text/plain` — even when the body contains valid JSON — will fail content-type validation. Check your CDN or origin response headers.
+
+**HTML error page with 200 status**
+
+Some CDNs return an HTML error page with `200 OK` instead of a `4xx` status. Validators check the `Content-Type` header and attempt JSON parsing; an HTML body will fail parsing even when the status is `200`. Look for a parse error alongside a `200` status in validator output.
+
+**Debugging checklist**
+
+Reproduce the validator's fetch from your terminal to diagnose these failures:
+
+```bash
+curl -v \
+  -H "Accept: application/json" \
+  "https://cdn.example.com/adagents.json"
+```
+
+Verify in the output:
+- Response status is `200` (not `301`, `302`, `403`, or `404`)
+- `Content-Type` header is `application/json`
+- Response body is valid JSON containing at least one of `properties`, `signals`, or `authorized_agents`
+- Body does **not** contain an `authoritative_location` field (nested references are rejected)
+
+If the crawler exposes a diagnostic endpoint, run your URL through it for structured error output.
+
 ### Caching Recommendations
 
 - Cache reference files for 24 hours minimum
@@ -287,7 +476,20 @@ Absolute cache caps and refresh floors for authoritative files live in [Managed 
 
 ## Authorization Patterns
 
-AdCP supports four authorization patterns, each optimized for different use cases:
+AdCP supports six `authorization_type` values, each optimized for different use cases. The table below maps each value to the companion field that carries the selector — useful as a quick reference when writing or validating `adagents.json`:
+
+| `authorization_type` | Companion field | Carries | Pattern |
+|---|---|---|---|
+| `property_ids` | `property_ids[]` | IDs into the top-level `properties[]` of the same file | [Pattern 1](#pattern-1-property-ids-direct-references) |
+| `property_tags` | `property_tags[]` | Tags into the top-level `properties[]` of the same file | [Pattern 2](#pattern-2-property-tags-efficient-grouping) |
+| `inline_properties` | `properties[]` *(see warning below)* | Property objects defined directly on the agent entry | [Pattern 3](#pattern-3-inline-properties) |
+| `publisher_properties` | `publisher_properties[]` | Per-publisher selectors that resolve against each listed publisher's `adagents.json` (or the parent file's inline `properties[]`) | [Pattern 4](#pattern-4-publisher-property-references) |
+| `signal_ids` | `signal_ids[]` | IDs into the top-level `signals[]` of the same file | Signal-provider entries (see `signals` schema) |
+| `signal_tags` | `signal_tags[]` | Tags into the top-level `signals[]` of the same file | Signal-provider entries (see `signals` schema) |
+
+<Warning>
+  **`inline_properties` companion field is `properties`, not `inline_properties`.** It is the only `authorization_type` whose companion field name does not mirror the discriminator value. Validators reject `inline_properties` entries that carry a top-level `inline_properties` array but no `properties`. See [Pattern 3](#pattern-3-inline-properties) for an example.
+</Warning>
 
 ### Pattern 1: Property IDs (Direct References)
 
@@ -429,9 +631,64 @@ AdCP supports four authorization patterns, each optimized for different use case
 
 **How it works**: Agent references properties from OTHER publishers' adagents.json files. The `publisher_domain` points to the publisher, and `selection_type` determines how to resolve properties (`by_id` or `by_tag`).
 
+**Compact form for managed networks (`publisher_domains`)**: when the same predicate applies to many publishers — the canonical managed-network shape — replace the singular `publisher_domain` with the plural `publisher_domains` array. Each `publisher_properties[]` entry takes exactly one of `publisher_domain` or `publisher_domains`; both are equivalent for resolution and both satisfy the [`managerdomain` fallback safety rule](#safety-rules-for-this-fallback) for every listed domain.
+
+The compact form is available on `selection_type: "all"` and `"by_tag"` only. **It is intentionally NOT available on `selection_type: "by_id"`**: property IDs are publisher-scoped, and fanning the same ID set across N publishers' files would silently authorize whichever inventory happens to share an ID at each publisher. Use one `publisher_properties[]` entry per publisher when each publisher's ID set differs. Validators MUST reject `by_id` selectors that include `publisher_domains[]`.
+
+Validators MUST reject any `publisher_properties[]` entry that includes both `publisher_domain` and `publisher_domains`, and MUST reject any entry that includes neither. Implementations MAY mix the two forms across entries — for example, use the compact form for the bulk of represented publishers and a singular-form entry for an outlier publisher with a different tag predicate.
+
+```json
+{
+  "contact": { "name": "Example Managed Network" },
+  "authorized_agents": [{
+    "url": "https://agent.network.example/api",
+    "authorized_for": "Managed-network display inventory across represented publishers",
+    "authorization_type": "publisher_properties",
+    "publisher_properties": [
+      {
+        "publisher_domains": ["site1.example", "site2.example", "site3.example"],
+        "selection_type": "by_tag",
+        "property_tags": ["managed_network"]
+      }
+    ],
+    "delegation_type": "ad_network"
+  }]
+}
+```
+
+The above is semantically identical to repeating the singular-form entry once per domain. Use it when every represented publisher tags inventory the same way (typical of WordPress/managed-network deployments); fall back to one entry per publisher only when the selector predicate genuinely differs.
+
+### Resolution paths
+
+A `publisher_properties` selector resolves against properties in one of two ways. Federated is the default and the trust root; parent-file inline is a per-domain optimization a consumer MAY take when the parent file carries enough information to resolve the selector locally.
+
+**1. Federated resolution (default).** For each domain in `publisher_domain` or `publisher_domains[]`, fetch that publisher's `adagents.json` and apply the selector predicate against the publisher's own top-level `properties[]`. Each listed domain is resolved **independently and in parallel**:
+
+- If a listed publisher's `adagents.json` is unreachable (404, 5xx, timeout, fails its own validation), the selector resolves to the empty set **for that publisher only** — the entry remains valid for all other listed publishers. Consumers MUST NOT treat a single unreachable publisher as poisoning the rest of the compact entry.
+- If a listed publisher's `adagents.json` carries no properties matching the predicate (no entries with the named tag), the selector resolves to the empty set for that publisher. Same partial-resolution rule applies.
+- Resolution caching follows each publisher's own cache policy on their `adagents.json`, independently. A consumer SHOULD NOT extend or shorten one publisher's cache TTL based on observations of another publisher in the same compact entry.
+
+**2. Parent-file inline resolution (managed-network optimization).** A consumer MAY satisfy the selector from the parent file's own top-level `properties[]` when **all** of the following hold:
+
+- The parent file has top-level `properties[]` entries.
+- Every matched property carries an explicit `publisher_domain` field whose value equals one of the domains in the selector's `publisher_domain` / `publisher_domains[]` set.
+- For `selection_type: by_tag`: the property's `tags[]` contains at least one of the selector's `property_tags[]`.
+- For `selection_type: by_id`: the property's `property_id` is in the selector's `property_ids[]` AND the selector uses its singular `publisher_domain` form (the compact `publisher_domains[]` form remains rejected for `by_id` — property IDs are publisher-scoped and fanning a fixed ID set across publishers would silently authorize wrong inventory).
+- For `selection_type: all`: every parent-file `properties[]` entry with a matching `publisher_domain` is selected.
+
+Inline resolution is a **per-domain optimization**: a consumer MAY use inline resolution for the listed domains that have matching inline properties in the parent file, AND federated resolution for the remainder. Both paths SHOULD produce the same `(publisher_domain, property_id)` set when both are available.
+
+**Why this is safe.** The trust anchor for property authorization is the publisher whose domain is named on the property. By requiring `publisher_domain` on each inline property and matching against the selector's `publisher_domains[]`, the inline path preserves the invariant that the publisher whose inventory is being authorized is explicitly named — the same invariant the [`managerdomain` fallback safety rule](#safety-rules-for-this-fallback) protects. A manager file cannot use inline resolution to authorize inventory for a publisher it doesn't list.
+
+**Divergence rule.** If a consumer resolves the same `(publisher_domain, property_id)` via both inline and federated paths and the results disagree, the federated result is authoritative. Consumers SHOULD log the divergence as a publisher-side data-integrity warning and MAY surface it to operators. Consumers that prefer strict federation MAY ignore the inline path entirely.
+
+**Revocation under inline resolution.** Inline resolution MUST honor `revoked_publisher_domains[]` on the parent file. A `publisher_domain` listed as revoked at the parent level resolves to the empty set for that domain, regardless of whether matching properties exist in the parent's `properties[]`. Consumers that also resolve federated SHOULD cross-check the child's own `revoked_publisher_domains[]`; first match (parent or child) revokes.
+
+**When to use which.** Inline resolution exists because strict federation at managed-network scale (thousands of represented publishers under one operator) requires N HTTP fetches per authorization check, which no production consumer can sustain. Files that inline `properties[]` with `publisher_domain` anchors are signalling "you can resolve this here." Consumers handling small federated entries (a handful of publishers, each with their own properly-populated `adagents.json`) should prefer the federated path; it carries less consumer-side trust assumption. Consumers indexing managed-network parent files at scale should prefer the inline path; the parent file is structurally the property catalog whether the spec endorses it or not, and inline resolution makes that explicit.
+
 ## Authorization Qualifiers
 
-The four `authorization_type` patterns above answer **which inventory** an agent can sell. The optional qualifiers below answer **how** that inventory is being made available.
+The four property-side `authorization_type` patterns above answer **which inventory** an agent can sell; the two signal-side values (`signal_ids`, `signal_tags`) carry the same shape for `signals[]`. The optional qualifiers below answer **how** that inventory is being made available.
 
 ### `delegation_type`
 
@@ -445,13 +702,13 @@ Use `collections` when authorization should only apply to inventory associated w
 
 ### `placement_ids`
 
-Use `placement_ids` to narrow authorization to canonical placements published in this same `adagents.json`. This is the field that lets a publisher say "this agent is authorized for MSN homepage native feed, but not for the entire property" or "this network can sell pre-roll but not host-read sponsorships."
+Use `placement_ids` to narrow authorization to canonical placements published in this same `adagents.json`. This is the field that lets a publisher say "this agent is authorized for MSN homepage native feed, but not for the entire property" or "this network can sell pre-roll but not host-read sponsorships." In product responses and creative assignment, the corresponding placement identity is `{ publisher_domain, placement_id }`.
 
 Canonical placement definitions can also carry:
 
 - `tags` for grouping placements across properties and products
 - `property_ids` or `property_tags` to answer "what placements are on property X?" and "what properties is placement Y on?"
-- `format_ids` to answer "what formats does this placement support?" without relying entirely on product-local placement definitions
+- `format_options` to answer "what formats does this placement support?" without relying entirely on product response placement details
 
 ### `placement_tags`
 
@@ -526,8 +783,14 @@ Set `exclusive: true` when this agent is the publisher's sole authorized path fo
       "tags": ["audio", "pre_roll", "programmatic"],
       "property_ids": ["publisher_podcast"],
       "collection_ids": ["signal_noise"],
-      "format_ids": [
-        {"agent_url": "https://creative.example.com", "id": "audio_15s"}
+      "format_options": [
+        {
+          "format_kind": "audio_hosted",
+          "params": {
+            "duration_ms_exact": 15000,
+            "audio_codecs": ["mp3"]
+          }
+        }
       ]
     },
     {
@@ -536,8 +799,15 @@ Set `exclusive: true` when this agent is the publisher's sole authorized path fo
       "tags": ["audio", "host_read", "premium", "direct_only"],
       "property_ids": ["publisher_podcast"],
       "collection_ids": ["signal_noise"],
-      "format_ids": [
-        {"agent_url": "https://creative.example.com", "id": "audio_60s"}
+      "format_options": [
+        {
+          "format_kind": "audio_hosted",
+          "params": {
+            "duration_ms_exact": 60000,
+            "asset_source": "publisher_host_recorded",
+            "buyer_asset_acceptance": "rejected"
+          }
+        }
       ]
     }
   ],
@@ -579,7 +849,7 @@ Set `exclusive: true` when this agent is the publisher's sole authorized path fo
 
 This lets a publisher say "buy host reads directly from us in some markets, but use a network path for pre-roll in others" without implying that every authorized path is equivalent.
 
-`adagents.json` now provides a canonical publisher-level placement registry. Products still declare their own `placements`, but they SHOULD reuse the publisher's registered `placement_id` values when the placement is part of that registry. Reusing a placement ID means the product is inheriting that placement's identity; the product can narrow `format_ids`, preserve or narrow placement tags, or add operational detail, but it should not redefine the placement into something incompatible.
+`adagents.json` now provides a canonical publisher-level placement registry. Products still return their own `placements`, but placement IDs are publisher-scoped: catalog-backed placements SHOULD reference the publisher registry with `{ publisher_domain, placement_id }`. When a product spans multiple publishers and catalog IDs collide, the `publisher_domain` disambiguates them; creative assignments should use structured `placement_refs` for those cases. Referencing a catalog placement means the product is inheriting that placement's identity; the product can narrow `format_ids`, preserve or narrow placement tags, or add operational detail, but it should not redefine the placement into something incompatible.
 
 ## Domain Matching Rules
 
@@ -945,8 +1215,8 @@ asyncio.run(validate_authorization())
 ```
 
 ```javascript JavaScript
-// Using the @adcp/client PropertyCrawler for discovery
-import { PropertyCrawler } from '@adcp/client';
+// Using the @adcp/sdk PropertyCrawler for discovery
+import { PropertyCrawler } from '@adcp/sdk';
 
 const crawler = new PropertyCrawler({ logLevel: 'info' });
 

@@ -65,14 +65,33 @@ interface SystemErrorContext {
   errorMessage: string;
 }
 
+const ANTHROPIC_BILLING_EXHAUSTED_SOURCE = 'anthropic-billing-exhausted';
+const ANTHROPIC_BILLING_EXHAUSTED_PATTERN =
+  /\bcredit balance is too low to access the anthropic api\b/i;
+
+function normalizeSystemErrorContext(ctx: SystemErrorContext): SystemErrorContext {
+  if (!ANTHROPIC_BILLING_EXHAUSTED_PATTERN.test(ctx.errorMessage)) {
+    return ctx;
+  }
+
+  return {
+    source: ANTHROPIC_BILLING_EXHAUSTED_SOURCE,
+    errorMessage: [
+      `Anthropic billing/credit exhaustion surfaced by ${ctx.source}.`,
+      ctx.errorMessage,
+    ].join('\n'),
+  };
+}
+
 /**
  * Notify the error channel about a system-level failure
  * (DB pool errors, job failures, health check degradation).
  * Safe to call without awaiting — never throws.
  */
 export function notifySystemError(ctx: SystemErrorContext): void {
-  void _postSystemError(ctx).catch((err) => {
-    logger.debug({ err, source: ctx.source }, 'Failed to post system error notification');
+  const normalizedCtx = normalizeSystemErrorContext(ctx);
+  void _postSystemError(normalizedCtx).catch((err) => {
+    logger.debug({ err, source: normalizedCtx.source }, 'Failed to post system error notification');
   });
 }
 
@@ -81,6 +100,13 @@ function pruneStaleEntries(now: number): void {
     const threshold = key.startsWith('system:') ? SYSTEM_THROTTLE_MS : THROTTLE_MS;
     if (now - ts >= threshold) recentErrors.delete(key);
   }
+}
+
+export function __testResetErrorNotifier(): void {
+  if (process.env.NODE_ENV !== 'test' && process.env.VITEST !== 'true') return;
+  recentErrors.clear();
+  cachedErrorChannel = null;
+  cacheExpiry = 0;
 }
 
 async function _postToolError(ctx: ToolErrorContext): Promise<void> {
@@ -140,6 +166,17 @@ async function _postToolError(ctx: ToolErrorContext): Promise<void> {
     { text: lines.join('\n') },
     { requirePrivate: 'strict-public-only' },
   );
+  if (!result.ok && !result.skipped) {
+    recentErrors.delete(throttleKey);
+    logger.warn(
+      {
+        toolName: ctx.toolName,
+        slackError: result.error,
+      },
+      'Tool error notification failed; throttle cleared so the next occurrence can retry',
+    );
+    return;
+  }
   if (result.skipped === 'not_private') {
     // Loud log so log aggregation can alert on the silenced error.
     logger.error(
@@ -184,6 +221,17 @@ async function _postSystemError(ctx: SystemErrorContext): Promise<void> {
     { text: lines.join('\n') },
     { requirePrivate: 'strict-public-only' },
   );
+  if (!result.ok && !result.skipped) {
+    recentErrors.delete(throttleKey);
+    logger.warn(
+      {
+        source: ctx.source,
+        slackError: result.error,
+      },
+      'System error notification failed; throttle cleared so the next occurrence can retry',
+    );
+    return;
+  }
   if (result.skipped === 'not_private') {
     logger.error(
       {

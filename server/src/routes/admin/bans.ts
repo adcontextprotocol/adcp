@@ -4,7 +4,7 @@
 
 import { Router } from 'express';
 import { createLogger } from '../../logger.js';
-import { requireAuth, requireAdmin, invalidateBanCache } from '../../middleware/auth.js';
+import { requireGlobalAdmin, invalidateBanCache } from '../../middleware/auth.js';
 import { serveHtmlWithConfig } from '../../utils/html-config.js';
 import { bansDb } from '../../db/bans-db.js';
 import { getPool } from '../../db/client.js';
@@ -17,7 +17,7 @@ const VALID_SCOPES: BanScope[] = ['platform', 'registry_brand', 'registry_proper
 
 export function setupBanRoutes(pageRouter: Router, apiRouter: Router): void {
   // Page route
-  pageRouter.get('/bans', requireAuth, requireAdmin, (req, res) => {
+  pageRouter.get('/bans', ...requireGlobalAdmin, (req, res) => {
     serveHtmlWithConfig(req, res, 'admin-bans.html').catch((err) => {
       logger.error({ err }, 'Error serving admin bans page');
       res.status(500).send('Internal server error');
@@ -25,7 +25,7 @@ export function setupBanRoutes(pageRouter: Router, apiRouter: Router): void {
   });
 
   // GET /api/admin/bans - List active bans
-  apiRouter.get('/bans', requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get('/bans', ...requireGlobalAdmin, async (req, res) => {
     try {
       const banType = req.query.ban_type as string | undefined;
       const scope = req.query.scope as string | undefined;
@@ -47,7 +47,7 @@ export function setupBanRoutes(pageRouter: Router, apiRouter: Router): void {
   });
 
   // POST /api/admin/bans - Create a ban
-  apiRouter.post('/bans', requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.post('/bans', ...requireGlobalAdmin, async (req, res) => {
     try {
       const { ban_type, entity_id, scope, scope_target, reason, banned_email, expires_at } = req.body;
 
@@ -99,7 +99,7 @@ export function setupBanRoutes(pageRouter: Router, apiRouter: Router): void {
   });
 
   // DELETE /api/admin/bans/:banId - Remove a ban
-  apiRouter.delete('/bans/:banId', requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.delete('/bans/:banId', ...requireGlobalAdmin, async (req, res) => {
     try {
       const removed = await bansDb.removeBan(req.params.banId);
       if (!removed) {
@@ -126,7 +126,7 @@ export function setupBanRoutes(pageRouter: Router, apiRouter: Router): void {
   });
 
   // GET /api/admin/bans/registry-activity - Query registry edit history
-  apiRouter.get('/bans/registry-activity', requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get('/bans/registry-activity', ...requireGlobalAdmin, async (req, res) => {
     try {
       const editorUserId = req.query.editor_user_id as string | undefined;
       const orgId = req.query.org_id as string | undefined;

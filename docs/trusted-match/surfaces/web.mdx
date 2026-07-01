@@ -28,6 +28,7 @@ When a page loads, the TMP Prebid module sends a Context Match request to the ro
   "property_id": "oakwood-publishing-main",
   "property_type": "website",
   "placement_id": "article-sidebar-300x250",
+  "seller_agent_url": "https://oakwood.example",
   "artifact_refs": [
     { "type": "url", "value": "https://oakwood.example.com/sustainable-kitchen-2026-03" }
   ]
@@ -71,7 +72,7 @@ Key points:
 
 ## Identity Match
 
-Separately, the TMP Prebid module sends an Identity Match request with the user's opaque token. This request carries no page context. The `package_ids` list includes ALL active packages for the buyer — not just the packages on this page.
+Separately, the TMP Prebid module sends an Identity Match request with the user's identity tokens and the publisher's `seller_agent_url`. This request carries no page context. The buyer resolves its active package set from `seller_agent_url`; when the module sends `package_ids` explicitly (as below), composition MUST be independent of the current page — either all-active (every active package for that buyer at this publisher) or fuzzed (a random sample padded with synthetic non-existent IDs the buyer will silently drop). The page-specific subset is forbidden.
 
 ### Identity Match Request
 
@@ -79,6 +80,7 @@ Separately, the TMP Prebid module sends an Identity Match request with the user'
 {
   "type": "identity_match_request",
   "request_id": "id-3k9p-oakwood-d4f1",
+  "seller_agent_url": "https://oakwood.example",
   "identities": [
     { "user_token": "tok_uid2_8f2a3b7c", "uid_type": "uid2" },
     { "user_token": "XY1a2b3c4d5e6f7g8h9i0jKlMnOpQrSt", "uid_type": "rampid" },
@@ -100,7 +102,7 @@ Separately, the TMP Prebid module sends an Identity Match request with the user'
 Key points:
 
 - `request_id` is unrelated to the context match `request_id`. The two must not be derivable from each other.
-- `package_ids` includes ALL active packages for the buyer across the entire site, not just the three that were on this placement's context match. Sending only the page-specific subset would let the buyer correlate identity with context by comparing package sets.
+- `package_ids` example shows all-active mode: every active package for the buyer across the entire site, not just the three that were on this placement's context match. The page-specific subset is forbidden — it would let the buyer correlate identity with context by comparing package sets. Fuzzed mode (a random sample padded with synthetic IDs the buyer silently drops) is also acceptable.
 - `identities` carries every token the publisher has available (UID2, ID5, LiveRamp, hashed email, publisher first-party). Each token is opaque — the buyer cannot reverse it to PII. Sending the full set maximizes match rate because different buyers resolve on different graphs.
 
 ### Identity Match Response
@@ -118,14 +120,14 @@ The buyer evaluates the user against all requested packages and returns the IDs 
     "pkg-native-0079",
     "pkg-display-0104"
   ],
-  "ttl_sec": 60
+  "serve_window_sec": 60
 }
 ```
 
 Key points:
 
 - Only eligible packages are listed. Packages absent from the list (e.g., `pkg-display-0043`, `pkg-display-0103`, `pkg-video-0201`) are ineligible. The buyer computes eligibility from frequency caps, audience membership, purchase history, and any other identity-based signals. The reasons are opaque to the publisher.
-- `ttl_sec` tells the router how long to cache this response. During that window, the router returns cached eligibility without re-querying the buyer. The publisher uses cached eligibility to allocate across all placements on the page.
+- `serve_window_sec` tells the router how long to cache this response. During that window, the router returns cached eligibility without re-querying the buyer. The publisher uses cached eligibility to allocate across all placements on the page.
 - There is no `frequency_capped`, `audience_match`, or `recency` field. The buyer's internal reasons stay with the buyer.
 
 ## Activation: Joining Context and Identity
@@ -175,11 +177,51 @@ The TMP Prebid module is a Real-Time Data (RTD) module that replaces vendor-spec
 
 1. **On auction init**: Send Context Match request to the TMP router for each placement on the page.
 2. **On context match response**: Store offers and targeting signals.
-3. **After temporal delay** (100-2000ms, randomized): Send Identity Match request with the user's opaque token and ALL active package IDs for each buyer.
+3. **After temporal decorrelation**: Send Identity Match request with the user's identity tokens and ALL active package IDs for each buyer. Decorrelation has two parts — a random 100-2000ms delay AND randomized order: each auction has roughly equal probability of the Identity Match request being sent first or the Context Match request being sent first.
 4. **On identity match response**: Join with context match results. Set targeting key-values on the ad unit.
 5. **On bid request**: GAM receives the enriched ad request with TMP targeting keys and selects line items as normal.
 
-The temporal delay between context and identity requests is a privacy measure. It prevents timing-based correlation of the two request types.
+The temporal decorrelation between context and identity requests is a privacy measure. Random delay alone is insufficient — fixed ordering (Identity always after Context) leaks the pairing through ordering. The module randomizes both the delay and which request is sent first.
+
+### Impression ID Substitution
+
+In the web/Prebid surface the **Prebid TMP module is the decision layer** in the three-layer [`{IMPRESSION_ID}` minting hierarchy](/docs/creative/universal-macros#impression-identification) — publisher first, decision layer second, buyer-at-TMPX-decode last. The module checks whether the publisher has already supplied an impression_id (via `adUnit.tmp.impressionId` or an equivalent first-party hook); if so, it passes that value through. If not, the module mints its own. Either way, it exposes the value on the GAM ad request as the targeting key `tmp_impression_id`. This is the value the buyer's impression pixel uses as the cross-identity dedup key — essential for context-only impressions where `{TMPX}` is absent, and useful even when `{TMPX}` is present so the buyer's dedup path stays uniform.
+
+**Format is implementation choice.** The Prebid module MAY use ULID, UUID (any version), or any collision-resistant identifier scheme — the protocol does not pin a format.
+
+**Optional optimization.** When Prebid's `enableTIDs` config is `true`, the module MAY reuse `adUnit.transactionId` as the impression_id rather than minting a separate one. Since `enableTIDs` is opt-out in Prebid.js 8+ (for privacy reasons), most deployments need to mint their own.
+
+```javascript
+import { ulid } from 'ulid';
+
+// In the TMP Prebid module, at auctionInit.
+// Resolve the impression_id in priority order:
+//   1. publisher pre-mint (e.g., server-side, attached as adUnit.tmp.impressionId)
+//   2. Prebid transactionId (decision-layer reuse) when enableTIDs is on
+//   3. fresh decision-layer mint (ULID, UUID, or any collision-resistant scheme)
+function resolveImpressionId(adUnit) {
+  if (adUnit.tmp?.impressionId) {
+    return adUnit.tmp.impressionId;  // publisher-side mint — highest priority
+  }
+  if (pbjs.getConfig('enableTIDs') && adUnit.transactionId) {
+    return adUnit.transactionId;     // reuse Prebid's tid when available
+  }
+  return ulid();                     // decision-layer fresh mint
+}
+const impId = resolveImpressionId(adUnit);
+pbjs.setTargeting(adUnit.code, { tmp_impression_id: impId });
+```
+
+The buyer's creative tracking URL, trafficked through GAM, references the targeting key via the standard GAM macro:
+
+```
+https://buyer.example/imp
+  ?imp_id=%%PATTERN:tmp_impression_id%%
+  &tmpx=%%PATTERN:tmp_tmpx%%
+  &cb=%%CACHEBUSTER%%
+```
+
+At render, GAM substitutes the KVs and the buyer's impression tracker receives the impression_id as an opaque string. The KV name `tmp_impression_id` deliberately avoids the `hb_*` prefix (Prebid's own namespace) and mirrors the `adcp_*` convention used elsewhere on this page for TMP-emitted targeting.
 
 ## Sequence Diagram
 
@@ -192,7 +234,9 @@ Page Load
   |                              |<- merge <--- offers + signals
   |<--- Context Match Response --
   |
-  |   (100-2000ms random delay)
+  |   (100-2000ms random delay; Context/Identity order randomized
+  |    per auction — diagram shows Context-first; Identity-first
+  |    runs the two phases in reverse)
   |
   |-- Prebid TMP Module ---> TMP Router (Identity)
   |                              |-- fan out --> Buyer Agent A
@@ -219,6 +263,6 @@ Most publishers run TMP alongside Prebid header bidding, which sources demand vi
 These constraints apply to all surfaces but are worth restating for the web case:
 
 - **Context match carries no user data.** No cookies, no user tokens, no IP addresses. The provider evaluates the same synced package set for every user on a placement.
-- **Identity match carries no page data.** No URLs, no content signals, no placement IDs. The package_ids list includes all active packages for the buyer, not just the ones on this page.
+- **Identity match carries no page data.** No URLs, no content signals, no placement IDs. The `package_ids` list, when sent, has composition independent of the current page (all-active or fuzzed) — never the page-specific subset.
 - **The publisher joins locally.** The router never sees both context and identity for the same impression. Only the publisher, who already has both the page context and the user identity, performs the intersection.
-- **Temporal decorrelation.** A random delay between the two requests prevents timing-based correlation at the network level.
+- **Temporal decorrelation.** A random delay between the two requests AND a randomized order (Context Match or Identity Match equally likely to be sent first) prevent timing- and order-based correlation at the network level. Random delay alone is insufficient because a fixed order leaks the pairing through ordering.

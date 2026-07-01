@@ -7,6 +7,9 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
   "x-status": "experimental",
@@ -54,6 +57,10 @@
           "type": "string",
           "format": "date-time",
           "description": "When this offering expires"
+        },
+        "availability_status": {
+          "$ref": "/schemas/enums/offering-availability-status.json",
+          "description": "Machine-readable availability state for the offering. Optional; when omitted, derive availability from the top-level 'available' boolean and 'unavailable_reason'."
         },
         "price_hint": {
           "type": "string",
@@ -104,6 +111,10 @@
             "type": "string",
             "description": "Brief availability info (e.g., 'In stock', 'Size 14 available', '3 left')"
           },
+          "availability_status": {
+            "$ref": "/schemas/enums/offering-availability-status.json",
+            "description": "Machine-readable availability state for this product. Structured counterpart to availability_summary."
+          },
           "url": {
             "type": "string",
             "format": "uri",
@@ -116,6 +127,10 @@
         ],
         "additionalProperties": true
       }
+    },
+    "sponsored_context": {
+      "$ref": "/schemas/sponsored-intelligence/si-sponsored-context.json",
+      "description": "Declaration for the sponsored context carried by this offering response. When present, it applies to the returned offering and matching_products package as a whole unless a future extension narrows the declaration to individual items. Hosts MUST either honor the declared context_use and disclosure_obligation or reject the context before using it."
     },
     "total_matching": {
       "type": "integer",

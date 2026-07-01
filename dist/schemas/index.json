@@ -1,0 +1,488 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/index.json",
+  "title": "AdCP Schema Discovery",
+  "description": "Root discovery document for file-based AdCP schema consumers. Use latest_stable or a major/minor alias target instead of choosing by directory listing.",
+  "latest": "3.1.1",
+  "latest_stable": "3.1.1",
+  "channel": "stable",
+  "aliases": {
+    "v3": "3.1.1",
+    "v3.1": "3.1.1",
+    "v3.0": "3.0.18",
+    "v2": "2.5.3",
+    "v2.5": "2.5.3"
+  },
+  "latest_by_major": {
+    "2": "2.5.3",
+    "3": "3.1.1"
+  },
+  "latest_by_minor": {
+    "3.1": "3.1.1",
+    "3.0": "3.0.18",
+    "2.5": "2.5.3"
+  },
+  "versions": [
+    {
+      "version": "3.1.1",
+      "stability": "stable",
+      "prerelease": false,
+      "deprecated": false,
+      "path": "/schemas/3.1.1/",
+      "index": "/schemas/3.1.1/index.json"
+    },
+    {
+      "version": "3.1.0",
+      "stability": "stable",
+      "prerelease": false,
+      "deprecated": false,
+      "path": "/schemas/3.1.0/",
+      "index": "/schemas/3.1.0/index.json"
+    },
+    {
+      "version": "3.1.0-rc.15",
+      "stability": "rc",
+      "prerelease": true,
+      "deprecated": true,
+      "superseded_by": "3.1.0",
+      "path": "/schemas/3.1.0-rc.15/",
+      "index": "/schemas/3.1.0-rc.15/index.json"
+    },
+    {
+      "version": "3.1.0-rc.14",
+      "stability": "rc",
+      "prerelease": true,
+      "deprecated": true,
+      "superseded_by": "3.1.0",
+      "path": "/schemas/3.1.0-rc.14/",
+      "index": "/schemas/3.1.0-rc.14/index.json"
+    },
+    {
+      "version": "3.1.0-rc.13",
+      "stability": "rc",
+      "prerelease": true,
+      "deprecated": true,
+      "superseded_by": "3.1.0",
+      "path": "/schemas/3.1.0-rc.13/",
+      "index": "/schemas/3.1.0-rc.13/index.json"
+    },
+    {
+      "version": "3.1.0-rc.12",
+      "stability": "rc",
+      "prerelease": true,
+      "deprecated": true,
+      "superseded_by": "3.1.0",
+      "path": "/schemas/3.1.0-rc.12/",
+      "index": "/schemas/3.1.0-rc.12/index.json"
+    },
+    {
+      "version": "3.1.0-rc.11",
+      "stability": "rc",
+      "prerelease": true,
+      "deprecated": true,
+      "superseded_by": "3.1.0",
+      "path": "/schemas/3.1.0-rc.11/",
+      "index": "/schemas/3.1.0-rc.11/index.json"
+    },
+    {
+      "version": "3.1.0-rc.10",
+      "stability": "rc",
+      "prerelease": true,
+      "deprecated": true,
+      "superseded_by": "3.1.0",
+      "path": "/schemas/3.1.0-rc.10/",
+      "index": "/schemas/3.1.0-rc.10/index.json"
+    },
+    {
+      "version": "3.1.0-rc.9",
+      "stability": "rc",
+      "prerelease": true,
+      "deprecated": true,
+      "superseded_by": "3.1.0",
+      "path": "/schemas/3.1.0-rc.9/",
+      "index": "/schemas/3.1.0-rc.9/index.json"
+    },
+    {
+      "version": "3.1.0-rc.8",
+      "stability": "rc",
+      "prerelease": true,
+      "deprecated": true,
+      "superseded_by": "3.1.0",
+      "path": "/schemas/3.1.0-rc.8/",
+      "index": "/schemas/3.1.0-rc.8/index.json"
+    },
+    {
+      "version": "3.1.0-rc.7",
+      "stability": "rc",
+      "prerelease": true,
+      "deprecated": true,
+      "superseded_by": "3.1.0",
+      "path": "/schemas/3.1.0-rc.7/",
+      "index": "/schemas/3.1.0-rc.7/index.json"
+    },
+    {
+      "version": "3.1.0-rc.6",
+      "stability": "rc",
+      "prerelease": true,
+      "deprecated": true,
+      "superseded_by": "3.1.0",
+      "path": "/schemas/3.1.0-rc.6/",
+      "index": "/schemas/3.1.0-rc.6/index.json"
+    },
+    {
+      "version": "3.1.0-rc.5",
+      "stability": "rc",
+      "prerelease": true,
+      "deprecated": true,
+      "superseded_by": "3.1.0",
+      "path": "/schemas/3.1.0-rc.5/",
+      "index": "/schemas/3.1.0-rc.5/index.json"
+    },
+    {
+      "version": "3.1.0-rc.4",
+      "stability": "rc",
+      "prerelease": true,
+      "deprecated": true,
+      "superseded_by": "3.1.0",
+      "path": "/schemas/3.1.0-rc.4/",
+      "index": "/schemas/3.1.0-rc.4/index.json"
+    },
+    {
+      "version": "3.1.0-rc.3",
+      "stability": "rc",
+      "prerelease": true,
+      "deprecated": true,
+      "superseded_by": "3.1.0",
+      "path": "/schemas/3.1.0-rc.3/",
+      "index": "/schemas/3.1.0-rc.3/index.json"
+    },
+    {
+      "version": "3.1.0-rc.2",
+      "stability": "rc",
+      "prerelease": true,
+      "deprecated": true,
+      "superseded_by": "3.1.0",
+      "path": "/schemas/3.1.0-rc.2/",
+      "index": "/schemas/3.1.0-rc.2/index.json"
+    },
+    {
+      "version": "3.1.0-rc.1",
+      "stability": "rc",
+      "prerelease": true,
+      "deprecated": true,
+      "superseded_by": "3.1.0",
+      "path": "/schemas/3.1.0-rc.1/",
+      "index": "/schemas/3.1.0-rc.1/index.json"
+    },
+    {
+      "version": "3.1.0-beta.7",
+      "stability": "beta",
+      "prerelease": true,
+      "deprecated": true,
+      "superseded_by": "3.1.0",
+      "path": "/schemas/3.1.0-beta.7/",
+      "index": "/schemas/3.1.0-beta.7/index.json"
+    },
+    {
+      "version": "3.1.0-beta.6",
+      "stability": "beta",
+      "prerelease": true,
+      "deprecated": true,
+      "superseded_by": "3.1.0",
+      "path": "/schemas/3.1.0-beta.6/",
+      "index": "/schemas/3.1.0-beta.6/index.json"
+    },
+    {
+      "version": "3.1.0-beta.5",
+      "stability": "beta",
+      "prerelease": true,
+      "deprecated": true,
+      "superseded_by": "3.1.0",
+      "path": "/schemas/3.1.0-beta.5/",
+      "index": "/schemas/3.1.0-beta.5/index.json"
+    },
+    {
+      "version": "3.1.0-beta.4",
+      "stability": "beta",
+      "prerelease": true,
+      "deprecated": true,
+      "superseded_by": "3.1.0",
+      "path": "/schemas/3.1.0-beta.4/",
+      "index": "/schemas/3.1.0-beta.4/index.json"
+    },
+    {
+      "version": "3.1.0-beta.3",
+      "stability": "beta",
+      "prerelease": true,
+      "deprecated": true,
+      "superseded_by": "3.1.0",
+      "path": "/schemas/3.1.0-beta.3/",
+      "index": "/schemas/3.1.0-beta.3/index.json"
+    },
+    {
+      "version": "3.1.0-beta.2",
+      "stability": "beta",
+      "prerelease": true,
+      "deprecated": true,
+      "superseded_by": "3.1.0",
+      "path": "/schemas/3.1.0-beta.2/",
+      "index": "/schemas/3.1.0-beta.2/index.json"
+    },
+    {
+      "version": "3.1.0-beta.1",
+      "stability": "beta",
+      "prerelease": true,
+      "deprecated": true,
+      "superseded_by": "3.1.0",
+      "path": "/schemas/3.1.0-beta.1/",
+      "index": "/schemas/3.1.0-beta.1/index.json"
+    },
+    {
+      "version": "3.1.0-beta.0",
+      "stability": "beta",
+      "prerelease": true,
+      "deprecated": true,
+      "superseded_by": "3.1.0",
+      "path": "/schemas/3.1.0-beta.0/",
+      "index": "/schemas/3.1.0-beta.0/index.json"
+    },
+    {
+      "version": "3.0.18",
+      "stability": "stable",
+      "prerelease": false,
+      "deprecated": false,
+      "path": "/schemas/3.0.18/",
+      "index": "/schemas/3.0.18/index.json"
+    },
+    {
+      "version": "3.0.17",
+      "stability": "stable",
+      "prerelease": false,
+      "deprecated": false,
+      "path": "/schemas/3.0.17/",
+      "index": "/schemas/3.0.17/index.json"
+    },
+    {
+      "version": "3.0.16",
+      "stability": "stable",
+      "prerelease": false,
+      "deprecated": false,
+      "path": "/schemas/3.0.16/",
+      "index": "/schemas/3.0.16/index.json"
+    },
+    {
+      "version": "3.0.15",
+      "stability": "stable",
+      "prerelease": false,
+      "deprecated": false,
+      "path": "/schemas/3.0.15/",
+      "index": "/schemas/3.0.15/index.json"
+    },
+    {
+      "version": "3.0.14",
+      "stability": "stable",
+      "prerelease": false,
+      "deprecated": false,
+      "path": "/schemas/3.0.14/",
+      "index": "/schemas/3.0.14/index.json"
+    },
+    {
+      "version": "3.0.13",
+      "stability": "stable",
+      "prerelease": false,
+      "deprecated": false,
+      "path": "/schemas/3.0.13/",
+      "index": "/schemas/3.0.13/index.json"
+    },
+    {
+      "version": "3.0.12",
+      "stability": "stable",
+      "prerelease": false,
+      "deprecated": false,
+      "path": "/schemas/3.0.12/",
+      "index": "/schemas/3.0.12/index.json"
+    },
+    {
+      "version": "3.0.11",
+      "stability": "stable",
+      "prerelease": false,
+      "deprecated": false,
+      "path": "/schemas/3.0.11/",
+      "index": "/schemas/3.0.11/index.json"
+    },
+    {
+      "version": "3.0.10",
+      "stability": "stable",
+      "prerelease": false,
+      "deprecated": false,
+      "path": "/schemas/3.0.10/",
+      "index": "/schemas/3.0.10/index.json"
+    },
+    {
+      "version": "3.0.9",
+      "stability": "stable",
+      "prerelease": false,
+      "deprecated": false,
+      "path": "/schemas/3.0.9/",
+      "index": "/schemas/3.0.9/index.json"
+    },
+    {
+      "version": "3.0.8",
+      "stability": "stable",
+      "prerelease": false,
+      "deprecated": false,
+      "path": "/schemas/3.0.8/",
+      "index": "/schemas/3.0.8/index.json"
+    },
+    {
+      "version": "3.0.7",
+      "stability": "stable",
+      "prerelease": false,
+      "deprecated": false,
+      "path": "/schemas/3.0.7/",
+      "index": "/schemas/3.0.7/index.json"
+    },
+    {
+      "version": "3.0.6",
+      "stability": "stable",
+      "prerelease": false,
+      "deprecated": false,
+      "path": "/schemas/3.0.6/",
+      "index": "/schemas/3.0.6/index.json"
+    },
+    {
+      "version": "3.0.5",
+      "stability": "stable",
+      "prerelease": false,
+      "deprecated": false,
+      "path": "/schemas/3.0.5/",
+      "index": "/schemas/3.0.5/index.json"
+    },
+    {
+      "version": "3.0.4",
+      "stability": "stable",
+      "prerelease": false,
+      "deprecated": false,
+      "path": "/schemas/3.0.4/",
+      "index": "/schemas/3.0.4/index.json"
+    },
+    {
+      "version": "3.0.3",
+      "stability": "stable",
+      "prerelease": false,
+      "deprecated": false,
+      "path": "/schemas/3.0.3/",
+      "index": "/schemas/3.0.3/index.json"
+    },
+    {
+      "version": "3.0.2",
+      "stability": "stable",
+      "prerelease": false,
+      "deprecated": false,
+      "path": "/schemas/3.0.2/",
+      "index": "/schemas/3.0.2/index.json"
+    },
+    {
+      "version": "3.0.1",
+      "stability": "stable",
+      "prerelease": false,
+      "deprecated": false,
+      "path": "/schemas/3.0.1/",
+      "index": "/schemas/3.0.1/index.json"
+    },
+    {
+      "version": "3.0.0",
+      "stability": "stable",
+      "prerelease": false,
+      "deprecated": false,
+      "path": "/schemas/3.0.0/",
+      "index": "/schemas/3.0.0/index.json"
+    },
+    {
+      "version": "3.0.0-rc.3",
+      "stability": "rc",
+      "prerelease": true,
+      "deprecated": true,
+      "superseded_by": "3.0.0",
+      "path": "/schemas/3.0.0-rc.3/",
+      "index": "/schemas/3.0.0-rc.3/index.json"
+    },
+    {
+      "version": "3.0.0-rc.2",
+      "stability": "rc",
+      "prerelease": true,
+      "deprecated": true,
+      "superseded_by": "3.0.0",
+      "path": "/schemas/3.0.0-rc.2/",
+      "index": "/schemas/3.0.0-rc.2/index.json"
+    },
+    {
+      "version": "3.0.0-rc.1",
+      "stability": "rc",
+      "prerelease": true,
+      "deprecated": true,
+      "superseded_by": "3.0.0",
+      "path": "/schemas/3.0.0-rc.1/",
+      "index": "/schemas/3.0.0-rc.1/index.json"
+    },
+    {
+      "version": "3.0.0-beta.3",
+      "stability": "beta",
+      "prerelease": true,
+      "deprecated": true,
+      "superseded_by": "3.0.0",
+      "path": "/schemas/3.0.0-beta.3/",
+      "index": "/schemas/3.0.0-beta.3/index.json"
+    },
+    {
+      "version": "3.0.0-beta.2",
+      "stability": "beta",
+      "prerelease": true,
+      "deprecated": true,
+      "superseded_by": "3.0.0",
+      "path": "/schemas/3.0.0-beta.2/",
+      "index": "/schemas/3.0.0-beta.2/index.json"
+    },
+    {
+      "version": "3.0.0-beta.1",
+      "stability": "beta",
+      "prerelease": true,
+      "deprecated": true,
+      "superseded_by": "3.0.0",
+      "path": "/schemas/3.0.0-beta.1/",
+      "index": "/schemas/3.0.0-beta.1/index.json"
+    },
+    {
+      "version": "2.5.3",
+      "stability": "stable",
+      "prerelease": false,
+      "deprecated": false,
+      "path": "/schemas/2.5.3/",
+      "index": "/schemas/2.5.3/index.json"
+    },
+    {
+      "version": "2.5.2",
+      "stability": "stable",
+      "prerelease": false,
+      "deprecated": false,
+      "path": "/schemas/2.5.2/",
+      "index": "/schemas/2.5.2/index.json"
+    },
+    {
+      "version": "2.5.1",
+      "stability": "stable",
+      "prerelease": false,
+      "deprecated": false,
+      "path": "/schemas/2.5.1/",
+      "index": "/schemas/2.5.1/index.json"
+    },
+    {
+      "version": "2.5.0",
+      "stability": "stable",
+      "prerelease": false,
+      "deprecated": false,
+      "path": "/schemas/2.5.0/",
+      "index": "/schemas/2.5.0/index.json"
+    }
+  ]
+}

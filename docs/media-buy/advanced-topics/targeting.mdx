@@ -20,6 +20,10 @@ The primary way to specify targeting in AdCP is through campaign briefs. Instead
 
 Publishers then return products that include the targeting capabilities to reach this audience, with targeting costs built into the media pricing.
 
+When the buyer wants package-level control over specific selectable signals that the seller offers, use `targeting_overlay.signal_targeting_groups` on the package. Buy-time eligibility comes from the selected product's signal targeting contract: `signal_targeting_allowed`, inline `Product.signal_targeting_options` when present, the seller's `get_signals` feed for wholesale products that omit inline options, and `signal_targeting_rules`. Signals are named targetable dimensions, referenced with `signal_ref`: `scope: "product"` for product-local signal options, `scope: "data_provider"` with `data_provider_domain` for signals defined in a data provider's published adagents.json `signals[]`, or `scope: "signal_source"` with `signal_source_url` for source-native signals that are not published in adagents.json `signals[]`. `signal_ref.scope` is the buy-time resolution path, not provenance, and authoritative enrichment lives on the seller, data provider, or source signal definition. Do not overload `audience_include` or `audience_exclude` for this purpose; those fields are only for first-party audiences registered through `sync_audiences`.
+
+Products can also expose `included_signals` for signals already bundled into or planned into the product. Those signals are descriptive product metadata, not package-level targeting controls, and buyers do not echo them in `signal_targeting_groups`.
+
 ## Why Brief-Based Targeting?
 
 ### Eliminates Targeting Conflicts
@@ -130,15 +134,73 @@ When publishers return products, they include targeting information buyers need:
 
 ```json
 {
-  "product_id": "premium_millennial_mobile",
-  "name": "Premium Millennial Mobile Package",
-  "description": "Mobile display inventory targeting millennials (25-40) across lifestyle and entertainment apps in top 25 US markets",
-  "targeting_description": "Ages 25-40, household income $50K+, interests in lifestyle/entertainment, mobile apps only, top 25 US metro areas",
-  "audience_size": "~2.5M monthly unique users",
-  "pricing": {
-    "cpm": 8.50,
-    "targeting_included": true
-  }
+  "$schema": "/schemas/media-buy/get-products-response.json",
+  "status": "completed",
+  "cache_scope": "public",
+  "products": [
+    {
+      "product_id": "premium_millennial_mobile",
+      "name": "Premium Millennial Mobile Package",
+      "description": "Mobile display inventory reaching adults 25-40 across lifestyle and entertainment apps in the top 25 US metro areas.",
+      "publisher_properties": [
+        {
+          "publisher_domain": "pinnacle-media.example",
+          "selection_type": "by_tag",
+          "property_tags": ["lifestyle", "entertainment", "mobile_app"]
+        }
+      ],
+      "channels": ["display"],
+      "delivery_type": "guaranteed",
+      "format_ids": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "display_300x250_image"
+        }
+      ],
+      "pricing_options": [
+        {
+          "pricing_option_id": "premium_mobile_cpm",
+          "pricing_model": "cpm",
+          "currency": "USD",
+          "fixed_price": 8.50
+        }
+      ],
+      "forecast": {
+        "forecast_range_unit": "availability",
+        "method": "modeled",
+        "currency": "USD",
+        "reach_unit": "individuals",
+        "points": [
+          {
+            "metrics": {
+              "audience_size": { "mid": 2500000 },
+              "impressions": { "mid": 12000000 }
+            }
+          }
+        ]
+      },
+      "included_signals": [
+        {
+          "signal_ref": {
+            "scope": "product",
+            "signal_id": "lifestyle_entertainment_interest"
+          },
+          "name": "Lifestyle and entertainment interest",
+          "value_type": "binary",
+          "description": "Seller-modeled users with recent lifestyle or entertainment content engagement."
+        }
+      ],
+      "reporting_capabilities": {
+        "available_reporting_frequencies": ["daily"],
+        "expected_delay_minutes": 240,
+        "timezone": "America/New_York",
+        "supports_webhooks": false,
+        "available_metrics": ["impressions", "clicks", "spend", "ctr"],
+        "date_range_support": "date_range"
+      },
+      "brief_relevance": "Matches the requested millennial audience, mobile app environment, lifestyle/entertainment context, and major US metro coverage."
+    }
+  ]
 }
 ```
 
@@ -212,7 +274,7 @@ Use geo fields **only** for:
 - `geo_countries`: ISO 3166-1 alpha-2 country codes (e.g., `["US", "GB"]`)
 - `geo_regions`: ISO 3166-2 subdivision codes (e.g., `["US-CA", "GB-SCT"]`)
 - `geo_metros`: Structured metro areas with explicit system (e.g., `nielsen_dma`, `uk_itl2`) — not all publishers support metro-level targeting
-- `geo_postal_areas`: Structured postal areas with explicit system (e.g., `us_zip`, `gb_outward`) — not all publishers support postal-level targeting
+- `geo_postal_areas`: Structured postal areas with explicit country and system (e.g., `US` / `zip`, `GB` / `outward`, `ZA` / `postal_code`) — not all publishers support postal-level targeting
 
 **Exclusion fields** (exclude these locations from delivery):
 - `geo_countries_exclude`: Same format as `geo_countries`
@@ -392,7 +454,7 @@ Inclusion targeting works the same way for cases where you want to specify exact
 - **Demographic preferences** (age, gender, income) - "Target millennials" or "high-income households" in brief text
 - **Device preferences** - "Mobile users" or "CTV viewers" in brief text (use `device_platform` overlay only for technical compatibility)
 - **Content categories** - "Sports content" or "News sites" in brief text
-- **Third-party audience segments** - "Auto intenders" or "Luxury shoppers" in brief text (use signals protocol for data provider segments)
+- **General audience preferences** - "Auto intenders" or "Luxury shoppers" in brief text. If the buyer wants specific named signals applied to this package, use `signal_targeting_groups`.
 - **Daypart preferences** - "Morning commute hours" or "prime time evening" in brief text
 
 **Overlays vs Briefs:**
@@ -405,7 +467,8 @@ Inclusion targeting works the same way for cases where you want to specify exact
 | Language for creative localization | ✅ `language` | |
 | Language for audience preference | | ✅ "Spanish-speaking audiences" |
 | First-party CRM audience (retargeting, suppression) | ✅ `audience_include` / `audience_exclude` | |
-| Third-party audience segment (interest targeting) | | ✅ "Auto intenders" in brief, or use signals protocol |
+| Audience preference (interest targeting) | | ✅ "Auto intenders" in brief |
+| Specific named signal offered by the seller | ✅ `signal_targeting_groups` | |
 | Search/retail media keyword targeting | ✅ `keyword_targets` / `negative_keywords` | |
 | Broad thematic intent ("people searching for shoes") | | ✅ "Reach in-market shoe shoppers" |
 | Proximity to specific coordinates (within 2hr drive of a city) | ✅ `geo_proximity` | |
@@ -472,18 +535,18 @@ Geographic targeting supports both inclusion (restrict to) and exclusion (exclud
 
 ### geo_postal_areas
 - **Description**: Restrict delivery to specific postal areas
-- **Format**: Array of objects, each with a `system` and `values`
-- **Systems**: `us_zip`, `us_zip_plus_four`, `gb_outward`, `gb_full`, `ca_fsa`, `ca_full`, `de_plz`, `fr_code_postal`, `au_postcode`, `ch_plz`, `at_plz`
-- **Example**: `[{ "system": "us_zip", "values": ["10001", "10002"] }]`
+- **Format**: Array of objects, each with a `country`, `system`, and `values`
+- **Systems**: country-local values such as `zip`, `zip_plus_four`, `outward`, `full`, `fsa`, `plz`, `code_postal`, `postcode`, `pin`, and `postal_code`
+- **Example**: `[{ "country": "US", "system": "zip", "values": ["10001", "10002"] }]`
 - **Use cases**: Hyper-local campaigns, postal-level restrictions
-- **Note**: Seller must declare supported systems in `get_adcp_capabilities`
+- **Note**: Seller must declare supported systems in `get_adcp_capabilities`. During the 3.x migration, deprecated country-fused systems such as `us_zip` remain accepted for compatibility and SDK backfill.
 
 ### geo_postal_areas_exclude
 - **Description**: Exclude specific postal areas from delivery
-- **Format**: Array of objects, each with a `system` and `values`
-- **Example**: `[{ "system": "us_zip", "values": ["90210"] }]`
+- **Format**: Array of objects, each with a `country`, `system`, and `values`
+- **Example**: `[{ "country": "US", "system": "zip", "values": ["90210"] }]`
 - **Use cases**: RCT holdout zip codes, restricted delivery areas
-- **Note**: Seller must declare supported systems in `get_adcp_capabilities`
+- **Note**: Seller must declare supported systems in `get_adcp_capabilities`; the deprecated legacy form remains accepted during the 3.x migration.
 
 ### axe_include_segment
 - **Description**: Segment ID for inclusion targeting (legacy AXE field)
@@ -515,6 +578,70 @@ Geographic targeting supports both inclusion (restrict to) and exclusion (exclud
 - **Use cases**: Customer suppression in acquisition campaigns, excluding recent converters, suppressing opted-out users
 - **Prerequisite**: Audiences must be registered and `ready` via `sync_audiences` before use
 - **Note**: Seller must declare support in `get_adcp_capabilities`
+
+### signal_targeting_groups
+- **Description**: Basic Boolean grouping for seller-offered data signals. Use this for both simple include-only signal targeting and grouped include/exclude expressions such as `(A OR B) AND NOT (C OR D)`.
+- **Discovery**: Wholesale products can set `signal_targeting_allowed: true` and omit inline `signal_targeting_options`; buyers then use `get_signals` as the selectable signal feed. Products return inline `signal_targeting_options` when they need product-specific pricing, activation handles, defaults, grouping hints, or a relevant subset for a brief/refine response.
+- **Format**: Object with required top-level `operator: "all"` and a `groups` array. The top-level operator is always present, even though v1 only supports `all`.
+- **Child groups**: Each child group has `operator: "any"` or `operator: "none"` and a `signals` array of package signal targeting objects. Each signal carries `signal_ref`, `value_type`, and the value fields, plus optional commercial and activation handles.
+- **Legacy flat targeting**: `targeting_overlay.signal_targeting` remains schema-valid during the SignalRef migration window for older clients, but it is deprecated. New package-level signal selection uses `signal_targeting_groups` so sellers can apply include/exclude groups, product rules, and per-signal pricing consistently.
+- **Semantics**: `any` means the user must match at least one signal in that group. `none` means the user must match none of the signals in that group. With top-level `all`, every child group must pass. For simple include-only targeting, send one child group with `operator: "any"`.
+- **Resolution model**: `signal_targeting_rules.resolution_model` tells buyers how the seller applies selected signals to inventory. `direct_targeting` means selected signals behave like package targeting predicates. `seller_planned` means selected signals are inputs to seller-managed planning against product-specific inventory, timing, availability, reach, or pacing constraints; buyers should not attempt to decompose the selected audience into lower-level inventory or schedule decisions.
+- **Selection groups**: When the product declares `signal_targeting_rules.selection_group_rules`, each child group MUST contain signals from exactly one `selection_group` and one targeting mode, and buyers MUST send at most one child group for each `(selection_group, targeting_mode)` pair. Sellers MUST reject duplicate, mixed, or collapsed child groups that combine distinct selection-group rules into the same `any` or `none` group. `selection_group` is a product-defined composability bucket, not a backend identity type: for example, a GAM-backed seller may expose both audience segments and key-values as ordinary `signal_ref` options, using one `selection_group` when they are freely OR-combinable and separate `selection_group`s when they must be trafficked as separate ANDed clauses.
+- **Pricing**: Include `pricing_option_id` when the selected product's `signal_targeting_options` entry has `pricing_options`; omit only when the signal is bundled into the product price or has no incremental cost. Product-scoped pricing in `signal_targeting_options` is authoritative for that product. If the product option has no product-specific price, sellers MAY use the default pricing exposed in `get_signals`.
+- **Signal reference**: Use `signal_ref: { "scope": "product", "signal_id": "..." }` for a product-local signal option. Use `signal_ref: { "scope": "data_provider", "data_provider_domain": "...", "signal_id": "..." }` for a signal defined in a data provider's published adagents.json `signals[]`. `signal_ref` identifies the signal definition; `signal_agent_segment_id` identifies a resolved segment or execution handle when the product option exposes one. Echo an exposed `signal_agent_segment_id` verbatim on the package entry, and prefer it over reconstructing identity from categorical values because providers can namespace handles to distinguish definitions such as real-time rain versus forecast high-precipitation. If the product option has `activation_status: "requires_activation"`, it MUST include `signal_agent_segment_id`; activate the signal first, then include `activation_key` if the seller requires it.
+- **Provider-published signals**: For a provider-published signal, `signal_ref.data_provider_domain` identifies the upstream data provider and `signal_ref.signal_id` identifies the public signal definition. Buyers can verify the seller's right to offer the signal by checking the provider's `adagents.json` `authorized_agents` entry for the seller.
+- **Product gating**: Sellers SHOULD reject a signal entry when the product does not advertise that signal inline or through `get_signals`, `signal_targeting_allowed` is false for package-level selection, the signal violates the product's `signal_targeting_rules`, the signal's `allowed_targeting_modes` does not allow the requested child group operator, the signal is not active for the account, or the requested value is outside the signal definition. `allowed_targeting_modes: ["include"]` maps to `any` groups; `["exclude"]` maps to `none` groups. Binary package signal entries use `value: true`; use the parent `none` group for exclusion, not `value: false`. Signal targeting limits are product-scoped, not declared in seller-wide `get_adcp_capabilities`, because products may be backed by different ad servers or platforms. If `selection_mode` is `fixed`, buyers SHOULD omit edits to `signal_targeting_groups`; sellers apply the fixed/default selections and MUST echo them on the resulting package state.
+- **Updates**: Because `targeting_overlay` is shared by `create_media_buy` and `update_media_buy`, sellers MAY reject mid-flight signal group changes with `REQUOTE_REQUIRED` when the selected signal, group expression, or `pricing_option_id` changes the priced envelope.
+- **Not for first-party audiences**: Use `audience_include` / `audience_exclude` for buyer-uploaded audiences from `sync_audiences`.
+
+The backend targeting primitive is intentionally hidden behind `signal_ref`. Buyers should not need a separate identity system for "audience segment" versus "key-value"; the selected product's `signal_targeting_rules` describe whether those options can be composed together. If a product exposes both a `gam_audience_segments` group and a `gam_key_values` group with `targeting_mode: "include"`, the buyer composes two `any` child groups under the top-level `all`, not one collapsed mixed group.
+
+For products where inventory and audience planning are inseparable, such as linear broadcast schedules, sellers use `resolution_model: "seller_planned"`. Mandatory audience selection still lives in `selection_mode: "required"` or a required `selection_group_rules` entry; cross-product audience consistency comes from a shared `scope: "data_provider"` signal definition, even when the seller is also the data provider.
+
+```json
+{
+  "packages": [
+    {
+      "product_id": "retail_video_premium",
+      "pricing_option_id": "media_cpm_usd",
+      "budget": 25000,
+      "targeting_overlay": {
+        "signal_targeting_groups": {
+          "operator": "all",
+          "groups": [
+            {
+              "operator": "any",
+              "signals": [
+                {
+                  "signal_ref": { "scope": "product", "signal_id": "high_intent_shoppers" },
+                  "value_type": "binary",
+                  "value": true
+                },
+                {
+                  "signal_ref": { "scope": "product", "signal_id": "loyalty_members" },
+                  "value_type": "binary",
+                  "value": true
+                }
+              ]
+            },
+            {
+              "operator": "none",
+              "signals": [
+                {
+                  "signal_ref": { "scope": "product", "signal_id": "recent_purchasers" },
+                  "value_type": "binary",
+                  "value": true
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
+```
 
 ### frequency_cap
 - **Description**: Limit ad exposure frequency per entity. Two optional controls can be used independently or together.

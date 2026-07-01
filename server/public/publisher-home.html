@@ -1,0 +1,1575 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Publisher | AgenticAdvertising.org</title>
+    <link rel="icon" href="/addie-icon.svg" type="image/svg+xml" />
+    <!-- Agent-discoverable JSON alternate. The href is filled in client-side
+         once the domain is resolved from the URL path; agents that follow
+         this link land on the rich /api/registry/publisher payload. -->
+    <link id="api-alternate" rel="alternate" type="application/json" href="" />
+    <link rel="stylesheet" href="/design-system.css" />
+    <link rel="stylesheet" href="/layout.css" />
+    <style>
+      body { padding-top: var(--nav-height); background: var(--color-surface); }
+      .container {
+        max-width: var(--container-lg);
+        margin: 0 auto;
+        padding: var(--space-6) var(--space-4) var(--space-12);
+      }
+
+      /* Breadcrumb + return link sit above the hero. The breadcrumb is
+         site-flow chrome; the return link is the highest-activation
+         onward path when the visitor arrived from a partner storefront
+         via ?return=<url>. Render both during the loading state so the
+         buyer's first paint is correctly framed. */
+      .publisher-nav {
+        display: flex; justify-content: space-between; align-items: center;
+        gap: var(--space-3); flex-wrap: wrap;
+        font-size: var(--text-sm);
+        margin-bottom: var(--space-4);
+      }
+      .publisher-nav__crumbs { color: var(--color-text-muted); }
+      .publisher-nav__crumbs a { color: inherit; text-decoration: none; }
+      .publisher-nav__crumbs a:hover { color: var(--color-text); }
+      .publisher-nav__return { font-weight: var(--font-semibold); }
+
+      /* Hero: verifier-first chrome. Five state variants tinted via
+         data-state. Loading state renders the header card without the
+         hero shell so domain title is the first paint. */
+      .publisher-hero {
+        border-radius: var(--radius-xl);
+        padding: var(--space-6);
+        margin-bottom: var(--space-6);
+        border: var(--border-1) solid var(--color-border);
+        background: var(--color-bg-card);
+      }
+      .publisher-hero[data-state="healthy"]         { border-color: var(--color-success-200);
+        background: linear-gradient(180deg, var(--color-success-50) 0, var(--color-bg-card) 80%); }
+      .publisher-hero[data-state="aao_hosted"],
+      .publisher-hero[data-state="self_redirected"],
+      .publisher-hero[data-state="community"]       { border-color: var(--color-primary-200);
+        background: linear-gradient(180deg, var(--color-primary-50) 0, var(--color-bg-card) 80%); }
+      .publisher-hero[data-state="setup_needed"]    { border-color: var(--color-warning-200);
+        background: linear-gradient(180deg, var(--color-warning-50) 0, var(--color-bg-card) 80%); }
+      .publisher-hero[data-state="invalid"]         { border-color: var(--color-error-200);
+        background: linear-gradient(180deg, var(--color-error-50) 0, var(--color-bg-card) 80%); }
+      .publisher-hero[data-state="checking"]        {
+        background: repeating-linear-gradient(135deg,
+          var(--color-bg-card) 0 12px, var(--color-bg-subtle) 12px 24px);
+        animation: publisher-hero-checking 1.4s linear infinite;
+      }
+      @keyframes publisher-hero-checking { to { background-position: 24px 0; } }
+      @media (prefers-reduced-motion: reduce) {
+        .publisher-hero[data-state="checking"] { animation: none; }
+      }
+
+      .publisher-hero__domain {
+        font-family: var(--font-mono);
+        font-size: clamp(1.5rem, 2.4vw + 1rem, 2.25rem);
+        font-weight: var(--font-bold);
+        letter-spacing: -0.02em;
+        margin: 0 0 var(--space-2);
+        word-break: break-all;
+        line-height: 1.2;
+      }
+      .publisher-hero__member-line {
+        color: var(--color-text-muted);
+        font-size: var(--text-sm);
+        margin: 0 0 var(--space-4);
+      }
+      .publisher-hero__member-line a {
+        color: var(--color-brand);
+        text-decoration: none;
+        font-weight: var(--font-semibold);
+      }
+
+      /* Verification chrome — copy-paste-friendly key/value grid. The
+         dt/dd are wrapped in a div so each pair stays together when the
+         grid wraps on narrow screens. user-select: all on dd lets a
+         verifier triple-click to copy the value. */
+      .publisher-hero__verification {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: var(--space-3) var(--space-5);
+        margin: 0 0 var(--space-4);
+        padding: var(--space-3) var(--space-4);
+        background: var(--color-bg-subtle);
+        border: var(--border-1) solid var(--color-border-light);
+        border-radius: var(--radius-md);
+        font-size: var(--text-sm);
+      }
+      .publisher-hero__verification > div { min-width: 0; }
+      .publisher-hero__verification dt {
+        text-transform: uppercase; letter-spacing: 0.06em;
+        font-size: var(--text-xs); color: var(--color-text-muted);
+        margin: 0;
+      }
+      .publisher-hero__verification dd {
+        margin: 2px 0 0; font-family: var(--font-mono);
+        word-break: break-all;
+      }
+      .publisher-hero__verification dd code {
+        background: none; padding: 0; user-select: all;
+      }
+
+      /* Freshness pill — relative-time chip alongside the verified
+         timestamp. Color-coded by age so a verifier can scan staleness
+         at a glance without subtracting dates. green <24h, amber <7d,
+         red older. Pulled from the same color tokens as the
+         provenance ladder for visual consistency. */
+      .freshness {
+        display: inline-block;
+        margin-left: var(--space-2);
+        font-family: var(--font-sans);
+        font-size: var(--text-xs);
+        font-weight: var(--font-medium);
+        padding: 1px 8px;
+        border-radius: var(--radius-pill);
+        border: var(--border-1) solid transparent;
+        white-space: nowrap;
+        user-select: none;
+      }
+      .freshness--fresh  { background: var(--color-success-50);
+        color: var(--color-success-800); border-color: var(--color-success-200); }
+      .freshness--aging  { background: var(--color-warning-50);
+        color: var(--color-warning-800); border-color: var(--color-warning-200); }
+      .freshness--stale  { background: var(--color-error-50);
+        color: var(--color-error-800); border-color: var(--color-error-200); }
+
+      .publisher-hero__status {
+        display: flex; align-items: center; gap: var(--space-2);
+        font-size: var(--text-base); font-weight: var(--font-semibold);
+        margin: 0 0 var(--space-4);
+      }
+
+      .publisher-hero__detail {
+        font-size: var(--text-sm); color: var(--color-text-secondary);
+        margin: 0 0 var(--space-4);
+        line-height: 1.5;
+      }
+
+      .publisher-hero__actions {
+        display: flex; flex-wrap: wrap; gap: var(--space-3);
+      }
+
+      /* Validation-error inline panel. Lazily populated by
+         showValidationDetail() when the invalid hero's "Show errors"
+         button is clicked. Prior version rendered this as a modal; the
+         redesign keeps it inline with the hero so a verifier doesn't
+         have to dismiss + re-trigger to compare. */
+      .publisher-hero__errors {
+        margin-top: var(--space-3);
+        padding: var(--space-3) var(--space-4);
+        background: var(--color-error-50);
+        border: var(--border-1) solid var(--color-error-200);
+        border-radius: var(--radius-md);
+        font-size: var(--text-sm);
+      }
+      .publisher-hero__errors h3 {
+        margin: 0 0 var(--space-2); font-size: var(--text-sm);
+        font-weight: var(--font-semibold);
+      }
+      .publisher-hero__errors ul {
+        margin: 0; padding-left: var(--space-4);
+      }
+
+      /* On-file panel: the canonical "what AgenticAdvertising.org sees about this
+         publisher" section. adagents.json + brand.json paired as
+         co-equal cards (per protocol expert: they answer different
+         questions and shouldn't be visually demoted), then properties
+         and authorized agents below. */
+      .on-file__header {
+        padding: var(--space-5) var(--space-6) var(--space-3);
+      }
+      .on-file__header h2 {
+        margin: 0 0 var(--space-1); font-size: var(--text-xl);
+        font-weight: var(--font-bold);
+      }
+      .on-file__header p {
+        margin: 0; color: var(--color-text-muted);
+        font-size: var(--text-sm);
+      }
+
+      .on-file__files {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: var(--space-4);
+        padding: 0 var(--space-6) var(--space-5);
+      }
+      .on-file__file {
+        padding: var(--space-4);
+        border: var(--border-1) solid var(--color-border-light);
+        border-radius: var(--radius-md);
+        background: var(--color-bg-subtle);
+      }
+      .on-file__file[data-status="valid"]    { border-left: 3px solid var(--color-success-500); }
+      .on-file__file[data-status="present"]  { border-left: 3px solid var(--color-success-500); }
+      .on-file__file[data-status="invalid"]  { border-left: 3px solid var(--color-error-500); }
+      .on-file__file[data-status="checking"] { border-left: 3px solid var(--color-primary-500); }
+      .on-file__file[data-status="missing"],
+      .on-file__file[data-status="unknown"]  { border-left: 3px solid var(--color-border); }
+
+      .on-file__file h3 {
+        margin: 0 0 var(--space-2); font-size: var(--text-base);
+        font-family: var(--font-mono); font-weight: var(--font-semibold);
+      }
+      .on-file__file p { margin: 0 0 var(--space-2); font-size: var(--text-sm); }
+      .on-file__file p.muted { color: var(--color-text-muted); }
+      .on-file__file a { font-size: var(--text-sm); }
+
+      .on-file__sub {
+        display: flex; align-items: baseline; gap: var(--space-2);
+        margin: 0; padding: var(--space-3) var(--space-6);
+        font-size: var(--text-base);
+        font-weight: var(--font-semibold);
+        border-top: var(--border-1) solid var(--color-border-light);
+      }
+      .on-file__count {
+        color: var(--color-text-muted);
+        font-variant-numeric: tabular-nums;
+        font-weight: var(--font-normal);
+      }
+
+      .on-file__rows { list-style: none; margin: 0; padding: 0 var(--space-6) var(--space-2); }
+      .on-file__row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: var(--space-4);
+        align-items: start;
+        padding: var(--space-3) 0;
+        border-bottom: var(--border-1) solid var(--color-border-light);
+      }
+      .on-file__rows li:last-child .on-file__row { border-bottom: none; }
+      .on-file__row-main { min-width: 0; }
+      .on-file__row-name {
+        font-weight: var(--font-semibold); word-break: break-all;
+        font-size: var(--text-sm);
+      }
+      .on-file__row-name code {
+        font-family: var(--font-mono); background: none; padding: 0;
+        font-size: inherit; font-weight: inherit;
+      }
+      .on-file__agent-link {
+        color: inherit; text-decoration: none;
+        border-bottom: 1px dashed var(--color-border);
+      }
+      .on-file__agent-link:hover {
+        color: var(--color-brand);
+        border-bottom-color: var(--color-brand);
+      }
+      .on-file__agent-link:focus-visible {
+        outline: 2px solid var(--color-brand);
+        outline-offset: 2px;
+        border-radius: 2px;
+      }
+      .on-file__row-meta {
+        font-size: var(--text-xs); color: var(--color-text-muted);
+        display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: 2px;
+      }
+      .on-file__row-meta code {
+        background: var(--color-bg-subtle); padding: 1px 6px;
+        border-radius: var(--radius-sm); font-size: inherit;
+      }
+
+      .on-file__row-right {
+        display: flex; flex-direction: column; align-items: flex-end;
+        gap: 4px; white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+      }
+      .auth-fraction { font-size: var(--text-sm); color: var(--color-text-secondary); }
+      .auth-fraction strong { color: var(--color-text); }
+
+      /* Provenance trust ladder — three tiers per protocol-expert
+         feedback. Pill styling, neutral chrome that conveys class
+         without shouting. Tooltips give the long form. Use existing
+         color tokens to stay consistent with the rest of the site. */
+      .provenance {
+        font-size: var(--text-xs); padding: 2px 8px;
+        border-radius: var(--radius-pill);
+        border: var(--border-1) solid transparent;
+        font-weight: var(--font-medium); letter-spacing: 0.02em;
+        white-space: nowrap;
+      }
+      .provenance--publisher    { background: var(--color-success-50);
+        color: var(--color-success-800); border-color: var(--color-success-200); }
+      .provenance--brand        { background: var(--color-primary-50);
+        color: var(--color-primary-800); border-color: var(--color-primary-200); }
+      .provenance--counterparty { background: var(--color-warning-50);
+        color: var(--color-warning-800); border-color: var(--color-warning-200); }
+
+      .on-file__empty {
+        padding: var(--space-5) var(--space-6);
+        color: var(--color-text-muted); font-size: var(--text-sm);
+        font-style: italic;
+      }
+
+      .publisher-profile,
+      .publisher-formats {
+        margin-bottom: var(--space-6);
+      }
+      .publisher-profile__grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.65fr);
+        gap: var(--space-5);
+      }
+      .publisher-profile__brand {
+        min-width: 0;
+      }
+      .publisher-profile__brand-head {
+        display: flex;
+        gap: var(--space-4);
+        align-items: flex-start;
+        margin-bottom: var(--space-4);
+      }
+      .publisher-profile__logo {
+        width: 64px;
+        height: 64px;
+        border: var(--border-1) solid var(--color-border);
+        border-radius: var(--radius-md);
+        background: var(--color-bg-subtle);
+        object-fit: contain;
+        padding: var(--space-2);
+        flex: 0 0 auto;
+      }
+      .publisher-profile__logo-fallback {
+        display: grid;
+        place-items: center;
+        width: 64px;
+        height: 64px;
+        border-radius: var(--radius-md);
+        border: var(--border-1) solid var(--color-border);
+        background: var(--color-bg-subtle);
+        font-family: var(--font-mono);
+        font-weight: var(--font-bold);
+        font-size: var(--text-xl);
+        color: var(--color-text-secondary);
+        flex: 0 0 auto;
+      }
+      .publisher-profile__brand h2,
+      .publisher-formats h2 {
+        margin: 0 0 var(--space-1);
+        font-size: var(--text-xl);
+        font-weight: var(--font-bold);
+      }
+      .publisher-profile__brand p,
+      .publisher-formats__intro {
+        margin: 0;
+        color: var(--color-text-secondary);
+        line-height: 1.55;
+      }
+      .publisher-profile__chips,
+      .format-card__chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2);
+        margin-top: var(--space-4);
+      }
+      .publisher-chip,
+      .format-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        border: var(--border-1) solid var(--color-border);
+        border-radius: var(--radius-pill);
+        background: var(--color-bg-subtle);
+        padding: 3px 9px;
+        font-size: var(--text-xs);
+        color: var(--color-text-secondary);
+      }
+      .publisher-swatches {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2);
+        margin-top: var(--space-4);
+      }
+      .publisher-swatch {
+        width: 28px;
+        height: 28px;
+        border-radius: var(--radius-sm);
+        border: var(--border-1) solid var(--color-border);
+      }
+      .publisher-profile__stats {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--space-3);
+      }
+      .publisher-stat {
+        min-width: 0;
+        padding: var(--space-4);
+        border: var(--border-1) solid var(--color-border-light);
+        border-radius: var(--radius-md);
+        background: var(--color-bg-subtle);
+      }
+      .publisher-stat__value {
+        display: block;
+        font-size: var(--text-xl);
+        font-weight: var(--font-bold);
+        font-variant-numeric: tabular-nums;
+        line-height: 1.15;
+        overflow-wrap: anywhere;
+      }
+      .publisher-stat__label {
+        display: block;
+        margin-top: 2px;
+        font-size: var(--text-xs);
+        color: var(--color-text-secondary);
+      }
+      .publisher-stat[data-tone="warning"] {
+        border-color: var(--color-warning-200);
+        background: var(--color-warning-50);
+      }
+
+      .publisher-catalog-note {
+        grid-column: 1 / -1;
+        margin: 0 0 var(--space-4);
+        padding: var(--space-3) var(--space-4);
+        border: var(--border-1) solid var(--color-warning-200);
+        border-radius: var(--radius-md);
+        background: var(--color-warning-50);
+        color: var(--color-warning-900);
+        font-size: var(--text-sm);
+      }
+
+      .publisher-formats__header {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: var(--space-4);
+        margin-bottom: var(--space-4);
+      }
+      .publisher-formats__grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: var(--space-4);
+      }
+      .format-card {
+        border: var(--border-1) solid var(--color-border);
+        border-radius: var(--radius-lg);
+        background: var(--color-bg-card);
+        overflow: hidden;
+      }
+      .format-preview {
+        display: grid;
+        place-items: center;
+        min-height: 150px;
+        padding: var(--space-5);
+        background:
+          linear-gradient(135deg, var(--color-bg-subtle), var(--color-bg-card));
+        border-bottom: var(--border-1) solid var(--color-border-light);
+      }
+      .format-preview__frame {
+        position: relative;
+        display: grid;
+        place-items: center;
+        width: min(170px, 100%);
+        aspect-ratio: 1 / 1;
+        border: var(--border-2) solid var(--color-text);
+        border-radius: var(--radius-md);
+        background: var(--color-bg-card);
+        box-shadow: var(--shadow-sm);
+        overflow: hidden;
+      }
+      .format-preview__frame[data-shape="wide"] { aspect-ratio: 16 / 9; width: min(190px, 100%); }
+      .format-preview__frame[data-shape="vertical"] { aspect-ratio: 9 / 16; width: 92px; }
+      .format-preview__frame[data-shape="banner"] { aspect-ratio: 4 / 1; width: min(210px, 100%); }
+      .format-preview__frame[data-shape="audio"] {
+        aspect-ratio: 2.4 / 1;
+        width: min(210px, 100%);
+        border-radius: var(--radius-pill);
+      }
+      .format-preview__frame[data-shape="feed"] {
+        aspect-ratio: 1.2 / 1;
+        width: min(170px, 100%);
+      }
+      .format-preview__label {
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+        color: var(--color-text-secondary);
+        text-align: center;
+        padding: 0 var(--space-2);
+      }
+      .format-preview__play {
+        width: 0;
+        height: 0;
+        border-top: 18px solid transparent;
+        border-bottom: 18px solid transparent;
+        border-left: 28px solid var(--color-brand);
+        margin-left: 6px;
+      }
+      .format-preview__bars {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        height: 56px;
+      }
+      .format-preview__bars span {
+        width: 6px;
+        border-radius: var(--radius-pill);
+        background: var(--color-brand);
+      }
+      .format-preview__bars span:nth-child(1) { height: 18px; opacity: .45; }
+      .format-preview__bars span:nth-child(2) { height: 38px; opacity: .7; }
+      .format-preview__bars span:nth-child(3) { height: 52px; }
+      .format-preview__bars span:nth-child(4) { height: 32px; opacity: .7; }
+      .format-preview__bars span:nth-child(5) { height: 22px; opacity: .45; }
+      .format-preview__feed {
+        width: 76%;
+      }
+      .format-preview__feed div {
+        height: 10px;
+        border-radius: var(--radius-pill);
+        background: var(--color-border);
+        margin: 8px 0;
+      }
+      .format-preview__feed div:first-child {
+        height: 54px;
+        border-radius: var(--radius-sm);
+        background: var(--color-primary-100);
+      }
+      .format-card__body {
+        padding: var(--space-4);
+      }
+      .format-card__title {
+        margin: 0;
+        font-size: var(--text-base);
+        font-weight: var(--font-semibold);
+      }
+      .format-card__kind {
+        margin-top: 2px;
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+        color: var(--color-text-secondary);
+        overflow-wrap: anywhere;
+      }
+      .format-card__scope {
+        margin-top: var(--space-3);
+        font-size: var(--text-xs);
+        color: var(--color-text-secondary);
+        overflow-wrap: anywhere;
+      }
+
+      @media (max-width: 760px) {
+        .publisher-profile__grid {
+          grid-template-columns: 1fr;
+        }
+        .publisher-profile__brand-head {
+          display: block;
+        }
+        .publisher-profile__logo,
+        .publisher-profile__logo-fallback {
+          margin-bottom: var(--space-3);
+        }
+        .publisher-profile__stats {
+          grid-template-columns: 1fr;
+        }
+        .publisher-formats__header {
+          display: block;
+        }
+        .publisher-formats__intro {
+          margin-top: var(--space-2);
+        }
+      }
+
+      /* Contextual relationship line — single line, dismissible, no
+         panel chrome. Only appears when the visitor is logged in and
+         the publisher isn't a member yet. */
+      .publisher-context {
+        display: flex; align-items: center; gap: var(--space-3);
+        padding: var(--space-3) var(--space-4);
+        background: var(--color-bg-subtle);
+        border-radius: var(--radius-md);
+        font-size: var(--text-sm);
+        margin-bottom: var(--space-4);
+      }
+      .publisher-context p { margin: 0; flex: 1; }
+      .publisher-context__close {
+        background: none; border: none; cursor: pointer;
+        font-size: var(--text-lg); color: var(--color-text-muted);
+        padding: 0 var(--space-2);
+      }
+      .publisher-context__close:hover { color: var(--color-text); }
+
+      /* Cross-link footer: spec / publishers / builder. Sends visitors
+         onward into the rest of the site. Pattern adapted from
+         adagents-landing.html for visual consistency. */
+      .cross-links {
+        margin-top: var(--space-8);
+        padding-top: var(--space-6);
+        border-top: var(--border-1) solid var(--color-border);
+      }
+      .cross-links h2 {
+        font-size: var(--text-base); font-weight: var(--font-semibold);
+        color: var(--color-text-muted);
+        text-transform: uppercase; letter-spacing: 0.06em;
+        margin: 0 0 var(--space-4);
+      }
+      .cross-links__grid {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: var(--space-4);
+      }
+      .cross-link-card {
+        display: block; padding: var(--space-4);
+        border: var(--border-1) solid var(--color-border);
+        border-radius: var(--radius-lg);
+        background: var(--color-bg-card);
+        text-decoration: none; color: inherit;
+        transition: var(--transition-all);
+      }
+      .cross-link-card:hover {
+        border-color: var(--color-primary-200);
+        box-shadow: var(--shadow-sm);
+        transform: translateY(-1px);
+      }
+      .cross-link-card h3 {
+        margin: 0 0 var(--space-1); font-size: var(--text-sm);
+        font-weight: var(--font-semibold);
+      }
+      .cross-link-card p {
+        margin: 0; font-size: var(--text-xs);
+        color: var(--color-text-muted);
+      }
+
+      /* Loading + error states */
+      .loading-state, .error-state { padding: var(--space-12); text-align: center; }
+      .hidden { display: none !important; }
+      .spinner {
+        width: 24px; height: 24px; margin: 0 auto var(--space-3);
+        border: 3px solid var(--color-border);
+        border-top-color: var(--color-brand);
+        border-radius: 50%; animation: spin 0.7s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+    </style>
+  </head>
+  <body>
+    <div id="adcp-nav"></div>
+    <script src="/nav.js"></script>
+
+    <div class="container">
+      <!-- Site-flow chrome above the hero. Both crumbs and return link
+           render during the loading state so the buyer/publisher's
+           first paint is correctly framed. -->
+      <div class="publisher-nav">
+        <nav class="publisher-nav__crumbs" aria-label="Breadcrumb">
+          <a href="/publishers">Publishers</a>
+          <span aria-hidden="true">›</span>
+          <span id="crumb-domain"></span>
+        </nav>
+        <a id="return-link" class="publisher-nav__return ds-link" href="#" hidden>
+          ← <span id="return-link-label">Back</span>
+        </a>
+      </div>
+
+      <div id="loading-state" class="loading-state">
+        <div class="spinner"></div>
+        <p>Loading publisher data&hellip;</p>
+      </div>
+
+      <div id="error-state" class="error-state hidden">
+        <h2 id="error-title">Publisher not found</h2>
+        <p id="error-message">We couldn't load this publisher.</p>
+      </div>
+
+      <div id="content" class="hidden">
+        <!-- Hero with five state variants. JS sets data-state and
+             populates innerHTML based on the API response. -->
+        <header class="publisher-hero" id="publisher-hero" data-state="healthy">
+          <h1 class="publisher-hero__domain" id="domain-title"></h1>
+          <p class="publisher-hero__member-line" id="member-line"></p>
+
+          <dl class="publisher-hero__verification" id="verification-chrome" aria-label="AgenticAdvertising.org verification"></dl>
+
+          <p class="publisher-hero__status" id="hero-status"></p>
+          <p class="publisher-hero__detail" id="hero-detail"></p>
+
+          <div class="publisher-hero__actions" id="hero-actions"></div>
+          <div id="hero-errors" class="publisher-hero__errors hidden"></div>
+        </header>
+
+        <!-- Optional contextual relationship line. Hidden by default;
+             unhidden by JS when conditions match. -->
+        <div id="contextual-line" class="publisher-context hidden"></div>
+
+        <section class="publisher-profile ds-card" aria-labelledby="publisher-profile-heading">
+          <div class="publisher-profile__grid">
+            <div class="publisher-profile__brand" id="publisher-brand"></div>
+            <div class="publisher-profile__stats" id="publisher-stats"></div>
+          </div>
+        </section>
+
+        <section class="publisher-formats" aria-labelledby="publisher-formats-heading">
+          <div class="publisher-formats__header">
+            <div>
+              <h2 id="publisher-formats-heading">Creative formats</h2>
+              <p class="publisher-formats__intro" id="publisher-formats-intro"></p>
+            </div>
+          </div>
+          <div class="publisher-formats__grid" id="publisher-formats-grid"></div>
+        </section>
+
+        <!-- On-file panel: adagents.json + brand.json + properties + agents. -->
+        <section class="ds-card" aria-labelledby="on-file-heading" style="padding: 0;">
+          <header class="on-file__header">
+            <h2 id="on-file-heading">On file at AgenticAdvertising.org</h2>
+            <p>What buy-side agents will see when they look up this domain.</p>
+          </header>
+
+          <div class="on-file__files" id="on-file-files"></div>
+
+          <h3 class="on-file__sub">
+            Properties <span class="on-file__count" id="properties-count"></span>
+          </h3>
+          <div id="properties-body"></div>
+
+          <h3 class="on-file__sub">
+            Authorized agents <span class="on-file__count" id="agents-count"></span>
+          </h3>
+          <div id="agents-body"></div>
+        </section>
+
+        <footer class="cross-links" aria-label="Related">
+          <h2>Learn more</h2>
+          <div class="cross-links__grid">
+            <a class="cross-link-card" href="https://docs.adcontextprotocol.org/docs/governance/property/adagents">
+              <h3>adagents.json spec</h3>
+              <p>The protocol publishers and buyers verify against.</p>
+            </a>
+            <a class="cross-link-card" href="/publishers">
+              <h3>All publishers</h3>
+              <p>Browse the full registry of publishers indexed at AgenticAdvertising.org.</p>
+            </a>
+            <a class="cross-link-card" href="/agents">
+              <h3>Buy-side agents</h3>
+              <p>Browse the AI sales and buying agents in the registry.</p>
+            </a>
+            <a class="cross-link-card" href="/adagents/builder">
+              <h3>Build adagents.json</h3>
+              <p>Generate a spec-conformant file for a new domain.</p>
+            </a>
+          </div>
+        </footer>
+      </div>
+    </div>
+
+    <script>
+      const escapeHtml = (s) =>
+        String(s ?? '')
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+      function getDomain() {
+        const path = window.location.pathname;
+        const m = path.match(/^\/publisher\/(.+?)\/?$/);
+        if (m) return decodeURIComponent(m[1]);
+        const params = new URLSearchParams(window.location.search);
+        return params.get('domain') || '';
+      }
+
+      function appUser() {
+        return (window.__APP_CONFIG__ && window.__APP_CONFIG__.user) || null;
+      }
+
+      function showError(title, message) {
+        document.getElementById('loading-state').classList.add('hidden');
+        document.getElementById('content').classList.add('hidden');
+        document.getElementById('error-state').classList.remove('hidden');
+        document.getElementById('error-title').textContent = title;
+        document.getElementById('error-message').textContent = message;
+      }
+
+      // Render the "← Back" link from ?return=<url>. Allowlist:
+      // same-origin (production) OR http(s)://localhost / 127.0.0.1
+      // when the page itself is being served from localhost (dev only).
+      // The localhost gate is conditional on the runtime origin so a
+      // production-served page never accepts a localhost return URL —
+      // an attacker-crafted link in production would otherwise produce
+      // a hero CTA pointing at the user's local machine.
+      // Anything else is dropped silently. javascript:/data:/file:
+      // schemes fail both checks: URL.origin is "null" (not same-origin)
+      // and their protocol is not http(s) (not localhost).
+      // Returns the validated href (for use as a hero CTA) or null.
+      function validateReturnUrl(raw) {
+        if (!raw) return null;
+        let target;
+        try { target = new URL(raw, window.location.origin); }
+        catch { return null; }
+        const sameOrigin = target.origin === window.location.origin;
+        const pageIsOnLocalhost =
+          window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const isLocalhostDev =
+          pageIsOnLocalhost
+          && (target.protocol === 'http:' || target.protocol === 'https:')
+          && (target.hostname === 'localhost' || target.hostname === '127.0.0.1');
+        if (!sameOrigin && !isLocalhostDev) return null;
+        return { href: target.href, host: target.host, sameOrigin };
+      }
+
+      function renderReturnLink() {
+        const params = new URLSearchParams(window.location.search);
+        const ret = validateReturnUrl(params.get('return'));
+        const link = document.getElementById('return-link');
+        if (!ret || !link) return;
+        link.href = ret.href;
+        const label = document.getElementById('return-link-label');
+        if (label) label.textContent = ret.sameOrigin ? 'Back' : `Back to ${ret.host}`;
+        link.hidden = false;
+      }
+
+      // ─── Source provenance trust ladder ─────────────────────────
+      // Three tiers; the underlying API can return any of these five
+      // source values. Mapping is per protocol-expert feedback.
+      const PROVENANCE_TIERS = {
+        adagents_json: { tier: 'publisher',    label: 'Publisher-attested',
+          tooltip: "Publisher-attested · adagents.json on the publisher's own origin" },
+        aao_hosted:    { tier: 'publisher',    label: 'Publisher-attested',
+          tooltip: 'Publisher-attested · hosted by AgenticAdvertising.org with publisher consent' },
+        brand_json:    { tier: 'brand',        label: 'Brand-attested',
+          tooltip: 'Brand-attested · published in /.well-known/brand.json' },
+        community:     { tier: 'counterparty', label: 'Community-approved',
+          tooltip: 'Community-approved · maintained in the AgenticAdvertising.org registry' },
+        agent_claim:   { tier: 'counterparty', label: 'Agent-claimed',
+          tooltip: 'Agent-claimed · publisher has not confirmed' },
+        discovered:    { tier: 'counterparty', label: 'Discovered',
+          tooltip: 'Inferred from third-party signals · not publisher-confirmed' },
+      };
+      function provenanceBadge(source) {
+        const meta = PROVENANCE_TIERS[source];
+        if (!meta) return '';
+        return `<span class="provenance provenance--${meta.tier}" aria-label="${escapeHtml(meta.tooltip)}" title="${escapeHtml(meta.tooltip)}">${escapeHtml(meta.label)}</span>`;
+      }
+
+      // ─── Hero state derivation + render ─────────────────────────
+      function deriveHeroState(data) {
+        if (data.files && data.files.adagents_json && data.files.adagents_json.status === 'community') return 'community';
+        if (data.auto_crawl_triggered === true) return 'checking';
+        const mode = data.hosting && data.hosting.mode;
+        if (mode === 'self')             return 'healthy';
+        if (mode === 'aao_hosted')       return 'aao_hosted';
+        if (mode === 'self_redirected')  return 'self_redirected';
+        if (mode === 'self_invalid')     return 'invalid';
+        return 'setup_needed';
+      }
+
+      // Format a timestamp for the verification chrome. Returns the raw
+      // ISO for machine readability + a human-friendly relative form for
+      // the dd label visible to humans. The dd contains the ISO inside a
+      // <time>; the verification chrome's user-select:all on dd lets a
+      // verifier copy the exact ISO.
+      function fmtTimestamp(iso) {
+        if (!iso) return null;
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return null;
+        return { iso, display: d.toISOString().replace('T', ' ').replace('Z', ' UTC') };
+      }
+
+      // Freshness pill alongside the verified timestamp. Color-coded by
+      // age so a verifier can scan staleness without subtracting dates:
+      // green <24h, amber <7d, red older. Returns null when the
+      // timestamp can't be parsed (so the caller omits the pill).
+      function freshnessPill(iso) {
+        if (!iso) return null;
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return null;
+        const ageMs = Date.now() - d.getTime();
+        const ageH = ageMs / 3600_000;
+        const ageD = ageH / 24;
+        let tier, label;
+        if (ageH < 1) {
+          tier = 'fresh';
+          const minutes = Math.max(1, Math.floor(ageMs / 60_000));
+          label = `${minutes} min ago`;
+        } else if (ageH < 24) {
+          tier = 'fresh';
+          label = `${Math.floor(ageH)}h ago`;
+        } else if (ageD < 7) {
+          tier = 'aging';
+          label = `${Math.floor(ageD)}d ago`;
+        } else {
+          tier = 'stale';
+          label = `${Math.floor(ageD)}d ago`;
+        }
+        return { tier, label };
+      }
+
+      function renderHero(data) {
+        const state = deriveHeroState(data);
+        const hero = document.getElementById('publisher-hero');
+        hero.setAttribute('data-state', state);
+
+        // Verification chrome. Always shows expected_url; adds
+        // resolved_url when self_redirected; adds last_validated /
+        // HTTP status / bytes when populated (NULL until next crawl
+        // for rows that pre-date Phase B).
+        const verification = document.getElementById('verification-chrome');
+        const hosting = data.hosting || {};
+        const ts = fmtTimestamp(hosting.last_validated);
+        const fresh = freshnessPill(hosting.last_validated);
+        const verRows = [];
+        if (ts) {
+          const pill = fresh
+            ? ` <span class="freshness freshness--${fresh.tier}" aria-label="Verified ${escapeHtml(fresh.label)}">${escapeHtml(fresh.label)}</span>`
+            : '';
+          verRows.push(`<div><dt>Last verified</dt><dd><time datetime="${escapeHtml(ts.iso)}"><code>${escapeHtml(ts.display)}</code></time>${pill}</dd></div>`);
+        }
+        if (typeof hosting.last_http_status === 'number') {
+          verRows.push(`<div><dt>HTTP</dt><dd><code>${escapeHtml(String(hosting.last_http_status))}</code></dd></div>`);
+        }
+        if (typeof hosting.last_bytes === 'number') {
+          // Use locale-formatted thousands separators for human read,
+          // wrapped in <code> with user-select:all for copy-paste.
+          verRows.push(`<div><dt>Bytes</dt><dd><code>${escapeHtml(hosting.last_bytes.toLocaleString('en-US'))}</code></dd></div>`);
+        }
+        verRows.push(`<div><dt>Expected URL</dt><dd><code>${escapeHtml(hosting.expected_url || '')}</code></dd></div>`);
+        if (state === 'self_redirected' && hosting.resolved_url) {
+          verRows.push(`<div><dt>Resolved URL</dt><dd><code>${escapeHtml(hosting.resolved_url)}</code></dd></div>`);
+        }
+        if (state === 'aao_hosted' && hosting.hosted_url) {
+          verRows.push(`<div><dt>Hosted at</dt><dd><code>${escapeHtml(hosting.hosted_url)}</code></dd></div>`);
+        }
+        verification.innerHTML = verRows.join('');
+
+        // Status line (single sentence, dot indicator).
+        const statusEl = document.getElementById('hero-status');
+        const detailEl = document.getElementById('hero-detail');
+        const STATE_COPY = {
+          healthy:         { dot: 'success', line: 'Self-hosted and validated',
+                             detail: 'Buyers fetch this domain’s adagents.json directly from the publisher’s own origin.' },
+          aao_hosted:      { dot: 'info',    line: 'AgenticAdvertising.org-hosted via authoritative_location',
+                             detail: 'The publisher’s /.well-known/adagents.json points at AgenticAdvertising.org’s canonical document.' },
+          self_redirected: { dot: 'info',    line: 'Self-hosted via authoritative_location redirect',
+                             detail: 'The publisher’s /.well-known stub points the canonical document to a third-party HTTPS origin. Verifiers should pin trust to the resolved URL above.' },
+          setup_needed:    { dot: 'warning', line: 'Setup needed',
+                             detail: 'No adagents.json has been published for this domain yet. Publishers tell buy-side agents which AI sales agents may sell their inventory by hosting this file.' },
+          community:       { dot: 'info',    line: 'Community-approved adagents.json',
+                             detail: 'AgenticAdvertising.org has an approved community catalog for this domain. The publisher has not yet served it from its own origin.' },
+          invalid:         { dot: 'error',   line: 'adagents.json failed validation',
+                             detail: 'A file exists at the publisher’s /.well-known but didn’t pass schema validation. Buyers will treat this as missing.' },
+          checking:        { dot: 'info',    line: 'Checking now…',
+                             detail: 'AgenticAdvertising.org is fetching this domain. The page will refresh in a few seconds.' },
+        };
+        const copy = STATE_COPY[state] || STATE_COPY.setup_needed;
+        statusEl.innerHTML = `<span class="ds-status-dot ds-status-dot-${copy.dot}"></span><span>${escapeHtml(copy.line)}</span>`;
+        detailEl.textContent = copy.detail;
+
+        // Actions row. Verifier-first: ?return= is the highest-activation
+        // onward path when the visitor arrived from a partner. Then the
+        // progressive next step (no dead-end "View hosted file" primary).
+        const actions = document.getElementById('hero-actions');
+        const params = new URLSearchParams(window.location.search);
+        const ret = validateReturnUrl(params.get('return'));
+        const items = [];
+        if (ret && state !== 'checking') {
+          items.push(`<a class="ds-btn ds-btn-primary" href="${escapeHtml(ret.href)}">← Back to ${escapeHtml(ret.host)}</a>`);
+        }
+        if (state === 'healthy' || state === 'aao_hosted' || state === 'self_redirected') {
+          items.push(`<a class="ds-btn ${ret ? 'ds-btn-secondary' : 'ds-btn-primary'}" href="/adagents/builder?domain=${encodeURIComponent(data.domain)}">Authorize an agent</a>`);
+        } else if (state === 'community') {
+          items.push(`<a class="ds-btn ${ret ? 'ds-btn-secondary' : 'ds-btn-primary'}" href="/adagents/builder?domain=${encodeURIComponent(data.domain)}">Publish your own adagents.json</a>`);
+        } else if (state === 'setup_needed') {
+          items.push(`<a class="ds-btn ${ret ? 'ds-btn-secondary' : 'ds-btn-primary'}" href="/adagents/builder?domain=${encodeURIComponent(data.domain)}">Generate adagents.json</a>`);
+        } else if (state === 'invalid') {
+          items.push(`<button class="ds-btn ${ret ? 'ds-btn-secondary' : 'ds-btn-primary'}" type="button" id="hero-show-errors">Show validation errors</button>`);
+          items.push(`<a class="ds-btn ds-btn-secondary" href="/adagents/builder?domain=${encodeURIComponent(data.domain)}">Re-generate</a>`);
+        }
+        // Always-available "View raw file" — ghost button, never primary
+        // (per UX expert: opening your own JSON is not progress).
+        const communityRawUrl = data.files?.adagents_json?.registry_url || '';
+        const rawUrl = state === 'community' && communityRawUrl
+          ? communityRawUrl
+          : state === 'aao_hosted' && hosting.hosted_url
+            ? hosting.hosted_url
+            : (hosting.expected_url || `https://${data.domain}/.well-known/adagents.json`);
+        if (state !== 'checking') {
+          items.push(`<a class="ds-btn ds-btn-ghost" href="${escapeHtml(rawUrl)}" target="_blank" rel="noopener">View raw file</a>`);
+        }
+        // Refresh-now button for logged-in users. Lets a publisher
+        // re-trigger the crawl after editing their /.well-known. Hidden
+        // anonymously (the endpoint requires auth; a button that 401s on
+        // click is a worse UX than not showing it).
+        const user = appUser();
+        if (user && state !== 'checking') {
+          items.push(`<button class="ds-btn ds-btn-ghost" type="button" id="hero-refresh">Refresh now</button>`);
+        }
+        actions.innerHTML = items.join('');
+
+        const showErrBtn = document.getElementById('hero-show-errors');
+        if (showErrBtn) showErrBtn.addEventListener('click', () => showValidationDetail(data.domain));
+        const refreshBtn = document.getElementById('hero-refresh');
+        if (refreshBtn) refreshBtn.addEventListener('click', () => triggerRefresh(data.domain));
+
+        // Hide validation-error panel when leaving invalid state.
+        if (state !== 'invalid') {
+          document.getElementById('hero-errors')?.classList.add('hidden');
+        }
+
+        // Auto-refresh when the server told us a crawl is in flight.
+        // 4 seconds matches the crawl latency for a single domain.
+        if (data.auto_crawl_triggered) {
+          setTimeout(() => load(), 4000);
+        }
+      }
+
+      // ─── Validation-error inline panel ─────────────────────────
+      // Replaces the prior modal. Lazy-fetches /api/adagents/validate
+      // and renders the structured error list inline below the hero
+      // actions, scoped to the invalid hero state. A second click on
+      // the trigger collapses the panel.
+      async function showValidationDetail(domain) {
+        const panel = document.getElementById('hero-errors');
+        if (!panel) return;
+        if (!panel.classList.contains('hidden')) {
+          panel.classList.add('hidden');
+          return;
+        }
+        panel.classList.remove('hidden');
+        panel.innerHTML = '<em>Loading validation errors&hellip;</em>';
+        try {
+          const res = await fetch('/api/adagents/validate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ domain }),
+          });
+          const body = await res.json();
+          const errors = (body && body.data && body.data.validation && body.data.validation.errors) || [];
+          if (!errors.length) {
+            panel.innerHTML = `<em>No structured errors returned. The fetch may have failed at the network layer — check that <code>${escapeHtml('https://' + domain + '/.well-known/adagents.json')}</code> is reachable.</em>`;
+            return;
+          }
+          const list = errors
+            .slice(0, 8)
+            .map((e) => `<li><strong>${escapeHtml(e.field || 'document')}:</strong> ${escapeHtml(e.message || String(e))}</li>`)
+            .join('');
+          panel.innerHTML = `<h3>Validation errors</h3><ul>${list}</ul>`;
+        } catch {
+          panel.innerHTML = '<em>Could not load validation detail.</em>';
+        }
+      }
+
+      // ─── Refresh-now (logged-in only) ───────────────────────────
+      // Re-runs the crawl for this domain. The endpoint is auth-gated,
+      // so this UI is only shown to logged-in users (renderHero gates).
+      // 202 → reload after 4s. 429 → countdown + button restore. 401/3
+      // → bounce to login. Errors → show in subline.
+      let refreshInFlight = false;
+      async function triggerRefresh(domain) {
+        if (refreshInFlight) return;
+        refreshInFlight = true;
+        const btn = document.getElementById('hero-refresh');
+        const restoreButton = (text = 'Refresh now') => {
+          const cur = document.getElementById('hero-refresh');
+          if (cur) { cur.disabled = false; cur.textContent = text; }
+        };
+        const setDetail = (text) => {
+          const cur = document.getElementById('hero-detail');
+          if (cur) cur.textContent = text;
+        };
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = 'Refreshing…';
+          btn.setAttribute('aria-busy', 'true');
+        }
+        try {
+          const res = await fetch('/api/registry/crawl-request', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ domain }),
+          });
+          if (res.status === 202) {
+            setDetail('Refreshing — fetching the publisher’s files now.');
+            setTimeout(async () => {
+              try { await load(); }
+              catch (loadErr) {
+                console.warn('Refresh load() failed', loadErr);
+                setDetail('Refresh sent — reload the page to see updates.');
+                restoreButton();
+              }
+              finally { refreshInFlight = false; }
+            }, 4000);
+            return;
+          }
+          if (res.status === 429) {
+            const body = await res.json().catch(() => ({}));
+            const wait = Number.isFinite(body.retry_after) ? Math.max(1, Math.ceil(body.retry_after)) : 60;
+            setDetail(`Just refreshed — try again in ${wait}s.`);
+            if (btn) btn.textContent = `Wait ${wait}s`;
+            setTimeout(() => {
+              restoreButton();
+              refreshInFlight = false;
+            }, wait * 1000);
+            return;
+          }
+          if (res.status === 401 || res.status === 403) {
+            window.location.href = `/login?return_to=${encodeURIComponent(window.location.pathname)}`;
+            return;
+          }
+          const body = await res.json().catch(() => ({}));
+          setDetail(body.error ? `Refresh failed: ${body.error}` : 'Refresh failed — please try again.');
+          restoreButton();
+          refreshInFlight = false;
+        } catch (err) {
+          console.warn('Refresh fetch failed', err);
+          setDetail('Refresh failed — check your connection.');
+          restoreButton();
+          refreshInFlight = false;
+        }
+      }
+
+      // ─── Member line in hero ────────────────────────────────────
+      function renderMemberLine(data) {
+        const el = document.getElementById('member-line');
+        if (data.member && data.member.display_name) {
+          el.innerHTML = `Registered as <a href="/m/${escapeHtml(data.member.slug)}">${escapeHtml(data.member.display_name)}</a>`;
+        } else {
+          el.textContent = 'Not yet registered as an AgenticAdvertising.org member.';
+        }
+      }
+
+      // ─── Contextual relationship line ───────────────────────────
+      // Shown only when the visitor is logged in AND the publisher
+      // isn't a member. Promotes the publisher working group as a
+      // contextual onward path. Dismissible (sessionStorage).
+      function renderContextualLine(data) {
+        const el = document.getElementById('contextual-line');
+        if (!el) return;
+        const user = appUser();
+        const publisherIsMember = !!(data.member && data.member.slug);
+        const dismissed = (() => { try { return sessionStorage.getItem('publisher-wg-dismissed') === '1'; } catch { return false; } })();
+        if (!user || publisherIsMember || dismissed) { el.classList.add('hidden'); return; }
+        el.innerHTML = `
+          <p>AgenticAdvertising.org is run by working groups of publishers. <a href="/community/working-groups">Join the publisher working group</a> to shape the spec.</p>
+          <button class="publisher-context__close" type="button" aria-label="Dismiss">×</button>
+        `;
+        el.classList.remove('hidden');
+        const close = el.querySelector('.publisher-context__close');
+        if (close) close.addEventListener('click', () => {
+          try { sessionStorage.setItem('publisher-wg-dismissed', '1'); } catch { /* noop */ }
+          el.classList.add('hidden');
+        });
+      }
+
+      function formatCount(n, singular, plural = `${singular}s`) {
+        return `${Number(n || 0).toLocaleString('en-US')} ${Number(n || 0) === 1 ? singular : plural}`;
+      }
+
+      function brandInitial(name, domain) {
+        const source = String(name || domain || '?').trim();
+        return escapeHtml(source.charAt(0).toUpperCase() || '?');
+      }
+
+      function displayStatValue(value) {
+        if (typeof value === 'number') return value.toLocaleString('en-US');
+        const text = String(value || 'unknown').replace(/[_-]+/g, ' ');
+        return text.charAt(0).toUpperCase() + text.slice(1);
+      }
+
+      function displayStatus(value) {
+        const map = {
+          community: 'Community catalog',
+          valid: 'Origin verified',
+          invalid: 'Needs repair',
+          unknown: 'Not found',
+          checking: 'Checking',
+          present: 'On file',
+          community_catalog: 'Community catalog',
+        };
+        return map[value] || displayStatValue(value);
+      }
+
+      function renderPublisherProfile(data, props, agents, formats) {
+        const brandEl = document.getElementById('publisher-brand');
+        const statsEl = document.getElementById('publisher-stats');
+        const brand = data.brand || {};
+        const name = brand.name || data.member?.display_name || data.domain;
+        const description = brand.description
+          || 'Publisher inventory and agent authorization profile from the registry.';
+        const logoInitial = brandInitial(name, data.domain);
+        const fallbackLogo = `<span class="publisher-profile__logo-fallback" aria-hidden="true">${logoInitial}</span>`;
+        const logo = brand.logo_url
+          ? `<img class="publisher-profile__logo" src="${escapeHtml(brand.logo_url)}" alt="" data-logo-initial="${escapeHtml(logoInitial)}">`
+          : fallbackLogo;
+        const industries = Array.isArray(brand.industries) ? brand.industries : [];
+        const colors = Array.isArray(brand.colors) ? brand.colors : [];
+
+        brandEl.innerHTML = `
+          <div class="publisher-profile__brand-head">
+            ${logo}
+            <div>
+              <h2 id="publisher-profile-heading">${escapeHtml(name)}</h2>
+              <p>${escapeHtml(description)}</p>
+            </div>
+          </div>
+          ${industries.length ? `<div class="publisher-profile__chips">${
+            industries.map((industry) => `<span class="publisher-chip">${escapeHtml(industry)}</span>`).join('')
+          }</div>` : ''}
+          ${colors.length ? `<div class="publisher-swatches" aria-label="Brand colors">${
+            colors.map((color) => `<span class="publisher-swatch" title="${escapeHtml(color)}" aria-label="${escapeHtml(color)}" style="background:${escapeHtml(color)}"></span>`).join('')
+          }</div>` : ''}
+        `;
+        const logoImg = brandEl.querySelector('.publisher-profile__logo');
+        if (logoImg) {
+          logoImg.addEventListener('error', () => {
+            const fallback = document.createElement('span');
+            fallback.className = 'publisher-profile__logo-fallback';
+            fallback.setAttribute('aria-hidden', 'true');
+            fallback.textContent = logoImg.getAttribute('data-logo-initial') || brandInitial(name, data.domain);
+            logoImg.replaceWith(fallback);
+          }, { once: true });
+        }
+
+        const adagentsStatus = data.files?.adagents_json?.status || 'unknown';
+        const brandStatus = data.files?.brand_json?.status || 'unknown';
+        const hasAuthorizedAgents = agents.length > 0;
+        statsEl.innerHTML = [
+          { value: props.length, label: 'Properties' },
+          { value: formats.length, label: 'Creative formats' },
+          { value: hasAuthorizedAgents ? agents.length : 'No agents yet', label: 'Authorized agents', tone: hasAuthorizedAgents ? '' : 'warning' },
+          { value: displayStatus(adagentsStatus), label: 'adagents.json' },
+          { value: displayStatus(brandStatus), label: 'brand.json' },
+          { value: displayStatus(data.discovery_method || 'unknown'), label: 'Catalog source' },
+        ].map((stat) => `
+          <div class="publisher-stat" ${stat.tone ? `data-tone="${escapeHtml(stat.tone)}"` : ''}>
+            <span class="publisher-stat__value">${escapeHtml(displayStatValue(stat.value))}</span>
+            <span class="publisher-stat__label">${escapeHtml(stat.label)}</span>
+          </div>
+        `).join('');
+      }
+
+      function compactKind(kind) {
+        return String(kind || 'unknown').replace(/_/g, ' ');
+      }
+
+      function compactIdentifier(id) {
+        return String(id || '').replace(/[_-]+/g, ' ');
+      }
+
+      function firstNumber(...values) {
+        for (const value of values) {
+          if (typeof value === 'number' && Number.isFinite(value)) return value;
+        }
+        return null;
+      }
+
+      function durationLabel(params) {
+        const exact = firstNumber(params.duration_ms_exact, params.duration_ms);
+        if (exact != null) return `${Math.round(exact / 1000)}s`;
+        const range = Array.isArray(params.duration_ms_range) ? params.duration_ms_range : null;
+        if (range) {
+          const lo = typeof range[0] === 'number' ? Math.round(range[0] / 1000) : null;
+          const hi = typeof range[1] === 'number' ? Math.round(range[1] / 1000) : null;
+          if (lo != null && hi != null) return `${lo}-${hi}s`;
+          if (lo != null) return `${lo}s+`;
+          if (hi != null) return `up to ${hi}s`;
+        }
+        return null;
+      }
+
+      function dimensionLabel(params) {
+        const width = firstNumber(params.width, params.min_width);
+        const height = firstNumber(params.height, params.min_height);
+        if (width && height) return `${width}×${height}`;
+        if (typeof params.aspect_ratio === 'string') return params.aspect_ratio;
+        if (Array.isArray(params.sizes) && params.sizes.length) {
+          const first = params.sizes[0] || {};
+          if (typeof first.width === 'number' && typeof first.height === 'number') {
+            return `${first.width}×${first.height}${params.sizes.length > 1 ? ` +${params.sizes.length - 1}` : ''}`;
+          }
+          if (typeof first.w === 'number' && typeof first.h === 'number') {
+            return `${first.w}×${first.h}${params.sizes.length > 1 ? ` +${params.sizes.length - 1}` : ''}`;
+          }
+        }
+        return null;
+      }
+
+      function formatChips(format) {
+        const params = format.params || {};
+        const chips = [];
+        const dimensions = dimensionLabel(params);
+        const duration = durationLabel(params);
+        if (dimensions) chips.push(dimensions);
+        if (duration) chips.push(duration);
+        if (typeof params.orientation === 'string') chips.push(params.orientation);
+        if (typeof params.aspect_ratio === 'string' && params.aspect_ratio !== dimensions) chips.push(params.aspect_ratio);
+        if (Array.isArray(params.cta_values) && params.cta_values.length) chips.push(`${params.cta_values.length} CTAs`);
+        if (format.experimental) chips.push('experimental');
+        if (format.seller_preference) chips.push(format.seller_preference);
+        return chips.slice(0, 5);
+      }
+
+      function previewShape(format) {
+        const kind = format.format_kind || '';
+        const params = format.params || {};
+        const ratio = String(params.aspect_ratio || '');
+        if (kind.includes('audio')) return 'audio';
+        if (kind.includes('native') || kind.includes('sponsored') || kind.includes('agent')) return 'feed';
+        if (kind.includes('video') || kind.includes('vast')) {
+          return ratio === '9:16' || params.orientation === 'vertical' ? 'vertical' : 'wide';
+        }
+        const width = firstNumber(params.width, params.min_width);
+        const height = firstNumber(params.height, params.min_height);
+        if (width && height && width / height > 2.4) return 'banner';
+        if (width && height && height / width > 1.2) return 'vertical';
+        return 'square';
+      }
+
+      function renderFormatPreview(format) {
+        const shape = previewShape(format);
+        const label = dimensionLabel(format.params || {}) || compactKind(format.format_kind);
+        if (shape === 'audio') {
+          return `<div class="format-preview__frame" data-shape="audio" aria-label="${escapeHtml(label)}">
+            <div class="format-preview__bars" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+          </div>`;
+        }
+        if (shape === 'feed') {
+          return `<div class="format-preview__frame" data-shape="feed" aria-label="${escapeHtml(label)}">
+            <div class="format-preview__feed" aria-hidden="true"><div></div><div></div><div></div></div>
+          </div>`;
+        }
+        if ((format.format_kind || '').includes('video') || (format.format_kind || '').includes('vast')) {
+          return `<div class="format-preview__frame" data-shape="${escapeHtml(shape)}" aria-label="${escapeHtml(label)}">
+            <span class="format-preview__play" aria-hidden="true"></span>
+          </div>`;
+        }
+        return `<div class="format-preview__frame" data-shape="${escapeHtml(shape)}" aria-label="${escapeHtml(label)}">
+          <span class="format-preview__label">${escapeHtml(label)}</span>
+        </div>`;
+      }
+
+      function renderFormats(formats, props, agents) {
+        const intro = document.getElementById('publisher-formats-intro');
+        const grid = document.getElementById('publisher-formats-grid');
+        const section = document.querySelector('.publisher-formats');
+        if (!intro || !grid || !section) return;
+        intro.textContent = formats.length
+          ? `${formatCount(formats.length, 'canonical format')} declared across ${formatCount(props.length, 'property', 'properties')}.`
+          : 'No canonical formats are declared yet.';
+        const note = !agents.length && formats.length
+          ? '<p class="publisher-catalog-note"><strong>Catalog preview only.</strong> These formats describe accepted creative shapes, but no sales agent is authorized for this publisher yet.</p>'
+          : '';
+        if (!formats.length) {
+          grid.innerHTML = `${note}<div class="on-file__empty">No creative format declarations recorded yet.</div>`;
+          return;
+        }
+        const propertyNames = new Map(
+          props
+            .filter((p) => p.id)
+            .map((p) => [p.id, p.name || p.id])
+        );
+        grid.innerHTML = note + formats.map((format) => {
+          const chips = formatChips(format);
+          const scopedIds = Array.isArray(format.applies_to_property_ids) ? format.applies_to_property_ids : [];
+          const scopedTags = Array.isArray(format.applies_to_property_tags) ? format.applies_to_property_tags : [];
+          const scope = scopedIds.length
+            ? `Applies to ${scopedIds.map((id) => escapeHtml(propertyNames.get(id) || compactIdentifier(id))).join(', ')}`
+            : scopedTags.length
+              ? `Applies to ${scopedTags.map((tag) => escapeHtml(compactIdentifier(tag))).join(', ')} properties`
+              : 'Applies to all listed properties';
+          return `<article class="format-card">
+            <div class="format-preview">${renderFormatPreview(format)}</div>
+            <div class="format-card__body">
+              <h3 class="format-card__title">${escapeHtml(format.display_name || format.format_option_id || compactKind(format.format_kind))}</h3>
+              <div class="format-card__kind">${format.format_option_id ? `${escapeHtml(compactIdentifier(format.format_option_id))} · ` : ''}${escapeHtml(compactKind(format.format_kind))}</div>
+              ${chips.length ? `<div class="format-card__chips">${
+                chips.map((chip) => `<span class="format-chip">${escapeHtml(chip)}</span>`).join('')
+              }</div>` : ''}
+              <div class="format-card__scope">${scope}</div>
+            </div>
+          </article>`;
+        }).join('');
+      }
+
+      // ─── On-file: adagents.json + brand.json file cards ─────────
+      function renderOnFileFiles(data) {
+        const cards = document.getElementById('on-file-files');
+        const files = data.files || {};
+        const adag = files.adagents_json || { status: 'unknown' };
+        const brand = files.brand_json || { status: 'unknown' };
+        const hosting = data.hosting || {};
+        const adagUrl = hosting.expected_url
+          || (adag.expected_url || `https://${data.domain}/.well-known/adagents.json`);
+        const registryUrl = adag.registry_url || '';
+        const brandUrl = `https://${data.domain}/.well-known/brand.json`;
+
+        const adagCard = (() => {
+          if (adag.status === 'valid') {
+            return `<article class="on-file__file" data-status="valid">
+              <h3>adagents.json</h3>
+              <p>Valid. Buyers fetch <code>${escapeHtml(adagUrl)}</code> to learn which AI sales agents are authorized to sell this publisher’s inventory.</p>
+              <a class="ds-link-subtle" href="${escapeHtml(adagUrl)}" target="_blank" rel="noopener">View raw →</a>
+            </article>`;
+          }
+          if (adag.status === 'community') {
+            return `<article class="on-file__file" data-status="present">
+              <h3>adagents.json ${provenanceBadge('community')}</h3>
+              <p>Approved community catalog. Buyers can use the registry-served document while this publisher does not host <code>${escapeHtml(adagUrl)}</code>.</p>
+              ${registryUrl ? `<a class="ds-link-subtle" href="${escapeHtml(registryUrl)}" target="_blank" rel="noopener">View raw →</a>` : ''}
+            </article>`;
+          }
+          if (adag.status === 'invalid') {
+            return `<article class="on-file__file" data-status="invalid">
+              <h3>adagents.json</h3>
+              <p>A file exists at <code>${escapeHtml(adagUrl)}</code> but failed validation. See the hero above for structured errors.</p>
+            </article>`;
+          }
+          if (adag.status === 'checking') {
+            return `<article class="on-file__file" data-status="checking">
+              <h3>adagents.json</h3>
+              <p class="muted">Checking <code>${escapeHtml(adagUrl)}</code> now…</p>
+            </article>`;
+          }
+          return `<article class="on-file__file" data-status="missing">
+            <h3>adagents.json</h3>
+            <p class="muted">Not on file. Publishers declare which AI sales agents may sell their inventory in this file.</p>
+            <a class="ds-link-subtle" href="/adagents/builder?domain=${encodeURIComponent(data.domain)}">Generate one →</a>
+          </article>`;
+        })();
+
+        const brandCard = (() => {
+          if (brand.status === 'present') {
+            return `<article class="on-file__file" data-status="present">
+              <h3>brand.json</h3>
+              <p>${brand.name ? `Identified as <strong>${escapeHtml(brand.name)}</strong>. ` : ''}Buyers fetch <code>${escapeHtml(brandUrl)}</code> to learn what this brand is and what inventory it publishes.</p>
+              <a class="ds-link-subtle" href="${escapeHtml(brandUrl)}" target="_blank" rel="noopener">View raw →</a>
+            </article>`;
+          }
+          if (brand.status === 'checking') {
+            return `<article class="on-file__file" data-status="checking">
+              <h3>brand.json</h3>
+              <p class="muted">Checking <code>${escapeHtml(brandUrl)}</code> now…</p>
+            </article>`;
+          }
+          return `<article class="on-file__file" data-status="missing">
+            <h3>brand.json</h3>
+            <p class="muted">Not on file. <code>brand.json</code> is the gateway to the property catalog — it declares brand identity and what inventory the publisher owns.</p>
+            <a class="ds-link-subtle" href="/brand/builder?domain=${encodeURIComponent(data.domain)}">Add brand.json →</a>
+          </article>`;
+        })();
+
+        cards.innerHTML = adagCard + brandCard;
+      }
+
+      // ─── On-file: properties + agents lists ─────────────────────
+      function renderProperties(props) {
+        const body = document.getElementById('properties-body');
+        const count = document.getElementById('properties-count');
+        count.textContent = props.length === 1 ? '1' : String(props.length);
+        if (!props.length) {
+          body.innerHTML = '<div class="on-file__empty">No properties recorded yet.</div>';
+          return;
+        }
+        body.innerHTML = `<ul class="on-file__rows">${
+          props.map((p) => {
+            // Render identifiers[0] generically — domain for websites,
+            // ios_bundle for iOS apps, roku_store_id for CTV apps, etc.
+            const ident = (p.identifiers || [])[0];
+            const identStr = ident ? `<code>${escapeHtml(ident.type)}=${escapeHtml(ident.value)}</code>` : '';
+            return `<li><div class="on-file__row">
+              <div class="on-file__row-main">
+                <div class="on-file__row-name">${escapeHtml(p.name || p.id || '(unnamed)')}</div>
+                <div class="on-file__row-meta">
+                  <span>${escapeHtml(p.type || 'unknown')}</span>
+                  ${identStr}
+                </div>
+              </div>
+              <div class="on-file__row-right">${provenanceBadge(p.source)}</div>
+            </div></li>`;
+          }).join('')
+        }</ul>`;
+      }
+
+      // Render the agent URL — clickable link if it's a valid http(s)
+      // URL, plain code otherwise. Agent URLs are publisher-controlled
+      // strings from adagents.json; reject javascript:/data:/file: so a
+      // malicious manifest can't smuggle a script-execution href.
+      function renderAgentUrl(rawUrl) {
+        let url;
+        try { url = new URL(rawUrl); }
+        catch { return `<code>${escapeHtml(rawUrl)}</code>`; }
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+          return `<code>${escapeHtml(rawUrl)}</code>`;
+        }
+        return `<a href="${escapeHtml(url.href)}" target="_blank" rel="noopener noreferrer" class="on-file__agent-link"><code>${escapeHtml(rawUrl)}</code></a>`;
+      }
+
+      function renderAgents(domain, agents) {
+        const body = document.getElementById('agents-body');
+        const count = document.getElementById('agents-count');
+        count.textContent = agents.length === 1 ? '1' : String(agents.length);
+        if (!agents.length) {
+          body.innerHTML = '<div class="on-file__empty">No authorized agents recorded yet. Publishers declare authorized agents in their <code>adagents.json</code> file.</div>';
+          return;
+        }
+        body.innerHTML = `<ul class="on-file__rows">${
+          agents.map((a) => {
+            const auth = (typeof a.properties_authorized === 'number' && typeof a.properties_total === 'number')
+              ? `<span class="auth-fraction"><strong>${a.properties_authorized}</strong> of <strong>${a.properties_total}</strong> properties</span>`
+              : '';
+            const scope = a.authorized_for
+              ? `<span>Authorized for: <strong>${escapeHtml(a.authorized_for)}</strong></span>`
+              : '';
+            const wide = a.publisher_wide ? `<span aria-hidden>·</span><span>publisher-wide</span>` : '';
+            return `<li><div class="on-file__row">
+              <div class="on-file__row-main">
+                <div class="on-file__row-name">${renderAgentUrl(a.url)}</div>
+                <div class="on-file__row-meta">
+                  ${scope}
+                  ${wide}
+                </div>
+              </div>
+              <div class="on-file__row-right">
+                ${provenanceBadge(a.source)}
+                ${auth}
+              </div>
+            </div></li>`;
+          }).join('')
+        }</ul>`;
+      }
+
+      // ─── Top-level load ─────────────────────────────────────────
+      async function load() {
+        const domain = getDomain();
+        if (!domain) {
+          showError('Missing domain', 'No publisher domain in the URL.');
+          return;
+        }
+        document.title = `${domain} | AgenticAdvertising.org`;
+        const crumb = document.getElementById('crumb-domain');
+        if (crumb) crumb.textContent = domain;
+        const alt = document.getElementById('api-alternate');
+        if (alt) alt.setAttribute('href', `/api/registry/publisher?domain=${encodeURIComponent(domain)}`);
+        try {
+          const res = await fetch(`/api/registry/publisher?domain=${encodeURIComponent(domain)}`);
+          if (!res.ok) {
+            showError('Lookup failed', `Server returned ${res.status}.`);
+            return;
+          }
+          const data = await res.json();
+
+          document.getElementById('loading-state').classList.add('hidden');
+          document.getElementById('content').classList.remove('hidden');
+          document.getElementById('domain-title').textContent = data.domain;
+
+          renderMemberLine(data);
+          renderContextualLine(data);
+          renderHero(data);
+          renderOnFileFiles(data);
+
+          const props = Array.isArray(data.properties) ? data.properties : [];
+          const agents = Array.isArray(data.authorized_agents) ? data.authorized_agents : [];
+          const formats = Array.isArray(data.formats) ? data.formats : [];
+          renderPublisherProfile(data, props, agents, formats);
+          renderFormats(formats, props, agents);
+          renderProperties(props);
+          renderAgents(data.domain, agents);
+        } catch (err) {
+          console.error(err);
+          showError('Lookup failed', 'Network error or server is unavailable.');
+        }
+      }
+
+      renderReturnLink();
+      load();
+    </script>
+  </body>
+</html>

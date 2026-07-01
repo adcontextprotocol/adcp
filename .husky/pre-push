@@ -3,15 +3,59 @@
 # Verify version sync before pushing
 npm run verify-version-sync
 
+# Catch missing changesets locally before GitHub Actions. CI still runs the
+# full Changesets CLI gate; this fast preflight avoids invoking that CLI from
+# Git's pre-push environment, where stdin/ref handling is fragile.
+BRANCH_NAME=$(git branch --show-current)
+case "$BRANCH_NAME" in
+  changeset-release/*|forward-merge/*|auto/docs-v*)
+    echo "⏭  Release machinery branch — skipping changeset check"
+    ;;
+  *)
+    CHANGESET_BASE="${ADCP_CHANGESET_BASE:-origin/main}"
+    if git rev-parse --verify --quiet "$CHANGESET_BASE" >/dev/null; then
+      echo "🔍 Checking changeset policy since $CHANGESET_BASE..."
+      node scripts/check-changeset-protocol-scope.cjs "$CHANGESET_BASE" || exit 1
+
+      if node scripts/check-changeset-protocol-scope.cjs "$CHANGESET_BASE" --is-status-exempt-maintenance; then
+        echo "⏭  Changeset policy maintenance — skipping local changeset presence check"
+      elif ! node scripts/check-changeset-protocol-scope.cjs "$CHANGESET_BASE" --has-protocol-scoped-changes; then
+        echo "⏭  No protocol release-surface changes — skipping local changeset presence check"
+      elif ! git diff --name-only --diff-filter=ACMR "$CHANGESET_BASE"...HEAD -- .changeset |
+        grep -Eq '^\.changeset/[^/]+\.md$'; then
+        echo "Missing protocol changeset. Add one with 'npx changeset' before pushing."
+        echo "Run the full CI-equivalent check with:"
+        echo "  npx --yes @changesets/cli@^2.31.0 status --since=$CHANGESET_BASE"
+        exit 1
+      else
+        echo "✅ Protocol changeset present"
+      fi
+    else
+      echo "⏭  $CHANGESET_BASE not found — skipping local changeset check"
+    fi
+    ;;
+esac
+
 # Only run Mintlify broken-links when docs actually changed on this branch.
 # CI (.github/workflows/broken-links.yml) is the authoritative check; this is a
 # fast local pre-flight. A11y is skipped locally — add to CI if we want it gated.
 UPSTREAM=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo "")
 RANGE="${UPSTREAM:-origin/main}...HEAD"
 
-DOC_PATHS='^(docs/|dist/docs/|mintlify-docs/|mint\.json|README\.md|server/src/addie/rules/|server/src/addie/.*\.ts$|scripts/check-owned-links\.js|\.markdown-link-check\.json)'
+DOC_PATHS='^(docs/|dist/docs/|mintlify-docs/|docs\.json|mint\.json|README\.md|server/src/addie/rules/|scripts/check-owned-links\.js|\.markdown-link-check\.json|\.github/workflows/broken-links\.yml)'
 
 CHANGED=$(git diff --name-only "$RANGE" 2>/dev/null || echo "")
+
+STORYBOARD_PATHS='^(server/src/training-agent/|server/src/services/hosted-compliance-version\.ts|server/tests/manual/run-storyboards\.ts|static/compliance/source/|dist/compliance/|scripts/build-compliance\.cjs|scripts/overlay-compliance-cache\.sh|scripts/run-storyboards-matrix\.sh|scripts/run-storyboards-3-0-compat\.sh|package\.json|package-lock\.json)'
+
+if echo "$CHANGED" | grep -Eq "$STORYBOARD_PATHS"; then
+  echo "🔍 Training-agent or compliance source changed — running storyboard matrix (~3min)..."
+  bash scripts/run-storyboards-matrix.sh || exit 1
+  echo "🔍 Verifying 3.0 storyboard compatibility..."
+  bash scripts/run-storyboards-3-0-compat.sh || exit 1
+else
+  echo "⏭  No training-agent or compliance changes — skipping storyboard matrix"
+fi
 
 if echo "$CHANGED" | grep -Eq "$DOC_PATHS"; then
   echo "🔍 Docs changed — checking schema link convention..."
@@ -32,14 +76,28 @@ if echo "$CHANGED" | grep -Eq "$DOC_PATHS"; then
     fi
   done
 
+  # Restore moved dirs on ANY exit path (success, broken-links failure,
+  # SIGINT, kernel kill). Without the trap, an interrupted script left the
+  # temp dir orphaned in /tmp and broke the next run — or worse, the next
+  # `mv` re-landed it inside `dist/docs/` instead of as `dist/docs`. See
+  # `.gitignore` for the .prepush-*/ ignore that scoops up stragglers.
+  restore_moved() {
+    for pair in $MOVED; do
+      src=$(echo "$pair" | cut -d: -f2)
+      dst=$(echo "$pair" | cut -d: -f1)
+      # Only restore if source exists AND destination doesn't (don't overwrite).
+      if [ -d "$src" ] && [ ! -e "$dst" ]; then
+        mv "$src" "$dst"
+      fi
+    done
+  }
+  trap restore_moved EXIT INT TERM
+
   npx --no-install mintlify broken-links
   EXIT=$?
 
-  for pair in $MOVED; do
-    src=$(echo "$pair" | cut -d: -f2)
-    dst=$(echo "$pair" | cut -d: -f1)
-    mv "$src" "$dst"
-  done
+  restore_moved
+  trap - EXIT INT TERM
 
   if [ $EXIT -ne 0 ]; then
     exit 1

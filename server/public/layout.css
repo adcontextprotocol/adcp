@@ -186,7 +186,7 @@ body {
 }
 
 .bg-warm {
-  background: linear-gradient(180deg, var(--color-surface) 0%, #faf8f0 100%);
+  background: var(--color-bg-subtle);
 }
 
 /* =============================================================================

@@ -15,6 +15,25 @@ This track teaches you to build and operate the supply side of AdCP. You'll lear
 
 Completing this track (plus A1–A3) earns the **AdCP practitioner** credential.
 
+## Is this track for you?
+
+AdCP gives publishers a single endpoint that AI buyer agents can use to discover your inventory, negotiate and create media buys, and pull delivery data — without a sales call, a custom API integration, or giving up your direct deal terms. One implementation; always-on access for buyers that operate autonomously.
+
+| Your role | Where to start | Modules that matter most |
+|-----------|---------------|--------------------------|
+| Ad operations / yield manager | B1, then B3 | B1 (catalog design), B3 (delivery reporting, signals) |
+| Sales / revenue | B1, then B2 | B1 (what buyers see), B2 (creative specs) |
+| Engineer / developer | B1 through B4 | Full track — ends with building and validating a real sales agent |
+| Executive / strategist | A1–A3 only | Track A covers protocol and ecosystem context; skip B unless you'll implement |
+
+Engineers and ad tech builders should do B1–B4. Anyone else can pick the modules above and skip the rest.
+
+### What you'll build toward
+
+- B4 is a build project: you create a working sales agent that handles real buyer queries — product discovery, media buy creation, creative specs, and delivery reporting
+- The agent is validated against AdCP storyboards, not just reviewed manually
+- Completing B1–B4 (plus A1–A3) earns the **AdCP practitioner** credential
+
 ---
 
 ## B1: Designing your product catalog
@@ -44,6 +63,9 @@ How a hosted sales agent works: product discovery, catalog integration, capabili
   <Card title="Capability discovery" icon="magnifying-glass" href="/docs/protocol/get_adcp_capabilities">
     How agents advertise their capabilities so other agents can discover what they offer.
   </Card>
+  <Card title="Seller setup" icon="store" href="/docs/brand-protocol/seller-setup">
+    How to publish seller identity, property relationships, signing keys, and publisher authorization files.
+  </Card>
   <Card title="Version negotiation" icon="code-branch" href="/docs/reference/versioning#version-negotiation">
     Advertise your supported `adcp.major_versions`; reject mismatched requests with `VERSION_UNSUPPORTED`.
   </Card>
@@ -61,6 +83,7 @@ How a hosted sales agent works: product discovery, catalog integration, capabili
 - **Product catalog design** — products, formats, pricing models, targeting options, availability, and shows/episodes for content-centric inventory
 - **Catalog integration** — `sync_catalogs` for product data, 13 catalog types, feed field mappings
 - **Capability advertising** — `get_adcp_capabilities` so buyers know what you support
+- **Seller identity setup** — publish `brand.json` for the organization operating the sales agent and `adagents.json` for publisher authorization; buyers use both to verify who operates the sales path and whether the publisher authorizes it
 - **Object-presence capability principle** — capabilities are declared by the presence of an object, not by booleans. If you support a feature, include the object; if you don't, omit it. Buyers check for the object, not for `"feature": true`.
 - **Version advertising** — declare `adcp.major_versions` so multi-version buyers can migrate on their own schedule; validate incoming `adcp_major_version` and return `VERSION_UNSUPPORTED` when out of range
 - **Lifecycle commitments** — `create_media_buy` MAY return `pending_creatives` or `pending_start`; MUST transition `pending_start` → `active` when the flight date arrives, and notify orchestrators via webhook. Rejection is only valid from the pending states
@@ -160,14 +183,16 @@ How to expose delivery data, measurement signals, and optimization levers throug
 - **Delivery reporting** — accurate, timely delivery data via `get_media_buy_delivery`
 - **Signals framework** — `get_signals` and `activate_signal` replace fragmented measurement vendor integrations
 - **Audience handling** — `sync_audiences` for accepting buyer audience data
-- **Execution integration** — publishers participate in TMP by sending Context Match requests (page content + available packages) and Identity Match requests (user token + package IDs) to the TMP Router, then joining the results locally. This enables cross-publisher frequency capping and impression-time activation without exposing user identity and page context to the buyer simultaneously
+- **Execution integration** — publishers participate in TMP by sending Context Match requests (page content + available packages) and Identity Match requests (user token + package IDs) to the TMP Router, then joining the results locally. This enables cross-publisher frequency capping and impression-time activation without exposing user identity and page context to the buyer simultaneously. TMP is an [experimental surface](/docs/reference/experimental-status) in AdCP 3.0 (feature id `trusted_match.core`); execution and privacy details may change between 3.x releases with at least 6 weeks' notice.
 - **Account management** — `sync_accounts`, `list_accounts` for managing buyer relationships
 - **Seller-side governance** — when a buyer account has `governance_agents` (synced via [`sync_governance`](/docs/accounts/tasks/sync_governance)), call `check_governance` with `governance_context` + `purchase_type` + `planned_delivery` before confirming media buys
 - **Planned delivery** — describe what you will actually deliver; the governance agent validates it against the buyer's plan
 
-### Exercise
+### Exercises
 
 Given sample Context Match and Identity Match responses, determine which packages the publisher activates and what targeting key-values to set.
+
+**Broadcast delivery reporting:** Given a broadcast product with `measurement_windows: [{window_id: "c3"}, {window_id: "c7"}]`, a buyer calls `get_media_buy_delivery` two days after the flight date. Describe what data is available in each window, why the `c7` window is still incomplete, and how the seller should represent delivery to avoid the buyer misreading partial data as underdelivery.
 
 <Card title="Start B3 with Addie" icon="play" href="https://agenticadvertising.org/chat">
   "I'd like to start certification module B3."
@@ -188,6 +213,7 @@ Create a working sales agent that responds to real buyer queries. Point your AI 
 - Creative format support for at least 2 formats
 - Handles `get_products`, `create_media_buy`, `list_creative_formats`, `get_media_buy_delivery`
 - Account setup via `sync_accounts`
+- Well-known discovery files: `brand.json` for the sales-agent operator's identity, endpoint declarations, and signing-key discovery; `adagents.json` for publisher properties and agent authorization
 - Proper error responses for invalid requests — including `VERSION_UNSUPPORTED`, `GOVERNANCE_DENIED`, `TERMS_REJECTED`, `IDEMPOTENCY_CONFLICT`, and `IDEMPOTENCY_EXPIRED` where applicable
 - Idempotency enforcement on every mutating request: reject missing or malformed `idempotency_key` with `INVALID_REQUEST` before touching business logic; cache only on success; scope per authenticated agent
 - Lifecycle transitions: seller moves media buys through `pending_creatives` → `pending_start` → `active` and notifies via webhook on each transition
@@ -197,7 +223,7 @@ Create a working sales agent that responds to real buyer queries. Point your AI 
 Run the `media_buy_seller` storyboard against your running agent:
 
 ```bash
-npx @adcp/client@latest storyboard run my-agent media_buy_seller
+npx @adcp/sdk@latest storyboard run my-agent media_buy_seller
 ```
 
 The storyboard exercises the complete buyer workflow — discovery, account sync, media buy, creatives, delivery — and validates every response. See [Validate Your Agent](/docs/building/validate-your-agent) for setup and debugging.
@@ -208,7 +234,7 @@ Declare `media_buy` in `supported_protocols` and choose the specialism that matc
 
 - `sales-guaranteed` — guaranteed with human IO approval
 - `sales-non-guaranteed` — auction-based
-- `sales-proposal-mode` — proposal-negotiated
+- `sales-proposal-mode` — **deprecated in 3.1**; use `sales-guaranteed` + `media_buy.supports_proposals: true` instead
 - `sales-catalog-driven` — catalog-driven commerce with conversion tracking
 - `sales-broadcast-tv` — broadcast linear TV
 - `sales-social` — social platform with self-service flows

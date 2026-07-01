@@ -12,7 +12,7 @@
  * both, e.g. "(Spec + Live)". An empty modes array renders "Not Verified".
  */
 
-import { ADCP_PROTOCOLS, VERIFICATION_MODES, isVerificationMode } from './adcp-taxonomy.js';
+import { VERIFICATION_MODES, isVerificationMode } from './adcp-taxonomy.js';
 
 /**
  * Shape constraint for AdCP versions in badge labels. Same regex the JWT
@@ -36,8 +36,17 @@ const FONT_SIZE = 11;
 const PADDING = 8;
 const BADGE_HEIGHT = 20;
 
-// Badge roles = AdCP protocols. Sourced from enums/adcp-protocol.json via adcp-taxonomy.
-export const VALID_BADGE_ROLES = ADCP_PROTOCOLS;
+// Badge roles = AdCP protocols that have shipped specialism storyboards
+// and a corresponding DB CHECK constraint (migration 453). Newer protocols
+// like `measurement` join this list once their storyboards ship.
+export const VALID_BADGE_ROLES = [
+  'media-buy',
+  'creative',
+  'signals',
+  'governance',
+  'brand',
+  'sponsored-intelligence',
+] as const;
 
 const ROLE_LABELS: Record<string, string> = {
   'media-buy': 'Media Buy Agent',

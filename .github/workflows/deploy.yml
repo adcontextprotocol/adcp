@@ -18,7 +18,7 @@ jobs:
     name: Preflight
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.0
       - name: No duplicate migration numbers
         run: |
           dupes=$(ls server/src/db/migrations/*.sql \
@@ -44,20 +44,78 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.0
 
       - name: Setup Fly CLI
         uses: superfly/flyctl-actions/setup-flyctl@1.6
 
+      # flyctl deploy can fail for two very different reasons:
+      #   1. The new image is broken (real failure — must block).
+      #   2. Fly's machines API was unreachable during health-check polling
+      #      (transient — the app may already be healthy on the new image).
+      # v2760 on 2026-05-19 was case 2: app served 200 throughout while
+      # flyctl timed out polling the third machine because the machines API
+      # was rate-limited from the earlier crashloop storm. The post-deploy
+      # gates never ran. To distinguish, on failure we hit /health directly
+      # — the same signal end users see — and only hard-fail if the app
+      # itself is unreachable. The "verify all machines on same image" gate
+      # below depends on the machines API, so it gates itself on
+      # `deploy_outcome != fallback-success`. The tenant smoke runs over
+      # plain HTTP and stays unconditional.
       - name: Deploy
-        run: flyctl deploy --remote-only --wait-timeout 300
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-
-      - name: Verify all app machines are on same image
+        id: deploy
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
+          set +e
+          flyctl deploy --remote-only --wait-timeout 300
+          deploy_exit=$?
+          set -e
+          if [ $deploy_exit -eq 0 ]; then
+            echo "deploy_outcome=success" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "::warning::flyctl deploy exited ${deploy_exit} — probing /health to distinguish API timeout from real failure"
+          # Probe the Fly hostname directly, not the Cloudflare-fronted
+          # public hostname. Cloudflare can cache /health responses and
+          # a stale 200 would mask a real outage. The Fly hostname bypasses
+          # CDN and reflects the actual app state on the machine.
+          # Retry a few times in case the rolling restart hasn't settled —
+          # a healthy app reaches /health=200 within a couple of seconds
+          # once at least one machine is reachable.
+          health_code="000"
+          for attempt in 1 2 3 4; do
+            sleep 5
+            health_code=$(curl -sS -o /tmp/health.json -w '%{http_code}' --max-time 15 https://adcp-docs.fly.dev/health || echo "000")
+            echo "attempt ${attempt}: adcp-docs.fly.dev/health -> ${health_code}"
+            if [ "${health_code}" = "200" ]; then break; fi
+          done
+          if [ -s /tmp/health.json ]; then
+            echo "Body (first 500 chars):"
+            head -c 500 /tmp/health.json
+            echo
+          fi
+          if [ "${health_code}" = "200" ]; then
+            echo "::warning::App is reachable on the Fly hostname (/health=200). Treating as fallback-success — the verification gate ran into a Fly API issue, not an app issue."
+            echo "deploy_outcome=fallback-success" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "::error::flyctl deploy failed AND adcp-docs.fly.dev/health=${health_code} — real failure."
+          echo "deploy_outcome=hard-fail" >> "$GITHUB_OUTPUT"
+          exit 1
+
+      - name: Verify all app machines are on same image
+        # Skipped on the fallback path because this gate also goes through
+        # the Fly machines API — if that's what timed out above, it'll time
+        # out again here.
+        if: steps.deploy.outputs.deploy_outcome != 'fallback-success'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          # pipefail so a silent flyctl failure (empty $images, count=0)
+          # surfaces as a real failure instead of being misread as
+          # "no running web/worker machines."
+          set -eo pipefail
           echo "Checking that all app machines are running the same image..."
 
           # Get image digests for started machines (web + worker process groups)
@@ -80,6 +138,85 @@ jobs:
 
           echo "✅ All web/worker machines running the same image"
 
+      # Smoke each training-agent tenant URL after the rolling restart.
+      # Catches production-only failures that don't surface in CI: SDK
+      # init guards that throw under NODE_ENV=production (PR #3869),
+      # in-memory task registry refusal (PR #3854), missing migrations,
+      # etc. Both failure modes return 404 ("Tenant not registered") or
+      # 5xx — both happen *before* auth, so an unauthenticated request
+      # is sufficient: a healthy MCP endpoint returns 200 (when the
+      # public token is set) or 401 (when it isn't). 4xx other than 401
+      # and any 5xx are deploy-fatal.
+      - name: Smoke training-agent tenants
+        env:
+          PUBLIC_TEST_AGENT_TOKEN: ${{ secrets.PUBLIC_TEST_AGENT_TOKEN }}
+        run: |
+          set -uo pipefail
+          base="https://test-agent.adcontextprotocol.org"
+          paths=(
+            "/sales/mcp"
+            "/signals/mcp"
+            "/governance/mcp"
+            "/creative/mcp"
+            "/creative-builder/mcp"
+            "/brand/mcp"
+            "/mcp"
+          )
+          # Build curl args once. Omit the Authorization header when the secret
+          # is unset so a strict-bearer-format server can't 400 us into a false
+          # deploy failure — we accept 401/403 as healthy anyway. (SDK v5 used
+          # 401 for invalid bearer; v6 uses 403. Both mean the registry resolved
+          # and the MCP route is alive, which is what this smoke is checking.)
+          auth_args=()
+          if [ -n "${PUBLIC_TEST_AGENT_TOKEN:-}" ]; then
+            auth_args=(-H "Authorization: Bearer ${PUBLIC_TEST_AGENT_TOKEN}")
+          fi
+          # Single attempt against one URL. Echoes the HTTP code; body in /tmp/smoke-body.
+          probe() {
+            local url="$1"
+            curl -sS -o /tmp/smoke-body -w '%{http_code}' \
+              -X POST \
+              "${auth_args[@]}" \
+              -H "Content-Type: application/json" \
+              -H "Accept: application/json, text/event-stream" \
+              --max-time 15 \
+              -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
+              "${url}" || echo "000"
+          }
+          # Retry once on transient failure. Both bug modes we care about (#3854,
+          # #3869) are deterministic — a healthy tenant won't blip on retry, but
+          # a Cloudflare/Fly edge wobble during rolling-restart settle might.
+          fail=0
+          for path in "${paths[@]}"; do
+            url="${base}${path}"
+            code=$(probe "${url}")
+            case "${code}" in
+              200|401|403)
+                echo "✅ ${path} → ${code}"
+                continue
+                ;;
+            esac
+            echo "⏳ ${path} → ${code}, retrying in 8s…"
+            sleep 8
+            code=$(probe "${url}")
+            case "${code}" in
+              200|401|403)
+                echo "✅ ${path} → ${code} (after retry)"
+                ;;
+              *)
+                echo "::error::Tenant smoke failed: ${path} returned HTTP ${code} (twice)"
+                echo "Body (first 500 chars):"
+                head -c 500 /tmp/smoke-body || true
+                echo ""
+                fail=1
+                ;;
+            esac
+          done
+          if [ "${fail}" -ne 0 ]; then
+            echo "::error::One or more training-agent tenants failed post-deploy smoke. Recent failures of this kind: PR #3854 (in-memory task registry refused under NODE_ENV=production), PR #3869 (noopJwksValidator threw under NODE_ENV=production, marking tenants disabled). Inspect Fly logs: flyctl logs --app <app>."
+            exit 1
+          fi
+
       - name: Clean up stale console machines
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
@@ -97,3 +234,68 @@ jobs:
           else
             echo "No stale console machines found"
           fi
+
+      - name: Setup Node.js for artifact build
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies for artifact build
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
+        run: npm ci
+
+      - name: Publish latest artifacts to R2
+        env:
+          ADCP_ARTIFACT_R2_BUCKET: ${{ vars.ADCP_ARTIFACT_R2_BUCKET || 'adcp-artifacts' }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID || secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY || secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${R2_ACCOUNT_ID:-}" ] || [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+            echo "::error::Missing R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, or R2_SECRET_ACCESS_KEY secret."
+            exit 1
+          fi
+          npm run backfill:cdn-artifacts -- --bucket "${ADCP_ARTIFACT_R2_BUCKET}" --build-latest --quiet
+
+      # On any failure (hard or fallback-with-degraded-gates), snapshot Fly
+      # state so the next-turn investigator doesn't have to fetch it
+      # manually. v2760 on 2026-05-19 cost an extra debugging cycle because
+      # the log was already past the retention horizon by the time we
+      # opened it. Cheap to run, free if not needed.
+      - name: Capture Fly forensics on failure
+        if: failure()
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          mkdir -p /tmp/forensics
+          flyctl status -a adcp-docs > /tmp/forensics/fly-status.txt 2>&1 || true
+          flyctl machines list -a adcp-docs --json > /tmp/forensics/fly-machines.json 2>&1 || true
+          flyctl releases -a adcp-docs > /tmp/forensics/fly-releases.txt 2>&1 || true
+          # Boot logs have historically contained JWT fragments, idempotency
+          # keys, and SDK init lines that echo env-derived config. The
+          # artifact is repo-readable for 30 days, so redact obvious secret
+          # shapes before persisting. This is best-effort — anything truly
+          # secret-shaped that doesn't match these patterns will still slip
+          # through, but most known leakage shapes are covered.
+          flyctl logs -a adcp-docs --no-tail 2>&1 \
+            | tail -500 \
+            | grep -v -iE 'authorization|bearer |authn=|secret|password|api[-_]?key|sk-[a-z0-9]|wos_[a-z0-9]|fly_[a-z0-9]{20,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ' \
+            > /tmp/forensics/fly-logs-tail.txt || true
+          # Capture the deploy-outcome we computed so the artifact is
+          # self-describing in 30 days.
+          echo "deploy_outcome=${{ steps.deploy.outputs.deploy_outcome }}" > /tmp/forensics/summary.txt
+          echo "github_sha=${{ github.sha }}" >> /tmp/forensics/summary.txt
+          echo "github_run_id=${{ github.run_id }}" >> /tmp/forensics/summary.txt
+          echo "note=fly-logs-tail.txt filtered for common secret shapes (Bearer/sk-/wos_/JWT/etc). Not exhaustive — treat as read-only." >> /tmp/forensics/summary.txt
+          ls -la /tmp/forensics/
+
+      - name: Upload Fly forensics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fly-forensics-${{ github.run_id }}
+          path: /tmp/forensics/
+          retention-days: 30

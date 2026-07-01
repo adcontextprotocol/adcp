@@ -11,6 +11,32 @@ import {
   type Storyboard,
   type StoryboardSummary,
 } from '../../src/services/storyboards.js';
+import {
+  DEFAULT_HOSTED_COMPLIANCE_LINE,
+  DEFAULT_HOSTED_COMPLIANCE_VERSION,
+  HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
+  badgeEligibleVersionsForHostedComplianceTarget,
+  hostedAuthProbeTaskForProfile,
+  hostedStaticApiKeyForProfile,
+  hostedComplianceOptions,
+  hostedComplianceTargetPreference,
+  hostedComplianceTarget,
+  isDefaultHostedComplianceTarget,
+  agentAdvertisesHostedComplianceTarget,
+  agentAdvertisesBadgeEligibleHostedComplianceTarget,
+  selectCanonicalHostedComplianceTargetForSupportedVersions,
+  selectHostedComplianceTargetForSupportedVersions,
+  withHostedAuthTestKit,
+  withHostedComplianceOptions,
+} from '../../src/services/hosted-compliance-version.js';
+import {
+  isComplianceVersionSupported,
+  loadComplianceIndex,
+  resolveStoryboardsForCapabilities,
+} from '@adcp/sdk/testing';
+import {
+  badgeEligibleVersionsForTargetSelection,
+} from '../../src/addie/services/compliance-testing.js';
 
 /**
  * These tests cover the wrapper in services/storyboards.ts. Catalog content
@@ -119,17 +145,15 @@ describe('getTestKitForStoryboard', () => {
 
   it('resolves to a kit when a storyboard declares prerequisites.test_kit', () => {
     const summaries = listStoryboards();
-    // Scan at most 20 to keep the test fast — we're testing the resolver, not the catalog.
-    for (const summary of summaries.slice(0, 20)) {
+    for (const summary of summaries) {
       const sb = getStoryboard(summary.id);
       if (!sb?.prerequisites?.test_kit) continue;
       const kit = getTestKitForStoryboard(sb.id);
-      if (kit) {
-        expect(kit.id).toBeTruthy();
-        expect(kit.name).toBeTruthy();
-        return; // one positive case is enough to cover the resolver path
-      }
+      expect(kit).toBeDefined();
+      expect(kit!.id).toBeTruthy();
+      return; // one positive case is enough to cover the resolver path
     }
+    throw new Error('Expected at least one storyboard to declare prerequisites.test_kit');
   });
 });
 
@@ -139,6 +163,244 @@ describe('wrapper contract', () => {
     const summary: StoryboardSummary = first;
     expect(typeof summary.phase_count).toBe('number');
     expect(typeof summary.step_count).toBe('number');
+  });
+
+  it('uses the hosted badge-eligible compliance bundle by default', () => {
+    const target = hostedComplianceTarget();
+    const index = loadComplianceIndex(hostedComplianceOptions(target));
+    expect(index.adcp_version).toBe(DEFAULT_HOSTED_COMPLIANCE_VERSION);
+    expect(DEFAULT_HOSTED_COMPLIANCE_VERSION).toBe('3.0.18');
+    expect(DEFAULT_HOSTED_COMPLIANCE_LINE).toBe('3.0');
+    expect(HOSTED_FULL_COMPLIANCE_TIMEOUT_MS).toBe(600_000);
+    expect(target.requested).toBe(DEFAULT_HOSTED_COMPLIANCE_LINE);
+    expect(target.version).toBe(DEFAULT_HOSTED_COMPLIANCE_VERSION);
+    expect(target.version).toMatch(/^3\.0\.\d+$/);
+    expect(isDefaultHostedComplianceTarget(target)).toBe(true);
+  });
+
+  it('resolves compliance target aliases against checked-in caches', () => {
+    const stable = hostedComplianceTarget('3.0');
+    expect(stable.requested).toBe('3.0');
+    expect(stable.version).toBe('3.0.18');
+    expect(stable.version).toMatch(/^3\.0\.\d+$/);
+
+    const beta = hostedComplianceTarget('3.1-beta');
+    expect(beta.requested).toBe('3.1-beta');
+    expect(beta.version).toMatch(/^3\.1\.0-beta\.\d+$/);
+
+    const rc = hostedComplianceTarget('3.1-rc');
+    expect(rc.requested).toBe('3.1-rc');
+    expect(rc.version).toMatch(/^3\.1\.0-rc\.\d+$/);
+
+    const wireRc = hostedComplianceTarget('3.1-rc.4');
+    expect(wireRc.requested).toBe('3.1-rc.4');
+    expect(wireRc.version).toBe('3.1.0-rc.4');
+  });
+
+  it('keeps explicit beta targets diagnostic-only', () => {
+    expect(isDefaultHostedComplianceTarget(hostedComplianceTarget('3.0'))).toBe(true);
+    expect(isDefaultHostedComplianceTarget(hostedComplianceTarget('3.1-beta'))).toBe(false);
+    expect(badgeEligibleVersionsForHostedComplianceTarget(hostedComplianceTarget('3.0'))).toEqual(['3.0']);
+    expect(badgeEligibleVersionsForHostedComplianceTarget(hostedComplianceTarget('3.1-beta'))).toEqual([]);
+  });
+
+  it('recognizes badge-eligible line targets advertised by the agent', () => {
+    const stableLine = hostedComplianceTarget('3.0');
+    const exactHistoricalCache = hostedComplianceTarget('3.0.5');
+
+    expect(badgeEligibleVersionsForHostedComplianceTarget(stableLine)).toEqual(['3.0']);
+    expect(agentAdvertisesBadgeEligibleHostedComplianceTarget(['3.0'], stableLine)).toBe(true);
+    expect(agentAdvertisesBadgeEligibleHostedComplianceTarget(['3.0.5'], stableLine)).toBe(true);
+    expect(agentAdvertisesBadgeEligibleHostedComplianceTarget(['3.1'], stableLine)).toBe(false);
+    expect(agentAdvertisesBadgeEligibleHostedComplianceTarget(['3.0-beta.1'], stableLine)).toBe(false);
+    expect(agentAdvertisesBadgeEligibleHostedComplianceTarget(undefined, stableLine)).toBe(false);
+
+    expect(isDefaultHostedComplianceTarget(exactHistoricalCache)).toBe(false);
+    expect(badgeEligibleVersionsForHostedComplianceTarget(exactHistoricalCache)).toEqual([]);
+    expect(agentAdvertisesBadgeEligibleHostedComplianceTarget(['3.0.5'], exactHistoricalCache)).toBe(false);
+  });
+
+  it('selects the highest hosted target advertised by the agent', () => {
+    expect(hostedComplianceTargetPreference().map(t => t.requested)).toEqual([
+      '3.1',
+      '3.1-rc',
+      '3.1-beta',
+      '3.0',
+    ]);
+
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.0']).requested).toBe('3.0');
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1-beta.7']).requested).toBe('3.1-beta');
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1-rc.4']).requested).toBe('3.1-rc.4');
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.1-beta.5']).requested).toBe('3.1-beta.5');
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.1-beta.5']).version).toBe('3.1.0-beta.5');
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1-beta.5']).requested).toBe('3.1-beta.5');
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1-rc.3']).requested).toBe('3.1-rc.3');
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.1']).requested).toBe('3.1');
+    expect(selectHostedComplianceTargetForSupportedVersions(undefined).requested).toBe('3.0');
+
+    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.0', '3.1-rc.4']).requested).toBe('3.0');
+    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1-rc.4']).requested).toBe('3.1-rc.4');
+  });
+
+  it('uses canonical hosted targets without silently upgrading 3.0-only agents', () => {
+    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.0']).requested).toBe('3.0');
+    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.0', '3.1-rc.6']).requested).toBe('3.0');
+    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1']).requested).toBe('3.1');
+    const rc6Target = selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1-rc.6']);
+    expect(rc6Target.version).toBe('3.1.0-rc.6');
+  });
+
+  it('requires agents to advertise non-3.0 hosted targets before selecting them', () => {
+    const stableTarget = hostedComplianceTarget('3.1');
+    const rcTarget = hostedComplianceTarget('3.1-rc');
+    const latestRcWireVersion = rcTarget.version.replace(/^([0-9]+\.[0-9]+)\.0-/, '$1-');
+    expect(agentAdvertisesHostedComplianceTarget(['3.0'], stableTarget)).toBe(false);
+    expect(agentAdvertisesHostedComplianceTarget(['3.1'], stableTarget)).toBe(true);
+    expect(agentAdvertisesHostedComplianceTarget(['3.1-rc.6'], stableTarget)).toBe(false);
+    expect(agentAdvertisesHostedComplianceTarget(['3.0'], rcTarget)).toBe(false);
+    expect(agentAdvertisesHostedComplianceTarget(undefined, rcTarget)).toBe(false);
+    expect(agentAdvertisesHostedComplianceTarget(['3.0', latestRcWireVersion], rcTarget)).toBe(true);
+  });
+
+  it('does not treat an unconfirmed fallback target as badge eligible', () => {
+    const stable = hostedComplianceTarget('3.0');
+
+    expect(badgeEligibleVersionsForTargetSelection({ target: stable, confirmed: false })).toEqual([]);
+    expect(badgeEligibleVersionsForTargetSelection(
+      { target: stable, confirmed: false },
+      { adcp_supported_versions: ['3.0'] },
+    )).toEqual(['3.0']);
+    expect(badgeEligibleVersionsForTargetSelection({ target: stable, confirmed: true })).toEqual(['3.0']);
+  });
+
+  it('rejects unsupported compliance targets before path resolution', () => {
+    expect(() => hostedComplianceTarget('../3.0.12')).toThrow(/Unsupported AdCP compliance target/);
+    expect(() => hostedComplianceTarget('3.1-latest')).toThrow(/Unsupported AdCP compliance target/);
+  });
+
+  it('canonicalizes alias versions passed through SDK option helpers', () => {
+    const target = hostedComplianceTarget('3.0');
+    const options = withHostedComplianceOptions({ version: '3.0' }, target);
+    expect(options.version).toBe(target.version);
+    expect(options.complianceDir).toContain(target.version);
+  });
+
+  it('threads bearer auth into the hosted runtime test kit', () => {
+    const options = withHostedAuthTestKit({
+      auth: { type: 'bearer', token: 'secret-token' },
+    });
+
+    expect(options.test_kit?.auth?.api_key).toBe('secret-token');
+    expect(options.test_kit?.auth?.probe_task).toBe('list_creatives');
+  });
+
+  it('threads hosted static fixture auth into the runtime test kit when no operator auth is supplied', () => {
+    const apiKey = hostedStaticApiKeyForProfile({
+      tools: ['get_adcp_capabilities', 'get_products'],
+      supported_protocols: ['media_buy'],
+    });
+    const options = withHostedAuthTestKit({}, 'list_creatives', apiKey);
+
+    expect(options.test_kit?.auth?.api_key).toBe('demo-acme-outdoor-v1');
+    expect(options.test_kit?.auth?.probe_task).toBe('list_creatives');
+  });
+
+  it('does not override operator bearer auth with hosted static fixture auth', () => {
+    const options = withHostedAuthTestKit({
+      auth: { type: 'bearer', token: 'secret-token' },
+    }, 'list_creatives', 'demo-acme-outdoor-v1');
+
+    expect(options.auth).toEqual({ type: 'bearer', token: 'secret-token' });
+    expect(options.test_kit?.auth?.api_key).toBe('secret-token');
+  });
+
+  it('does not override operator basic auth with hosted static fixture auth', () => {
+    const options = withHostedAuthTestKit({
+      auth: { type: 'basic', username: 'agent-user', password: 'agent-pass' },
+    }, 'list_creatives', 'demo-acme-outdoor-v1');
+
+    expect((options.test_kit?.auth as any)?.basic).toEqual({
+      username: 'agent-user',
+      password: 'agent-pass',
+    });
+    expect(options.test_kit?.auth?.api_key).toBeUndefined();
+  });
+
+  it('selects hosted static fixture auth from the discovered protocol profile', () => {
+    expect(hostedStaticApiKeyForProfile({
+      supported_protocols: ['media_buy'],
+    })).toBe('demo-acme-outdoor-v1');
+    expect(hostedStaticApiKeyForProfile({
+      supported_protocols: ['signals'],
+    })).toBe('demo-nova-motors-v1');
+    expect(hostedStaticApiKeyForProfile({
+      supported_protocols: ['unknown'],
+    })).toBeUndefined();
+  });
+
+  it('threads Basic auth into the hosted runtime test kit', () => {
+    const options = withHostedAuthTestKit({
+      auth: { type: 'basic', username: 'agent-user', password: 'agent-pass' },
+    });
+
+    expect((options.test_kit?.auth as any)?.basic).toEqual({
+      username: 'agent-user',
+      password: 'agent-pass',
+    });
+    expect(options.test_kit?.auth?.probe_task).toBe('list_creatives');
+  });
+
+  it('selects a hosted auth probe task from the discovered agent profile', () => {
+    expect(hostedAuthProbeTaskForProfile({
+      tools: ['get_adcp_capabilities', 'get_media_buy_delivery'],
+      supported_protocols: ['media_buy'],
+    })).toBe('get_media_buy_delivery');
+
+    expect(hostedAuthProbeTaskForProfile({
+      tools: ['get_adcp_capabilities', 'get_signals'],
+      supported_protocols: ['signals'],
+    })).toBe('get_signals');
+
+    expect(hostedAuthProbeTaskForProfile({
+      tools: ['get_adcp_capabilities', 'list_content_standards'],
+      supported_protocols: ['governance'],
+    })).toBe('list_content_standards');
+
+    expect(hostedAuthProbeTaskForProfile({
+      tools: ['get_adcp_capabilities', 'unknown_read'],
+      supported_protocols: ['unknown'],
+    })).toBe('list_creatives');
+  });
+
+  it('does not let explicit beta targets run for sellers advertising only the future stable line', () => {
+    const defaultTarget = hostedComplianceTarget('3.0');
+    const betaTarget = hostedComplianceTarget('3.1-beta');
+
+    expect(isComplianceVersionSupported(defaultTarget.version, ['3.0'])).toBe(true);
+
+    const rawTarget = hostedComplianceTarget('3.0');
+    const rawResolve = () => resolveStoryboardsForCapabilities({
+      supported_versions: ['3.0'],
+    }, hostedComplianceOptions(rawTarget));
+    expect(rawResolve).not.toThrow();
+
+    const target = hostedComplianceTarget('3.0');
+    const caps = {
+      supported_versions: ['3.0'],
+    };
+    const resolved = resolveStoryboardsForCapabilities({
+      supported_versions: caps.supported_versions,
+    }, hostedComplianceOptions(target));
+    expect(resolved.storyboards.length).toBeGreaterThan(0);
+
+    const betaResolveWithStableOnly = () => resolveStoryboardsForCapabilities({
+      supported_versions: ['3.1'],
+    }, hostedComplianceOptions(betaTarget));
+    if (/-/.test(betaTarget.version)) {
+      expect(betaResolveWithStableOnly).toThrow(/not supported by this seller/);
+    } else {
+      expect(betaResolveWithStableOnly).not.toThrow();
+    }
   });
 });
 
@@ -180,11 +442,13 @@ describe('compareAdcpVersions', () => {
 
 describe('getStoryboardsForVersion', () => {
   it('returns every storyboard when target is the highest supported version', () => {
-    // All current storyboards have unset `introduced_in` (always-applied),
-    // so a 3.0 target returns every storyboard in the catalog.
     const all = getAllStoryboards();
-    const for30 = getStoryboardsForVersion('3.0');
-    expect(for30.length).toBe(all.length);
+    const highestIntroduced = all.reduce((highest, sb) => {
+      if (!sb.introduced_in) return highest;
+      return compareAdcpVersions(sb.introduced_in, highest) > 0 ? sb.introduced_in : highest;
+    }, '3.0');
+    const forHighest = getStoryboardsForVersion(highestIntroduced);
+    expect(forHighest.length).toBe(all.length);
   });
 
   it('omits storyboards with introduced_in above the target', () => {
@@ -210,5 +474,11 @@ describe('getStoryboardsForVersion', () => {
 
   it('getStoryboardIdsForVersion returns the same length as getStoryboardsForVersion', () => {
     expect(getStoryboardIdsForVersion('3.0').length).toBe(getStoryboardsForVersion('3.0').length);
+  });
+
+  it('does not reuse the 3.0 cache for 3.1 stable-line aliases', () => {
+    const storyboards = getStoryboardsForVersion('3.1');
+    expect(storyboards.length).toBeGreaterThan(0);
+    expect(storyboards.every(storyboard => storyboard.adcp_version?.startsWith('3.1.'))).toBe(true);
   });
 });

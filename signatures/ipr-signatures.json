@@ -279,6 +279,166 @@
       "repo": "adcontextprotocol/adcp",
       "pullRequestNo": 3484,
       "comment_id": 4338909329
+    },
+    {
+      "name": "ohalushchak-exadel",
+      "id": 37289463,
+      "created_at": "2026-05-04T10:32:07Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 3687,
+      "comment_id": 4370317135,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/3687#issuecomment-4370317135"
+    },
+    {
+      "name": "EvgenyAndroid",
+      "id": 502704,
+      "created_at": "2026-05-08T23:05:10Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 4273,
+      "comment_id": 4410488071,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/4273#issuecomment-4410488071"
+    },
+    {
+      "name": "AndyBevan",
+      "id": 7716304,
+      "created_at": "2026-05-12T16:07:42Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 4469,
+      "comment_id": 4432475113,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/4469#issuecomment-4432475113"
+    },
+    {
+      "name": "MichielDean",
+      "id": 11799003,
+      "created_at": "2026-05-13T23:33:34Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp-sdk-java",
+      "pullRequestNo": 3,
+      "comment_id": 4446011071,
+      "comment_url": "https://github.com/adcontextprotocol/adcp-sdk-java/pull/3#issuecomment-4446011071"
+    },
+    {
+      "name": "fizyxbt",
+      "id": 17788586,
+      "created_at": "2026-05-14T11:24:48Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp-client",
+      "pullRequestNo": 1748,
+      "comment_id": 4450235782,
+      "comment_url": "https://github.com/adcontextprotocol/adcp-client/pull/1748#issuecomment-4450235782"
+    },
+    {
+      "name": "brandonling27",
+      "id": 100482933,
+      "created_at": "2026-05-14T19:51:36Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 4551,
+      "comment_id": 4454210066,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/4551#issuecomment-4454210066"
+    },
+    {
+      "name": "gate3",
+      "id": 3597437,
+      "created_at": "2026-05-18T21:34:47Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 4758,
+      "comment_id": 4482446913,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/4758#issuecomment-4482446913"
+    },
+    {
+      "name": "sangilish",
+      "id": 56685007,
+      "created_at": "2026-05-20T22:46:54Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp-client-python",
+      "pullRequestNo": 763,
+      "comment_id": 4503257782,
+      "comment_url": "https://github.com/adcontextprotocol/adcp-client-python/pull/763#issuecomment-4503257782"
+    },
+    {
+      "name": "kapoost",
+      "id": 778613,
+      "created_at": "2026-05-22T12:47:57Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 4918,
+      "comment_id": 4518770414,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/4918#issuecomment-4518770414"
+    },
+    {
+      "name": "botbikamordehai2-sketch",
+      "id": 279158112,
+      "created_at": "2026-05-28T08:55:38Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp-client-python",
+      "pullRequestNo": 894,
+      "comment_id": 4562326912,
+      "comment_url": "https://github.com/adcontextprotocol/adcp-client-python/pull/894#issuecomment-4562326912"
+    },
+    {
+      "name": "gagliathebuilder",
+      "id": 177705720,
+      "created_at": "2026-06-08T02:55:18Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 5407,
+      "comment_id": 4645063753,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/5407#issuecomment-4645063753"
+    },
+    {
+      "name": "jstar0",
+      "id": 54024410,
+      "created_at": "2026-06-10T14:03:50Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 5452,
+      "comment_id": 4671078441,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/5452#issuecomment-4671078441"
+    },
+    {
+      "name": "andybevan-scope3",
+      "id": 290165579,
+      "created_at": "2026-06-13T02:59:35Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 5506,
+      "comment_id": 4697238746,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/5506#issuecomment-4697238746"
+    },
+    {
+      "name": "vasujain00",
+      "id": 10598041,
+      "created_at": "2026-06-13T09:44:42Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 5507,
+      "comment_id": 4698162802,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/5507#issuecomment-4698162802"
+    },
+    {
+      "name": "garvitkaushik-123",
+      "id": 77023388,
+      "created_at": "2026-06-17T16:25:56Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 5576,
+      "comment_id": 4732823205,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/5576#issuecomment-4732823205"
+    },
+    {
+      "name": "danyliukmykola",
+      "id": 126093455,
+      "created_at": "2026-06-24T08:38:27Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 5675,
+      "comment_id": 4787411756,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/5675#issuecomment-4787411756"
     }
   ]
 }

@@ -73,7 +73,7 @@ If your company works in the "not yet" areas, you can still publish the **audien
     Formal specification for the signals protocol.
   </Card>
   <Card title="Data providers" icon="database" href="/docs/signals/data-providers">
-    How data providers publish signal catalogs via adagents.json.
+    How data providers publish signal definitions via adagents.json.
   </Card>
   <Card title="Signals ecosystem" icon="diagram-project" href="/docs/signals/ecosystem">
     How different company types — retailers, publishers, CDPs, identity companies — participate in signals.
@@ -92,7 +92,7 @@ Lab exercises run against the public test agent. Use the shared token — no sig
 
 ```bash
 export ADCP_AUTH_TOKEN="1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ"
-export AGENT_URL="https://test-agent.adcontextprotocol.org/mcp"
+export AGENT_URL="https://test-agent.adcontextprotocol.org/signals/mcp"
 ```
 
 See the [Quickstart](/docs/quickstart) for a walkthrough of your first call.
@@ -124,19 +124,19 @@ Activate and deactivate signals. Consider privacy: when does a signal need to be
 
 ### Exercise 4: Ecosystem scenarios
 
-Addie will present a scenario from a specific perspective — you might be building a signal catalog for a retail media network, choosing signals for an agency's client campaign, or designing a CDP integration. Apply your protocol knowledge to the scenario.
+Addie will present a scenario from a specific perspective — you might be building published signal definitions for a retail media network, choosing signals for an agency's client campaign, or designing a CDP integration. Apply your protocol knowledge to the scenario.
 
-### Exercise 5: Build a signal catalog (provider perspective)
+### Exercise 5: Build published signal definitions (provider perspective)
 
-The previous exercises focus on the buyer side — discovering and activating signals. This exercise shifts to the provider side. Construct an `adagents.json` signals entry for a fictional data provider of your choice (geo, retail, identity, etc.). Your catalog should include:
+The previous exercises focus on the buyer side — discovering and activating signals. This exercise shifts to the provider side. Construct an `adagents.json` signals entry for a fictional data provider of your choice (geo, retail, identity, etc.). Your definitions should include:
 
 - At least one signal of each value type (`binary`, `categorical`, `numeric`)
 - Descriptive IDs, tags, and metadata following the [data provider guide](/docs/signals/data-providers)
-- An `authorized_agents` entry authorizing a signals agent to resell your catalog
+- An `authorized_agents` entry authorizing a signals agent to resell your signals
 - `restricted_attributes` declarations on signals derived from sensitive personal data (e.g., `health_data`, `racial_ethnic_origin`)
 - `policy_categories` declarations on signals that carry regulatory implications (e.g., `children_directed`, `fair_housing`)
 
-Verify your catalog by checking that the signals appear correctly in `get_signals` results when queried by tag or description, and that governance attributes are preserved in the signal metadata.
+Verify your definitions by checking that the signals appear correctly in `get_signals` results when queried by tag or description, and that governance attributes are preserved in the signal metadata.
 
 ## Assessment
 
@@ -146,7 +146,7 @@ Verify your catalog by checking that the signals appear correctly in `get_signal
 | Privacy compliance | 20% | Handles consent, deactivation, and data governance correctly |
 | Measurement skill | 20% | Configures conversion tracking and attribution |
 | Ecosystem understanding | 20% | Explains how different provider types fit into signals |
-| Ecosystem scenarios | 15% | Constructs valid signal catalogs, understands both buyer and provider perspectives, reasons about activation destinations (agent vs platform) |
+| Ecosystem scenarios | 15% | Constructs valid published signal definitions, understands both buyer and provider perspectives, reasons about activation destinations (agent vs platform) |
 
 Passing threshold: 70%.
 

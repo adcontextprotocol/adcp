@@ -52,10 +52,17 @@ interface ReportResult {
 /**
  * Extract declared properties from a brand.json structure.
  * Walks brands[].properties[] and collects identifier, type, and relationship.
+ *
+ * `brandJson` may be null/undefined or a non-object — brand rows can exist
+ * without a manifest (registry sync, manifest_orphaned trigger, partial
+ * onboarding). Treat those as "no declared properties" rather than throwing.
  */
-function extractDeclaredProperties(brandJson: Record<string, unknown>): DeclaredProperty[] {
+export function extractDeclaredProperties(
+  brandJson: Record<string, unknown> | null | undefined,
+): DeclaredProperty[] {
   const properties: DeclaredProperty[] = [];
 
+  if (!brandJson || typeof brandJson !== 'object') return properties;
   const brands = Array.isArray(brandJson.brands) ? brandJson.brands : [];
   for (const brand of brands) {
     if (!brand || typeof brand !== 'object') continue;
@@ -89,7 +96,7 @@ async function generateReportForOrg(
   brand: HostedBrand,
   orgAgentUrls: string[]
 ): Promise<{ report: networkHealthDb.NetworkConsistencyReport; alertsFired: number }> {
-  const brandJson = brand.brand_json as Record<string, unknown>;
+  const brandJson = brand.brand_json as Record<string, unknown> | null | undefined;
   const declared = extractDeclaredProperties(brandJson);
 
   // Build a set of domains the org's agents are authorized for (from crawl)
@@ -251,12 +258,25 @@ export async function generateNetworkConsistencyReports(
   const limit = options?.limit ?? 50;
   const result: ReportResult = { generated: 0, skipped: 0, failed: 0, alerts_fired: 0 };
 
-  // Find orgs with hosted brands
+  // Find orgs with hosted brands. Join organizations so we don't try to
+  // generate a report for a brand whose org has been deleted (the
+  // network_consistency_reports.org_id FK would reject the insert and the
+  // worker would noisily log to #admin-errors every cycle). The structural
+  // fix is the FK added in migration 474 (ON DELETE SET NULL + orphan
+  // trigger), so once that migration is universally applied the JOIN
+  // becomes a no-op. Kept as defense-in-depth.
+  //
+  // The LIMIT applies post-join, so during the deploy window between this
+  // code shipping and migration 474 running, pre-existing dangles can crowd
+  // out valid orgs at the tail of the sort order. Acceptable: the missed
+  // orgs surface again on the next cycle once the migration nulls dangles.
   const orgsWithBrands = await query<{ workos_organization_id: string }>(
-    `SELECT DISTINCT workos_organization_id
-     FROM brands
-     WHERE workos_organization_id IS NOT NULL
-     ORDER BY workos_organization_id
+    `SELECT DISTINCT b.workos_organization_id
+     FROM brands b
+     JOIN organizations o ON o.workos_organization_id = b.workos_organization_id
+     WHERE b.workos_organization_id IS NOT NULL
+       AND b.brand_manifest IS NOT NULL
+     ORDER BY b.workos_organization_id
      LIMIT $1`,
     [limit]
   );
@@ -265,8 +285,13 @@ export async function generateNetworkConsistencyReports(
     const orgId = row.workos_organization_id;
 
     try {
-      // Get org's brands and agent URLs
-      const brands = await brandDb.listHostedBrandsByOrg(orgId);
+      // Get org's brands and agent URLs. Skip brands without a manifest —
+      // they have no declared properties to report against, and passing
+      // a null `brand_json` to `generateReportForOrg` would log a noisy
+      // empty report. The outer SQL only guarantees the org has *some*
+      // brand with a manifest, not that brands[0] does.
+      const allBrands = await brandDb.listHostedBrandsByOrg(orgId);
+      const brands = allBrands.filter((b) => b.brand_json != null);
       if (brands.length === 0) {
         result.skipped++;
         continue;
@@ -277,7 +302,6 @@ export async function generateNetworkConsistencyReports(
         .filter(a => a.visibility === 'public' && a.url)
         .map(a => a.url);
 
-      // Generate report for the primary brand (first one)
       const primaryBrand = brands[0];
       const { alertsFired } = await generateReportForOrg(orgId, primaryBrand, agentUrls);
 

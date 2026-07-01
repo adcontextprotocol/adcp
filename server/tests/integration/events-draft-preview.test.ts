@@ -25,8 +25,9 @@ vi.mock('../../src/middleware/auth.js', () => {
     req.user = { id: authState.userId, email: authState.email, firstName: 'Evt' };
   };
   const passthrough = (_req: any, _res: any, next: any) => next();
+  const requireAuthMock = (req: any, _res: any, next: any) => { setTestUser(req); next(); };
   return {
-    requireAuth: (req: any, _res: any, next: any) => { setTestUser(req); next(); },
+    requireAuth: requireAuthMock,
     requireAdmin: passthrough,
     optionalAuth: (req: any, _res: any, next: any) => { setTestUser(req); next(); },
     requireCompanyAccess: passthrough,
@@ -35,8 +36,12 @@ vi.mock('../../src/middleware/auth.js', () => {
     requireRole: () => passthrough,
     createRequireWorkingGroupLeader: () => passthrough,
     createRequireWorkingGroupMember: () => passthrough,
+    refuseCrossTenantAdminApiKey: () => false,
+    refuseAnyApiKeyOnGlobalAdmin: () => false,
+    requireGlobalAdmin: [requireAuthMock, passthrough, passthrough],
     invalidateSessionCache: vi.fn(),
     invalidateBanCache: vi.fn(),
+    invalidateSessionsForUsers: vi.fn(),
     isDevModeEnabled: () => false,
     getDevUser: () => null,
     getAvailableDevUsers: () => ({}),
@@ -84,6 +89,7 @@ describe('GET /api/events/:slug — draft preview for admins (#2536)', () => {
   let pool: Pool;
   const USER_ID = 'user_evt_admin';
   const DRAFT_SLUG = 'evt-draft-preview-test';
+  const OLD_DRAFT_SLUG = 'evt-draft-preview-old-test';
 
   beforeAll(async () => {
     pool = initializeDatabase({
@@ -104,6 +110,7 @@ describe('GET /api/events/:slug — draft preview for admins (#2536)', () => {
   }, 30000);
 
   afterAll(async () => {
+    await pool.query(`DELETE FROM event_slug_redirects WHERE old_slug = $1`, [OLD_DRAFT_SLUG]);
     await pool.query(`DELETE FROM events WHERE slug = $1`, [DRAFT_SLUG]);
     await pool.query(`DELETE FROM users WHERE workos_user_id = $1`, [USER_ID]);
     await server?.stop();
@@ -113,11 +120,18 @@ describe('GET /api/events/:slug — draft preview for admins (#2536)', () => {
   beforeEach(async () => {
     adminState.isAdmin = false;
     authState.authed = true;
+    await pool.query(`DELETE FROM event_slug_redirects WHERE old_slug = $1`, [OLD_DRAFT_SLUG]);
     await pool.query(`DELETE FROM events WHERE slug = $1`, [DRAFT_SLUG]);
-    await pool.query(
+    const eventResult = await pool.query<{ id: string }>(
       `INSERT INTO events (slug, title, start_time, status, visibility, event_format, event_type)
-       VALUES ($1, 'Draft Event', NOW() + INTERVAL '7 days', 'draft', 'public', 'in_person', 'summit')`,
+       VALUES ($1, 'Draft Event', NOW() + INTERVAL '7 days', 'draft', 'public', 'in_person', 'summit')
+       RETURNING id`,
       [DRAFT_SLUG]
+    );
+    await pool.query(
+      `INSERT INTO event_slug_redirects (old_slug, event_id)
+       VALUES ($1, $2)`,
+      [OLD_DRAFT_SLUG, eventResult.rows[0].id]
     );
   });
 
@@ -140,5 +154,33 @@ describe('GET /api/events/:slug — draft preview for admins (#2536)', () => {
     expect(response.body.event.slug).toBe(DRAFT_SLUG);
     expect(response.body.event.status).toBe('draft');
     expect(response.body.draft_preview).toBe(true);
+  });
+
+  it('does not reveal draft events through old slug redirects to anonymous viewers', async () => {
+    authState.authed = false;
+
+    const response = await request(app).get(`/api/events/${OLD_DRAFT_SLUG}`).expect(404);
+    expect(response.headers.location).toBeUndefined();
+  });
+
+  it('lets admins preview a draft through an old slug without redirecting', async () => {
+    authState.authed = true;
+    adminState.isAdmin = true;
+
+    const response = await request(app).get(`/api/events/${OLD_DRAFT_SLUG}`).expect(200);
+    expect(response.headers.location).toBeUndefined();
+    expect(response.body.event.slug).toBe(DRAFT_SLUG);
+    expect(response.body.draft_preview).toBe(true);
+  });
+
+  it('redirects old slugs only after public visibility checks pass', async () => {
+    authState.authed = false;
+    await pool.query(
+      `UPDATE events SET status = 'published', visibility = 'public' WHERE slug = $1`,
+      [DRAFT_SLUG]
+    );
+
+    const response = await request(app).get(`/api/events/${OLD_DRAFT_SLUG}`).expect(301);
+    expect(response.headers.location).toBe(`/api/events/${DRAFT_SLUG}`);
   });
 });

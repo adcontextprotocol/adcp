@@ -12,16 +12,17 @@ const logger = createLogger('addie-claude-client');
 import type { AddieTool } from './types.js';
 import { ADDIE_FALLBACK_PROMPT, ADDIE_TOOL_REFERENCE, buildMessageTurnsWithMetadata } from './prompts.js';
 import { AddieDatabase } from '../db/addie-db.js';
-import { AddieModelConfig, getModelBetas } from '../config/models.js';
+import { AddieModelConfig } from '../config/models.js';
 import { getCurrentConfigVersionId } from './config-version.js';
 import { loadRules, loadResponseStyle, invalidateRulesCache } from './rules/index.js';
 import { isMultimodalContent, extractMultimodalContent, isAllowedImageType, type FileReadResult } from './mcp/url-tools.js';
 import { withRetry, isRetryableError, RetriesExhaustedError, type RetryConfig } from '../utils/anthropic-retry.js';
 import { formatTokenCount, getConversationTokenLimit, buildDroppedMessagesSummary, type MessageTurn } from '../utils/token-limiter.js';
-import { notifyToolError } from './error-notifier.js';
+import { notifySystemError, notifyToolError } from './error-notifier.js';
 import { ToolError } from './tool-error.js';
-import { checkCostCap, recordCost, formatCapExceededMessage } from './claude-cost-tracker.js';
-import { applyResponsePipeline } from './response-postprocess.js';
+import { checkCostCap, recordCost, formatCapExceededMessage, type UserTier } from './claude-cost-tracker.js';
+import { EMPTY_RESPONSE_FALLBACK, applyResponsePipeline, stripBannedRituals, hasPersonaCollapse } from './response-postprocess.js';
+import type { AddieInputAttachment } from './chat-attachments.js';
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
 
@@ -157,11 +158,76 @@ function buildMultimodalContentBlocks(
   return { content: contentBlocks, summary };
 }
 
+function buildInputAttachmentBlocks(
+  attachments?: AddieInputAttachment[]
+): Anthropic.ContentBlockParam[] {
+  if (!attachments || attachments.length === 0) return [];
+
+  const blocks: Anthropic.ContentBlockParam[] = [];
+  for (const attachment of attachments) {
+    if (attachment.type === 'image') {
+      if (!isAllowedImageType(attachment.media_type)) {
+        logger.warn({ mediaType: attachment.media_type }, 'Addie: Invalid image media type in user attachment');
+        continue;
+      }
+      blocks.push({
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: attachment.media_type,
+          data: attachment.data,
+        },
+      });
+      blocks.push({
+        type: 'text',
+        text: `[Uploaded image: ${attachment.filename || 'image'}]`,
+      });
+    } else if (attachment.type === 'document') {
+      blocks.push({
+        type: 'document',
+        source: {
+          type: 'base64',
+          media_type: 'application/pdf',
+          data: attachment.data,
+        },
+      });
+      blocks.push({
+        type: 'text',
+        text: `[Uploaded PDF: ${attachment.filename || 'document'}]`,
+      });
+    }
+  }
+  return blocks;
+}
+
+function appendInputAttachments(
+  messages: Anthropic.MessageParam[],
+  attachments?: AddieInputAttachment[]
+): Anthropic.MessageParam[] {
+  const attachmentBlocks = buildInputAttachmentBlocks(attachments);
+  if (attachmentBlocks.length === 0) return messages;
+
+  const nextMessages = messages.map((message) => ({ ...message }));
+  let currentTurn = nextMessages[nextMessages.length - 1];
+  if (!currentTurn || currentTurn.role !== 'user') {
+    currentTurn = { role: 'user', content: [] };
+    nextMessages.push(currentTurn);
+  }
+
+  const currentContent = Array.isArray(currentTurn.content)
+    ? currentTurn.content
+    : currentTurn.content.trim()
+      ? [{ type: 'text' as const, text: currentTurn.content }]
+      : [];
+  currentTurn.content = [...currentContent, ...attachmentBlocks];
+  return nextMessages;
+}
+
 /**
  * Action-claiming patterns mapped to the tools that should back them up.
  * Hoisted to module scope to avoid re-allocation on every response.
  */
-const HALLUCINATION_PATTERNS: ReadonlyArray<{ pattern: RegExp; expectedTools: string[] }> = [
+export const HALLUCINATION_PATTERNS: ReadonlyArray<{ pattern: RegExp; expectedTools: string[] }> = [
   { pattern: /invoice\s+(?:resent|sent)\s+successfully/i, expectedTools: ['resend_invoice', 'send_invoice', 'send_payment_request'] },
   { pattern: /(?:successfully\s+)?resent\s+(?:the\s+)?invoice/i, expectedTools: ['resend_invoice', 'send_invoice', 'send_payment_request'] },
   { pattern: /(?:billing\s+)?email\s+(?:updated|changed)\s+successfully/i, expectedTools: ['update_billing_email'] },
@@ -171,6 +237,22 @@ const HALLUCINATION_PATTERNS: ReadonlyArray<{ pattern: RegExp; expectedTools: st
   { pattern: /(?:I'?ve\s+|I\s+)?(?:created|generated|sent)\s+(?:a\s+)?payment\s+link/i, expectedTools: ['create_payment_link'] },
   { pattern: /(?:I'?ve\s+|I\s+)?(?:sent|delivered)\s+(?:a\s+)?(?:DM|direct message|notification)/i, expectedTools: ['send_member_dm', 'resolve_escalation'] },
   { pattern: /(?:I'?ve\s+|I\s+)?added\s+\S+(?:\s+\S+){0,5}\s+to\s+the\s+(?:meeting|call|series)/i, expectedTools: ['add_meeting_attendee'] },
+  // Fake-escalation patterns. `escalate_to_admin` is in the always-available
+  // tool set, so claiming an escalation/notification was made without firing
+  // it is the same class of fabrication as the rest. Real GitHub-issue tools
+  // count too because Addie sometimes describes filing a ticket as creating
+  // an issue.
+  //
+  // The two creation-verb patterns require a first-person subject so we
+  // don't fire on "see ticket 42" or "Stripe opened a ticket on your behalf"
+  // — those are informational, not fabricated actions. The "team notified"
+  // pattern stays loose because it's the primary signal for the original
+  // failure shape ("Done — the team has been notified (ticket #228)") where
+  // no other pattern fits the punctuation context.
+  { pattern: /(?:I'?ve|I\s+just|I)\s+(?:created|opened|filed|generated)\s+(?:a\s+)?(?:support\s+)?ticket\s+#?\d+/i, expectedTools: ['escalate_to_admin', 'create_github_issue', 'draft_github_issue'] },
+  { pattern: /(?:the\s+)?team\s+(?:has\s+been\s+|will\s+be\s+|is\s+being\s+)notified/i, expectedTools: ['escalate_to_admin'] },
+  { pattern: /I'?ve\s+(?:flagged|escalated|notified)\s+(?:this|the\s+team|the\s+admins?)/i, expectedTools: ['escalate_to_admin'] },
+  { pattern: /(?:I'?ve|I\s+just)\s+(?:created|opened|filed)\s+(?:a\s+)?(?:support\s+)?(?:ticket|issue)\b/i, expectedTools: ['escalate_to_admin', 'create_github_issue', 'draft_github_issue'] },
 ];
 
 /**
@@ -178,7 +260,7 @@ const HALLUCINATION_PATTERNS: ReadonlyArray<{ pattern: RegExp; expectedTools: st
  * Returns a flag reason if the text claims to have completed an action
  * but no corresponding tool was actually called AND succeeded.
  */
-function detectHallucinatedAction(text: string, toolExecutions: ToolExecution[]): string | null {
+export function detectHallucinatedAction(text: string, toolExecutions: ToolExecution[]): string | null {
   for (const { pattern, expectedTools } of HALLUCINATION_PATTERNS) {
     if (pattern.test(text)) {
       // Check that a matching tool was called AND succeeded (not just called)
@@ -192,6 +274,110 @@ function detectHallucinatedAction(text: string, toolExecutions: ToolExecution[])
   }
 
   return null;
+}
+
+/**
+ * Empty-turn detector (#3721). The user gets nothing back when the model
+ * produces no text AND no successful tool calls — same UX as a transport
+ * drop, and the signature failure mode behind silent invoice-tool failures.
+ * Returns a reason string when this happens so the caller can flag + log it.
+ */
+export function detectEmptyTurn(text: string, toolExecutions: ToolExecution[]): string | null {
+  if (text.length > 0) return null;
+  const successful = toolExecutions.filter(t => !t.is_error).length;
+  if (successful > 0) return null;
+  const errored = toolExecutions.length - successful;
+  return `Empty turn: no text and no successful tool calls (toolExecutions=${toolExecutions.length}, errored=${errored})`;
+}
+
+export const ADDIE_EMPTY_RESPONSE_FALLBACK = EMPTY_RESPONSE_FALLBACK;
+
+/**
+ * Empty response detector for user-facing recovery. `detectEmptyTurn` remains
+ * the stricter "no text + no successful tools" safety flag, but any blank
+ * final text is a bad chat UX because most surfaces do not render raw tool
+ * results to the user.
+ */
+export function detectEmptyResponse(text: string, toolExecutions: ToolExecution[]): string | null {
+  if (text.trim().length > 0) return null;
+
+  const strictReason = detectEmptyTurn(text, toolExecutions);
+  if (strictReason) return strictReason;
+
+  const successful = toolExecutions.filter(t => !t.is_error).length;
+  const errored = toolExecutions.length - successful;
+  return `Empty response: no text after tool use (toolExecutions=${toolExecutions.length}, successful=${successful}, errored=${errored})`;
+}
+
+function applyResponsePipelineWithEmptyMonitoring(
+  question: string,
+  rawText: string,
+  toolExecutions: ToolExecution[],
+): { text: string; reason: string | null } {
+  const stripped = stripBannedRituals(rawText);
+  const reason = detectEmptyResponse(stripped, toolExecutions);
+  if (reason) return { text: EMPTY_RESPONSE_FALLBACK, reason };
+  // Fires only when Addie broke character and the deterministic backstop had
+  // to scrub a model/provider disclosure — rare by design. A rising rate means
+  // the prompt-level identity rule is slipping (e.g. after a model change).
+  if (hasPersonaCollapse(rawText)) {
+    logger.warn(
+      { toolExecutionCount: toolExecutions.length },
+      'Addie: persona-collapse disclosure scrubbed from response',
+    );
+  }
+  return { text: applyResponsePipeline(question, rawText), reason: null };
+}
+
+function reportEmptyResponseFallback(
+  reason: string,
+  toolsUsed: string[],
+  toolExecutions: ToolExecution[],
+  options: ProcessMessageOptions | undefined,
+  source: 'processMessage' | 'processMessageStream',
+  model: string,
+  iteration: number,
+): void {
+  const successful = toolExecutions.filter(t => !t.is_error).length;
+  const errored = toolExecutions.length - successful;
+  const toolNames = toolsUsed.length > 0 ? toolsUsed.join(', ') : 'none';
+  const userKey = options?.slackUserId
+    ? `slack:${options.slackUserId}`
+    : options?.costScope?.userId
+      ? options.costScope.userId
+      : options?.userDisplayName
+        ? `display:${options.userDisplayName}`
+        : 'unknown';
+
+  logger.error(
+    {
+      event: 'addie_empty_response_fallback',
+      source,
+      reason,
+      threadId: options?.threadId,
+      user: userKey,
+      model,
+      iteration,
+      toolsUsed,
+      toolExecutionCount: toolExecutions.length,
+      successfulToolExecutions: successful,
+      erroredToolExecutions: errored,
+    },
+    'Addie: Empty response fallback returned to user',
+  );
+
+  notifySystemError({
+    source: 'addie-empty-response',
+    errorMessage: [
+      `${source}: ${reason}`,
+      `thread_id=${options?.threadId ?? 'unknown'}`,
+      `user=${userKey}`,
+      `model=${model}`,
+      `iteration=${iteration}`,
+      `tools_used=${toolNames}`,
+      `tool_executions=${toolExecutions.length} successful=${successful} errored=${errored}`,
+    ].join('\n'),
+  });
 }
 
 /** Default max tool iterations for regular users */
@@ -247,7 +433,7 @@ export interface ProcessMessageOptions {
    */
   costScope?: {
     userId: string;
-    tier: 'anonymous' | 'member_free' | 'member_paid';
+    tier: UserTier;
   };
   /**
    * Explicit opt-out for system / router callers that shouldn't
@@ -262,6 +448,12 @@ export interface ProcessMessageOptions {
    * admin may reply mid-thread to a non-member's question.
    */
   currentSpeakerName?: string;
+  /**
+   * Current-turn files uploaded through the web chat composer. These are
+   * passed to Claude for this request only; persisted thread history remains
+   * textual to avoid storing base64 blobs in the conversation table.
+   */
+  inputAttachments?: AddieInputAttachment[];
 }
 
 /**
@@ -319,6 +511,16 @@ export type StreamEvent =
   | { type: 'tool_start'; tool_name: string; parameters: Record<string, unknown> }
   | { type: 'tool_end'; tool_name: string; result: string; is_error: boolean }
   | { type: 'retry'; attempt: number; maxRetries: number; delayMs: number; reason: string }
+  | {
+      // Mid-stream upstream failure after deltas were already yielded. Anthropic
+      // streaming has no resumption token and prompt cache only dedupes input —
+      // retrying produces a fresh sample, so we cannot stitch attempts together.
+      // Consumers should render a recovery banner and drop the partial assistant
+      // turn from conversation history (see issue #4797).
+      type: 'stream_error';
+      reason: string;
+      deltasBeforeError: number;
+    }
   | { type: 'done'; response: AddieResponse }
   | { type: 'error'; error: string };
 
@@ -646,7 +848,10 @@ export class AddieClaudeClient {
       }
     }
 
-    const messages: Anthropic.MessageParam[] = toAnthropicMessages(messageTurnsResult.messages);
+    const messages: Anthropic.MessageParam[] = appendInputAttachments(
+      toAnthropicMessages(messageTurnsResult.messages),
+      options?.inputAttachments,
+    );
 
     // Build tool list once — rebuilt every iteration is wasteful since tools don't change.
     // Mark the last custom tool with cache_control so Anthropic caches all tool definitions.
@@ -684,7 +889,7 @@ export class AddieClaudeClient {
               }] : []),
             ],
             messages,
-            betas: ['web-search-2025-03-05', ...getModelBetas(effectiveModel)],
+            betas: ['web-search-2025-03-05'],
           }),
           { maxRetries: 3, initialDelayMs: 1000 },
           'processMessage'
@@ -777,7 +982,8 @@ export class AddieClaudeClient {
           .map(block => block.type === 'text' ? block.text : '')
           .join('\n\n')
           .trim();
-        const text = applyResponsePipeline(userMessage, rawText);
+        const emptyResponse = applyResponsePipelineWithEmptyMonitoring(userMessage, rawText, toolExecutions);
+        const text = emptyResponse.text;
 
         // Calculate total tool execution time from tool_executions
         totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
@@ -787,6 +993,11 @@ export class AddieClaudeClient {
         if (hallucinationReason) {
           logger.warn({ toolsUsed, reason: hallucinationReason }, 'Addie: Possible hallucinated action detected');
         }
+
+        if (emptyResponse.reason) {
+          reportEmptyResponseFallback(emptyResponse.reason, toolsUsed, toolExecutions, options, 'processMessage', effectiveModel, iteration);
+        }
+        const flagReason = hallucinationReason ?? emptyResponse.reason;
 
         const finalUsage = {
           input_tokens: totalInputTokens,
@@ -810,8 +1021,8 @@ export class AddieClaudeClient {
           text,
           tools_used: toolsUsed,
           tool_executions: toolExecutions,
-          flagged: !!hallucinationReason,
-          flag_reason: hallucinationReason ?? undefined,
+          flagged: !!flagReason,
+          flag_reason: flagReason ?? undefined,
           active_rule_ids: undefined,
           config_version_id: configVersionId ?? undefined,
           timing: {
@@ -908,13 +1119,18 @@ export class AddieClaudeClient {
         if (toolUseBlocks.length === 0 && serverToolBlocks.length === 0) {
           const textContent = response.content.find((c) => c.type === 'text');
           const rawText = textContent && textContent.type === 'text' ? textContent.text : "I'm not sure how to help with that.";
-          const text = applyResponsePipeline(userMessage, rawText);
+          const emptyResponse = applyResponsePipelineWithEmptyMonitoring(userMessage, rawText, toolExecutions);
+          const text = emptyResponse.text;
+          if (emptyResponse.reason) {
+            reportEmptyResponseFallback(emptyResponse.reason, toolsUsed, toolExecutions, options, 'processMessage', effectiveModel, iteration);
+          }
           totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
           return {
             text,
             tools_used: toolsUsed,
             tool_executions: toolExecutions,
-            flagged: false,
+            flagged: !!emptyResponse.reason,
+            flag_reason: emptyResponse.reason ?? undefined,
             active_rule_ids: undefined,
             config_version_id: configVersionId ?? undefined,
             timing: {
@@ -1234,7 +1450,10 @@ export class AddieClaudeClient {
       }
     }
 
-    const messages: Anthropic.MessageParam[] = toAnthropicMessages(messageTurnsResult.messages);
+    const messages: Anthropic.MessageParam[] = appendInputAttachments(
+      toAnthropicMessages(messageTurnsResult.messages),
+      options?.inputAttachments,
+    );
 
     // Build tool list once — rebuilt every iteration is wasteful since tools don't change.
     // Mark the last tool with cache_control so Anthropic caches all tool definitions.
@@ -1271,16 +1490,12 @@ export class AddieClaudeClient {
 
         while (!streamSucceeded && streamRetryCount <= maxStreamRetries) {
           try {
-            // Use streaming API (beta namespace so we can pass `betas`,
-            // e.g. 1M-context on supported depth-tier models).
-            const modelBetas = getModelBetas(effectiveModel);
             const stream = this.client.beta.messages.stream({
               model: effectiveModel,
               max_tokens: 4096,
               system: systemBlocks,
               tools: customTools,
               messages,
-              ...(modelBetas.length > 0 ? { betas: modelBetas } : {}),
             });
 
             // Process stream events
@@ -1323,6 +1538,23 @@ export class AddieClaudeClient {
                                   streamRetryCount > maxStreamRetries;
               if (isExhausted) {
                 throw new RetriesExhaustedError(streamError, streamRetryCount);
+              }
+              // Mid-stream failure: deltas already shipped to the user, retry
+              // is impossible (no resumption token, prompt cache only dedupes
+              // input). Yield a stream_error so consumers can render a recovery
+              // banner and drop the partial assistant turn from conversation
+              // history. Then rethrow for the outer error path (#4797).
+              if (hasYieldedContent && isRetryableError(streamError)) {
+                const errorMsg = streamError instanceof Error ? streamError.message : String(streamError);
+                const reason = errorMsg.includes('overloaded') ? 'API is busy' :
+                              errorMsg.includes('rate') ? 'Rate limited' :
+                              errorMsg.includes('timeout') ? 'Request timed out' :
+                              'Connection broke mid-reply';
+                yield {
+                  type: 'stream_error',
+                  reason,
+                  deltasBeforeError: textChunks.length,
+                };
               }
               // Not retryable or already yielded content - rethrow original error
               throw streamError;
@@ -1419,22 +1651,34 @@ export class AddieClaudeClient {
         if (currentResponse.stop_reason === 'end_turn') {
           totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
 
-          // Detect possible hallucinated actions (text claims success without successful tool calls)
-          const hallucinationReason = detectHallucinatedAction(fullText, toolExecutions);
+          // Run both detectors against the post-pipeline text — same as the
+          // non-stream path. If applyResponsePipeline strips the only text
+          // (e.g., scrubbed a refused-action sentence), that should look like
+          // an empty turn to the user, which is what we want to flag.
+          const emptyResponse = applyResponsePipelineWithEmptyMonitoring(userMessage, fullText, toolExecutions);
+          if (emptyResponse.reason) {
+            reportEmptyResponseFallback(emptyResponse.reason, toolsUsed, toolExecutions, options, 'processMessageStream', effectiveModel, iteration);
+            yield { type: 'text', text: emptyResponse.text };
+            fullText += emptyResponse.text;
+          }
+
+          const finalText = emptyResponse.text;
+          const hallucinationReason = detectHallucinatedAction(finalText, toolExecutions);
           if (hallucinationReason) {
             logger.warn({ toolsUsed, reason: hallucinationReason }, 'Addie Stream: Possible hallucinated action detected');
           }
+          const flagReason = hallucinationReason ?? emptyResponse.reason;
 
           const streamUsage = buildStreamUsage();
           await chargeStreamCost(streamUsage);
           yield {
             type: 'done',
             response: {
-              text: applyResponsePipeline(userMessage, fullText),
+              text: finalText,
               tools_used: toolsUsed,
               tool_executions: toolExecutions,
-              flagged: !!hallucinationReason,
-              flag_reason: hallucinationReason ?? undefined,
+              flagged: !!flagReason,
+              flag_reason: flagReason ?? undefined,
               active_rule_ids: undefined,
               config_version_id: configVersionId ?? undefined,
               timing: {
@@ -1458,13 +1702,20 @@ export class AddieClaudeClient {
             totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
             const streamUsage = buildStreamUsage();
             await chargeStreamCost(streamUsage);
+            const emptyResponse = applyResponsePipelineWithEmptyMonitoring(userMessage, fullText, toolExecutions);
+            if (emptyResponse.reason) {
+              reportEmptyResponseFallback(emptyResponse.reason, toolsUsed, toolExecutions, options, 'processMessageStream', effectiveModel, iteration);
+              yield { type: 'text', text: emptyResponse.text };
+              fullText += emptyResponse.text;
+            }
             yield {
               type: 'done',
               response: {
-                text: applyResponsePipeline(userMessage, fullText),
+                text: emptyResponse.text,
                 tools_used: toolsUsed,
                 tool_executions: toolExecutions,
-                flagged: false,
+                flagged: !!emptyResponse.reason,
+                flag_reason: emptyResponse.reason ?? undefined,
                 active_rule_ids: undefined,
                 config_version_id: configVersionId ?? undefined,
                 timing: {

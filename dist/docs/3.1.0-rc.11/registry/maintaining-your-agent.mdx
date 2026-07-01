@@ -1,0 +1,154 @@
+---
+title: Maintaining your agent
+sidebarTitle: Maintaining your agent
+description: "Operator lifecycle guide — how AAO Verified heartbeats work, how to read dashboard status, how to re-probe, and how to interpret comply reports."
+"og:title": "AdCP — Maintaining your agent"
+---
+
+Once your agent is registered in the AAO registry, your responsibilities don't end at enrollment. The registry continuously monitors your agent's protocol conformance via the AAO Verified compliance heartbeat and reflects the current health of your listing in the dashboard. This page covers the full operator lifecycle: what the heartbeat tests, how to read dashboard status indicators, how to manually trigger a re-probe, and how to interpret a comply report.
+
+## Registration recap
+
+There is one path into the AAO registry: **an AAO member explicitly enrolls the agent on their member profile**. See [Registering an agent](/dist/docs/3.1.0-rc.11/registry/registering-an-agent) for the full enrollment flow — dashboard or `PUT /api/me/member-profile`, end-to-end in under five minutes.
+
+After enrollment your agent gets:
+
+- A catalog entry in `/api/registry/agents` with `visibility: "members_only"` (upgrade to `public` on a paid AAO tier)
+- Eligibility for the **AAO Verified** badge, issued automatically once your agent passes the relevant storyboards on the compliance heartbeat
+
+The next crawler probe will resolve your agent's type from its `get_adcp_capabilities` response — you do not need to set or maintain the type field manually.
+
+## How the AAO Verified heartbeat works
+
+AAO continuously re-evaluates your agent's conformance on an approximately **1-hour heartbeat** cadence. Every heartbeat cycle, AAO's compliance runner executes the storyboard suite against your registered `agent_url` — the same set of storyboards your declarations in `get_adcp_capabilities` obligate (universal baselines + protocol baselines + declared-specialism storyboards).
+
+**What the heartbeat tests:**
+
+- AdCP wire format and task shape
+- Error semantics and error envelopes
+- State-machine transitions across the media-buy or applicable lifecycle
+- Declared specialisms map to working tools
+- Schema conformance and filter behavior
+- Idempotency semantics
+
+The heartbeat is not a registry crawl. A crawl re-reads your `adagents.json` or capability snapshot and updates registry metadata. The heartbeat runs protocol storyboards against your live endpoint and determines your verification status. The two are independent operations.
+
+### Verified (Spec) vs Verified (Sandbox)
+
+Both qualifiers run the same storyboards on the same ~1h heartbeat. The difference is where the runner targets:
+
+| Qualifier | Runner targets | What it attests |
+|---|---|---|
+| **(Spec)** | Any endpoint you register — test deployment, local dev, sandbox-only stack | AdCP wire format and protocol semantics are correct |
+| **(Sandbox)** | Your registered **production** `agent_url` with `account.sandbox: true` on every request | Your production code path honors sandbox flagging with zero real-world side effects |
+
+See [AAO Verified](/dist/docs/3.1.0-rc.11/building/verification/aao-verified) for complete eligibility and attestation details.
+
+## Dashboard status indicators
+
+The agent dashboard at [agenticadvertising.org/dashboard/agents](https://agenticadvertising.org/dashboard/agents) reflects the current state of each enrolled agent. The status comes from the compliance heartbeat — AAO updates it on every probe cycle.
+
+| Status | What it means | Operator action |
+|---|---|---|
+| **Active** | All storyboards are passing on the current heartbeat. Your AAO Verified badge is live and auto-renewing. | No action needed. Monitor for regressions after deploys. |
+| **Degraded** | At least one storyboard started failing. The badge **continues to render** while a 48-hour grace period runs. | Investigate immediately — check the comply report, reproduce locally with `@adcp/sdk/testing`, and fix the regression before the grace period expires. |
+| **Revoked** | 48 hours of continuous storyboard failure elapsed without recovery. The qualifier has dropped from the badge. (Sandbox), if separately held, is unaffected — the two axes are independent. | Fix the underlying conformance issue, then wait for the next heartbeat cycle to restore the badge automatically. |
+| **Recovery** | Storyboards are passing again after a prior failure. The badge qualifier reissues automatically. | No action needed beyond confirming the fix is stable. |
+
+<Note>
+**Grace period math.** The Degraded state begins on the **first** failed heartbeat. The 48-hour clock runs from that initial failure — not from when you first notice the status. Check your comply report promptly after any deploy that touches protocol behavior.
+</Note>
+
+**Membership lapse** revokes the entire badge immediately, regardless of storyboard results. AAO Verified is contingent on active AAO membership at an API-access tier.
+
+## How to manually trigger a re-probe
+
+AAO runs probes automatically on the ~1h heartbeat, but there are three ways to refresh agent state:
+
+### Registry crawl (metadata update)
+
+If you've updated your `adagents.json`, `brand.json`, or capability snapshot and want the registry to pick up changes without waiting for the next scheduled crawl, use the crawl-request endpoint:
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST "https://agenticadvertising.org/api/registry/crawl-request" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"domain":"yourcompany.com"}'
+```
+
+```javascript JavaScript
+const res = await fetch(
+  "https://agenticadvertising.org/api/registry/crawl-request",
+  {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer YOUR_API_KEY",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ domain: "yourcompany.com" }),
+  }
+);
+// Returns 202 Accepted — crawl runs asynchronously
+```
+
+</CodeGroup>
+
+This runs asynchronously and returns `202 Accepted`. Rate-limited to one request per domain every 5 minutes and 30 requests per user per hour.
+
+**What this does and does not do:**
+
+- Does refresh your agent's registry metadata (type resolution, capability snapshot, `adagents.json` authorization graph)
+- Does **not** trigger a compliance heartbeat re-run — the heartbeat storyboards are not re-executed by this endpoint
+
+### Dashboard Refresh button
+
+In the agent card on [agenticadvertising.org/dashboard/agents](https://agenticadvertising.org/dashboard/agents), the **Recheck status** button calls `/api/registry/agents/{encodedUrl}/refresh`. It re-reads your agent's registry metadata and, when you own the agent and the capability probe succeeds, runs the full compliance storyboard suite synchronously before updating the dashboard view.
+
+### Compliance requeue
+
+The **Requeue comply** button does not run the storyboard suite immediately. It clears `last_checked_at` so the agent is picked up by the next scheduled heartbeat cycle, which can take up to about 1 hour.
+
+<Note>
+If you need to confirm a fix immediately, use **Recheck status** or the dashboard **Test** flow rather than **Requeue comply**. For local reproduction, run the same storyboards with `@adcp/sdk/testing`.
+</Note>
+
+## How to read a comply report
+
+The comply report appears in your agent's dashboard panel under the AAO Verified section. It shows the result of the most recent heartbeat run.
+
+### Report structure
+
+| Field | What it means |
+|---|---|
+| **Overall verdict** | `passed` — all applicable storyboards passed. `failed` — at least one storyboard failed. `degraded` — first failure detected; grace period running. |
+| **Storyboard results** | Per-storyboard breakdown. Each entry has a `verdict` and an optional `failure_reason`. |
+| **Specialism coverage** | Which declared specialisms were tested, and which storyboards each obligates. |
+| **Heartbeat timestamp** | When this probe ran. |
+
+### Per-storyboard verdicts
+
+| Verdict | Meaning |
+|---|---|
+| `passed` | The storyboard's assertions all evaluated true against your agent's response. |
+| `failed` | At least one assertion failed. The `failure_reason` field identifies which assertion and what the runner received. |
+| `skipped` | The storyboard does not apply to your declared specialisms or current protocol version. |
+| `not_applicable` | The storyboard tests an operation your agent has not declared support for — graded `not_applicable` rather than `failed`. Common for optional tools and controller-only storyboards. |
+
+### Debugging a failure
+
+1. Note the storyboard name from the failed row (e.g. `signed_requests`, `pagination_integrity`, `comply-controller-mode-gate`).
+2. Find the storyboard definition in the [Compliance Catalog](/dist/docs/3.1.0-rc.11/building/verification/compliance-catalog).
+3. Reproduce locally:
+   ```bash
+   npx @adcp/sdk@latest storyboard run signed_requests --agent-url https://your-agent-url.example/mcp
+   ```
+4. The local runner gives the same assertions as the heartbeat. Fix the failure, verify locally, then deploy — the next heartbeat cycle will reissue the badge if all storyboards pass.
+
+## Related
+
+- [Registering an agent](/dist/docs/3.1.0-rc.11/registry/registering-an-agent) — the enrollment path, fields, and programmatic registration.
+- [Registry API overview](/dist/docs/3.1.0-rc.11/registry) — `POST /api/registry/crawl-request` and the full endpoint catalog.
+- [AAO Verified](/dist/docs/3.1.0-rc.11/building/verification/aao-verified) — full lifecycle states, axis semantics, and badge embedding.
+- [Compliance Catalog](/dist/docs/3.1.0-rc.11/building/verification/compliance-catalog) — the storyboard index, per-specialism coverage, and how to run storyboards locally.

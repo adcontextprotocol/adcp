@@ -121,6 +121,30 @@
       margin-top: var(--space-2);
     }
 
+    .agent-storyboard-summary {
+      margin-top: var(--space-2);
+      display: inline-flex;
+      align-items: baseline;
+      gap: var(--space-1);
+      padding: var(--space-1) var(--space-2);
+      background: var(--color-bg-subtle);
+      border-radius: var(--radius-sm);
+      cursor: help;
+      flex-wrap: wrap;
+    }
+
+    .agent-storyboard-summary-count {
+      font-size: var(--text-sm);
+      font-weight: var(--font-semibold);
+      color: var(--color-text);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .agent-storyboard-summary-label {
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+    }
+
     .agent-tracks {
       display: flex;
       gap: 3px;
@@ -143,7 +167,7 @@
     .agent-track-detail {
       margin-top: var(--space-3);
       padding: var(--space-3);
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       border-radius: var(--radius-md);
       font-size: var(--text-xs);
     }
@@ -171,7 +195,7 @@
       margin-top: var(--space-3);
       padding: var(--space-3);
       font-size: var(--text-xs);
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       border: var(--border-1) solid var(--color-border);
       border-radius: var(--radius-md);
     }
@@ -180,12 +204,12 @@
     .agent-verification-panel {
       margin-top: var(--space-3);
       padding: var(--space-3);
-      background: var(--color-success-50, #ecfdf5);
+      background: var(--color-success-bg);
       border: var(--border-1) solid var(--color-success-200, #a7f3d0);
       border-radius: var(--radius-md);
     }
     .agent-verification-panel-empty {
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       border-color: var(--color-border);
     }
     .agent-verification-header {
@@ -196,7 +220,7 @@
       font-weight: var(--font-semibold);
       text-transform: uppercase;
       letter-spacing: 0.04em;
-      color: var(--color-success-700, #047857);
+      color: var(--color-success-fg);
       margin-bottom: var(--space-2);
     }
     .agent-verification-panel-empty .agent-verification-header {
@@ -228,7 +252,7 @@
     }
     .verification-badge-meta strong { color: var(--color-text-primary); font-weight: var(--font-semibold); }
     .verification-badge-meta code {
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
       padding: 1px 4px;
       border-radius: 3px;
       font-size: var(--text-xs);
@@ -265,7 +289,7 @@
     }
     .verification-embed-field code {
       flex: 1 1 auto;
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
       border: 1px solid var(--color-border);
       border-radius: var(--radius-sm);
       padding: 6px 8px;
@@ -277,7 +301,7 @@
     }
     .verification-copy-btn {
       flex: 0 0 auto;
-      background: white;
+      background: var(--color-bg-card);
       border: 1px solid var(--color-border);
       border-radius: var(--radius-sm);
       padding: 4px 10px;
@@ -286,11 +310,11 @@
       color: var(--color-text-primary);
       min-width: 60px;
     }
-    .verification-copy-btn:hover { background: var(--color-gray-100); }
+    .verification-copy-btn:hover { background: var(--color-bg-subtle); }
     .verification-copy-btn.is-copied {
       background: var(--color-success-100, #d1fae5);
       border-color: var(--color-success-500, #10b981);
-      color: var(--color-success-700, #047857);
+      color: var(--color-success-fg);
     }
     .verification-eligibility-hint {
       margin-top: var(--space-2);
@@ -317,7 +341,9 @@
     }
     .verification-declared-row code {
       font-size: 0.95em;
-      background: var(--color-gray-100, #f3f4f6);
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      color: var(--color-text);
       padding: 1px 6px;
       border-radius: 3px;
     }
@@ -344,22 +370,124 @@
       line-height: 1;
     }
     .verification-spec-passing .verification-spec-mark {
-      background: var(--color-success-100, #d1fae5);
-      color: var(--color-success-700, #047857);
+      background: var(--color-success-bg);
+      color: var(--color-success-fg);
+    }
+    .verification-spec-passing code {
+      background: var(--color-success-bg);
+      border-color: var(--color-success-500, #10b981);
+      color: var(--color-success-fg);
     }
     .verification-spec-failing .verification-spec-mark {
-      background: var(--color-error-100, #fee2e2);
-      color: var(--color-error-700, #b91c1c);
+      background: var(--color-error-bg);
+      color: var(--color-error-fg);
     }
     .verification-spec-failing code {
+      background: var(--color-error-bg);
+      border-color: var(--color-error-500, #ef4444);
+      color: var(--color-error-fg);
       text-decoration: line-through;
       text-decoration-color: var(--color-error-500, #ef4444);
       text-decoration-thickness: 1px;
     }
     .verification-spec-untested .verification-spec-mark,
     .verification-spec-unknown .verification-spec-mark {
-      background: var(--color-gray-200, #e5e7eb);
+      background: var(--color-bg-subtle);
       color: var(--color-text-muted);
+    }
+    .verification-spec-untested code,
+    .verification-spec-unknown code {
+      background: var(--color-bg-subtle);
+      border-color: var(--color-border);
+      color: var(--color-text-secondary);
+    }
+    /* Compliance notices (runner-output-contract.yaml) */
+    .compliance-notices {
+      margin-top: var(--space-3);
+      border-top: 1px solid var(--color-gray-200, #e5e7eb);
+      padding-top: var(--space-2);
+    }
+    .compliance-notices-label {
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: var(--space-1);
+    }
+    .compliance-notice {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-1);
+      padding: var(--space-2);
+      border-radius: 4px;
+      border: 1px solid var(--color-gray-200, #e5e7eb);
+      background: var(--color-gray-50, #f9fafb);
+      font-size: var(--text-xs);
+      line-height: 1.5;
+      margin-bottom: var(--space-1);
+    }
+    .compliance-notice:last-child { margin-bottom: 0; }
+    .compliance-notice-header {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      flex-wrap: wrap;
+    }
+    .compliance-notice-severity {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: var(--font-semibold);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+    .compliance-notice-severity--info {
+      background: var(--color-gray-200, #e5e7eb);
+      color: var(--color-text-secondary, #374151);
+    }
+    .compliance-notice-severity--deprecation {
+      background: var(--color-warning-100, #fef3c7);
+      color: var(--color-warning-700, #b45309);
+    }
+    .compliance-notice-severity--future_required {
+      background: var(--color-warning-bg);
+      color: var(--color-warning-fg);
+    }
+    .compliance-notice-severity--unknown {
+      background: var(--color-gray-100, #f3f4f6);
+      color: var(--color-text-muted);
+    }
+    .compliance-notice-code {
+      font-family: var(--font-mono, monospace);
+      font-size: 10px;
+      color: var(--color-text-muted);
+      background: var(--color-gray-100, #f3f4f6);
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+    .compliance-notice-message {
+      color: var(--color-text-secondary, #374151);
+    }
+    .compliance-notice-meta {
+      color: var(--color-text-muted);
+      font-size: 10px;
+    }
+    .compliance-notice-details summary {
+      cursor: pointer;
+      color: var(--color-text-muted);
+      font-size: 10px;
+      user-select: none;
+    }
+    .compliance-notice-details[open] summary { margin-bottom: 2px; }
+    .compliance-notice-cap-path {
+      font-family: var(--font-mono, monospace);
+      font-size: 10px;
+      background: var(--color-gray-100, #f3f4f6);
+      padding: 1px 5px;
+      border-radius: 3px;
     }
     .history-run {
       display: flex;
@@ -370,13 +498,13 @@
       cursor: pointer;
     }
     .history-run:last-child { border-bottom: none; }
-    .history-run:hover { background: var(--color-gray-50); }
+    .history-run:hover { background: var(--color-bg-subtle); }
     .history-run-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
     .history-run-detail { display: none; padding: var(--space-2) var(--space-4); font-size: var(--text-xs); color: var(--color-text-muted); }
     .agent-track--pass { background: var(--color-success-100); color: var(--color-success-700); }
     .agent-track--fail { background: var(--color-error-100); color: var(--color-error-700); }
     .agent-track--partial { background: var(--color-warning-100); color: var(--color-warning-700); }
-    .agent-track--skip { background: var(--color-gray-100); color: var(--color-gray-600); }
+    .agent-track--skip { background: var(--color-bg-subtle); color: var(--color-text-secondary); }
 
     .agent-sparkline {
       display: flex;
@@ -414,6 +542,9 @@
     }
     .agent-action-link:hover {
       text-decoration: underline;
+    }
+    .agent-action-link--danger {
+      color: var(--color-error-600, #c0392b);
     }
     .agent-auth-section {
       margin-top: var(--space-3);
@@ -609,10 +740,30 @@
       border-bottom: 1px solid var(--color-border);
     }
     .storyboard-map-tools code {
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
       padding: 1px 4px;
       border-radius: 3px;
       font-size: var(--text-xs);
+    }
+    .storyboard-map-status-summary {
+      margin-bottom: var(--space-3);
+      padding: var(--space-2) var(--space-3);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      background: var(--color-bg-subtle);
+      color: var(--color-text-secondary);
+      font-size: var(--text-xs);
+      line-height: 1.5;
+    }
+    .storyboard-map-status-summary--attention {
+      background: var(--color-error-bg);
+      border-color: var(--color-error-500, #ef4444);
+      color: var(--color-error-fg);
+    }
+    .storyboard-map-status-summary--passing {
+      background: var(--color-success-bg);
+      border-color: var(--color-success-500, #10b981);
+      color: var(--color-success-fg);
     }
     .storyboard-track-group { margin-bottom: var(--space-3); }
     .storyboard-track-header {
@@ -636,12 +787,23 @@
     .storyboard-map-item {
       display: flex;
       justify-content: space-between;
-      align-items: center;
+      align-items: flex-start;
       gap: var(--space-3);
       padding: var(--space-2) var(--space-3);
       border: 1px solid var(--color-border);
       border-radius: var(--radius-sm);
       margin-bottom: 4px;
+    }
+    .storyboard-map-item--failing {
+      background: var(--color-error-bg);
+      border-color: var(--color-error-500, #ef4444);
+    }
+    .storyboard-map-item--partial {
+      background: var(--color-warning-bg);
+      border-color: var(--color-warning-500, #f59e0b);
+    }
+    .storyboard-map-item--passing {
+      border-color: var(--color-success-500, #10b981);
     }
     .storyboard-map-item-main {
       min-width: 0;
@@ -674,7 +836,90 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .storyboard-map-actions { display: flex; gap: var(--space-2); align-items: center; flex-shrink: 0; }
+    .storyboard-map-next-step {
+      margin-top: 2px;
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .storyboard-map-item--failing .storyboard-map-next-step,
+    .storyboard-map-item--failing .storyboard-map-item-summary {
+      color: var(--color-error-fg);
+    }
+    .storyboard-map-drilldown {
+      margin-top: var(--space-2);
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+    }
+    .storyboard-map-drilldown summary {
+      cursor: pointer;
+      font-weight: var(--font-semibold);
+      color: var(--color-text);
+    }
+    .storyboard-map-detail-row {
+      margin-top: var(--space-2);
+      padding: var(--space-2);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      background: var(--color-bg-card);
+    }
+    .storyboard-map-detail-label {
+      display: inline-flex;
+      align-items: center;
+      padding: 1px 6px;
+      border-radius: var(--radius-full);
+      font-size: 10px;
+      font-weight: var(--font-semibold);
+      margin-right: var(--space-1);
+    }
+    .storyboard-map-detail-label--failure {
+      background: var(--color-error-bg);
+      color: var(--color-error-fg);
+    }
+    .storyboard-map-detail-label--skip {
+      background: var(--color-warning-bg);
+      color: var(--color-warning-fg);
+    }
+    .storyboard-map-detail-title {
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+    }
+    .storyboard-map-detail-message {
+      margin-top: 2px;
+      color: var(--color-text-secondary);
+      overflow-wrap: anywhere;
+    }
+    .storyboard-map-status {
+      display: inline-flex;
+      align-items: center;
+      flex-shrink: 0;
+      padding: 1px 6px;
+      border-radius: var(--radius-full);
+      font-size: 10px;
+      font-weight: var(--font-semibold);
+      line-height: 1.4;
+      white-space: nowrap;
+    }
+    .storyboard-map-status--passing {
+      background: var(--color-success-bg);
+      color: var(--color-success-fg);
+    }
+    .storyboard-map-status--failing {
+      background: var(--color-error-bg);
+      color: var(--color-error-fg);
+    }
+    .storyboard-map-status--partial {
+      background: var(--color-warning-bg);
+      color: var(--color-warning-fg);
+    }
+    .storyboard-map-status--untested {
+      background: var(--color-bg-subtle);
+      color: var(--color-text-secondary);
+      border: 1px solid var(--color-border);
+    }
+    .storyboard-map-actions { display: flex; gap: var(--space-2); align-items: center; align-self: flex-start; flex-shrink: 0; }
     .storyboard-map-actions button {
       font-size: var(--text-xs);
       padding: 2px var(--space-2);
@@ -695,6 +940,31 @@
       background: var(--color-primary-700);
       text-decoration: none;
     }
+    @media (max-width: 640px) {
+      .storyboard-map-item {
+        flex-direction: column;
+      }
+      .storyboard-map-item-row1 {
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .storyboard-map-item-title {
+        flex-basis: 100%;
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+      }
+      .storyboard-map-item-summary,
+      .storyboard-map-next-step {
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+      }
+      .storyboard-map-actions {
+        width: 100%;
+        justify-content: flex-end;
+      }
+    }
 
     .step-runner { margin-top: var(--space-3); }
     .step-runner-current {
@@ -711,8 +981,8 @@
       font-size: var(--text-xs);
       margin-top: var(--space-2);
     }
-    .step-runner-result--pass { background: var(--color-success-50, #ecfdf5); border: 1px solid var(--color-success-200, #a7f3d0); }
-    .step-runner-result--fail { background: var(--color-error-50, #fef2f2); border: 1px solid var(--color-error-200, #fecaca); }
+    .step-runner-result--pass { background: var(--color-success-bg); border: 1px solid var(--color-success-200, #a7f3d0); }
+    .step-runner-result--fail { background: var(--color-error-bg); border: 1px solid var(--color-error-200, #fecaca); }
     .step-runner-result--skip { background: var(--color-gray-50, #f9fafb); border: 1px solid var(--color-gray-200, #e5e7eb); }
     .step-runner-actions { display: flex; gap: var(--space-2); margin-top: var(--space-2); }
     .step-runner-actions button {
@@ -725,8 +995,8 @@
     .step-run-btn { background: var(--color-primary-600); color: white; }
     .step-run-btn:hover { background: var(--color-primary-700); }
     .step-run-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-    .step-next-btn { background: var(--color-gray-200); color: var(--color-text-primary); }
-    .step-next-btn:hover { background: var(--color-gray-300); }
+    .step-next-btn { background: var(--color-bg-button-secondary); color: var(--color-text-primary); }
+    .step-next-btn:hover { background: var(--color-bg-button-secondary-hover); }
 
     .storyboard-phase {
       margin-bottom: var(--space-4);
@@ -790,6 +1060,51 @@
     .storyboard-step-meta a { color: var(--color-primary-600); text-decoration: none; }
     .storyboard-step-meta a:hover { text-decoration: underline; }
 
+    .storyboard-diagnostics {
+      margin-top: var(--space-2);
+      padding: var(--space-2);
+      border: 1px solid var(--color-error-200, #fecaca);
+      border-radius: var(--radius-sm);
+      background: var(--color-error-50, #fef2f2);
+      font-size: var(--text-xs);
+      color: var(--color-error-800, #991b1b);
+    }
+
+    .storyboard-diagnostics-title {
+      font-weight: 600;
+      margin-bottom: var(--space-1);
+    }
+
+    .storyboard-diagnostic-item + .storyboard-diagnostic-item {
+      margin-top: var(--space-2);
+      padding-top: var(--space-2);
+      border-top: 1px solid var(--color-error-200, #fecaca);
+    }
+
+    .storyboard-diagnostic-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+      color: var(--color-text-secondary);
+      margin-bottom: var(--space-1);
+    }
+
+    .storyboard-diagnostic-validation {
+      margin-top: var(--space-1);
+      display: grid;
+      grid-template-columns: minmax(84px, max-content) minmax(0, 1fr);
+      gap: 2px var(--space-2);
+    }
+
+    .storyboard-diagnostic-validation code {
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .storyboard-diagnostic-label {
+      color: var(--color-text-tertiary);
+    }
+
     .storyboard-actions {
       display: flex;
       gap: var(--space-2);
@@ -817,7 +1132,7 @@
       font-size: var(--text-sm);
       cursor: pointer;
     }
-    .storyboard-compare-btn:hover { background: var(--color-primary-50); }
+    .storyboard-compare-btn:hover { background: var(--color-brand-bg); }
     .storyboard-compare-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
     .storyboard-progress {
@@ -861,6 +1176,13 @@
 
     document.addEventListener('DOMContentLoaded', loadAgents);
 
+    // Single source of truth for the chat seed prompt sent when a user
+    // clicks "+ Register agent" or "Register your first agent". Both
+    // CTAs link to /chat?prompt=<encoded>; the matching trigger phrase
+    // is handled by the "Registering an Agent in the AAO Registry" rule
+    // in server/src/addie/rules/behaviors.md.
+    const REGISTER_AGENT_SEED_PROMPT = 'Help me register my agent.';
+
     // Shared across the page so event handlers (e.g. retry) can re-render
     // a single card without a full reload.
     const pageState = {
@@ -868,7 +1190,13 @@
       complianceMap: new Map(),
       orgId: null,
       hasApiAccess: false,
-      brandHostingType: null,
+      // Server-computed { can_publish_publicly, reasons[] }. Populated from
+      // GET /api/me/member-profile so the UI affordance reads from the
+      // same gate the publish endpoint enforces. Defaults to
+      // `brand_domain_required` (the >95% case among logged-in dashboard
+      // users) so the brand-nudge text renders during the sub-second load
+      // gap instead of an unexplained-disabled toggle.
+      visibilityGate: { can_publish_publicly: false, reasons: ['brand_domain_required'] },
       // Tracks agents that have already auto-retried once after a 429
       // (#2804). A second 429 on the same agent freezes the card with
       // "you've refreshed too quickly" guidance instead of looping.
@@ -1065,7 +1393,8 @@
         pageState.complianceMap = agentCompliance;
         pageState.orgId = currentOrgId;
         pageState.hasApiAccess = !!profileData?.has_api_access;
-        pageState.brandHostingType = null;
+        pageState.visibilityGate = profileData?.agent_visibility_gate
+          || { can_publish_publicly: false, reasons: ['brand_domain_required'] };
         renderPage(agents, agentCompliance, currentOrgId);
 
         if (agents.length > 0) {
@@ -1097,21 +1426,6 @@
           }
         }
 
-        // Brand hosting type gates the "Public" visibility option. Fetched
-        // asynchronously — the cards re-render once the answer lands.
-        const primaryBrandDomain = profileData?.profile?.primary_brand_domain;
-        if (primaryBrandDomain) {
-          fetch(`/api/brands/discovered/${encodeURIComponent(primaryBrandDomain)}/edit-status`, { credentials: 'include' })
-            .then(r => (r.ok ? r.json() : null))
-            .then(editStatus => {
-              pageState.brandHostingType = editStatus?.source_type === 'brand_json' ? 'self-hosted' : 'community';
-              renderPage(pageState.agents, pageState.complianceMap, pageState.orgId);
-            })
-            .catch(() => {
-              pageState.brandHostingType = 'community';
-              renderPage(pageState.agents, pageState.complianceMap, pageState.orgId);
-            });
-        }
       } catch (err) {
         console.error('Agents page load error:', err);
         document.getElementById('hub-loading').innerHTML =
@@ -1130,13 +1444,13 @@
         injectAgentCardStyles();
       }
 
-      const addPrompt = encodeURIComponent('I want to add an agent for compliance monitoring.');
+      const addPrompt = encodeURIComponent(REGISTER_AGENT_SEED_PROMPT);
 
       content.innerHTML = `
         <div class="page-header">
           <h1>Agents</h1>
           <div class="page-header-actions">
-            <a href="/chat?prompt=${addPrompt}" class="btn btn-primary btn-sm">+ Add agent</a>
+            <a href="/chat?prompt=${addPrompt}" class="btn btn-primary btn-sm">+ Register agent</a>
           </div>
         </div>
         <div id="agents-list">
@@ -1191,34 +1505,36 @@
 
     // Renders a compact visibility dropdown for each agent card.
     // Shows a single inline hint describing what the currently-selected
-    // visibility means. Public may be disabled for users without API access
-    // or without a primary brand domain.
+    // visibility means. The "Public" option is gated on the server-
+    // computed `agent_visibility_gate` — same two preconditions the
+    // /agents/:index/publish endpoint enforces (tier + primary brand domain).
     function renderVisibilitySelector(index, visibility) {
       const vis = visibility || 'private';
-      const canSetPublic = !!pageState.hasApiAccess;
-      const brandHostingType = pageState.brandHostingType;
-      const publicRequiresDomain = !brandHostingType;
-      const publicDisabled = !canSetPublic || publicRequiresDomain;
-      const publicDisabledReason = !canSetPublic
-        ? 'Publicly listing an agent requires Professional tier or higher.'
-        : publicRequiresDomain
+      const gate = pageState.visibilityGate || { can_publish_publicly: false, reasons: [] };
+      const reasons = Array.isArray(gate.reasons) ? gate.reasons : [];
+      const publicDisabled = !gate.can_publish_publicly;
+      const tierRequired = reasons.includes('tier_required');
+      const brandRequired = reasons.includes('brand_domain_required');
+      const publicDisabledReason = tierRequired
+        ? 'Publicly listing an agent requires a paid AAO tier (Professional, Builder, Member, or Leader).'
+        : brandRequired
           ? 'Set a primary brand domain to publish publicly.'
           : '';
 
       const hints = {
         private: 'Only you can see it.',
-        members_only: 'Discoverable by Professional+ members.',
+        members_only: 'Discoverable by paying AAO members.',
         public: 'Listed publicly and added to brand.json.',
       };
 
       const selectId = `agent-${index}-visibility`;
       const publicLabel = publicDisabled ? 'Public (unavailable)' : 'Public';
 
-      const upsell = !canSetPublic
-        ? `<span class="agent-visibility-upsell"><a href="/membership">Upgrade to Professional</a> to list publicly.</span>`
+      const upsell = tierRequired
+        ? `<span class="agent-visibility-upsell"><a href="/membership">Upgrade to a paid AAO tier</a> to list publicly.</span>`
         : '';
-      const brandNudge = canSetPublic && publicRequiresDomain
-        ? `<span class="agent-visibility-upsell">Set a <a href="/member-profile#brand-domain-input">primary brand domain</a> to publish publicly.</span>`
+      const brandNudge = !tierRequired && brandRequired
+        ? `<span class="agent-visibility-upsell">Verify a <a href="/member-profile#linked-domains-section">primary brand domain</a> to publish publicly.</span>`
         : '';
 
       return `<div class="agent-card-visibility">
@@ -1266,6 +1582,279 @@
       }
     };
 
+    // DELETE the agent and re-render on success.
+    // Public agents are reflected in brand.json and the API rejects with
+    // 409 unpublish_first — surface that as an actionable prompt offering
+    // to flip visibility to private and retry the delete.
+    window.deleteAgent = async function deleteAgent(index, opts) {
+      const skipConfirm = !!(opts && opts.skipConfirm);
+      const agent = pageState.agents[index];
+      if (!agent) return;
+      const hostname = (() => {
+        try { return new URL(agent.url).hostname; } catch { return agent.url; }
+      })();
+      if (!skipConfirm && !confirm(`Delete agent ${hostname}?\n\n${agent.url}\n\nThis removes it from your registered agents. You can re-register it later.`)) {
+        return;
+      }
+      const orgQs = pageState.orgId ? `?org=${encodeURIComponent(pageState.orgId)}` : '';
+      try {
+        const resp = await fetch(`/api/me/agents/${encodeURIComponent(agent.url)}${orgQs}`, {
+          method: 'DELETE',
+          credentials: 'include',
+        });
+        if (resp.status === 204) {
+          pageState.agents = pageState.agents.filter((_, i) => i !== index);
+          pageState.complianceMap?.delete(agent.url);
+          renderPage(pageState.agents, pageState.complianceMap, pageState.orgId);
+          return;
+        }
+        const data = await resp.json().catch(() => ({}));
+        if (resp.status === 409 && data.error === 'unpublish_first') {
+          if (confirm(`This agent is currently Public and listed in brand.json. Set it to Private and then delete?`)) {
+            await window.setAgentVisibility(index, 'private');
+            // setAgentVisibility re-renders pageState; re-find by url.
+            const refreshed = pageState.agents.findIndex(a => a.url === agent.url);
+            if (refreshed !== -1 && pageState.agents[refreshed].visibility !== 'public') {
+              await window.deleteAgent(refreshed, { skipConfirm: true });
+            }
+          }
+          return;
+        }
+        alert(data.message || data.error || `Failed to delete agent (HTTP ${resp.status})`);
+      } catch (err) {
+        alert('Failed to delete agent: ' + (err?.message || err));
+      }
+    };
+
+    function normalizeStoryboardStatus(status) {
+      return ['passing', 'failing', 'partial', 'untested'].includes(status) ? status : 'untested';
+    }
+
+    function storyboardStatusLabel(status) {
+      const normalized = normalizeStoryboardStatus(status);
+      if (normalized === 'passing') return 'Passing';
+      if (normalized === 'failing') return 'Failing';
+      if (normalized === 'partial') return 'Partial';
+      return 'Not tested';
+    }
+
+    function finiteCount(value) {
+      const n = Number(value);
+      return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+    }
+
+    function pluralizeCount(count, singular, plural) {
+      return `${count} ${count === 1 ? singular : plural || singular + 's'}`;
+    }
+
+    function storyboardIssueSummary(statusInfo) {
+      if (!statusInfo || !storyboardStatusNeedsAttention(statusInfo)) return '';
+      const failures = finiteCount(statusInfo.failure_count);
+      const skipped = finiteCount(statusInfo.skipped_count);
+      const parts = [];
+      if (failures > 0) parts.push(pluralizeCount(failures, 'failure'));
+      if (skipped > 0) parts.push(pluralizeCount(skipped, 'skipped'));
+      return parts.join(', ');
+    }
+
+    function storyboardStatusSteps(statusInfo) {
+      if (!statusInfo) return '';
+      const passed = Number.isFinite(statusInfo.steps_passed) ? statusInfo.steps_passed : null;
+      const total = Number.isFinite(statusInfo.steps_total) ? statusInfo.steps_total : null;
+      if (passed === null || total === null || total <= 0) return '';
+      return `${passed}/${total} steps`;
+    }
+
+    function storyboardStatusNeedsAttention(statusInfo) {
+      const status = normalizeStoryboardStatus(statusInfo?.status);
+      return status === 'failing' || status === 'partial';
+    }
+
+    function storyboardStatusTitle(statusInfo) {
+      if (!statusInfo) return 'No saved result yet. Run this storyboard to create one.';
+      const status = normalizeStoryboardStatus(statusInfo.status);
+      const parts = [storyboardStatusLabel(status)];
+      const steps = storyboardStatusSteps(statusInfo);
+      if (steps) parts.push(steps);
+      if (statusInfo.last_tested_at) parts.push('last tested ' + timeAgo(new Date(statusInfo.last_tested_at)));
+      if (storyboardStatusNeedsAttention(statusInfo)) {
+        parts.push('Open Preview or Run to inspect the failing checks.');
+      } else if (status === 'untested') {
+        parts.push('Run this storyboard to check current behavior.');
+      }
+      return parts.join(' - ');
+    }
+
+    function storyboardNextStep(statusInfo) {
+      if (!statusInfo) return 'Next step: run this storyboard to check current behavior.';
+      const status = normalizeStoryboardStatus(statusInfo.status);
+      const failedStep = statusInfo.first_failed_step_title || statusInfo.first_failed_step_id;
+      if (status === 'failing') return failedStep ? `Next step: review ${failedStep}, then re-test.` : 'Next step: preview or run to inspect the failing checks, then re-test.';
+      if (status === 'partial') return failedStep ? `Next step: review ${failedStep}, then re-test.` : 'Next step: review incomplete checks, then re-test.';
+      if (status === 'untested') return 'Next step: run this storyboard.';
+      return '';
+    }
+
+    function storyboardDrilldownHtml(statusInfo) {
+      if (!storyboardStatusNeedsAttention(statusInfo)) return '';
+      const failures = finiteCount(statusInfo.failure_count);
+      const skipped = finiteCount(statusInfo.skipped_count);
+      const hasFailureDetail = failures > 0 && (
+        statusInfo.first_failed_step_id ||
+        statusInfo.first_failed_step_title ||
+        statusInfo.first_failed_step_task ||
+        statusInfo.first_failure_message
+      );
+      if (!hasFailureDetail && skipped === 0) return '';
+
+      const issueSummary = storyboardIssueSummary(statusInfo);
+      const summary = issueSummary ? `Show failure details (${issueSummary})` : 'Show failure details';
+      let html = '<details class="storyboard-map-drilldown">';
+      html += '<summary>' + escapeHtml(summary) + '</summary>';
+      if (hasFailureDetail) {
+        const stepTitle = statusInfo.first_failed_step_title || statusInfo.first_failed_step_id || 'Failed step';
+        const stepMeta = [statusInfo.first_failed_step_id, statusInfo.first_failed_step_task]
+          .filter(Boolean)
+          .join(' · ');
+        html += '<div class="storyboard-map-detail-row">';
+        html += '<span class="storyboard-map-detail-label storyboard-map-detail-label--failure">First failed step</span>';
+        html += '<span class="storyboard-map-detail-title">' + escapeHtml(stepTitle) + '</span>';
+        if (stepMeta) html += '<div>' + escapeHtml(stepMeta) + '</div>';
+        if (statusInfo.first_failure_message) {
+          html += '<div class="storyboard-map-detail-message">' + escapeHtml(statusInfo.first_failure_message) + '</div>';
+        }
+        const validations = Array.isArray(statusInfo.first_failure_validations)
+          ? statusInfo.first_failure_validations
+          : [];
+        for (const validation of validations.slice(0, 3)) {
+          html += renderDiagnosticValidation(validation);
+        }
+        if (validations.length > 3) {
+          html += '<div class="storyboard-map-detail-message">Showing 3 validation details; ' + escapeHtml(pluralizeCount(validations.length - 3, 'more validation')) + ' remain.</div>';
+        }
+        const additionalFailures = Math.max(0, failures - 1);
+        if (additionalFailures > 0) {
+          html += '<div class="storyboard-map-detail-message">Showing the first failing step; ' + escapeHtml(pluralizeCount(additionalFailures, 'more failure')) + ' remain.</div>';
+        }
+        html += '</div>';
+      }
+      if (skipped > 0) {
+        html += '<div class="storyboard-map-detail-row">';
+        html += '<span class="storyboard-map-detail-label storyboard-map-detail-label--skip">Blocked after earlier failure</span>';
+        html += '<span class="storyboard-map-detail-title">' + escapeHtml(pluralizeCount(skipped, 'step')) + ' skipped after an earlier step failed</span>';
+        html += '</div>';
+      }
+      html += '</details>';
+      return html;
+    }
+
+    function cachedStoryboardStatuses(agentUrl) {
+      const state = pageState.complianceMap?.get(agentUrl);
+      const rows = state?.status?.storyboard_statuses;
+      return Array.isArray(rows) ? rows : [];
+    }
+
+    async function loadStoryboardStatusMap(agentUrl) {
+      let rows = cachedStoryboardStatuses(agentUrl);
+      if (rows.length === 0) {
+        try {
+          const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/storyboard-status', { credentials: 'include' });
+          if (res.ok) {
+            const data = await res.json();
+            rows = Array.isArray(data.storyboards) ? data.storyboards : [];
+          }
+        } catch (err) {
+          console.warn('Failed to load storyboard status:', err);
+        }
+      }
+      const map = new Map();
+      for (const row of rows) {
+        if (row && row.storyboard_id) map.set(row.storyboard_id, row);
+      }
+      return map;
+    }
+
+    function buildStoryboardStatusSummary(statusMap) {
+      const statuses = Array.from(statusMap.values());
+      if (statuses.length === 0) return '';
+      const failing = statuses.filter(s => normalizeStoryboardStatus(s.status) === 'failing');
+      const partial = statuses.filter(s => normalizeStoryboardStatus(s.status) === 'partial');
+      const passing = statuses.filter(s => normalizeStoryboardStatus(s.status) === 'passing');
+      const attention = failing.length + partial.length;
+      if (attention > 0) {
+        const examples = failing.concat(partial)
+          .slice(0, 3)
+          .map(s => s.title || s.storyboard_id)
+          .join(', ');
+        const more = attention > 3 ? ` and ${attention - 3} more` : '';
+        return `<div class="storyboard-map-status-summary storyboard-map-status-summary--attention">Needs attention: ${attention} storyboard${attention === 1 ? '' : 's'} not passing. Start with ${escapeHtml(examples + more)}, then run the storyboard again.</div>`;
+      }
+      if (passing.length === statuses.length) {
+        return `<div class="storyboard-map-status-summary storyboard-map-status-summary--passing">All ${passing.length} saved storyboard result${passing.length === 1 ? '' : 's'} are passing.</div>`;
+      }
+      return `<div class="storyboard-map-status-summary">Saved results are available for ${statuses.length} storyboard${statuses.length === 1 ? '' : 's'}.</div>`;
+    }
+
+    function scenarioCounts(cs) {
+      const details = Array.isArray(cs?.track_details) ? cs.track_details : [];
+      if (details.length === 0) return null;
+      let passing = 0;
+      let total = 0;
+      for (const track of details) {
+        const passed = Number(track?.passed_count);
+        const count = Number(track?.scenario_count);
+        if (!Number.isFinite(passed) || !Number.isFinite(count) || count <= 0) continue;
+        passing += Math.max(0, Math.floor(passed));
+        total += Math.max(0, Math.floor(count));
+      }
+      return total > 0 ? { passing, total } : null;
+    }
+
+    function buildStoryboardSummaryTitle(cs) {
+      const passing = Number.isFinite(cs?.storyboards_passing) ? cs.storyboards_passing : null;
+      const total = Number.isFinite(cs?.storyboards_total) ? cs.storyboards_total : null;
+      const scenarios = scenarioCounts(cs);
+      const rows = Array.isArray(cs?.storyboard_statuses) ? cs.storyboard_statuses : [];
+      const notPassing = rows.filter(s => normalizeStoryboardStatus(s.status) !== 'passing');
+      const lines = [];
+      if (scenarios) {
+        lines.push(`${scenarios.passing} of ${scenarios.total} scenarios passing.`);
+      }
+      if (passing !== null && total !== null) {
+        lines.push(`${passing} of ${total} applicable storyboards passing.`);
+        lines.push('A storyboard fails if any scenario within it fails.');
+      }
+      if (notPassing.length > 0) {
+        lines.push(`${notPassing.length} need attention:`);
+        for (const row of notPassing.slice(0, 4)) {
+          const steps = storyboardStatusSteps(row);
+          lines.push(`- ${row.title || row.storyboard_id}: ${storyboardStatusLabel(row.status)}${steps ? ` (${steps})` : ''}`);
+        }
+        if (notPassing.length > 4) lines.push(`- ${notPassing.length - 4} more`);
+      } else if (rows.length > 0) {
+        lines.push('All saved storyboard results are passing.');
+      } else {
+        lines.push('Open Test to load per-storyboard results.');
+      }
+      return lines.join('\n');
+    }
+
+    function buildComplianceStatusTitle(cs, lastChecked, verdictSourceLabel) {
+      const status = cs?.status || 'unknown';
+      const lines = [`Status: ${status}`];
+      if (lastChecked) lines.push(`Last checked: ${lastChecked}${verdictSourceLabel || ''}`);
+      if (cs?.headline) lines.push(cs.headline);
+      const storyboardTitle = buildStoryboardSummaryTitle(cs);
+      if (storyboardTitle) lines.push(storyboardTitle);
+      const declared = Array.isArray(cs?.declared_specialisms) ? cs.declared_specialisms : [];
+      const specialismStatus = (cs && typeof cs.specialism_status === 'object' && cs.specialism_status) ? cs.specialism_status : {};
+      const failingSpecialisms = declared.filter(s => specialismStatus[s] === 'failing');
+      if (failingSpecialisms.length > 0) {
+        lines.push(`Failing declared specialisms: ${failingSpecialisms.join(', ')}`);
+      }
+      return lines.join('\n');
+    }
+
     function renderAgentsSection(agents, complianceMap, orgId) {
       if (!agents || agents.length === 0) {
         return `
@@ -1273,7 +1862,7 @@
             <div style="font-size: var(--text-2xl); margin-bottom: var(--space-3);">🤖</div>
             <p style="font-weight: var(--font-medium); color: var(--color-text-heading); margin-bottom: var(--space-2);">Monitor your agents' protocol compliance</p>
             <p style="font-size: var(--text-sm); color: var(--color-text-secondary); max-width: 400px; margin: 0 auto var(--space-4);">Register your buyer or seller agents to get automated compliance checks, public trust badges, and storyboard testing — included with your membership.</p>
-            <a href="/chat?prompt=${encodeURIComponent('I want to add an agent for compliance monitoring.')}" class="btn btn-primary btn-sm">Register your first agent</a>
+            <a href="/chat?prompt=${encodeURIComponent(REGISTER_AGENT_SEED_PROMPT)}" class="btn btn-primary btn-sm">Register your first agent</a>
           </div>
         `;
       }
@@ -1384,6 +1973,12 @@
             </div>
             ${bodyHtml}
             ${visibilitySelectorHtml}
+            <div class="agent-meta-row">
+              <span></span>
+              <div class="agent-meta-row-actions">
+                <button class="agent-action-link agent-action-link--danger" onclick="deleteAgent(${index})">Delete</button>
+              </div>
+            </div>
           </div>`;
         }
 
@@ -1404,7 +1999,11 @@
             ${renderVerificationPanel(null, agent.url, hasAuth)}
             <div class="agent-meta-row">
               <span></span>
-              <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Test your agent</button>
+              <div class="agent-meta-row-actions">
+                <button class="agent-refresh-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" title="Re-probe this agent so the public registry shows fresh online / tools / type">Recheck status</button>
+                <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Test your agent</button>
+                <button class="agent-action-link agent-action-link--danger" onclick="deleteAgent(${index})">Delete</button>
+              </div>
             </div>
             <div class="agent-storyboard-panel" id="${cardId}-storyboard" style="display:none;"></div>
           </div>`;
@@ -1413,16 +2012,45 @@
         const statusClass = cs.status;
         const statusLabel = cs.status;
         const tracks = cs.tracks || {};
+        const trackDetails = Array.isArray(cs.track_details) ? cs.track_details : [];
+        const trackDetailsByName = new Map(trackDetails.map(t => [t.track, t]));
 
         const clickableTrackPills = Object.entries(tracks)
-          .filter(([, status]) => status !== 'skip' && status !== 'expected')
+          .filter(([track, status]) => status !== 'expected' && (
+            status !== 'skip' || trackDetailsByName.get(track)?.has_coverage_gap_skip
+          ))
           .map(([track, status]) => {
-          const cls = status === 'pass' ? 'agent-track--pass'
+          const cls = status === 'pass' || status === 'silent' ? 'agent-track--pass'
             : status === 'fail' ? 'agent-track--fail'
             : status === 'partial' ? 'agent-track--partial'
             : 'agent-track--skip';
           return '<button class="agent-track ' + cls + '" data-track="' + escapeHtml(track) + '" data-agent-url="' + escapeHtml(agent.url) + '">' + escapeHtml(track) + '</button>';
         }).join('');
+
+        // Storyboards passing is the canonical compliance metric: each
+        // applicable storyboard (universal + protocol + declared specialism)
+        // either passes or doesn't. The track pills above are the SDK's
+        // coarse roll-up (a track "passes" when its storyboards execute
+        // without warnings) — useful as a quick-glance summary but
+        // misleading in isolation: agents that pass 0/N storyboards
+        // can still show "silent" track status if the SDK had nothing
+        // to flag (the literal absence of negative observations is
+        // counted as a clean track). When both views exist, the
+        // storyboard count is the one to trust.
+        const sbPassing = Number.isFinite(cs.storyboards_passing) ? cs.storyboards_passing : null;
+        const sbTotal = Number.isFinite(cs.storyboards_total) ? cs.storyboards_total : null;
+        const scenarios = scenarioCounts(cs);
+        const storyboardSummaryTitle = buildStoryboardSummaryTitle(cs);
+        const storyboardSummary = (sbPassing !== null && sbTotal !== null && sbTotal > 0)
+          ? `<div class="agent-storyboard-summary" title="${escapeHtml(storyboardSummaryTitle)}">`
+            + (scenarios
+              ? `<span class="agent-storyboard-summary-count">${scenarios.passing} / ${scenarios.total}</span>`
+                + `<span class="agent-storyboard-summary-label"> scenarios passing,</span>`
+              : '')
+            + `<span class="agent-storyboard-summary-count">${sbPassing} / ${sbTotal}</span>`
+            + `<span class="agent-storyboard-summary-label"> storyboards passing</span>`
+            + `</div>`
+          : '';
 
         const runs = history?.runs || [];
         const sparkline = runs.length > 0 ? '<div class="agent-sparkline">' +
@@ -1437,12 +2065,26 @@
           ? timeAgo(new Date(cs.last_checked_at))
           : 'never';
 
+        // Surface the verdict source so the operator knows whether the
+        // current status came from the scheduled heartbeat or their own
+        // owner-triggered test run. PR #4250 populates cs.verdict_source
+        // ('heartbeat' | 'owner_test' | 'manual' | 'webhook' | null when
+        // never run). Displayed inline with "Last checked" so the
+        // semantic shift on the public compliance contract is visible
+        // to the operator without having to read the changelog.
+        const verdictSourceLabel = cs.verdict_source === 'owner_test' ? ' (your test)'
+          : cs.verdict_source === 'heartbeat' ? ' (heartbeat)'
+          : cs.verdict_source === 'manual' ? ' (manual)'
+          : cs.verdict_source === 'webhook' ? ' (webhook)'
+          : '';
+        const complianceStatusTitle = buildComplianceStatusTitle(cs, lastChecked, verdictSourceLabel);
+
         const isPublic = cs.status !== 'opted_out';
 
         return `
-          <div class="agent-compliance-card" id="${cardId}">
+          <div class="agent-compliance-card" id="${cardId}" title="${escapeHtml(complianceStatusTitle)}">
             <div class="agent-compliance-header">
-              <div style="display: flex; align-items: center; gap: var(--space-2); min-width: 0;">
+              <div style="display: flex; align-items: center; gap: var(--space-2); min-width: 0;" title="${escapeHtml(complianceStatusTitle)}">
                 <span class="agent-status-dot agent-status-dot--${escapeHtml(statusClass)}"></span>
                 <span class="agent-hostname">${escapeHtml(hostname)}</span>
                 <span class="agent-status-label">${escapeHtml(statusLabel)}</span>
@@ -1456,22 +2098,23 @@
               </div>
             </div>
             ${cs.headline ? '<div class="agent-headline">' + escapeHtml(cs.headline) + '</div>' : ''}
-            ${clickableTrackPills ? '<div class="agent-tracks">' + clickableTrackPills + '</div>' : ''}
+            ${storyboardSummary}
+            ${clickableTrackPills ? '<div class="agent-tracks" title="' + escapeHtml(complianceStatusTitle) + '">' + clickableTrackPills + '</div>' : ''}
             <div class="agent-track-detail" id="${cardId}-track-detail" style="display:none;"></div>
             ${sparkline}
             ${renderVerificationPanel(cs, agent.url, hasAuth)}
             ${visibilitySelectorHtml}
             <div class="agent-meta-row">
               <div class="agent-meta-row-left">
-                <span>Last checked: ${escapeHtml(lastChecked)}</span>
+                <span>Last checked: ${escapeHtml(lastChecked)}${escapeHtml(verdictSourceLabel)}</span>
                 <span class="agent-meta-sep" aria-hidden="true">·</span>
-                <label class="agent-toggle" title="Pause automated compliance and health checks">
-                  <input type="checkbox" class="monitoring-pause-toggle" data-agent-url="${escapeHtml(agent.url)}" ${cs.monitoring_paused ? 'checked' : ''}>
+                <label class="agent-toggle" title="${isPublic ? 'Pause automated compliance and health checks' : 'Re-enable monitoring (Show on registry) before pausing'}">
+                  <input type="checkbox" class="monitoring-pause-toggle" data-agent-url="${escapeHtml(agent.url)}" ${cs.monitoring_paused ? 'checked' : ''} ${isPublic ? '' : 'disabled'}>
                   <span class="agent-toggle-label">Pause</span>
                 </label>
-                <label class="agent-toggle" title="How often to re-run automated compliance checks">
+                <label class="agent-toggle" title="${isPublic ? 'How often to re-run automated compliance checks' : 'Monitoring is opted out — re-enable to schedule checks'}">
                   <span class="agent-toggle-label">Every</span>
-                  <select class="monitoring-interval-select agent-lifecycle-select" data-agent-url="${escapeHtml(agent.url)}" ${cs.monitoring_paused ? 'disabled' : ''}>
+                  <select class="monitoring-interval-select agent-lifecycle-select" data-agent-url="${escapeHtml(agent.url)}" ${(cs.monitoring_paused || !isPublic) ? 'disabled' : ''}>
                     <option value="6" ${(cs.check_interval_hours || 12) === 6 ? 'selected' : ''}>6h</option>
                     <option value="12" ${(cs.check_interval_hours || 12) === 12 ? 'selected' : ''}>12h</option>
                     <option value="24" ${(cs.check_interval_hours || 12) === 24 ? 'selected' : ''}>24h</option>
@@ -1480,13 +2123,16 @@
                     <option value="168" ${(cs.check_interval_hours || 12) === 168 ? 'selected' : ''}>Weekly</option>
                   </select>
                 </label>
-                ${cs.monitoring_paused ? '<span style="color: var(--color-warning-700, #b45309);">paused</span>' : ''}
+                ${!isPublic ? '<span style="color: var(--color-warning-700, #b45309);" title="Compliance opt-out skips this agent in the scheduled heartbeat. Tick \'Show on registry\' to re-enable.">monitoring opted out</span>' : (cs.monitoring_paused ? '<span style="color: var(--color-warning-700, #b45309);">paused</span>' : '')}
               </div>
               <div class="agent-meta-row-actions">
                 <button class="agent-connect-toggle agent-action-link" data-card-id="${cardId}" data-agent-url="${escapeHtml(agent.url)}">${hasAuth ? 'Update auth' : 'Connect agent'}</button>
                 <button class="agent-history-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">History</button>
                 <button class="agent-requests-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Requests</button>
-                <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" data-agent-tracks="${escapeHtml(JSON.stringify(tracks))}">Test</button>
+                <button class="agent-refresh-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" title="Re-probe this agent so the public registry shows fresh online / tools / type. Distinct from Test (which runs storyboard compliance).">Recheck status</button>
+                <button class="agent-requeue-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" title="Queue this agent for the next scheduled compliance heartbeat (runs within ~1 hour).">Requeue comply</button>
+                <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" data-agent-tracks="${escapeHtml(JSON.stringify(tracks))}" title="Run the full storyboard compliance suite against this agent.">Test</button>
+                <button class="agent-action-link agent-action-link--danger" onclick="deleteAgent(${index})">Delete</button>
               </div>
             </div>
             <div id="${cardId}-connect" style="display:none;border-top:1px solid var(--color-border);margin-top:var(--space-3);padding-top:var(--space-3);">
@@ -1506,8 +2152,74 @@
     // Empty state: when storyboards are passing but no badges have issued
     // (membership inactive, specialisms not declared), surface a hint
     // pointing at the docs.
+    // Build the notices section HTML for a compliance status object.
+    // Forward-compat: unknown severity values render with a neutral style
+    // rather than being dropped (runner-output-contract.yaml).
+    // XSS note: all notice text fields (message, code, etc.) are escaped
+    // before being included in the rendered HTML because these strings
+    // originate from storyboard authors, not AAO.
+    function buildNoticesSectionHtml(cs) {
+      const notices = Array.isArray(cs && cs.notices) ? cs.notices : [];
+      if (notices.length === 0) return '';
+
+      const SEVERITY_CLASS = {
+        info: 'compliance-notice-severity--info',
+        deprecation: 'compliance-notice-severity--deprecation',
+        future_required: 'compliance-notice-severity--future_required',
+      };
+
+      const noticesHtml = notices.map(notice => {
+        const severityClass = SEVERITY_CLASS[notice.severity] || 'compliance-notice-severity--unknown';
+        // All text content is storyboard-author-controlled; escape before
+        // including it in HTML or attribute contexts.
+        const severityLabel = escapeHtml(String(notice.severity ?? ''));
+        const codeLabel = escapeHtml(String(notice.code ?? ''));
+        const messageText = escapeHtml(String(notice.message ?? ''));
+
+        let metaHtml = '';
+        if (notice.effective_version) {
+          metaHtml += `<span class="compliance-notice-meta">Effective in v${escapeHtml(String(notice.effective_version))}</span> `;
+        }
+        if (notice.reference_url && typeof notice.reference_url === 'string' && notice.reference_url.startsWith('http')) {
+          metaHtml += `<a href="${escapeHtml(notice.reference_url)}" target="_blank" rel="noopener" class="compliance-notice-meta">Spec reference</a>`;
+        }
+
+        let capPathHtml = '';
+        if (notice.capability_path) {
+          capPathHtml = `
+            <details class="compliance-notice-details">
+              <summary>Capability path</summary>
+              <span class="compliance-notice-cap-path">${escapeHtml(String(notice.capability_path))}</span>
+            </details>`;
+        }
+
+        return `
+          <div class="compliance-notice">
+            <div class="compliance-notice-header">
+              <span class="compliance-notice-severity ${severityClass}">${severityLabel}</span>
+              <span class="compliance-notice-code">${codeLabel}</span>
+            </div>
+            <div class="compliance-notice-message">${messageText}</div>
+            ${metaHtml ? '<div>' + metaHtml + '</div>' : ''}
+            ${capPathHtml}
+          </div>`;
+      }).join('');
+
+      return `
+        <div class="compliance-notices">
+          <div class="compliance-notices-label">Notices</div>
+          ${noticesHtml}
+        </div>`;
+    }
+
     function renderVerificationPanel(cs, agentUrl, hasAuth) {
       const badges = Array.isArray(cs && cs.verified_badges) ? cs.verified_badges : [];
+      // Audit-comment from #3603: values MUST NOT end in "Agent" or
+      // any equivalent suffix that would collide when appended below
+      // (e.g. "${protocol} Agent" → "Media Buy Agent Agent" if a label
+      // ever became "Media Buy Agent"). Current values are noun
+      // phrases ending in the AdCP-protocol noun. If you add a new
+      // protocol, keep this invariant.
       const PROTOCOL_LABELS = {
         'media-buy': 'Media Buy', 'creative': 'Creative',
         'signals': 'Signals', 'governance': 'Governance',
@@ -1615,6 +2327,7 @@
             </div>
             ${declaredHtml}
             <div class="verification-eligibility-hint">${hint}</div>
+            ${buildNoticesSectionHtml(cs)}
           </div>`;
       }
 
@@ -1738,9 +2451,9 @@
       // Header count: "1 badge" / "N badges" / "N badges across M roles"
       // The "across M roles" suffix only appears when at least one role
       // has parallel-version badges (i.e. distinctRoleCount < badges.length).
-      // Today with SUPPORTED_BADGE_VERSIONS = ['3.0'] every agent has at
-      // most one badge per role, so this only kicks in once parallel
-      // versions ship.
+      // Parallel-version badge issuance means one role can hold both 3.1
+      // and 3.0 badges. Keep the role suffix so the count doesn't read as
+      // duplicate roles.
       const badgeCountSummary = badges.length === 1
         ? '1 badge'
         : `${badges.length} badges${distinctRoleCount < badges.length ? ` across ${distinctRoleCount} role${distinctRoleCount === 1 ? '' : 's'}` : ''}`;
@@ -1753,6 +2466,7 @@
           </div>
           ${rowsHtml}
           ${liveHint}
+          ${buildNoticesSectionHtml(cs)}
         </div>`;
     }
 
@@ -2053,8 +2767,11 @@
           throw new Error(data.error || 'Failed to connect');
         }
 
-        // Replace the form with a success message and reload after a moment
-        form.innerHTML = '<div class="agent-connect-msg" style="color:var(--color-success-600);">Connected. Compliance check will run on the next heartbeat cycle.</div>';
+        // Replace the form with a success message and reload after a moment.
+        // The server re-probes with the new credentials before responding, so
+        // the reload shows fresh compliance state — no waiting for the next
+        // heartbeat.
+        form.innerHTML = '<div class="agent-connect-msg" style="color:var(--color-success-600);">Connected and re-checked.</div>';
         setTimeout(() => location.reload(), 1500);
       } catch (err) {
         saveBtn.disabled = false;
@@ -2494,6 +3211,156 @@
       }
     });
 
+    // Recheck registry snapshot for one agent. Re-probes capabilities + health
+    // and updates the public registry's online / tools / type display without
+    // waiting for the periodic crawl. Successes flash and auto-dismiss; errors
+    // and rate-limit messages persist on the card so an operator who alt-tabs
+    // doesn't lose the diagnostic.
+    document.addEventListener('click', async function(e) {
+      const btn = e.target.closest('.agent-refresh-btn');
+      if (!btn) return;
+
+      const agentUrl = btn.dataset.agentUrl;
+      const originalLabel = btn.textContent;
+      const actionsRow = btn.closest('.agent-meta-row-actions');
+
+      // Kill any prior result message on this card so a re-click doesn't
+      // stack flashes — only the latest matters.
+      if (actionsRow) {
+        const prior = actionsRow.parentElement?.querySelector('.agent-refresh-result');
+        if (prior) prior.remove();
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Checking…';
+
+      const renderFlash = ({ severity, text }) => {
+        if (!actionsRow || !actionsRow.parentElement) return null;
+        const flash = document.createElement('div');
+        flash.className = 'agent-refresh-result';
+        flash.style.cssText = 'font-size: var(--text-xs); margin-top: var(--space-2); padding: var(--space-2) var(--space-3); border-radius: 6px;';
+        const palette = {
+          success: { bg: 'var(--color-success-bg)', fg: 'var(--color-success-fg)' },
+          warning: { bg: 'var(--color-warning-bg)', fg: 'var(--color-warning-fg)' },
+          error:   { bg: 'var(--color-error-bg)',   fg: 'var(--color-error-fg)' },
+        }[severity] || { bg: 'var(--color-bg-subtle)', fg: 'var(--color-text-secondary)' };
+        flash.style.background = palette.bg;
+        flash.style.color = palette.fg;
+        flash.textContent = text;
+        actionsRow.parentElement.appendChild(flash);
+        return flash;
+      };
+
+      try {
+        const res = await fetch(`/api/registry/agents/${encodeURIComponent(agentUrl)}/refresh`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (res.status === 200) {
+          const parts = [
+            data.online ? '✓ Online' : '✗ Offline',
+            (data.tools_count ?? 0) + ' tools',
+            data.inferred_type && data.inferred_type !== 'unknown' ? data.inferred_type : 'type unknown',
+          ];
+          if (data.type_promoted) parts.push('type promoted');
+          if (data.oauth_required) parts.push('OAuth required');
+          if (data.compliance?.ran) {
+            const passing = data.compliance.storyboards_passing ?? 0;
+            const total = data.compliance.storyboards_total ?? 0;
+            parts.push(`compliance: ${passing}/${total}`);
+          } else if (data.compliance?.error) {
+            parts.push(`compliance not run (${data.compliance.error})`);
+          }
+          // Online flashes auto-dismiss; offline-but-reachable persists so
+          // the operator can read the diagnostic at their pace.
+          const flash = renderFlash({
+            severity: data.online ? 'success' : 'warning',
+            text: parts.join(' · '),
+          });
+          if (data.online && flash) setTimeout(() => flash.remove(), 8000);
+        } else if (res.status === 429) {
+          renderFlash({
+            severity: 'warning',
+            text: `Rate limited — try again in ${data.retry_after || 60}s`,
+          });
+        } else if (res.status === 502) {
+          renderFlash({ severity: 'error', text: data.error || 'Probe failed' });
+        } else {
+          renderFlash({
+            severity: 'error',
+            text: data.error || `Recheck failed (HTTP ${res.status})`,
+          });
+        }
+      } catch (err) {
+        renderFlash({
+          severity: 'error',
+          text: `Recheck failed: ${err?.message || err}`,
+        });
+      } finally {
+        btn.disabled = false;
+        btn.textContent = originalLabel;
+      }
+    });
+
+    // Requeue agent for next compliance heartbeat
+    document.addEventListener('click', async function(e) {
+      const btn = e.target.closest('.agent-requeue-btn');
+      if (!btn) return;
+
+      const agentUrl = btn.dataset.agentUrl;
+      const originalLabel = btn.textContent;
+      const actionsRow = btn.closest('.agent-meta-row-actions');
+
+      btn.disabled = true;
+      btn.textContent = 'Queuing…';
+
+      try {
+        const res = await fetch(`/api/registry/agents/${encodeURIComponent(agentUrl)}/monitoring/requeue`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (!actionsRow || !actionsRow.parentElement) return;
+        const flash = document.createElement('div');
+        flash.className = 'agent-refresh-result';
+        flash.style.cssText = 'font-size: var(--text-xs); margin-top: var(--space-2); padding: var(--space-2) var(--space-3); border-radius: 6px;';
+
+        if (res.status === 200) {
+          flash.style.background = 'var(--color-success-bg)';
+          flash.style.color = 'var(--color-success-fg)';
+          flash.textContent = 'Queued — compliance check will run on the next heartbeat cycle (within ~1 hour)';
+          actionsRow.parentElement.appendChild(flash);
+          setTimeout(() => flash.remove(), 10000);
+        } else if (res.status === 429) {
+          flash.style.background = 'var(--color-warning-bg)';
+          flash.style.color = 'var(--color-warning-fg)';
+          flash.textContent = `Rate limited — try again in ${data.retry_after || 60}s`;
+          actionsRow.parentElement.appendChild(flash);
+        } else {
+          flash.style.background = 'var(--color-error-bg)';
+          flash.style.color = 'var(--color-error-fg)';
+          flash.textContent = data.error || `Requeue failed (HTTP ${res.status})`;
+          actionsRow.parentElement.appendChild(flash);
+        }
+      } catch (err) {
+        if (actionsRow && actionsRow.parentElement) {
+          const flash = document.createElement('div');
+          flash.className = 'agent-refresh-result';
+          flash.style.cssText = 'font-size: var(--text-xs); margin-top: var(--space-2); padding: var(--space-2) var(--space-3); border-radius: 6px; background: var(--color-error-bg); color: var(--color-error-fg);';
+          flash.textContent = `Requeue failed: ${err?.message || err}`;
+          actionsRow.parentElement.appendChild(flash);
+        }
+      } finally {
+        btn.disabled = false;
+        btn.textContent = originalLabel;
+      }
+    });
+
     // View outbound requests log
     document.addEventListener('click', async function(e) {
       const btn = e.target.closest('.agent-requests-btn');
@@ -2586,7 +3453,7 @@
             return;
           }
 
-          const statusLabel = trackData.status === 'pass' ? 'Passing'
+          const statusLabel = trackData.status === 'pass' || trackData.status === 'silent' ? 'Passing'
             : trackData.status === 'fail' ? 'Failing'
             : trackData.status === 'partial' ? 'Partial' : trackData.status;
 
@@ -2654,10 +3521,25 @@
               : 'var(--color-warning-500)';
             const date = new Date(run.tested_at).toLocaleString();
 
+            // Distinguish owner-triggered tests from scheduled heartbeat runs
+            // so the operator sees their own on-demand evaluations interleaved
+            // with the cron-driven verdicts. `triggered_by` enum is populated
+            // by the unification PR 1 (#4250); pre-PR-1 rows have
+            // 'heartbeat'/'manual'/'webhook' only — surface those neutrally.
+            const triggeredBy = run.triggered_by || 'heartbeat';
+            const sourceLabel = triggeredBy === 'owner_test' ? 'Your test'
+              : triggeredBy === 'heartbeat' ? 'Heartbeat'
+              : triggeredBy === 'manual' ? 'Manual'
+              : triggeredBy === 'webhook' ? 'Webhook'
+              : escapeHtml(String(triggeredBy));
+            const sourceBg = triggeredBy === 'owner_test' ? 'var(--color-info-50)' : 'var(--color-neutral-100)';
+            const sourceBorder = triggeredBy === 'owner_test' ? 'var(--color-info-200)' : 'var(--color-neutral-200)';
+            const sourceFg = triggeredBy === 'owner_test' ? 'var(--color-info-700)' : 'var(--color-text-secondary)';
+
             let runTracks = '';
             if (run.tracks_json) {
               for (const t of run.tracks_json) {
-                const cls = t.status === 'pass' ? 'agent-track--pass'
+                const cls = t.status === 'pass' || t.status === 'silent' ? 'agent-track--pass'
                   : t.status === 'fail' ? 'agent-track--fail'
                   : t.status === 'partial' ? 'agent-track--partial'
                   : 'agent-track--skip';
@@ -2670,6 +3552,7 @@
             html += '<span>' + escapeHtml(date) + '</span>';
             html += '<span>' + escapeHtml(run.overall_status) + '</span>';
             html += '<span>' + parseInt(run.tracks_passed, 10) + '/' + (parseInt(run.tracks_passed, 10) + parseInt(run.tracks_failed, 10) + parseInt(run.tracks_partial, 10)) + ' tracks</span>';
+            html += '<span class="history-run-source" style="font-size:var(--text-xs);padding:2px 8px;border-radius:var(--radius-full);background:' + sourceBg + ';border:1px solid ' + sourceBorder + ';color:' + sourceFg + ';">' + sourceLabel + '</span>';
             html += '</div>';
             if (runTracks) {
               html += '<div style="padding:var(--space-1) 0 var(--space-2) var(--space-5);display:flex;gap:3px;flex-wrap:wrap;">' + runTracks + '</div>';
@@ -2704,6 +3587,7 @@
         if (agentTracks) panel.dataset.agentTracks = JSON.stringify(agentTracks);
 
         try {
+          const storyboardStatusMapPromise = loadStoryboardStatusMap(agentUrl);
           const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/applicable-storyboards', { credentials: 'include' });
 
           if (res.ok) {
@@ -2711,6 +3595,7 @@
             const bundles = Array.isArray(data.bundles) ? data.bundles : [];
             const supportedProtocols = Array.isArray(data.supported_protocols) ? data.supported_protocols : [];
             const specialisms = Array.isArray(data.specialisms) ? data.specialisms : [];
+            const storyboardStatusMap = await storyboardStatusMapPromise;
             let html = '';
 
             if (data.capabilities_probe_error) {
@@ -2730,6 +3615,9 @@
               }
               html += '</div>';
             }
+
+            html += buildStoryboardStatusSummary(storyboardStatusMap);
+            const renderedStatusIds = new Set();
 
             const totalStoryboards = typeof data.total_storyboards === 'number'
               ? data.total_storyboards
@@ -2755,17 +3643,58 @@
 
               for (const sb of storyboards) {
                 const stepsLabel = (sb.step_count || 0) + ' step' + ((sb.step_count || 0) === 1 ? '' : 's');
-                html += '<div class="storyboard-map-item">';
+                const knownStatus = storyboardStatusMap.get(sb.id) || (storyboardStatusMap.size > 0 ? { storyboard_id: sb.id, title: sb.title || sb.id, status: 'untested', steps_passed: 0, steps_total: sb.step_count || 0 } : null);
+                if (knownStatus?.storyboard_id && storyboardStatusMap.has(sb.id)) renderedStatusIds.add(knownStatus.storyboard_id);
+                const status = normalizeStoryboardStatus(knownStatus?.status);
+                const itemClass = 'storyboard-map-item' + (knownStatus ? ' storyboard-map-item--' + status : '');
+                const nextStep = storyboardNextStep(knownStatus);
+                html += '<div class="' + itemClass + '" title="' + escapeHtml(storyboardStatusTitle(knownStatus)) + '">';
                 html += '<div class="storyboard-map-item-main">';
                 html += '<div class="storyboard-map-item-row1">';
                 html += '<span class="storyboard-map-item-title">' + escapeHtml(sb.title || sb.id) + '</span>';
                 html += '<span class="storyboard-map-item-steps">· ' + stepsLabel + '</span>';
+                if (knownStatus) {
+                  const savedSteps = storyboardStatusSteps(knownStatus);
+                  html += '<span class="storyboard-map-status storyboard-map-status--' + status + '">' + escapeHtml(storyboardStatusLabel(status)) + (savedSteps ? ' · ' + escapeHtml(savedSteps) : '') + '</span>';
+                }
                 html += '</div>';
                 if (sb.summary) html += '<div class="storyboard-map-item-summary" title="' + escapeHtml(sb.summary) + '">' + escapeHtml(sb.summary) + '</div>';
+                if (nextStep) html += '<div class="storyboard-map-next-step">' + escapeHtml(nextStep) + '</div>';
+                html += storyboardDrilldownHtml(knownStatus);
                 html += '</div>';
                 html += '<div class="storyboard-map-actions">';
                 html += '<button class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">Preview</button>';
                 html += '<button class="storyboard-step-btn btn-run" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '" title="Run step by step">Run</button>';
+                html += '</div>';
+                html += '</div>';
+              }
+              html += '</div>';
+            }
+
+            const unmatchedStatuses = Array.from(storyboardStatusMap.values())
+              .filter(statusInfo => statusInfo?.storyboard_id && !renderedStatusIds.has(statusInfo.storyboard_id))
+              .filter(statusInfo => storyboardStatusNeedsAttention(statusInfo));
+            if (unmatchedStatuses.length > 0) {
+              html += '<div class="storyboard-track-group">';
+              html += '<div class="storyboard-track-header"><span>Saved results needing attention</span><span class="storyboard-track-count">' + unmatchedStatuses.length + ' storyboard' + (unmatchedStatuses.length === 1 ? '' : 's') + '</span></div>';
+              for (const statusInfo of unmatchedStatuses) {
+                const status = normalizeStoryboardStatus(statusInfo.status);
+                const savedSteps = storyboardStatusSteps(statusInfo);
+                const nextStep = storyboardNextStep(statusInfo);
+                const title = statusInfo.title || statusInfo.storyboard_id;
+                html += '<div class="storyboard-map-item storyboard-map-item--' + status + '" title="' + escapeHtml(storyboardStatusTitle(statusInfo)) + '">';
+                html += '<div class="storyboard-map-item-main">';
+                html += '<div class="storyboard-map-item-row1">';
+                html += '<span class="storyboard-map-item-title">' + escapeHtml(title) + '</span>';
+                html += '<span class="storyboard-map-status storyboard-map-status--' + status + '">' + escapeHtml(storyboardStatusLabel(status)) + (savedSteps ? ' · ' + escapeHtml(savedSteps) : '') + '</span>';
+                html += '</div>';
+                html += '<div class="storyboard-map-item-summary">Saved result from the latest compliance run. It is not in the current capability-discovery list, but still needs review.</div>';
+                if (nextStep) html += '<div class="storyboard-map-next-step">' + escapeHtml(nextStep) + '</div>';
+                html += storyboardDrilldownHtml(statusInfo);
+                html += '</div>';
+                html += '<div class="storyboard-map-actions">';
+                html += '<button class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(statusInfo.storyboard_id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">Preview</button>';
+                html += '<button class="storyboard-step-btn btn-run" data-storyboard-id="' + escapeHtml(statusInfo.storyboard_id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '" title="Run step by step">Run</button>';
                 html += '</div>';
                 html += '</div>';
               }
@@ -2806,35 +3735,32 @@
             return;
           }
 
-          const reasonText = errBody.reason ? ' (' + errBody.reason + ')' : '';
-          const msg = errBody.error || ('HTTP ' + res.status);
-          let html = '<div style="padding:var(--space-3);background:var(--color-error-50);border:1px solid var(--color-error-200);border-radius:var(--radius-md);color:var(--color-error-700);font-size:var(--text-sm);margin-bottom:var(--space-3);">';
-          html += '<strong>Could not probe agent capabilities.</strong> ' + escapeHtml(String(msg) + reasonText);
-          html += '</div>';
-
-          try {
-            const fallback = await fetch('/api/storyboards', { credentials: 'include' });
-            if (fallback.ok) {
-              const fdata = await fallback.json();
-              if (fdata.storyboards && fdata.storyboards.length > 0) {
-                html += '<div style="font-size:var(--text-xs);color:var(--color-text-secondary);margin-bottom:var(--space-2);">Showing all available storyboards:</div>';
-                html += '<div class="storyboard-picker">';
-                for (const sb of fdata.storyboards) {
-                  html += '<div class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">';
-                  html += '<div>';
-                  html += '<div class="storyboard-picker-title">' + escapeHtml(sb.title) + '</div>';
-                  html += '<div class="storyboard-picker-summary">' + escapeHtml(sb.summary) + '</div>';
-                  html += '</div>';
-                  html += '<span style="font-size:var(--text-xs);color:var(--color-text-tertiary);">' + sb.step_count + ' steps</span>';
-                  html += '</div>';
-                }
-                html += '</div>';
-              }
-            }
-          } catch (fallbackErr) {
-            console.error('Storyboard fallback failed:', fallbackErr);
+          if (errBody.error_kind === 'unsupported_adcp_version') {
+            const complianceVersion = errBody.compliance_version || 'the selected cache';
+            const supportedVersions = errBody.supported_versions || '(none advertised)';
+            let html = '<div style="padding:var(--space-3);background:var(--color-error-50);border:1px solid var(--color-error-200);border-radius:var(--radius-md);color:var(--color-error-700);font-size:var(--text-sm);">';
+            html += '<strong>Unsupported compliance target.</strong> This check selected <code>' + escapeHtml(String(complianceVersion)) + '</code>, but the agent advertises <code>adcp.supported_versions</code>:';
+            html += '<div style="margin-top:var(--space-2);font-family:var(--font-mono);font-size:var(--text-xs);">' + escapeHtml(String(supportedVersions)) + '</div>';
+            html += '<div style="margin-top:var(--space-2);font-size:var(--text-xs);color:var(--color-error-600);">Select a compliance target the agent supports, or update the agent\'s capabilities if it is ready for this target.</div>';
+            html += '</div>';
+            panel.innerHTML = html;
+            return;
           }
 
+          // Capability probe failed for an unclassified reason. We deliberately
+          // do NOT fall back to the unfiltered storyboard catalog here: without
+          // the agent's declared protocols + specialisms, every storyboard we
+          // could show is misleading (the agent may not even implement most of
+          // them). Issue #4254 — signals-only agent was seeing pagination-
+          // creative-formats etc. because of that fallback.
+          const reasonText = errBody.reason ? ' (' + errBody.reason + ')' : '';
+          const msg = errBody.error || ('HTTP ' + res.status);
+          let html = '<div style="padding:var(--space-3);background:var(--color-error-50);border:1px solid var(--color-error-200);border-radius:var(--radius-md);color:var(--color-error-700);font-size:var(--text-sm);">';
+          html += '<strong>Could not probe agent capabilities.</strong> ' + escapeHtml(String(msg) + reasonText);
+          html += '<div style="margin-top:var(--space-2);font-size:var(--text-xs);color:var(--color-error-600);">';
+          html += 'Once <code>get_adcp_capabilities</code> responds with <code>supported_protocols</code> and <code>specialisms</code>, applicable storyboards will appear here.';
+          html += '</div>';
+          html += '</div>';
           panel.innerHTML = html;
         } catch (err) {
           console.error('Failed to load storyboards:', err);
@@ -3094,7 +4020,7 @@
 
           let html = '<button class="storyboard-back-btn" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">&larr; Back to storyboards</button>';
           html += '<div style="margin-bottom:var(--space-3);"><strong>' + escapeHtml(data.storyboard.title) + '</strong> — Results</div>';
-          html += '<div style="margin-bottom:var(--space-3);font-size:var(--text-sm);color:var(--color-text-secondary);">' + escapeHtml(data.summary.headline) + ' (' + (data.total_duration_ms / 1000).toFixed(1) + 's)</div>';
+          html += '<div style="margin-bottom:var(--space-3);font-size:var(--text-sm);color:var(--color-text-secondary);">' + escapeHtml(formatStoryboardRunSummary(data.storyboard_status, data.summary?.headline)) + ' (' + (data.total_duration_ms / 1000).toFixed(1) + 's)</div>';
 
           for (const phase of data.phases) {
             html += '<div class="storyboard-phase">';
@@ -3128,6 +4054,7 @@
                   }
                 }
               }
+              html += renderStoryboardDiagnostics(data.diagnostics || [], step);
 
               html += '</div>';
             }
@@ -3262,6 +4189,106 @@
       html += '</div>';
       panel.innerHTML = html;
       panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function renderStoryboardDiagnostics(diagnostics, storyboardStep) {
+      const matches = diagnosticsForStoryboardStep(diagnostics, storyboardStep);
+      if (!matches.length) return '';
+
+      let html = '<div class="storyboard-diagnostics">';
+      html += '<div class="storyboard-diagnostics-title">Failure diagnostics</div>';
+
+      for (const diagnostic of matches) {
+        html += '<div class="storyboard-diagnostic-item">';
+        html += '<div class="storyboard-diagnostic-meta">';
+        if (diagnostic.task) html += '<span>Task: <code>' + escapeHtml(diagnostic.task) + '</code></span>';
+        if (diagnostic.step_id) html += '<span>Step: <code>' + escapeHtml(diagnostic.step_id) + '</code></span>';
+        if (diagnostic.response_status) html += '<span>HTTP: <code>' + escapeHtml(String(diagnostic.response_status)) + '</code></span>';
+        html += '</div>';
+
+        if (diagnostic.error_text) {
+          html += '<div>' + escapeHtml(String(diagnostic.error_text).substring(0, 500)) + '</div>';
+        }
+
+        const validations = Array.isArray(diagnostic.failed_validations_jsonb)
+          ? diagnostic.failed_validations_jsonb
+          : diagnostic.failed_validations_jsonb ? [diagnostic.failed_validations_jsonb] : [];
+        for (const validation of validations) {
+          html += renderDiagnosticValidation(validation);
+        }
+
+        if (diagnostic.adcp_error_jsonb) {
+          html += '<div class="storyboard-diagnostic-validation">';
+          html += '<span class="storyboard-diagnostic-label">ADCP error</span>';
+          html += '<code>' + escapeHtml(formatDiagnosticValue(diagnostic.adcp_error_jsonb)) + '</code>';
+          html += '</div>';
+        }
+        html += '</div>';
+      }
+
+      html += '</div>';
+      return html;
+    }
+
+    function diagnosticsForStoryboardStep(diagnostics, storyboardStep) {
+      if (!Array.isArray(diagnostics) || !storyboardStep?.result?.scenarios) return [];
+
+      const rawSteps = [];
+      for (const scenario of storyboardStep.result.scenarios) {
+        for (const rawStep of scenario?.steps || []) rawSteps.push(rawStep);
+      }
+
+      return diagnostics.filter((diagnostic) => {
+        return rawSteps.some((rawStep) => {
+          if (diagnostic.step_id && (rawStep.step_id === diagnostic.step_id || rawStep.id === diagnostic.step_id)) return true;
+          return !diagnostic.step_id && diagnostic.task && rawStep.task === diagnostic.task && rawStep.passed === false;
+        });
+      });
+    }
+
+    function formatStoryboardRunSummary(storyboardStatus, fallbackHeadline) {
+      if (!storyboardStatus) return fallbackHeadline || '';
+
+      const statusLabel = storyboardStatus.status === 'passing' ? 'Passing'
+        : storyboardStatus.status === 'failing' ? 'Failing'
+        : storyboardStatus.status === 'partial' ? 'Partial'
+        : 'Untested';
+      const passed = Number(storyboardStatus.steps_passed);
+      const total = Number(storyboardStatus.steps_total);
+      if (Number.isFinite(passed) && Number.isFinite(total) && total > 0) {
+        return 'Storyboard ' + statusLabel + ' (' + passed + '/' + total + ' executable steps)';
+      }
+      return 'Storyboard ' + statusLabel + ' (no executable seller assertions)';
+    }
+
+    function renderDiagnosticValidation(validation) {
+      const rows = [];
+      if (validation?.description) rows.push(['Check', validation.description]);
+      if (validation?.check) rows.push(['Type', validation.check]);
+      if (validation?.json_pointer) rows.push(['Path', validation.json_pointer]);
+      if (validation?.path) rows.push(['Path', validation.path]);
+      if (Object.prototype.hasOwnProperty.call(validation || {}, 'expected')) rows.push(['Expected', validation.expected]);
+      if (Object.prototype.hasOwnProperty.call(validation || {}, 'actual')) rows.push(['Actual', validation.actual]);
+      if (!rows.length && validation) rows.push(['Validation', validation]);
+
+      let html = '<div class="storyboard-diagnostic-validation">';
+      for (const [label, value] of rows) {
+        html += '<span class="storyboard-diagnostic-label">' + escapeHtml(label) + '</span>';
+        html += '<code>' + escapeHtml(formatDiagnosticValue(value)) + '</code>';
+      }
+      html += '</div>';
+      return html;
+    }
+
+    function formatDiagnosticValue(value) {
+      if (value === null) return 'null';
+      if (value === undefined) return '';
+      if (typeof value === 'string') return value;
+      try {
+        return JSON.stringify(value);
+      } catch {
+        return String(value);
+      }
     }
 
     function escapeHtml(str) {

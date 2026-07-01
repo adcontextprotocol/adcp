@@ -18,6 +18,35 @@ import type {
 } from './types.js';
 import type { BrandReference } from '@adcp/sdk';
 import { getSession, sessionKeyFromArgs, findGovernancePlanAcrossSessions } from './state.js';
+import { signGovernanceContext, type GovernancePhase, type PolicyDecision } from './governance-context.js';
+import { getCanonicalBase } from './tenants/registry.js';
+
+const GOVERNANCE_PHASES = new Set<GovernancePhase>(['intent', 'purchase', 'modification', 'delivery']);
+
+/**
+ * Map plan-level policy_ids + current check status to per-policy outcomes
+ * for the JWS `policy_decisions` claim. The training agent doesn't track
+ * per-policy evaluation results separately, so derived outcomes mirror the
+ * check status — `denied`/`conditions`/`allowed`. Production governance
+ * agents that score each policy independently SHOULD emit the real per-
+ * policy outcome here (or `policy_decision_hash` instead — see spec
+ * §"Privacy considerations").
+ */
+function buildPolicyDecisions(
+  policyIds: string[],
+  status: 'approved' | 'denied' | 'conditions',
+  conditions: GovernanceCondition[],
+): PolicyDecision[] {
+  const outcome: 'allowed' | 'conditions' | 'denied' =
+    status === 'approved' ? 'allowed' : status === 'conditions' ? 'conditions' : 'denied';
+  const conditionedPolicies = new Set(
+    conditions.map(c => (c as { policyId?: string }).policyId).filter((x): x is string => !!x),
+  );
+  return policyIds.map(id => ({
+    policy_id: id,
+    outcome: conditionedPolicies.has(id) ? 'conditions' : outcome,
+  }));
+}
 
 const VALID_PURCHASE_TYPES = new Set(['media_buy', 'rights_license', 'signal_activation', 'creative_services']);
 
@@ -117,6 +146,7 @@ function snapshotRevision(state: GovernancePlanState): GovernancePlanState['revi
     reallocationUnlimited: state.budget.reallocationUnlimited,
     policyCategories: state.policyCategories,
     policyIds: state.policyIds,
+    planAsSupplied: state.planAsSupplied,
   };
 }
 
@@ -186,6 +216,14 @@ interface CheckPayload {
   flight?: { start?: string; end?: string; start_time?: string; end_time?: string };
   // Brand rights payload fields
   campaign?: { countries?: string[]; start_date?: string; end_date?: string };
+  // Echoed on modification / delivery phase checks so the JWS audience binding
+  // matches the seller-side media buy.
+  media_buy_id?: string;
+  // Target seller URL for `aud` binding. Buyers MUST supply this so the GA
+  // can bind the JWS to a specific seller — without it, intent-phase tokens
+  // can't be issued (no defensible audience). Until the request schema
+  // formalizes the field upstream, accept it via the open-shape payload.
+  target_seller?: string;
 }
 
 interface PlannedDeliveryInput {
@@ -434,7 +472,7 @@ export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
   const input = args as SyncPlansInput;
 
   if (!input.plans?.length) {
-    return { errors: [{ code: 'validation_error', message: 'plans array is required' }] };
+    return { errors: [{ code: 'VALIDATION_ERROR', message: 'plans array is required' }] };
   }
 
   const results: Array<{ plan_id: string; status: string; version: number; categories: Array<{ category_id: string; status: string }> }> = [];
@@ -443,44 +481,44 @@ export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
   for (let i = 0; i < input.plans.length; i++) {
     const plan = input.plans[i];
     if (!plan.plan_id || !plan.brand || !plan.objectives || !plan.budget || !plan.flight) {
-      return { errors: [{ code: 'validation_error', message: `plan at index ${i} requires plan_id, brand, objectives, budget, and flight` }] };
+      return { errors: [{ code: 'VALIDATION_ERROR', message: `plan at index ${i} requires plan_id, brand, objectives, budget, and flight` }] };
     }
     if (plan.objectives.length > 2000) {
-      return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} objectives exceeds 2000 character limit; caller-untrusted free text must be bounded` }] };
+      return { errors: [{ code: 'VALIDATION_ERROR', message: `plan ${plan.plan_id} objectives exceeds 2000 character limit; caller-untrusted free text must be bounded` }] };
     }
     for (let j = 0; j < (plan.custom_policies?.length ?? 0); j++) {
       const cp = plan.custom_policies![j];
       if (typeof cp !== 'object' || cp === null || Array.isArray(cp)) {
-        return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} custom_policies[${j}] must be an object per policy-entry schema; string form is deprecated` }] };
+        return { errors: [{ code: 'VALIDATION_ERROR', message: `plan ${plan.plan_id} custom_policies[${j}] must be an object per policy-entry schema; string form is deprecated` }] };
       }
       if (!cp.policy || typeof cp.policy !== 'string') {
-        return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} custom_policies[${j}] requires a policy string` }] };
+        return { errors: [{ code: 'VALIDATION_ERROR', message: `plan ${plan.plan_id} custom_policies[${j}] requires a policy string` }] };
       }
       if (cp.policy.length > 5000) {
-        return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} custom_policies[${j}].policy exceeds 5000 character limit` }] };
+        return { errors: [{ code: 'VALIDATION_ERROR', message: `plan ${plan.plan_id} custom_policies[${j}].policy exceeds 5000 character limit` }] };
       }
       if (cp.description != null && (typeof cp.description !== 'string' || cp.description.length > 500)) {
-        return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} custom_policies[${j}].description must be a string ≤ 500 characters` }] };
+        return { errors: [{ code: 'VALIDATION_ERROR', message: `plan ${plan.plan_id} custom_policies[${j}].description must be a string ≤ 500 characters` }] };
       }
     }
     if (typeof plan.budget.total !== 'number' || !plan.budget.currency) {
-      return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} budget requires total (number) and currency (string)` }] };
+      return { errors: [{ code: 'VALIDATION_ERROR', message: `plan ${plan.plan_id} budget requires total (number) and currency (string)` }] };
     }
     const hasThreshold = typeof plan.budget.reallocation_threshold === 'number';
     const hasUnlimited = plan.budget.reallocation_unlimited === true;
     if (hasThreshold === hasUnlimited) {
-      return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} budget must specify exactly one of reallocation_threshold (number >= 0) or reallocation_unlimited (true)` }] };
+      return { errors: [{ code: 'VALIDATION_ERROR', message: `plan ${plan.plan_id} budget must specify exactly one of reallocation_threshold (number >= 0) or reallocation_unlimited (true)` }] };
     }
     if (hasThreshold && plan.budget.reallocation_threshold! < 0) {
-      return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} budget.reallocation_threshold must be >= 0` }] };
+      return { errors: [{ code: 'VALIDATION_ERROR', message: `plan ${plan.plan_id} budget.reallocation_threshold must be >= 0` }] };
     }
     if (!plan.flight.start || !plan.flight.end) {
-      return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} flight requires start and end` }] };
+      return { errors: [{ code: 'VALIDATION_ERROR', message: `plan ${plan.plan_id} flight requires start and end` }] };
     }
     if (plan.budget.allocations) {
       const invalidKeys = Object.keys(plan.budget.allocations).filter(k => !VALID_PURCHASE_TYPES.has(k));
       if (invalidKeys.length > 0) {
-        return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} budget.allocations has invalid keys: ${invalidKeys.join(', ')}. Must be one of: ${[...VALID_PURCHASE_TYPES].join(', ')}` }] };
+        return { errors: [{ code: 'VALIDATION_ERROR', message: `plan ${plan.plan_id} budget.allocations has invalid keys: ${invalidKeys.join(', ')}. Must be one of: ${[...VALID_PURCHASE_TYPES].join(', ')}` }] };
       }
     }
 
@@ -492,7 +530,7 @@ export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
     // Cross-field schema invariant: if policy_categories contains a regulated vertical,
     // human_review_required MUST be true. Reject explicit false.
     if (plan.human_review_required === false && resolvedTriggers.length > 0) {
-      return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} declares ${resolvedTriggers.join(', ')} which require human_review_required=true; cannot set false` }] };
+      return { errors: [{ code: 'VALIDATION_ERROR', message: `plan ${plan.plan_id} declares ${resolvedTriggers.join(', ')} which require human_review_required=true; cannot set false` }] };
     }
 
     // Revision safety: prior plan with humanReviewRequired=true cannot be downgraded
@@ -500,26 +538,26 @@ export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
     const existing = session.governancePlans.get(plan.plan_id);
     if (existing?.humanReviewRequired && !effectiveHumanReview) {
       if (!plan.human_override) {
-        return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} previously had human_review_required=true; downgrading requires a human_override artifact` }] };
+        return { errors: [{ code: 'VALIDATION_ERROR', message: `plan ${plan.plan_id} previously had human_review_required=true; downgrading requires a human_override artifact` }] };
       }
       const override = plan.human_override;
       if (!override.reason || override.reason.length < 20) {
-        return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} human_override.reason must be at least 20 characters describing the rationale for downgrade` }] };
+        return { errors: [{ code: 'VALIDATION_ERROR', message: `plan ${plan.plan_id} human_override.reason must be at least 20 characters describing the rationale for downgrade` }] };
       }
       if (!override.approver || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(override.approver)) {
-        return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} human_override.approver must be a valid email address. Production governance agents SHOULD bind this to an authenticated identity.` }] };
+        return { errors: [{ code: 'VALIDATION_ERROR', message: `plan ${plan.plan_id} human_override.approver must be a valid email address. Production governance agents SHOULD bind this to an authenticated identity.` }] };
       }
       if (override.approved_at) {
         const approvedAt = new Date(override.approved_at);
         if (isNaN(approvedAt.getTime())) {
-          return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} human_override.approved_at must be a valid ISO 8601 timestamp` }] };
+          return { errors: [{ code: 'VALIDATION_ERROR', message: `plan ${plan.plan_id} human_override.approved_at must be a valid ISO 8601 timestamp` }] };
         }
         const ageMs = Date.now() - approvedAt.getTime();
         if (ageMs > 24 * 60 * 60 * 1000) {
-          return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} human_override.approved_at is older than 24 hours; fresh approval required for each downgrade` }] };
+          return { errors: [{ code: 'VALIDATION_ERROR', message: `plan ${plan.plan_id} human_override.approved_at is older than 24 hours; fresh approval required for each downgrade` }] };
         }
         if (ageMs < -60 * 1000) {
-          return { errors: [{ code: 'validation_error', message: `plan ${plan.plan_id} human_override.approved_at is in the future` }] };
+          return { errors: [{ code: 'VALIDATION_ERROR', message: `plan ${plan.plan_id} human_override.approved_at is in the future` }] };
         }
       }
     }
@@ -596,6 +634,12 @@ export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
       revisionHistory: existing
         ? [...existing.revisionHistory, snapshotRevision(existing)]
         : [],
+      // Persist the wire-shaped plan verbatim so the `plan_hash` claim in
+      // every later `governance_context` JWS is bit-exact to what the buyer
+      // sent — buyers can recompute and byte-match without round-tripping
+      // through the camelCase internal representation. Deep-clone so
+      // downstream code can't accidentally mutate the hash preimage.
+      planAsSupplied: structuredClone(plan as unknown) as Record<string, unknown>,
     };
 
     session.governancePlans.set(plan.plan_id, planState);
@@ -635,7 +679,7 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
   const deliveryMetrics = req.delivery_metrics;
 
   if (req.purchase_type && !VALID_PURCHASE_TYPES.has(req.purchase_type)) {
-    return { errors: [{ code: 'validation_error', message: `Invalid purchase_type: ${req.purchase_type}. Must be one of: ${[...VALID_PURCHASE_TYPES].join(', ')}` }] };
+    return { errors: [{ code: 'VALIDATION_ERROR', message: `Invalid purchase_type: ${req.purchase_type}. Must be one of: ${[...VALID_PURCHASE_TYPES].join(', ')}` }] };
   }
 
   // Infer binding from field presence per the schema spec:
@@ -1100,10 +1144,59 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
   const explanation = buildExplanation(status, findings, conditions, humanReviewRequired);
 
   const checkId = `chk_${randomUUID().slice(0, 8)}`;
-  // Generate or reuse governance_context for lifecycle correlation
-  const effectiveContext = (status === 'approved' || status === 'conditions')
-    ? (governanceContext || randomUUID())
-    : governanceContext;
+
+  // Emit a compact JWS `governance_context` per the AdCP JWS profile on
+  // approved/conditions outcomes; the spec requires a fresh signature on
+  // every check (new jti, iat, exp, plan_hash) — never re-emit a cached
+  // string across plan revisions. Denied checks carry no token; downstream
+  // sellers reject a request that has no signed authorization.
+  //
+  // Emit a compact JWS `governance_context` per the AdCP JWS profile on
+  // approved/conditions outcomes; the spec requires a fresh signature on
+  // every check (new jti, iat, exp, plan_hash) — never re-emit a cached
+  // string across plan revisions. Denied checks carry no token; downstream
+  // sellers reject a request that has no signed authorization.
+  //
+  // `aud` resolution: spec requires the seller URL from `adagents.json`,
+  // byte-exact. We accept `payload.target_seller` for buyers that name
+  // their seller explicitly. The sandbox default is the training agent's
+  // own sales tenant — every storyboard's downstream `create_media_buy`
+  // call targets that URL, so the binding is honest for the test loop.
+  // Production governance agents MUST require buyer-supplied target_seller
+  // and refuse to issue without one; copying this fallback is the bug the
+  // training reference exists to surface.
+  //
+  // `phase` downgrade: non-intent phases require `media_buy_id` per spec
+  // §"AdCP JWS profile". When the buyer omits it, downgrade phase to
+  // `intent` rather than emit a structurally-valid-but-step-12-rejected
+  // token.
+  let effectiveContext: string | undefined;
+  if (status === 'approved' || status === 'conditions') {
+    const requestedPhase: GovernancePhase = GOVERNANCE_PHASES.has(phase as GovernancePhase)
+      ? (phase as GovernancePhase)
+      : 'purchase';
+    const requestMediaBuyId = req.payload?.media_buy_id ? String(req.payload.media_buy_id) : undefined;
+    const jwsPhase: GovernancePhase = requestedPhase !== 'intent' && !requestMediaBuyId
+      ? 'intent'
+      : requestedPhase;
+
+    const targetSeller = req.payload?.target_seller ?? `${getCanonicalBase()}/sales`;
+    effectiveContext = await signGovernanceContext({
+      issuer: `${getCanonicalBase()}/governance`,
+      audience: targetSeller,
+      planId,
+      phase: jwsPhase,
+      caller,
+      checkId,
+      ...(jwsPhase !== 'intent' && requestMediaBuyId ? { mediaBuyId: requestMediaBuyId } : {}),
+      plan: plan.planAsSupplied,
+      ...(plan.policyIds?.length
+        ? { policyDecisions: buildPolicyDecisions(plan.policyIds, status, conditions) }
+        : {}),
+    });
+  } else {
+    effectiveContext = governanceContext;
+  }
   const check: GovernanceCheckState = {
     checkId,
     planId,
@@ -1140,7 +1233,7 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
   const delivery = req.delivery;
 
   if (req.purchase_type && !VALID_PURCHASE_TYPES.has(req.purchase_type)) {
-    return { errors: [{ code: 'validation_error', message: `Invalid purchase_type: ${req.purchase_type}. Must be one of: ${[...VALID_PURCHASE_TYPES].join(', ')}` }] };
+    return { errors: [{ code: 'VALIDATION_ERROR', message: `Invalid purchase_type: ${req.purchase_type}. Must be one of: ${[...VALID_PURCHASE_TYPES].join(', ')}` }] };
   }
 
   let plan = session.governancePlans.get(planId);
@@ -1155,7 +1248,7 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
     }
   }
   if (!plan) {
-    return { errors: [{ code: 'not_found', message: `Plan not found: ${planId}` }] };
+    return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: `Plan not found: ${planId}` }] };
   }
 
   let committedBudget = 0;
@@ -1244,13 +1337,13 @@ export async function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContex
   const includeEntries = req.include_entries || false;
 
   if (!planIds.length && !portfolioPlanIds.length && !governanceContextsFilter?.length) {
-    return { errors: [{ code: 'validation_error', message: 'plan_ids, portfolio_plan_ids, or governance_contexts is required' }] };
+    return { errors: [{ code: 'VALIDATION_ERROR', message: 'plan_ids, portfolio_plan_ids, or governance_contexts is required' }] };
   }
 
   if (purchaseTypesFilter?.length) {
     const invalid = purchaseTypesFilter.filter(t => !VALID_PURCHASE_TYPES.has(t));
     if (invalid.length) {
-      return { errors: [{ code: 'validation_error', message: `Invalid purchase_types: ${invalid.join(', ')}. Must be one of: ${[...VALID_PURCHASE_TYPES].join(', ')}` }] };
+      return { errors: [{ code: 'VALIDATION_ERROR', message: `Invalid purchase_types: ${invalid.join(', ')}. Must be one of: ${[...VALID_PURCHASE_TYPES].join(', ')}` }] };
     }
   }
 
@@ -1546,6 +1639,7 @@ function buildCheckResponse(check: GovernanceCheckState) {
   return {
     check_id: check.checkId,
     status: check.status,
+    verdict: check.status,
     plan_id: check.planId,
     explanation: check.explanation,
     mode: check.mode,

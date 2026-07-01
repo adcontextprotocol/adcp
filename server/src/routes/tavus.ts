@@ -3,6 +3,7 @@ import { Router, type Request } from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import { v4 as uuidv4 } from "uuid";
+import { serveHtmlWithConfig } from "../utils/html-config.js";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { createLogger } from "../logger.js";
 import { AddieClaudeClient, type RequestTools } from "../addie/claude-client.js";
@@ -251,7 +252,7 @@ async function buildVoiceRequestTools(
   ]);
 
   // Event tools: readonly for all users, admin tools for admins only
-  const eventHandlers = createEventToolHandlers(memberContext);
+  const eventHandlers = createEventToolHandlers(memberContext, undefined, userIsAdmin);
   allTools.push(...EVENT_READONLY_TOOLS);
   for (const tool of EVENT_READONLY_TOOLS) {
     const handler = eventHandlers.get(tool.name);
@@ -325,17 +326,123 @@ const sessionRateLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// End-session cap — generous relative to session creation (sessionRateLimiter: 5/min)
+// but bounded so a single user cannot hammer the Tavus API key.
+const endRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  store: new CachedPostgresStore("tavus-end:"),
+  keyGenerator: (req) => (req as Request & { user?: { id: string } }).user?.id || ipKeyGenerator(req.ip || ""),
+  message: { error: "Too many requests" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 export function createTavusRouter() {
-  // Page router: serves GET /video
+  // Page router: serves GET /video and GET /video/lab.
+  // Both routes go through serveHtmlWithConfig so the global app config and
+  // csrf.js (which patches fetch to attach the X-CSRF-Token header) get
+  // injected. Without csrf.js, POSTs to /api/addie/video/session are rejected
+  // by the CSRF middleware.
   const pageRouter = Router();
-  pageRouter.get("/", (_req, res) => {
-    // Daily.co iframe needs camera, microphone, and autoplay permissions
+  pageRouter.get("/", optionalAuth, async (req, res) => {
     res.setHeader("Permissions-Policy", "camera=*, microphone=*, autoplay=*");
-    res.sendFile(path.join(__dirname, "../../public/video.html"));
+    await serveHtmlWithConfig(req, res, "video.html");
   });
 
-  // API router: POST /api/addie/video/session
+  // Experimental Daily-SDK rendering of the same Tavus session: custom
+  // controls, push-to-interrupt, advanced settings panel, pre-call device
+  // test. Public so anyone (logged in) can A/B against the iframe path on
+  // /video. Session creation itself still requires login + rate-limit.
+  pageRouter.get("/lab", optionalAuth, async (req, res) => {
+    res.setHeader("Permissions-Policy", "camera=*, microphone=*, autoplay=*");
+    await serveHtmlWithConfig(req, res, "video-lab.html");
+  });
+
+  // API router: POST /api/addie/video/session, POST /api/addie/video/session/:id/end
   const apiRouter = Router();
+
+  // End an active Tavus conversation. Releases the concurrent-conversation
+  // slot immediately so a new session can be created. Auth: must be the
+  // user who created the thread (or an AAO admin).
+  apiRouter.post("/session/:conversationName/end", optionalAuth, endRateLimiter, async (req, res) => {
+    if (!req.user) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    const tavusApiKey = process.env.TAVUS_API_KEY;
+    if (!tavusApiKey) {
+      return res.status(503).json({ error: "Video chat not configured" });
+    }
+    const conversationName = req.params.conversationName;
+    if (!/^addie-[0-9a-f-]{36}$/.test(conversationName)) {
+      return res.status(400).json({ error: "Invalid conversation id" });
+    }
+
+    // Look up the thread we created for this conversation. We use it both
+    // to authorize the call (only the thread owner can end) and to recover
+    // the Tavus conversation_id from the conversation_url stored in context.
+    const threadService = getThreadService();
+    const thread = await threadService.getThreadByExternalId('video', conversationName).catch(() => null);
+
+    if (!thread) {
+      // No matching thread — could be a stale id or a session created by a
+      // different process. Fail closed; admins can clean up via Tavus
+      // dashboard / direct API call.
+      return res.status(404).json({ error: "Conversation not found" });
+    }
+    if (thread.user_id !== req.user.id) {
+      const userIsAdmin = await isWebUserAAOAdmin(req.user.id).catch(() => false);
+      if (!userIsAdmin) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+    }
+
+    // Tavus identifies conversations by their internal conversation_id, not
+    // the conversation_name we sent. We stash that id in thread.context at
+    // create time. Fall back to scanning the active list (with the name
+    // normalized — Tavus replaces "-" with " ") if context is missing.
+    let tavusConversationId: string | null =
+      (thread.context as { tavus_conversation_id?: string } | null)?.tavus_conversation_id ?? null;
+
+    if (!tavusConversationId) {
+      try {
+        const list = await fetch(`https://tavusapi.com/v2/conversations?status=active`, {
+          headers: { "x-api-key": tavusApiKey },
+        });
+        if (list.ok) {
+          const data = (await list.json()) as { data?: Array<{ conversation_id: string; conversation_name: string }> };
+          const normalized = conversationName.replace(/-/g, " ");
+          const match = data.data?.find((c) => c.conversation_name === normalized || c.conversation_name === conversationName);
+          if (match) tavusConversationId = match.conversation_id;
+        }
+      } catch (err) {
+        logger.warn({ err, conversationName }, "Tavus end: failed to list active conversations");
+      }
+    }
+
+    if (!tavusConversationId) {
+      // Already ended or not found — treat as success so the client
+      // tear-down completes cleanly.
+      return res.json({ ended: false, reason: "not_active" });
+    }
+
+    try {
+      const endRes = await fetch(
+        `https://tavusapi.com/v2/conversations/${tavusConversationId}/end`,
+        { method: "POST", headers: { "x-api-key": tavusApiKey } }
+      );
+      if (!endRes.ok) {
+        const text = await endRes.text();
+        logger.error({ status: endRes.status, error: text, conversationName }, "Tavus end: failed");
+        return res.status(502).json({ error: "Tavus end-call failed" });
+      }
+      logger.info({ conversationName, tavusConversationId }, "Tavus end: conversation released");
+      return res.json({ ended: true });
+    } catch (err) {
+      logger.error({ err, conversationName }, "Tavus end: error");
+      return res.status(500).json({ error: "Internal error" });
+    }
+  });
 
   apiRouter.post("/session", optionalAuth, sessionRateLimiter, async (req, res) => {
     if (!req.user) {
@@ -354,16 +461,64 @@ export function createTavusRouter() {
       const rawDisplayName = [req.user.firstName, req.user.lastName].filter(Boolean).join(" ") || req.user.email;
       const displayName = rawDisplayName.replace(/[\[\]<>{}]/g, "").slice(0, 100);
 
+      // Optional per-session overrides from the client. The lab page exposes
+      // these via an Advanced Settings panel; the standard /video page sends
+      // none of them and gets the defaults below.
+      const settings = (req.body ?? {}) as {
+        greeting?: string;
+        extraContext?: string;
+        maxDurationSec?: number;
+        greenscreen?: boolean;
+        language?: string;
+        disableFillers?: boolean;
+      };
+      const greeting = typeof settings.greeting === "string" && settings.greeting.trim()
+        ? settings.greeting.trim().slice(0, 500)
+        : `Hi ${displayName.split(" ")[0]}, I'm Addie! How can I help you today?`;
+      const extraContext = typeof settings.extraContext === "string"
+        ? settings.extraContext.trim().slice(0, 2000)
+        : "";
+      // Clamp duration: Tavus's effective max is 1 hour for most plans.
+      const maxDurationSec = typeof settings.maxDurationSec === "number" && Number.isFinite(settings.maxDurationSec)
+        ? Math.max(60, Math.min(7200, Math.round(settings.maxDurationSec)))
+        : undefined;
+      const greenscreen = settings.greenscreen === true;
+      // Tavus expects the full language name ("spanish") not an ISO code.
+      const language = typeof settings.language === "string" && /^[a-z]{3,20}$/.test(settings.language)
+        ? settings.language
+        : undefined;
+      const disableFillers = settings.disableFillers === true;
+
       // Create a thread to track this video conversation
       const threadService = getThreadService();
+      const threadContext: Record<string, unknown> = { persona_id: personaId };
+      if (disableFillers) threadContext.disable_fillers = true;
       const thread = await threadService.getOrCreateThread({
         channel: "video",
         external_id: conversationName,
         user_type: "workos",
         user_id: req.user.id,
         user_display_name: displayName,
-        context: { persona_id: personaId },
+        context: threadContext,
       });
+
+      // Tavus appends conversational_context to the system message sent to
+      // our LLM endpoint. Always include the thread_id marker so we can
+      // correlate LLM calls; append the operator's free-form text after.
+      const baseContext = `[conductor:thread_id=${thread.thread_id}] The user's name is ${displayName}.`;
+      const conversationalContext = extraContext ? `${baseContext}\n\n${extraContext}` : baseContext;
+
+      const tavusBody: Record<string, unknown> = {
+        persona_id: personaId,
+        conversation_name: conversationName,
+        custom_greeting: greeting,
+        conversational_context: conversationalContext,
+      };
+      const properties: Record<string, unknown> = {};
+      if (maxDurationSec) properties.max_call_duration = maxDurationSec;
+      if (greenscreen) properties.apply_greenscreen = true;
+      if (language) properties.language = language;
+      if (Object.keys(properties).length) tavusBody.properties = properties;
 
       const response = await fetch("https://tavusapi.com/v2/conversations", {
         method: "POST",
@@ -371,14 +526,7 @@ export function createTavusRouter() {
           "Content-Type": "application/json",
           "x-api-key": tavusApiKey,
         },
-        body: JSON.stringify({
-          persona_id: personaId,
-          conversation_name: conversationName,
-          custom_greeting: `Hi ${displayName.split(" ")[0]}, I'm Addie! How can I help you today?`,
-          // Tavus appends this to the system message sent to our LLM endpoint,
-          // letting us correlate LLM calls back to the thread.
-          conversational_context: `[conductor:thread_id=${thread.thread_id}] The user's name is ${displayName}.`,
-        }),
+        body: JSON.stringify(tavusBody),
       });
 
       if (!response.ok) {
@@ -390,7 +538,16 @@ export function createTavusRouter() {
         return res.status(502).json({ error: "Failed to create video session" });
       }
 
-      const data = (await response.json()) as { conversation_url: string };
+      const data = (await response.json()) as { conversation_url: string; conversation_id: string };
+      // Tavus normalizes conversation_name (replaces "-" with " ") so we
+      // can't reliably round-trip lookup by name. Stash Tavus's internal
+      // conversation_id on the thread so end-call can call /conversations/:id/end
+      // directly without scanning the active list.
+      if (data.conversation_id) {
+        await threadService
+          .updateThreadContext(thread.thread_id, { tavus_conversation_id: data.conversation_id })
+          .catch((err) => logger.warn({ err, threadId: thread.thread_id }, "Tavus: failed to persist tavus_conversation_id"));
+      }
       return res.json({
         conversation_url: data.conversation_url,
         conversation_id: conversationName,
@@ -459,6 +616,7 @@ export function createTavusRouter() {
     let memberRequestContext = "";
     let userDisplayName: string | null = null;
     let voiceUserId: string | null = null;
+    let voiceFillersDisabled = false;
     if (threadId) {
       const threadService = getThreadService();
       try {
@@ -466,6 +624,7 @@ export function createTavusRouter() {
         if (thread?.user_id && thread.channel === 'video') {
           userDisplayName = thread.user_display_name;
           voiceUserId = thread.user_id;
+          voiceFillersDisabled = thread.context?.disable_fillers === true;
           const result = await buildVoiceRequestTools(thread.user_id, threadId);
           voiceRequestTools = result.requestTools;
           memberRequestContext = result.requestContext;
@@ -550,16 +709,25 @@ export function createTavusRouter() {
 
     // For substantive questions, send a filler phrase immediately so Addie starts
     // speaking while the model processes. Tavus TTS picks this up with near-zero latency.
+    // Neutral conversational fillers — no ritual praise ("great question") which
+    // reads as canned across a session. video-lab.html exposes a toggle that sets
+    // thread.context.disable_fillers to skip this entirely for users who'd rather
+    // hear a half-second of silence than any preamble.
     const questionPattern = /\b(what|how|why|explain|tell me|describe|walk me through|can you|could you)\b/i;
     const rawMessage = currentMessage.slice(voicePrefix.length);
     const isSubstantive = rawMessage.length > 30 && questionPattern.test(rawMessage);
     let fullResponse = "";
-    if (isSubstantive) {
+    if (isSubstantive && !voiceFillersDisabled) {
       const fillers = [
-        "Good question... ",
-        "Great question... ",
         "So... ",
-        "That's a great question... ",
+        "Well... ",
+        "Hmm... ",
+        "Okay, so... ",
+        "Sure... ",
+        "Let me think... ",
+        "Funny enough... ",
+        "Yeah, so... ",
+        "Alright... ",
       ];
       const filler = fillers[Math.floor(Math.random() * fillers.length)];
       sendChunk({ content: filler });
@@ -595,6 +763,17 @@ export function createTavusRouter() {
         if (event.type === "text") {
           fullResponse += event.text;
           sendChunk({ content: event.text });
+        } else if (event.type === "stream_error") {
+          // Mid-stream upstream failure (#4797). Drop the partial so we
+          // don't persist a truncated assistant turn into thread history
+          // and confuse the next-turn prompt assembly.
+          logger.warn(
+            { reason: event.reason, deltasBeforeError: event.deltasBeforeError, partialLength: fullResponse.length },
+            "Tavus: Addie stream interrupted mid-reply — discarding partial turn"
+          );
+          fullResponse = '';
+          streamError = true;
+          break;
         } else if (event.type === "error") {
           logger.error({ error: event.error }, "Tavus: Addie stream error");
           streamError = true;

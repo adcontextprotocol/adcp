@@ -167,7 +167,7 @@ By providing assets grouped by role, each catalog item self-describes the images
 }
 ```
 
-The `asset_group_id` vocabulary is not standardized at the protocol level — each format defines which group IDs it uses via `offering_asset_constraints` in the catalog asset's `requirements`. Common conventions: `images_landscape` (16:9), `images_vertical` (9:16), `images_square` (1:1), `logo`, `video`.
+The `asset_group_id` vocabulary is not standardized at the protocol level — each format defines which group IDs it uses via `offering_asset_constraints` in the catalog asset's `requirements`. Common conventions: `images_landscape` (16:9), `images_vertical` (9:16), `images_square` (1:1), `logo`, `video`. Video pools are first-class catalog asset groups alongside image pools — beyond the generic `video` pool, orientation-specific `video_vertical` (9:16) and `video_horizontal` (16:9) pool IDs let a feed carry per-orientation video the same way the image pools do.
 
 Formats use `field_bindings` (see [Format catalog requirements](#format-catalog-requirements)) to explicitly declare which template slot maps to which asset group.
 
@@ -457,7 +457,7 @@ Each mapping entry is one of:
 | Pattern | What it does |
 |---------|-------------|
 | `feed_field` + `catalog_field` | Renames a feed field to its schema equivalent (dot notation for nested fields) |
-| `feed_field` + `asset_group_id` | Places a URL into a typed asset pool on the item's `assets` array |
+| `feed_field` + `asset_group_id` | Places a URL into a typed asset pool on the item's `assets` array; the URL is wrapped as an image **or** video asset depending on the pool (e.g., `video`, `video_vertical`, `video_horizontal` wrap a video asset) |
 | `value` + `catalog_field` | Injects a static literal — useful for fields the feed omits (e.g., currency when always USD) |
 | Any of the above + `transform` | Applies a named coercion before writing |
 | Any of the above + `default` | Fallback when the feed field is absent or null |
@@ -625,6 +625,17 @@ When a format declares catalog asset types, the buying agent syncs the required 
 An Offering is an individual promotable item within an `offering`-type catalog — a campaign, product, service, promotion, or vacancy. Each offering is a semantic unit with its own name, validity window, landing URL, creative assets, and geographic scope.
 
 ```typescript test=false
+type PostalArea =
+  | {
+      country: string;  // ISO 3166-1 alpha-2
+      system: string;   // Country-local postal system, e.g. 'zip', 'plz', 'postal_code'
+      values: string[];
+    }
+  | {
+      system: string;   // Deprecated country-fused alias, e.g. 'us_zip'
+      values: string[];
+    };
+
 interface Offering {
   // Identity (required)
   offering_id: string;
@@ -650,7 +661,7 @@ interface Offering {
     countries?: string[];
     regions?: string[];
     metros?: { system: string; values: string[] }[];
-    postal_areas?: { system: string; values: string[] }[];
+    postal_areas?: PostalArea[];
   };
 
   // Discovery
@@ -1130,6 +1141,22 @@ Use the macro matching your catalog's `content_id_type`:
 | `app_id` | `{APP_ITEM_ID}` |
 
 This creates a closed attribution loop: the same identifiers appear in impression trackers (via macros at serve time), click trackers, and conversion events (via `content_ids` at event time).
+
+### Catalog content macros
+
+The macros above resolve to the rendered item's **identifier**. Catalog **content** macros resolve to a rendered item's scalar **field values**, for catalog-driven creative templates (`sponsored_placement` / DPA — Meta DPA, Snap Collection, TikTok Shopping). Each token maps 1:1 to a catalog item field via the same `catalog_field` dot-notation paths used by [`field_bindings`](#field-bindings) — content macros reuse that vocabulary rather than defining a parallel one:
+
+| Macro | `catalog_field` |
+|-------|-----------------|
+| `{ITEM_NAME}` | `name` |
+| `{ITEM_DESCRIPTION}` | `description` |
+| `{ITEM_TAGLINE}` | `tagline` |
+| `{ITEM_PRICE}` | `price.amount` |
+| `{ITEM_PRICE_CURRENCY}` | `price.currency` |
+
+Content macros use single-brace `{MACRO}` syntax and substitute under the same [substitution-safety rules](/docs/creative/universal-macros#substitution-safety-catalog-item-macros) as the ID macros (NFC normalization → RFC 3986 percent-encoding → one-pass nested-expansion prohibition → URL-context scope). `{{double-brace}}` is **not** a content-macro syntax — it stays reserved for downstream ad-server macros the sales agent must neutralize. URL-valued and image-valued fields (`landing_url`, image pools) bind via `field_bindings` to `url`/asset slots, not content macros.
+
+Which items render is **seller-declared** via the `fanout_mode` enum on the [`sponsored_placement`](/docs/creative/canonical-formats) format (`single_item` for the Meta-DPA one-item-per-ad pattern, `per_item`, or `multi_item_in_creative`) — there is no buyer-side selection field. On ML-optimized DPA surfaces the platform may override buyer-authored overlay text, so content macros are a hint the seller MAY honor.
 
 ## Best practices
 

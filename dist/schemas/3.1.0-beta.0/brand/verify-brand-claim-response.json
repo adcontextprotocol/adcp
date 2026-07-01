@@ -1,0 +1,80 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/brand/verify-brand-claim-response.json",
+  "title": "Verify Brand Claim Response",
+  "description": "The brand-agent's authoritative answer to a verification claim. Always returns claim_type + status; richer per-claim-type fields ride on the `details` object (shape varies by claim_type — see the task page).",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/3.1.0-beta.0/core/version-envelope.json"
+    }
+  ],
+  "oneOf": [
+    {
+      "title": "VerifyBrandClaimSuccess",
+      "type": "object",
+      "properties": {
+        "claim_type": {
+          "type": "string",
+          "enum": ["subsidiary", "parent", "property", "trademark"],
+          "description": "Echoes the request's claim_type for caller-side routing."
+        },
+        "status": {
+          "$ref": "/schemas/3.1.0-beta.0/brand/verification-status.json",
+          "description": "Verification status. Not every status applies to every claim_type — see the task page for the applicable subset."
+        },
+        "details": {
+          "type": "object",
+          "description": "Per-claim-type response fields. Shape varies — see the task page for each claim_type's expected fields. Examples: subsidiary returns brand_id + first_observed_by_house_at + expected_resolution_window_days; parent returns house_domain; property returns relationship + regions + use_case_authorization; trademark returns matched_registration + licensor_domain + countries + nice_classes + use_case_authorization.",
+          "additionalProperties": true
+        },
+        "context_note": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Public — free-text context the brand chooses to surface. For disputed/transferring, typically carries the rationale or transition details."
+        },
+        "context": {
+          "$ref": "/schemas/3.1.0-beta.0/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/3.1.0-beta.0/core/ext.json"
+        }
+      },
+      "required": ["claim_type", "status"],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          { "required": ["errors"] }
+        ]
+      }
+    },
+    {
+      "title": "VerifyBrandClaimError",
+      "type": "object",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": {
+            "$ref": "/schemas/3.1.0-beta.0/core/error.json"
+          },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "/schemas/3.1.0-beta.0/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/3.1.0-beta.0/core/ext.json"
+        }
+      },
+      "required": ["errors"],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          { "required": ["status"] },
+          { "required": ["claim_type"] }
+        ]
+      }
+    }
+  ],
+  "properties": {}
+}

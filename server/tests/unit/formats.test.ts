@@ -2,10 +2,15 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { Agent } from '../../src/types.js';
 
 const mockExecuteTask = vi.fn();
+const mockAdCPClientConstructor = vi.fn();
 
 // Mock @adcp/sdk with a proper class constructor
 vi.mock('@adcp/sdk', () => ({
   AdCPClient: class MockAdCPClient {
+    constructor(...args: unknown[]) {
+      mockAdCPClientConstructor(...args);
+    }
+
     agent() {
       return {
         executeTask: mockExecuteTask,
@@ -23,6 +28,7 @@ describe('FormatsService', () => {
   beforeEach(() => {
     service = new FormatsService();
     mockExecuteTask.mockReset();
+    mockAdCPClientConstructor.mockReset();
     mockAgent = {
       name: 'Test Creative Agent',
       url: 'https://test.example.com',
@@ -88,6 +94,36 @@ describe('FormatsService', () => {
       // Second call within cache period
       await service.getFormatsForAgent(mockAgent);
       expect(mockExecuteTask).toHaveBeenCalledTimes(1); // Should not call again
+      expect(mockAdCPClientConstructor).toHaveBeenCalledTimes(1);
+    });
+
+    it('reuses SDK clients for authenticated calls without caching responses', async () => {
+      mockExecuteTask.mockResolvedValue({
+        success: true,
+        data: [{ name: 'format1' }]
+      });
+
+      const auth = { type: 'bearer' as const, token: 'secret-token' };
+
+      await service.getFormatsForAgent(mockAgent, auth);
+      await service.getFormatsForAgent(mockAgent, auth);
+
+      expect(mockExecuteTask).toHaveBeenCalledTimes(2);
+      expect(mockAdCPClientConstructor).toHaveBeenCalledTimes(1);
+      expect(service.getFormatsProfile(mockAgent.url)).toBeUndefined();
+    });
+
+    it('keeps authenticated SDK clients separate by auth identity', async () => {
+      mockExecuteTask.mockResolvedValue({
+        success: true,
+        data: [{ name: 'format1' }]
+      });
+
+      await service.getFormatsForAgent(mockAgent, { type: 'bearer', token: 'token-a' });
+      await service.getFormatsForAgent(mockAgent, { type: 'bearer', token: 'token-b' });
+
+      expect(mockExecuteTask).toHaveBeenCalledTimes(2);
+      expect(mockAdCPClientConstructor).toHaveBeenCalledTimes(2);
     });
 
     it('handles agent errors gracefully', async () => {

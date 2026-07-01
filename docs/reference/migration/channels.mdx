@@ -1,13 +1,13 @@
 ---
 title: "Migrating channels"
-description: "Migrate AdCP channels from v2 to v3. Maps v2's 9 format-oriented channels to v3's 19 planning-oriented media channels with field-by-field examples."
+description: "Migrate AdCP channels from v2 to v3. Maps v2's 9 format-oriented channels to v3's 20 planning-oriented media channels with field-by-field examples."
 "og:title": "AdCP — Migrating channels"
 testable: true
 ---
 
 # Migrating channels
 
-AdCP 3.0 replaces v2's 9 channels with 19 planning-oriented channels that reflect how buyers allocate budgets. Five channels carry over unchanged, while the rest are split, removed, or renamed.
+AdCP 3.0 replaces v2's 9 channels with 20 planning-oriented channels that reflect how buyers allocate budgets. Five channels carry over unchanged, the rest are split, removed, or renamed, and several channels — including `sponsored_intelligence` for AI surfaces — are net-new in v3 with no v2 equivalent.
 
 ## Why the channel model changed
 
@@ -31,13 +31,14 @@ v3 channels consistently match how agencies structure media plans.
 
 ## Complete v3 channel enum
 
-All 19 values from the `channels.json` schema:
+All 20 values from the `channels.json` schema:
 
 ```
 display, olv, social, search, ctv, linear_tv,
 radio, streaming_audio, podcast, dooh, ooh,
 print, cinema, email, gaming, retail_media,
-influencer, affiliate, product_placement
+influencer, affiliate, product_placement,
+sponsored_intelligence
 ```
 
 | Channel | Description |
@@ -61,6 +62,7 @@ influencer, affiliate, product_placement
 | `influencer` | Creator and influencer marketing partnerships |
 | `affiliate` | Affiliate networks, comparison sites, and performance-based partnerships |
 | `product_placement` | Product placement, branded content, and sponsorship integrations |
+| `sponsored_intelligence` | Sponsored Intelligence — advertising within AI assistants, AI search, and generative AI experiences via the reversed data flow (net-new in v3; no v2 equivalent) |
 
 <Note>
 The `gaming` channel covers all in-game advertising. Rewarded video in gaming apps could also be classified as `olv` — use `gaming` when the inventory comes from a gaming budget, `olv` when it comes from a video budget.
@@ -103,11 +105,15 @@ v3 products declare an array of channels, so a single product can span multiple 
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-response.json",
+  "status": "completed",
   "adcp": {
     "major_versions": [3],
     "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
   },
   "supported_protocols": ["media_buy"],
+  "account": {
+    "supported_billing": ["operator", "agent"]
+  },
   "media_buy": {
     "portfolio": {
       "primary_channels": ["display", "olv", "ctv"],
@@ -154,7 +160,7 @@ Buyers should call `get_adcp_capabilities` to discover which channels a seller s
 </Steps>
 
 <Card title="Media channel taxonomy" icon="arrow-right" href="/docs/reference/media-channel-taxonomy">
-  Full definitions and design rationale for all 19 v3 channels.
+  Full definitions and design rationale for all 20 v3 channels.
 </Card>
 
 ---

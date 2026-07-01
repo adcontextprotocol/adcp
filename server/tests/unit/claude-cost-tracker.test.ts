@@ -70,6 +70,13 @@ describe('checkCostCap', () => {
     expect((await checkCostCap('u-tier', 'member_paid')).ok).toBe(true);
   });
 
+  it('does not cap AAO team usage', async () => {
+    await recordCost('u-aao-team', 'claude-opus-4-7', { input_tokens: 10_000_000, output_tokens: 10_000_000 });
+    const result = await checkCostCap('u-aao-team', 'aao_team');
+    expect(result.ok).toBe(true);
+    expect(result.tier).toBe('aao_team');
+  });
+
   it('aggregates multiple recorded calls into the running total', async () => {
     // 10× small Haiku calls (10 * 100 micros = 1000 micros = $0.001)
     for (let i = 0; i < 10; i++) {
@@ -105,18 +112,20 @@ describe('recordCost', () => {
 });
 
 describe('formatCapExceededMessage', () => {
-  it('includes the tier cap, current spend, and reset time', () => {
+  it('gives a clean member-facing message without internal dollar amounts', () => {
     const msg = formatCapExceededMessage({
       ok: false,
       spentCents: 550,
       remainingUsd: 0,
-      retryAfterMs: 45 * 60 * 1000, // 45 min
+      retryAfterMs: 45 * 60 * 1000,
       tier: 'member_free',
     });
-    expect(msg).toContain('5 USD'); // member_free cap
-    expect(msg).toContain('$5.50'); // current spend
-    expect(msg).toContain('45 minutes');
-    expect(msg).toContain('Upgrade'); // CTA for non-paying
+    expect(msg).toContain('daily conversation limit');
+    expect(msg).toContain('try again tomorrow');
+    expect(msg).toContain('/dashboard/membership');
+    expect(msg).toContain('Upgrade');
+    expect(msg).not.toContain('$5.50');
+    expect(msg).not.toContain('5 USD');
   });
 
   it('tells paying members to ping the team instead of upgrade', () => {
@@ -126,7 +135,7 @@ describe('formatCapExceededMessage', () => {
       retryAfterMs: 60 * 60 * 1000,
       tier: 'member_paid',
     });
-    expect(msg).toContain('AAO team');
+    expect(msg).toContain('AgenticAdvertising.org team');
     expect(msg).not.toContain('Upgrade');
   });
 });
@@ -138,6 +147,11 @@ describe('resolveUserTier', () => {
 
   it('returns member_paid for active subscribers', () => {
     expect(resolveUserTier({ hasActiveSubscription: true })).toBe('member_paid');
+  });
+
+  it('returns aao_team for AAO staff/admin users regardless of subscription status', () => {
+    expect(resolveUserTier({ isAAOTeam: true })).toBe('aao_team');
+    expect(resolveUserTier({ isAAOTeam: true, hasActiveSubscription: true })).toBe('aao_team');
   });
 
   it('returns member_free when authenticated but no subscription', () => {

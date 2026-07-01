@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.4/core/registry-feed-response.json",
+  "title": "Registry Feed Response",
+  "description": "Response from GET /api/registry/feed. The events array contains cursor-ordered registry events; cursor is the value to pass on the next poll. See specs/registry-change-feed.md.",
+  "type": "object",
+  "properties": {
+    "events": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.4/core/registry-event.json"
+      }
+    },
+    "cursor": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid",
+      "description": "Pass this value as cursor on the next request to continue polling. Null only when the feed has no events and no prior cursor."
+    },
+    "has_more": {
+      "type": "boolean",
+      "description": "True when more events are immediately available after cursor."
+    }
+  },
+  "required": [
+    "events",
+    "cursor",
+    "has_more"
+  ],
+  "additionalProperties": true
+}

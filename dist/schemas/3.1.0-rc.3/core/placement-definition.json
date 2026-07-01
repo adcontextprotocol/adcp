@@ -1,0 +1,128 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.3/core/placement-definition.json",
+  "title": "Placement Definition",
+  "description": "Canonical placement definition published in a publisher's adagents.json. Defines stable placement IDs that products can reuse and that authorization rules can reference. When a product reuses a registered placement_id, it is referring to this same semantic placement, not inventing a new one with the same ID.",
+  "type": "object",
+  "properties": {
+    "placement_id": {
+      "type": "string",
+      "description": "Stable placement identifier unique within this adagents.json file."
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable placement name (e.g., 'Homepage Banner', 'Pre-roll', 'Sponsored Listing Slot 1')."
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of where and how this placement appears."
+    },
+    "tags": {
+      "type": "array",
+      "description": "Tags for grouping and querying placements across properties and products (e.g., 'homepage', 'native', 'premium', 'pre_roll').",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "property_ids": {
+      "type": "array",
+      "description": "Property IDs in this adagents.json where this placement can appear.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.3/core/property-id.json"
+      },
+      "minItems": 1
+    },
+    "property_tags": {
+      "type": "array",
+      "description": "Property tags in this adagents.json where this placement can appear. Useful for network-wide positions such as 'pre_roll' or 'homepage_native_feed'.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.3/core/property-tag.json"
+      },
+      "minItems": 1
+    },
+    "collection_ids": {
+      "type": "array",
+      "description": "Optional collection IDs in this adagents.json where this placement is valid. Use to narrow a placement to specific content programs carried on the selected properties.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "channels": {
+      "type": "array",
+      "description": "Advertising channels where this placement can run. Products that reference the placement may narrow this set but should not broaden it.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.3/enums/channels.json"
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "format_options": {
+      "type": "array",
+      "description": "Optional 3.1+ canonical format-option declarations supported by this placement. Two ways to populate an entry: (1) reference an entry in the file's top-level `formats[]` by `format_option_id` only — buyers resolve the full declaration from `formats[]` by matching `format_option_id` (recommended; avoids duplication). Top-level formats may be publisher-owned custom formats or narrowed canonical formats; their `format_kind` is the canonical anchor that the placement reference inherits. (2) carry an inline `ProductFormatDeclaration` directly — for placement-specific canonical narrowing that doesn't fit a reusable catalog entry. Same anyOf pattern as Product.\n\nProduct-level formats remain the upper bound for a sellable product. Catalog placement formats describe placement support; when a product references the placement and also declares product-level formats, buyers use the intersection for that product placement. A catalog placement format that is absent from the product-level declaration is not accepted for that product unless the product explicitly includes it.\n\n**Format-option reference shape.** A format-option reference entry SHOULD carry ONLY `format_option_id` — extra fields are allowed (`additionalProperties: true`) so adopters who want to attach a placement-local override like `display_name` don't get rejected by the branch boundary, but buyer SDKs MUST resolve the format from the top-level `formats[]` by `format_option_id` and apply additional fields on the entry as placement-level overrides (NOT as a partial inline declaration). If a publisher needs to materially narrow the format at the placement, use the inline-declaration form instead.\n\n**Resolution scope is same-file only.** `format_option_id` resolves only within this file's top-level `formats[]`; cross-file references are not supported by design because same-file resolution keeps validation bounded and prevents a file from squatting on or narrowing another publisher's format_option_id. When `format_options[]` references a `format_option_id` not declared in the file's top-level `formats[]`, validators MUST surface this as `FORMAT_OPTION_UNRESOLVED` on the response `errors[]`. Buyers MUST fail closed for that placement (drop the format from the placement's accepted set) rather than silently dropping the placement or guessing intent.",
+      "items": {
+        "anyOf": [
+          {
+            "type": "object",
+            "title": "Format option reference",
+            "description": "Reference an entry in the file's top-level `formats[]` by `format_option_id`. Resolved at validation time. additionalProperties: true so placement-local fields (display_name, etc.) carry through without forcing a full inline declaration.",
+            "required": ["format_option_id"],
+            "properties": {
+              "format_option_id": {
+                "type": "string",
+                "description": "Matches a `format_option_id` in the file's top-level `formats[]`."
+              }
+            },
+            "additionalProperties": true
+          },
+          {
+            "$ref": "/schemas/3.1.0-rc.3/core/product-format-declaration.json",
+            "title": "Inline declaration",
+            "description": "Inline 3.1+ canonical format-option declaration. Use when the placement narrows a format in a way that's not worth a top-level catalog entry."
+          }
+        ]
+      },
+      "minItems": 1
+    },
+    "video_placement_types": {
+      "type": "array",
+      "description": "Declared video placement types for this publisher placement, using IAB Tech Lab/OpenRTB 2.6 video.plcmt definitions with AdCP-native names. Most concrete placements SHOULD declare a single value; aggregate placements MAY declare multiple values. Product-level placement declarations may narrow this set but SHOULD NOT broaden it. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.3/enums/video-placement-type.json"
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-rc.3/core/ext.json"
+    }
+  },
+  "required": [
+    "placement_id",
+    "name"
+  ],
+  "anyOf": [
+    {
+      "required": ["property_ids"]
+    },
+    {
+      "required": ["property_tags"]
+    }
+  ],
+  "allOf": [
+    {
+      "$comment": "adagents.json placements are public catalog declarations. If a file exposes private seller delivery fields here, validators should surface PRIVATE_FIELD_IN_PUBLIC_PLACEMENT so monitoring can distinguish data leaks from generic schema failures.",
+      "not": {
+        "anyOf": [
+          { "required": ["visibility"] },
+          { "required": ["source"] },
+          { "required": ["origin"] },
+          { "required": ["delivery_mappings"] },
+          { "required": ["format_ids"] }
+        ]
+      }
+    }
+  ],
+  "additionalProperties": true
+}

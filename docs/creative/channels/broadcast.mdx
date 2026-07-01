@@ -1,6 +1,6 @@
 ---
 title: Broadcast TV
-description: "Broadcast TV ad formats in AdCP define spot file delivery, Ad-ID integration, and measurement maturation windows for linear television."
+description: "Broadcast TV ad formats in AdCP define spot file delivery, creative identifier integration, and measurement maturation windows for linear television."
 "og:title": "AdCP — Broadcast TV"
 ---
 
@@ -11,6 +11,19 @@ Broadcast TV differs from CTV in fundamental ways: there is no ad server, no VAS
 
 The protocol-level operations (`list_creative_formats`, `build_creative`, `sync_creatives`) work identically for broadcast as for any other format. The broadcast-specific details are in format definitions, asset requirements, and measurement models covered below.
 
+## Metadata ownership in broadcast syndication
+
+Linear broadcast carriage is not the same as web syndication. In web syndication, an embedding publisher can add its own context, decisioning, and audience layer around another party's content. In linear broadcast, an affiliate or station usually carries a scheduled asset under the originating seller's order; it does not fork or materially transform the creative.
+
+That distinction keeps AdCP metadata simple:
+
+- The creative record stays singular and stable. Use `creative_id` plus `industry_identifiers` for the canonical asset and traffic identity.
+- Network, national, or rep-firm buys are usually one seller product with multi-market fulfillment, not a chain of per-affiliate AdCP instances.
+- Local spot, station-group, and market-cleared syndication buys may be genuinely multi-seller. Each seller reports its own delivery; the buyer aggregates across sellers.
+- Station, market, daypart, placement, and measurement-window differences belong in delivery reporting and product/package context, not by mutating the creative metadata.
+
+When a single spot performs differently across markets or dayparts, preserve that difference as delivery signal. Do not merge it into one evolving creative metadata object.
+
 ## How broadcast differs from CTV
 
 | | Broadcast | CTV |
@@ -19,7 +32,7 @@ The protocol-level operations (`list_creative_formats`, `build_creative`, `sync_
 | **Tracking** | No impression pixels | Pixel fires, VAST tracking events |
 | **Clickthrough** | None (no interaction) | Clickthrough URL, QR codes |
 | **Measurement** | Panel/STB data, arrives days later | Server logs, real-time or near-real-time |
-| **Creative ID** | Ad-ID (industry standard) | Protocol creative_id |
+| **Creative ID** | Industry identifier (usually Ad-ID, with market-specific alternatives) | Protocol creative_id |
 | **Financial ref** | Agency Estimate Number | PO number |
 
 ## Format characteristics
@@ -29,7 +42,7 @@ Broadcast spots are:
 - **Fixed durations** — :15, :30, and :60 are standard
 - **No tracker assets** — No impression pixels, no VAST, no JavaScript
 - **No interactive elements** — No clickthrough, no companion, no overlay
-- **Identified by Ad-ID** — Industry-standard creative identifier that ties the spot to rotation instructions
+- **Identified by traffic/clearance ID** — Ad-ID, ISCI, Clearcast clock number, IDcrea, or another market-specific creative identifier that ties the spot to rotation instructions
 
 ## Standard broadcast formats
 
@@ -107,15 +120,17 @@ Whether a creative format supports third-party tracking is determined by whether
 
 A buyer agent that requires third-party measurement (DoubleVerify viewability, IAS brand safety) should check the format's assets before assigning creatives. If no tracker slot exists, those measurement vendors cannot instrument the creative. Measurement for broadcast comes from panel and set-top box data through the measurement vendor declared in `billing_measurement`, not from creative-level pixels.
 
-## Ad-ID integration
+## Creative identifier integration
 
-[Ad-ID](https://www.ad-id.org/) is the industry standard for identifying advertising assets. It replaced ISCI codes and is required for broadcast buying. An Ad-ID is a 12-character alphanumeric code (4-character company prefix + 8-character unique identifier).
+AdCP separates its protocol `creative_id` from the creative identifier used by traffic, clearance, and broadcast operations. Put Ad-ID, ISCI, Clearcast clock number, IDcrea, or another market-specific code in `industry_identifiers`.
 
-Ad-IDs serve two purposes in broadcast:
+Ad-ID is common for US television workflows and is often represented as a 12-character alphanumeric code (4-character company prefix + 8-character unique identifier). Other markets and legacy traffic systems use different identifiers. The protocol should preserve the identifier the workflow already uses rather than forcing every broadcaster or agency into Ad-ID.
+
+Industry identifiers serve two purposes in broadcast:
 1. **Asset identification** — uniquely identifies the spot across all systems
-2. **Rotation instructions** — when a buy has multiple creatives, the Ad-ID tells the station which spot to run in which window
+2. **Rotation instructions** — when a buy has multiple creatives, the identifier tells the station which spot to run in which window
 
-### Creative with Ad-ID
+### Creative with industry identifier
 
 ```json
 {
@@ -152,15 +167,18 @@ Ad-IDs serve two purposes in broadcast:
 }
 ```
 
-When the same source creative has different cuts (:15 and :30), each cut gets its own Ad-ID. Use `industry_identifiers` on the manifest level to assign distinct Ad-IDs per format version.
+When the same source creative has different cuts (:15 and :30), each cut gets its own traffic identifier. Use `industry_identifiers` on the manifest level to assign distinct Ad-IDs, ISCI codes, clock numbers, or IDcrea values per format version.
 
 ### Supported identifier types
 
 | Type | Description |
 |---|---|
-| `ad_id` | Ad-ID registry code (US/international standard) |
-| `isci` | Legacy ISCI code (older traffic systems) |
+| `ad_id` | Ad-ID registry code, common in US television and accepted by some audio workflows |
+| `isci` | Industry Standard Coding Identification, still used in legacy traffic systems and broadcast radio workflows |
 | `clearcast_clock` | UK Clearcast clock number |
+| `idcrea` | France ARPP.PUB IDcrea identifier for post-transition creative IDs |
+
+If a broadcast workflow depends on another shared identifier scheme, add it to `creative-identifier-type` by PR with evidence that the scheme is used across multiple participants. Do not use `industry_identifiers` for seller-local traffic codes.
 
 ## Agency Estimate Number
 

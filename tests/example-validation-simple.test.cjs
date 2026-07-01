@@ -151,6 +151,248 @@ async function runTests() {
     await validateExample(example.data, example.schema, example.description);
   }
 
+  const sponsoredContext = {
+    paying_principal: {
+      brand: { domain: 'acme-running.example' },
+      account: { account_id: 'acct_acme_running_001' },
+      display_name: 'Acme Running'
+    },
+    context_use: 'comparison_set',
+    disclosure_obligation: {
+      required: true,
+      label_text: 'Sponsored results from Acme Running',
+      timing: 'near_each_influenced_output',
+      proximity: 'near_influenced_output'
+    },
+    declared_by: {
+      agent_url: 'https://agent.acme-running.example/si',
+      role: 'brand_agent'
+    },
+    declared_at: '2025-01-19T10:00:00Z'
+  };
+
+  await validateExample(
+    sponsoredContext,
+    '/schemas/sponsored-intelligence/si-sponsored-context.json',
+    'SI sponsored context example'
+  );
+
+  await validateExample(
+    {
+      sponsored_context: sponsoredContext,
+      host_receipt: {
+        status: 'accepted',
+        accepted_context_use: 'comparison_set',
+        received_at: '2025-01-19T10:00:02Z',
+        host_surface: 'assistant_comparison',
+        disclosure_commitment: {
+          status: 'accepted',
+          label_text: 'Sponsored results from Acme Running'
+        }
+      }
+    },
+    '/schemas/sponsored-intelligence/si-sponsored-context-receipt.json',
+    'SI sponsored context receipt example'
+  );
+
+  await validateExample(
+    {
+      sponsored_context: sponsoredContext,
+      host_receipt: {
+        status: 'rejected',
+        received_at: '2025-01-19T10:00:02Z',
+        host_surface: 'assistant_comparison',
+        rejection_reason: 'Host cannot satisfy the declared disclosure obligation'
+      }
+    },
+    '/schemas/sponsored-intelligence/si-sponsored-context-receipt.json',
+    'SI sponsored context rejected receipt example'
+  );
+
+  const sponsoredContextReceipt = {
+    sponsored_context: sponsoredContext,
+    host_receipt: {
+      status: 'accepted',
+      accepted_context_use: 'comparison_set',
+      received_at: '2025-01-19T10:00:02Z',
+      host_surface: 'assistant_comparison',
+      disclosure_commitment: {
+        status: 'accepted',
+        label_text: 'Sponsored results from Acme Running'
+      }
+    }
+  };
+
+  await validateExample(
+    {
+      status: 'completed',
+      available: true,
+      offering_token: 'offering_abc123xyz',
+      matching_products: [
+        {
+          product_id: 'trail-pace-14',
+          name: 'Trail Pace 14'
+        }
+      ],
+      sponsored_context: sponsoredContext
+    },
+    '/schemas/sponsored-intelligence/si-get-offering-response.json',
+    'SI get offering response with sponsored context'
+  );
+
+  await validateExample(
+    {
+      idempotency_key: 'f6a7b8c9-d0e1-4234-f567-234567890123',
+      intent: 'User wants more detail about the sponsored trail shoe preview',
+      identity: {
+        consent_granted: false,
+        anonymous_session_id: 'anon_sess_123'
+      },
+      offering_token: 'offering_abc123xyz',
+      sponsored_context_receipt: sponsoredContextReceipt
+    },
+    '/schemas/sponsored-intelligence/si-initiate-session-request.json',
+    'SI initiate session request with sponsored context receipt'
+  );
+
+  await validateExample(
+    {
+      status: 'completed',
+      session_id: 'si_sess_abc123',
+      session_status: 'active',
+      response: {
+        message: 'I can help compare trail shoes from Acme Running.'
+      },
+      sponsored_context: sponsoredContext
+    },
+    '/schemas/sponsored-intelligence/si-initiate-session-response.json',
+    'SI initiate session response with sponsored context'
+  );
+
+  await validateExample(
+    {
+      idempotency_key: 'a7b8c9d0-e1f2-4567-8901-345678901234',
+      session_id: 'si_sess_abc123',
+      message: 'Show me more waterproof options',
+      sponsored_context_receipt: sponsoredContextReceipt
+    },
+    '/schemas/sponsored-intelligence/si-send-message-request.json',
+    'SI send message request with sponsored context receipt'
+  );
+
+  await validateExample(
+    {
+      status: 'completed',
+      session_id: 'si_sess_abc123',
+      session_status: 'active',
+      response: {
+        message: 'Here are the waterproof trail options.'
+      },
+      sponsored_context: sponsoredContext
+    },
+    '/schemas/sponsored-intelligence/si-send-message-response.json',
+    'SI send message response with sponsored context'
+  );
+
+  await expectInvalid(
+    {
+      sponsored_context: sponsoredContext,
+      host_receipt: {
+        status: 'accepted',
+        received_at: '2025-01-19T10:00:02Z'
+      }
+    },
+    '/schemas/sponsored-intelligence/si-sponsored-context-receipt.json',
+    'SI sponsored context accepted receipt requires use mode and disclosure commitment',
+    ['must have required property']
+  );
+
+  await expectInvalid(
+    {
+      sponsored_context: sponsoredContext,
+      host_receipt: {
+        status: 'accepted',
+        accepted_context_use: 'comparison_set',
+        received_at: '2025-01-19T10:00:02Z',
+        disclosure_commitment: {
+          status: 'rejected'
+        }
+      }
+    },
+    '/schemas/sponsored-intelligence/si-sponsored-context-receipt.json',
+    'SI sponsored context accepted receipt rejects contradictory disclosure commitment',
+    ['must be equal to one of the allowed values']
+  );
+
+  await expectInvalid(
+    {
+      sponsored_context: sponsoredContext,
+      host_receipt: {
+        status: 'accepted',
+        accepted_context_use: 'presentation_only',
+        received_at: '2025-01-19T10:00:02Z',
+        disclosure_commitment: {
+          status: 'accepted'
+        }
+      }
+    },
+    '/schemas/sponsored-intelligence/si-sponsored-context-receipt.json',
+    'SI sponsored context accepted receipt cannot change declared context use',
+    ['must be equal to constant']
+  );
+
+  await expectInvalid(
+    {
+      sponsored_context: sponsoredContext,
+      host_receipt: {
+        status: 'accepted',
+        accepted_context_use: 'comparison_set',
+        received_at: '2025-01-19T10:00:02Z',
+        disclosure_commitment: {
+          status: 'not_required'
+        }
+      }
+    },
+    '/schemas/sponsored-intelligence/si-sponsored-context-receipt.json',
+    'SI sponsored context accepted receipt cannot decline required disclosure',
+    ['must be equal to constant']
+  );
+
+  await expectInvalid(
+    {
+      sponsored_context: sponsoredContext,
+      host_receipt: {
+        status: 'rejected',
+        accepted_context_use: 'comparison_set',
+        received_at: '2025-01-19T10:00:02Z',
+        disclosure_commitment: {
+          status: 'accepted'
+        },
+        rejection_reason: 'Host cannot satisfy the declared disclosure obligation'
+      }
+    },
+    '/schemas/sponsored-intelligence/si-sponsored-context-receipt.json',
+    'SI sponsored context rejected receipt cannot include accepted-only fields',
+    ['must NOT be valid']
+  );
+
+  for (const fixture of [
+    {
+      path: 'static/examples/brand-json/riverton-kitchen-guidelines.json',
+      description: 'fictional Riverton Kitchen brand.json guideline mapping fixture'
+    },
+    {
+      path: 'static/examples/brand-json/kiran-learning-trust-guidelines.json',
+      description: 'fictional Kiran Learning Trust brand.json guideline mapping fixture'
+    }
+  ]) {
+    await validateExample(
+      JSON.parse(fs.readFileSync(path.join(__dirname, '..', fixture.path), 'utf8')),
+      '/schemas/brand.json',
+      fixture.description
+    );
+  }
+
   // Test request/response examples
   await validateExample(
     {
@@ -181,6 +423,120 @@ async function runTests() {
     'get_signals request'
   );
 
+  await validateExample(
+    {
+      "product_id": "retail_display_open_exchange",
+      "name": "Retail Display Open Exchange",
+      "description": "Open exchange display inventory with optional retail intent signals",
+      "publisher_properties": [
+        {
+          "publisher_domain": "retailmedia.example",
+          "selection_type": "all"
+        }
+      ],
+      "format_ids": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "display_300x250_image"
+        }
+      ],
+      "delivery_type": "non_guaranteed",
+      "pricing_options": [
+        {
+          "pricing_option_id": "auction_cpm",
+          "pricing_model": "cpm",
+          "currency": "USD",
+          "floor_price": 3.00
+        }
+      ],
+      "reporting_capabilities": {
+        "available_reporting_frequencies": ["daily"],
+        "expected_delay_minutes": 240,
+        "timezone": "UTC",
+        "supports_webhooks": true,
+        "available_metrics": ["impressions", "spend"],
+        "date_range_support": "date_range"
+      },
+      "signal_targeting_allowed": true,
+      "signal_targeting_rules": {
+        "resolution_model": "direct_targeting",
+        "selection_mode": "optional",
+        "max_signal_targeting_groups": 2,
+        "max_signals_per_targeting_group": 3
+      },
+      "signal_targeting_options": [
+        {
+          "signal_ref": {
+            "scope": "data_provider",
+            "data_provider_domain": "pinnacle-data.example",
+            "signal_id": "auto_intenders"
+          },
+          "allowed_targeting_modes": ["include", "exclude"],
+          "selection_group": "retail_audience",
+          "pricing_options": [
+            {
+              "pricing_option_id": "signal_cpm_usd_250",
+              "model": "cpm",
+              "cpm": 2.50,
+              "currency": "USD"
+            }
+          ]
+        }
+      ],
+      "included_signals": [
+        {
+          "signal_ref": {
+            "scope": "data_provider",
+            "data_provider_domain": "pinnacle-data.example",
+            "signal_id": "retail_category_shoppers"
+          }
+        }
+      ]
+    },
+    '/schemas/core/product.json',
+    'product with signal_targeting_options and included_signals'
+  );
+
+  await validateExample(
+    {
+      "signal_targeting_groups": {
+        "operator": "all",
+        "groups": [
+          {
+            "operator": "any",
+            "signals": [
+              {
+                "signal_ref": {
+                  "scope": "data_provider",
+                  "data_provider_domain": "pinnacle-data.example",
+                  "signal_id": "auto_intenders"
+                },
+                "value_type": "binary",
+                "value": true,
+                "pricing_option_id": "signal_cpm_usd_250"
+              }
+            ]
+          },
+          {
+            "operator": "none",
+            "signals": [
+              {
+                "signal_ref": {
+                  "scope": "product",
+                  "signal_id": "recent_purchasers"
+                },
+                "value_type": "binary",
+                "value": true
+              }
+            ]
+          }
+        ]
+      }
+    },
+    '/schemas/core/targeting.json',
+    'targeting overlay with signal_targeting_groups'
+  );
+
   // Conversion tracking examples
   await validateExample(
     {
@@ -191,12 +547,26 @@ async function runTests() {
           "event_source_id": "website_pixel",
           "name": "Main Website Pixel",
           "event_types": ["purchase", "lead", "add_to_cart", "page_view"],
+          "action_source": "website",
           "allowed_domains": ["www.example.com", "shop.example.com"]
         },
         {
           "event_source_id": "crm_import",
           "name": "CRM Offline Events",
-          "event_types": ["purchase", "qualify_lead", "close_convert_lead"]
+          "event_types": ["purchase", "qualify_lead", "close_convert_lead"],
+          "action_source": "offline"
+        },
+        {
+          "event_source_id": "creator_channel",
+          "name": "Creator Channel Events",
+          "event_types": ["follow", "content_view", "watch_milestone"],
+          "action_source": "system_generated",
+          "surface": {
+            "category": "owned_property",
+            "property_type": "channel",
+            "namespace": "video_platform",
+            "property_id": "channel_123"
+          }
         }
       ]
     },
@@ -206,6 +576,7 @@ async function runTests() {
 
   await validateExample(
     {
+      "status": "completed",
       "event_sources": [
         {
           "event_source_id": "website_pixel",
@@ -226,6 +597,26 @@ async function runTests() {
           "seller_id": "amz_attr_001",
           "managed_by": "seller",
           "action": "unchanged"
+        },
+        {
+          "event_source_id": "creator_channel",
+          "name": "Creator Channel Events",
+          "seller_id": "creator_attr_001",
+          "event_types": ["follow", "content_view", "watch_milestone"],
+          "action_source": "system_generated",
+          "surface": {
+            "category": "owned_property",
+            "property_type": "channel",
+            "namespace": "video_platform",
+            "property_id": "channel_123"
+          },
+          "managed_by": "seller",
+          "action": "unchanged",
+          "ext": {
+            "video_platform": {
+              "native_origin": "owned_channel"
+            }
+          }
         }
       ]
     },
@@ -235,6 +626,7 @@ async function runTests() {
 
   await validateExample(
     {
+      "status": "failed",
       "errors": [
         { "code": "AUTHENTICATION_FAILED", "message": "Invalid or expired credentials" }
       ]
@@ -292,15 +684,75 @@ async function runTests() {
             "currency": "USD",
             "order_id": "order_98765"
           }
+        },
+        {
+          "event_id": "evt_follow_001",
+          "event_type": "follow",
+          "event_time": "2026-01-16T11:00:00Z",
+          "action_source": "system_generated",
+          "surface": {
+            "category": "owned_property",
+            "property_type": "channel",
+            "namespace": "video_platform",
+            "property_id": "channel_123"
+          },
+          "user_match": {
+            "uids": [{ "type": "uid2", "value": "CreatorFollower123" }]
+          }
+        },
+        {
+          "event_id": "evt_watch_001",
+          "event_type": "watch_milestone",
+          "event_time": "2026-01-16T11:05:00Z",
+          "action_source": "system_generated",
+          "surface": {
+            "category": "owned_property",
+            "property_type": "channel",
+            "namespace": "video_platform",
+            "property_id": "channel_123"
+          },
+          "user_match": {
+            "uids": [{ "type": "uid2", "value": "CreatorViewer456" }]
+          },
+          "custom_data": {
+            "content_ids": ["episode_001"],
+            "progress_percent": 75
+          }
         }
       ]
     },
     '/schemas/media-buy/log-event-request.json',
-    'log_event request (batch with purchase, lead, refund)'
+    'log_event request (batch with purchase, lead, refund, creator follow, watch milestone)'
+  );
+
+  await expectInvalid(
+    {
+      "event_id": "evt_watch_missing_threshold",
+      "event_type": "watch_milestone",
+      "event_time": "2026-01-16T11:05:00Z"
+    },
+    '/schemas/core/event.json',
+    'watch_milestone requires custom_data with a progress threshold',
+    ['custom_data']
+  );
+
+  await expectInvalid(
+    {
+      "event_id": "evt_watch_missing_progress",
+      "event_type": "watch_milestone",
+      "event_time": "2026-01-16T11:05:00Z",
+      "custom_data": {
+        "content_ids": ["episode_001"]
+      }
+    },
+    '/schemas/core/event.json',
+    'watch_milestone custom_data requires progress_percent or progress_seconds',
+    ['progress_percent', 'progress_seconds']
   );
 
   await validateExample(
     {
+      "status": "completed",
       "events_received": 3,
       "events_processed": 2,
       "partial_failures": [
@@ -319,6 +771,7 @@ async function runTests() {
 
   await validateExample(
     {
+      "status": "failed",
       "errors": [
         { "code": "EVENT_SOURCE_NOT_FOUND", "message": "Event source 'unknown_pixel' not found on this account" }
       ]
@@ -532,17 +985,19 @@ async function runTests() {
       "property_rid": "01916f3a-9c4e-7000-8000-000000000010",
       "property_type": "website",
       "placement_id": "article-sidebar",
+      "seller_agent_url": "https://streamhaus.example",
       "artifact_refs": [
         { "type": "url", "value": "https://streamhaus.example/articles/hiking-gear-2026" }
       ]
     },
-    '/schemas/tmp/context-match-request.json',
+    '/schemas/trusted-match/context-match-request.json',
     'TMP Context Match request — web (overview walkthrough)'
   );
 
   // Context Match response — web (from index.mdx)
   await validateExample(
     {
+      "status": "completed",
       "type": "context_match_response",
       "request_id": "ctx-8f3a2b",
       "offers": [
@@ -551,7 +1006,7 @@ async function runTests() {
         }
       ]
     },
-    '/schemas/tmp/context-match-response.json',
+    '/schemas/trusted-match/context-match-response.json',
     'TMP Context Match response — web (overview walkthrough)'
   );
 
@@ -560,6 +1015,7 @@ async function runTests() {
     {
       "type": "identity_match_request",
       "request_id": "id-7c9e1d",
+      "seller_agent_url": "https://streamhaus.example",
       "identities": [
         { "user_token": "opaque-streamhaus-token-abc123", "uid_type": "uid2" },
         { "user_token": "ID5*zP3wK...", "uid_type": "id5" }
@@ -570,19 +1026,20 @@ async function runTests() {
         "pkg-outdoor-audio"
       ]
     },
-    '/schemas/tmp/identity-match-request.json',
+    '/schemas/trusted-match/identity-match-request.json',
     'TMP Identity Match request — web (overview walkthrough)'
   );
 
   // Identity Match response — web (from index.mdx)
   await validateExample(
     {
+      "status": "completed",
       "type": "identity_match_response",
       "request_id": "id-7c9e1d",
       "eligible_package_ids": ["pkg-outdoor-audio"],
-      "ttl_sec": 60
+      "serve_window_sec": 60
     },
-    '/schemas/tmp/identity-match-response.json',
+    '/schemas/trusted-match/identity-match-response.json',
     'TMP Identity Match response — web (overview walkthrough)'
   );
 
@@ -594,6 +1051,7 @@ async function runTests() {
       "property_rid": "01916f3a-f8cb-7000-8000-000000000051",
       "property_type": "ai_assistant",
       "placement_id": "chat-inline-recommendation",
+      "seller_agent_url": "https://streamhaus.example",
       "context_signals": {
         "topics": ["596", "477"],
         "taxonomy_source": "iab",
@@ -604,13 +1062,14 @@ async function runTests() {
         "summary": "User seeking trail shoe recommendations for rocky terrain with ankle support"
       }
     },
-    '/schemas/tmp/context-match-request.json',
+    '/schemas/trusted-match/context-match-request.json',
     'TMP Context Match request — AI assistant (ai-mediation walkthrough)'
   );
 
   // Context Match response — AI assistant with creative manifest (from ai-mediation.mdx)
   await validateExample(
     {
+      "status": "completed",
       "type": "context_match_response",
       "request_id": "ctx-trail-shoes-01",
       "offers": [
@@ -628,7 +1087,7 @@ async function runTests() {
         }
       ]
     },
-    '/schemas/tmp/context-match-response.json',
+    '/schemas/trusted-match/context-match-response.json',
     'TMP Context Match response — AI assistant with creative manifest (ai-mediation walkthrough)'
   );
 
@@ -637,6 +1096,7 @@ async function runTests() {
     {
       "type": "identity_match_request",
       "request_id": "id-9b2c",
+      "seller_agent_url": "https://publisher.example",
       "identities": [
         { "user_token": "tok_hk82mfp1", "uid_type": "uid2" },
         { "user_token": "ID5*aB3xY...", "uid_type": "id5" },
@@ -648,7 +1108,7 @@ async function runTests() {
       },
       "package_ids": ["pkg-A", "pkg-B", "pkg-C"]
     },
-    '/schemas/tmp/identity-match-request.json',
+    '/schemas/trusted-match/identity-match-request.json',
     'TMP Identity Match request with consent (context-and-identity walkthrough)'
   );
 
@@ -657,12 +1117,13 @@ async function runTests() {
     {
       "type": "identity_match_request",
       "request_id": "id-e5f6g7h8",
+      "seller_agent_url": "https://ai-assistant.example",
       "identities": [
         { "user_token": "tok_session_k2f8", "uid_type": "publisher_first_party" }
       ],
       "package_ids": ["pkg-sneaker-reco", "pkg-fashion-native"]
     },
-    '/schemas/tmp/identity-match-request.json',
+    '/schemas/trusted-match/identity-match-request.json',
     'TMP Identity Match request — single identity (ai-assistant walkthrough)'
   );
 
@@ -671,6 +1132,7 @@ async function runTests() {
     {
       "type": "identity_match_request",
       "request_id": "id-boundary-4",
+      "seller_agent_url": "https://seller.example",
       "identities": [
         { "user_token": "a", "uid_type": "uid2" },
         { "user_token": "b", "uid_type": "id5" },
@@ -679,7 +1141,7 @@ async function runTests() {
       ],
       "package_ids": ["pkg-1"]
     },
-    '/schemas/tmp/identity-match-request.json',
+    '/schemas/trusted-match/identity-match-request.json',
     'TMP Identity Match request — 4 identities rejected (maxItems:3 boundary)'
   );
 
@@ -717,6 +1179,78 @@ async function runTests() {
     },
     '/schemas/media-buy/get-products-request.json',
     'refine[] with new prefixed ids and omitted action (defaults to include)'
+  );
+
+  // Measurement capability block — locks the discovery shape down
+  // (#3612). Two metrics: one with full accreditations[] and
+  // methodology_version, one with the minimum required field (metric_id).
+  // Buyer-side implementers can reference this as the canonical response shape.
+  await validateExample(
+    {
+      "status": "completed",
+      "adcp": {
+        "major_versions": [3],
+        "supported_versions": ["3.0"],
+        "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
+      },
+      "supported_protocols": ["measurement"],
+      "account": {
+        "supported_billing": ["operator"]
+      },
+      "measurement": {
+        "metrics": [
+          {
+            "metric_id": "attention_units",
+            "standard_reference": "https://iabtechlab.com/standards/attention-measurement",
+            "accreditations": [
+              {
+                "accrediting_body": "MRC",
+                "certification_id": "MRC-ATT-2026-001",
+                "valid_until": "2027-12-31",
+                "evidence_url": "https://mediaratingcouncil.org/accreditations/attentionvendor"
+              }
+            ],
+            "unit": "score",
+            "description": "Eye-tracking-based attention score (0-100). Computed from a panel of opted-in households.",
+            "methodology_url": "https://attentionvendor.example/docs/attention-units",
+            "methodology_version": "v2.1"
+          },
+          {
+            "metric_id": "gco2e_per_impression",
+            "standard_reference": "https://garmadvertising.com/sustainability-framework",
+            "unit": "gCO2e",
+            "description": "Carbon emissions per impression, computed via supply-path analysis."
+          }
+        ]
+      }
+    },
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    'get_adcp_capabilities response with measurement capability block (#3612)'
+  );
+
+  // Negative case — duplicate metric_id within one agent's catalog is unambiguously a bug;
+  // schema-level uniqueItems on metrics[] catches it.
+  await expectInvalid(
+    {
+      "adcp": {
+        "major_versions": [3],
+        "supported_versions": ["3.0"],
+        "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
+      },
+      "supported_protocols": ["measurement"],
+      "account": {
+        "supported_billing": ["operator"]
+      },
+      "measurement": {
+        "metrics": [
+          { "metric_id": "attention_units" },
+          { "metric_id": "attention_units" }
+        ]
+      }
+    },
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    'measurement.metrics[] rejects duplicate entries (uniqueItems)',
+    [/uniqueItems|duplicate/i]
   );
 
   // Print results

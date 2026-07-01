@@ -207,7 +207,7 @@
       }
 
       .navbar {
-        background: #fff;
+        background: var(--color-bg-card);
         box-shadow: 0 1px 2px 0 rgba(0,0,0,.1);
         height: 60px;
         padding: 0 1rem;
@@ -216,6 +216,7 @@
         left: 0;
         right: 0;
         z-index: 1000;
+        border-bottom: 1px solid var(--color-border);
       }
 
       .navbar__inner {
@@ -261,7 +262,7 @@
 
       .navbar__link {
         text-decoration: none;
-        color: #000;
+        color: var(--color-text);
         font-weight: 500;
         padding: 0.5rem 0.75rem;
         border-radius: 0.25rem;
@@ -269,11 +270,11 @@
       }
 
       .navbar__link:hover {
-        background: rgba(0, 0, 0, 0.05);
+        background: var(--color-hover-overlay);
       }
 
       .navbar__link.active {
-        color: var(--aao-primary, #1a36b4);
+        color: var(--color-brand);
         font-weight: 600;
       }
 
@@ -289,12 +290,12 @@
       }
 
       .navbar__btn--primary {
-        background: #1a36b4;
-        color: #fff;
+        background: var(--color-brand);
+        color: var(--color-text-on-dark);
       }
 
       .navbar__btn--primary:hover {
-        background: #2d4fd6;
+        background: var(--color-brand-hover);
       }
 
       /* CTA button */
@@ -303,7 +304,7 @@
         align-items: center;
         padding: 6px 16px;
         background: var(--color-brand);
-        color: white !important;
+        color: var(--color-text-on-dark) !important;
         border-radius: var(--radius-md, 6px);
         font-size: 14px;
         font-weight: 600;
@@ -333,12 +334,12 @@
         border: none;
         cursor: pointer;
         padding: 0.375rem;
-        color: var(--color-gray-500);
+        color: var(--color-text-secondary);
         transition: color 0.2s;
         display: flex;
         align-items: center;
       }
-      .navbar__notif-btn:hover { color: var(--color-gray-900); }
+      .navbar__notif-btn:hover { color: var(--color-text-heading); }
       .navbar__notif-badge {
         position: absolute;
         top: 2px;
@@ -347,7 +348,7 @@
         height: 16px;
         padding: 0 4px;
         background: var(--color-error-500);
-        color: #fff;
+        color: var(--color-text-on-dark);
         font-size: 10px;
         font-weight: 700;
         border-radius: 8px;
@@ -399,16 +400,16 @@
         text-decoration: none;
         color: inherit;
         transition: background 0.15s;
-        border-bottom: 1px solid var(--color-gray-100);
+        border-bottom: 1px solid var(--color-border);
       }
       .navbar__notif-item:hover { background: var(--color-bg-subtle); }
-      .navbar__notif-item.unread { background: var(--color-primary-50); }
+      .navbar__notif-item.unread { background: var(--color-brand-bg); }
       .navbar__notif-item-avatar {
         width: 28px;
         height: 28px;
         border-radius: 50%;
         background: var(--gradient-primary);
-        color: #fff;
+        color: var(--color-text-on-dark);
         font-size: 10px;
         font-weight: 700;
         display: flex;
@@ -421,7 +422,7 @@
       .navbar__notif-item-text {
         font-size: 0.8125rem;
         line-height: 1.35;
-        color: var(--color-gray-700);
+        color: var(--color-text);
       }
       .navbar__notif-item-time {
         font-size: 0.6875rem;
@@ -445,7 +446,7 @@
         height: 28px;
         border-radius: 50%;
         background: linear-gradient(135deg, var(--color-warning-700, #b45309), var(--color-warning-500, #d97706));
-        color: #fff;
+        color: var(--color-text-on-dark);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -467,18 +468,18 @@
         gap: 0.5rem;
         padding: 0.35rem 0.75rem 0.35rem 0.35rem;
         background: transparent;
-        border: 1px solid #e5e7eb;
+        border: 1px solid var(--color-border);
         border-radius: 9999px;
         cursor: pointer;
         font-size: 0.875rem;
         font-weight: 500;
-        color: #000;
+        color: var(--color-text);
         transition: all 0.2s;
       }
 
       .navbar__account-btn:hover {
-        background: rgba(0, 0, 0, 0.05);
-        border-color: #d1d5db;
+        background: var(--color-hover-overlay);
+        border-color: var(--color-border-strong);
       }
 
       .navbar__dropdown {
@@ -487,8 +488,8 @@
         top: calc(100% + 0.5rem);
         right: 0;
         min-width: 200px;
-        background: #fff;
-        border: 1px solid #e5e7eb;
+        background: var(--color-bg-card);
+        border: 1px solid var(--color-border);
         border-radius: 0.5rem;
         box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         overflow: hidden;
@@ -502,30 +503,30 @@
       .navbar__dropdown-header {
         padding: 0.75rem 1rem;
         font-size: 0.75rem;
-        color: #6b7280;
-        border-bottom: 1px solid #e5e7eb;
-        background: #f9fafb;
+        color: var(--color-text-secondary);
+        border-bottom: 1px solid var(--color-border);
+        background: var(--color-bg-subtle);
       }
 
       .navbar__dropdown-item {
         display: block;
         padding: 0.75rem 1rem;
         text-decoration: none;
-        color: #000;
+        color: var(--color-text);
         font-size: 0.875rem;
         transition: background-color 0.2s;
       }
 
       .navbar__dropdown-item:hover {
-        background: #f3f4f6;
+        background: var(--color-bg-subtle);
       }
 
       .navbar__dropdown-item--danger {
-        color: #dc2626;
+        color: var(--color-error-600);
       }
 
       .navbar__dropdown-item--danger:hover {
-        background: #fef2f2;
+        background: var(--color-error-bg);
       }
 
       /* Logo styling */
@@ -688,7 +689,7 @@
         display: block;
         width: 100%;
         height: 2px;
-        background: #000;
+        background: var(--color-text);
         border-radius: 1px;
         transition: all 0.3s ease;
       }
@@ -714,8 +715,8 @@
         left: 0;
         right: 0;
         bottom: 0;
-        background: #fff;
-        border-top: 1px solid #e5e7eb;
+        background: var(--color-bg-card);
+        border-top: 1px solid var(--color-border);
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         padding: 0;
         overflow-y: auto;
@@ -756,14 +757,14 @@
         display: flex;
         align-items: center;
         min-height: 48px;
-        border-bottom: 1px solid #e5e7eb;
+        border-bottom: 1px solid var(--color-border);
         font-size: 1rem;
         transition: background-color 0.15s ease;
       }
 
       .navbar__mobile-menu .navbar__link:hover,
       .navbar__mobile-menu .navbar__link:active {
-        background: #f3f4f6;
+        background: var(--color-bg-subtle);
       }
 
       /* Safe area padding at bottom of mobile menu */
@@ -898,7 +899,7 @@
                 <a href="https://www.linkedin.com/company/agenticadvertisingorg" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn">
                   <svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
                 </a>
-                <a href="https://www.youtube.com/@AgenticAdvertisingOrg" target="_blank" rel="noopener noreferrer" aria-label="YouTube">
+                <a href="https://www.youtube.com/@AgenticAdvertising" target="_blank" rel="noopener noreferrer" aria-label="YouTube">
                   <svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
                 </a>
               </div>
@@ -1152,9 +1153,9 @@
       }
       .aao-subscribe__btn {
         padding: 0.5rem 0.875rem;
-        background: var(--color-brand, #2563eb);
-        color: #fff;
-        border: 1px solid var(--color-brand, #2563eb);
+        background: var(--color-brand);
+        color: var(--color-text-on-dark);
+        border: 1px solid var(--color-brand);
         border-radius: 6px;
         font-size: 0.875rem;
         font-weight: 600;
@@ -1199,13 +1200,13 @@
         font-weight: 600;
       }
       .aao-subscribe--inline .aao-subscribe__input {
-        background: #fff;
-        color: #111827;
-        border-color: var(--color-border, #e5e7eb);
+        background: var(--color-bg-card);
+        color: var(--color-text);
+        border-color: var(--color-border);
       }
       .aao-subscribe--inline .aao-subscribe__hint,
       .aao-subscribe--inline .aao-subscribe__status {
-        color: var(--color-gray-600, #6b7280);
+        color: var(--color-text-secondary);
       }
     </style>
   `;
@@ -1613,15 +1614,15 @@
         transition: background 0.15s;
       }
       .mkt-optin-btn-no {
-        background: var(--color-bg-subtle, #f5f5f5);
-        color: var(--color-text-secondary, #555);
+        background: var(--color-bg-button-secondary);
+        color: var(--color-text-secondary);
       }
       .mkt-optin-btn-no:hover {
-        background: var(--color-gray-200, #e5e5e5);
+        background: var(--color-bg-button-secondary-hover);
       }
       .mkt-optin-btn-yes {
-        background: var(--color-brand, #2563eb);
-        color: #fff;
+        background: var(--color-brand);
+        color: var(--color-text-on-dark);
       }
       .mkt-optin-btn-yes:hover {
         opacity: 0.9;

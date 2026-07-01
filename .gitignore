@@ -17,6 +17,10 @@ server/node_modules
 /dist/schemas/latest
 /dist/schemas/v*
 /dist/schemas/registry.*
+/dist/schemas/*.js
+/dist/schemas/*.js.map
+/dist/schemas/*.d.ts
+/dist/schemas/*.d.ts.map
 /dist/compliance/latest
 /dist/compliance/v*
 /dist/protocol/latest.tgz
@@ -69,3 +73,11 @@ tests/screenshots/
 
 # C2PA test fixtures — generated at test time, not committed.
 server/tests/fixtures/c2pa/*.pem
+
+# Pre-push hook leftovers — `.husky/pre-push` moves `dist/docs` (etc.) to
+# `/tmp/.prepush-<name>-<pid>` before running Mintlify broken-links, then
+# restores. If the restore lands in the wrong place (interrupted script,
+# stale runs across worktrees), the temp dir can show up inside the source
+# tree. Always-ignore so they don't pollute `git status`.
+.prepush-*/
+dist/docs/.prepush-*/

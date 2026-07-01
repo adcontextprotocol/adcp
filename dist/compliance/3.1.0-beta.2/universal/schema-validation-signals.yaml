@@ -1,0 +1,182 @@
+id: schema_validation_signals
+version: "1.0.0"
+title: "Schema compliance — signals protocol"
+category: schema_validation
+summary: "Validates that signals agent responses conform to AdCP schemas with all required fields present and correctly typed."
+track: core
+required_tools:
+  - get_signals
+
+narrative: |
+  Every AdCP agent must return responses that match the published JSON schemas.
+  For signals agents, this means get_signals responses must carry the required
+  fields on every signal: signal_id, signal_agent_segment_id, name, description,
+  signal_type, data_provider, coverage_percentage, deployments, and
+  pricing_options.
+
+  This storyboard validates schema compliance on get_signals responses —
+  confirming that each signal contains the fields buyers need to proceed to
+  activation and reporting. A signals agent that omits required fields forces
+  buyers to fail at activate_signal or report_usage with no clear error signal.
+
+agent:
+  interaction_model: owned_signals
+  capabilities: []
+  examples:
+    - "Any AdCP signals agent (owned or marketplace)"
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness"
+
+prerequisites:
+  description: |
+    The caller needs a brand identity for signal discovery requests.
+  test_kit: "test-kits/nova-motors.yaml"
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      The buyer calls get_adcp_capabilities to confirm the agent supports the
+      signals protocol before validating response schemas.
+
+    steps:
+      - id: get_capabilities
+        title: "Check agent capabilities"
+        narrative: |
+          Verify that the agent declares the expected protocol support before
+          proceeding with domain-specific operations.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring signals in supported_protocols, confirming
+          the agent supports get_signals.
+        sample_request:
+          context:
+            correlation_id: "schema_validation_signals--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "schema_validation_signals--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+
+  - id: schema_compliance
+    title: "Response schema compliance"
+    narrative: |
+      The buyer sends a standard get_signals request and validates that the
+      response matches the published schema. Each signal must have the required
+      fields defined in the AdCP spec.
+
+    steps:
+      - id: get_signals_schema
+        title: "Validate get_signals response schema"
+        narrative: |
+          Send a signal_spec and validate the response structure. Every signal in
+          the response must conform to the get-signals-response.json schema with
+          all required fields present.
+        task: get_signals
+        schema_ref: "signals/get-signals-request.json"
+        response_schema_ref: "signals/get-signals-response.json"
+        doc_ref: "/signals/tasks/get_signals"
+        comply_scenario: schema_compliance
+        stateful: false
+        expected: |
+          Return signals matching the spec. Each signal must have all required fields:
+          - signal_id: reference to the data provider's catalog
+          - signal_agent_segment_id: opaque identifier used for activation
+          - name: human-readable signal name
+          - description: detailed signal description
+          - signal_type: marketplace, custom, or owned
+          - data_provider: human-readable name of the data provider
+          - coverage_percentage: audience coverage percentage (0–100)
+          - deployments: array of deployment targets
+          - pricing_options: array (minItems: 1) with pricing_option_id
+
+          Responses missing any of these fields fail schema validation.
+
+        sample_request:
+          signal_spec: "Show all available signals"
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.example"
+
+          context:
+            correlation_id: "schema_validation_signals--get_signals_schema"
+        validations:
+          - check: response_schema
+            description: "Response matches get-signals-response.json schema"
+          - check: field_present
+            path: "signals"
+            description: "Response contains a signals array"
+          - check: field_present
+            path: "signals[0].signal_agent_segment_id"
+            description: "Each signal carries a signal_agent_segment_id for activation"
+          - check: field_present
+            path: "signals[0].signal_type"
+            description: "Each signal declares marketplace, custom, or owned type"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "schema_validation_signals--get_signals_schema"
+            description: "Context correlation_id returned unchanged"
+
+      - id: pricing_options_present
+        title: "Validate pricing options structure"
+        narrative: |
+          Verify that signals include pricing_options with the required fields.
+          Buyers pass pricing_option_id in report_usage for billing verification;
+          missing or malformed pricing options break the downstream reporting flow.
+        task: get_signals
+        schema_ref: "signals/get-signals-request.json"
+        response_schema_ref: "signals/get-signals-response.json"
+        doc_ref: "/signals/tasks/get_signals"
+        comply_scenario: schema_compliance
+        stateful: false
+        expected: |
+          Signals include pricing_options with:
+          - pricing_option_id: unique identifier for the pricing option
+          - model: pricing model discriminator (cpm, percent_of_media, flat_fee,
+            per_unit, or custom)
+
+        sample_request:
+          signal_spec: "Premium audience signals with pricing details"
+          account:
+            brand:
+              domain: "novamotors.example"
+            operator: "pinnacle-agency.example"
+
+          context:
+            correlation_id: "schema_validation_signals--pricing_options_present"
+        validations:
+          - check: field_present
+            path: "signals[0].pricing_options[0].pricing_option_id"
+            description: "Pricing options have a pricing_option_id"
+          - check: field_present
+            path: "signals[0].pricing_options[0].model"
+            description: "Pricing options declare a pricing model discriminator"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "schema_validation_signals--pricing_options_present"
+            description: "Context correlation_id returned unchanged"

@@ -130,7 +130,7 @@
     .badge-abandoned { background: var(--color-error-100); color: var(--color-error-800); }
     .progress-bar-container {
       width: 100%;
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
       border-radius: 4px;
       height: 8px;
       overflow: hidden;
@@ -278,6 +278,55 @@
       color: var(--color-text-muted);
       font-size: 12px;
     }
+    .repair-form {
+      display: grid;
+      gap: 12px;
+      padding: 16px;
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      background: var(--color-bg-subtle);
+    }
+    .repair-form label {
+      display: grid;
+      gap: 6px;
+      color: var(--color-text-secondary);
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .repair-form input,
+    .repair-form textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      background: var(--color-bg-card);
+      color: var(--color-text-heading);
+      font: inherit;
+      font-size: 14px;
+    }
+    .repair-form textarea {
+      min-height: 88px;
+      resize: vertical;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    .repair-form button {
+      justify-self: start;
+      padding: 8px 14px;
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      background: var(--color-bg-card);
+      color: var(--color-text-heading);
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .repair-form button:hover:not(:disabled) { background: var(--color-bg-page); }
+    .repair-form button:disabled { opacity: 0.6; cursor: wait; }
+    .repair-result {
+      display: none;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
   </style>
 </head>
 <body>
@@ -336,17 +385,21 @@
         </table>
       </div>
 
-      <!-- Stuck attempts -->
+      <!-- Attempts needing attention -->
       <div class="section" id="stuck-section" style="display:none;">
-        <h2>Stuck attempts</h2>
-        <p style="color:var(--color-text-secondary);font-size:14px;margin-bottom:16px;">Capstone attempts in progress for 7+ days. These block learners from starting new exams.</p>
+        <h2>Attempts needing attention</h2>
+        <p style="color:var(--color-text-secondary);font-size:14px;margin-bottom:16px;">
+          Capstone attempts in progress for 7+ days, plus passed attempts that still need credential reconciliation.
+          Follow the <a href="/docs/building/operating/support-recovery-runbooks#certification-completion-recovery" target="_blank" rel="noopener">recovery runbook</a> when automatic reconciliation returns warnings.
+        </p>
         <table id="stuck-table">
           <thead>
             <tr>
               <th>Learner</th>
               <th>Module</th>
+              <th>Status</th>
               <th>Started</th>
-              <th class="text-right">Days stuck</th>
+              <th class="text-right">Age</th>
               <th class="text-right">Actions</th>
             </tr>
           </thead>
@@ -394,6 +447,7 @@
     let currentSearch = '';
     let currentStatus = 'all';
     let searchTimeout = null;
+    let currentDetailUserId = null;
 
     function escapeHtml(str) {
       if (!str) return '';
@@ -425,6 +479,11 @@
     function tierBadge(tier) {
       const labels = { 1: 'Basics', 2: 'Practitioner', 3: 'Specialist' };
       return `<span class="badge badge-tier-${tier}">${labels[tier] || `Tier ${tier}`}</span>`;
+    }
+
+    function formatScoreJson(score) {
+      if (!score || typeof score !== 'object') return '';
+      return JSON.stringify(score, null, 2);
     }
 
     async function loadOverview() {
@@ -539,17 +598,22 @@
         tbody.innerHTML = data.attempts.map(a => `
           <tr id="stuck-row-${escapeHtml(a.id)}">
             <td>${escapeHtml(a.name)}<br><span style="font-size:12px;color:var(--color-text-secondary);">${escapeHtml(a.email)}</span></td>
-            <td>${escapeHtml(a.module_id || a.track_id)}</td>
+            <td>${escapeHtml(a.module_id || a.track_id)}${a.credential_name ? `<br><span style="font-size:12px;color:var(--color-text-secondary);">${escapeHtml(a.credential_name)}</span>` : ''}</td>
+            <td><span class="badge ${a.status === 'passed' ? 'badge-active' : 'badge-stuck'}">${escapeHtml(a.status)}</span></td>
             <td>${new Date(a.started_at).toLocaleDateString()}</td>
-            <td class="text-right"><span class="badge badge-stuck">${escapeHtml(String(a.days_stuck))}d</span></td>
+            <td class="text-right">${a.status === 'passed' ? '-' : `<span class="badge badge-stuck">${escapeHtml(String(a.days_stuck))}d</span>`}</td>
             <td class="text-right">
-              <button data-attempt-id="${escapeHtml(a.id)}" class="cancel-stuck-btn" style="padding:6px 12px;border:1px solid var(--color-border);border-radius:6px;background:var(--color-bg-card);color:var(--color-text-heading);cursor:pointer;font-size:13px;">Cancel</button>
+              ${a.status === 'passed'
+                ? `<button data-attempt-id="${escapeHtml(a.id)}" class="complete-stuck-btn" style="padding:6px 12px;border:1px solid var(--color-border);border-radius:6px;background:var(--color-bg-card);color:var(--color-text-heading);cursor:pointer;font-size:13px;">Reconcile credentials</button>`
+                : `<button data-attempt-id="${escapeHtml(a.id)}" class="cancel-stuck-btn" style="padding:6px 12px;border:1px solid var(--color-border);border-radius:6px;background:var(--color-bg-card);color:var(--color-text-heading);cursor:pointer;font-size:13px;">Cancel</button>`}
             </td>
           </tr>
         `).join('');
         tbody.addEventListener('click', (e) => {
           const btn = e.target.closest('.cancel-stuck-btn');
           if (btn) cancelStuckAttempt(btn.dataset.attemptId);
+          const completeBtn = e.target.closest('.complete-stuck-btn');
+          if (completeBtn) completeStuckAttempt(completeBtn.dataset.attemptId);
         });
       } catch (err) {
         console.error('Error loading stuck attempts:', err);
@@ -578,6 +642,37 @@
         loadOverview();
       } catch (err) {
         alert('Failed to cancel attempt');
+      }
+    }
+
+    async function completeStuckAttempt(attemptId) {
+      if (!confirm('Re-run completion and credential reconciliation for this passed attempt?')) return;
+      try {
+        const response = await AdminSidebar.fetch(`/api/admin/certification/attempts/${encodeURIComponent(attemptId)}/resolve`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'complete', reason: 'Admin reconciled passed attempt missing credential from dashboard' }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          alert(data.error || 'Failed to complete attempt');
+          return;
+        }
+        if (data.warnings && data.warnings.length > 0) {
+          alert(`Attempt reconciled with warnings: ${data.warnings.join(', ')}`);
+          loadStuckAttempts();
+          loadOverview();
+          return;
+        }
+        const row = document.getElementById(`stuck-row-${attemptId}`);
+        if (row) row.remove();
+        const tbody = document.querySelector('#stuck-table tbody');
+        if (!tbody.children.length) {
+          document.getElementById('stuck-section').style.display = 'none';
+        }
+        loadOverview();
+      } catch (err) {
+        alert('Failed to complete attempt');
       }
     }
 
@@ -629,6 +724,7 @@
     }
 
     async function showDetail(userId) {
+      currentDetailUserId = userId;
       const modal = document.getElementById('learner-modal');
       const panel = document.getElementById('learner-detail');
       panel.innerHTML = '<div class="loading"><div class="loading-spinner"></div><p>Loading...</p></div>';
@@ -680,9 +776,18 @@
           `;
         }).join('');
 
+        const checkpointOptions = (data.checkpoints || [])
+          .filter(cp => cp.thread_id)
+          .map(cp => `<option value="${escapeHtml(cp.module_id)}" label="${escapeHtml(cp.module_id)} - ${escapeHtml(cp.thread_id)}"></option>`)
+          .join('');
+
+        const firstCheckpoint = (data.checkpoints || []).find(cp => cp.thread_id);
         const checkpointItems = (data.checkpoints || []).map(cp => `
           <div class="checkpoint-item">
             <div class="phase">${escapeHtml(cp.module_id)} - ${escapeHtml(cp.current_phase)}</div>
+            ${cp.thread_id ? `<div>Thread: <code>${escapeHtml(cp.thread_id)}</code></div>` : ''}
+            ${cp.preliminary_scores ? `<div>Preliminary scores: <code>${escapeHtml(formatScoreJson(cp.preliminary_scores))}</code></div>` : ''}
+            ${cp.demonstrations_verified && cp.demonstrations_verified.length > 0 ? `<div>Verified: ${cp.demonstrations_verified.map(c => `<code>${escapeHtml(c)}</code>`).join(' ')}</div>` : ''}
             ${cp.concepts_covered.length > 0 ? `<div>Covered: ${cp.concepts_covered.map(c => escapeHtml(c)).join(', ')}</div>` : ''}
             ${cp.concepts_remaining.length > 0 ? `<div>Remaining: ${cp.concepts_remaining.map(c => escapeHtml(c)).join(', ')}</div>` : ''}
             ${cp.notes ? `<div style="margin-top:4px;font-style:italic;">${escapeHtml(cp.notes)}</div>` : ''}
@@ -713,6 +818,32 @@
             </table>
           </div>
 
+          <div class="detail-section">
+            <h4>Admin completion repair</h4>
+            <form class="repair-form" onsubmit="adminCompleteModule(event)">
+              <input type="hidden" id="repair-user-id" value="${escapeHtml(userId)}">
+              <datalist id="checkpoint-thread-options">${checkpointOptions}</datalist>
+              <label>
+                Module ID
+                <input id="repair-module-id" list="checkpoint-thread-options" placeholder="A1" value="${escapeHtml(firstCheckpoint?.module_id || '')}" required>
+              </label>
+              <label>
+                Addie thread ID
+                <input id="repair-thread-id" placeholder="thread_..." value="${escapeHtml(firstCheckpoint?.thread_id || '')}" required>
+              </label>
+              <label>
+                Scores JSON
+                <textarea id="repair-scores" spellcheck="false" placeholder='{"protocol_mastery": 82}' required>${escapeHtml(formatScoreJson(firstCheckpoint?.preliminary_scores))}</textarea>
+              </label>
+              <label>
+                Note
+                <input id="repair-note" placeholder="Escalation or reason">
+              </label>
+              <button id="repair-submit" type="submit">Mark module complete</button>
+              <div id="repair-result" class="repair-result"></div>
+            </form>
+          </div>
+
           ${checkpointItems ? `
             <div class="detail-section">
               <h4>Teaching checkpoints</h4>
@@ -728,6 +859,60 @@
 
     function closeDetail() {
       document.getElementById('learner-modal').style.display = 'none';
+    }
+
+    async function adminCompleteModule(event) {
+      event.preventDefault();
+      const result = document.getElementById('repair-result');
+      const btn = document.getElementById('repair-submit');
+      const userId = document.getElementById('repair-user-id').value;
+      const moduleId = document.getElementById('repair-module-id').value.trim().toUpperCase();
+      const addieThreadId = document.getElementById('repair-thread-id').value.trim();
+      const note = document.getElementById('repair-note').value.trim();
+      let scores;
+
+      result.style.display = 'none';
+      try {
+        scores = JSON.parse(document.getElementById('repair-scores').value);
+      } catch {
+        result.style.display = 'block';
+        result.style.background = 'var(--color-error-50)';
+        result.style.color = 'var(--color-error-800)';
+        result.textContent = 'Scores must be valid JSON.';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Completing...';
+      try {
+        const response = await AdminSidebar.fetch(`/api/admin/certification/learners/${encodeURIComponent(userId)}/modules/${encodeURIComponent(moduleId)}/complete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scores, addie_thread_id: addieThreadId, note }),
+        });
+        const data = await response.json();
+        result.style.display = 'block';
+        if (!response.ok) {
+          result.style.background = 'var(--color-error-50)';
+          result.style.color = 'var(--color-error-800)';
+          result.textContent = data.error || 'Failed to complete module.';
+          return;
+        }
+
+        result.style.background = 'var(--color-success-50, #f0fdf4)';
+        result.style.color = 'var(--color-success-800, #166534)';
+        result.textContent = `Completed ${data.progress.module_id}. Audit ${data.audit.id}.`;
+        await Promise.all([loadOverview(), loadLearners(currentPage)]);
+        if (currentDetailUserId) await showDetail(currentDetailUserId);
+      } catch (err) {
+        result.style.display = 'block';
+        result.style.background = 'var(--color-error-50)';
+        result.style.color = 'var(--color-error-800)';
+        result.textContent = 'Network error completing module.';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Mark module complete';
+      }
     }
 
     // Search with debounce

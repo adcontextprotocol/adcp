@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.6/enums/governance-decision.json",
+  "title": "Governance Decision",
+  "description": "Outcome of a governance check_governance call. Distinct from creative approval states (see creative-approval-status). 'conditions' is a flow-control value requiring the caller to re-call check_governance after adjusting parameters.",
+  "type": "string",
+  "enum": ["approved", "denied", "conditions"],
+  "enumDescriptions": {
+    "approved": "Proceed as planned — the action is governance-approved",
+    "denied": "Do not proceed — the action is blocked by governance policy",
+    "conditions": "Approved if the caller accepts the listed conditions and re-calls check_governance with adjusted parameters"
+  },
+  "$comment": "get-plan-audit-logs-response.json summary.statuses carries an additional 'human_reviewed' counter that is NOT a valid governance decision value — it is a supplementary count of checks that went through human review, not a check outcome. See get-plan-audit-logs-response.json summary.statuses for the full stats shape."
+}

@@ -135,14 +135,33 @@ export interface RecordTestInput {
   agent_profile_json?: any;
 }
 
+/**
+ * Validate an auth token for characters that cannot legitimately appear in
+ * an HTTP Authorization header value. NUL bytes crash Postgres TEXT-column
+ * writes; CR/LF are header-injection vectors. Returns a user-facing error
+ * message when the token is rejected, or null when the token is acceptable.
+ *
+ * TODO: apply the same character validation to OAuth client_id / client_secret
+ * / scope / resource / audience in parseOAuthClientCredentialsInput — those
+ * strings hit the same encrypted-storage path and are also body-encoded into
+ * outbound token-endpoint requests.
+ */
+export function validateAuthTokenChars(token: string): string | null {
+  if (/[\u0000\r\n]/.test(token)) {
+    return 'Auth token contains invalid characters (NUL, CR, or LF). This usually means the token picked up stray bytes from copy/paste — paste it again from the source.';
+  }
+  return null;
+}
+
 function getTokenHint(token: string, authType: AuthType = 'bearer'): string {
+  const sanitize = (s: string): string => s.replace(/[\u0000\r\n]/g, '');
   if (authType === 'basic') {
     // For Basic auth, try to show username only (token is base64-encoded user:password)
     try {
       const decoded = Buffer.from(token, 'base64').toString();
       const colonIndex = decoded.indexOf(':');
       if (colonIndex > 0) {
-        return decoded.substring(0, colonIndex) + ':****';
+        return sanitize(decoded.substring(0, colonIndex)) + ':****';
       }
     } catch {
       // Not valid base64, fall through
@@ -150,7 +169,7 @@ function getTokenHint(token: string, authType: AuthType = 'bearer'): string {
     return '****';
   }
   if (token.length <= 4) return '****';
-  return '****' + token.slice(-4);
+  return '****' + sanitize(token.slice(-4));
 }
 
 // =====================================================
@@ -182,15 +201,20 @@ export class AgentContextDatabase {
           AND oauth_cc_client_secret_encrypted IS NOT NULL) as has_oauth_client_credentials,
         tools_discovered,
         last_discovered_at,
-        last_test_scenario,
-        last_test_passed,
-        last_test_summary,
-        last_tested_at,
-        total_tests_run,
+        -- Derived from agent_compliance_runs via the view (canonical source).
+        -- The legacy agent_contexts.last_test_* columns stay for backward
+        -- compat with non-owner third-party writes through recordTest, but
+        -- reads come from the view so the unification is consistent. See
+        -- migration 490.
+        canonical_last_test_scenario AS last_test_scenario,
+        canonical_last_test_passed AS last_test_passed,
+        canonical_last_test_summary AS last_test_summary,
+        canonical_last_tested_at AS last_tested_at,
+        canonical_total_tests_run AS total_tests_run,
         created_at,
         updated_at,
         created_by
-      FROM agent_contexts
+      FROM agent_context_with_latest_test
       WHERE organization_id = $1
       ORDER BY updated_at DESC`,
       [organizationId]
@@ -222,15 +246,20 @@ export class AgentContextDatabase {
           AND oauth_cc_client_secret_encrypted IS NOT NULL) as has_oauth_client_credentials,
         tools_discovered,
         last_discovered_at,
-        last_test_scenario,
-        last_test_passed,
-        last_test_summary,
-        last_tested_at,
-        total_tests_run,
+        -- Derived from agent_compliance_runs via the view (canonical source).
+        -- The legacy agent_contexts.last_test_* columns stay for backward
+        -- compat with non-owner third-party writes through recordTest, but
+        -- reads come from the view so the unification is consistent. See
+        -- migration 490.
+        canonical_last_test_scenario AS last_test_scenario,
+        canonical_last_test_passed AS last_test_passed,
+        canonical_last_test_summary AS last_test_summary,
+        canonical_last_tested_at AS last_tested_at,
+        canonical_total_tests_run AS total_tests_run,
         created_at,
         updated_at,
         created_by
-      FROM agent_contexts
+      FROM agent_context_with_latest_test
       WHERE id = $1`,
       [id]
     );
@@ -261,19 +290,54 @@ export class AgentContextDatabase {
           AND oauth_cc_client_secret_encrypted IS NOT NULL) as has_oauth_client_credentials,
         tools_discovered,
         last_discovered_at,
-        last_test_scenario,
-        last_test_passed,
-        last_test_summary,
-        last_tested_at,
-        total_tests_run,
+        -- Derived from agent_compliance_runs via the view (canonical source).
+        -- The legacy agent_contexts.last_test_* columns stay for backward
+        -- compat with non-owner third-party writes through recordTest, but
+        -- reads come from the view so the unification is consistent. See
+        -- migration 490.
+        canonical_last_test_scenario AS last_test_scenario,
+        canonical_last_test_passed AS last_test_passed,
+        canonical_last_test_summary AS last_test_summary,
+        canonical_last_tested_at AS last_tested_at,
+        canonical_total_tests_run AS total_tests_run,
         created_at,
         updated_at,
         created_by
-      FROM agent_contexts
+      FROM agent_context_with_latest_test
       WHERE organization_id = $1 AND agent_url = $2`,
       [organizationId, agentUrl]
     );
     return result.rows[0] || null;
+  }
+
+  /**
+   * Find an organization that has saved any kind of auth (bearer, OAuth tokens,
+   * or OAuth client-credentials) for the given agent URL. Returns the most
+   * recently updated row's org id, or null if no credentials are saved by any
+   * org. Used by the periodic crawler so its probe runs with owner credentials
+   * when available — keeping a per-org-aware view of `oauth_required` instead
+   * of clobbering it back to `true` on every anonymous heartbeat. When multiple
+   * orgs have independently registered the same agent, the most recently
+   * updated set wins; that matches "freshly-rotated creds take precedence" and
+   * the periodic snapshot is a single shared row anyway.
+   */
+  async findOrgWithSavedAuth(agentUrl: string): Promise<string | null> {
+    const result = await query<{ organization_id: string }>(
+      `SELECT organization_id
+       FROM agent_contexts
+       WHERE agent_url = $1
+         AND (
+           auth_token_encrypted IS NOT NULL
+           OR oauth_access_token_encrypted IS NOT NULL
+           OR (oauth_cc_token_endpoint IS NOT NULL
+               AND oauth_cc_client_id IS NOT NULL
+               AND oauth_cc_client_secret_encrypted IS NOT NULL)
+         )
+       ORDER BY updated_at DESC
+       LIMIT 1`,
+      [agentUrl],
+    );
+    return result.rows[0]?.organization_id ?? null;
   }
 
   /**

@@ -14,8 +14,9 @@ Audio formats include:
 - **VAST Audio** - DAAST/VAST tags for programmatic audio
 - **With Companion Banners** - Audio + synchronized display companion
 - **Podcast Insertion** - Dynamic ad insertion (DAI) for podcasts
+- **Broadcast Radio Spots** - Scheduled spot files identified by traffic or clearance IDs and measured through audience currency rather than pixels
 
-Audio ads are typically non-skippable and play during natural content breaks.
+Audio ads are typically non-skippable and play during natural content breaks. Streaming and podcast inventory may support impression trackers, completion events, and companion clickthroughs. Broadcast radio does not have a renderer that can fire pixels; buyers reconcile it through spot logs, station affidavits, and audience measurement sources declared on the product or package.
 
 ## Standard Audio Formats
 
@@ -108,6 +109,68 @@ Audio ads are typically non-skippable and play during natural content breaks.
 }
 ```
 
+### Broadcast Radio Spot (30s)
+
+Broadcast radio uses the same canonical `audio_hosted` creative asset shape as streaming audio, narrowed to the `radio` channel. The spot is scheduled into a station or network log, and the creative is usually referenced by an Ad-ID or ISCI.
+
+The canonical product-format declaration is the preferred 3.1+ shape:
+
+```json
+{
+  "format_kind": "audio_hosted",
+  "format_option_id": "broadcast_radio_30s",
+  "display_name": "Broadcast radio :30 spot",
+  "applies_to_channels": ["radio"],
+  "params": {
+    "duration_ms_exact": 30000,
+    "audio_codecs": ["mp3", "wav"],
+    "audio_sample_rates": [44100, 48000],
+    "audio_channels": ["mono", "stereo"],
+    "loudness_lufs": -16,
+    "loudness_tolerance_db": 2,
+    "true_peak_dbfs": -2,
+    "asset_source": "buyer_uploaded",
+    "composition_model": "deterministic",
+    "slots": [
+      {
+        "asset_group_id": "audio_main",
+        "asset_type": "audio",
+        "required": true
+      }
+    ]
+  }
+}
+```
+
+Legacy named-format catalogs can still expose the equivalent shape through `format_id`:
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "broadcast_radio_30s"
+  },
+  "type": "audio",
+  "assets": [
+    {
+      "asset_id": "audio_file",
+      "asset_type": "audio",
+      "asset_role": "hero_audio",
+      "required": true,
+      "requirements": {
+        "duration": "30s",
+        "format": ["MP3", "WAV"],
+        "sample_rates": [44100, 48000],
+        "channels": ["stereo", "mono"],
+        "loudness_lufs": -16,
+        "loudness_tolerance_db": 2,
+        "true_peak_dbfs": -2
+      }
+    }
+  ]
+}
+```
+
 ### Dynamic Audio Creative (DAC)
 
 Multi-segment audio assembled dynamically:
@@ -176,7 +239,7 @@ Multi-segment audio assembled dynamically:
     },
     "impression_tracker": {
       "asset_type": "url",
-      "url_type": "tracker",
+      "url_type": "tracker_pixel",
       "url": "https://track.brand.com/imp?buy={MEDIA_BUY_ID}&station={APP_BUNDLE}&cb={CACHEBUSTER}"
     },
     "landing_url": {
@@ -197,9 +260,9 @@ Multi-segment audio assembled dynamically:
     "id": "audio_30s_vast"
   },
   "assets": {
-    "vast_url": {
-      "asset_type": "url",
-      "url_type": "tracker",
+    "vast_tag": {
+      "asset_type": "vast",
+      "delivery_type": "url",
       "url": "https://ad-server.brand.com/audio-vast?campaign={MEDIA_BUY_ID}&cb={CACHEBUSTER}"
     }
   }
@@ -236,6 +299,42 @@ Multi-segment audio assembled dynamically:
 }
 ```
 
+### Broadcast Radio Manifest
+
+Use the protocol `creative_id` for the seller/buyer library object, and use the existing `industry_identifiers` field for the traffic or clearance identifier that the radio workflow expects. Ad-ID is appropriate when that is the identifier the buyer, agency, or broadcaster uses. Broadcast radio also still sees ISCI and Ad-ID/ISCI labels used interchangeably, and non-US markets may require other identifiers such as Clearcast clock numbers or IDcrea.
+
+For canonical 3.1+ manifests, slot keys come from the `audio_hosted` declaration:
+
+```json
+{
+  "creative_id": "nova_spring_radio_30s",
+  "name": "Nova Spring Campaign :30 Radio",
+  "format_kind": "audio_hosted",
+  "format_option_ref": {
+    "scope": "product",
+    "format_option_id": "broadcast_radio_30s"
+  },
+  "industry_identifiers": [
+    { "type": "isci", "value": "NOVA123430" }
+  ],
+  "assets": {
+    "audio_main": {
+      "asset_type": "audio",
+      "url": "https://cdn.nova-brands.example/radio/spring_30s.wav",
+      "duration_ms": 30000,
+      "container_format": "wav",
+      "codec": "pcm",
+      "sampling_rate_hz": 48000,
+      "channels": "stereo",
+      "loudness_lufs": -16,
+      "true_peak_dbfs": -2
+    }
+  }
+}
+```
+
+When the same source creative has different cuts (:15, :30, :60), assign the traffic identifier at the manifest level so each cut can carry its own Ad-ID, ISCI, clock number, or IDcrea. `creative-identifier-type` is intentionally limited to shared industry or market-standard schemes. If an adopter needs another scheme, add it to the enum by PR with evidence that it is a real shared workflow identifier rather than a seller-local traffic code.
+
 ## Audio-Specific Macros
 
 In addition to [universal macros](/docs/creative/universal-macros), audio formats support:
@@ -270,6 +369,11 @@ In addition to [universal macros](/docs/creative/universal-macros), audio format
 - **Baked-in**: Permanently encoded in installment
 - **Dynamic insertion (SSAI)**: Personalized, with targeting and reporting
 
+### Broadcast Radio
+- Station or network logs provide spot-level proof that the creative was scheduled or aired
+- Station affidavits may be used for invoice reconciliation
+- Audience size, GRPs, reach, and frequency come from the product's measurement source rather than creative-embedded tracking
+
 ### Companion Banners
 Appear alongside audio on screen-enabled devices:
 - Mobile apps, desktop players, smart speakers with displays
@@ -282,14 +386,30 @@ Appear alongside audio on screen-enabled devices:
 - **Bitrate**: Minimum 128kbps, recommended 192kbps
 - **Sample Rate**: 44.1kHz or 48kHz
 - **Channels**: Stereo or mono
+- **Loudness**: A target around -16 LUFS/LKFS with +/- 2 dB tolerance is a practical cross-audio recommendation; sellers may normalize final playout for their platform or transmitter chain
 
 ### Durations
 - **15s**: Quick message, high frequency
 - **30s**: Standard, most common
 - **60s**: Story-driven, common in podcasts
 
+## Measurement and Reporting
+
+Audio measurement depends on the distribution context:
+
+| Context | Typical evidence | Typical metrics |
+|---|---|---|
+| Streaming audio / SSAI | Ad-server logs, DAAST/VAST tracking, completion events | impressions, starts/views, completed_views, completion_rate, quartile_data |
+| Podcast DAI | Download or insertion logs, platform reporting windows | downloads, impressions, reach, frequency, completed_views where available |
+| Broadcast radio | Station affidavits, playout logs, audience measurement currency | plays, impressions or measured impressions, grps, reach, frequency |
+
+For broadcast radio, the protocol should receive the reliable audience number and its basis, not a made-up digital completion surrogate. Sellers can expose forecasted audience through `DeliveryForecast` with `measurement_source`, `demographic_system`, `demographic`, `reach_unit`, and metrics such as `grps`, `reach`, `frequency`, `impressions`, or `measured_impressions`. After the buy runs, delivery reports use the standard delivery metrics (`plays`, `impressions`, `grps`, `reach`, `frequency`) plus `vendor_metric_values` when the authoritative audience source provides a named metric outside the standard delivery-metrics list.
+
+If billing depends on a third-party or audience-currency count, set `measurement_terms.billing_measurement.vendor` and, when needed, `measurement_window` or a vendor metric commitment on the package. Station affidavits and playout logs prove that scheduled spots aired; audience measurement sources turn those plays into the audience-size number used for planning, guarantees, and reconciliation.
+
 ## Related Documentation
 
 - [Universal Macros](/docs/creative/universal-macros) - Complete macro reference
 - [Creative Manifests](/docs/creative/creative-manifests) - Manifest structure and validation
 - [Asset Types](/docs/creative/asset-types) - Audio asset specifications
+- [Product Discovery](/docs/media-buy/product-discovery/media-products#broadcast-audio-spot-plan) - Broadcast audio spot-plan forecasts

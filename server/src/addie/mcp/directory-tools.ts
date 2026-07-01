@@ -112,6 +112,10 @@ export const DIRECTORY_TOOLS: AddieTool[] = [
           type: 'string',
           description: 'Agent URL to validate',
         },
+        force_refresh: {
+          type: 'boolean',
+          description: 'Bypass cache and fetch the publisher\'s adagents.json live (default: false). Use when the file was recently updated and a fresh result is needed.',
+        },
       },
       required: ['domain', 'agent_url'],
     },
@@ -259,12 +263,13 @@ export function createDirectoryToolHandlers(): Map<string, (args: Record<string,
   handlers.set('validate_agent', async (args) => {
     const domain = args.domain as string;
     const agentUrl = args.agent_url as string;
+    const forceRefresh = !!args.force_refresh;
 
     if (!domain || !agentUrl) {
       return JSON.stringify({ error: 'domain and agent_url are required' });
     }
 
-    const result = await validator.validate(domain, agentUrl);
+    const result = await validator.validate(domain, agentUrl, undefined, forceRefresh);
     return JSON.stringify(result, null, 2);
   });
 

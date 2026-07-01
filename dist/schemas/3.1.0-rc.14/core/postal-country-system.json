@@ -1,0 +1,85 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.14/core/postal-country-system.json",
+  "title": "Postal Country System",
+  "description": "Valid country-local postal system pairing. Registered countries only accept their registered local systems; countries without a registered local system use postal_code or custom.",
+  "type": "object",
+  "properties": {
+    "country": {
+      "type": "string",
+      "pattern": "^[A-Z]{2}$",
+      "description": "ISO 3166-1 alpha-2 country code."
+    },
+    "system": {
+      "$ref": "/schemas/3.1.0-rc.14/enums/postal-system.json",
+      "description": "Country-local postal code system."
+    }
+  },
+  "required": ["country", "system"],
+  "anyOf": [
+    {
+      "properties": {
+        "country": { "const": "US" },
+        "system": { "enum": ["zip", "zip_plus_four"] }
+      }
+    },
+    {
+      "properties": {
+        "country": { "const": "GB" },
+        "system": { "enum": ["outward", "full"] }
+      }
+    },
+    {
+      "properties": {
+        "country": { "const": "CA" },
+        "system": { "enum": ["fsa", "full"] }
+      }
+    },
+    {
+      "properties": {
+        "country": { "enum": ["DE", "CH", "AT"] },
+        "system": { "const": "plz" }
+      }
+    },
+    {
+      "properties": {
+        "country": { "const": "FR" },
+        "system": { "const": "code_postal" }
+      }
+    },
+    {
+      "properties": {
+        "country": { "const": "AU" },
+        "system": { "const": "postcode" }
+      }
+    },
+    {
+      "properties": {
+        "country": { "const": "BR" },
+        "system": { "const": "cep" }
+      }
+    },
+    {
+      "properties": {
+        "country": { "const": "IN" },
+        "system": { "const": "pin" }
+      }
+    },
+    {
+      "properties": {
+        "country": { "const": "ZA" },
+        "system": { "const": "postal_code" }
+      }
+    },
+    {
+      "properties": {
+        "country": {
+          "not": {
+            "enum": ["US", "GB", "CA", "DE", "CH", "AT", "FR", "AU", "BR", "IN", "ZA"]
+          }
+        },
+        "system": { "enum": ["postal_code", "custom"] }
+      }
+    }
+  ]
+}

@@ -19,6 +19,7 @@ import {
   findOrgsWithNewAutoProvisionedMembers,
   listNewAutoProvisionedMembers,
   markAutoProvisionDigestSent,
+  resolveRoleWithWorkosFirstPromote,
 } from '../../src/db/membership-db.js';
 import type { WorkOS } from '@workos-inc/node';
 import type { Pool } from 'pg';
@@ -54,51 +55,15 @@ describe('Membership webhook DB operations', () => {
   // =========================================================================
 
   describe('upsertOrganizationMembership', () => {
-    it('inserts a membership and auto-promotes first member to owner', async () => {
+    it('writes the role it is given (no DB-side auto-promote)', async () => {
+      // Auto-promote moved to the webhook handler so WorkOS is written
+      // before local — upsert is now a pure mirror function.
       const result = await upsertOrganizationMembership({
         user_id: TEST_USER_1,
         organization_id: TEST_ORG_ID,
         membership_id: 'om_test_1',
         email: 'alice@test.com',
         first_name: 'Alice',
-        last_name: 'Test',
-        role: 'member',
-        seat_type: 'community_only',
-        has_explicit_seat_type: false,
-      });
-
-      expect(result.assigned_role).toBe('owner');
-
-      const row = await pool.query(
-        'SELECT role, email, seat_type FROM organization_memberships WHERE workos_user_id = $1 AND workos_organization_id = $2',
-        [TEST_USER_1, TEST_ORG_ID],
-      );
-      expect(row.rows[0].role).toBe('owner');
-      expect(row.rows[0].email).toBe('alice@test.com');
-      expect(row.rows[0].seat_type).toBe('community_only');
-    });
-
-    it('assigns member role when org already has an owner', async () => {
-      // First member becomes owner
-      await upsertOrganizationMembership({
-        user_id: TEST_USER_1,
-        organization_id: TEST_ORG_ID,
-        membership_id: 'om_test_1',
-        email: 'alice@test.com',
-        first_name: 'Alice',
-        last_name: 'Test',
-        role: 'member',
-        seat_type: 'community_only',
-        has_explicit_seat_type: false,
-      });
-
-      // Second member stays member
-      const result = await upsertOrganizationMembership({
-        user_id: TEST_USER_2,
-        organization_id: TEST_ORG_ID,
-        membership_id: 'om_test_2',
-        email: 'bob@test.com',
-        first_name: 'Bob',
         last_name: 'Test',
         role: 'member',
         seat_type: 'community_only',
@@ -106,6 +71,30 @@ describe('Membership webhook DB operations', () => {
       });
 
       expect(result.assigned_role).toBe('member');
+
+      const row = await pool.query(
+        'SELECT role, email, seat_type FROM organization_memberships WHERE workos_user_id = $1 AND workos_organization_id = $2',
+        [TEST_USER_1, TEST_ORG_ID],
+      );
+      expect(row.rows[0].role).toBe('member');
+      expect(row.rows[0].email).toBe('alice@test.com');
+      expect(row.rows[0].seat_type).toBe('community_only');
+    });
+
+    it('writes owner when owner is passed in', async () => {
+      const result = await upsertOrganizationMembership({
+        user_id: TEST_USER_1,
+        organization_id: TEST_ORG_ID,
+        membership_id: 'om_test_1',
+        email: 'alice@test.com',
+        first_name: 'Alice',
+        last_name: 'Test',
+        role: 'owner',
+        seat_type: 'community_only',
+        has_explicit_seat_type: false,
+      });
+
+      expect(result.assigned_role).toBe('owner');
     });
 
     it('preserves explicit admin role without auto-promotion logic', async () => {
@@ -225,6 +214,133 @@ describe('Membership webhook DB operations', () => {
         [TEST_USER_1, TEST_ORG_ID],
       );
       expect(row.rows[0].seat_type).toBe('contributor');
+    });
+  });
+
+  // =========================================================================
+  // RESOLVE ROLE (WorkOS-first auto-promote)
+  // =========================================================================
+
+  describe('resolveRoleWithWorkosFirstPromote', () => {
+    function makeWorkos(opts: {
+      memberships: Array<{ userId: string; role: { slug: string } }>;
+      updateFails?: boolean;
+      listFails?: boolean;
+    }) {
+      const updateOrganizationMembership = vi.fn(async () => {
+        if (opts.updateFails) throw new Error('workos update failed');
+        return {};
+      });
+      const listOrganizationMemberships = vi.fn(async () => {
+        if (opts.listFails) throw new Error('workos list failed');
+        return {
+          data: opts.memberships.map((m) => ({
+            userId: m.userId,
+            role: m.role,
+            status: 'active',
+          })),
+          listMetadata: { after: null },
+        };
+      });
+      return {
+        client: {
+          userManagement: { updateOrganizationMembership, listOrganizationMemberships },
+        } as unknown as WorkOS,
+        updateOrganizationMembership,
+        listOrganizationMemberships,
+      };
+    }
+
+    it('passes through non-member roles without touching WorkOS', async () => {
+      const { client, listOrganizationMemberships, updateOrganizationMembership } = makeWorkos({ memberships: [] });
+
+      const result = await resolveRoleWithWorkosFirstPromote({
+        workos: client,
+        membershipId: 'om_x',
+        userId: TEST_USER_1,
+        organizationId: TEST_ORG_ID,
+        incomingRole: 'admin',
+      });
+
+      expect(result).toEqual({ role: 'admin', promoted: false });
+      expect(listOrganizationMemberships).not.toHaveBeenCalled();
+      expect(updateOrganizationMembership).not.toHaveBeenCalled();
+    });
+
+    it('promotes to owner in WorkOS first when the org has no other admin/owner', async () => {
+      const { client, updateOrganizationMembership } = makeWorkos({
+        memberships: [{ userId: TEST_USER_1, role: { slug: 'member' } }],
+      });
+
+      const result = await resolveRoleWithWorkosFirstPromote({
+        workos: client,
+        membershipId: 'om_target',
+        userId: TEST_USER_1,
+        organizationId: TEST_ORG_ID,
+        incomingRole: 'member',
+      });
+
+      expect(result).toEqual({ role: 'owner', promoted: true });
+      expect(updateOrganizationMembership).toHaveBeenCalledWith('om_target', { roleSlug: 'owner' });
+    });
+
+    it('leaves role as member when another admin already exists in WorkOS', async () => {
+      const { client, updateOrganizationMembership } = makeWorkos({
+        memberships: [
+          { userId: TEST_USER_2, role: { slug: 'admin' } },
+          { userId: TEST_USER_1, role: { slug: 'member' } },
+        ],
+      });
+
+      const result = await resolveRoleWithWorkosFirstPromote({
+        workos: client,
+        membershipId: 'om_target',
+        userId: TEST_USER_1,
+        organizationId: TEST_ORG_ID,
+        incomingRole: 'member',
+      });
+
+      expect(result).toEqual({ role: 'member', promoted: false });
+      expect(updateOrganizationMembership).not.toHaveBeenCalled();
+    });
+
+    it('falls back to member when the WorkOS update fails (no drift)', async () => {
+      const { client } = makeWorkos({
+        memberships: [{ userId: TEST_USER_1, role: { slug: 'member' } }],
+        updateFails: true,
+      });
+
+      const result = await resolveRoleWithWorkosFirstPromote({
+        workos: client,
+        membershipId: 'om_target',
+        userId: TEST_USER_1,
+        organizationId: TEST_ORG_ID,
+        incomingRole: 'member',
+      });
+
+      expect(result.role).toBe('member');
+      expect(result.promoted).toBe(false);
+      expect(result.promotionError).toBeDefined();
+    });
+
+    it('falls back to member when WorkOS membership list fails (refuses to promote blind)', async () => {
+      const { client, updateOrganizationMembership } = makeWorkos({
+        memberships: [],
+        listFails: true,
+      });
+
+      const result = await resolveRoleWithWorkosFirstPromote({
+        workos: client,
+        membershipId: 'om_target',
+        userId: TEST_USER_1,
+        organizationId: TEST_ORG_ID,
+        incomingRole: 'member',
+      });
+
+      expect(result.role).toBe('member');
+      expect(result.promoted).toBe(false);
+      expect(result.promotionError).toBeDefined();
+      expect(updateOrganizationMembership).not.toHaveBeenCalled();
     });
   });
 

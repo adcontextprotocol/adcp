@@ -110,7 +110,7 @@ phases:
           - budget.total: $10K cap that any single buy above will exceed
 
         sample_request:
-          idempotency_key: "governance-spend-authority-denied-sync-plans-v1"
+          idempotency_key: "$generate:uuid_v4#gov-spend-authority-denied-sync"
           plans:
             - plan_id: "gov_acme_strict"
               brand:
@@ -121,8 +121,8 @@ phases:
                 currency: "USD"
                 reallocation_threshold: 0
               flight:
-                start: "2027-01-01T00:00:00Z"
-                end: "2027-12-31T23:59:59Z"
+                start: "2099-01-01T00:00:00Z"
+                end: "2099-12-31T23:59:59Z"
               countries: ["US"]
 
           context:
@@ -186,8 +186,8 @@ phases:
               operator: "pinnacle-agency.example"
             brand:
               domain: "acmeoutdoor.example"
-            start_time: "2027-01-01T00:00:00Z"
-            end_time: "2027-03-31T23:59:59Z"
+            start_time: "2099-01-01T00:00:00Z"
+            end_time: "2099-03-31T23:59:59Z"
             packages:
               - product_id: "sports_ctv_q2"
                 budget: 30000
@@ -202,12 +202,12 @@ phases:
           - check: response_schema
             description: "Response matches check-governance-response.json schema"
           - check: field_present
-            path: "status"
-            description: "Response contains a governance decision"
+            path: "verdict"
+            description: "Response contains a governance verdict"
           - check: field_value
-            path: "status"
+            path: "verdict"
             value: "denied"
-            description: "Decision is denied"
+            description: "Verdict is denied"
           - check: field_present
             path: "findings"
             description: "Response contains findings explaining the denial"

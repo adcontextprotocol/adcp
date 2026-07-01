@@ -16,15 +16,23 @@ import { orgRowMatchesLiveStripeSubInvariant } from './org-row-matches-live-stri
 import { stripeSubReflectedInOrgRowInvariant } from './stripe-sub-reflected-in-org-row.js';
 import { workosMembershipRowExistsInWorkosInvariant } from './workos-membership-row-exists-in-workos.js';
 import { usersHavePrimaryOrganizationInvariant } from './users-have-primary-organization.js';
+import { everyEntitledOrgHasResolvableTierInvariant } from './every-entitled-org-has-resolvable-tier.js';
+import { uniqueOrgPerEmailDomainInvariant } from './unique-org-per-email-domain.js';
+import { workosVerifiedDomainsMirroredInvariant } from './workos-verified-domains-mirrored.js';
+import { personalMemberCompanyOrgSplitInvariant } from './personal-member-company-org-split.js';
 
 export const ALL_INVARIANTS: readonly Invariant[] = [
   // DB-only checks first (no external API calls).
   usersHavePrimaryOrganizationInvariant,
+  uniqueOrgPerEmailDomainInvariant,
+  personalMemberCompanyOrgSplitInvariant,
+  everyEntitledOrgHasResolvableTierInvariant,
   stripeCustomerOrgMetadataBidirectionalInvariant,
   oneActiveStripeSubPerOrgInvariant,
   stripeCustomerResolvesInvariant,
   orgRowMatchesLiveStripeSubInvariant,
   stripeSubReflectedInOrgRowInvariant,
+  workosVerifiedDomainsMirroredInvariant,
   workosMembershipRowExistsInWorkosInvariant,
 ];
 

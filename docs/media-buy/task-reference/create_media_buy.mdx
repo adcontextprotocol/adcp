@@ -24,8 +24,8 @@ Create a simple media buy with two packages:
 <CodeGroup>
 
 ```javascript JavaScript test=false
-import { testAgent } from '@adcp/client/testing';
-import { CreateMediaBuyResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { CreateMediaBuyResponseSchema } from '@adcp/sdk';
 
 // Calculate dates dynamically - start tomorrow, end in 90 days
 const tomorrow = new Date();
@@ -144,8 +144,8 @@ asyncio.run(create_campaign())
 ```
 
 ```bash CLI test=false
-npx @adcp/client@latest \
-  https://test-agent.adcontextprotocol.org/mcp \
+npx @adcp/sdk@latest \
+  https://test-agent.adcontextprotocol.org/sales/mcp \
   create_media_buy \
   '{"brand":{"domain":"acmecorp.com"},"packages":[{"product_id":"prod_d979b543","pricing_option_id":"cpm_usd_auction","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_image"}],"budget":30000,"bid_price":5.00},{"product_id":"prod_e8fd6012","pricing_option_id":"cpm_usd_auction","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_html"}],"budget":20000,"bid_price":4.50}],"start_time":"2025-06-01T00:00:00Z","end_time":"2025-08-31T23:59:59Z"}' \
   --auth $ADCP_AUTH_TOKEN
@@ -158,12 +158,13 @@ npx @adcp/client@latest \
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `account` | [account-ref](/docs/building/integration/accounts-and-agents#account-references) | Yes | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. Required for billing and policy evaluation. |
-| `proposal_id` | string | No* | ID of a proposal from `get_products` to execute. Alternative to providing packages. |
+| `proposal_id` | string | No* | ID of a committed proposal from `get_products` to execute. Alternative to providing packages. Draft proposals must be finalized first; sellers reject draft proposal execution with `PROPOSAL_NOT_COMMITTED`. |
 | `total_budget` | TotalBudget | No* | Total budget when executing a proposal. Publisher applies allocation percentages. |
 | `packages` | Package[] | No* | Array of package configurations (see below). Required when not using proposal_id. |
 | `brand` | BrandRef | Yes | Brand reference — resolved to full identity at execution time. See [brand.json](/docs/brand-protocol/brand-json) |
-| `start_time` | string | Yes | `"asap"` or ISO 8601 date-time |
+| `start_time` | string | Yes | `"asap"` or ISO 8601 date-time. For new media buys, concrete date-times must not be in the past. |
 | `end_time` | string | Yes | ISO 8601 date-time (UTC unless timezone specified) |
+| `paused` | boolean | No | Create the media buy with delivery held. When true and the buy would otherwise be active, `media_buy_status` is `paused`. Setup blockers still take precedence: missing creatives yield `pending_creatives`, and future flights yield `pending_start`; the hold becomes visible as `paused` after those blockers clear. |
 | `invoice_recipient` | [BusinessEntity](/docs/building/integration/accounts-and-agents#billing-entity-and-invoice-recipient) | No | Override the account's default billing entity for this buy. The seller MUST validate the recipient is authorized and include it in `check_governance` when governance agents are configured. |
 | `po_number` | string | No | Purchase order number |
 | `idempotency_key` | string | No | Unique key for safe retries. If a request with the same key and account has already been processed, the seller returns the existing media buy. MUST be unique per (seller, request) pair. Min 16 chars. |
@@ -171,6 +172,8 @@ npx @adcp/client@latest \
 | `reporting_webhook` | ReportingWebhook | No | Automated reporting delivery configuration |
 
 \* Either `packages` OR (`proposal_id` + `total_budget`) must be provided.
+
+When executing a proposal, `proposal_status` on the returned proposal determines whether `create_media_buy` is valid. `committed` proposals can be executed before `expires_at`; `draft` proposals require a prior `get_products` refine call with `action: "finalize"`. Finalization is seller commitment to firm terms, not buyer acceptance. This `create_media_buy` call is the acceptance/execution step.
 
 ### TotalBudget Object
 
@@ -183,9 +186,12 @@ npx @adcp/client@latest \
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `product_id` | string | Yes | Product ID from `get_products` |
+| `product_id` | string | Yes | Product ID from `get_products`. Sellers MUST echo this value on every response package object that represents this requested package. |
 | `pricing_option_id` | string | Yes | Pricing option ID from product's `pricing_options` array |
-| `format_ids` | FormatID[] | Yes | Format IDs that will be used - must be supported by product |
+| `format_ids` | FormatID[] | No | Legacy named-format selector. Format IDs that will be used — must be supported by product. When omitted (and no 3.1+ format-option selector or direct canonical selector is present), defaults to all formats supported by the product. Format-option-aware buyer SDKs targeting a heterogeneous seller population SHOULD dual-emit this alongside `format_option_refs` so legacy-format-only sellers receive an explicit format set rather than defaulting to all-formats. |
+| `format_option_refs` | FormatOptionRef[] | No | 3.1+ format-option selector. Structured references to entries in the package's target product `format_options[]`: `{scope: "publisher", publisher_domain, format_option_id}` for publisher-catalog-backed options, or `{scope: "product", format_option_id}` for product-local options (see [canonical formats](/docs/creative/canonical-formats)). When present, `format_option_refs` wins over both `format_ids` and direct `format_kind`/`params`. Sellers MUST reject with `UNSUPPORTED_FEATURE` (field path `packages[i].format_option_refs[j]`) when an entry doesn't match a `format_options[]` entry, when the product is legacy-format-only, or when the product's `format_options[]` entries don't publish selectable `format_option_id` values. |
+| `format_kind` | CanonicalFormatKind | No | 3.1+ direct canonical selector. Names the canonical format shape this package targets when the buyer is authoring by canonical kind rather than by `format_option_refs[]` or `format_ids[]`. Pair with `params` when the product declaration requires dimensions, duration, sizes, codecs, or other canonical parameters. If `format_ids[]` is also present and `format_option_refs[]` is absent, sellers validate `format_ids[]`; `format_kind` is only an informational echo of the same normalized shape. |
+| `params` | object | No | Parameters for the direct canonical selector in `format_kind`. Follows the selected canonical's parameter vocabulary. Requires `format_kind`; `params` alone is schema-invalid. A broad selector such as `{format_kind: "image"}` does not satisfy a product whose `format_options[]` fixes `params.width` and `params.height`; sellers reject under-specified direct selectors with `UNSUPPORTED_FEATURE` or an equivalent format-selector error. |
 | `budget` | number | Yes | Budget in currency specified by pricing option |
 | `impressions` | number | No | Impression goal for this package |
 | `paused` | boolean | No | Create package in paused state (default: `false`) |
@@ -196,10 +202,11 @@ npx @adcp/client@latest \
 | `start_time` | string | No | ISO 8601 date-time for this package's flight start. When omitted, inherits the media buy's `start_time`. Must fall within the media buy's date range. Does not support `"asap"`. |
 | `end_time` | string | No | ISO 8601 date-time for this package's flight end. When omitted, inherits the media buy's `end_time`. Must fall within the media buy's date range. |
 | `creative_assignments` | CreativeAssignment[] | No | Assign existing library creatives with optional weights and placement targeting |
-| `creatives` | CreativeAsset[] | No | Upload new creative assets and assign (`creative_id` must not already exist in library) |
-| `context` | object | No | Opaque correlation data echoed unchanged in the package response. Use to map seller-assigned `package_id` back to your internal line items, campaign structure, or tracking state. |
+| `creatives` | CreativeAsset[] | No | Upload new creative assets inline and assign. Requires `media_buy.features.inline_creative_management: true`; when the seller also advertises `creative.has_creative_library: true`, `creative_id` must not already exist in the library. |
+| `context` | object | No | Opaque correlation data echoed unchanged in the package response, webhooks, and read surfaces. Use to map seller-assigned `package_id` back to your internal line items, campaign structure, or tracking state. Buyers targeting mixed seller populations SHOULD include a per-package correlation value here, commonly `context.buyer_ref`, for legacy sellers that do not echo `product_id`. |
 | `measurement_terms` | [MeasurementTerms](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | No | Buyer's proposed billing measurement and makegood terms. Overrides product defaults. Seller accepts (echoed on confirmed package), rejects with `TERMS_REJECTED`, or adjusts. When omitted, product's `measurement_terms` apply. |
 | `performance_standards` | [PerformanceStandard[]](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | No | Buyer's proposed performance standards (viewability, IVT, completion rate, brand safety, attention score). Overrides product defaults. Seller accepts, rejects with `TERMS_REJECTED`, or adjusts. When omitted, product's `performance_standards` apply. |
+| `committed_metrics` | object[] | No | Buyer's proposed reporting contract — metrics the buyer wants the seller to commit to populating in delivery reports. Same negotiation pattern as `measurement_terms`/`performance_standards`: each entry tags `scope: "standard"` (with `metric_id` from the closed enum) or `scope: "vendor"` (with `vendor` BrandRef + vendor's `metric_id`). Request-side entries do NOT carry `committed_at` — that timestamp is stamped by the seller on accept. Seller accepts (echoes on response with `committed_at`), rejects with `TERMS_REJECTED`, or normalizes (echoes a different but compatible list). When omitted, the seller decides what to commit based on the product's `available_metrics` plus any `required_metrics` filter the buyer passed at discovery. |
 
 ## Response
 
@@ -208,18 +215,49 @@ npx @adcp/client@latest \
 | Field | Description |
 |-------|-------------|
 | `media_buy_id` | Seller's unique identifier |
-| `confirmed_at` | ISO 8601 timestamp of order confirmation. A successful response constitutes confirmation. |
+| `account` | Resolved account billed for this media buy, echoed as a full [Account](/docs/building/integration/accounts-and-agents#account-references) object (includes `account_id`, `name`, `status`, and the resolved `brand`/`operator`). When the request used implicit resolution (`brand` + `operator`), this confirms the account the seller resolved. Optional. |
+| `confirmed_at` | ISO 8601 timestamp when the seller committed to the media buy. Stable after it is set. May be `null` in deferred/manual approval flows until seller commitment occurs. |
 | `creative_deadline` | ISO 8601 timestamp for creative upload deadline |
-| `packages` | Array of created packages with complete state. Packages may include per-package `creative_deadline` when different from the media buy deadline. |
+| `revision` | Initial media-buy revision. Use this value as the `revision` token on the next `update_media_buy` call intended to change state. |
+| `packages` | Array of created packages with complete state. Packages may include per-package `creative_deadline` when different from the media buy deadline, and SHOULD echo every format selector field supplied on create (`format_option_refs`, `format_ids`, and/or `format_kind`/`params`) so read surfaces are lossless even when one selector wins precedence. |
+
+`confirmed_at` is seller commitment time, not a delivery-status timestamp. Do not update it when a buy later pauses, resumes, starts delivery, completes, or reports performance. A committed synchronous create stamps it immediately. Use the `submitted` response branch when no `media_buy_id` is being returned to the buyer. Sellers MAY instead return synchronous success with `media_buy_id`, `packages`, and `confirmed_at: null` for a provisional buy; such buys MUST be retrievable via `get_media_buys` and MUST transition by setting `confirmed_at` exactly once on commitment. A provisional buy with `confirmed_at: null` MUST NOT be `active` and MUST NOT include `packages[].committed_metrics`.
 
 #### Reporting contract on confirmed packages
 
-Each package in the response MAY carry `committed_metrics` and `committed_vendor_metrics` — frozen snapshots of the product's `reporting_capabilities.available_metrics` and `vendor_metrics` at the moment the buy was created. These become the binding reporting contract for the package's lifetime, independent of subsequent product mutations:
+Each package in the response MAY carry `committed_metrics` — the binding reporting contract the seller has agreed to populate in delivery reports for this package. The field is a unified array carrying both standard metrics (from the closed `available-metric.json` enum) and vendor-defined metrics (anchored on a BrandRef), with each entry tagged by an explicit `scope` discriminator and timestamped via `committed_at`:
 
-- `missing_metrics` on `get_media_buy_delivery` is computed against `committed_metrics` when present (against the product's current `available_metrics` when absent).
-- The fields MUST NOT change post-creation. Sellers MUST reject `update_media_buy` requests that attempt to modify either field with a `validation_error` (suggested code: `IMMUTABLE_FIELD`). Renegotiating the metric contract requires a new buy.
-- Optional in v1 — sellers without per-package snapshot infrastructure can adopt incrementally. Absence is conformant, but it carries a known audit gap: without the snapshot, `missing_metrics` reconciles against the product's live state at report time, which may not reflect what was committed at create time. Sellers that omit `committed_metrics` accept this risk; buyers SHOULD treat the absence as "no audit-grade contract" rather than "clean delivery." Expected to become required at the next major.
-- Empty array is rejected at the schema level (`minItems: 1`) — absence is the only "no snapshot" signal, eliminating ambiguity between "I committed to nothing" and "I didn't snapshot."
+When `confirmed_at` is `null`, sellers MUST omit `packages[].committed_metrics`. The first response that sets `confirmed_at` MAY include the initial committed-metrics set, and each such entry's `committed_at` MUST equal `confirmed_at`.
+
+```json
+{
+  "package_id": "pkg_001",
+  "committed_metrics": [
+    { "scope": "standard", "metric_id": "impressions",     "committed_at": "2026-04-29T10:53:00Z" },
+    { "scope": "standard", "metric_id": "completed_views", "committed_at": "2026-04-29T10:53:00Z" },
+    { "scope": "vendor",   "vendor": { "domain": "attentionvendor.example" },
+                           "metric_id": "attention_units", "committed_at": "2026-04-29T10:53:00Z" },
+    { "scope": "standard", "metric_id": "viewable_rate",
+                           "qualifier": { "viewability_standard": "mrc" },
+                           "committed_at": "2026-05-30T14:22:00Z" }
+  ]
+}
+```
+
+**How the contract works:**
+
+- **Day-1 entries** share `committed_at = confirmed_at`. The seller stamps the day-1 set on the `create_media_buy` response based on what they're prepared to deliver from the product's `reporting_capabilities`.
+- **Mid-flight additions** are appended via `update_media_buy` — append-only with their own `committed_at` timestamps. This lets a seller honestly say "Adelaide attention is now part of the contract from day 30 onward" without having to cancel and reissue the buy.
+- **Existing entries are immutable.** Sellers MUST reject `update_media_buy` requests that attempt to modify or remove existing entries with a `validation_error` (suggested code: `IMMUTABLE_FIELD`). New entries can be appended.
+- **Qualifiers on standard metrics.** Some metrics have multiple incompatible measurement paths and need disambiguation:
+  - **`viewability_standard`** — when `metric_id` is one of `viewable_impressions`, `viewable_rate`, `measurable_impressions` and the seller commits to a specific viewability standard (MRC and GroupM are materially different thresholds — see the `viewability-standard` enum), the entry MUST carry `qualifier.viewability_standard`. Symmetric on `missing_metrics`: a buyer expecting MRC viewability flags a GroupM-only delivery report as missing the MRC commitment.
+  - **`completion_source`** — when `metric_id` is `completion_rate` and the seller commits to a specific source (the player/ad server's own completion event vs. a third-party measurement vendor anchored on `performance_standard.vendor`), the entry MUST carry `qualifier.completion_source` (`seller_attested` or `vendor_attested`). The two paths can yield materially different rates, particularly in SSAI environments. Symmetric on `missing_metrics`.
+  - **`attribution_methodology`** — when `metric_id` is an outcome metric (`conversions`, `conversion_value`, `roas`, `cost_per_acquisition`, `incremental_sales_lift`, `brand_lift`, `foot_traffic`, `conversion_lift`, `brand_search_lift`, `units_sold`, `new_to_brand_rate`, `new_to_brand_units`, `leads`) and the seller commits to a specific attribution methodology, the entry SHOULD carry `qualifier.attribution_methodology` (`deterministic_purchase` for retail-media closed-loop; `probabilistic`, `panel_based`, or `modeled` for other paths). Two outcome rows under different methodologies are not interchangeable; symmetric on `missing_metrics`.
+  - **`attribution_window`** — when `metric_id` is an outcome metric and the seller commits to a specific lookback window, the entry SHOULD carry `qualifier.attribution_window` as a structured duration (`{ interval: 14, unit: "days" }`). Two outcome rows over different windows are reported as separate rows so buyers don't accidentally aggregate across periods.
+
+  Without the qualifier, the contract is ambiguous and reconciliation falls back to whatever the delivery report happens to carry. The qualifier vocabulary is closed (`additionalProperties: false`); new keys ship explicitly in subsequent minors.
+- **Reconciliation:** `missing_metrics` on `get_media_buy_delivery` filters `committed_metrics` to entries where `committed_at < reporting_period.end`, then flags any that aren't populated in the report. A metric committed mid-flight is only audited from its commitment timestamp forward. Qualifiers are matched verbatim — a committed `{viewable_rate, mrc}` is not satisfied by a delivered `viewable_rate` carrying `viewability.standard: groupm`.
+- **Optional in v1.** Sellers without per-package snapshot infrastructure can adopt incrementally. Absence is conformant but carries a known audit gap: without the snapshot, `missing_metrics` reconciles against the product's live `available_metrics` at report time, which may not reflect what was committed at create time. Sellers that omit `committed_metrics` accept this risk; buyers SHOULD treat absence as "no audit-grade contract" rather than "clean delivery." Expected to become required at the next major.
 
 ### Error Response
 
@@ -231,14 +269,36 @@ Each package in the response MAY carry `committed_metrics` and `committed_vendor
 
 Returned when the buy cannot be confirmed synchronously — e.g., guaranteed buys awaiting IO signing, governance review queued, or batched processing. The completion artifact (delivered via `tasks/get` or push-notification webhook) carries `media_buy_id` and `packages`.
 
+There is no proposal-specific acceptance webhook. Proposal execution that needs human approval, IO signing, or asynchronous processing uses this same submitted task envelope and the standard task/webhook completion path.
+
 | Field | Description |
 |-------|-------------|
-| `status` | Literal `"submitted"` — discriminates this shape from the sync success branch, whose `status` carries a `MediaBuyStatus` value (`pending_creatives` / `pending_start` / `active`). |
+| `status` | Literal `"submitted"` — discriminates this shape from the sync success branch, which uses `media_buy_status` for lifecycle state. During the 3.1 migration window, sellers MAY also emit deprecated top-level MediaBuyStatus values on synchronous success for back-compat. |
 | `task_id` | Handle the buyer polls with `tasks/get` or receives on webhook callbacks. |
 | `message` | Optional human-readable explanation (e.g., "Awaiting IO signature from sales team"). |
 | `errors` | Optional advisory warnings (non-blocking). Terminal failures belong in the Error Response. |
 
 **Note**: Responses are mutually exclusive across these three shapes. Dispatch on `status` first: `"submitted"` → async envelope, otherwise check `errors` before accessing success fields.
+
+### When to return Submitted vs synchronous Success (normative)
+
+The choice between `submitted` and synchronous success is **per-call**, driven by per-product attributes and the seller's policy on each specific create — not a uniform per-seller rule. A sales-guaranteed seller may legitimately return synchronous success on some `create_media_buy` calls and `submitted` on others within the same session; conformant SDK skills MUST NOT instruct agents to return `submitted` for every `create_media_buy` regardless of input. Sellers that uniformly return `submitted` fail the non-IO-approval paths in the `sales-guaranteed` compliance storyboard.
+
+Sellers MUST return `submitted` when:
+
+- The request references one or more products with `delivery_type: "guaranteed"` **and** the seller declares the `requires_io_approval` capability — the human-approval handshake cannot complete inside the response. The completion artifact is delivered via `tasks/get` or webhook once IO signing finishes.
+- The request triggers a seller-side governance review that cannot complete synchronously (e.g., manual brand-safety review for a regulated vertical).
+- The request enters a batched-processing queue the seller cannot drain inside the response timeout.
+
+Sellers MUST return synchronous success when:
+
+- All referenced products have `delivery_type: "non_guaranteed"`. The buy is created and acknowledged in-line; `media_buy_id` and `packages` are issued immediately. This applies regardless of the seller's specialism — a sales-guaranteed seller serving a non-guaranteed product returns synchronous success.
+- The request references guaranteed products and the seller does NOT declare `requires_io_approval` (rare; typically retail-SKU or quoted-rate guaranteed flows where the seller has pre-cleared approval).
+- The buy enters a known non-terminal state immediately observable to the buyer (`pending_creatives` / `pending_start` / `active` / `paused`).
+
+The compliance grader observes both paths against the same seller via separate storyboard scenarios: the `create_buy_submitted` scenario seeds a guaranteed product with `requires_io_approval`; four shared scenarios (`measurement_terms_rejected`, `pending_creatives_to_start`, `inventory_list_targeting`, `invalid_transitions`) seed non-guaranteed products and expect synchronous `media_buy_id` returns. Sellers that return `submitted` on the synchronous-expected scenarios fail compliance — see [`sales-guaranteed` specialism](https://github.com/adcontextprotocol/adcp/tree/main/static/compliance/source/specialisms/sales-guaranteed) for the fixture pattern (non-guaranteed products listed first so open-brief `get_products` calls resolve to a synchronous-create path).
+
+This rule resolves the skill ↔ storyboard contradiction tracked at [#3822](https://github.com/adcontextprotocol/adcp/issues/3822): an SDK skill that instructs agents to "return a task envelope for every `create_media_buy`" is non-conformant; the correct skill instructs agents to dispatch on per-product `delivery_type` and the seller's `requires_io_approval` capability.
 
 ## Common Scenarios
 
@@ -249,8 +309,8 @@ Add geographic restrictions and frequency capping:
 <CodeGroup>
 
 ```javascript JavaScript test=false
-import { testAgent } from '@adcp/client/testing';
-import { CreateMediaBuyResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { CreateMediaBuyResponseSchema } from '@adcp/sdk';
 
 // Calculate end date dynamically - 90 days from now
 const endDate = new Date();
@@ -347,8 +407,8 @@ Set a per_ad_spend target for conversion-optimized delivery. The product must de
 <CodeGroup>
 
 ```javascript JavaScript test=false
-import { testAgent } from '@adcp/client/testing';
-import { CreateMediaBuyResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { CreateMediaBuyResponseSchema } from '@adcp/sdk';
 
 const endDate = new Date();
 endDate.setDate(endDate.getDate() + 90);
@@ -485,6 +545,91 @@ Include the `catalogs` field in a package to make it catalog-driven. Each catalo
 
 The platform distributes budget across catalog items based on performance. For per-item reporting, use [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) which returns `by_catalog_item` breakdowns. Creative variants for catalog-driven packages represent individual catalog items rendered as ads.
 
+**Package with explicit signal targeting:**
+
+Use `targeting_overlay.signal_targeting_groups` when the buyer wants seller-offered signals applied to a specific package. The selected product must set `signal_targeting_allowed: true` and make the signal eligible through inline `signal_targeting_options` when present, through `get_signals` for wholesale products that omit inline options, and through `signal_targeting_rules`. The grouped expression shape is always used: top-level `operator: "all"` with child groups using `operator: "any"` for include groups and `operator: "none"` for exclusion groups. For simple include-only targeting, send one `any` group. For binary signals, send `value: true` in both include and exclusion groups; exclusion is expressed by the parent `none` group, not by `value: false`. Signals are referenced with `signal_ref`: use `scope: "product"` for a product-local signal option, `scope: "data_provider"` with `data_provider_domain` for a signal defined in a data provider's published adagents.json `signals[]`, or `scope: "signal_source"` with `signal_source_url` for a source-native signal. This is distinct from `audience_include` / `audience_exclude`, which only reference first-party audiences registered through `sync_audiences`. Send `signal_agent_segment_id` only when the selected product option or `get_signals` result exposed it as a separate execution handle required by the seller.
+
+When a creative carries a build-time `signal_condition` (from `build_creative`'s `signal_conditions` fan-out, [#5240](https://github.com/adcontextprotocol/adcp/issues/5240)), assigning it to a package whose signal targeting is incompatible — e.g. a sun creative to a rain-targeted package — is rejected with `SIGNAL_TARGETING_INCOMPATIBLE`. Compatibility is matched on the same shared `signal_ref` identity used here. See the [signals specification](/docs/signals/specification#creative-signal-fan-out-and-trafficking-compatibility) for the normative trafficking-compatibility contract.
+
+```json test=false
+{
+  "brand": { "domain": "acmecorp.com" },
+  "packages": [{
+    "product_id": "retail_video_premium",
+    "pricing_option_id": "media_cpm_usd",
+    "budget": 25000,
+    "targeting_overlay": {
+      "signal_targeting_groups": {
+        "operator": "all",
+        "groups": [{
+          "operator": "any",
+          "signals": [{
+            "signal_ref": {
+              "scope": "data_provider",
+              "data_provider_domain": "pinnacle-data.example",
+              "signal_id": "auto_intenders"
+            },
+            "value_type": "binary",
+            "value": true,
+            "pricing_option_id": "signal_cpm_usd_250",
+            "signal_agent_segment_id": "seller_sig_auto_intenders"
+          }]
+        }]
+      }
+    }
+  }],
+  "start_time": "asap",
+  "end_time": "2026-09-30T23:59:59Z"
+}
+```
+
+Include plus exclusion example:
+
+```json test=false
+{
+  "brand": { "domain": "acmecorp.com" },
+  "packages": [{
+    "product_id": "retail_video_premium",
+    "pricing_option_id": "media_cpm_usd",
+    "budget": 25000,
+    "targeting_overlay": {
+      "signal_targeting_groups": {
+        "operator": "all",
+        "groups": [
+          {
+            "operator": "any",
+            "signals": [
+              {
+                "signal_ref": { "scope": "product", "signal_id": "high_intent_shoppers" },
+                "value_type": "binary",
+                "value": true
+              },
+              {
+                "signal_ref": { "scope": "product", "signal_id": "loyalty_members" },
+                "value_type": "binary",
+                "value": true
+              }
+            ]
+          },
+          {
+            "operator": "none",
+            "signals": [
+              {
+                "signal_ref": { "scope": "product", "signal_id": "recent_purchasers" },
+                "value_type": "binary",
+                "value": true
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }],
+  "start_time": "asap",
+  "end_time": "2026-09-30T23:59:59Z"
+}
+```
+
 ### Campaign with Inline Creatives
 
 Upload creatives at the same time as creating the campaign:
@@ -492,8 +637,8 @@ Upload creatives at the same time as creating the campaign:
 <CodeGroup>
 
 ```javascript JavaScript test=false
-import { testAgent } from '@adcp/client/testing';
-import { CreateMediaBuyResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { CreateMediaBuyResponseSchema } from '@adcp/sdk';
 
 // Calculate end date dynamically - 90 days from now
 const endDate = new Date();
@@ -606,8 +751,8 @@ Receive automated reporting notifications:
 <CodeGroup>
 
 ```javascript JavaScript test=false
-import { testAgent } from '@adcp/client/testing';
-import { CreateMediaBuyResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { CreateMediaBuyResponseSchema } from '@adcp/sdk';
 
 // Calculate end date dynamically - 90 days from now
 const endDate = new Date();
@@ -708,8 +853,8 @@ Execute a proposal from `get_products` without manually constructing packages:
 <CodeGroup>
 
 ```javascript JavaScript test=false
-import { testAgent } from '@adcp/client/testing';
-import { CreateMediaBuyResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { CreateMediaBuyResponseSchema } from '@adcp/sdk';
 
 // Calculate end date dynamically - 90 days from now
 const endDate = new Date();
@@ -792,7 +937,9 @@ The `context` field is an opaque object that sellers echo unchanged in responses
 
 Context works at two levels:
 - **Media buy level** — echoed in the `create_media_buy` response
-- **Package level** — echoed in each package's response, useful for mapping `package_id` back to your internal line items
+- **Package level** — echoed in each package's response, webhooks, and read surfaces, useful for mapping `package_id` back to your internal line items. For explicit package requests, sellers MUST also echo `product_id`.
+
+When targeting mixed seller populations, include package context such as `context.buyer_ref` as a legacy-safe fallback for older sellers that may not echo `product_id`.
 
 **Mapping to internal campaign and line item IDs:**
 
@@ -871,21 +1018,21 @@ Common errors and resolutions:
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
 | `PRODUCT_NOT_FOUND` | Invalid product_id | Verify product exists via `get_products` |
-| `FORMAT_INCOMPATIBLE` | Format not supported by product | Check product's `format_ids` field |
+| `UNSUPPORTED_FEATURE` | Format not supported by the product — covers legacy named-format selectors (`format_ids[]` not in the product's accepted formats), 3.1+ format-option selectors (`format_option_refs[]` entries that do not resolve against the product's `format_options[]`, legacy-format-only products with no `format_options[]`, or product `format_options[]` entries that do not publish selectable `format_option_id` values), and direct canonical selectors (`format_kind`/`params` outside or under-specifying the product declaration) | Check the product's `format_ids` and/or `format_options[]` from `get_products` — re-author against a supported format, add the required canonical parameters, or pick a `format_option_ref` from the product's published `format_options[]` |
 | `BUDGET_TOO_LOW` | Budget below product minimum | Increase budget or choose different product |
 | `TARGETING_TOO_NARROW` | Targeting yields zero inventory | Broaden geographic or audience criteria |
 | `POLICY_VIOLATION` | Brand/product violates policy | Review publisher's content policies |
 | `INVALID_PRICING_OPTION` | pricing_option_id not found | Use ID from product's `pricing_options` |
-| `CREATIVE_ID_EXISTS` | Creative ID already exists in library | Use a different `creative_id`, assign existing creatives via `creative_assignments`, or update via `sync_creatives` |
+| `CREATIVE_ID_EXISTS` | Creative ID already exists in the seller's creative namespace | For library-backed sellers, assign existing creatives via `creative_assignments` or update via `sync_creatives`; for inline-only sellers, use a different package-scoped `creative_id` |
 
 Example error response:
 
 ```json
 {
   "errors": [{
-    "code": "FORMAT_INCOMPATIBLE",
+    "code": "UNSUPPORTED_FEATURE",
     "message": "Product 'prod_d979b543' does not support format 'display_728x90'",
-    "field": "packages[0].format_ids",
+    "field": "packages[0].format_ids[0]",
     "suggestion": "Use display_300x250_image, display_300x250_html, or display_300x250_generative formats"
   }]
 }
@@ -895,11 +1042,36 @@ Example error response:
 
 ### Format Specification
 
-Format IDs are **required** for each package because:
-- Publishers create placeholder creatives in ad servers
-- Both parties know exactly what creative assets are needed
-- Validation ensures products support requested formats
-- Progress tracking shows which assets are missing
+Each package SHOULD specify the formats it will use, via `format_ids[]` (legacy named-format path — structured `{agent_url, id}` references), `format_option_refs[]` (3.1+ format-option path — references into the product's `format_options[]`), or a direct canonical selector (`format_kind` plus optional `params`). Omitting all format selectors defaults to all formats supported by the product. Specifying lets the system:
+
+- Publish placeholder creatives in ad servers
+- Pin exactly what creative assets are needed
+- Validate that the product supports the requested formats
+- Track which assets are missing
+
+Selector precedence is deterministic: `format_option_refs[]` wins when present; otherwise `format_ids[]` wins when present; otherwise direct `format_kind`/`params` is used; otherwise the package defaults to all product formats. Use `format_option_refs[]` when the buyer's codebase reads `Product.format_options[]` and the product publishes selectable `format_option_id` values; use `format_ids[]` when integrating with legacy-format-only sellers or libraries. Use direct `format_kind` only when the buyer has enough canonical parameters to satisfy the target product declaration without a product-local reference. Dual-emission of `format_option_refs[]` and `format_ids[]` is allowed and recommended for buyer SDKs targeting a mixed seller population — see the `format_ids` row above.
+
+3.1+ format-option example (buyer authoring against a publisher-scoped `Product.format_options[]` entry):
+
+```json test=false
+{
+  "packages": [
+    {
+      "product_id": "prod_d979b543",
+      "pricing_option_id": "cpm_usd_auction",
+      "format_option_refs": [
+        {
+          "scope": "publisher",
+          "publisher_domain": "daily-pulse.example",
+          "format_option_id": "daily_pulse_homepage_image"
+        }
+      ],
+      "budget": 2500,
+      "bid_price": 5.00
+    }
+  ]
+}
+```
 
 See [Format Workflow](#format-workflow) below for complete details.
 
@@ -953,12 +1125,15 @@ When creating a media buy, format specification enables:
 
 ```
 1. list_creative_formats → Get available format specifications
-2. get_products → Find products (returns format_ids they support)
+2. get_products → Find products (returns format_ids[] and/or format_options[])
 3. Validate compatibility → Ensure products support desired formats
-4. create_media_buy → Specify formats (REQUIRED)
+4. create_media_buy → Specify formats via format_ids[] (v1),
+                       format_option_refs[] (v2 reference), or
+                       format_kind/params (direct canonical);
+                       omit for all-formats default
    └── Publisher creates placeholders
    └── Clear creative requirements established
-5. sync_creatives → Upload actual files matching formats
+5. Creative supply → Upload matching files via `sync_creatives` for library-backed sellers, or inline `packages[].creatives` for inline-only sellers
 6. Campaign activation → Replace placeholders with real creatives
 ```
 
@@ -969,14 +1144,14 @@ Publishers MUST validate:
 - Format specifications match `list_creative_formats` output
 - Creative requirements can be fulfilled within timeline
 
-Invalid format example:
+Invalid legacy named-format example:
 
 ```json
 {
   "errors": [{
-    "code": "FORMAT_INCOMPATIBLE",
+    "code": "UNSUPPORTED_FEATURE",
     "message": "Product 'ctv_sports_premium' does not support format 'audio_standard_30s'",
-    "field": "packages[0].format_ids",
+    "field": "packages[0].format_ids[0]",
     "supported_formats": [
       { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_standard_30s" },
       { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_standard_15s" }
@@ -985,7 +1160,27 @@ Invalid format example:
 }
 ```
 
+Invalid 3.1+ format-option example:
+
+```json
+{
+  "errors": [{
+    "code": "UNSUPPORTED_FEATURE",
+    "message": "Product 'ctv_sports_premium' has no format_options[] entry for format option 'audio_standard'",
+    "field": "packages[0].format_option_refs[0]",
+    "supported_format_option_refs": [
+      { "scope": "publisher", "publisher_domain": "streamhaus.example", "format_option_id": "ctv_video_30s_premium" },
+      { "scope": "publisher", "publisher_domain": "streamhaus.example", "format_option_id": "ctv_video_15s_premium" }
+    ]
+  }]
+}
+```
+
 ### Flight date validation
+
+For new media buys, the top-level `start_time` MUST be either `"asap"` or a
+date-time that is not in the past. A past concrete `start_time` MUST return an
+`INVALID_REQUEST` error.
 
 When a package specifies `start_time` or `end_time`, sellers SHOULD validate that:
 - Both dates fall within the media buy's date range
@@ -1043,6 +1238,14 @@ const response = await session.call('create_media_buy', {
 {
   "status": "completed",
   "media_buy_id": "mb_12345",
+  "account": {
+    "account_id": "acc_acme_direct",
+    "name": "Acme",
+    "status": "active",
+    "brand": { "domain": "acmecorp.com" },
+    "operator": "acmecorp.com"
+  },
+  "media_buy_status": "active",
   "confirmed_at": "2025-06-01T10:00:00Z",
   "creative_deadline": "2025-06-15T23:59:59Z",
   "revision": 1,
@@ -1054,6 +1257,8 @@ const response = await session.call('create_media_buy', {
   ]
 }
 ```
+
+The top-level `status` is the envelope task-status (TaskStatus) — `completed` on synchronous success. The body-level `media_buy_status` carries the buy's lifecycle state (`pending_creatives`, `pending_start`, `active`, or `paused`). A 3.0-style response would have collided these two enums at the same root key; in 3.1 they are distinct fields. Sellers MAY continue to emit a deprecated top-level `status: MediaBuyStatus` during the 3.1 deprecation window for back-compat with 3.0 buyers, but 3.1 buyers MUST prefer `media_buy_status`. See [Media-buy status field (3.1 migration)](#media-buy-status-field-3-1-migration) below.
 
 ### Long-Running (`submitted`)
 
@@ -1103,6 +1308,13 @@ const response = await session.call('create_media_buy',
   "message": "Media buy approved and created",
   "result": {
     "media_buy_id": "mb_67890",
+    "account": {
+      "account_id": "acc_acme_direct",
+      "name": "Acme",
+      "status": "active",
+      "brand": { "domain": "acmecorp.com" },
+      "operator": "acmecorp.com"
+    },
     "confirmed_at": "2025-01-22T14:30:00Z",
     "creative_deadline": "2025-06-20T23:59:59Z",
     "revision": 1,
@@ -1358,8 +1570,8 @@ For complete async handling patterns, see [Async Operations](/docs/building/impl
 - Impression-time targeting (audience, frequency, suitability) is handled by [TMP](/docs/trusted-match)
 - Pending states (`working`, `submitted`) are normal, not errors
 - Orchestrators MUST handle pending states as part of normal workflow
-- **Inline creatives**: The `creatives` array creates NEW creatives only. To update existing creatives, use [`sync_creatives`](/docs/creative/task-reference/sync_creatives). To assign existing library creatives, use `creative_assignments` instead.
-- **Inline creative lifecycle**: Inline creatives enter the library with the same lifecycle as `sync_creatives` uploads. If the `create_media_buy` task resolves as `pending_manual` and the buy never activates, or if the buy is rejected or canceled, only the package assignments are released — the creatives remain in the library and can be reused by `creative_id` on a later `create_media_buy` call. Creative review is independent of the buy outcome; sellers MUST NOT skip review solely because the buy did not activate. Retention of unassigned creatives is seller-defined in 3.0. See [Inline creatives on the package](/docs/creative/creative-libraries#path-2-inline-creatives-on-the-package).
+- **Inline creatives**: The `creatives` array creates or supplies package creatives inline. If the seller advertises `creative.has_creative_library: true`, inline creatives enter the library; use [`sync_creatives`](/docs/creative/task-reference/sync_creatives) to update existing library creatives and `creative_assignments` to assign existing library creatives. If the seller advertises `inline_creative_management: true` without a creative library, use `packages[].creatives` on `create_media_buy` and `update_media_buy`; do not call `sync_creatives`.
+- **Inline creative lifecycle**: Library-backed inline creatives enter the library with the same lifecycle as `sync_creatives` uploads. Inline-only sellers may keep the creative package-scoped and do not advertise later reuse by `creative_id`. Creative review is independent of the buy outcome; sellers MUST NOT skip review solely because the buy did not activate. Retention of unassigned library creatives is seller-defined in 3.0. See [Inline creatives on the package](/docs/creative/creative-libraries#path-2-inline-creatives-on-the-package).
 
 ## Content Standards
 
@@ -1393,10 +1605,18 @@ Publishers should ensure:
 
 After creating a media buy:
 
-1. **Upload Creatives**: Use [`sync_creatives`](/docs/creative/task-reference/sync_creatives) before deadline
+1. **Supply creatives**: Use [`sync_creatives`](/docs/creative/task-reference/sync_creatives) for library-backed sellers, or `packages[].creatives` on [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) for inline-only sellers
 2. **Monitor Status**: Use [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)
 3. **Optimize**: Use [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback)
 4. **Update**: Use [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) to modify campaign
+
+## Media-buy status field (3.1 migration)
+
+3.1 splits two enums that 3.0 collided at the same root key — envelope `status` (TaskStatus) at the top of every response, and body `media_buy_status` (MediaBuyStatus, **new in 3.1**) carrying the buy's lifecycle state alongside. The legacy top-level `status: MediaBuyStatus` form is `deprecated: true` in 3.1 and removed in 3.2 ([#4906](https://github.com/adcontextprotocol/adcp/issues/4906)); nested `status` on `get_media_buys`, `get_media_buy_delivery`, and `core/media-buy.json` follow in 4.0 ([#4905](https://github.com/adcontextprotocol/adcp/issues/4905)).
+
+3.1 buyers MUST prefer `media_buy_status` when present. 3.1 compliance storyboards assert `path: "media_buy_status"` — a 3.1 seller emitting only the legacy `status` is schema-valid but fails certification; the storyboard is the binding conformance check.
+
+Full migration: [Migration › `media_buy_status`](/docs/reference/migration/media-buy-status).
 
 ## Learn More
 

@@ -124,12 +124,12 @@
 
     .radio-option:hover {
       border-color: var(--color-brand);
-      background: var(--color-primary-50);
+      background: var(--color-brand-bg);
     }
 
     .radio-option.selected {
       border-color: var(--color-brand);
-      background: var(--color-primary-100);
+      background: var(--color-brand-bg);
     }
 
     .radio-option input[type="radio"] {
@@ -261,17 +261,17 @@
     }
 
     .subscription-status.active {
-      background: var(--color-success-50);
+      background: var(--color-success-bg);
       border: 1px solid var(--color-success-200);
     }
 
     .subscription-status.inactive {
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       border: 1px solid var(--color-gray-200);
     }
 
     .subscription-status.past_due {
-      background: var(--color-warning-50);
+      background: var(--color-warning-bg);
       border: 1px solid var(--color-warning-200);
     }
 
@@ -293,11 +293,11 @@
     }
 
     .subscription-status.active .subscription-info h3 {
-      color: var(--color-success-700);
+      color: var(--color-success-fg);
     }
 
     .subscription-status.past_due .subscription-info h3 {
-      color: var(--color-warning-700);
+      color: var(--color-warning-fg);
     }
 
     /* Membership promo */
@@ -361,7 +361,7 @@
 
     /* Member benefits card (for existing members) - matches public page style */
     .member-benefits-card {
-      background: linear-gradient(135deg, var(--color-success-50) 0%, var(--color-success-100) 100%);
+      background: linear-gradient(135deg, var(--color-success-bg) 0%, var(--color-success-100) 100%);
       border: 2px solid var(--color-success-500);
       border-radius: var(--radius-lg);
       padding: var(--space-8);
@@ -394,7 +394,7 @@
     }
 
     .member-benefits-inner {
-      background: white;
+      background: var(--color-bg-card);
       border-radius: var(--radius-md);
       padding: var(--space-5);
       text-align: left;
@@ -478,7 +478,7 @@
     }
 
     .whats-next-item:hover {
-      background: var(--color-primary-50);
+      background: var(--color-brand-bg);
       border-color: var(--color-brand);
       transform: translateY(-2px);
     }
@@ -529,7 +529,7 @@
       max-height: 200px;
       overflow-y: auto;
       padding: 16px;
-      background: white;
+      background: var(--color-bg-card);
       border: 1px solid var(--color-border);
       border-radius: 6px;
       margin-bottom: 16px;
@@ -558,7 +558,7 @@
       color: var(--color-text-secondary);
       font-size: 14px;
       padding: 12px;
-      background: var(--color-warning-50);
+      background: var(--color-warning-bg);
       border: 1px solid var(--color-warning-300);
       border-radius: 6px;
       margin-top: 16px;
@@ -957,7 +957,19 @@
         </div>
       </div>
 
-      <!-- Agreements section (for subscribers) -->
+      <!-- Billing address (always visible once org loaded; required before invoice) -->
+      <div id="billingAddressCard" class="billing-card" style="display: none;">
+        <div class="billing-card-header">
+          <h2>Billing address</h2>
+        </div>
+        <div class="billing-card-body">
+          <div id="billingAddressDisplay">
+            <!-- Filled by JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Agreements section -->
       <div id="agreementsCard" class="billing-card" style="display: none;">
         <div class="billing-card-header">
           <h2>Agreements</h2>
@@ -981,14 +993,14 @@
             padding: 16px 20px;
             border-radius: 12px;
             border: 1px solid var(--color-success-500);
-            background: var(--color-success-50);
+            background: var(--color-success-bg);
           ">
             <div style="font-size: 1.5rem; flex-shrink: 0;">&#127881;</div>
             <div style="flex: 1; min-width: 0;">
-              <div style="font-size: 14px; font-weight: 600; color: var(--color-success-700); margin-bottom: 4px;" id="referralBannerTitle">
+              <div style="font-size: 14px; font-weight: 600; color: var(--color-success-fg); margin-bottom: 4px;" id="referralBannerTitle">
                 You have a pending discount
               </div>
-              <div style="font-size: 13px; color: var(--color-success-700);" id="referralBannerMessage">
+              <div style="font-size: 13px; color: var(--color-success-fg);" id="referralBannerMessage">
                 Subscribe now to claim your discount.
               </div>
             </div>
@@ -1027,7 +1039,7 @@
   <div id="invoiceRequestModal" class="profile-modal-overlay" style="display: none;">
     <div style="background: var(--color-bg-card); border-radius: 12px; max-width: 500px; width: 100%; max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-xl);">
       <div style="padding: 20px 24px; border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center;">
-        <h2 style="margin: 0; font-size: 18px; color: var(--color-text-heading);">Request an Invoice</h2>
+        <h2 style="margin: 0; font-size: 18px; color: var(--color-text-heading);">Request an invoice</h2>
         <button onclick="closeInvoiceRequestModal()" style="background: none; border: none; font-size: 24px; color: var(--color-text-muted); cursor: pointer; padding: 0; line-height: 1;">&times;</button>
       </div>
       <form id="invoiceRequestForm" onsubmit="submitInvoiceRequest(event)">
@@ -1042,12 +1054,12 @@
           <input type="hidden" id="invoice-lookup-key" name="lookupKey">
 
           <div style="margin-bottom: 16px;">
-            <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Billing Address Line 1 *</label>
+            <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Billing address line 1 *</label>
             <input type="text" id="invoice-address1" name="line1" required placeholder="123 Main Street" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
           </div>
 
           <div style="margin-bottom: 16px;">
-            <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Billing Address Line 2</label>
+            <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Billing address line 2</label>
             <input type="text" id="invoice-address2" name="line2" placeholder="Suite 100" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
           </div>
 
@@ -1069,22 +1081,22 @@
             </div>
             <div>
               <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Country *</label>
-              <input type="text" id="invoice-country" name="country" required value="US" placeholder="US" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+              <select id="invoice-country" name="country" required style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px; background: white;"></select>
             </div>
           </div>
 
-          <div style="background: var(--color-bg-subtle); border: 1px solid var(--color-border); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+          <div id="invoice-agreement-section" style="background: var(--color-bg-subtle); border: 1px solid var(--color-border); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
             <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer;">
               <input type="checkbox" id="invoice-agreement-checkbox" style="margin-top: 3px; cursor: pointer;">
-              <span style="font-size: 14px;">I have read and agree to the <a href="/membership-agreement" target="_blank" rel="noopener" style="color: var(--color-brand);">AgenticAdvertising.org Membership Agreement</a>.</span>
+              <span style="font-size: 14px;">I have read and agree to the <a href="/membership-agreement" target="_blank" rel="noopener" style="color: var(--color-brand);">AgenticAdvertising.org membership agreement</a>.</span>
             </label>
           </div>
 
-          <div id="invoiceFormError" style="display: none; color: var(--color-error-600); font-size: 14px; margin-bottom: 16px; padding: 12px; background: var(--color-error-50); border-radius: 8px;"></div>
+          <div id="invoiceFormError" style="display: none; color: var(--color-error-600); font-size: 14px; margin-bottom: 16px; padding: 12px; background: var(--color-error-bg); border-radius: 8px;"></div>
         </div>
         <div style="padding: 16px 24px; border-top: 1px solid var(--color-border); display: flex; gap: 12px; justify-content: flex-end;">
           <button type="button" class="btn btn-secondary" onclick="closeInvoiceRequestModal()">Cancel</button>
-          <button type="submit" class="btn btn-primary" id="invoiceSubmitBtn" disabled>Send Invoice</button>
+          <button type="submit" class="btn btn-primary" id="invoiceSubmitBtn" disabled>Send invoice</button>
         </div>
       </form>
     </div>
@@ -1094,7 +1106,7 @@
   <div id="agreementModal" class="profile-modal-overlay" style="display: none;">
     <div style="background: var(--color-bg-card); border-radius: 12px; max-width: 700px; width: 100%; max-height: 90vh; display: flex; flex-direction: column; box-shadow: var(--shadow-xl);">
       <div style="padding: 20px 24px; border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center;">
-        <h2 style="margin: 0; font-size: 18px; color: var(--color-text-heading);">Membership Agreement</h2>
+        <h2 style="margin: 0; font-size: 18px; color: var(--color-text-heading);">Membership agreement</h2>
         <button onclick="closeAgreementModal()" style="background: none; border: none; font-size: 24px; color: var(--color-text-muted); cursor: pointer; padding: 0; line-height: 1;">&times;</button>
       </div>
       <div style="padding: 24px; flex: 1; overflow-y: auto;">
@@ -1106,7 +1118,7 @@
         </div>
         <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer;">
           <input type="checkbox" id="modalAgreementCheckbox" style="margin-top: 3px; cursor: pointer;">
-          <span style="font-size: 14px;">I have read and agree to the <strong>AgenticAdvertising.org Membership Agreement</strong></span>
+          <span style="font-size: 14px;">I have read and agree to the <strong>AgenticAdvertising.org membership agreement</strong></span>
         </label>
       </div>
       <div style="padding: 16px 24px; border-top: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center;">
@@ -1119,12 +1131,135 @@
     </div>
   </div>
 
+  <!-- Standalone Sign Agreement Modal (no checkout) -->
+  <div id="signAgreementModal" class="profile-modal-overlay" style="display: none;">
+    <div style="background: var(--color-bg-card); border-radius: 12px; max-width: 700px; width: 100%; max-height: 90vh; display: flex; flex-direction: column; box-shadow: var(--shadow-xl);">
+      <div style="padding: 20px 24px; border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center;">
+        <h2 style="margin: 0; font-size: 18px; color: var(--color-text-heading);">Membership agreement</h2>
+        <button onclick="closeSignAgreementModal()" style="background: none; border: none; font-size: 24px; color: var(--color-text-muted); cursor: pointer; padding: 0; line-height: 1;">&times;</button>
+      </div>
+      <div style="padding: 24px; flex: 1; overflow-y: auto;">
+        <p style="margin: 0 0 16px; color: var(--color-text-secondary); font-size: 14px;">
+          Review and accept the agreement. You can do this before requesting an invoice or selecting a tier.
+        </p>
+        <div id="signModalAgreementContent" style="background: var(--color-bg-subtle); border: 1px solid var(--color-border); border-radius: 8px; padding: 20px; max-height: 320px; overflow-y: auto; font-size: 13px; line-height: 1.6; margin-bottom: 20px;">
+          Loading agreement...
+        </div>
+        <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer;">
+          <input type="checkbox" id="signModalAgreementCheckbox" style="margin-top: 3px; cursor: pointer;">
+          <span style="font-size: 14px;">I have read and agree to the <strong>AgenticAdvertising.org membership agreement</strong></span>
+        </label>
+        <div id="signAgreementError" style="display: none; color: var(--color-error-600); font-size: 14px; margin-top: 12px; padding: 10px; background: var(--color-error-bg); border-radius: 8px;"></div>
+      </div>
+      <div style="padding: 16px 24px; border-top: 1px solid var(--color-border); display: flex; justify-content: flex-end; gap: 12px;">
+        <button class="btn btn-secondary" onclick="closeSignAgreementModal()">Cancel</button>
+        <button class="btn btn-primary" id="signAgreementBtn" onclick="submitSignAgreement()" disabled>Sign agreement</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Billing Address Modal (standalone) -->
+  <div id="billingAddressModal" class="profile-modal-overlay" style="display: none;">
+    <div style="background: var(--color-bg-card); border-radius: 12px; max-width: 500px; width: 100%; max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-xl);">
+      <div style="padding: 20px 24px; border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center;">
+        <h2 id="billingAddressModalTitle" style="margin: 0; font-size: 18px; color: var(--color-text-heading);">Edit billing address</h2>
+        <button onclick="closeBillingAddressModal()" style="background: none; border: none; font-size: 24px; color: var(--color-text-muted); cursor: pointer; padding: 0; line-height: 1;">&times;</button>
+      </div>
+      <form id="billingAddressForm" onsubmit="submitBillingAddress(event)">
+        <div style="padding: 24px;">
+          <div style="margin-bottom: 16px;">
+            <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Address Line 1 *</label>
+            <input type="text" id="addr-line1" name="line1" required maxlength="200" placeholder="123 Main Street" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+          </div>
+          <div style="margin-bottom: 16px;">
+            <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Address Line 2</label>
+            <input type="text" id="addr-line2" name="line2" maxlength="200" placeholder="Suite 100" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+            <div>
+              <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">City *</label>
+              <input type="text" id="addr-city" name="city" required maxlength="200" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+            </div>
+            <div>
+              <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">State/Province *</label>
+              <input type="text" id="addr-state" name="state" required maxlength="200" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+            </div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+            <div>
+              <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Postal Code *</label>
+              <input type="text" id="addr-postal" name="postal_code" required maxlength="200" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+            </div>
+            <div>
+              <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Country *</label>
+              <select id="addr-country" name="country" required style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px; background: white;"></select>
+            </div>
+          </div>
+          <div id="billingAddressError" style="display: none; color: var(--color-error-600); font-size: 14px; margin-bottom: 16px; padding: 12px; background: var(--color-error-bg); border-radius: 8px;"></div>
+        </div>
+        <div style="padding: 16px 24px; border-top: 1px solid var(--color-border); display: flex; justify-content: flex-end; gap: 12px;">
+          <button type="button" class="btn btn-secondary" onclick="closeBillingAddressModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="saveBillingAddressBtn">Save address</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script>
     let currentOrg = null;
     let selectedProduct = null;
     let membershipProducts = [];
     let selectedCompanyType = null;
     let selectedRevenueTier = null;
+    let currentMembershipAgreementVersion = null;
+
+    // ISO-3166-1 alpha-2 codes for the billing-address country selector.
+    // The Stripe customer.address.country API and our server validator both
+    // require this exact 2-letter shape.
+    const COUNTRY_OPTIONS = [
+      ['US', 'United States'], ['CA', 'Canada'], ['GB', 'United Kingdom'],
+      ['AU', 'Australia'], ['NZ', 'New Zealand'], ['IE', 'Ireland'],
+      ['DE', 'Germany'], ['FR', 'France'], ['ES', 'Spain'], ['IT', 'Italy'],
+      ['NL', 'Netherlands'], ['BE', 'Belgium'], ['LU', 'Luxembourg'],
+      ['CH', 'Switzerland'], ['AT', 'Austria'], ['PT', 'Portugal'],
+      ['SE', 'Sweden'], ['NO', 'Norway'], ['DK', 'Denmark'], ['FI', 'Finland'],
+      ['IS', 'Iceland'], ['PL', 'Poland'], ['CZ', 'Czechia'],
+      ['SK', 'Slovakia'], ['HU', 'Hungary'], ['RO', 'Romania'],
+      ['BG', 'Bulgaria'], ['GR', 'Greece'], ['HR', 'Croatia'],
+      ['SI', 'Slovenia'], ['EE', 'Estonia'], ['LV', 'Latvia'],
+      ['LT', 'Lithuania'], ['CY', 'Cyprus'], ['MT', 'Malta'],
+      ['JP', 'Japan'], ['KR', 'South Korea'], ['CN', 'China'],
+      ['HK', 'Hong Kong'], ['TW', 'Taiwan'], ['SG', 'Singapore'],
+      ['MY', 'Malaysia'], ['TH', 'Thailand'], ['ID', 'Indonesia'],
+      ['PH', 'Philippines'], ['VN', 'Vietnam'], ['IN', 'India'],
+      ['AE', 'United Arab Emirates'], ['SA', 'Saudi Arabia'], ['IL', 'Israel'],
+      ['TR', 'Turkey'], ['ZA', 'South Africa'], ['NG', 'Nigeria'],
+      ['KE', 'Kenya'], ['EG', 'Egypt'], ['MA', 'Morocco'],
+      ['MX', 'Mexico'], ['BR', 'Brazil'], ['AR', 'Argentina'],
+      ['CL', 'Chile'], ['CO', 'Colombia'], ['PE', 'Peru'], ['UY', 'Uruguay'],
+    ];
+
+    function populateCountrySelect(selectEl, current) {
+      if (!selectEl) return;
+      const selected = (current || 'US').toUpperCase();
+      selectEl.replaceChildren();
+      // Persist whatever the org currently has even if it's not in our short
+      // list, so editing an existing address never silently changes country.
+      const seen = new Set();
+      const fallbackUnknown =
+        selected && /^[A-Z]{2}$/.test(selected) &&
+        !COUNTRY_OPTIONS.some(([code]) => code === selected);
+      if (fallbackUnknown) {
+        const opt = new Option(selected, selected, true, true);
+        selectEl.appendChild(opt);
+        seen.add(selected);
+      }
+      for (const [code, name] of COUNTRY_OPTIONS) {
+        if (seen.has(code)) continue;
+        const isSel = code === selected;
+        selectEl.appendChild(new Option(`${name} (${code})`, code, isSel, isSel));
+      }
+    }
 
     // Show toast
     function showToast(message, isError = false) {
@@ -1216,6 +1351,11 @@
               suggested_revenue_tier: billingData.suggested_revenue_tier,
             };
             currentOrg.billing_address = billingData.billing_address || null;
+            currentOrg.agreement_version = billingData.agreement_version || null;
+            currentOrg.agreement_signed_at = billingData.agreement_signed_at || null;
+            currentOrg.pending_agreement_version = billingData.pending_agreement_version || null;
+            currentOrg.pending_agreement_accepted_at = billingData.pending_agreement_accepted_at || null;
+            currentMembershipAgreementVersion = billingData.current_membership_agreement_version || null;
           }
         } catch (billingError) {
           console.error('Error loading billing info:', billingError);
@@ -1259,30 +1399,42 @@
 
     function renderBilling() {
       const hasSubscription = currentOrg.billing?.status === 'active';
+      const isPersonal = currentOrg.is_personal || currentOrg.billing?.is_personal;
       const subscriptionCard = document.getElementById('subscriptionCard');
       const membershipSection = document.getElementById('membershipSection');
       const agreementsCard = document.getElementById('agreementsCard');
+      const billingAddressCard = document.getElementById('billingAddressCard');
       const memberBenefitsCard = document.getElementById('memberBenefitsCard');
       const whatsNextCard = document.getElementById('whatsNextCard');
 
       const upgradeCard = document.getElementById('upgradeCard');
 
+      // Billing address + agreements are pre-invoice surfaces and must be
+      // visible whether or not a subscription exists. Hide for personal
+      // workspaces where neither is meaningful before an invoice request.
+      if (!isPersonal) {
+        billingAddressCard.style.display = 'block';
+        agreementsCard.style.display = 'block';
+        renderBillingAddress();
+        loadMyAgreements();
+      } else {
+        billingAddressCard.style.display = 'none';
+        agreementsCard.style.display = 'none';
+      }
+
       if (hasSubscription) {
         subscriptionCard.style.display = 'block';
         memberBenefitsCard.style.display = 'block';
         whatsNextCard.style.display = 'block';
-        agreementsCard.style.display = 'block';
         membershipSection.style.display = 'none';
         renderSubscriptionStatus();
         renderMemberBenefitsForSubscriber();
-        loadMyAgreements();
         loadUpgradeOptions();
       } else {
         upgradeCard.style.display = 'none';
         subscriptionCard.style.display = 'none';
         memberBenefitsCard.style.display = 'none';
         whatsNextCard.style.display = 'none';
-        agreementsCard.style.display = 'none';
         membershipSection.style.display = 'block';
         renderMembershipBenefits();
         loadProducts();
@@ -1454,7 +1606,7 @@
 
         if (urgency && inner) {
           inner.style.borderColor = 'var(--color-warning-500)';
-          inner.style.background = 'var(--color-warning-50)';
+          inner.style.background = 'var(--color-warning-bg)';
           title.style.color = 'var(--color-warning-700)';
           message.style.color = 'var(--color-warning-700)';
         }
@@ -1598,8 +1750,9 @@
       }
     }
 
-    // Select a product and show agreement modal
-    function selectProduct(lookupKey) {
+    // Select a product and show agreement modal when the org has not already
+    // accepted the current membership agreement.
+    async function selectProduct(lookupKey) {
       selectedProduct = membershipProducts.find(p => p.lookup_key === lookupKey);
       if (!selectedProduct) return;
 
@@ -1612,12 +1765,23 @@
         infoEl.textContent = `${selectedProduct.display_name} - ${formatCurrency(selectedProduct.amount_cents)}/year`;
       }
 
+      if (membershipAgreementIsCurrent()) {
+        proceedToCheckout();
+        return;
+      }
+
       // Reset checkbox
       document.getElementById('modalAgreementCheckbox').checked = false;
       document.getElementById('proceedToCheckoutBtn').disabled = true;
 
-      // Load agreement content if not already loaded
-      loadAgreementContent();
+      // Load agreement content if not already loaded. The version check after
+      // load handles orgs whose billing payload arrived before the current
+      // agreement version was known.
+      await loadAgreementContent();
+      if (membershipAgreementIsCurrent()) {
+        proceedToCheckout();
+        return;
+      }
 
       // Show modal
       document.getElementById('agreementModal').style.display = 'flex';
@@ -1625,6 +1789,30 @@
 
     // Cached agreement version from the server (set by loadAgreementContent)
     let loadedAgreementVersion = null;
+
+    function rememberMembershipAgreementVersion(version) {
+      if (version) {
+        currentMembershipAgreementVersion = version;
+      }
+      return currentMembershipAgreementVersion;
+    }
+
+    function membershipAgreementIsCurrent() {
+      const currentVersion = currentMembershipAgreementVersion;
+      if (!currentVersion || !currentOrg) return false;
+      return currentOrg.agreement_version === currentVersion ||
+        currentOrg.pending_agreement_version === currentVersion;
+    }
+
+    async function ensureMembershipAgreementVersion() {
+      if (currentMembershipAgreementVersion) {
+        return currentMembershipAgreementVersion;
+      }
+      const response = await fetch('/api/agreement/current?type=membership');
+      if (!response.ok) throw new Error('Failed to load agreement');
+      const data = await response.json();
+      return rememberMembershipAgreementVersion(data.version || null);
+    }
 
     // Load agreement content for modal
     async function loadAgreementContent() {
@@ -1636,7 +1824,7 @@
 
         const data = await response.json();
         const content = data.text || 'Agreement not available.';
-        loadedAgreementVersion = data.version || null;
+        loadedAgreementVersion = rememberMembershipAgreementVersion(data.version || null);
 
         // Render markdown
         const html = DOMPurify.sanitize(marked.parse(content));
@@ -1662,6 +1850,13 @@
         });
       }
 
+      const signCheckbox = document.getElementById('signModalAgreementCheckbox');
+      if (signCheckbox) {
+        signCheckbox.addEventListener('change', function() {
+          document.getElementById('signAgreementBtn').disabled = !this.checked;
+        });
+      }
+
       // Close modal on outside click
       const modal = document.getElementById('agreementModal');
       if (modal) {
@@ -1669,6 +1864,18 @@
           if (e.target === this) {
             closeAgreementModal();
           }
+        });
+      }
+      const signModal = document.getElementById('signAgreementModal');
+      if (signModal) {
+        signModal.addEventListener('click', function(e) {
+          if (e.target === this) closeSignAgreementModal();
+        });
+      }
+      const addrModal = document.getElementById('billingAddressModal');
+      if (addrModal) {
+        addrModal.addEventListener('click', function(e) {
+          if (e.target === this) closeBillingAddressModal();
         });
       }
 
@@ -1730,6 +1937,15 @@
 
         if (!response.ok) {
           const error = await response.json();
+          // Active subscriptions can't be re-billed via checkout; tier changes
+          // happen in the Stripe Customer Portal. The guard returns the portal
+          // URL in the 409 body — follow it instead of dead-ending on a toast.
+          if (response.status === 409 && error.customer_portal_url) {
+            btn.textContent = 'Opening billing portal...';
+            closeAgreementModal();
+            window.location.href = error.customer_portal_url;
+            return;
+          }
           throw new Error(error.message || 'Failed to create checkout session');
         }
 
@@ -1754,7 +1970,7 @@
       openInvoiceRequestModal(lookupKey);
     }
 
-    function openInvoiceRequestModal(preSelectedLookupKey = null) {
+    async function openInvoiceRequestModal(preSelectedLookupKey = null) {
       if (!currentOrg) {
         showToast('Please sign in and select an organization first.', true);
         return;
@@ -1769,6 +1985,16 @@
         return;
       }
 
+      if (!membershipAgreementIsCurrent()) {
+        try {
+          await ensureMembershipAgreementVersion();
+        } catch (error) {
+          console.error('Error loading membership agreement version:', error);
+          showToast('Unable to load the current membership agreement. Please try again.', true);
+          return;
+        }
+      }
+
       document.getElementById('invoice-lookup-key').value = product.lookup_key;
       document.getElementById('invoice-org-name').textContent = currentOrg.name || '(your organization)';
       document.getElementById('invoice-product-summary').textContent =
@@ -1777,20 +2003,21 @@
       document.getElementById('invoice-recipient-summary').textContent =
         userEmail ? `Invoice will be sent to ${userEmail}` : 'Invoice will be sent to your account email';
 
-      if (currentOrg.billing_address) {
-        const a = currentOrg.billing_address;
-        if (a.line1) document.getElementById('invoice-address1').value = a.line1;
-        if (a.line2) document.getElementById('invoice-address2').value = a.line2;
-        if (a.city) document.getElementById('invoice-city').value = a.city;
-        if (a.state) document.getElementById('invoice-state').value = a.state;
-        if (a.postal_code) document.getElementById('invoice-postal').value = a.postal_code;
-        if (a.country) document.getElementById('invoice-country').value = a.country;
-      }
+      const prefill = currentOrg.billing_address || {};
+      if (prefill.line1) document.getElementById('invoice-address1').value = prefill.line1;
+      if (prefill.line2) document.getElementById('invoice-address2').value = prefill.line2;
+      if (prefill.city) document.getElementById('invoice-city').value = prefill.city;
+      if (prefill.state) document.getElementById('invoice-state').value = prefill.state;
+      if (prefill.postal_code) document.getElementById('invoice-postal').value = prefill.postal_code;
+      populateCountrySelect(document.getElementById('invoice-country'), prefill.country || 'US');
 
       const agreementCheckbox = document.getElementById('invoice-agreement-checkbox');
+      const agreementSection = document.getElementById('invoice-agreement-section');
       const submitBtn = document.getElementById('invoiceSubmitBtn');
-      agreementCheckbox.checked = false;
-      submitBtn.disabled = true;
+      const agreementAccepted = membershipAgreementIsCurrent();
+      agreementSection.style.display = agreementAccepted ? 'none' : 'block';
+      agreementCheckbox.checked = agreementAccepted;
+      submitBtn.disabled = !agreementAccepted;
       agreementCheckbox.onchange = () => { submitBtn.disabled = !agreementCheckbox.checked; };
 
       document.getElementById('invoiceRequestModal').style.display = 'flex';
@@ -1803,7 +2030,7 @@
       document.getElementById('invoiceRequestForm').reset();
       const submitBtn = document.getElementById('invoiceSubmitBtn');
       submitBtn.disabled = true;
-      submitBtn.textContent = 'Send Invoice';
+      submitBtn.textContent = 'Send invoice';
     }
 
     async function submitInvoiceRequest(event) {
@@ -1814,10 +2041,20 @@
       const errorDiv = document.getElementById('invoiceFormError');
       const agreementCheckbox = document.getElementById('invoice-agreement-checkbox');
 
-      if (!agreementCheckbox.checked) {
+      const agreementAccepted = membershipAgreementIsCurrent();
+      if (!agreementAccepted && !agreementCheckbox.checked) {
         errorDiv.textContent = 'Please accept the membership agreement to continue.';
         errorDiv.style.display = 'block';
         return;
+      }
+      if (!agreementAccepted && !currentMembershipAgreementVersion) {
+        try {
+          await ensureMembershipAgreementVersion();
+        } catch (error) {
+          errorDiv.textContent = 'Unable to load the current membership agreement. Please refresh and try again.';
+          errorDiv.style.display = 'block';
+          return;
+        }
       }
 
       submitBtn.disabled = true;
@@ -1837,7 +2074,7 @@
           postal_code: formData.get('postal_code'),
           country: formData.get('country'),
         },
-        agreement_version: loadedAgreementVersion || undefined,
+        agreement_version: agreementAccepted ? undefined : currentMembershipAgreementVersion || undefined,
       };
       const storedReferralCode = localStorage.getItem('aao_referral_code');
       if (storedReferralCode) {
@@ -1878,7 +2115,7 @@
         errorDiv.textContent = error.message || 'Something went wrong. Please try again or contact finance@agenticadvertising.org';
         errorDiv.style.display = 'block';
         submitBtn.disabled = false;
-        submitBtn.textContent = 'Send Invoice';
+        submitBtn.textContent = 'Send invoice';
       }
     }
 
@@ -1904,14 +2141,73 @@
     // Format agreement type for display
     function formatAgreementType(type) {
       const map = {
-        'membership_agreement': 'Membership Agreement',
-        'terms_of_service': 'Terms of Use',
-        'privacy_policy': 'Privacy Policy',
+        'membership': 'Membership agreement',
+        'membership_agreement': 'Membership agreement',
+        'terms_of_service': 'Terms of use',
+        'privacy_policy': 'Privacy policy',
         'bylaws': 'Bylaws',
         'ip_policy': 'IP Policy',
         'antitrust_policy': 'Antitrust Policy'
       };
       return map[type] || type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    }
+
+    function getMembershipAgreementState(agreement) {
+      const currentVersion = agreement?.current_version || currentMembershipAgreementVersion;
+      const userVersion = agreement?.version || null;
+      const orgVersion = currentOrg?.agreement_version || null;
+      const pendingVersion = currentOrg?.pending_agreement_version || null;
+
+      if (currentVersion) {
+        rememberMembershipAgreementVersion(currentVersion);
+      }
+
+      if (currentVersion && orgVersion === currentVersion) {
+        return {
+          isSigned: true,
+          isOutdated: false,
+          statusClass: 'signed',
+          statusLabel: 'Signed',
+          version: orgVersion,
+          acceptedAt: currentOrg.agreement_signed_at || agreement?.accepted_at,
+          pending: false,
+        };
+      }
+
+      if (currentVersion && pendingVersion === currentVersion) {
+        return {
+          isSigned: true,
+          isOutdated: false,
+          statusClass: 'signed',
+          statusLabel: 'Accepted',
+          version: pendingVersion,
+          acceptedAt: currentOrg.pending_agreement_accepted_at,
+          pending: true,
+        };
+      }
+
+      if (currentVersion && userVersion === currentVersion && !agreement?.is_outdated) {
+        return {
+          isSigned: true,
+          isOutdated: false,
+          statusClass: 'signed',
+          statusLabel: 'Signed',
+          version: userVersion,
+          acceptedAt: agreement.accepted_at,
+          pending: false,
+        };
+      }
+
+      const hasAnyStoredVersion = !!(orgVersion || pendingVersion || userVersion);
+      return {
+        isSigned: false,
+        isOutdated: !!(currentVersion && hasAnyStoredVersion),
+        statusClass: currentVersion && hasAnyStoredVersion ? 'outdated' : 'required',
+        statusLabel: currentVersion && hasAnyStoredVersion ? 'Update available' : 'Required',
+        version: orgVersion || pendingVersion || userVersion,
+        acceptedAt: currentOrg?.agreement_signed_at || currentOrg?.pending_agreement_accepted_at || agreement?.accepted_at,
+        pending: pendingVersion && pendingVersion === (orgVersion || pendingVersion || userVersion),
+      };
     }
 
     // Escape HTML
@@ -1939,11 +2235,16 @@
         }
 
         listEl.innerHTML = agreements.map(agreement => {
-          const isSigned = !!agreement.version;
-          const isOutdated = agreement.is_outdated;
+          const isMembershipAgreement = agreement.type === 'membership';
+          const state = isMembershipAgreement ? getMembershipAgreementState(agreement) : null;
+          const isSigned = state ? state.isSigned : !!agreement.version;
+          const isOutdated = state ? state.isOutdated : agreement.is_outdated;
 
           let statusClass, statusLabel;
-          if (!isSigned) {
+          if (state) {
+            statusClass = state.statusClass;
+            statusLabel = state.statusLabel;
+          } else if (!isSigned) {
             statusClass = 'required';
             statusLabel = 'Required';
           } else if (isOutdated) {
@@ -1954,20 +2255,39 @@
             statusLabel = 'Signed';
           }
 
-          const signedDate = agreement.signed_at
-            ? new Date(agreement.signed_at).toLocaleDateString()
+          const signedDate = (state?.acceptedAt || agreement.accepted_at)
+            ? new Date(state?.acceptedAt || agreement.accepted_at).toLocaleDateString()
             : null;
 
-          const meta = signedDate
-            ? `Signed on ${signedDate}${isOutdated ? ' • New version available' : ''}`
-            : statusLabel;
+          let meta = statusLabel;
+          if (signedDate && state?.pending && !isOutdated) {
+            meta = `Accepted on ${signedDate} - Version ${state.version} - Pending payment`;
+          } else if (signedDate && state?.version) {
+            const dateLabel = isOutdated ? 'Last accepted' : state.statusLabel;
+            meta = `${dateLabel} on ${signedDate} - Version ${state.version}${isOutdated ? ' - New version available' : ''}`;
+          } else if (signedDate) {
+            meta = `Signed on ${signedDate}${isOutdated ? ' - New version available' : ''}`;
+          }
 
-          // Actions
+          // Actions. For the membership agreement we offer in-page review +
+          // signing via openSignAgreementModal — same write path as the
+          // checkout flow, no tier required. Other agreement types still
+          // open the read-only view in a new tab.
           let actions = '';
-          if (!isSigned) {
-            actions = `<button class="btn btn-primary btn-sm" onclick="viewAgreement('${escapeHtml(agreement.type)}')">Review & Sign</button>`;
+          const typeStr = escapeHtml(agreement.type);
+          if (isMembershipAgreement) {
+            if (!isSigned || isOutdated) {
+              actions = `
+                <button class="btn btn-secondary btn-sm" onclick="viewAgreement('${typeStr}')">View</button>
+                <button class="btn btn-primary btn-sm" onclick="openSignAgreementModal()">Review & sign</button>
+              `;
+            } else {
+              actions = `<button class="btn btn-secondary btn-sm" onclick="viewAgreement('${typeStr}')">View</button>`;
+            }
+          } else if (!isSigned) {
+            actions = `<button class="btn btn-primary btn-sm" onclick="viewAgreement('${typeStr}')">Review & sign</button>`;
           } else {
-            actions = `<button class="btn btn-secondary btn-sm" onclick="viewAgreement('${escapeHtml(agreement.type)}')">View</button>`;
+            actions = `<button class="btn btn-secondary btn-sm" onclick="viewAgreement('${typeStr}')">View</button>`;
           }
 
           return `
@@ -1994,6 +2314,167 @@
     // View an agreement
     function viewAgreement(type) {
       window.open(`/api/agreement?type=${encodeURIComponent(type)}`, '_blank');
+    }
+
+    // Standalone "Review & Sign" flow for the membership agreement. Opens a
+    // modal, fetches the current agreement, and POSTs acceptance directly to
+    // /pending-agreement — no checkout, no tier selection. Same write path as
+    // the invoice flow, just decoupled.
+    let signLoadedAgreementVersion = null;
+
+    function openSignAgreementModal() {
+      const modal = document.getElementById('signAgreementModal');
+      const errorEl = document.getElementById('signAgreementError');
+      const checkbox = document.getElementById('signModalAgreementCheckbox');
+      const btn = document.getElementById('signAgreementBtn');
+      errorEl.style.display = 'none';
+      checkbox.checked = false;
+      btn.disabled = true;
+      btn.textContent = 'Sign agreement';
+      modal.style.display = 'flex';
+      loadSignAgreementContent();
+    }
+
+    function closeSignAgreementModal() {
+      document.getElementById('signAgreementModal').style.display = 'none';
+    }
+
+    async function loadSignAgreementContent() {
+      const contentEl = document.getElementById('signModalAgreementContent');
+      try {
+        const response = await fetch('/api/agreement/current?type=membership');
+        if (!response.ok) throw new Error('Failed to load agreement');
+        const data = await response.json();
+        signLoadedAgreementVersion = rememberMembershipAgreementVersion(data.version || null);
+        contentEl.innerHTML = DOMPurify.sanitize(marked.parse(data.text || 'Agreement not available.'));
+      } catch (error) {
+        console.error('Error loading agreement:', error);
+        contentEl.textContent = 'Unable to load agreement. Please refresh.';
+      }
+    }
+
+    async function submitSignAgreement() {
+      const btn = document.getElementById('signAgreementBtn');
+      const errorEl = document.getElementById('signAgreementError');
+      if (!signLoadedAgreementVersion) {
+        errorEl.textContent = 'Agreement version not loaded. Please close and retry.';
+        errorEl.style.display = 'block';
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = 'Signing...';
+      errorEl.style.display = 'none';
+      try {
+        const response = await fetch(`/api/organizations/${currentOrg.id}/pending-agreement`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            agreement_version: signLoadedAgreementVersion,
+            agreement_accepted_at: new Date().toISOString(),
+          }),
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.message || 'Failed to sign agreement');
+        }
+        const data = await response.json().catch(() => ({}));
+        currentOrg.pending_agreement_version = data.agreement_version || signLoadedAgreementVersion;
+        currentOrg.pending_agreement_accepted_at = data.accepted_at || new Date().toISOString();
+        showToast('Agreement signed');
+        closeSignAgreementModal();
+        loadMyAgreements();
+      } catch (error) {
+        errorEl.textContent = error.message || 'Something went wrong. Please try again.';
+        errorEl.style.display = 'block';
+      } finally {
+        btn.disabled = !document.getElementById('signModalAgreementCheckbox').checked;
+        btn.textContent = 'Sign agreement';
+      }
+    }
+
+    // Render the billing-address card. Standalone — does not gate on agreement.
+    function renderBillingAddress() {
+      const display = document.getElementById('billingAddressDisplay');
+      const address = currentOrg?.billing_address;
+      if (!address || !address.line1) {
+        display.innerHTML = `
+          <p style="margin: 0 0 12px; color: var(--color-text-secondary); font-size: 14px;">
+            Add your billing address so invoices and receipts list the correct legal entity.
+          </p>
+          <button class="btn btn-primary btn-sm" onclick="openBillingAddressModal()">Add billing address</button>
+        `;
+        return;
+      }
+      const lines = [address.line1];
+      if (address.line2) lines.push(address.line2);
+      lines.push(`${address.city}, ${address.state} ${address.postal_code}`);
+      lines.push(address.country);
+      const html = lines.map((l) => escapeHtml(l)).join('<br>');
+      display.innerHTML = `
+        <div style="background: var(--color-bg-subtle); border: 1px solid var(--color-border); border-radius: 8px; padding: 16px; font-size: 14px; line-height: 1.6; margin-bottom: 12px;">${html}</div>
+        <button class="btn btn-secondary btn-sm" onclick="openBillingAddressModal()">Edit</button>
+      `;
+    }
+
+    function openBillingAddressModal() {
+      const a = currentOrg?.billing_address || {};
+      document.getElementById('billingAddressModalTitle').textContent =
+        a.line1 ? 'Edit billing address' : 'Add billing address';
+      document.getElementById('addr-line1').value = a.line1 || '';
+      document.getElementById('addr-line2').value = a.line2 || '';
+      document.getElementById('addr-city').value = a.city || '';
+      document.getElementById('addr-state').value = a.state || '';
+      document.getElementById('addr-postal').value = a.postal_code || '';
+      populateCountrySelect(document.getElementById('addr-country'), a.country || 'US');
+      document.getElementById('billingAddressError').style.display = 'none';
+      document.getElementById('billingAddressModal').style.display = 'flex';
+    }
+
+    function closeBillingAddressModal() {
+      document.getElementById('billingAddressModal').style.display = 'none';
+    }
+
+    async function submitBillingAddress(event) {
+      event.preventDefault();
+      const btn = document.getElementById('saveBillingAddressBtn');
+      const errorEl = document.getElementById('billingAddressError');
+      const form = document.getElementById('billingAddressForm');
+      const fd = new FormData(form);
+      const body = {
+        line1: (fd.get('line1') || '').trim(),
+        line2: (fd.get('line2') || '').trim() || undefined,
+        city: (fd.get('city') || '').trim(),
+        state: (fd.get('state') || '').trim(),
+        postal_code: (fd.get('postal_code') || '').trim(),
+        country: (fd.get('country') || '').trim(),
+      };
+
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+      errorEl.style.display = 'none';
+      try {
+        const response = await fetch(`/api/organizations/${currentOrg.id}/billing-address`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(body),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data.message || data.error || 'Failed to save address');
+        }
+        currentOrg.billing_address = data.billing_address;
+        renderBillingAddress();
+        closeBillingAddressModal();
+        showToast('Billing address saved');
+      } catch (error) {
+        errorEl.textContent = error.message || 'Something went wrong. Please try again.';
+        errorEl.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save address';
+      }
     }
 
     // Profile modal functions

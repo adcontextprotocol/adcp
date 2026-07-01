@@ -14,9 +14,14 @@ jobs:
   build:
     name: TypeScript Build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 15-min default was right at the edge; adding the OpenAPI freshness
+    # step (which re-runs the schema generator) tipped it over. 20 gives
+    # headroom without masking real regressions.
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.0
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -29,8 +34,41 @@ jobs:
         env:
           PUPPETEER_SKIP_DOWNLOAD: 'true'
 
+      - name: Check immutable release artifacts
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_REF="origin/${{ github.base_ref }}"
+          else
+            BASE_REF="${{ github.event.before }}"
+            if [ -z "${BASE_REF}" ] || [ "${BASE_REF}" = "0000000000000000000000000000000000000000" ]; then
+              BASE_REF="HEAD^"
+            fi
+          fi
+          npm run test:immutable-release-artifacts
+          node scripts/check-immutable-release-artifacts.cjs "${BASE_REF}"
+
       - name: Build
         run: npm run build
+
+      - name: Storyboard lint tests
+        run: >
+          npm run test:storyboard-sample-request-schema &&
+          npm run test:storyboard-response-schema &&
+          npm run test:storyboard-context-output-paths &&
+          npm run test:storyboard-validations-paths &&
+          npm run test:refine-finalize-validation-ids &&
+          npm run test:update-media-buy-affected-packages &&
+          npm run test:compliance-source-authority
+
+      - name: Assert dist/ contains every server/src runtime asset
+        # PR #4769 root cause: ui-element-formats.json was added to source
+        # and `require()`d by task-handlers.ts, but the build script didn't
+        # copy it into dist/, so the runtime image crashlooped with
+        # `Cannot find module './ui-element-formats.json'`. Prod was down
+        # ~75 min. This assertion fails CI the moment a referenced asset
+        # would be missing in the shipping artifact.
+        run: node scripts/copy-server-assets.cjs --check
 
       - name: Server unit tests
         run: npm run test:server-unit
@@ -38,11 +76,43 @@ jobs:
       - name: Repo unit tests
         run: npm run test:unit
 
+      - name: Storyboard raw-mode-required lint tests
+        run: npm run test:storyboard-raw-mode-required
+
+      - name: Storyboard upstream-traffic path lint tests
+        run: npm run test:storyboard-upstream-traffic-paths
+
       - name: Schema link plugin tests
         run: npm run test:schema-links
 
       - name: Validate schemas
-        run: npm run test:schemas && npm run test:json-schema && npm run test:extension-schemas && npm run test:composed
+        run: npm run test:schemas && npm run test:json-schema && npm run test:adagents-catalog-only && npm run test:extension-schemas && npm run test:composed
+
+      - name: Canonical reference resolver fixtures
+        run: npm run test:canonical-reference-resolver
+
+      - name: OpenAPI freshness (static/openapi/registry.yaml regenerated from Zod source)
+        # generate-openapi.ts transitively imports auth middleware which
+        # constructs WorkOS at module load. CI doesn't ship those secrets
+        # and doesn't need them — the script never makes a network call.
+        # Dummy values just satisfy constructor validation.
+        env:
+          WORKOS_API_KEY: sk_dummy_ci_only
+          WORKOS_CLIENT_ID: client_dummy_ci_only
+          STRIPE_SECRET_KEY: sk_dummy_ci_only
+          RESEND_API_KEY: re_dummy_ci_only
+        run: npm run test:openapi
+
+      - name: Fetch 3.0.x for error-code drift comparison
+        if: github.ref != 'refs/heads/3.0.x' && github.base_ref != '3.0.x'
+        run: git fetch --depth=1 origin +3.0.x:refs/remotes/origin/3.0.x
+
+      - name: Error-code drift vs 3.0.x
+        if: github.ref != 'refs/heads/3.0.x' && github.base_ref != '3.0.x'
+        run: npm run test:error-code-drift
+
+      - name: Check oneOf discriminator baseline (adcp#3917)
+        run: npm run test:oneof-discriminators
 
       - name: Check policy registry publication completeness
         run: npm run check:registry
@@ -50,8 +120,8 @@ jobs:
       - name: Check platform-agnosticism (no vendor tokens in normative field names)
         run: npm run test:platform-agnostic
 
-      - name: HMAC webhook conformance (verifier + signer)
-        run: npm run test:hmac-vectors && npm run test:hmac-signer-conformance
+      - name: Webhook conformance (HMAC + RFC 9421 vectors)
+        run: npm run test:hmac-vectors && npm run test:hmac-signer-conformance && npm run test:webhook-signing-vectors
 
   server-integration:
     name: Server integration tests
@@ -77,7 +147,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://ci_runner:ci_runner_throwaway_no_secret_value@127.0.0.1:5432/adcp_test
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.0
 
       - name: Setup Node.js
         uses: actions/setup-node@v6

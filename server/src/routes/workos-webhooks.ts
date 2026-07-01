@@ -21,15 +21,29 @@
 import { Router, Request, Response } from 'express';
 import { createLogger } from '../logger.js';
 import { getPool } from '../db/client.js';
+import { invalidateSessionsForUsers } from '../middleware/auth.js';
+import { promoteSecondaryIfPrimaryDeleted } from '../db/identity-db.js';
+import {
+  upsertWorkosDomain,
+  autoPromotePrimaryIfNone,
+  removeWorkosDomainAndReselectPrimary,
+} from '../db/organization-domains-db.js';
 import { BrandDatabase } from '../db/brand-db.js';
-import { getWorkos } from '../auth/workos-client.js';
+import { getWorkos, getOwnerlessPromotionWorkos } from '../auth/workos-client.js';
 import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
 import { tryAutoLinkWebsiteUserToSlack } from '../slack/sync.js';
+import { resolveUserNameWithFallbacks } from '../utils/resolve-user-name.js';
 import { triageAndNotify } from '../services/prospect-triage.js';
 import { researchDomain, trackBackground } from '../services/brand-enrichment.js';
 import { isFreeEmailDomain } from '../utils/email-domain.js';
+import { notifyBrandClaimOpportunity } from '../notifications/registry.js';
+import { getNudgeDismissal, recordNudgeDismissal } from '../db/user-nudges-db.js';
+import { getCompanyDomain } from '../utils/email-domain.js';
+import { canonicalizeBrandDomain, assertClaimableBrandDomain } from '../services/identifier-normalization.js';
 import { resolvePreferredOrganization, backfillPrimaryOrganization } from '../db/users-db.js';
 import { notifySystemError } from '../addie/error-notifier.js';
+import { canAddSeat, type SeatType, OrganizationDatabase } from '../db/organization-db.js';
+import { sendToOrgAdmins, escapeSlackMrkdwn } from '../slack/org-group-dm.js';
 import {
   upsertOrganizationMembership,
   deleteOrganizationMembership,
@@ -37,7 +51,10 @@ import {
   findSuccessorForPromotion,
   setMembershipRole,
   autoLinkByVerifiedDomain,
+  resolveRoleWithWorkosFirstPromote,
 } from '../db/membership-db.js';
+
+const orgDb = new OrganizationDatabase();
 
 const logger = createLogger('workos-webhooks');
 
@@ -72,14 +89,14 @@ interface OrganizationDomainData {
  * WorkOS organization_domain event data
  * This is the full domain object from organization_domain.* events
  */
-interface OrganizationDomainEventData {
+export interface OrganizationDomainEventData {
   id: string;
   domain?: string;
   organization_id: string;
   state: 'verified' | 'pending' | 'failed';
 }
 
-interface OrganizationData {
+export interface OrganizationData {
   id: string;
   name: string;
   domains: OrganizationDomainData[];
@@ -90,6 +107,91 @@ interface OrganizationData {
 /**
  * Upsert organization membership to local database
  */
+/**
+ * Look up admin/owner emails for an org from the local membership mirror.
+ * Cheap query — no WorkOS round-trip — used by webhook-driven notifications
+ * (e.g. seat-cap refusal) where we want to nudge the human in the loop.
+ * Returns an empty array when no admins exist or the lookup fails; the
+ * caller decides whether to fall back to a system-error notification.
+ */
+async function getOrgAdminEmails(orgId: string): Promise<string[]> {
+  try {
+    const result = await getPool().query<{ email: string }>(
+      `SELECT email FROM organization_memberships
+       WHERE workos_organization_id = $1
+         AND role IN ('admin', 'owner')
+         AND email IS NOT NULL`,
+      [orgId]
+    );
+    return result.rows.map(r => r.email).filter(Boolean);
+  } catch (err) {
+    logger.warn({ err, orgId }, 'Failed to look up admin emails for org');
+    return [];
+  }
+}
+
+/**
+ * Notify org admins via Slack that we refused to mirror a webhook-driven
+ * membership add because the org is over its seat cap. Best-effort —
+ * Slack send failures don't block webhook processing (we already returned
+ * 200 to WorkOS at this point so retrying isn't useful).
+ */
+async function notifyAdminsOfRefusedMembership(input: {
+  orgId: string;
+  newUserEmail: string;
+  seatType: SeatType;
+  reason: string;
+}): Promise<void> {
+  try {
+    const adminEmails = await getOrgAdminEmails(input.orgId);
+    if (adminEmails.length === 0) {
+      logger.info({ orgId: input.orgId }, 'No admins for refused-membership notification — falling back to system error');
+      notifySystemError({
+        source: 'seat-cap-refusal',
+        errorMessage: `Refused webhook-driven membership for ${input.newUserEmail} on org ${input.orgId} (over cap), no Slack-mapped admins to notify`,
+      });
+      return;
+    }
+    const seatLabel = input.seatType === 'contributor' ? 'contributor' : 'community';
+    const safeEmail = escapeSlackMrkdwn(input.newUserEmail);
+    await sendToOrgAdmins(input.orgId, adminEmails, {
+      text: `Heads up: WorkOS tried to add ${input.newUserEmail} but you're at your ${seatLabel} seat cap`,
+      blocks: [
+        {
+          type: 'header',
+          text: { type: 'plain_text', text: 'Membership add over seat cap', emoji: true },
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `WorkOS tried to add *${safeEmail}* to your organization, but you're at your *${seatLabel}* seat cap. We didn't mirror the membership locally — they have the WorkOS record but won't appear in our team list, won't count toward billing, and won't get AAO features.\n\n${escapeSlackMrkdwn(input.reason)}`,
+          },
+        },
+        {
+          type: 'actions',
+          elements: [
+            {
+              type: 'button',
+              text: { type: 'plain_text', text: 'Upgrade plan', emoji: true },
+              url: 'https://agenticadvertising.org/membership',
+              action_id: 'seat_cap_refused_upgrade',
+            },
+            {
+              type: 'button',
+              text: { type: 'plain_text', text: 'Manage team', emoji: true },
+              url: `https://agenticadvertising.org/team?org=${input.orgId}`,
+              action_id: 'seat_cap_refused_manage',
+            },
+          ],
+        },
+      ],
+    });
+  } catch (err) {
+    logger.warn({ err, orgId: input.orgId }, 'Failed to notify admins of refused membership');
+  }
+}
+
 async function upsertMembership(
   membership: OrganizationMembershipData,
   user?: UserData
@@ -114,13 +216,28 @@ async function upsertMembership(
     }
   }
 
-  // Only sync active memberships
   if (membership.status !== 'active') {
-    logger.debug({ membershipId: membership.id, status: membership.status }, 'Skipping non-active membership');
+    logger.info(
+      { membershipId: membership.id, status: membership.status, userId: membership.user_id, orgId: membership.organization_id },
+      'Removing non-active organization membership from local cache',
+    );
+    await deleteInactiveMembershipCache(membership);
     return;
   }
 
-  const role = membership.role?.slug || 'member';
+  const incomingRole = membership.role?.slug || 'member';
+
+  // Resolve final role against WorkOS BEFORE we touch local. If we need to
+  // auto-promote this user (ownerless-org safety net), push the change to
+  // WorkOS first and only then write the resolved role locally. WorkOS is
+  // the source of truth — local must never get ahead of it.
+  const resolution = await resolveRoleWithWorkosFirstPromote({
+    workos: getOwnerlessPromotionWorkos(),
+    membershipId: membership.id,
+    userId: membership.user_id,
+    organizationId: membership.organization_id,
+    incomingRole,
+  });
 
   // Consume any pending seat_type + provisioning_source staged by the
   // endpoint that triggered this membership creation. Falls back to defaults
@@ -128,41 +245,97 @@ async function upsertMembership(
   // WorkOS rather than through one of our endpoints).
   const consumed = await consumeInvitationSeatType(membership.organization_id, userData.email);
   const hasExplicitSeatType = consumed !== null;
-  const seatType = consumed?.seat_type || 'community_only';
+  const seatType: SeatType = consumed?.seat_type === 'contributor' ? 'contributor' : 'community_only';
   const provisioningSource = consumed?.source || 'webhook';
 
-  const { assigned_role } = await upsertOrganizationMembership({
+  // Seat-cap enforcement for un-staged membership adds. When the membership
+  // came through one of our invite endpoints, the cap was already checked at
+  // issue time and the row in invitation_seat_types reserved the seat — the
+  // consume above releases that reservation, so re-checking would always
+  // pass. Webhook-driven adds without a staged invite (SSO domain auto-join,
+  // dashboard direct add, API direct add) bypass our checks entirely. Refuse
+  // and notify so a multi-user company can't squeeze onto a 1-seat
+  // individual sub by adding members in WorkOS directly.
+  if (!hasExplicitSeatType) {
+    const availability = await canAddSeat(membership.organization_id, seatType);
+    if (!availability.allowed) {
+      logger.warn({
+        orgId: membership.organization_id,
+        userId: membership.user_id,
+        email: userData.email,
+        seatType,
+        reason: availability.reason,
+      }, 'Refusing to mirror webhook-driven membership: org over seat cap');
+      void notifyAdminsOfRefusedMembership({
+        orgId: membership.organization_id,
+        newUserEmail: userData.email,
+        seatType,
+        reason: availability.reason ?? 'Seat cap reached',
+      });
+      return;
+    }
+  }
+
+  await upsertOrganizationMembership({
     user_id: membership.user_id,
     organization_id: membership.organization_id,
     membership_id: membership.id,
     email: userData.email,
     first_name: userData.first_name,
     last_name: userData.last_name,
-    role,
+    role: resolution.role,
     seat_type: seatType,
     has_explicit_seat_type: hasExplicitSeatType,
     provisioning_source: provisioningSource,
   });
 
-  // If the DB promoted this member to owner, sync the change to WorkOS
-  if (assigned_role === 'owner' && role === 'member') {
+  // Audit-log both outcomes of the ownerless-org auto-promote path so future
+  // role-drift questions have a paper trail in registry_audit_log (and we
+  // don't have to grep production logs to reconstruct what happened).
+  if (resolution.promoted) {
+    logger.info({
+      membershipId: membership.id,
+      userId: membership.user_id,
+      orgId: membership.organization_id,
+    }, 'Auto-promoted member to owner in WorkOS — org had no other admin/owner');
     try {
-      await getWorkos().userManagement.updateOrganizationMembership(membership.id, {
-        roleSlug: 'owner',
+      await orgDb.recordAuditLog({
+        workos_organization_id: membership.organization_id,
+        workos_user_id: membership.user_id,
+        action: 'membership_auto_promoted_to_owner',
+        resource_type: 'membership',
+        resource_id: membership.id,
+        details: {
+          email: userData.email,
+          previous_role: incomingRole,
+          new_role: 'owner',
+          reason: 'ownerless_org_safety_net',
+        },
       });
-      logger.info({
-        membershipId: membership.id,
-        userId: membership.user_id,
-        orgId: membership.organization_id,
-      }, 'Promoted member to owner — org had no admin');
-    } catch (err) {
-      // Roll back local promotion to stay in sync with WorkOS
-      await setMembershipRole(membership.user_id, membership.organization_id, 'member')
-        .catch((rollbackErr) => {
-          logger.error({ err: rollbackErr, orgId: membership.organization_id },
-            'Failed to roll back local owner promotion — local/WorkOS role divergence');
-        });
-      logger.warn({ err, orgId: membership.organization_id }, 'Failed to promote member to owner in WorkOS, rolled back local role');
+    } catch (auditErr) {
+      logger.warn({ err: auditErr, membershipId: membership.id },
+        'Failed to write audit log for auto-promotion');
+    }
+  } else if (resolution.promotionError !== undefined) {
+    const err = resolution.promotionError;
+    const errMessage = err instanceof Error ? err.message : String(err);
+    try {
+      await orgDb.recordAuditLog({
+        workos_organization_id: membership.organization_id,
+        workos_user_id: membership.user_id,
+        action: 'membership_auto_promote_failed',
+        resource_type: 'membership',
+        resource_id: membership.id,
+        details: {
+          email: userData.email,
+          attempted_role: 'owner',
+          fallback_role: resolution.role,
+          error: errMessage,
+        },
+      });
+    } catch (auditErr) {
+      logger.warn({ err: auditErr, membershipId: membership.id },
+        'Failed to write audit log for auto-promotion failure');
     }
   }
 
@@ -177,6 +350,25 @@ async function upsertMembership(
   } catch (err) {
     logger.warn({ err, userId: membership.user_id }, 'primary_organization_id backfill failed during membership upsert');
   }
+}
+
+/**
+ * Delete a non-active membership from the local cache only.
+ *
+ * WorkOS membership.updated events can mark a membership inactive. That should
+ * remove local access immediately, but it must not run owner-succession logic:
+ * promotion is reserved for explicit organization_membership.deleted events.
+ */
+async function deleteInactiveMembershipCache(membership: OrganizationMembershipData): Promise<void> {
+  const deletedRole = await deleteOrganizationMembership(membership.user_id, membership.organization_id);
+
+  logger.info({
+    membershipId: membership.id,
+    userId: membership.user_id,
+    orgId: membership.organization_id,
+    role: deletedRole,
+    status: membership.status,
+  }, 'Deleted non-active organization membership from local cache');
 }
 
 /**
@@ -247,43 +439,9 @@ async function deleteMembership(membership: OrganizationMembershipData): Promise
 async function upsertUser(user: UserData): Promise<void> {
   const pool = getPool();
 
-  // Resolve names: prefer WorkOS values, but when WorkOS sends empty names,
-  // preserve existing DB values or backfill from Slack mapping
-  let firstName = user.first_name;
-  let lastName = user.last_name;
-
-  if (!firstName?.trim() || !lastName?.trim()) {
-    const existing = await pool.query<{
-      first_name: string | null;
-      last_name: string | null;
-      slack_real_name: string | null;
-      slack_display_name: string | null;
-    }>(
-      `SELECT u.first_name, u.last_name, sm.slack_real_name, sm.slack_display_name
-       FROM users u
-       LEFT JOIN slack_user_mappings sm ON sm.slack_user_id = u.primary_slack_user_id
-       WHERE u.workos_user_id = $1`,
-      [user.id]
-    );
-
-    if (existing.rows.length > 0) {
-      const row = existing.rows[0];
-
-      // Keep existing DB names if WorkOS sends empty
-      if (!firstName?.trim()) firstName = row.first_name;
-      if (!lastName?.trim()) lastName = row.last_name;
-
-      // Backfill from Slack if still empty
-      if (!firstName?.trim() && !lastName?.trim()) {
-        const slackName = row.slack_real_name || row.slack_display_name;
-        if (slackName) {
-          const parts = slackName.trim().split(/\s+/);
-          firstName = parts[0];
-          lastName = parts.length > 1 ? parts.slice(1).join(' ') : null;
-        }
-      }
-    }
-  }
+  const { firstName, lastName } = await resolveUserNameWithFallbacks(
+    pool, user.id, user.first_name, user.last_name,
+  );
 
   await pool.query(
     `INSERT INTO users (
@@ -372,6 +530,16 @@ async function updateUserAcrossMemberships(user: UserData): Promise<void> {
     [user.email, user.id]
   );
 
+  // person_relationships denormalizes users.email too. Keep it in sync so
+  // the admin person-detail header doesn't lag the canonical email after a
+  // WorkOS-side update (dashboard edit, OIDC profile sync, primary swap).
+  await pool.query(
+    `UPDATE person_relationships SET email = $1, updated_at = NOW()
+      WHERE workos_user_id = $2
+        AND email IS DISTINCT FROM $1`,
+    [user.email, user.id]
+  );
+
   logger.info({
     userId: user.id,
     updatedCount: result.rowCount,
@@ -399,7 +567,7 @@ async function deleteUserMemberships(userId: string): Promise<void> {
  * Sync organization domains from WorkOS
  * This upserts domains and removes any that are no longer in WorkOS
  */
-async function syncOrganizationDomains(org: OrganizationData): Promise<void> {
+export async function syncOrganizationDomains(org: OrganizationData): Promise<void> {
   const pool = getPool();
 
   // First check if the organization exists in our database
@@ -413,14 +581,18 @@ async function syncOrganizationDomains(org: OrganizationData): Promise<void> {
     return;
   }
 
-  if (orgCheck.rows[0].is_personal) {
-    logger.debug({ orgId: org.id, orgName: org.name }, 'Personal organization, skipping domain sync');
-    return;
-  }
+  const isPersonal = orgCheck.rows[0].is_personal === true;
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    await client.query(
+      `SELECT 1 FROM organizations
+        WHERE workos_organization_id = $1
+        FOR UPDATE`,
+      [org.id],
+    );
 
     // Get current domains for this org
     const currentDomainsResult = await client.query(
@@ -429,27 +601,20 @@ async function syncOrganizationDomains(org: OrganizationData): Promise<void> {
     );
     const currentDomains = new Set(currentDomainsResult.rows.map(r => r.domain));
 
-    // Upsert each domain from WorkOS
+    // Upsert each domain from WorkOS — runs for ALL orgs. Personal-tier orgs
+    // can verify and own a brand domain; we record that fact. Squeeze
+    // prevention happens at the seat-cap layer, not by hiding ownership.
     const workOSDomains = new Set<string>();
-    for (let i = 0; i < org.domains.length; i++) {
-      const domainData = org.domains[i];
+    for (const domainData of org.domains) {
       workOSDomains.add(domainData.domain);
 
-      await client.query(
-        `INSERT INTO organization_domains (
-          workos_organization_id, domain, is_primary, verified, source
-        ) VALUES ($1, $2, $3, $4, 'workos')
-        ON CONFLICT (domain) DO UPDATE SET
-          workos_organization_id = EXCLUDED.workos_organization_id,
-          verified = EXCLUDED.verified,
-          source = 'workos',
-          updated_at = NOW()`,
-        [
-          org.id,
-          domainData.domain,
-          i === 0, // First domain is primary
-          domainData.state === 'verified',
-        ]
+      await upsertWorkosDomain(
+        {
+          orgId: org.id,
+          domain: domainData.domain,
+          verified: domainData.state === 'verified',
+        },
+        client,
       );
     }
 
@@ -465,13 +630,63 @@ async function syncOrganizationDomains(org: OrganizationData): Promise<void> {
       }
     }
 
-    // Update the email_domain column on organizations with the primary domain
-    const primaryDomain = org.domains.length > 0 ? org.domains[0].domain : null;
-    await client.query(
-      `UPDATE organizations SET email_domain = $1, updated_at = NOW()
-       WHERE workos_organization_id = $2`,
-      [primaryDomain, org.id]
-    );
+    if (!isPersonal) {
+      const fallbackPrimary = await client.query<{ domain: string }>(
+        `SELECT domain FROM organization_domains
+          WHERE workos_organization_id = $1 AND verified = true
+          ORDER BY created_at ASC
+          LIMIT 1`,
+        [org.id],
+      );
+      const fallbackPrimaryDomain = fallbackPrimary.rows[0]?.domain ?? null;
+      if (fallbackPrimaryDomain) {
+        await autoPromotePrimaryIfNone(
+          { orgId: org.id, domain: fallbackPrimaryDomain },
+          client,
+        );
+      }
+    }
+
+    // Update organizations.email_domain only for non-personal orgs — this
+    // column is the auto-membership inference key and applying it to
+    // personal-tier orgs would let `@vastlint.org` users auto-resolve to a
+    // 1-seat individual sub.
+    //
+    // Source the value from `organization_domains.is_primary=true` (the
+    // canonical brand-primary the rest of the system honors) rather than
+    // `org.domains[0]`. WorkOS's domain-array order is not stable: orgs
+    // with multiple domains (e.g. a verified root + a `failed` www variant)
+    // can have WorkOS list the failed one first, which would otherwise
+    // overwrite the correct email_domain on every webhook fire. The
+    // `upsertWorkosDomain` loop above doesn't change `is_primary` on
+    // same-org conflict, and `autoPromotePrimaryIfNone` only fills a missing
+    // primary, so our table preserves the canonical choice; reading from
+    // there keeps `email_domain` in lockstep with what auto-membership
+    // inference and brand-registry lookups already use.
+    //
+    // Fallback to `org.domains[0]` covers the initial-sync case (this is
+    // the first webhook for this org and none of its domains are verified
+    // yet, no `organization_domains` rows are is_primary=true. The fallback
+    // preserves the legacy email_domain behavior without manufacturing a
+    // brand-primary row from an unverified domain.
+    let primaryDomain: string | null = null;
+    if (!isPersonal) {
+      const primaryRow = await client.query<{ domain: string }>(
+        `SELECT domain FROM organization_domains
+         WHERE workos_organization_id = $1 AND is_primary = true
+         LIMIT 1`,
+        [org.id],
+      );
+      primaryDomain = primaryRow.rows[0]?.domain
+        ?? (org.domains.length > 0 ? org.domains[0].domain : null);
+      await client.query(
+        `UPDATE organizations SET email_domain = $1, updated_at = NOW()
+         WHERE workos_organization_id = $2`,
+        [primaryDomain, org.id]
+      );
+    } else if (org.domains.length > 0) {
+      primaryDomain = org.domains[0].domain;
+    }
 
     await client.query('COMMIT');
 
@@ -480,7 +695,32 @@ async function syncOrganizationDomains(org: OrganizationData): Promise<void> {
       orgName: org.name,
       domainCount: org.domains.length,
       primaryDomain,
+      isPersonal,
     }, 'Synced organization domains');
+
+    // Mirror verified domains into the brand registry — independent of org
+    // tier (an Individual Professional member CAN own a verified brand).
+    const brandDb = new BrandDatabase();
+    for (const domainData of org.domains) {
+      if (domainData.state !== 'verified') continue;
+      const normalizedDomain = domainData.domain.toLowerCase();
+      try {
+        assertClaimableBrandDomain(canonicalizeBrandDomain(normalizedDomain));
+      } catch (err) {
+        logger.warn({
+          orgId: org.id,
+          domain: normalizedDomain,
+          reason: err instanceof Error ? err.message : String(err),
+        }, 'Skipping brand registry sync: domain is shared platform or public suffix');
+        continue;
+      }
+      try {
+        await brandDb.markBrandDomainVerified(normalizedDomain, org.id);
+        logger.info({ orgId: org.id, domain: normalizedDomain, isPersonal }, 'Synced verified domain to brand registry');
+      } catch (err) {
+        logger.error({ err, orgId: org.id, domain: normalizedDomain }, 'Failed to sync verified domain to brand registry');
+      }
+    }
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
@@ -510,10 +750,11 @@ async function deleteOrganizationDomains(orgId: string): Promise<void> {
  * Upsert a single organization domain from organization_domain.* events
  * Uses transaction to prevent race conditions when setting primary domain
  */
-async function upsertOrganizationDomain(domainData: OrganizationDomainEventData & { domain: string }): Promise<void> {
+export async function upsertOrganizationDomain(domainData: OrganizationDomainEventData & { domain: string }): Promise<void> {
   const pool = getPool();
   const client = await pool.connect();
 
+  let isPersonal = false;
   try {
     await client.query('BEGIN');
 
@@ -533,55 +774,36 @@ async function upsertOrganizationDomain(domainData: OrganizationDomainEventData 
       return;
     }
 
-    if (orgCheck.rows[0].is_personal) {
-      await client.query('ROLLBACK');
-      logger.debug(
-        { orgId: domainData.organization_id, domain: domainData.domain },
-        'Personal organization, skipping domain upsert'
-      );
-      return;
-    }
+    isPersonal = orgCheck.rows[0].is_personal === true;
 
     // Normalize domain to lowercase
     const normalizedDomain = domainData.domain.toLowerCase();
 
-    await client.query(
-      `INSERT INTO organization_domains (
-        workos_organization_id, domain, verified, source
-      ) VALUES ($1, $2, $3, 'workos')
-      ON CONFLICT (domain) DO UPDATE SET
-        workos_organization_id = EXCLUDED.workos_organization_id,
-        verified = EXCLUDED.verified,
-        source = 'workos',
-        updated_at = NOW()`,
-      [
-        domainData.organization_id,
-        normalizedDomain,
-        domainData.state === 'verified',
-      ]
+    // Mirror organization_domains for ALL orgs — this table reflects WorkOS
+    // truth about who owns which domain. The squeeze-prevention concern
+    // (multi-user companies sneaking onto a 1-seat individual sub) is
+    // enforced at the seat-cap layer (checkSeatAvailability), not by hiding
+    // the ownership claim in the data layer.
+    await upsertWorkosDomain(
+      {
+        orgId: domainData.organization_id,
+        domain: normalizedDomain,
+        verified: domainData.state === 'verified',
+      },
+      client,
     );
 
-    // If this is verified and there's no primary domain yet, make it primary (atomic)
-    if (domainData.state === 'verified') {
-      const updated = await client.query(
-        `UPDATE organization_domains SET is_primary = true, updated_at = NOW()
-         WHERE workos_organization_id = $1 AND domain = $2
-         AND NOT EXISTS (
-           SELECT 1 FROM organization_domains
-           WHERE workos_organization_id = $1 AND is_primary = true AND domain != $2
-         )
-         RETURNING domain`,
-        [domainData.organization_id, normalizedDomain]
+    // is_primary + organizations.email_domain drive auto-membership inference
+    // (e.g. "any user signing up with @acme.com belongs to the Acme org").
+    // That's the actual squeeze surface for personal-tier orgs — a single
+    // individual sub shouldn't auto-claim every employee at vastlint.org.
+    // Skip the inference wiring for personal orgs; the verified row above
+    // still records the ownership fact.
+    if (!isPersonal && domainData.state === 'verified') {
+      await autoPromotePrimaryIfNone(
+        { orgId: domainData.organization_id, domain: normalizedDomain },
+        client,
       );
-
-      // If we set this as primary, also update the email_domain column
-      if (updated.rows.length > 0) {
-        await client.query(
-          `UPDATE organizations SET email_domain = $1, updated_at = NOW()
-           WHERE workos_organization_id = $2`,
-          [normalizedDomain, domainData.organization_id]
-        );
-      }
     }
 
     await client.query('COMMIT');
@@ -590,31 +812,57 @@ async function upsertOrganizationDomain(domainData: OrganizationDomainEventData 
       orgId: domainData.organization_id,
       domain: normalizedDomain,
       verified: domainData.state === 'verified',
+      isPersonal,
     }, 'Upserted organization domain');
 
     // Sync the brand registry: if WorkOS just confirmed the domain is owned
     // by this org, mirror ownership + verified flags into the brands row
-    // (#3176). Use the sync-only method — NOT applyVerifiedBrandClaim —
-    // because the webhook doesn't know the user's adopt-vs-fresh decision
-    // and would otherwise clobber a manifest the inline /verify route
-    // intentionally adopted seconds earlier.
+    // (#3176). Brand identity is orthogonal to org-membership inference —
+    // an Individual Professional member CAN own and verify a brand, that's
+    // the entire purpose of the tier. Run this for all orgs.
     //
-    // For dashboard-flipped domains (admin marked verified directly in the
-    // WorkOS console, no inline /verify call), this path is the ONLY writer.
-    // A failure here means the brand row will lag the WorkOS state until the
-    // next event for this domain — investigate logs if it surfaces.
+    // Use the sync-only method — NOT applyVerifiedBrandClaim — because the
+    // webhook doesn't know the user's adopt-vs-fresh decision and would
+    // otherwise clobber a manifest the inline /verify route intentionally
+    // adopted seconds earlier.
     if (domainData.state === 'verified') {
+      // Defense in depth: don't mirror shared-platform / public-suffix
+      // domains into the brand registry even if WorkOS marked them verified
+      // (e.g. an admin manually flipping `gmail.com` would otherwise let one
+      // org claim the brand identity for every Gmail-hosted property).
+      let claimable = true;
       try {
-        const brandDb = new BrandDatabase();
-        await brandDb.markBrandDomainVerified(normalizedDomain, domainData.organization_id);
-        logger.info({
+        assertClaimableBrandDomain(canonicalizeBrandDomain(normalizedDomain));
+      } catch (err) {
+        claimable = false;
+        logger.warn({
           orgId: domainData.organization_id,
           domain: normalizedDomain,
-        }, 'Synced verified domain to brand registry');
-      } catch (err) {
-        // Don't block the webhook on brand-registry sync errors — webhook
-        // idempotency is the whole point. Subsequent events will retry.
-        logger.error({ err, orgId: domainData.organization_id, domain: normalizedDomain }, 'Failed to sync verified domain to brand registry');
+          reason: err instanceof Error ? err.message : String(err),
+        }, 'Skipping brand registry sync: domain is shared platform or public suffix');
+      }
+
+      if (claimable) {
+        try {
+          const brandDb = new BrandDatabase();
+          await brandDb.markBrandDomainVerified(normalizedDomain, domainData.organization_id);
+          logger.info({
+            orgId: domainData.organization_id,
+            domain: normalizedDomain,
+            isPersonal,
+          }, 'Synced verified domain to brand registry');
+        } catch (err) {
+          // Don't block the webhook on brand-registry sync errors — webhook
+          // idempotency is the whole point. Subsequent events will retry.
+          logger.error({ err, orgId: domainData.organization_id, domain: normalizedDomain }, 'Failed to sync verified domain to brand registry');
+        }
+
+        // After Stage 2 of #4159, brand-identity primary lives on the same
+        // organization_domains.is_primary row as org-membership-inference.
+        // The auto-promote-to-is_primary above (when no other primary exists)
+        // covers the auto-populate case — a member verifying their first
+        // domain via WorkOS now seeds both facets in one write. Stage 1's
+        // separate primary_brand_domain auto-populate is no longer needed.
       }
     }
   } catch (error) {
@@ -639,54 +887,27 @@ async function deleteSingleOrganizationDomain(domainData: OrganizationDomainEven
     // Normalize domain to lowercase
     const normalizedDomain = domainData.domain.toLowerCase();
 
-    const result = await client.query(
-      `DELETE FROM organization_domains
-       WHERE workos_organization_id = $1 AND domain = $2 AND source = 'workos'
-       RETURNING is_primary`,
-      [domainData.organization_id, normalizedDomain]
+    await client.query(
+      `SELECT 1 FROM organizations
+        WHERE workos_organization_id = $1
+        FOR UPDATE`,
+      [domainData.organization_id],
     );
 
-    if (result.rowCount && result.rowCount > 0) {
-      const wasPrimary = result.rows[0]?.is_primary;
+    const result = await removeWorkosDomainAndReselectPrimary(
+      { orgId: domainData.organization_id, domain: normalizedDomain },
+      client,
+    );
 
-      // If we deleted the primary domain, pick a new one
-      let newPrimary: string | null = null;
-      if (wasPrimary) {
-        const remaining = await client.query(
-          `SELECT domain FROM organization_domains
-           WHERE workos_organization_id = $1 AND verified = true
-           ORDER BY created_at ASC
-           LIMIT 1`,
-          [domainData.organization_id]
-        );
+    await client.query('COMMIT');
 
-        newPrimary = remaining.rows.length > 0 ? remaining.rows[0].domain : null;
-
-        if (newPrimary) {
-          await client.query(
-            `UPDATE organization_domains SET is_primary = true, updated_at = NOW()
-             WHERE workos_organization_id = $1 AND domain = $2`,
-            [domainData.organization_id, newPrimary]
-          );
-        }
-
-        await client.query(
-          `UPDATE organizations SET email_domain = $1, updated_at = NOW()
-           WHERE workos_organization_id = $2`,
-          [newPrimary, domainData.organization_id]
-        );
-      }
-
-      await client.query('COMMIT');
-
+    if (result.deleted) {
       logger.info({
         orgId: domainData.organization_id,
         domain: normalizedDomain,
-        wasPrimary,
-        newPrimary,
+        wasPrimary: result.wasPrimary,
+        newPrimary: result.newPrimary,
       }, 'Deleted organization domain');
-    } else {
-      await client.query('COMMIT');
     }
   } catch (error) {
     await client.query('ROLLBACK');
@@ -861,15 +1082,74 @@ export function createWorkOSWebhooksRouter(): Router {
                     })
                   );
                 }
-                // Classify brand hierarchy before the user finishes onboarding
-                const isValidDomain = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(domain)
+                // Classify brand hierarchy before the user finishes onboarding.
+                // Use getCompanyDomain rather than the local isFreeEmailDomain
+                // check so the predicate matches what the in-app suggestion
+                // service uses (#4744) — drift between the two would produce
+                // "ops got pinged but no banner shows" or vice versa.
+                const business = getCompanyDomain(user.email);
+                const isValidDomain = business
+                  && /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(domain)
                   && !(/^\d+\.\d+\.\d+\.\d+$/.test(domain));
-                if (isValidDomain && !isFreeEmailDomain(domain)) {
+                if (isValidDomain) {
                   trackBackground(
                     researchDomain(domain).catch(err => {
                       logger.warn({ err, domain }, 'Background domain research failed for new user');
                     })
                   );
+                  // KYC nudge (#4744): if the signup domain maps to a brand
+                  // in the registry, notify ops in Slack so we can watch
+                  // who's signing up at known brands. The in-app banner +
+                  // viewer JIT prompt drive the user-side flow; this is the
+                  // ops-side visibility signal. At today's volume we notify
+                  // on every match regardless of brand verification state.
+                  //
+                  // Idempotent on WorkOS retries: user.created is at-least-
+                  // once, so we record a per-(user, domain) marker in
+                  // user_dismissed_nudges after sending and skip if present.
+                  // Reusing the dismissals table keeps the schema lean — see
+                  // user-nudges-db.ts for the dual-use convention.
+                  if (user.email_verified) {
+                    trackBackground(
+                      (async () => {
+                        try {
+                          const canonicalDomain = canonicalizeBrandDomain(domain);
+                          const notifyKey = `signup_notified:${canonicalDomain}`;
+                          const prior = await getNudgeDismissal(user.id, notifyKey);
+                          if (prior) return;
+                          const brandDb = new BrandDatabase();
+                          const brand = await brandDb.getDiscoveredBrandByDomain(canonicalDomain);
+                          if (!brand) return;
+                          let ownerName: string | null = null;
+                          if (brand.domain_verified && brand.workos_organization_id) {
+                            try {
+                              const ownerOrg = await orgDb.getOrganization(brand.workos_organization_id);
+                              ownerName = ownerOrg?.name ?? null;
+                            } catch (orgErr) {
+                              logger.debug({ orgErr, domain }, 'failed to resolve verified-owner org name for signup notify');
+                            }
+                          }
+                          await notifyBrandClaimOpportunity({
+                            user_email: user.email,
+                            user_first_name: user.first_name ?? undefined,
+                            user_last_name: user.last_name ?? undefined,
+                            domain: canonicalDomain,
+                            brand_name: brand.brand_name ?? null,
+                            brand_view_url: `/brand/view/${encodeURIComponent(canonicalDomain)}`,
+                            brand_already_verified: !!brand.domain_verified && !!brand.workos_organization_id,
+                            verified_owner_org_name: ownerName,
+                          });
+                          // Record the marker AFTER successful send so a
+                          // retry following a Slack 5xx will still get
+                          // through (the WorkOS retry is exactly the cover
+                          // we want for transient failures).
+                          await recordNudgeDismissal(user.id, notifyKey);
+                        } catch (notifyErr) {
+                          logger.warn({ err: notifyErr, domain }, 'brand-claim opportunity notify failed');
+                        }
+                      })()
+                    );
+                  }
                 }
               }
             }
@@ -887,8 +1167,21 @@ export function createWorkOSWebhooksRouter(): Router {
 
           case 'user.deleted': {
             const user = event.data as unknown as UserData;
+            // Promote a surviving secondary BEFORE the CASCADE on
+            // identity_workos_users.workos_user_id fires (via deleteUser).
+            // Without this, the identity is left with zero primaries and the
+            // surviving secondary signs in to an empty workspace — a DoS
+            // vector reachable via GDPR/CCPA-driven WorkOS deletions.
+            const promoted = await promoteSecondaryIfPrimaryDeleted(user.id);
             await deleteUser(user.id);
             await deleteUserMemberships(user.id);
+            // Close the 60-second session/JWT cache window where a cached
+            // pre-deletion swap would still route reads to the dead binding.
+            // Invalidate both the deleted user and the promoted successor so
+            // the next request re-resolves identity from the DB.
+            const sessionsToInvalidate = [user.id];
+            if (promoted) sessionsToInvalidate.push(promoted.promotedUserId);
+            invalidateSessionsForUsers(sessionsToInvalidate);
             invalidateUnifiedUsersCache();
             break;
           }
@@ -1326,14 +1619,18 @@ export async function backfillOrganizationDomains(): Promise<{
   try {
     const orgsResult = await pool.query<{
       workos_organization_id: string;
-      is_personal: boolean;
     }>(
-      `SELECT workos_organization_id, COALESCE(is_personal, false) AS is_personal
-       FROM organizations`,
+      `SELECT workos_organization_id FROM organizations`,
     );
 
     const BATCH_SIZE = 10;
-    const orgs = orgsResult.rows.filter(o => !o.is_personal);
+    // Include personal orgs — Individual Professional members can claim a
+    // verified brand domain, and `syncOrganizationDomains` correctly handles
+    // the personal-vs-company split (mirrors org_domains row + brand registry
+    // for all orgs; gates is_primary + organizations.email_domain for
+    // non-personal only). Filtering here would skip the recovery case for
+    // personal-tier brand claims.
+    const orgs = orgsResult.rows;
 
     for (let i = 0; i < orgs.length; i += BATCH_SIZE) {
       const batch = orgs.slice(i, i + BATCH_SIZE);

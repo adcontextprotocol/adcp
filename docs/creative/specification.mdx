@@ -9,6 +9,8 @@ sidebarTitle: Specification
 **AdCP 3.0 Proposal** - This specification is under development for AdCP 3.0. Feedback welcome via [GitHub Discussions](https://github.com/adcontextprotocol/adcp/discussions).
 </Info>
 
+> **Canonical formats in 3.1**: this page describes the v1 specification model. For the canonical-formats model (inline `format_options` on products, `validate_input` primitive), see [canonical-formats](/docs/creative/canonical-formats) and the [migration guide](/docs/creative/canonical-formats-migration).
+
 **Status**: Request for Comments
 **Last Updated**: March 2026
 
@@ -44,6 +46,7 @@ Creative agents MUST declare Creative Protocol support via `get_adcp_capabilitie
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-response.json",
+  "status": "completed",
   "adcp": {
     "major_versions": [2],
     "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
@@ -158,19 +161,23 @@ Sales agents MUST translate universal macros to their ad server's native syntax.
 
 **Schema**: [`enums/creative-status.json`](https://adcontextprotocol.org/schemas/v3/enums/creative-status.json)
 
-Creatives in a library progress through a defined set of states. `archived` is the only buyer-initiated state change; all others are seller-initiated (processing, review, approval/rejection).
+Creatives in a library progress through a defined set of states. Most transitions are seller-initiated (processing, review, approval/rejection). `suspended` is a recoverable offline state for approved creatives whose dependencies become unavailable, such as an expired published-post authorization. `archived` is reached either by buyer cleanup or by seller-side lifecycle policy on creatives without active assignments — see the rules below.
 
 ```
 sync_creatives ──▶ processing ──▶ pending_review ──▶ approved
-                       │                                │
-                       │ (processing failure)            │ (buyer archives)
-                       ▼                                ▼
-                   rejected ◀── (policy failure) ── pending_review
-                       │                            archived
-                       │ (buyer fixes + resubmits        │
-                       │  via sync_creatives)             │ (buyer unarchives)
-                       ▼                                ▼
-                   processing                       approved
+                       │                 │              │
+                       │                 │              ├──▶ suspended ──▶ approved
+                       │                 │              │        │
+                       │                 │              │        └──▶ rejected
+                       │                 │              ├──▶ pending_review
+                       │                 │              ├──▶ rejected
+                       │                 │              └──▶ archived
+                       │                 │
+                       └──────▶ rejected ◀──────────────┘
+                                  │
+                                  └── buyer fixes + resubmits ──▶ processing
+
+archived ── buyer unarchives ──▶ approved (or pending_review when re-review is required)
 ```
 
 **Rules:**
@@ -179,14 +186,35 @@ sync_creatives ──▶ processing ──▶ pending_review ──▶ approved
 - `processing` → `rejected`: automatic when processing fails (corrupt file, unsupported codec, constraint violation)
 - `pending_review` → `approved`: seller approves after content policy review
 - `pending_review` → `rejected`: seller rejects with `rejection_reason`
-- `approved` → `archived`: buyer-initiated via `sync_creatives`
+- `approved` → `suspended`: seller detects a recoverable dependency/authorization loss, such as `identity_authorization_revoked`, `identity_authorization_expired`, or `source_private` for a `published_post` reference. Sellers MUST surface a corresponding `impairment` on affected active buys.
+- `suspended` → `approved`: seller observes that the dependency is restored and any required re-review passes.
+- `suspended` → `rejected`: seller determines that a previously recoverable dependency/authorization loss cannot be restored for this creative, or that replacement/resubmission is required. Example: a revoked identity/post authorization for a `published_post` reference cannot be reauthorized. Sellers MUST keep affected active buys impaired until the creative is replaced, reassigned, or the package/buy is otherwise remediated.
+- `approved` → `archived` (buyer-initiated): buyer issues archive via `sync_creatives`
+- `approved` → `archived` (seller-initiated): seller archives an unassigned creative for inactivity, post-flight expiry, or storage policy. Sellers MUST NOT seller-archive a creative that has active package assignments — the `approved` → `rejected` (revocation) path with an `impairment` on the affected buy is the only conformant route when active serving is involved. State-change observability for seller-initiated archive follows the [creative retention contract](/docs/creative/creative-libraries#creatives-outlast-campaigns) — minimally, the new `status` MUST be visible on the next `list_creatives` read.
 - `archived` → `approved`: buyer-initiated via `sync_creatives` (unarchive). Sellers MAY require re-review, transitioning to `pending_review` instead.
 - `rejected` → `processing`: buyer fixes the creative and resubmits via `sync_creatives`. The creative re-enters the full processing and review pipeline.
-- `approved` → `pending_review`: seller-initiated re-review (e.g., policy change). Sellers SHOULD notify the buyer when a previously approved creative is pulled back for re-review.
+- `approved` → `pending_review`: seller-initiated re-review (e.g., policy change). Sellers MUST notify subscribers via `creative.status_changed` (fired to each `notification_configs[]` subscriber whose `event_types[]` includes this value — see below) when a previously approved creative is pulled back for re-review.
 
-Creative agents MUST reject operations that reference a `rejected` creative for delivery (e.g., assigning it to a package) with error code `CREATIVE_REJECTED`.
+Creative agents MUST reject operations that reference a `rejected` creative for delivery (e.g., assigning it to a package) with error code `CREATIVE_REJECTED`. Creative agents MUST also prevent delivery of `suspended` creatives until the dependency is restored.
 
 Creative agents MUST include `status` and `rejection_reason` (when rejected) in `list_creatives` responses.
+
+### Lifecycle webhooks
+
+Seller-initiated and system-initiated transitions fire push notifications against the account's [`notification_configs[]`](/docs/accounts/tasks/sync_accounts#account-level-webhook-subscriptions) subscribers — each entry whose `event_types[]` includes the fired type receives an independent fire. Two event types cover the surface:
+
+- **`creative.status_changed`** — fires on every seller-initiated or system-initiated transition: `pending_review → approved`/`rejected`, `approved → pending_review` (re-review), `approved → suspended` (recoverable dependency/authorization loss), `suspended → approved` (recovery), `suspended → rejected` (terminal dependency/authorization loss), `approved → rejected` (post-approval revocation), `approved → archived` (seller-initiated). Payload: [`creative-status-changed-webhook.json`](https://adcontextprotocol.org/schemas/v3/creative/creative-status-changed-webhook.json).
+- **`creative.purged`** — fires when a creative is destroyed (retention sweep, takedown, legal erasure). `soft` purges retain a tombstone on `list_creatives` (with `include_purged: true`) for 30 days; `hard` purges retain no record — the webhook is the buyer's only signal. Payload: [`creative-purged-webhook.json`](https://adcontextprotocol.org/schemas/v3/creative/creative-purged-webhook.json).
+
+Buyer-initiated transitions (archive, unarchive, resubmit) do NOT fire — those are acknowledged on the `sync_creatives` response path. The push channel exists only for transitions the buyer did not initiate.
+
+Both events carry a categorical `reason_code` drawn from [`creative-event-reason-code.json`](https://adcontextprotocol.org/schemas/v3/enums/creative-event-reason-code.json). Buyer-side remediation per reason code is documented inline on the enum's `enumDescriptions`.
+
+When a creative transitions to a state that breaks active serving (`approved → suspended`, `approved → rejected`, `suspended → rejected`, or seller-initiated `approved → archived` while assignments exist — which is non-conformant; see the transition rules above), the seller MUST also surface a corresponding `impairment` on every media buy referencing the creative (see [Media buy health](/docs/media-buy/media-buys/lifecycle#health-and-impairments)). The creative-side `creative.status_changed` and the buy-side `impairment` are paired but distinct signals; buyers correlate by `creative_id`. The two surfaces have different anchors: creative events fire account-level (subscriptions outlive any one buy); impairments fire per-buy. **No ordering guarantee** between the paired fires — buyers MUST NOT assume one arrives before the other; reconcile via the snapshot (`list_creatives` and `get_media_buys`).
+
+Sellers declare which event types they support and per-type coalescence windows via `get_adcp_capabilities`. Default coalescence is 5 minutes for `creative.status_changed`; sellers MUST NOT coalesce `creative.purged`. Retroactive contract: when a seller declares support for these event types, the obligation covers all creatives in the library — no grace period for pre-existing creatives.
+
+Buyers MAY pull recent webhook fires per creative via `list_creatives` with `include_webhook_activity: true`. The read surface follows the [`webhook_activity[]` adoption checklist](/docs/protocol/snapshot-and-log#webhook-activity-log-pattern) — 30-day retention, three-state presence semantics, `idempotency_key` correlation to buyer-side endpoint logs.
 
 ## Pricing
 
@@ -254,6 +282,18 @@ Discover creative formats and their specifications.
 - Creative agents MAY include references to other creative agents providing additional formats
 - When filtering by `format_ids`, creative agents MUST return only the requested formats
 
+### list_transformers
+
+**Reference**: [`list_transformers` task](/docs/creative/task-reference/list_transformers)
+
+Discover the account-scoped transformers a creative agent offers — the creative analog of media-buy products: agent-offered, selectable units of build capability (voices, models, styles) that you select with `transformer_id` in `build_creative`. Offered only by agents that declare `creative.supports_transformers: true` in `get_adcp_capabilities`.
+
+**Requirements:**
+- Creative agents that set `creative.supports_transformers: true` MUST implement `list_transformers`
+- Creative agents MUST resolve transformers, their enumerable option values, and pricing for the calling account — including custom values configured for that account (e.g. cloned voices)
+- Creative agents MUST return account-scoped option values inline on `params[].options[]` for each `field` named in `expand_params`, and SHOULD omit them otherwise
+- When `include_pricing` is true, creative agents that charge MUST include `pricing_options` (the `per_unit` model) on each transformer
+
 ### build_creative
 
 **Reference**: [`build_creative` task](/docs/creative/task-reference/build_creative)
@@ -289,7 +329,8 @@ Generate preview renderings of creative manifests.
 **Requirements:**
 - Creative agents MUST validate manifests before generating previews
 - Creative agents MUST return preview URLs or HTML for valid manifests
-- Creative agents MUST include `expires_at` for preview URLs
+- Creative agents MUST keep preview URLs dereferenceable until their `expires_at` timestamp. When `expires_at` is omitted, preview URLs do not expire at the protocol layer and remain valid until the agent explicitly revokes them out of band.
+- Creative agents SHOULD include `expires_at` for time-limited preview URLs
 - Creative agents SHOULD support batch preview for multiple creatives
 - Creative agents MAY support multiple output formats (URL, HTML, image)
 
@@ -373,6 +414,7 @@ All Creative Protocol communications MUST use HTTPS with TLS 1.2 or higher.
 ### Preview security
 
 - Preview URLs SHOULD be time-limited (indicated by `expires_at`)
+- Preview URLs MUST NOT depend on pod-local or process-local state unless the agent can guarantee that state for the advertised lifetime of the URL
 - Creative agents SHOULD sandbox HTML previews to prevent script execution
 - Consumers of `output_format: "html"` MUST only use trusted creative agents
 

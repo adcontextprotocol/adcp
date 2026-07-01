@@ -29,7 +29,7 @@
     },
     "proposal_id": {
       "type": "string",
-      "description": "ID of a proposal from get_products to execute. When provided with total_budget, the publisher converts the proposal's allocation percentages into packages automatically. Alternative to providing packages array."
+      "description": "ID of a committed proposal from get_products to execute. When provided with total_budget, the publisher converts the proposal's allocation percentages into packages automatically. Alternative to providing packages array. If the referenced proposal has proposal_status: 'draft', the seller MUST reject with PROPOSAL_NOT_COMMITTED; the buyer finalizes first via get_products refine action 'finalize'."
     },
     "total_budget": {
       "type": "object",
@@ -109,7 +109,7 @@
     "agency_estimate_number": {
       "type": "string",
       "maxLength": 100,
-      "description": "Agency estimate or authorization number. Primary financial reference for broadcast buys — links the order to the agency's media plan and billing system. Travels with the order and Ad-IDs through the transaction lifecycle."
+      "description": "Agency estimate or authorization number. Primary financial reference for broadcast buys — links the order to the agency's media plan and billing system. Travels with the order and creative traffic identifiers through the transaction lifecycle."
     },
     "start_time": {
       "$ref": "/schemas/core/start-timing.json"
@@ -119,9 +119,14 @@
       "format": "date-time",
       "description": "Campaign end date/time in ISO 8601 format"
     },
+    "paused": {
+      "type": "boolean",
+      "description": "Create the media buy in a paused delivery state. When true, and the buy would otherwise be active because creatives are assigned and the flight has started, the seller returns media_buy_status 'paused'. Setup blockers still take precedence: a buy with no creatives remains 'pending_creatives', and a future-dated buy remains 'pending_start' until its flight can start. Defaults to false.",
+      "default": false
+    },
     "push_notification_config": {
       "$ref": "/schemas/core/push-notification-config.json",
-      "description": "Optional webhook configuration for async task status notifications. Publisher will send webhooks when status changes (working, input-required, completed, failed). The client generates an operation_id and embeds it in the URL before sending — the publisher echoes it back in webhook payloads for correlation."
+      "description": "Optional webhook configuration for async task status notifications. Publisher will send webhooks when status changes (working, input-required, completed, failed, canceled). Buyers SHOULD supply `push_notification_config.operation_id` as the canonical correlation value; publishers echo that field back verbatim in webhook payloads and MUST NOT parse the URL to derive it."
     },
     "reporting_webhook": {
       "$ref": "/schemas/core/reporting-webhook.json",
@@ -144,11 +149,11 @@
         },
         "authentication": {
           "type": "object",
-          "description": "Authentication configuration for webhook delivery (A2A-compatible)",
+          "description": "Legacy authentication configuration for webhook delivery (A2A-compatible). Opts the receiver into Bearer or HMAC-SHA256 signing. Both schemes are deprecated; the preferred signing profile for new integrations is RFC 9421, where the seller signs with a key published at its brand.json agents[] entry and the buyer verifies against the seller's JWKS — no shared secret crosses the wire (see docs/building/implementation/security.mdx#webhook-callbacks). This field is required in AdCP 3.x; the requirement is removed in AdCP 4.0 when the default RFC 9421 path becomes the only path.",
           "properties": {
             "schemes": {
               "type": "array",
-              "description": "Array of authentication schemes. Supported: ['Bearer'] for simple token auth, ['HMAC-SHA256'] for signature verification (recommended for production)",
+              "description": "Array of authentication schemes. ['Bearer'] for simple token auth, ['HMAC-SHA256'] for legacy shared-secret signing. Both are deprecated; new integrations SHOULD use the RFC 9421 webhook signing profile instead.",
               "items": {
                 "$ref": "/schemas/enums/auth-scheme.json"
               },
@@ -157,7 +162,7 @@
             },
             "credentials": {
               "type": "string",
-              "description": "Credentials for authentication. For Bearer: token sent in Authorization header. For HMAC-SHA256: shared secret used to generate signature. Minimum 32 characters. Exchanged out-of-band during onboarding.",
+              "description": "Credentials for the legacy scheme. For Bearer: token sent in Authorization header. For HMAC-SHA256: shared secret used to generate signature. Minimum 32 characters. Exchanged out-of-band during onboarding.",
               "minLength": 32
             }
           },

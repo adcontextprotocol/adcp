@@ -1,0 +1,86 @@
+---
+title: "Migrating to creative transformers (3.1)"
+description: "Move build-capability discovery and creative pricing off Format fields onto transformers (list_transformers). Additive in 3.1; deprecated Format fields removed at 4.0."
+"og:title": "AdCP — Migrating to creative transformers"
+---
+
+# Migrating to creative transformers (3.1)
+
+AdCP 3.1 introduces **transformers** — the creative analog of a media-buy product: an agent-offered, account-scoped, selectable unit of build capability (a voice, model, style, or director) with a typed configuration surface and per-account pricing, discovered via [`list_transformers`](/dist/docs/3.1.0-rc.13/creative/task-reference/list_transformers) and selected with `transformer_id` on [`build_creative`](/dist/docs/3.1.0-rc.13/creative/task-reference/build_creative).
+
+Because a transformer carries **its own input/output formats and its own pricing**, three things that 3.0 hung on the *format* are now redundant and are deprecated:
+
+- `Format.input_format_ids` / `Format.output_format_ids`
+- `Format.pricing_options`
+- the `input_format_ids` / `output_format_ids` discovery **filters** on `list_creative_formats`
+
+**Nothing breaks if you do nothing in 3.1.** All four are `deprecated: true` but still validate and still function through the 3.1–3.x line. Act before 4.0. The hazards below are about *silent degradation* over the window, not hard breaks.
+
+## What changed
+
+| Surface | 3.0 | 3.1 | Removed |
+|---|---|---|---|
+| Build-capability discovery | filter `list_creative_formats` on `input_format_ids` / `output_format_ids`; read `Format.input_format_ids` / `output_format_ids` | discover via `list_transformers` (each transformer declares its own I/O signature) | 4.0 |
+| Creative/transform pricing | `Format.pricing_options` (per format) | `transformer.pricing_options` (per transformer; `include_pricing` + `account` on `list_transformers`) | 4.0 |
+| `list_creative_formats` `input_format_ids` / `output_format_ids` filters | supported | `deprecated: true` — use `list_transformers` filters + `brief` | 4.0 |
+
+## Migrate
+
+### Format I/O signature → transformer
+
+A transformer declares the formats it accepts and produces directly, so build capability is a property of the *selectable unit*, not a relationship hung on a format.
+
+**Before (3.0)** — a transform format declares what it consumes/produces:
+```json test=false
+{
+  "format_id": { "agent_url": "https://creative.example", "id": "resize_to_meta" },
+  "input_format_ids":  [{ "agent_url": "https://creative.example", "id": "display_master" }],
+  "output_format_ids": [{ "agent_url": "https://creative.example", "id": "meta_reels_9x16" }]
+}
+```
+
+**After (3.1)** — declare a transformer (discovered via `list_transformers`):
+```json test=false
+{
+  "transformer_id": "resize_to_meta",
+  "name": "Resize to Meta Reels",
+  "input_format_ids":  [{ "agent_url": "https://creative.example", "id": "display_master" }],
+  "output_format_ids": [{ "agent_url": "https://creative.example", "id": "meta_reels_9x16" }],
+  "params": [],
+  "pricing_options": [ { "pricing_option_id": "per_format", "model": "per_unit", "unit": "format", "unit_price": 0.10, "currency": "USD" } ]
+}
+```
+
+### Format pricing → transformer pricing
+
+`Format.pricing_options` moves to `transformer.pricing_options` (same `vendor-pricing-option` shape; `per_unit` is typical). The applied option is echoed per-leaf on the `build_creative` response and reconciled via `report_usage`, unchanged.
+
+For multi-output transformers, a pricing option can carry `applies_to_output_format_ids` to scope that rate to specific outputs. An unscoped pricing option is the default for any output. If a build targets an output that matches no scoped option and the transformer has no unscoped default, the agent rejects the build with `UNPRICEABLE_OUTPUT` rather than guessing a price.
+
+### `list_creative_formats` discovery filters → `list_transformers`
+
+Stop filtering `list_creative_formats` on `input_format_ids` / `output_format_ids` to find "what can build X". Use `list_transformers` — filter on its `input_format_ids` / `output_format_ids`, narrow with `brief`, and expand account-scoped option values with `expand_params`.
+
+## What breaks silently if you do nothing
+
+These do not throw — which is exactly why they are the reason this guide exists.
+
+1. **Discovery-read degradation (buyers).** If your buyer/storyboard learns build capability *only* by reading `Format.input_format_ids` / `output_format_ids` or by filtering `list_creative_formats` on them, you keep working against a 3.1 seller but see **progressively emptier results** as sellers stop emitting the deprecated fields and move capability onto transformers. No error — just fewer and fewer options. **The field outlives its data.** Move discovery to `list_transformers`.
+
+2. **Per-output pricing gaps (multi-publisher template sellers).** A template that priced outputs differently can keep that shape with `applies_to_output_format_ids`, but every output needs either a scoped pricing option or an unscoped default. Otherwise builds for unpriced outputs are rejected with `UNPRICEABLE_OUTPUT`.
+
+3. **Fan-out / best-of-N spend under-counting (billing pipelines).** With `max_variants` / `max_creatives`, every produced variant is billed, but only a **trafficked** leaf lazily earns a `creative_id`. Discarded best-of-N leaves are billed via the **inline per-leaf `vendor_cost`** on the `build_creative` response *only* — they never earn a `creative_id` and so never appear in `report_usage`. A pipeline that reconciles spend solely from `report_usage` (the 3.0 invariant "every billed unit reconciles via `creative_id`") will **under-count** by every discarded variant. Ingest the inline per-leaf receipts as the authoritative record for untrafficked leaves. Because that receipt is the sole record, the schema enforces it: whenever a build reports cost (the aggregate `vendor_cost` is present), every produced leaf MUST carry its own `vendor_cost` + `currency`, so a paid build cannot return leaves with no machine-readable cost. Note the boundary: the schema enforces the *internal completeness and consistency* of a reported cost — it cannot tell a genuinely free build (or a legitimately-`0` CPM-deferred leaf) from a paid build that omits the aggregate to under-report. "Aggregate absent" is a trust assertion to reconcile (seller invoice vs. `report_usage` + inline receipts, distinguished by the `pricing_option_id` basis), not proof of zero cost — don't mistake schema-validity for billing-honesty.
+
+## SDK behavior and timeline
+
+| Version | Deprecated fields |
+|---|---|
+| 3.1 | `deprecated: true`; still emitted and honored. SDKs MUST continue to read them. |
+| 3.1–3.x | Honored throughout. New code SHOULD NOT emit them. |
+| 4.0+ | SDKs MAY reject. Removed. |
+
+## See also
+
+- [`list_transformers`](/dist/docs/3.1.0-rc.13/creative/task-reference/list_transformers) — discover transformers, their params, option values, and pricing
+- [`build_creative`](/dist/docs/3.1.0-rc.13/creative/task-reference/build_creative) — select a transformer, configure, multiply, refine
+- [What's new in 3.1](/dist/docs/3.1.0-rc.13/reference/whats-new-in-3-1)

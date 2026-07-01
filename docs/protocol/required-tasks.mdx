@@ -23,6 +23,8 @@ Every AdCP agent, regardless of protocol, implements:
 
 Caller-scope RBAC introspection is not a standalone task. Sellers that support scope introspection return a per-account `authorization` object on `sync_accounts` and `list_accounts` responses. See [Accounts Protocol — Caller authorization](/docs/accounts/overview#caller-authorization).
 
+AdCP task lifecycle state is application-layer state, not MCP-native or A2A-native task state. 3.x sellers MAY advertise non-colliding AdCP aliases for polling and reconciliation: `get_task_status` for legacy `tasks/get`, and `list_tasks` for legacy `tasks/list`. These aliases are optional compatibility surfaces in 3.x; callers MUST continue to support the legacy names through the 3.x line. Alias and legacy request payloads use the same snake_case shape, including the optional `account` scope used to keep task visibility within the caller's authenticated account + principal pair.
+
 ## Media Buy Protocol
 
 ### Sales agent (seller)
@@ -66,6 +68,7 @@ Orchestrators are not MCP/A2A servers — they call sales agent tasks. Conforman
 | Task | Requirement | Notes |
 |------|------------|-------|
 | `list_creative_formats` | Required | Format discovery with technical specs |
+| `list_transformers` | Conditional | Required when the agent advertises `creative.supports_transformers: true` |
 | `build_creative` | Optional | Generation, transformation, or library retrieval |
 | `preview_creative` | Optional | Preview rendering |
 | `list_creatives` | Conditional | Required when `has_creative_library: true` |
@@ -111,13 +114,13 @@ Brand agents MUST declare `brand` in `supported_protocols`.
 
 | Task | Requirement | Notes |
 |------|------------|-------|
-| `sync_accounts` | Conditional | Implicit accounts (`require_operator_auth: false`) — buyer declares brand/operator pairs |
-| `list_accounts` | Conditional | Explicit accounts (`require_operator_auth: true`) — buyer discovers pre-existing accounts |
+| `sync_accounts` | Conditional | Buyer-declared accounts (`require_operator_auth: false`) — buyer declares brand/operator pairs; account-id namespaces may use this only for settings updates unless a future explicit capability declares provisioning |
+| `list_accounts` | Conditional | Account-id namespaces (`require_operator_auth: true`) — buyer discovers seller-assigned accounts; singleton credentials SHOULD still return one row so SDKs can auto-select |
 | `sync_governance` | Conditional | Required when the buyer uses campaign governance |
 | `report_usage` | Conditional | Required when the agent charges for services |
 | `get_account_financials` | Optional | Financial summary per account |
 
-Agents MUST implement at least one of `sync_accounts` or `list_accounts` depending on their account model. An agent MAY implement both (e.g., ad networks that use implicit accounts on the buyer side and explicit accounts with underlying platforms).
+Agents MUST implement at least one of `sync_accounts` or `list_accounts` depending on their account model. An agent MAY implement both (e.g., ad networks that use buyer-declared accounts on the buyer side and account-id namespaces with underlying platforms).
 
 **Reference**: [Accounts Protocol](/docs/accounts/overview)
 

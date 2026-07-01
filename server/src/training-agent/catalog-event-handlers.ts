@@ -126,12 +126,20 @@ function getEventSourceMap(sessionKey: string): Map<string, EventSourceState> {
  *  drop the `account` context the SDK's request-builder strips against the
  *  published tool schema. Fall back to a global search so a synced source
  *  is still reachable from any session within the sandbox. */
-function findEventSourceAnywhere(eventSourceId: string): EventSourceState | undefined {
+export function findEventSourceAnywhere(eventSourceId: string): EventSourceState | undefined {
   for (const map of eventSourceStore.values()) {
     const hit = map.get(eventSourceId);
     if (hit) return hit;
   }
   return undefined;
+}
+
+/** Look up an event source in a specific session, falling back to global scan.
+ *  Used by create_media_buy to validate that event-kind optimization_goals
+ *  reference a previously-registered event_source_id rather than silently
+ *  accepting phantom ids. */
+export function findEventSourceInSession(sessionKey: string, eventSourceId: string): EventSourceState | undefined {
+  return eventSourceStore.get(sessionKey)?.get(eventSourceId) ?? findEventSourceAnywhere(eventSourceId);
 }
 
 /** Exported for testing */

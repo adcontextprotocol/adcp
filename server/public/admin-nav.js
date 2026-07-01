@@ -25,10 +25,10 @@
   // Shared header styles
   const HEADER_STYLES = `
     .admin-header {
-      background-color: var(--color-brand, #667eea);
-      color: white;
+      background-color: var(--color-brand);
+      color: var(--color-text-on-dark);
       padding: 20px 40px;
-      box-shadow: var(--shadow-sm, 0 2px 4px rgba(0,0,0,0.1));
+      box-shadow: var(--shadow-sm);
     }
     .admin-header-content {
       max-width: 1400px;
@@ -43,7 +43,7 @@
       margin: 0;
     }
     .admin-header h1 a {
-      color: white;
+      color: var(--color-text-on-dark);
       text-decoration: none;
     }
     .admin-header h1 a:hover {
@@ -55,7 +55,7 @@
       align-items: center;
     }
     .admin-header nav a {
-      color: white;
+      color: var(--color-text-on-dark);
       text-decoration: none;
       padding: 8px 16px;
       border-radius: 6px;

@@ -1,4 +1,4 @@
-import freeEmailDomains from 'free-email-domains';
+import freeEmailDomains from './free-email-domains.js';
 
 // Convert the free-email-domains list to a Set for O(1) lookups
 const freeDomainsSet = new Set(freeEmailDomains);

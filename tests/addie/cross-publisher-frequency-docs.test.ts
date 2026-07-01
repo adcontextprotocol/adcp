@@ -12,7 +12,7 @@ describe('TMP coverage in docs and training', () => {
     const urls = results.map((result) => result.sourceUrl);
 
     expect(urls).toContain('https://docs.adcontextprotocol.org/docs/trusted-match');
-    expect(urls).toContain('https://docs.adcontextprotocol.org/docs/building/understanding/adcp-vs-openrtb');
+    expect(urls).toContain('https://docs.adcontextprotocol.org/docs/building/concepts/adcp-vs-openrtb');
   });
 
   it('includes TMP in all relevant training modules', () => {
@@ -35,5 +35,24 @@ describe('TMP coverage in docs and training', () => {
     expect(MODULE_RESOURCES.S1.map((r) => r.url)).toContain(
       'https://docs.adcontextprotocol.org/docs/trusted-match/context-and-identity'
     );
+  });
+
+  it('keeps seller identity and verification resources in relevant training modules', () => {
+    const sellerSetupUrl = 'https://docs.adcontextprotocol.org/docs/brand-protocol/seller-setup';
+    const adagentsUrl = 'https://docs.adcontextprotocol.org/docs/governance/property/adagents';
+    const verificationUrl = 'https://docs.adcontextprotocol.org/docs/verification/overview';
+
+    expect(MODULE_RESOURCES.A2.map((r) => r.url)).toEqual(expect.arrayContaining([
+      sellerSetupUrl,
+      adagentsUrl,
+    ]));
+    expect(MODULE_RESOURCES.A3.map((r) => r.url)).toContain(sellerSetupUrl);
+    expect(MODULE_RESOURCES.B1.map((r) => r.url)).toContain(sellerSetupUrl);
+    expect(MODULE_RESOURCES.B4.map((r) => r.url)).toContain(sellerSetupUrl);
+    expect(MODULE_RESOURCES.C2.map((r) => r.url)).toContain(verificationUrl);
+    expect(MODULE_RESOURCES.D2.map((r) => r.url)).toEqual(expect.arrayContaining([
+      sellerSetupUrl,
+      verificationUrl,
+    ]));
   });
 });

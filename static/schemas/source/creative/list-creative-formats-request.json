@@ -47,18 +47,9 @@
     },
     "asset_types": {
       "type": "array",
-      "description": "Filter to formats that include these asset types. For third-party tags, search for 'html' or 'javascript'. E.g., ['image', 'text'] returns formats with images and text, ['javascript'] returns formats accepting JavaScript tags.",
+      "description": "Filter to formats that include these asset types. For third-party tags, search for 'html' or 'javascript'. For published-post reference formats, search for 'published_post'. E.g., ['image', 'text'] returns formats with images and text, ['javascript'] returns formats accepting JavaScript tags.",
       "items": {
-        "type": "string",
-        "enum": [
-          "image",
-          "video",
-          "audio",
-          "text",
-          "html",
-          "javascript",
-          "url"
-        ]
+        "$ref": "/schemas/enums/asset-content-type.json"
       },
       "minItems": 1
     },
@@ -110,7 +101,8 @@
     },
     "output_format_ids": {
       "type": "array",
-      "description": "Filter to formats whose output_format_ids includes any of these format IDs. Returns formats that can produce these outputs — inspect each result's input_format_ids to see what inputs they accept.",
+      "deprecated": true,
+      "description": "**DEPRECATED in 3.1.** Discover build capability via `list_transformers` (filter its `output_format_ids`) instead — build capability is a property of transformers, not a relationship between formats. *Legacy:* filter to formats whose `output_format_ids` includes any of these format IDs.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
       },
@@ -118,7 +110,8 @@
     },
     "input_format_ids": {
       "type": "array",
-      "description": "Filter to formats whose input_format_ids includes any of these format IDs. Returns formats that accept these creatives as input — inspect each result's output_format_ids to see what they can produce.",
+      "deprecated": true,
+      "description": "**DEPRECATED in 3.1.** Discover build capability via `list_transformers` (filter its `input_format_ids`) instead. *Legacy:* filter to formats whose `input_format_ids` includes any of these format IDs.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
       },

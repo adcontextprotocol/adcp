@@ -6,9 +6,9 @@ import crypto from 'crypto';
 import { fileTypeFromBuffer } from 'file-type';
 import DOMPurify from 'isomorphic-dompurify';
 import sharp from 'sharp';
-import { BrandLogoDatabase, type BrandLogoSummary } from '../db/brand-logo-db.js';
+import { BrandLogoDatabase, type BrandLogoSummary, type InsertBrandLogoInput } from '../db/brand-logo-db.js';
 import { BrandDatabase } from '../db/brand-db.js';
-import { getLogoUrl } from './logo-cdn.js';
+import { getBrandAssetUrl } from './logo-cdn.js';
 import { safeFetch } from '../utils/url-security.js';
 import { createLogger } from '../logger.js';
 
@@ -169,7 +169,10 @@ export async function extractDimensions(
     return {};
   }
   try {
-    const metadata = await sharp(buffer).metadata();
+    // Cap decoded pixels at 24 MP (~6000x4000). Without this, a small (<5 MB)
+    // PNG can claim gigapixel dimensions and OOM the process during decode.
+    // Throws instead of decoding when over the limit; the catch returns {}.
+    const metadata = await sharp(buffer, { limitInputPixels: 24_000_000, failOn: 'error' }).metadata();
     return { width: metadata.width, height: metadata.height };
   } catch {
     return {};
@@ -225,24 +228,37 @@ export async function rebuildManifestLogos(
   const finalLogos = [...higherPriority, ...keptBrandfetch];
 
   const manifestLogos = finalLogos.map(l => ({
-    url: getLogoUrl(domain, l.id),
+    url: getBrandAssetUrl(domain, l.id, l.content_type),
     tags: l.tags,
     ...(l.width ? { width: l.width } : {}),
     ...(l.height ? { height: l.height } : {}),
   }));
+  const mergeLogosIntoManifest = (manifest?: Record<string, unknown>) => ({
+    ...(manifest ?? {}),
+    logos: manifestLogos,
+  });
 
   try {
     const existing = await brandDb.getDiscoveredBrandByDomain(domain);
     if (!existing) {
       await brandDb.upsertDiscoveredBrand({
         domain,
-        brand_manifest: { logos: manifestLogos },
+        brand_manifest: mergeLogosIntoManifest(),
         has_brand_manifest: true,
         source_type: 'community',
       });
+      await brandDb.approveBrand(domain);
+    } else if (existing.source_type === 'community' && existing.review_status === 'pending') {
+      await brandDb.approveBrand(domain);
+      await brandDb.editDiscoveredBrand(domain, {
+        brand_manifest: mergeLogosIntoManifest(existing.brand_manifest),
+        has_brand_manifest: true,
+        edit_summary: 'Logo manifest rebuilt after review',
+        editor_user_id: 'system:logo-service',
+      });
     } else {
       await brandDb.editDiscoveredBrand(domain, {
-        brand_manifest: { logos: manifestLogos },
+        brand_manifest: mergeLogosIntoManifest(existing.brand_manifest),
         has_brand_manifest: true,
         edit_summary: 'Logo manifest rebuilt after review',
         editor_user_id: 'system:logo-service',
@@ -250,5 +266,150 @@ export async function rebuildManifestLogos(
     }
   } catch (err) {
     logger.error({ err, domain }, 'Failed to rebuild manifest logos');
+  }
+}
+
+const REHOST_FETCH_TIMEOUT_MS = 10_000;
+const REHOST_MAX_BYTES = 5 * 1024 * 1024;
+
+function ourLogoHost(): string | null {
+  const base = process.env.BASE_URL || 'https://agenticadvertising.org';
+  try {
+    return new URL(base).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Re-host an external logo URL as a same-origin asset.
+ *
+ * Many brand sites ship `Cross-Origin-Resource-Policy: same-origin` (Cloudflare
+ * and Vercel defaults), so `<img src="https://otherdomain.com/logo.png">`
+ * renders as a broken image on our origin even though the URL works in a tab.
+ * Fetching the bytes server-side bypasses CORP — the browser only sees our
+ * own `/logos/brands/...` URL, which is same-origin and unrestricted.
+ *
+ * Returns the hosted URL on success, or the original URL on any failure
+ * (network, content-type, dedup conflict). The original URL has already passed
+ * `checkLogoUrlIsImage` so it's a sane fallback if rehosting fails.
+ *
+ * Skips rehost when the URL is already on our base host — idempotent if a
+ * caller passes back a previously-rehosted URL.
+ */
+export async function rehostExternalLogo(
+  rawUrl: string,
+  brandDomain: string,
+  brandLogoDb: BrandLogoDatabase,
+  options?: {
+    uploadedBy?: { userId?: string; orgId?: string; email?: string };
+    source?: InsertBrandLogoInput['source'];
+    tags?: string[];
+  },
+): Promise<string> {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return rawUrl;
+  }
+
+  // Only http(s) URLs are rehostable. data: URLs are already inline bytes;
+  // safeFetch would reject other schemes anyway, but bailing early avoids the
+  // round-trip and keeps the contract uniform with the backfill's pre-filter.
+  if (parsed.protocol !== 'https:') {
+    return rawUrl;
+  }
+
+  // Hostname-only match: BASE_URL is "https://agenticadvertising.org" in prod,
+  // so a manifest URL on the same hostname is already ours regardless of port
+  // or path. In dev environments BASE_URL may collide with an unrelated
+  // localhost service; that's an acceptable false-negative for the dev-only
+  // case (the dev never had a CORP issue anyway).
+  const ourHost = ourLogoHost();
+  if (ourHost && parsed.hostname.toLowerCase() === ourHost) {
+    return rawUrl;
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new Error('Logo rehost timed out')), REHOST_FETCH_TIMEOUT_MS);
+
+  try {
+    const response = await safeFetch(rawUrl, {
+      method: 'GET',
+      maxRedirects: 3,
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      logger.warn({ brandDomain, url: rawUrl, status: response.status }, 'Logo rehost: non-2xx, keeping original URL');
+      return rawUrl;
+    }
+
+    const declaredLength = Number(response.headers.get('content-length') ?? '0');
+    if (declaredLength > REHOST_MAX_BYTES) {
+      logger.warn({ brandDomain, url: rawUrl, declaredLength }, 'Logo rehost: Content-Length exceeds cap, keeping original URL');
+      response.body?.cancel().catch(() => {});
+      return rawUrl;
+    }
+
+    const arrayBuf = await response.arrayBuffer();
+    if (arrayBuf.byteLength > REHOST_MAX_BYTES) {
+      logger.warn({ brandDomain, url: rawUrl, bytes: arrayBuf.byteLength }, 'Logo rehost: body exceeds cap, keeping original URL');
+      return rawUrl;
+    }
+
+    let buffer: Buffer = Buffer.from(new Uint8Array(arrayBuf));
+    const contentType = await detectContentType(buffer);
+    if (!contentType) {
+      logger.warn({ brandDomain, url: rawUrl }, 'Logo rehost: unsupported content type, keeping original URL');
+      return rawUrl;
+    }
+    if (contentType === 'image/svg+xml') {
+      buffer = sanitizeSvg(buffer);
+    }
+
+    const sha256 = computeSha256(buffer);
+    const { width, height } = await extractDimensions(buffer, contentType);
+
+    const inserted = await brandLogoDb.insertBrandLogo({
+      domain: brandDomain,
+      content_type: contentType,
+      data: buffer,
+      sha256,
+      tags: options?.tags ?? ['primary'],
+      width,
+      height,
+      source: options?.source ?? 'community',
+      review_status: 'approved',
+      uploaded_by_user_id: options?.uploadedBy?.userId,
+      uploaded_by_org_id: options?.uploadedBy?.orgId,
+      uploaded_by_email: options?.uploadedBy?.email,
+      source_flow: 'external_logo_rehost',
+      upload_note: `Rehosted from ${parsed.hostname}`,
+      original_filename: parsed.pathname.split('/').filter(Boolean).pop()?.slice(0, 255),
+      provenance: {
+        original_url_host: parsed.hostname,
+        original_url_path: parsed.pathname,
+        source_flow: 'external_logo_rehost',
+        promoted_for: 'brand_json',
+      },
+    });
+
+    if (inserted) {
+      return getBrandAssetUrl(brandDomain, inserted.id, inserted.content_type);
+    }
+
+    const existing = await brandLogoDb.getByDomainAndSha256(brandDomain, sha256);
+    if (existing) {
+      return getBrandAssetUrl(brandDomain, existing.id, existing.content_type);
+    }
+
+    logger.warn({ brandDomain, url: rawUrl, sha256 }, 'Logo rehost: insert returned no row and sha256 lookup empty, keeping original URL');
+    return rawUrl;
+  } catch (err) {
+    logger.warn({ err, brandDomain, url: rawUrl }, 'Logo rehost failed, keeping original URL');
+    return rawUrl;
+  } finally {
+    clearTimeout(timer);
   }
 }

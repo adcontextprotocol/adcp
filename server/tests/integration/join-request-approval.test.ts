@@ -157,6 +157,53 @@ describe('Join Request Approval', () => {
     await pool.query('DELETE FROM organization_join_requests WHERE workos_organization_id = $1', [TEST_ORG_ID]);
   });
 
+  it('returns 409 when creating a join request for a pending WorkOS invitation', async () => {
+    listOrganizationMemberships.mockResolvedValueOnce({
+      data: [{
+        id: 'om_pending',
+        userId: TEST_ADMIN_USER_ID,
+        organizationId: TEST_ORG_ID,
+        role: { slug: 'member' },
+        status: 'pending',
+      }],
+    });
+
+    const response = await request(app)
+      .post('/api/join-requests')
+      .send({ organization_id: TEST_ORG_ID })
+      .expect(409);
+
+    expect(response.body.error).toBe('Pending invitation exists');
+    expect(mockCreateOrganizationMembership).not.toHaveBeenCalled();
+  });
+
+  it('does not create a phantom request when ownerless auto-approve hits a pending WorkOS invitation', async () => {
+    await pool.query(
+      `UPDATE organizations SET email_domain = $2 WHERE workos_organization_id = $1`,
+      [TEST_ORG_ID, 'example.com'],
+    );
+    listOrganizationMemberships
+      .mockResolvedValueOnce({ data: [] })
+      .mockResolvedValueOnce({ data: [] });
+    const reactivateError: any = new Error('Pending organization memberships cannot be reactivated. The invite must be accepted instead.');
+    reactivateError.code = 'cannot_reactivate_pending_organization_membership';
+    mockCreateOrganizationMembership.mockRejectedValueOnce(reactivateError);
+
+    const response = await request(app)
+      .post('/api/join-requests')
+      .send({ organization_id: TEST_ORG_ID })
+      .expect(409);
+
+    expect(response.body.error).toBe('Pending invitation exists');
+
+    const result = await pool.query(
+      `SELECT id FROM organization_join_requests
+       WHERE workos_organization_id = $1 AND workos_user_id = $2`,
+      [TEST_ORG_ID, TEST_ADMIN_USER_ID],
+    );
+    expect(result.rows).toHaveLength(0);
+  });
+
   it('approves a join request by creating direct org membership, not sending an invitation', async () => {
     const response = await request(app)
       .post(`/api/organizations/${TEST_ORG_ID}/join-requests/${joinRequestId}/approve`)

@@ -75,6 +75,23 @@ function loadSchema(schemaPath) {
   }
 }
 
+function findDuplicateAgentUrls(manifest) {
+  const seen = new Set();
+  const duplicates = new Set();
+
+  for (const agent of manifest.agents || []) {
+    if (!agent || typeof agent.url !== 'string') {
+      continue;
+    }
+    if (seen.has(agent.url)) {
+      duplicates.add(agent.url);
+    }
+    seen.add(agent.url);
+  }
+
+  return [...duplicates];
+}
+
 function findAllSchemas(dir) {
   const schemas = [];
   
@@ -202,8 +219,41 @@ function validateRegistryConsistency() {
   if (missingSchemas.length > 0) {
     return `Registry references missing schemas: ${missingSchemas.join(', ')}`;
   }
+
+  const requiredDiscoverableSchemas = [
+    '/schemas/enums/logo-slot.json'
+  ];
+  const missingRegistryRefs = requiredDiscoverableSchemas.filter(ref => !registryRefs.has(ref));
+  if (missingRegistryRefs.length > 0) {
+    return `Required schemas missing from registry: ${missingRegistryRefs.join(', ')}`;
+  }
   
   return true;
+}
+
+function collectKeywordOccurrences(value, keyword, location, occurrences = []) {
+  if (!value || typeof value !== 'object') {
+    return occurrences;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(value, keyword)) {
+    occurrences.push({
+      location,
+      value: value[keyword]
+    });
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => {
+      collectKeywordOccurrences(item, keyword, `${location}/${index}`, occurrences);
+    });
+  } else {
+    for (const [key, child] of Object.entries(value)) {
+      collectKeywordOccurrences(child, keyword, `${location}/${key}`, occurrences);
+    }
+  }
+
+  return occurrences;
 }
 
 // Main test execution
@@ -263,6 +313,86 @@ async function runTests() {
     return validateRegistryConsistency();
   });
 
+  // Test 4A: Validate brand.json permits same-type agents for scoped endpoints
+  await test('brand.json permits more than 20 same-type agents with distinct urls', async () => {
+    const testAjv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false,
+      discriminator: true,
+      loadSchema: loadExternalSchema
+    });
+    addFormats(testAjv);
+
+    const validateBrand = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'brand.json')));
+    const manifest = {
+      $schema: '/schemas/brand.json',
+      version: '1.0',
+      agents: Array.from({ length: 25 }, (_, index) => {
+        const tenant = `tenant_${index + 1}`;
+        return {
+          type: 'sales',
+          url: `https://seller.example/mcp/${tenant}`,
+          id: `sales_${tenant}`,
+          jwks_uri: `https://seller.example/.well-known/jwks/${tenant}.json`
+        };
+      })
+    };
+
+    if (!validateBrand(manifest)) {
+      return validateBrand.errors.map(err => `${err.instancePath} ${err.message}`).join('; ');
+    }
+
+    const duplicateUrls = findDuplicateAgentUrls(manifest);
+    if (duplicateUrls.length > 0) {
+      return `Expected tenant-scoped agents to have distinct urls, found duplicates: ${duplicateUrls.join(', ')}`;
+    }
+
+    return true;
+  });
+
+  // Test 4B: Validate brand.json verifier ambiguity invariant
+  await test('brand.json duplicate agent urls are verifier-ambiguous', () => {
+    const manifest = {
+      $schema: '/schemas/brand.json',
+      version: '1.0',
+      agents: [
+        {
+          type: 'sales',
+          url: 'https://seller.example/mcp/tenant_1',
+          id: 'sales_tenant_1',
+          jwks_uri: 'https://seller.example/.well-known/jwks/tenant_1.json'
+        },
+        {
+          type: 'sales',
+          url: 'https://seller.example/mcp/tenant_1',
+          id: 'sales_tenant_1_duplicate',
+          jwks_uri: 'https://seller.example/.well-known/jwks/tenant_1_duplicate.json'
+        }
+      ]
+    };
+
+    const duplicateUrls = findDuplicateAgentUrls(manifest);
+    if (duplicateUrls.length !== 1 || duplicateUrls[0] !== 'https://seller.example/mcp/tenant_1') {
+      return `Expected duplicate agent url to be detected, got: ${duplicateUrls.join(', ') || '(none)'}`;
+    }
+
+    return true;
+  });
+
+  // Test 4C: Validate ADCP open-payload annotations
+  await test('x-adcp-open-payload annotations use currently supported values', () => {
+    for (const [schemaPath, schema] of schemas) {
+      const occurrences = collectKeywordOccurrences(schema, 'x-adcp-open-payload', path.basename(schemaPath));
+      for (const occurrence of occurrences) {
+        if (occurrence.value !== true) {
+          return `${occurrence.location}: x-adcp-open-payload must be true; false is reserved and omission means unclassified`;
+        }
+      }
+    }
+    return true;
+  });
+
   // Test 5: Validate enum schemas
   await test('All enum schemas have proper enum values', () => {
     const enumSchemas = schemas.filter(([path]) => path.includes('/enums/'));
@@ -279,10 +409,12 @@ async function runTests() {
   await test('Core schemas have appropriate required fields', () => {
     const coreSchemas = schemas.filter(([path]) => path.includes('/core/'));
     const requiredFieldChecks = {
-      'product.json': ['product_id', 'name', 'description', 'format_ids', 'delivery_type'],
-      'media-buy.json': ['media_buy_id', 'status', 'total_budget', 'packages'],
+      // product.json: format_ids OR format_options is required (v1 OR v2 path) — checked separately below
+      // creative-asset.json: format_id OR format_kind is required (v1 OR v2 path) — checked separately below
+      'product.json': ['product_id', 'name', 'description', 'delivery_type'],
+      'media-buy.json': ['media_buy_id', 'status', 'confirmed_at', 'revision', 'total_budget', 'packages'],
       'package.json': ['package_id'],
-      'creative-asset.json': ['creative_id', 'name', 'format_id', 'assets'],
+      'creative-asset.json': ['creative_id', 'name', 'assets'],
       'error.json': ['code', 'message']
     };
 
@@ -299,10 +431,1246 @@ async function runTests() {
         }
       }
     }
+
+    // product.json: assert v1 (format_ids) OR v2 (format_options) is required via anyOf — at-least-one,
+    // BOTH allowed during the migration window (per RFC #3305 amendment #3765). The previous oneOf-with-not
+    // shape required exactly one and forbade dual emission, which broke the seller migration story.
+    const productEntry = coreSchemas.find(([p]) => path.basename(p) === 'product.json');
+    if (productEntry) {
+      const [, productSchema] = productEntry;
+      const anyOf = productSchema.anyOf || [];
+      const hasV1Branch = anyOf.some((branch) => (branch.required || []).includes('format_ids'));
+      const hasV2Branch = anyOf.some((branch) => (branch.required || []).includes('format_options'));
+      if (!hasV1Branch || !hasV2Branch) {
+        return `product.json: must have an anyOf with v1 branch (required: ["format_ids"]) and v2 branch (required: ["format_options"]); found v1=${hasV1Branch}, v2=${hasV2Branch}`;
+      }
+      // No-not invariant: branches MUST NOT carry `not` clauses excluding the other branch — that would
+      // be the old oneOf behavior. anyOf with no negative constraints lets dual-emission products validate.
+      const hasForbiddenNotClause = anyOf.some((branch) => branch.not && branch.not.required);
+      if (hasForbiddenNotClause) {
+        return `product.json: anyOf branches must not carry 'not: required' clauses — dual emission of format_ids + format_options is legal during migration. See #3765.`;
+      }
+    }
+
+    // creative-asset.json: assert v1 (format_id) OR v2 (format_kind) is required via oneOf
+    const creativeAssetEntry = coreSchemas.find(([p]) => path.basename(p) === 'creative-asset.json');
+    if (creativeAssetEntry) {
+      const [, creativeAssetSchema] = creativeAssetEntry;
+      const oneOf = creativeAssetSchema.oneOf || [];
+      const hasV1Branch = oneOf.some((branch) => (branch.required || []).includes('format_id'));
+      const hasV2Branch = oneOf.some((branch) => (branch.required || []).includes('format_kind'));
+      if (!hasV1Branch || !hasV2Branch) {
+        return `creative-asset.json: must have a oneOf with v1 branch (required: ["format_id"]) and v2 branch (required: ["format_kind"]); found v1=${hasV1Branch}, v2=${hasV2Branch}`;
+      }
+    }
+
     return true;
   });
 
-  // Test 7: Validate schema examples against their schemas
+  // Test 7: Validate preview_creative supports non-expiring preview URLs
+  await test('preview_creative responses may omit expires_at for non-expiring preview URLs', async () => {
+    const previewResponseSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'creative/preview-creative-response.json'));
+    const testAjv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false,
+      discriminator: true,
+      loadSchema: loadExternalSchema
+    });
+    addFormats(testAjv);
+
+    const validate = await testAjv.compileAsync(previewResponseSchema);
+    const render = {
+      render_id: 'render_1',
+      output_format: 'url',
+      preview_url: 'https://creative-agent.example.com/preview/static',
+      role: 'primary'
+    };
+    const preview = {
+      preview_id: 'prev_static',
+      renders: [render],
+      input: { name: 'Default' }
+    };
+    const cases = [
+      {
+        status: 'completed',
+        response_type: 'single',
+        previews: [preview]
+      },
+      {
+        status: 'completed',
+        response_type: 'batch',
+        results: [
+          {
+            success: true,
+            creative_id: 'creative_static',
+            response: { previews: [preview] }
+          }
+        ]
+      }
+    ];
+
+    for (const example of cases) {
+      if (!validate(example)) {
+        return validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ');
+      }
+    }
+    return true;
+  });
+
+  // Test 8: Validate list_creative_formats supported_macros permits universal and custom macro strings
+  await test('list_creative_formats supported_macros accepts universal and custom macro names', async () => {
+    const responseSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'creative/list-creative-formats-response.json'));
+    const formatSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'core/format.json'));
+    const supportedMacrosItems = formatSchema.properties?.supported_macros?.items;
+    const macroBranches = supportedMacrosItems?.anyOf || [];
+    if (supportedMacrosItems?.oneOf) {
+      return 'supported_macros.items must use anyOf, not oneOf';
+    }
+    if (!macroBranches.some(branch => branch.$ref === '/schemas/enums/universal-macro.json')) {
+      return 'supported_macros.items is missing the UniversalMacro enum branch';
+    }
+    if (!macroBranches.some(branch => branch.type === 'string')) {
+      return 'supported_macros.items is missing the custom string branch';
+    }
+
+    const testAjv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false,
+      discriminator: true,
+      loadSchema: loadExternalSchema
+    });
+    addFormats(testAjv);
+
+    const validate = await testAjv.compileAsync(responseSchema);
+    const response = {
+      status: 'completed',
+      formats: [
+        {
+          format_id: {
+            agent_url: 'https://creative-agent.example.com',
+            id: 'display_standard'
+          },
+          name: 'Display standard',
+          supported_macros: [
+            'MEDIA_BUY_ID',
+            'CREATIVE_ID',
+            'CACHEBUSTER',
+            'CLICK_URL',
+            'PUBLISHER_CUSTOM_ID'
+          ]
+        }
+      ]
+    };
+
+    if (!validate(response)) {
+      return validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ');
+    }
+    return true;
+  });
+
+  // Test 9: Validate media-buy available_actions SLAWindow wire shape
+  await test('get_media_buys available_actions uses generated SLAWindow duration shape', async () => {
+    const responseSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'media-buy/get-media-buys-response.json'));
+    const testAjv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false,
+      discriminator: true,
+      loadSchema: loadExternalSchema
+    });
+    addFormats(testAjv);
+
+    const validate = await testAjv.compileAsync(responseSchema);
+    const baseResponse = {
+      status: 'completed',
+      media_buys: [{
+        media_buy_id: 'mb_available_actions',
+        status: 'active',
+        currency: 'USD',
+        total_budget: 10000,
+        confirmed_at: '2026-05-27T09:00:00Z',
+        revision: 1,
+        packages: [],
+        available_actions: [{
+          action: 'increase_budget',
+          mode: 'self_serve',
+          sla: {
+            response_max: 'PT5M',
+            completion_max: 'PT1H'
+          }
+        }]
+      }],
+      pagination: { has_more: false }
+    };
+
+    if (!validate(baseResponse)) {
+      return `Generated SLAWindow shape failed validation: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    const legacyResponse = structuredClone(baseResponse);
+    legacyResponse.media_buys[0].available_actions[0].sla = {
+      unit: 'hours',
+      value: 1,
+      response_max: 5
+    };
+    if (validate(legacyResponse)) {
+      return 'Legacy { unit, value, response_max:number } SLA shape unexpectedly validated';
+    }
+    const legacyErrorText = validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ');
+    if (!legacyErrorText.includes('/available_actions/0/sla')) {
+      return `Legacy SLA rejection did not point at sla: ${legacyErrorText}`;
+    }
+    return true;
+  });
+
+  // Test 10: Validate provisional media-buy confirmation guards
+  await test('provisional media buys cannot be active or carry committed_metrics', async () => {
+    const createSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'media-buy/create-media-buy-response.json'));
+    const getSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'media-buy/get-media-buys-response.json'));
+    const coreSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'core/media-buy.json'));
+    const testAjv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false,
+      discriminator: true,
+      loadSchema: loadExternalSchema
+    });
+    addFormats(testAjv);
+
+    const validateCreate = await testAjv.compileAsync(createSchema);
+    const validateGet = await testAjv.compileAsync(getSchema);
+    const validateCore = await testAjv.compileAsync(coreSchema);
+    const committedMetric = {
+      scope: 'standard',
+      metric_id: 'impressions',
+      committed_at: '2026-05-27T09:00:00Z'
+    };
+
+    const provisionalCreate = {
+      status: 'completed',
+      media_buy_id: 'mb_provisional',
+      media_buy_status: 'pending_start',
+      confirmed_at: null,
+      revision: 1,
+      packages: [{ package_id: 'pkg_1' }]
+    };
+    if (!validateCreate(provisionalCreate)) {
+      return `Provisional create response unexpectedly failed validation: ${validateCreate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    const committedCreate = structuredClone(provisionalCreate);
+    committedCreate.media_buy_status = 'active';
+    committedCreate.confirmed_at = '2026-05-27T09:00:00Z';
+    committedCreate.packages[0].committed_metrics = [committedMetric];
+    if (!validateCreate(committedCreate)) {
+      return `Committed create response unexpectedly failed validation: ${validateCreate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    const activeProvisionalCreate = structuredClone(provisionalCreate);
+    activeProvisionalCreate.media_buy_status = 'active';
+    if (validateCreate(activeProvisionalCreate)) {
+      return 'create_media_buy accepted active media_buy_status with confirmed_at: null';
+    }
+
+    const legacyActiveProvisionalCreate = structuredClone(provisionalCreate);
+    delete legacyActiveProvisionalCreate.media_buy_status;
+    legacyActiveProvisionalCreate.status = 'active';
+    if (validateCreate(legacyActiveProvisionalCreate)) {
+      return 'create_media_buy accepted deprecated active status with confirmed_at: null';
+    }
+
+    const metricsProvisionalCreate = structuredClone(provisionalCreate);
+    metricsProvisionalCreate.packages[0].committed_metrics = [committedMetric];
+    if (validateCreate(metricsProvisionalCreate)) {
+      return 'create_media_buy accepted committed_metrics with confirmed_at: null';
+    }
+
+    const provisionalGet = {
+      status: 'completed',
+      media_buys: [{
+        media_buy_id: 'mb_provisional',
+        status: 'pending_start',
+        currency: 'USD',
+        total_budget: 1000,
+        confirmed_at: null,
+        revision: 1,
+        packages: [{ package_id: 'pkg_1' }]
+      }]
+    };
+    if (!validateGet(provisionalGet)) {
+      return `Provisional get_media_buys response unexpectedly failed validation: ${validateGet.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    const activeProvisionalGet = structuredClone(provisionalGet);
+    activeProvisionalGet.media_buys[0].status = 'active';
+    if (validateGet(activeProvisionalGet)) {
+      return 'get_media_buys accepted active status with confirmed_at: null';
+    }
+
+    const metricsProvisionalGet = structuredClone(provisionalGet);
+    metricsProvisionalGet.media_buys[0].packages[0].committed_metrics = [committedMetric];
+    if (validateGet(metricsProvisionalGet)) {
+      return 'get_media_buys accepted committed_metrics with confirmed_at: null';
+    }
+
+    const activeCore = {
+      media_buy_id: 'mb_core',
+      status: 'active',
+      confirmed_at: null,
+      revision: 1,
+      total_budget: 1000,
+      packages: [{ package_id: 'pkg_1' }]
+    };
+    if (validateCore(activeCore)) {
+      return 'core media-buy accepted active status with confirmed_at: null';
+    }
+
+    return true;
+  });
+
+  // Test 11: Validate comply_test_controller accepts the JCS non-finite error code
+  await test('Comply controller response accepts JCS non-finite controller error', async () => {
+    const testAjv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false,
+      discriminator: true,
+      loadSchema: loadExternalSchema
+    });
+    addFormats(testAjv);
+
+    const validateComplyResponse = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'compliance/comply-test-controller-response.json')));
+    const response = {
+      status: 'completed',
+      success: false,
+      error: 'JCS_NON_FINITE_NUMBER',
+      error_detail: 'Digest-mode upstream traffic could not be JCS-canonicalized because the parsed JSON-like value tree contained a non-finite numeric value.'
+    };
+
+    if (!validateComplyResponse(response)) {
+      return `JCS_NON_FINITE_NUMBER response unexpectedly failed validation: ${validateComplyResponse.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    return true;
+  });
+
+  // Test 11B: Validate comply_test_controller scenario strings are open for extension
+  await test('Compliance scenario fields accept custom scenario strings', async () => {
+    const complyRequestSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'compliance/comply-test-controller-request.json'));
+    const complyResponseSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'compliance/comply-test-controller-response.json'));
+    const capabilitiesSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'protocol/get-adcp-capabilities-response.json'));
+
+    if (complyRequestSchema.properties?.scenario?.enum) {
+      return 'comply_test_controller request scenario must remain an open string, not a closed enum';
+    }
+    if (complyRequestSchema.properties?.scenario?.type !== 'string') {
+      return 'comply_test_controller request scenario must remain typed as string';
+    }
+    const listScenariosResponse = complyResponseSchema.oneOf?.find(branch => branch.title === 'ListScenariosSuccess');
+    if (!listScenariosResponse) {
+      return 'ListScenariosSuccess branch missing from comply_test_controller response schema; selector is out of date';
+    }
+    const listScenariosResponseItems = listScenariosResponse?.properties?.scenarios?.items;
+    if (listScenariosResponseItems?.enum) {
+      return 'comply_test_controller list_scenarios response items must remain open strings, not a closed enum';
+    }
+    if (listScenariosResponseItems?.type !== 'string') {
+      return 'comply_test_controller list_scenarios response items must remain typed as string';
+    }
+    const capabilityScenarioItems = capabilitiesSchema.properties?.compliance_testing?.properties?.scenarios?.items;
+    if (capabilityScenarioItems?.enum) {
+      return 'compliance_testing.scenarios items must remain open strings, not a closed enum';
+    }
+    if (capabilityScenarioItems?.type !== 'string') {
+      return 'compliance_testing.scenarios items must remain typed as string';
+    }
+
+    const testAjv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false,
+      discriminator: true,
+      loadSchema: loadExternalSchema
+    });
+    addFormats(testAjv);
+
+    const validateComplyRequest = await testAjv.compileAsync(complyRequestSchema);
+    const customScenarioRequest = {
+      scenario: 'seller_custom_fixture_reset',
+      params: {
+        fixture_scope: 'all'
+      },
+      account: {
+        sandbox: true
+      }
+    };
+    if (!validateComplyRequest(customScenarioRequest)) {
+      return `custom comply_test_controller scenario unexpectedly failed validation: ${validateComplyRequest.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    const validateComplyResponse = await testAjv.compileAsync(complyResponseSchema);
+    const customScenarioResponse = {
+      status: 'completed',
+      success: true,
+      scenarios: ['force_creative_status', 'seller_custom_fixture_reset']
+    };
+    if (!validateComplyResponse(customScenarioResponse)) {
+      return `custom list_scenarios response unexpectedly failed validation: ${validateComplyResponse.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    const validateCapabilities = await testAjv.compileAsync(capabilitiesSchema);
+    const customScenarioCapabilities = {
+      status: 'completed',
+      adcp: {
+        major_versions: [3],
+        idempotency: {
+          supported: false
+        }
+      },
+      supported_protocols: ['media_buy'],
+      compliance_testing: {
+        scenarios: ['force_creative_status', 'seller_custom_fixture_reset']
+      }
+    };
+    if (!validateCapabilities(customScenarioCapabilities)) {
+      return `custom compliance_testing scenario unexpectedly failed validation: ${validateCapabilities.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    return true;
+  });
+
+  // Test 11C: Validate native postal systems and deprecated legacy aliases across geo surfaces
+  await test('Postal systems support native country-local form and deprecated legacy aliases', async () => {
+    const postalSystemSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'enums/postal-system.json'));
+    if (!postalSystemSchema.enum?.includes('postal_code') || !postalSystemSchema.enum?.includes('zip')) {
+      return 'postal-system enum must include native country-local systems such as postal_code and zip';
+    }
+
+    if (!postalSystemSchema.enum?.includes('us_zip')) {
+      return 'postal-system enum must retain legacy country-fused systems for 3.x additive enum compatibility';
+    }
+
+    const legacyPostalSystemSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'enums/legacy-postal-system.json'));
+    if (!legacyPostalSystemSchema.enum?.includes('us_zip')) {
+      return 'legacy-postal-system enum must retain deprecated fused aliases such as us_zip';
+    }
+
+    const testAjv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false,
+      discriminator: true,
+      loadSchema: loadExternalSchema
+    });
+    addFormats(testAjv);
+
+    const validateTargeting = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'core/targeting.json')));
+    const validateProductFilters = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'core/product-filters.json')));
+    const validateCapabilities = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'protocol/get-adcp-capabilities-response.json')));
+    const validateDimensions = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'core/forecast-point-dimensions.json')));
+    const validateGeoBreakdownSupport = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'core/geo-breakdown-support.json')));
+    const validateDeliveryRequest = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'media-buy/get-media-buy-delivery-request.json')));
+    const validateGeoDeliveryMetrics = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'core/geo-delivery-metrics.json')));
+
+    const assertValid = (validate, value, label) => {
+      if (!validate(value)) {
+        return `${label} unexpectedly failed validation: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+      }
+      return true;
+    };
+
+    const assertInvalid = (validate, value, label) => {
+      if (validate(value)) {
+        return `${label} unexpectedly passed validation`;
+      }
+      return true;
+    };
+
+    let result = assertValid(
+      validateTargeting,
+      {
+        geo_postal_areas: [{ country: 'ZA', system: 'postal_code', values: ['2196'] }],
+        geo_postal_areas_exclude: [{ country: 'US', system: 'zip', values: ['10001'] }]
+      },
+      'targeting overlay with native postal areas'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateTargeting,
+      {
+        geo_postal_areas: [{ system: 'us_zip', values: ['10001'] }]
+      },
+      'targeting overlay with deprecated legacy postal system'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateTargeting,
+      {
+        geo_postal_areas: [{ system: 'postal_code', values: ['2196'] }]
+      },
+      'targeting overlay with native postal system but no country'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateTargeting,
+      {
+        geo_postal_areas: [{ country: 'GB', system: 'zip', values: ['SW1A'] }]
+      },
+      'targeting overlay with wrong country-local postal system'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateTargeting,
+      {
+        geo_postal_areas: [{ country: 'US', system: 'plz', values: ['10001'] }]
+      },
+      'targeting overlay with another country postal system'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateProductFilters,
+      {
+        required_geo_targeting: [
+          { level: 'postal_area', country: 'US', system: 'zip' }
+        ],
+        postal_areas: [
+          { country: 'ZA', system: 'postal_code', values: ['2196'] }
+        ]
+      },
+      'product filters with native postal systems'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateProductFilters,
+      {
+        required_geo_targeting: [
+          { level: 'postal_area', system: 'us_zip' }
+        ],
+        postal_areas: [
+          { system: 'us_zip', values: ['10001'] }
+        ]
+      },
+      'product filters with deprecated legacy postal systems'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateProductFilters,
+      {
+        required_geo_targeting: [
+          { level: 'metro' },
+          { level: 'postal_area' }
+        ]
+      },
+      'product filters preserve level-only geo targeting requests'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateCapabilities,
+      {
+        status: 'completed',
+        adcp: {
+          major_versions: [3],
+          idempotency: { supported: false }
+        },
+        supported_protocols: ['media_buy'],
+        media_buy: {
+          execution: {
+            targeting: {
+              geo_postal_areas: {
+                us_zip: true,
+                US: ['zip', 'zip_plus_four'],
+                ZA: ['postal_code']
+              }
+            }
+          }
+        }
+      },
+      'get_adcp_capabilities targeting declaration with native postal areas'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateCapabilities,
+      {
+        status: 'completed',
+        adcp: {
+          major_versions: [3],
+          idempotency: { supported: false }
+        },
+        supported_protocols: ['media_buy'],
+        media_buy: {
+          execution: {
+            targeting: {
+              geo_postal_areas: { us_zip: true }
+            }
+          }
+        }
+      },
+      'get_adcp_capabilities targeting declaration with deprecated legacy postal areas'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateCapabilities,
+      {
+        status: 'completed',
+        adcp: {
+          major_versions: [3],
+          idempotency: { supported: false }
+        },
+        supported_protocols: ['media_buy'],
+        media_buy: {
+          execution: {
+            targeting: {
+              geo_postal_areas: {}
+            }
+          }
+        }
+      },
+      'get_adcp_capabilities targeting declaration with empty postal support map'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateCapabilities,
+      {
+        status: 'completed',
+        adcp: {
+          major_versions: [3],
+          idempotency: { supported: false }
+        },
+        supported_protocols: ['media_buy'],
+        media_buy: {
+          execution: {
+            targeting: {
+              geo_postal_areas: { NG: ['postal_code'] }
+            }
+          }
+        }
+      },
+      'get_adcp_capabilities targeting declaration with unknown-country fallback postal system'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateCapabilities,
+      {
+        status: 'completed',
+        adcp: {
+          major_versions: [3],
+          idempotency: { supported: false }
+        },
+        supported_protocols: ['media_buy'],
+        media_buy: {
+          execution: {
+            targeting: {
+              geo_postal_areas: { GB: ['zip'] }
+            }
+          }
+        }
+      },
+      'get_adcp_capabilities targeting declaration with wrong country-local postal system'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateDimensions,
+      [{ kind: 'geo', geo_level: 'postal_area', country: 'ZA', system: 'postal_code', geo_code: '2196' }],
+      'forecast geo dimension with native postal system'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateDimensions,
+      [{ kind: 'geo', geo_level: 'postal_area', country: 'GB', system: 'zip', geo_code: 'SW1A' }],
+      'forecast geo dimension with wrong country-local postal system'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateGeoBreakdownSupport,
+      { postal_area: { us_zip: true, US: ['zip', 'zip_plus_four'], ZA: ['postal_code'] } },
+      'geo breakdown support with native postal systems'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateGeoBreakdownSupport,
+      { postal_area: {} },
+      'geo breakdown support with empty postal support map'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateGeoBreakdownSupport,
+      { postal_area: { NG: ['postal_code'] } },
+      'geo breakdown support with unknown-country fallback postal system'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateGeoBreakdownSupport,
+      { postal_area: { GB: ['zip'] } },
+      'geo breakdown support with wrong country-local postal system'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateDeliveryRequest,
+      { reporting_dimensions: { geo: { geo_level: 'postal_area', country: 'US', system: 'zip' } } },
+      'delivery reporting request with native postal system'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateDeliveryRequest,
+      { reporting_dimensions: { geo: { geo_level: 'postal_area' } } },
+      'delivery reporting request preserves level-only postal requests'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateDeliveryRequest,
+      { reporting_dimensions: { geo: { geo_level: 'metro' } } },
+      'delivery reporting request preserves level-only metro requests'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateGeoDeliveryMetrics,
+      { geo_level: 'postal_area', country: 'US', system: 'zip', geo_code: '10001', impressions: 1000, spend: 12.5 },
+      'geo delivery metrics with native postal system'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateGeoDeliveryMetrics,
+      { geo_level: 'postal_area', system: 'us_zip', geo_code: '10001', impressions: 1000, spend: 12.5 },
+      'geo delivery metrics with deprecated legacy postal system'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateGeoDeliveryMetrics,
+      { geo_level: 'postal_area', system: 'zip', geo_code: '10001', impressions: 1000, spend: 12.5 },
+      'geo delivery metrics with native postal system but no country'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateGeoDeliveryMetrics,
+      { geo_level: 'metro', country: 'US', system: 'nielsen_dma', geo_code: '501', impressions: 1000, spend: 12.5 },
+      'geo delivery metrics with country on metro row'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateCapabilities,
+      {
+        status: 'completed',
+        adcp: {
+          major_versions: [3],
+          idempotency: { supported: false }
+        },
+        supported_protocols: ['media_buy'],
+        media_buy: {
+          execution: {
+            targeting: {
+              geo_postal_areas: { za_postcode: true }
+            }
+          }
+        }
+      },
+      'get_adcp_capabilities targeting declaration with unregistered legacy-like postal key'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateCapabilities,
+      {
+        status: 'completed',
+        adcp: {
+          major_versions: [3],
+          idempotency: { supported: false }
+        },
+        supported_protocols: ['media_buy'],
+        media_buy: {
+          execution: {
+            targeting: {
+              geo_postal_areas: { ZA: ['za_postcode'] }
+            }
+          }
+        }
+      },
+      'get_adcp_capabilities targeting declaration with registered country invalid postal system'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateCapabilities,
+      {
+        status: 'completed',
+        adcp: {
+          major_versions: [3],
+          idempotency: { supported: false }
+        },
+        supported_protocols: ['media_buy'],
+        media_buy: {
+          execution: {
+            targeting: {
+              geo_postal_areas: { NG: ['zip'] }
+            }
+          }
+        }
+      },
+      'get_adcp_capabilities targeting declaration with unknown-country invalid postal system'
+    );
+    if (result !== true) return result;
+
+    return true;
+  });
+
+  // Test 12: Validate ForecastPoint dimension and viewability compatibility gates
+  await test('ForecastPoint dimension and viewability compatibility gates behave as intended', async () => {
+    const dimensionsSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'core/forecast-point-dimensions.json'));
+    const uniqueProps = dimensionsSchema['x-adcp-validation']?.unique_item_properties || [];
+    if (!uniqueProps.includes('kind')) {
+      return 'forecast-point-dimensions.json must declare x-adcp-validation.unique_item_properties: ["kind"]';
+    }
+
+    const testAjv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false,
+      discriminator: true,
+      loadSchema: loadExternalSchema
+    });
+    addFormats(testAjv);
+
+    const validateDimensions = await testAjv.compileAsync(dimensionsSchema);
+    const validateForecastPoint = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'core/forecast-point.json')));
+    const validateSignalCoverageForecast = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'core/signal-coverage-forecast.json')));
+    const validateGetSignalsResponse = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'signals/get-signals-response.json')));
+    const validateDeliveryMetrics = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'core/delivery-metrics.json')));
+    const validateComplyRequest = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'compliance/comply-test-controller-request.json')));
+
+    const assertValid = (validate, value, label) => {
+      if (!validate(value)) {
+        return `${label} unexpectedly failed validation: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+      }
+      return true;
+    };
+
+    const assertInvalid = (validate, value, label) => {
+      if (validate(value)) {
+        return `${label} unexpectedly passed validation`;
+      }
+      return true;
+    };
+
+    for (const [value, label] of [
+      [[{ kind: 'geo', geo_level: 'metro', system: 'nielsen_dma', geo_code: '501' }], 'metro dimension with metro-system'],
+      [[{ kind: 'geo', geo_level: 'postal_area', system: 'us_zip', geo_code: '10001' }], 'postal dimension with deprecated legacy postal-system'],
+      [[{ kind: 'geo', geo_level: 'country', geo_code: 'US' }], 'country dimension without system'],
+      [[{ kind: 'placement', placement_ref: { publisher_domain: 'publisher.example', placement_id: 'header_bidding' } }, { kind: 'geo', geo_level: 'country', geo_code: 'US' }], 'placement x country intersection'],
+      [[{ kind: 'signal', signal_ref: { scope: 'data_provider', data_provider_domain: 'pinnacle-data.example', signal_id: 'weather' }, signal_value: 'hot', presence: 'present' }], 'signal value dimension with signal_ref'],
+      [[{ kind: 'signal', signal_id: 'weather', signal_value: 'hot', presence: 'present' }], 'signal value dimension with inherited signal_id shorthand'],
+      [[{ kind: 'signal', signal_ref: { scope: 'data_provider', data_provider_domain: 'pinnacle-data.example', signal_id: 'weather' }, signal_value: null, presence: 'absent' }], 'signal not-present dimension']
+    ]) {
+      const result = assertValid(validateDimensions, value, label);
+      if (result !== true) return result;
+    }
+
+    for (const [value, label] of [
+      [[{ kind: 'geo', geo_level: 'metro', system: 'us_zip', geo_code: '10001' }], 'metro dimension with deprecated legacy postal-system'],
+      [[{ kind: 'geo', geo_level: 'postal_area', system: 'nielsen_dma', geo_code: '501' }], 'postal dimension with metro-system'],
+      [[{ kind: 'geo', geo_level: 'country', system: 'nielsen_dma', geo_code: 'US' }], 'country dimension with system'],
+      [[{ kind: 'geo', geo_level: 'country', geo_code: 'USA' }], 'country dimension with non-alpha2 code'],
+      [[{ kind: 'signal', signal_id: 'weather', signal_value: 'hot', presence: 'absent' }], 'signal absent dimension with non-null value'],
+      [[{ kind: 'signal', signal_id: 'weather', signal_value: null, presence: 'present' }], 'signal present dimension with null value'],
+      [[{ kind: 'signal', signal_id: 'weather', presence: 'absent' }], 'signal absent dimension without explicit null value'],
+      [[{ kind: 'signal', signal_value: 'hot', presence: 'present' }], 'signal dimension without signal identity']
+    ]) {
+      const result = assertInvalid(validateDimensions, value, label);
+      if (result !== true) return result;
+    }
+
+    let result;
+    for (const [value, label] of [
+      [{ metrics: { coverage_rate: { mid: 1.2 } } }, 'coverage_rate mid above 1.0'],
+      [{ metrics: { coverage_rate: { low: 1.5, high: 2.0 } } }, 'coverage_rate low/high above 1.0'],
+      [{ metrics: { coverage_rate: { low: 0.2, high: 1.5 } } }, 'coverage_rate high above 1.0']
+    ]) {
+      result = assertInvalid(validateForecastPoint, value, label);
+      if (result !== true) return result;
+    }
+
+    const signalCoverageForecast = {
+      method: 'estimate',
+      forecast_range_unit: 'availability',
+      scope: {
+        kind: 'inventory',
+        label: 'network price-priority inventory',
+        line_item_types: ['PRICE_PRIORITY']
+      },
+      bucket_semantics: 'exclusive',
+      bucket_completeness: 'partial',
+      points: [
+        {
+          label: 'not present',
+          dimensions: [
+            { kind: 'signal', signal_ref: { scope: 'data_provider', data_provider_domain: 'pinnacle-data.example', signal_id: 'weather' }, signal_value: null, presence: 'absent' }
+          ],
+          metrics: {
+            impressions: { mid: 280000 },
+            coverage_rate: { mid: 0.28 }
+          }
+        },
+        {
+          label: 'hot',
+          dimensions: [
+            { kind: 'signal', signal_ref: { scope: 'data_provider', data_provider_domain: 'pinnacle-data.example', signal_id: 'weather' }, signal_value: 'hot', presence: 'present' }
+          ],
+          metrics: {
+            impressions: { mid: 180000 },
+            coverage_rate: { mid: 0.18 }
+          }
+        }
+      ]
+    };
+    result = assertValid(validateSignalCoverageForecast, signalCoverageForecast, 'signal coverage forecast');
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateSignalCoverageForecast,
+      {
+        ...signalCoverageForecast,
+        points: [
+          {
+            label: 'present',
+            dimensions: [
+              { kind: 'signal', signal_ref: { scope: 'data_provider', data_provider_domain: 'pinnacle-data.example', signal_id: 'weather' }, presence: 'present' }
+            ],
+            metrics: {
+              impressions: { mid: 720000 },
+              coverage_rate: { mid: 0.72 }
+            }
+          }
+        ]
+      },
+      'signal coverage forecast present bucket without signal_value'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateSignalCoverageForecast,
+      { ...signalCoverageForecast, points: [{ metrics: { coverage_rate: { mid: 0.12 } } }] },
+      'signal coverage forecast point without dimensions'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateSignalCoverageForecast,
+      {
+        ...signalCoverageForecast,
+        points: [
+          {
+            dimensions: [{ kind: 'geo', geo_level: 'country', geo_code: 'US' }],
+            metrics: { coverage_rate: { mid: 0.12 } }
+          }
+        ]
+      },
+      'signal coverage forecast point without signal dimension'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateSignalCoverageForecast,
+      {
+        ...signalCoverageForecast,
+        points: [
+          {
+            dimensions: [
+              { kind: 'signal', signal_ref: { scope: 'data_provider', data_provider_domain: 'pinnacle-data.example', signal_id: 'weather' }, presence: 'present' }
+            ],
+            metrics: { impressions: { mid: 120000 } }
+          }
+        ]
+      },
+      'signal coverage forecast point without coverage_rate'
+    );
+    if (result !== true) return result;
+
+    const signalCoverageForecastWithoutBucketSemantics = { ...signalCoverageForecast };
+    delete signalCoverageForecastWithoutBucketSemantics.bucket_semantics;
+    result = assertInvalid(
+      validateSignalCoverageForecast,
+      signalCoverageForecastWithoutBucketSemantics,
+      'signal coverage forecast without bucket semantics'
+    );
+    if (result !== true) return result;
+
+    const signalCoverageForecastWithoutBucketCompleteness = { ...signalCoverageForecast };
+    delete signalCoverageForecastWithoutBucketCompleteness.bucket_completeness;
+    result = assertInvalid(
+      validateSignalCoverageForecast,
+      signalCoverageForecastWithoutBucketCompleteness,
+      'signal coverage forecast without bucket completeness'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateSignalCoverageForecast,
+      { ...signalCoverageForecast, forecast_range_unit: 'spend' },
+      'signal coverage forecast with non-availability range unit'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateSignalCoverageForecast,
+      { ...signalCoverageForecast, scope: { kind: 'product', label: 'Sports ROS' } },
+      'product-scoped signal coverage forecast without product_id'
+    );
+    if (result !== true) return result;
+
+    const signalDimensionMatchesEnclosingSignal = (signal) => {
+      const enclosingRef = signal.signal_ref;
+      const enclosingLegacyId = signal.signal_id?.id;
+      for (const point of signal.coverage_forecast?.points || []) {
+        for (const dimension of point.dimensions || []) {
+          if (dimension.kind !== 'signal') continue;
+          if (dimension.signal_ref && enclosingRef) {
+            if (JSON.stringify(dimension.signal_ref) !== JSON.stringify(enclosingRef)) return false;
+          } else if (dimension.signal_ref && !enclosingRef) {
+            return false;
+          } else if (dimension.signal_id) {
+            const enclosingSignalId = enclosingRef?.signal_id || enclosingLegacyId;
+            if (dimension.signal_id !== enclosingSignalId) return false;
+          }
+        }
+      }
+      return true;
+    };
+
+    if (!signalDimensionMatchesEnclosingSignal({
+      signal_ref: { scope: 'data_provider', data_provider_domain: 'pinnacle-data.example', signal_id: 'weather' },
+      coverage_forecast: signalCoverageForecast
+    })) {
+      return 'matching coverage_forecast signal_ref was incorrectly flagged as mismatch';
+    }
+
+    if (signalDimensionMatchesEnclosingSignal({
+      signal_ref: { scope: 'data_provider', data_provider_domain: 'pinnacle-data.example', signal_id: 'sports_fans' },
+      coverage_forecast: signalCoverageForecast
+    })) {
+      return 'coverage_forecast signal dimension must resolve to the enclosing signal';
+    }
+
+    const completeExclusiveCoverageRatesPartition = (forecast) => {
+      if (forecast.bucket_semantics !== 'exclusive' || forecast.bucket_completeness !== 'complete') return true;
+      for (const key of ['low', 'mid', 'high']) {
+        const values = forecast.points.map(point => point.metrics?.coverage_rate?.[key]);
+        if (values.every(value => value === undefined)) continue;
+        if (values.some(value => typeof value !== 'number')) return false;
+        if (Math.abs(values.reduce((sum, value) => sum + value, 0) - 1) >= 0.000001) return false;
+      }
+      return true;
+    };
+
+    if (!completeExclusiveCoverageRatesPartition({
+      ...signalCoverageForecast,
+      bucket_completeness: 'complete',
+      points: [
+        signalCoverageForecast.points[0],
+        {
+          ...signalCoverageForecast.points[1],
+          label: 'present',
+          metrics: { coverage_rate: { mid: 0.72 } }
+        }
+      ]
+    })) {
+      return 'complete exclusive coverage partition with rates summing to 1 was incorrectly flagged';
+    }
+
+    if (completeExclusiveCoverageRatesPartition({
+      ...signalCoverageForecast,
+      bucket_completeness: 'complete'
+    })) {
+      return 'complete exclusive coverage partition must have coverage_rate mid values summing to 1';
+    }
+
+    if (!completeExclusiveCoverageRatesPartition({
+      ...signalCoverageForecast,
+      bucket_completeness: 'complete',
+      points: [
+        {
+          ...signalCoverageForecast.points[0],
+          metrics: { coverage_rate: { low: 0.25, mid: 0.28, high: 0.3 } }
+        },
+        {
+          ...signalCoverageForecast.points[1],
+          label: 'present',
+          metrics: { coverage_rate: { low: 0.75, mid: 0.72, high: 0.7 } }
+        }
+      ]
+    })) {
+      return 'complete exclusive coverage partition with low/mid/high rates summing to 1 was incorrectly flagged';
+    }
+
+    if (completeExclusiveCoverageRatesPartition({
+      ...signalCoverageForecast,
+      bucket_completeness: 'complete',
+      points: [
+        {
+          ...signalCoverageForecast.points[0],
+          metrics: { coverage_rate: { low: 0.25, mid: 0.28, high: 0.3 } }
+        },
+        {
+          ...signalCoverageForecast.points[1],
+          label: 'present',
+          metrics: { coverage_rate: { low: 0.7, mid: 0.72, high: 0.7 } }
+        }
+      ]
+    })) {
+      return 'complete exclusive coverage partition must have coverage_rate low values summing to 1 when lows are supplied';
+    }
+
+    result = assertValid(
+      validateGetSignalsResponse,
+      {
+        status: 'completed',
+        cache_scope: 'public',
+        signals: [
+          {
+            signal_ref: {
+              scope: 'data_provider',
+              data_provider_domain: 'pinnacle-data.example',
+              signal_id: 'weather'
+            },
+            signal_agent_segment_id: 'weather',
+            name: 'Weather',
+            description: 'Weather context',
+            signal_type: 'marketplace',
+            coverage_forecast: signalCoverageForecast,
+            deployments: []
+          }
+        ]
+      },
+      'get_signals response with coverage_forecast and no legacy coverage_percentage'
+    );
+    if (result !== true) return result;
+
+    const forecastWithoutStandard = {
+      metrics: { impressions: { mid: 10 } },
+      viewability: { viewable_rate: { mid: 0.8 } }
+    };
+    result = assertInvalid(validateForecastPoint, forecastWithoutStandard, 'forecast viewability values without standard');
+    if (result !== true) return result;
+
+    const forecastWithStandard = {
+      product_id: 'prod_1',
+      metrics: { impressions: { mid: 10 } },
+      dimensions: [
+        { kind: 'placement', placement_ref: { publisher_domain: 'publisher.example', placement_id: 'header_bidding' } },
+        { kind: 'geo', geo_level: 'country', geo_code: 'US' }
+      ],
+      viewability: { viewable_rate: { mid: 0.8 }, standard: 'mrc' }
+    };
+    result = assertValid(validateForecastPoint, forecastWithStandard, 'forecast viewability values with standard');
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateDeliveryMetrics,
+      { impressions: 10, viewability: { measurable_impressions: 9, viewable_rate: 0.8 } },
+      'delivery viewability without standard remains 3.x-compatible'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateComplyRequest,
+      { scenario: 'simulate_delivery', params: { media_buy_id: 'mb_1', viewability: { viewable_rate: 0.8 } }, account: { sandbox: true } },
+      'simulate_delivery viewability without standard remains 3.x-compatible'
+    );
+    if (result !== true) return result;
+
+    const hasRepeatedKind = (dimensions) => {
+      const seen = new Set();
+      for (const dimension of dimensions) {
+        if (!dimension || typeof dimension.kind !== 'string') continue;
+        if (seen.has(dimension.kind)) return true;
+        seen.add(dimension.kind);
+      }
+      return false;
+    };
+
+    const placementCountry = [
+      { kind: 'placement', placement_ref: { publisher_domain: 'publisher.example', placement_id: 'header_bidding' } },
+      { kind: 'geo', geo_level: 'country', geo_code: 'US' }
+    ];
+    if (hasRepeatedKind(placementCountry)) {
+      return 'placement x country intersection was incorrectly flagged as duplicate kind';
+    }
+
+    const twoCountries = [
+      { kind: 'geo', geo_level: 'country', geo_code: 'US' },
+      { kind: 'geo', geo_level: 'country', geo_code: 'CA' }
+    ];
+    if (!hasRepeatedKind(twoCountries)) {
+      return 'two geo rows in one point must be flagged as duplicate kind';
+    }
+
+    return true;
+  });
+
+  // Test 12B: VAST/DAAST tag URLs accept unsubstituted ad-server macros
+  await test('VAST and DAAST tag URLs accept [MACRO] and ${MACRO} placeholders', async () => {
+    // Real-world IAS-wrapped CTV tag: [OMIDPARTNER]-style VAST macros and
+    // ${GDPR_CONSENT}-style privacy macros are illegal in strict RFC 3986 URIs
+    // but valid RFC 6570 templates. format: "uri" rejected these; the tag
+    // asset URLs must use format: "uri-template" (same convention as url-asset).
+    const macroUrl = 'https://unified.adsafeprotected.com/v2/2816045/94180721?mon=94180722&omidPartner=[OMIDPARTNER]&apiframeworks=[APIFRAMEWORKS]&bundleId=[BUNDLEID]&blockedAdTracking=${DC_BLOCKED_AD}&ias_dts=atw&ias_xappb=[ctv_appid]&originalVast=https://vast.extremereach.io/v/16115077?us_privacy=${US_PRIVACY}&gdpr=${GDPR}&gdpr_consent=${GDPR_CONSENT_1002}&gpp=${GPP_STRING_1002}&gpp_sid=${GPP_SID}&er_did=[INSERT_DEVICE_ID_HERE]&ba_cb=[INSERT_CACHEBREAKER_HERE]';
+
+    const cases = [
+      ['core/assets/vast-asset.json', { asset_type: 'vast', delivery_type: 'url', url: macroUrl }],
+      ['core/assets/daast-asset.json', { asset_type: 'daast', delivery_type: 'url', url: macroUrl }]
+    ];
+
+    for (const [schemaFile, asset] of cases) {
+      const assetSchema = loadSchema(path.join(SCHEMA_BASE_DIR, schemaFile));
+      const testAjv = new Ajv({
+        allErrors: true,
+        verbose: true,
+        strict: false,
+        discriminator: true,
+        loadSchema: loadExternalSchema
+      });
+      addFormats(testAjv);
+
+      const validate = await testAjv.compileAsync(assetSchema);
+      if (!validate(asset)) {
+        const errors = validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ');
+        return `${schemaFile}: macro-laden tag URL must validate: ${errors}`;
+      }
+
+      const malformed = { ...asset, url: 'not a valid uri template' };
+      if (validate(malformed)) {
+        return `${schemaFile}: url with raw spaces must still be rejected`;
+      }
+    }
+    return true;
+  });
+
+  // Test 13: Validate schema examples against their schemas
   await test('Schema examples validate against their own schemas', async () => {
     // Skip schemas that require format-aware validation (creative manifests need format context)
     const FORMAT_AWARE_SCHEMAS = ['sync-creatives-request.json', 'list-creatives-response.json'];

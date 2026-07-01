@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.4/core/vendor-metric-optimization.json",
+  "title": "Vendor Metric Optimization",
+  "description": "Vendor-attested metric optimization capabilities for a product. Presence indicates the product supports `optimization_goals` with `kind: 'vendor_metric'` — i.e., the seller's bidding stack can steer delivery toward a specific vendor's metric. This is the optimization-side counterpart to `reporting_capabilities.vendor_metrics`, which declares which vendor metrics the product can *report*. The two are related but distinct: a product may be able to commit to reporting a vendor metric (the vendor's SDK fires on the inventory) without being able to optimize against it (the optimization signal isn't actionable in the seller's bidding stack). Each `supported_metrics` entry is the tuple `(vendor, metric_id)` plus the target kinds the seller supports for that pair. Buyers MUST set `vendor_metric` goals only against entries declared here; sellers MUST reject goals whose `(vendor, metric_id)` is not in `supported_metrics`, and MUST reject goals whose `target.kind` is not in the matching entry's `supported_targets`. Buyers SHOULD also verify the metric is in the vendor's published `measurement.metrics[]` catalog (the discovery-layer check — softened from MUST while measurement-vendor adoption of AdCP-conformant capability publication catches up; tightens to MUST at the next minor) and that the package's `committed_metrics[]` includes a matching `{ scope: 'vendor', vendor, metric_id }` entry (the reporting-coherence check — optimizing for a metric you don't commit to reporting is unverifiable). The `maximize_value` target kind from the `event` goal kind is intentionally excluded — it's monetary-only; a buyer wanting to maximize a vendor metric uses the target-less form of the `vendor_metric` goal. Precondition checks are seller-runtime, not JSON-Schema-enforceable: the schema's `required` only validates structural presence of `vendor` and `metric_id`.",
+  "type": "object",
+  "properties": {
+    "supported_metrics": {
+      "type": "array",
+      "description": "Vendor-defined metrics this product can steer delivery toward. Each entry pairs a vendor identity (BrandRef anchored on the vendor's `brand.json` `agents[type='measurement']`) with a `metric_id` from that vendor's published `measurement.metrics[]` catalog, plus the target kinds the seller supports for the pair. Semantic uniqueness key is `(vendor.domain, vendor.brand_id, metric_id)`; sellers MUST de-duplicate before publication. JSON Schema `uniqueItems` blocks exact-object duplicates; semantic deduplication on the BrandRef-domain key is a seller obligation.",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.4/core/vendor-metric-optimization-supported-metric.json"
+      }
+    }
+  },
+  "required": ["supported_metrics"],
+  "additionalProperties": true
+}

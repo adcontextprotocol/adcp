@@ -172,6 +172,17 @@ async function getPreviewsWithCache(formatIds, manifests) {
 - Later request [B,C,D] → only fetch D
 - Always check `expires_at` before using cached previews
 
+## Preview URL Storage
+
+Preview URLs are review resources, not just transport conveniences. A buyer, browser, or MCPUI host may fetch a `preview_url` after the original `preview_creative` call returns, after a pod restart, or from a different pod than the one that created the render.
+
+For production agents, persist enough preview state to resolve every `preview_url` through its advertised lifetime:
+
+- If `expires_at` is present, keep the render available until that timestamp.
+- If `expires_at` is omitted, treat the URL as non-expiring at the protocol layer and keep it available until explicit out-of-band revocation or purge.
+- Use shared storage for multi-process or multi-pod deployments: database metadata plus object storage, a shared cache tier, or an authenticated preview route that can recover the render from durable session state.
+- Limit process-local `Map` or LRU storage to single-process demos, local development, or URLs whose advertised lifetime is shorter than the process lifetime you can actually guarantee.
+
 ## Error Handling
 
 ```typescript
@@ -287,8 +298,9 @@ response = await client.preview_creative(
 3. Echo input parameters in response
 4. Validate manifest before rendering
 5. Apply macro values (or use defaults)
-6. Implement security sandboxing
-7. Set reasonable expiration (24-48 hours)
+6. Back preview URLs with storage that survives load balancing and restarts for the URL's advertised lifetime
+7. Implement security sandboxing
+8. Set reasonable expiration (24-48 hours) for previews that should not be retained indefinitely
 
 **Optional enhancements:**
 - Provide `hints` object (media type, dimensions, duration)

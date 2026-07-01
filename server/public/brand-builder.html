@@ -84,7 +84,7 @@
       }
 
       .page-header h1 {
-        color: white;
+        color: var(--color-text-on-dark);
         font-size: var(--text-4xl);
         font-weight: var(--font-bold);
         margin: 0 0 var(--space-4) 0;
@@ -142,7 +142,7 @@
 
       .btn {
         background: var(--primary-gradient);
-        color: white;
+        color: var(--color-text-on-dark);
         border: none;
         padding: var(--space-3) var(--space-6);
         border-radius: var(--radius-md);
@@ -254,12 +254,12 @@
 
       .variant-card:hover {
         border-color: var(--accent-blue);
-        background: var(--color-primary-50);
+        background: var(--color-brand-bg);
       }
 
       .variant-card.selected {
         border-color: var(--accent-blue);
-        background: var(--color-primary-50);
+        background: var(--color-brand-bg);
         box-shadow: var(--ring-primary);
       }
 
@@ -326,7 +326,7 @@
       }
 
       .result-success {
-        background: var(--color-primary-50);
+        background: var(--color-brand-bg);
         border: 1px solid var(--color-primary-200);
         color: var(--color-primary-800);
       }
@@ -344,7 +344,7 @@
       }
 
       .result-info {
-        background: var(--color-primary-50);
+        background: var(--color-brand-bg);
         border: 1px solid var(--color-primary-200);
         color: var(--color-primary-800);
       }
@@ -357,7 +357,7 @@
       }
 
       .dashboard-header {
-        background: var(--color-primary-50);
+        background: var(--color-brand-bg);
         border: 1px solid var(--color-primary-200);
         border-radius: var(--radius-lg);
         padding: var(--space-4);
@@ -465,7 +465,7 @@
         top: -10px;
         right: var(--space-4);
         background: var(--color-brand);
-        color: white;
+        color: var(--color-text-on-dark);
         font-size: var(--text-xs);
         padding: 2px 8px;
         border-radius: var(--radius-full);
@@ -591,7 +591,7 @@
         width: 28px;
         height: 28px;
         background: var(--color-success-700);
-        color: white;
+        color: var(--color-text-on-dark);
         border-radius: 50%;
         display: flex;
         align-items: center;
@@ -618,11 +618,45 @@
       }
 
       .step-content code {
-        background: white;
+        background: var(--color-bg-card);
         padding: var(--space-1) var(--space-2);
         border-radius: var(--radius-sm);
         font-size: var(--text-sm);
         border: 1px solid var(--color-success-100);
+      }
+
+      .registry-setup-panel {
+        background: var(--color-bg-card);
+        border: 1px solid var(--color-success-100);
+        border-radius: var(--radius-md);
+        padding: var(--space-4);
+        margin-bottom: var(--space-4);
+      }
+
+      .registry-setup-panel p {
+        margin: 0 0 var(--space-3) 0;
+        color: var(--text-secondary);
+        font-size: var(--text-sm);
+      }
+
+      .registry-setup-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2);
+        margin-top: var(--space-3);
+      }
+
+      .pointer-snippet {
+        background: var(--color-gray-900);
+        color: var(--color-gray-100);
+        border-radius: var(--radius-md);
+        padding: var(--space-3);
+        overflow-x: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: var(--font-mono);
+        font-size: var(--text-sm);
+        margin: var(--space-2) 0 0 0;
       }
 
       .verify-result {
@@ -731,7 +765,7 @@
       .brand-tree-node .add-child-btn {
         opacity: 0;
         background: var(--color-brand);
-        color: white;
+        color: var(--color-text-on-dark);
         border: none;
         width: 20px;
         height: 20px;
@@ -1015,7 +1049,7 @@
       }
 
       .dropdown-option:hover {
-        background: var(--color-primary-50);
+        background: var(--color-brand-bg);
         color: var(--color-brand);
       }
 
@@ -1102,7 +1136,7 @@
 
       /* View brand link */
       .btn-view-brand {
-        background: var(--color-primary-50);
+        background: var(--color-brand-bg);
         color: var(--color-brand);
         border: var(--border-1) solid var(--color-primary-200);
         text-decoration: none;
@@ -1174,8 +1208,8 @@
               <button class="btn btn-secondary" onclick="copyJson()">Copy JSON</button>
               <button class="btn btn-secondary" onclick="downloadJson()">Download</button>
               <div style="display: flex; flex-direction: column; align-items: flex-end;">
-                <button class="btn" id="save-registry-btn" onclick="saveToRegistry()" disabled title="Log in to save">Save to Registry</button>
-                <span id="save-registry-hint" class="btn-disabled-hint">Log in as a member to save</span>
+                <button class="btn" id="save-registry-btn" onclick="saveToRegistry()" disabled title="Log in to save">Save setup</button>
+                <span id="save-registry-hint" class="btn-disabled-hint">Log in as a member to save setup</span>
               </div>
             </div>
           </div>
@@ -1600,20 +1634,35 @@
           <!-- Next Steps / Success State -->
           <div class="next-steps" id="next-steps">
             <h4>Next steps</h4>
+            <div class="registry-setup-panel hidden" id="registry-setup-panel">
+              <p id="registry-setup-message">
+                Your brand.json is saved in the expert-run AgenticAdvertising.org registry.
+                To make it authoritative, publish this small pointer file on your domain.
+              </p>
+              <p><strong>Registry URL</strong></p>
+              <code id="registry-hosted-url">https://agenticadvertising.org/brands/example.com/brand.json</code>
+              <p style="margin-top: var(--space-3);"><strong>Pointer file contents</strong></p>
+              <pre class="pointer-snippet" id="pointer-snippet">{}</pre>
+              <div class="registry-setup-actions">
+                <button class="btn" onclick="copyPointerSnippet()" style="padding: var(--space-2) var(--space-4);">Copy pointer JSON</button>
+                <button class="btn btn-secondary" onclick="downloadPointerJson()" style="padding: var(--space-2) var(--space-4);">Download pointer file</button>
+                <button class="btn btn-secondary" onclick="copyWebTeamInstructions()" style="padding: var(--space-2) var(--space-4);">Copy web team instructions</button>
+              </div>
+            </div>
             <ol>
               <li>
                 <div class="step-number">1</div>
                 <div class="step-content">
-                  <strong>Download your file</strong>
-                  <p>Save the generated brand.json to your computer.</p>
-                  <button class="btn" onclick="downloadJson()" style="padding: var(--space-2) var(--space-4);">Download brand.json</button>
+                  <strong id="next-step-1-title">Download your file</strong>
+                  <p id="next-step-1-copy">Save the generated brand.json to your computer.</p>
+                  <button class="btn" id="next-step-download-json-btn" onclick="downloadJson()" style="padding: var(--space-2) var(--space-4);">Download brand.json</button>
                 </div>
               </li>
               <li>
                 <div class="step-number">2</div>
                 <div class="step-content">
-                  <strong>Upload to your website</strong>
-                  <p>Place the file at this exact location on your server:</p>
+                  <strong id="next-step-2-title">Upload to your website</strong>
+                  <p id="next-step-2-copy">Place the file at this exact location on your server:</p>
                   <code id="deploy-path">https://example.com/.well-known/brand.json</code>
                   <p style="margin-top: var(--space-2);">Create the <code>.well-known</code> folder if it doesn't exist.</p>
                 </div>
@@ -1673,6 +1722,7 @@
       let selectedBrandId = null; // For portfolio mode
       let brandIdManuallyEdited = { single: false }; // Track if user manually edited brand ID
       let autoSaveTimer = null;
+      let latestRegistrySetup = null;
 
       // ============================================================================
       // localStorage Auto-Save
@@ -2153,6 +2203,7 @@
 
         // Clear any previous verification result
         document.getElementById('verify-result').innerHTML = '';
+        clearRegistrySetupPanel();
 
         updatePreview();
 
@@ -2212,7 +2263,7 @@
             resultDiv.innerHTML = `
               <div class="verify-result error">
                 ❌ <strong>Not found yet.</strong> Make sure you've uploaded the file to:<br>
-                <code style="background: white; padding: 2px 6px; border-radius: 3px; margin-top: 4px; display: inline-block;">
+                <code style="background: var(--color-bg-card); padding: 2px 6px; border-radius: 3px; margin-top: 4px; display: inline-block;">
                   https://${escapeHtml(currentDomain)}/.well-known/brand.json
                 </code>
               </div>
@@ -3717,17 +3768,34 @@
         const config = window.__APP_CONFIG__;
         if (!config?.user) {
           btn.disabled = true;
-          btn.title = 'Log in to save to registry';
-          if (hint) { hint.textContent = 'Log in as a member to save'; hint.style.display = ''; }
+          btn.title = 'Log in to save brand setup';
+          if (hint) { hint.textContent = 'Log in as a member to save setup'; hint.style.display = ''; }
         } else if (!config.user.isMember) {
           btn.disabled = true;
           btn.title = 'Members only';
           if (hint) { hint.textContent = 'Members only'; hint.style.display = ''; }
         } else {
           btn.disabled = false;
-          btn.title = 'Save brand.json to the AgenticAdvertising.org registry';
+          btn.title = 'Save setup and get publish instructions';
           if (hint) { hint.style.display = 'none'; }
         }
+      }
+
+      function getSetupBrandName(json) {
+        if (json?.house?.name) return String(json.house.name);
+        const firstName = json?.brands?.[0]?.names?.[0]?.en;
+        if (firstName) return String(firstName);
+        return currentDomain;
+      }
+
+      function getSetupLogoUrl(json) {
+        const logoUrl = json?.brands?.[0]?.logos?.[0]?.url;
+        return typeof logoUrl === 'string' && logoUrl ? logoUrl : undefined;
+      }
+
+      function getSetupBrandColor(json) {
+        const primary = json?.brands?.[0]?.colors?.primary;
+        return typeof primary === 'string' && primary ? primary : undefined;
       }
 
       async function saveToRegistry() {
@@ -3735,44 +3803,141 @@
         const btn = document.getElementById('save-registry-btn');
         const originalText = btn.textContent;
         btn.disabled = true;
-        btn.textContent = 'Saving...';
+        btn.textContent = 'Saving setup...';
 
         try {
-          const json = generateJson();
-
-          // Try to create first
-          let response = await fetch('/api/brands/hosted', {
+          const json = finalizeJson();
+          const response = await fetch('/api/brands/setup-my-brand', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify({ brand_domain: currentDomain, brand_json: json })
+            body: JSON.stringify({
+              domain: currentDomain,
+              brand_name: getSetupBrandName(json),
+              brand_json: json,
+              logo_url: getSetupLogoUrl(json),
+              brand_color: getSetupBrandColor(json)
+            })
           });
-
-          // If already exists, update instead
-          if (response.status === 409) {
-            response = await fetch(`/api/brands/hosted/${encodeURIComponent(currentDomain)}`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              credentials: 'include',
-              body: JSON.stringify({ brand_json: json })
-            });
-          }
 
           if (!response.ok) {
             const data = await response.json().catch(() => ({}));
             throw new Error(data.error || 'Failed to save');
           }
 
-          btn.textContent = 'Saved!';
+          const setup = await response.json();
+          showRegistrySetup(setup);
+
+          btn.textContent = 'Setup saved';
           setTimeout(() => {
-            btn.textContent = originalText;
+            btn.textContent = 'Save setup';
             btn.disabled = false;
           }, 2000);
         } catch (error) {
-          alert(error.message || 'Failed to save to registry');
+          alert(error.message || 'Failed to save brand setup');
           btn.textContent = originalText;
           btn.disabled = false;
         }
+      }
+
+      function clearRegistrySetupPanel() {
+        latestRegistrySetup = null;
+        const panel = document.getElementById('registry-setup-panel');
+        if (panel) panel.classList.add('hidden');
+        const step1Title = document.getElementById('next-step-1-title');
+        const step1Copy = document.getElementById('next-step-1-copy');
+        const step2Title = document.getElementById('next-step-2-title');
+        const step2Copy = document.getElementById('next-step-2-copy');
+        const downloadBtn = document.getElementById('next-step-download-json-btn');
+        if (step1Title) step1Title.textContent = 'Download your file';
+        if (step1Copy) step1Copy.textContent = 'Save the generated brand.json to your computer.';
+        if (step2Title) step2Title.textContent = 'Upload to your website';
+        if (step2Copy) step2Copy.textContent = 'Place the file at this exact location on your server:';
+        if (downloadBtn) downloadBtn.style.display = '';
+      }
+
+      function showRegistrySetup(setup) {
+        latestRegistrySetup = setup;
+        const panel = document.getElementById('registry-setup-panel');
+        const hostedUrl = document.getElementById('registry-hosted-url');
+        const pointer = document.getElementById('pointer-snippet');
+        const deployPath = document.getElementById('deploy-path');
+        const message = document.getElementById('registry-setup-message');
+        if (!panel || !hostedUrl || !pointer || !deployPath) return;
+
+        hostedUrl.textContent = setup.hosted_brand_json_url || '';
+        pointer.textContent = setup.pointer_snippet || '{}';
+        deployPath.textContent = `https://${setup.domain || currentDomain}/.well-known/brand.json`;
+        if (message) {
+          message.textContent = setup.has_brand_json
+            ? 'Your domain already has a valid brand.json. Keep using the file on your site as the authoritative source.'
+            : 'Your brand.json is saved in the expert-run AgenticAdvertising.org registry. To make it authoritative, publish this small pointer file on your domain.';
+        }
+        panel.classList.remove('hidden');
+
+        const step1Title = document.getElementById('next-step-1-title');
+        const step1Copy = document.getElementById('next-step-1-copy');
+        const step2Title = document.getElementById('next-step-2-title');
+        const step2Copy = document.getElementById('next-step-2-copy');
+        const downloadBtn = document.getElementById('next-step-download-json-btn');
+        if (step1Title) step1Title.textContent = setup.has_brand_json ? 'brand.json is already live' : 'Registry setup saved';
+        if (step1Copy) {
+          step1Copy.textContent = setup.has_brand_json
+            ? 'The file on your domain is already the authoritative source agents will read.'
+            : 'Your full brand.json is hosted by the expert-run AgenticAdvertising.org registry. Your website only needs the pointer file above.';
+        }
+        if (step2Title) step2Title.textContent = setup.has_brand_json ? 'No pointer needed' : 'Publish the pointer file';
+        if (step2Copy) {
+          step2Copy.textContent = setup.has_brand_json
+            ? 'If you later switch to registry hosting, place the pointer file at this exact location:'
+            : 'Place the pointer file at this exact location on your server:';
+        }
+        if (downloadBtn) downloadBtn.style.display = 'none';
+        panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+
+      function getPointerSnippetText() {
+        return latestRegistrySetup?.pointer_snippet || document.getElementById('pointer-snippet')?.textContent || '';
+      }
+
+      function copyPointerSnippet() {
+        const snippet = getPointerSnippetText();
+        if (!snippet) return;
+        navigator.clipboard.writeText(snippet)
+          .then(() => alert('Pointer JSON copied.'))
+          .catch(() => alert('Failed to copy pointer JSON.'));
+      }
+
+      function downloadPointerJson() {
+        const snippet = getPointerSnippetText();
+        if (!snippet) return;
+        const blob = new Blob([snippet], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'brand.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+
+      function copyWebTeamInstructions() {
+        const setup = latestRegistrySetup;
+        if (!setup) return;
+        const targetUrl = `https://${setup.domain}/.well-known/brand.json`;
+        const instructions = [
+          `Please publish this file at:`,
+          targetUrl,
+          '',
+          'Contents:',
+          setup.pointer_snippet,
+          '',
+          `This points to the brand.json hosted by the expert-run AgenticAdvertising.org registry at ${setup.hosted_brand_json_url}.`
+        ].join('\n');
+        navigator.clipboard.writeText(instructions)
+          .then(() => alert('Web team instructions copied.'))
+          .catch(() => alert('Failed to copy instructions.'));
       }
 
       async function loadFromRegistry(domain) {

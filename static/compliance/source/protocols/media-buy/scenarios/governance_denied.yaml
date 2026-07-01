@@ -4,10 +4,22 @@ title: "Seller rejects buy when governance denies"
 category: media_buy_seller
 summary: "Verifies that the seller rejects a media buy and propagates the denial when governance denies the transaction."
 track: media_buy
+requires:
+  - multi_agent
+default_agent: sales
 required_tools:
   - sync_governance
   - get_products
   - create_media_buy
+
+# Capability gate: this scenario asserts the seller produces GOVERNANCE_DENIED
+# after consulting a registered governance agent, so it runs only for sellers
+# that declare media_buy.governance_aware: true. Sellers without outbound
+# governance consultation grade not_applicable rather than false-failing on a
+# denial they have no mechanism to produce.
+requires_capability:
+  path: media_buy.governance_aware
+  equals: true
 
 narrative: |
   This is a multi-agent test. The test harness sets up a governance plan on a governance
@@ -18,8 +30,19 @@ narrative: |
   requested budget exceeds the plan total. The seller must reject the buy and propagate
   the denial back to the buyer.
 
+  This scenario requires a runner that can route calls to at least two logical
+  agents: `sales` for the seller under test and `governance` for the governance
+  plan setup. Single-agent runners should only include this storyboard when the
+  endpoint under test deliberately combines seller and governance behavior in
+  one tenant; otherwise it belongs in the governance-aware-seller multi-agent
+  suite.
+
   By default, the governance agent is the training agent at test-agent.adcontextprotocol.org.
-  Override with --governance-agent-url to use a custom governance agent.
+  Override by supplying a different `governance_agent_url` in the run's initial context
+  (e.g., via `--context` on `adcp storyboard run` once the CLI supports it).
+
+context:
+  governance_agent_url: "https://test-agent.adcontextprotocol.org"
 
 agent:
   interaction_model: media_buy_seller
@@ -35,7 +58,9 @@ caller:
 
 prerequisites:
   description: |
-    A governance agent that supports sync_plans and check_governance.
+    A multi-agent runner with `sales` and `governance` agents. The governance
+    agent supports sync_plans and check_governance; the sales agent supports
+    sync_governance and create_media_buy.
   test_kit: "test-kits/acme-outdoor.yaml"
 
 phases:
@@ -49,6 +74,7 @@ phases:
     steps:
       - id: sync_plans
         title: "Create strict governance plan"
+        agent: governance
         task: sync_plans
         schema_ref: "governance/sync-plans-request.json"
         response_schema_ref: "governance/sync-plans-response.json"
@@ -57,7 +83,7 @@ phases:
         expected: |
           The governance agent acknowledges the plan with a plan_id.
         sample_request:
-          idempotency_key: "comply-gov-denied-sync-plans-v1"
+          idempotency_key: "$generate:uuid_v4#governance_denied_sync_plans"
           plans:
             - plan_id: "comply-gov-denied-plan"
               brand:
@@ -68,8 +94,8 @@ phases:
                 currency: "USD"
                 reallocation_threshold: 5000
               flight:
-                start: "2026-04-01T00:00:00Z"
-                end: "2026-06-30T23:59:59Z"
+                start: "2020-01-01T00:00:00Z"
+                end: "2099-06-30T23:59:59Z"
               countries: ["US"]
         validations:
           - check: response_schema
@@ -80,6 +106,7 @@ phases:
     steps:
       - id: sync_accounts
         title: "Establish account with seller"
+        agent: sales
         task: sync_accounts
         schema_ref: "account/sync-accounts-request.json"
         response_schema_ref: "account/sync-accounts-response.json"
@@ -104,6 +131,7 @@ phases:
 
       - id: sync_governance
         title: "Register governance agent with seller"
+        agent: sales
         task: sync_governance
         schema_ref: "account/sync-governance-request.json"
         response_schema_ref: "account/sync-governance-response.json"
@@ -132,6 +160,7 @@ phases:
     steps:
       - id: get_products_brief
         title: "Discover products"
+        agent: sales
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
         response_schema_ref: "media-buy/get-products-response.json"
@@ -147,6 +176,15 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+        context_outputs:
+          - name: product_1_id
+            path: "products[0].product_id"
+          - name: pricing_option_1_id
+            path: "products[0].pricing_options[0].pricing_option_id"
+          - name: product_2_id
+            path: "products[1].product_id"
+          - name: pricing_option_2_id
+            path: "products[1].pricing_options[0].pricing_option_id"
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
@@ -156,6 +194,7 @@ phases:
 
       - id: create_media_buy_denied
         title: "Create buy (governance denies — should fail)"
+        agent: sales
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
@@ -167,6 +206,15 @@ phases:
         expected: |
           The buy is rejected because governance denied — the $50K buy exceeds
           the plan's $10K budget. The seller propagates the denial with findings.
+
+          Wire placement (Case-2 of the GOVERNANCE_DENIED rule). `create_media_buy`
+          has no structured rejection arm (its `oneOf` covers Success / Error /
+          Submitted only), so the seller populates `errors[].code: GOVERNANCE_DENIED`
+          in the payload AND `adcp_error.code: GOVERNANCE_DENIED` on the envelope per
+          the two-layer model, AND flips transport-level failure markers (HTTP 4xx /
+          MCP `isError: true` / A2A `failed`). Compare with `brand_rights/governance_denied`,
+          which exercises Case-1 (rejection arm is the canonical denial shape; no
+          error code on the wire; transport markers stay green).
         sample_request:
           brand:
             domain: "acmeoutdoor.example"
@@ -176,16 +224,16 @@ phases:
             operator: "pinnacle-agency.example"
             sandbox: true
           idempotency_key: "$generate:uuid_v4#governance_denied_create_media_buy"
-          start_time: "2026-04-01T00:00:00Z"
-          end_time: "2026-06-30T23:59:59Z"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
           packages:
-            - product_id: "outdoor_display_q2"
+            - product_id: "$context.product_1_id"
               budget: 30000
-              pricing_option_id: "cpm_standard"
-            - product_id: "outdoor_video_q2"
+              pricing_option_id: "$context.pricing_option_1_id"
+            - product_id: "$context.product_2_id"
               budget: 20000
-              pricing_option_id: "cpm_standard"
+              pricing_option_id: "$context.pricing_option_2_id"
         validations:
           - check: error_code
             value: "GOVERNANCE_DENIED"
-            description: "Error code indicates governance denial"
+            description: "Error code indicates governance denial — Case-2 wire placement: create_media_buy has no rejection arm, so GOVERNANCE_DENIED surfaces via errors[].code or adcp_error.code (per the two-layer model in error-handling.mdx)"

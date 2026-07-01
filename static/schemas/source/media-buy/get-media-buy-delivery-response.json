@@ -7,6 +7,9 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
   "properties": {
@@ -153,6 +156,47 @@
           "type": "integer",
           "description": "Number of media buys included in the response",
           "minimum": 0
+        },
+        "metric_aggregates": {
+          "type": "array",
+          "description": "Cross-buy delivery aggregates partitioned by qualifier. Row-symmetric with `package.committed_metrics` and `by_package[].missing_metrics` — same atomic unit `(scope, metric_id, qualifier)` — so reconciliation collapses to a row-level join on the tuple. Granularity rule: one row per `(metric_id, full-qualifier-set)`, reported at the finest available granularity; buyers re-aggregate up if they want a coarser view. Used only for metrics with non-empty qualifier sets — unqualified metrics (`impressions`, `spend`, `media_buy_count`, etc.) remain at the top of `aggregated_totals`. **Mutual exclusion MUST**: for any `metric_id` appearing in `metric_aggregates`, the corresponding top-level scalar in `aggregated_totals` MUST be omitted (not zeroed) — avoids duplicate sources of truth. The qualifier vocabulary on this delivery surface is closed today (`additionalProperties: false`, same content as `committed_metrics.qualifier`) but is expected to **diverge from contract qualifier in future minors** as transparency disclosures buyers don't commit to ship delivery-only (e.g., `tracker_firing` pending #3832 resolution). Each row carries a `value` plus inlined per-metric component fields (e.g., `measurable_impressions` and `viewable_impressions` for `viewable_rate`; `spend` and `conversions` for `cost_per_acquisition`). Per-buy `totals` keeps its flat shape — each buy is single-qualifier by definition; only the aggregate spans qualifiers. **Qualifier-set drift across reports**: when a campaign gains a new qualifier mid-flight (e.g., adds `tracker_firing` partitioning in week 2), prior periods' rows remain valid at their original granularity; buyers SHOULD NOT retroactively repartition.",
+          "items": {
+            "$ref": "/schemas/core/delivery-metric-aggregate.json"
+          },
+          "examples": [
+            [
+              {
+                "scope": "standard",
+                "metric_id": "viewable_rate",
+                "qualifier": {
+                  "viewability_standard": "mrc"
+                },
+                "value": 0.7286,
+                "measurable_impressions": 700000,
+                "viewable_impressions": 510000
+              },
+              {
+                "scope": "standard",
+                "metric_id": "viewable_rate",
+                "qualifier": {
+                  "viewability_standard": "groupm"
+                },
+                "value": 0.55,
+                "measurable_impressions": 180000,
+                "viewable_impressions": 99000
+              },
+              {
+                "scope": "vendor",
+                "vendor": {
+                  "domain": "attentionvendor.example"
+                },
+                "metric_id": "attention_units",
+                "qualifier": {},
+                "value": 4.2,
+                "measurable_impressions": 800000
+              }
+            ]
+          ]
         }
       },
       "required": [
@@ -197,6 +241,15 @@
           "is_adjusted": {
             "type": "boolean",
             "description": "Indicates this delivery contains updated data for a previously reported period. Buyer should replace previous period data with these totals."
+          },
+          "is_final": {
+            "type": "boolean",
+            "description": "Whether this row's delivery data is final for the reporting period. The row does not carry its own `measurement_window` — that lives on each `by_package[*]` entry. Reconciliation joins on per-package `measurement_window`; this row-level flag is a convenience roll-up. Sellers MUST NOT emit `is_final: true` at the row level unless every entry in `by_package` has `is_final: true` for the same `measurement_window` as the buy's `measurement_terms.billing_measurement.measurement_window` (or for the row's natural window when no `billing_measurement.measurement_window` is set). On any disagreement between row-level and package-level finality, package-level is authoritative. When true, the seller considers these numbers closed and is willing to invoice on them subject to `measurement_terms.billing_measurement`. When false, numbers may still move as measurement matures (broadcast C3 → C7) or processing completes (IVT scrubbing, dedup). When absent, the seller does not distinguish provisional from final at the row level — consult per-package `is_final`."
+          },
+          "finalized_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 timestamp at which this row became final. Present only when `is_final: true`. Anchors the buyer's reconciliation and (when later defined) dispute-window clocks against the buy's `measurement_terms.billing_measurement`. Computed as the latest `finalized_at` across the row's packages for the reconciliation window."
           },
           "pricing_model": {
             "$ref": "/schemas/enums/pricing-model.json",
@@ -275,7 +328,12 @@
                     },
                     "is_final": {
                       "type": "boolean",
-                      "description": "Whether this delivery data is final for the reporting period. When false, the data may be updated as measurement matures (e.g., broadcast C7 window accumulating DVR playback) or as processing completes (e.g., IVT filtering, deduplication). When true, the seller considers this data closed — no further updates for this period. Absent means the seller does not distinguish provisional from final data."
+                      "description": "Whether this delivery data is final for the reporting period. When false, the data may be updated as measurement matures (e.g., broadcast C7 window accumulating DVR playback) or as processing completes (e.g., IVT filtering, deduplication). When true, the seller considers this data closed — no further updates for this period — and is willing to invoice on it subject to the buy's `measurement_terms.billing_measurement`. Absent means the seller does not distinguish provisional from final data."
+                    },
+                    "finalized_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "ISO 8601 timestamp at which this package's data became final. Present only when `is_final: true`. Anchors reconciliation and (when later defined) dispute-window clocks against the buy's `measurement_terms.billing_measurement.measurement_window`."
                     },
                     "measurement_window": {
                       "type": "string",
@@ -298,19 +356,30 @@
                     },
                     "missing_metrics": {
                       "type": "array",
-                      "description": "Metrics that the binding reporting contract declared but that are NOT populated in this report. Reconciliation source: when the package carries `committed_metrics` (frozen snapshot stamped at create_media_buy), `missing_metrics` is computed against THAT — independent of subsequent product mutations. When `committed_metrics` is absent, fall back to the product's current `reporting_capabilities.available_metrics`. Empty array (or absent) indicates clean delivery against the contract. Non-empty signals an accountability breach — the seller committed to the metric but did not produce the value here. Sellers MUST exclude metrics that are not yet measurable for the current `measurement_window` (e.g., post-IVT counts during the live window) — those will appear (or not) when a wider window supersedes this report via `supersedes_window`.",
+                      "description": "Metrics that the binding reporting contract declared but that are NOT populated in this report. Reconciliation source: when `package.committed_metrics` is present, `missing_metrics` is computed against entries where `committed_at < reporting_period.end` — independent of subsequent product mutations and respecting the commitment timestamp on each entry (a metric committed mid-flight is only flagged missing in reports for periods after its commitment). When `package.committed_metrics` is absent, fall back to the product's current `reporting_capabilities.available_metrics` (no timestamp filter). Empty array (or absent) indicates clean delivery against the contract. Non-empty signals an accountability breach — the seller committed to the metric but did not produce the value here. Sellers MUST exclude metrics that are not yet measurable for the current `measurement_window` (e.g., post-IVT counts during the live window) — those will appear (or not) when a wider window supersedes this report via `supersedes_window`. Each entry uses an explicit `scope` discriminator: `standard` for entries from the closed `available-metric.json` enum, `vendor` for vendor-defined metrics anchored on a BrandRef. Symmetric with `committed_metrics`.",
                       "items": {
-                        "$ref": "/schemas/enums/available-metric.json"
+                        "$ref": "/schemas/core/missing-metric.json"
                       },
-                      "uniqueItems": true,
                       "examples": [
                         [],
                         [
-                          "completed_views"
+                          {
+                            "scope": "standard",
+                            "metric_id": "completed_views"
+                          }
                         ],
                         [
-                          "completed_views",
-                          "engagements"
+                          {
+                            "scope": "standard",
+                            "metric_id": "completed_views"
+                          },
+                          {
+                            "scope": "vendor",
+                            "vendor": {
+                              "domain": "attentionvendor.example"
+                            },
+                            "metric_id": "attention_units"
+                          }
                         ]
                       ]
                     },
@@ -318,128 +387,28 @@
                       "type": "array",
                       "description": "Delivery by catalog item within this package. Available for catalog-driven packages when the seller supports item-level reporting.",
                       "items": {
-                        "allOf": [
-                          {
-                            "$ref": "/schemas/core/delivery-metrics.json"
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "content_id": {
-                                "type": "string",
-                                "description": "Catalog item identifier (e.g., SKU, GTIN, job_id, offering_id)"
-                              },
-                              "content_id_type": {
-                                "$ref": "/schemas/enums/content-id-type.json",
-                                "description": "Identifier type for this content_id"
-                              }
-                            },
-                            "required": [
-                              "content_id",
-                              "impressions",
-                              "spend"
-                            ]
-                          }
-                        ]
+                        "$ref": "/schemas/core/catalog-item-delivery-metrics.json"
                       }
                     },
                     "by_creative": {
                       "type": "array",
                       "description": "Metrics broken down by creative within this package. Available when the seller supports creative-level reporting.",
                       "items": {
-                        "allOf": [
-                          {
-                            "$ref": "/schemas/core/delivery-metrics.json"
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "creative_id": {
-                                "type": "string",
-                                "description": "Creative identifier matching the creative assignment",
-                                "x-entity": "creative"
-                              },
-                              "weight": {
-                                "type": "number",
-                                "description": "Observed delivery share for this creative within the package during the reporting period, expressed as a percentage (0-100). Reflects actual delivery distribution, not a configured setting.",
-                                "minimum": 0,
-                                "maximum": 100
-                              }
-                            },
-                            "required": [
-                              "creative_id",
-                              "impressions",
-                              "spend"
-                            ]
-                          }
-                        ]
+                        "$ref": "/schemas/core/creative-delivery-metrics.json"
                       }
                     },
                     "by_keyword": {
                       "type": "array",
                       "description": "Metrics broken down by keyword within this package. One row per (keyword, match_type) pair — the same keyword with different match types appears as separate rows. Keyword-grain only: rows reflect aggregate performance of each targeted keyword, not individual search queries. Rows may not sum to package totals when a single impression is attributed to the triggering keyword only. Available for search and retail media packages when the seller supports keyword-level reporting.",
                       "items": {
-                        "allOf": [
-                          {
-                            "$ref": "/schemas/core/delivery-metrics.json"
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "keyword": {
-                                "type": "string",
-                                "description": "The targeted keyword"
-                              },
-                              "match_type": {
-                                "$ref": "/schemas/enums/match-type.json"
-                              }
-                            },
-                            "required": [
-                              "keyword",
-                              "match_type",
-                              "impressions",
-                              "spend"
-                            ]
-                          }
-                        ]
+                        "$ref": "/schemas/core/keyword-delivery-metrics.json"
                       }
                     },
                     "by_geo": {
                       "type": "array",
                       "description": "Delivery by geographic area within this package. Available when the buyer requests geo breakdown via reporting_dimensions and the seller supports it. Each dimension's rows are independent slices that should sum to the package total.",
                       "items": {
-                        "allOf": [
-                          {
-                            "$ref": "/schemas/core/delivery-metrics.json"
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "geo_level": {
-                                "$ref": "/schemas/enums/geo-level.json",
-                                "description": "Geographic level of this entry (country, region, metro, postal_area)"
-                              },
-                              "system": {
-                                "type": "string",
-                                "description": "Classification system for metro or postal_area levels (e.g., 'nielsen_dma', 'us_zip'). Present when geo_level is 'metro' or 'postal_area'."
-                              },
-                              "geo_code": {
-                                "type": "string",
-                                "description": "Geographic code within the level and system. Country: ISO 3166-1 alpha-2 ('US'). Region: ISO 3166-2 with country prefix ('US-CA'). Metro/postal: system-specific code ('501', '10001')."
-                              },
-                              "geo_name": {
-                                "type": "string",
-                                "description": "Human-readable geographic name (e.g., 'United States', 'California', 'New York DMA')"
-                              }
-                            },
-                            "required": [
-                              "geo_level",
-                              "geo_code",
-                              "impressions",
-                              "spend"
-                            ]
-                          }
-                        ]
+                        "$ref": "/schemas/core/geo-delivery-metrics.json"
                       }
                     },
                     "by_geo_truncated": {
@@ -556,11 +525,17 @@
                             "properties": {
                               "placement_id": {
                                 "type": "string",
-                                "description": "Placement identifier from the product's placements array"
+                                "description": "Placement identifier from the product's placements array",
+                                "x-entity": "placement"
                               },
                               "placement_name": {
                                 "type": "string",
                                 "description": "Human-readable placement name"
+                              },
+                              "publisher_domain": {
+                                "type": "string",
+                                "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+                                "description": "Canonical publisher domain whose adagents.json namespace this placement belongs to, matching the `publisher_domain` on the product's `placements[]` entry that `placement_id` resolves to (see core/placement.json). Lets buyers attribute delivered impressions to a publisher namespace without re-fetching the product catalog — the common case for multi-publisher buys through a single sales agent. Sellers SHOULD emit it whenever the resolving product placement carries a publisher_domain (always true for `kind: publisher_ref`); sellers MAY omit it only for `seller_inline` placements in a legacy single-publisher context where the seller agent's own domain is the namespace. Single-valued: a placement resolves within exactly one publisher namespace (package-level attribution, where an ad-network product can span publishers, is a separate concern)."
                               }
                             },
                             "required": [
@@ -636,6 +611,71 @@
                     "currency"
                   ]
                 }
+              ]
+            }
+          },
+          "windows": {
+            "type": "array",
+            "description": "Per-window delivery slices over the reporting period at the requested time_granularity. Only present when the request set time_granularity and include_window_breakdown: true. Each slice mirrors what reporting_webhook would have delivered for the same window — buyers who missed webhook fires can reconstruct identical data by reading this array. Slice rows are ordered by window_start ascending; consecutive rows are contiguous (each row's window_end equals the next row's window_start) and partition the requested date range at the chosen granularity. Sellers MUST exclude this field when time_granularity is omitted; when set, sellers MUST honor pulls at any granularity in reporting_capabilities.windowed_pull_granularities (otherwise return UNSUPPORTED_GRANULARITY). See snapshot-and-log Rule 4 for the two-paths-parity contract this surface anchors.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "window_start": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "ISO 8601 start of the window slice (inclusive). UTC."
+                },
+                "window_end": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "ISO 8601 end of the window slice (exclusive). The next row's window_start equals this value when slices are contiguous."
+                },
+                "totals": {
+                  "allOf": [
+                    {
+                      "$ref": "/schemas/core/delivery-metrics.json"
+                    }
+                  ],
+                  "description": "Aggregate metrics for this window slice across all packages. Shape-aligned with reporting_webhook fire payloads at the same granularity."
+                },
+                "by_package": {
+                  "type": "array",
+                  "description": "Per-package metrics for this window slice. Same shape as the parent media_buy_deliveries[].by_package row but scoped to the window. Sellers MAY omit when per-package window-level data is unavailable; when present, package_id values MUST match the parent by_package entries.",
+                  "items": {
+                    "allOf": [
+                      {
+                        "$ref": "/schemas/core/delivery-metrics.json"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "package_id": {
+                            "type": "string",
+                            "description": "Seller's package identifier",
+                            "x-entity": "package"
+                          }
+                        },
+                        "required": [
+                          "package_id"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "is_final": {
+                  "type": "boolean",
+                  "description": "Whether the slice data is final for this window. Same semantics as the per-package is_final flag — when false, a later read may return revised numbers for the same window as measurement matures (broadcast C3 → C7, post-IVT filtering, etc.)."
+                },
+                "measurement_window": {
+                  "type": "string",
+                  "maxLength": 50,
+                  "description": "Which measurement-window stage this slice represents (e.g., 'live', 'c3', 'c7'), referencing a window_id from the product's reporting_capabilities.measurement_windows. Absent when the data is not phased."
+                }
+              },
+              "required": [
+                "window_start",
+                "window_end",
+                "totals"
               ]
             }
           },

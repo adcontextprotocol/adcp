@@ -44,11 +44,15 @@ rewrite_file() {
 
   # Phase 1: rewrite absolute prefixes (/docs/, /schemas/latest/, /schemas/vN/)
   # to point at the pinned version. Idempotent on repeat runs because the
-  # left-hand patterns no longer match after the first pass.
+  # left-hand patterns no longer match after the first pass. The bare
+  # "$schema": "/schemas/" rule is intentionally followed by a collapse rule:
+  # it also matches already-pinned schema paths on repeat runs, so the collapse
+  # keeps the script idempotent instead of producing /schemas/VERSION/VERSION/.
   sed \
     -e "s|](/docs/|](/dist/docs/$VERSION/|g" \
     -e "s|href=\"/docs/|href=\"/dist/docs/$VERSION/|g" \
     -e "s|\"\$schema\": \"/schemas/|\"\$schema\": \"/schemas/$VERSION/|g" \
+    -e "s|\"\$schema\": \"/schemas/$VERSION/$VERSION/|\"\$schema\": \"/schemas/$VERSION/|g" \
     -e "s|https://adcontextprotocol.org/schemas/latest/|https://adcontextprotocol.org/schemas/$VERSION/|g" \
     -e "s|](/schemas/latest/|](/schemas/$VERSION/|g" \
     -e "s|\`/schemas/latest/|\`/schemas/$VERSION/|g" \
@@ -58,6 +62,27 @@ rewrite_file() {
     "$file" > "$tmp"
 
   mv "$tmp" "$file"
+
+  # Phase 1b: undo the rewrite for /api-reference/ paths. Snapshots don't
+  # include OpenAPI-generated pages — those live only at runtime under the
+  # live /docs/ tree, served by Mintlify against the current
+  # static/openapi/*.yaml. A snapshot link to
+  # /dist/docs/<version>/<section>/api-reference/<page> resolves to a 404
+  # because no such file is on disk. Routing those links back to the live
+  # /docs/<section>/api-reference/ path keeps versioned prose pages (which
+  # ARE snapshotted) functional without dragging in OpenAPI page generation.
+  local tmp2
+  tmp2=$(mktemp)
+  sed \
+    -e "s|](/dist/docs/$VERSION/\\(.*\\)/api-reference/|](/docs/\\1/api-reference/|g" \
+    -e "s|href=\"/dist/docs/$VERSION/\\(.*\\)/api-reference/|href=\"/docs/\\1/api-reference/|g" \
+    "$file" > "$tmp2"
+  mv "$tmp2" "$file"
+
+  # Phase 1c: apply docs.json redirects inside the frozen snapshot. This keeps
+  # links written against old public routes valid after the source docs move
+  # files, without depending on runtime redirects for /dist/docs/<version>/.
+  node "$(dirname "$0")/rewrite-dist-redirect-links.mjs" "$file" "$VERSION" > /dev/null
 
   # Phase 2: rewrite *escaping* relative links (`../../...` etc.) to compensate
   # for the `dist/docs/<version>/` mirror layer. Depth-aware via a node helper

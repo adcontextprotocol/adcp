@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.5/core/account-with-authorization.json",
+  "title": "Account With Authorization",
+  "description": "List-accounts response item: the full Account object plus optional caller-specific authorization metadata. Named separately so SDKs can generate a stable response item type instead of inventing local wrappers for `Account` plus inline `authorization`.",
+  "allOf": [
+    {
+      "$ref": "/schemas/3.1.0-rc.5/core/account.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "authorization": {
+          "$ref": "/schemas/3.1.0-rc.5/core/account-authorization.json",
+          "description": "Optional. The caller's scope grant against this account. Vendor agents of any type (media-buy, signals, governance, creative, brand) that support scope introspection SHOULD populate this so callers can preempt SCOPE_INSUFFICIENT / FIELD_NOT_PERMITTED errors rather than discovering scope by trial and error. Media-buy sales agents claiming the `attestation_verifier` standard scope MUST populate it. Absence means the vendor agent does not advertise introspectable scope for this account — callers MUST NOT infer access from absence, and fall back to error-driven discovery via the RBAC error codes."
+        }
+      }
+    }
+  ]
+}

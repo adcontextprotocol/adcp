@@ -44,6 +44,7 @@ import {
   EVENT_ADMIN_TOOLS,
   createEventToolHandlers,
   canCreateEvents,
+  canCreateEventsFromMemberContext,
 } from './mcp/event-tools.js';
 import {
   DIRECTORY_TOOLS,
@@ -75,6 +76,10 @@ import {
   createBrandToolHandlers,
 } from './mcp/brand-tools.js';
 import {
+  BRAND_CANONICAL_TOOLS,
+  createBrandCanonicalToolHandlers,
+} from './mcp/brand-canonical-tools.js';
+import {
   BRAND_PROPERTY_TOOLS,
   createBrandPropertyToolHandlers,
 } from './mcp/brand-property-tools.js';
@@ -99,6 +104,10 @@ import {
   SOCIAL_DRAFT_TOOLS,
   createSocialDraftToolHandlers,
 } from './mcp/social-draft-tools.js';
+import {
+  PORTRAIT_TOOLS,
+  createPortraitToolHandlers,
+} from './mcp/portrait-tools.js';
 import {
   IMAGE_TOOLS,
   createImageToolHandlers,
@@ -215,6 +224,17 @@ export async function initializeAddie(): Promise<void> {
   const brandHandlers = createBrandToolHandlers();
   for (const tool of BRAND_TOOLS) {
     const handler = brandHandlers.get(tool.name);
+    if (handler) {
+      claudeClient.registerTool(tool, handler);
+    }
+  }
+
+  // Register brand-canonical-document tools (#4527 — distributed brand.json
+  // authoring: publish canonical docs, add brand_refs pointers, check mutual
+  // assertion, notify houses on leaf-only edges).
+  const brandCanonicalHandlers = createBrandCanonicalToolHandlers();
+  for (const tool of BRAND_CANONICAL_TOOLS) {
+    const handler = brandCanonicalHandlers.get(tool.name);
     if (handler) {
       claudeClient.registerTool(tool, handler);
     }
@@ -358,6 +378,12 @@ async function createUserScopedTools(
     for (const [name, handler] of socialDraftHandlers) {
       allHandlers.set(name, handler);
     }
+
+    const portraitHandlers = createPortraitToolHandlers(memberContext);
+    allTools.push(...PORTRAIT_TOOLS);
+    for (const [name, handler] of portraitHandlers) {
+      allHandlers.set(name, handler);
+    }
   }
 
   // Add image library tools (search approved illustrations, log requests)
@@ -430,7 +456,7 @@ async function createUserScopedTools(
     if (handler) allHandlers.set(tool.name, handler);
   }
 
-  const canCreate = slackUserId ? await canCreateEvents(slackUserId) : userIsAdmin;
+  const canCreate = slackUserId ? await canCreateEvents(slackUserId) : (userIsAdmin || canCreateEventsFromMemberContext(memberContext));
   if (canCreate) {
     allTools.push(...EVENT_ADMIN_TOOLS);
     for (const tool of EVENT_ADMIN_TOOLS) {

@@ -387,7 +387,7 @@ A pharmaceutical company is always pharma (identity), but a general awareness ca
 
 ### Audience constraints
 
-Plans can declare `audience.include` and `audience.exclude` arrays using audience selectors. Each selector is either a signal reference (pointing to a specific data provider signal) or a natural language description.
+Plans can declare `audience.include` and `audience.exclude` arrays using audience selectors. Each selector is either a `signal_ref` or a natural language description.
 
 The governance agent evaluates these constraints against seller targeting in `check_governance`:
 1. Compare `planned_delivery.audience_targeting` against the plan's `audience.include`/`exclude`
@@ -916,7 +916,7 @@ The governance agent controls the reporting cadence through `next_check`. It can
 ```json
 {
   "check_id": "auth_001",
-  "status": "approved",
+  "verdict": "approved",
   "plan_id": "plan_q1_2026_launch",
   "explanation": "Planned delivery is within plan parameters. Budget: $150,000 of $500,000 plan total. Geo: US (within plan). Channel: OLV (within 40-70% target range).",
   "expires_at": "2026-03-15T01:00:00Z",
@@ -931,7 +931,7 @@ The `next_check` field signals that the governance agent expects delivery report
 ```json
 {
   "check_id": "auth_002",
-  "status": "denied",
+  "verdict": "denied",
   "plan_id": "plan_q1_2026_launch",
   "explanation": "Planned delivery targets CA (Canada) which is not an authorized market for this plan.",
   "findings": [
@@ -953,7 +953,7 @@ The `next_check` field signals that the governance agent expects delivery report
 ```json
 {
   "check_id": "auth_004",
-  "status": "approved",
+  "verdict": "approved",
   "plan_id": "plan_q1_2026_launch",
   "explanation": "Delivery on track. Week 1 spend: $12,500 of $150,000 (8.3%). Pacing is on target for 13-week flight.",
   "next_check": "2026-03-29T00:00:00Z"
@@ -994,6 +994,10 @@ This is deliberate. A governance plan is unitary — budget authority, delivery 
 - **One lifecycle, one token, one audit trail.** Plan binding (`plan_hash`), signed context (`governance_context`), and `get_plan_audit_logs` are all single-agent designs. A single agent is what makes post-hoc accountability ("this transaction was authorized under plan state X by agent Y at time T") a clean, verifiable claim.
 
 Buyers that need internal specialist review (legal, brand safety, category) compose those reviewers inside the governance agent they configure — the protocol does not surface the split.
+
+Internal decomposition is auditable through `check-governance-response.findings[]`. Each finding carries `category_id` (the agent-internal taxonomy — pharma MLR, brand safety, legal compliance, whichever specialism flagged it) and `policy_id` (the specific policy that triggered the finding). Buyers and sellers see one consolidated decision; per-finding attribution lets readers trace which specialist within the governance agent contributed to a denial or condition without surfacing the split as separate protocol-level agents.
+
+When the violation traces to a producer-tagged surface — a `feature_requirements[i].policy_id` the buyer authored, a `creative-feature-result.policy_id` the creative agent recorded, or a `validation-result.features[i].policy_id` a property-list agent emitted — the governance agent echoes that `policy_id` on the finding for end-to-end traceability. See [Policy Attribution](/docs/governance/policy-attribution) for the producer contract.
 
 Related specialist reviews that sit adjacent to (not inside) campaign governance — brand-safety pre-screen of creatives, property-list policy, content-standards evaluation — are separate governance surfaces with their own agents and their own lifecycle (see [`build_creative`](/docs/creative/task-reference/build_creative), property governance, content-standards governance). Campaign governance speaks only for the plan.
 

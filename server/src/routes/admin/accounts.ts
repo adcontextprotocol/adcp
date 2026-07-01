@@ -13,9 +13,12 @@
 import { Router, Request, Response } from "express";
 import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
-import { requireAuth, requireAdmin } from "../../middleware/auth.js";
+import { requireAuth, requireAdmin, requireGlobalAdmin } from "../../middleware/auth.js";
 import { serveHtmlWithConfig } from "../../utils/html-config.js";
-import { OrganizationDatabase, VALID_REVENUE_TIERS } from "../../db/organization-db.js";
+import { OrganizationDatabase, resolveMembershipTier, type MembershipTier } from "../../db/organization-db.js";
+import { formatCompanyTypes } from "../../config/company-types.js";
+import { deleteOrganizationMembership } from "../../db/membership-db.js";
+import { invalidateMembershipCache } from "../../db/org-filters.js";
 import {
   getPendingInvoices,
   getProductsForCustomer,
@@ -56,6 +59,19 @@ import {
 const orgDb = new OrganizationDatabase();
 const logger = createLogger("admin-accounts");
 
+const MEMBERSHIP_TIER_LABELS: Record<MembershipTier, string> = {
+  individual_academic: "Explorer",
+  individual_professional: "Professional",
+  company_standard: "Builder",
+  company_icl: "Partner",
+  company_leader: "Leader",
+};
+
+function escapeCsvValue(value: string | number | boolean | null | undefined): string {
+  const str = value == null ? "" : String(value);
+  const prefixed = /^[=+\-@\t\r]/.test(str) ? `'${str}` : str;
+  return `"${prefixed.replace(/"/g, '""')}"`;
+}
 
 export function setupAccountRoutes(
   pageRouter: Router,
@@ -329,6 +345,172 @@ export function setupAccountRoutes(
     }
   );
 
+  // GET /api/admin/accounts/contacts-export - CSV of people attached to active member orgs.
+  // Registered before /accounts/:orgId so "contacts-export" is not treated as an org id.
+  apiRouter.get(
+    "/accounts/contacts-export",
+    ...requireGlobalAdmin,
+    async (_req: Request, res: Response) => {
+      try {
+        const pool = getPool();
+        const result = await pool.query<{
+          row_source: "membership" | "org_contact";
+          membership_first_name: string | null;
+          membership_last_name: string | null;
+          user_first_name: string | null;
+          user_last_name: string | null;
+          email: string;
+          role: string | null;
+          company: string;
+          company_types: string[] | null;
+          prospect_contact_name: string | null;
+          prospect_contact_email: string | null;
+          prospect_contact_title: string | null;
+          membership_tier: MembershipTier | null;
+          subscription_price_lookup_key: string | null;
+          subscription_status: string | null;
+          subscription_amount: number | null;
+          subscription_interval: string | null;
+          is_personal: boolean;
+          subscription_product_name: string | null;
+        }>(`
+          WITH active_member_orgs AS (
+            SELECT
+              o.workos_organization_id,
+              o.name,
+              COALESCE(
+                o.company_types,
+                CASE WHEN o.company_type IS NOT NULL THEN ARRAY[o.company_type] ELSE NULL END
+              ) AS company_types,
+              o.prospect_contact_name,
+              o.prospect_contact_email,
+              o.prospect_contact_title,
+              o.membership_tier,
+              o.subscription_price_lookup_key,
+              o.subscription_status,
+              o.subscription_amount,
+              o.subscription_interval,
+              o.is_personal,
+              o.subscription_product_name
+            FROM organizations o
+            WHERE ${MEMBER_FILTER_ALIASED}
+          ),
+          membership_contacts AS (
+            SELECT
+              'membership'::text AS row_source,
+              om.first_name AS membership_first_name,
+              om.last_name AS membership_last_name,
+              COALESCE(NULLIF(u.first_name, ''), NULL) AS user_first_name,
+              COALESCE(NULLIF(u.last_name, ''), NULL) AS user_last_name,
+              COALESCE(NULLIF(om.email, ''), u.email) AS email,
+              om.role,
+              o.name AS company,
+              o.company_types,
+              o.prospect_contact_name,
+              o.prospect_contact_email,
+              o.prospect_contact_title,
+              o.membership_tier,
+              o.subscription_price_lookup_key,
+              o.subscription_status,
+              o.subscription_amount,
+              o.subscription_interval,
+              o.is_personal,
+              o.subscription_product_name
+            FROM organization_memberships om
+            JOIN active_member_orgs o
+              ON o.workos_organization_id = om.workos_organization_id
+            LEFT JOIN users u
+              ON u.workos_user_id = om.workos_user_id
+          ),
+          org_contact_rows AS (
+            SELECT
+              'org_contact'::text AS row_source,
+              NULL::text AS membership_first_name,
+              NULL::text AS membership_last_name,
+              NULL::text AS user_first_name,
+              NULL::text AS user_last_name,
+              o.prospect_contact_email AS email,
+              NULL::text AS role,
+              o.name AS company,
+              o.company_types,
+              o.prospect_contact_name,
+              o.prospect_contact_email,
+              o.prospect_contact_title,
+              o.membership_tier,
+              o.subscription_price_lookup_key,
+              o.subscription_status,
+              o.subscription_amount,
+              o.subscription_interval,
+              o.is_personal,
+              o.subscription_product_name
+            FROM active_member_orgs o
+            WHERE NULLIF(TRIM(o.prospect_contact_email), '') IS NOT NULL
+              AND NOT EXISTS (
+                SELECT 1
+                FROM membership_contacts mc
+                WHERE mc.email IS NOT NULL
+                  AND LOWER(TRIM(mc.email)) = LOWER(TRIM(o.prospect_contact_email))
+              )
+          )
+          SELECT *
+          FROM (
+            SELECT * FROM membership_contacts
+            UNION ALL
+            SELECT * FROM org_contact_rows
+          ) contacts
+          ORDER BY LOWER(company), row_source, LOWER(COALESCE(user_last_name, membership_last_name, '')), LOWER(COALESCE(user_first_name, membership_first_name, prospect_contact_name, '')), LOWER(COALESCE(email, ''))
+        `);
+
+        const headers = [
+          "First Name",
+          "Last Name",
+          "Title",
+          "Company",
+          "Email Address",
+          "Membership Type",
+          "Company Type",
+          "Primary Contact",
+        ];
+
+        const rows = result.rows.map((row) => {
+          const email = row.email?.trim() ?? "";
+          const isKnownOrgContact =
+            email.length > 0 &&
+            row.prospect_contact_email?.trim().toLowerCase() === email.toLowerCase();
+          const tier = resolveMembershipTier(row);
+
+          return [
+            row.user_first_name || row.membership_first_name || (row.row_source === "org_contact" ? row.prospect_contact_name || "" : ""),
+            row.user_last_name || row.membership_last_name || "",
+            isKnownOrgContact ? row.prospect_contact_title || "" : "",
+            row.company,
+            email,
+            tier ? MEMBERSHIP_TIER_LABELS[tier] : "",
+            row.company_types?.length ? formatCompanyTypes(row.company_types) : "",
+            isKnownOrgContact ? "Yes" : "No",
+          ];
+        });
+
+        const csv = [headers, ...rows]
+          .map((row) => row.map(escapeCsvValue).join(","))
+          .join("\n");
+
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="member-contacts-${new Date().toISOString().split("T")[0]}.csv"`
+        );
+        res.send(csv);
+      } catch (error) {
+        logger.error({ err: error }, "Error exporting member contacts");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to export member contacts",
+        });
+      }
+    }
+  );
+
   // GET /api/admin/accounts/:orgId - Unified account detail
   apiRouter.get(
     "/accounts/:orgId",
@@ -514,7 +696,8 @@ export function setupAccountRoutes(
               last_name,
               role,
               seat_type,
-              created_at
+              created_at,
+              updated_at
             FROM organization_memberships
             WHERE workos_organization_id = $1
             ORDER BY created_at ASC
@@ -878,6 +1061,7 @@ export function setupAccountRoutes(
             role: m.role || "member",
             seat_type: m.seat_type || "contributor",
             joined_at: m.created_at,
+            updated_at: m.updated_at,
           })),
           member_count: membersResult.rows.length,
           working_groups: workingGroupResult.rows,
@@ -1832,7 +2016,7 @@ export function setupAccountRoutes(
               o.name as org_name,
               o.workos_organization_id as org_id,
               NULL as description,
-              NULL as metadata
+              NULL::jsonb as metadata
             FROM slack_activities sa
             JOIN slack_user_mappings sm ON sm.slack_user_id = sa.slack_user_id
             LEFT JOIN organization_memberships om ON om.workos_user_id = sm.workos_user_id
@@ -1851,7 +2035,7 @@ export function setupAccountRoutes(
               o.name as org_name,
               o.workos_organization_id as org_id,
               eca.subject as description,
-              NULL as metadata
+              NULL::jsonb as metadata
             FROM email_contact_activities eca
             JOIN email_activity_contacts eac ON eac.activity_id = eca.id AND eac.is_primary = true
             JOIN email_contacts ec ON ec.id = eac.contact_id
@@ -1872,7 +2056,7 @@ export function setupAccountRoutes(
               e.title as org_name,
               NULL as org_id,
               e.title as description,
-              NULL as metadata
+              NULL::jsonb as metadata
             FROM event_registrations er
             JOIN events e ON e.id = er.event_id
             LEFT JOIN email_contacts ec ON ec.id = er.email_contact_id
@@ -1906,7 +2090,7 @@ export function setupAccountRoutes(
               wg.name as org_name,
               o.workos_organization_id as org_id,
               wg.name as description,
-              NULL as metadata
+              NULL::jsonb as metadata
             FROM working_group_memberships wgm
             JOIN working_groups wg ON wg.id = wgm.working_group_id
             JOIN organizations o ON o.workos_organization_id = wgm.workos_organization_id
@@ -2193,32 +2377,50 @@ export function setupAccountRoutes(
               );
             }
 
-            // Update local cache - remove from source and add to target
-            await pool.query(
-              `DELETE FROM organization_memberships
-               WHERE workos_user_id = $1 AND workos_organization_id = $2`,
-              [member.workos_user_id, sourceOrgId]
-            );
-
-            // Insert into target org cache
-            await pool.query(
-              `INSERT INTO organization_memberships
-               (workos_user_id, workos_organization_id, workos_membership_id, email, first_name, last_name, role, synced_at)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-               ON CONFLICT (workos_user_id, workos_organization_id) DO UPDATE SET
-               workos_membership_id = EXCLUDED.workos_membership_id,
-               role = EXCLUDED.role,
-               synced_at = NOW()`,
-              [
+            // Update local cache atomically — the source DELETE (with its
+            // primary_organization_id pointer-clear) and the target INSERT
+            // commit together so an HTTP request landing mid-transfer can
+            // never see "neither membership exists for this user." Without
+            // the wrap, the deleteOrganizationMembership self-commit briefly
+            // exposes a no-membership window before the target INSERT lands.
+            const txClient = await pool.connect();
+            try {
+              await txClient.query('BEGIN');
+              await deleteOrganizationMembership(
                 member.workos_user_id,
-                targetOrgId,
-                newMembership.id,
-                member.email,
-                member.first_name,
-                member.last_name,
-                member.role || 'member',
-              ]
-            );
+                sourceOrgId,
+                txClient,
+              );
+              await txClient.query(
+                `INSERT INTO organization_memberships
+                 (workos_user_id, workos_organization_id, workos_membership_id, email, first_name, last_name, role, synced_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+                 ON CONFLICT (workos_user_id, workos_organization_id) DO UPDATE SET
+                 workos_membership_id = EXCLUDED.workos_membership_id,
+                 role = EXCLUDED.role,
+                 synced_at = NOW()`,
+                [
+                  member.workos_user_id,
+                  targetOrgId,
+                  newMembership.id,
+                  member.email,
+                  member.first_name,
+                  member.last_name,
+                  member.role || 'member',
+                ]
+              );
+              await txClient.query('COMMIT');
+            } catch (txErr) {
+              await txClient.query('ROLLBACK').catch(() => {});
+              throw txErr;
+            } finally {
+              txClient.release();
+            }
+
+            // Drop both orgs' membership caches so the next read sees the
+            // post-transfer state instead of the pre-transfer snapshot.
+            invalidateMembershipCache(sourceOrgId);
+            invalidateMembershipCache(targetOrgId);
 
             results.push({
               user_id: member.workos_user_id,
@@ -2481,13 +2683,44 @@ export function setupAccountRoutes(
           });
         }
 
-        // Update local cache
-        await pool.query(
-          `UPDATE organization_memberships
-           SET role = $1, updated_at = NOW()
-           WHERE workos_organization_id = $2 AND workos_user_id = $3`,
-          [role, orgId, userId]
-        );
+        // Update local cache from WorkOS so owner transfers don't keep an old
+        // local owner visible until the webhook reconciles.
+        try {
+          let after: string | undefined;
+          do {
+            const syncedMemberships =
+              await workos.userManagement.listOrganizationMemberships({
+                organizationId: orgId,
+                limit: 100,
+                after,
+              });
+            for (const syncedMembership of syncedMemberships.data) {
+              await pool.query(
+                `UPDATE organization_memberships
+                 SET role = $1, workos_membership_id = $2, updated_at = NOW()
+                 WHERE workos_organization_id = $3 AND workos_user_id = $4`,
+                [
+                  syncedMembership.role?.slug || "member",
+                  syncedMembership.id,
+                  orgId,
+                  syncedMembership.userId,
+                ]
+              );
+            }
+            after = syncedMemberships.listMetadata?.after ?? undefined;
+          } while (after);
+        } catch (syncError) {
+          logger.warn(
+            { err: syncError, orgId, userId, role },
+            "Failed to sync WorkOS membership roles after role update; updating target local row only"
+          );
+          await pool.query(
+            `UPDATE organization_memberships
+             SET role = $1, updated_at = NOW()
+             WHERE workos_organization_id = $2 AND workos_user_id = $3`,
+            [role, orgId, userId]
+          );
+        }
 
         logger.info(
           {
@@ -3120,4 +3353,3 @@ export function setupAccountRoutes(
     }
   );
 }
-

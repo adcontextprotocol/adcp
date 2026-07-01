@@ -1,0 +1,118 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.8/aao/agent-publishers.json",
+  "title": "AAO Directory: Agent → Publishers Inverse Lookup Response",
+  "description": "Response envelope for `GET /v1/agents/{agent_url}/publishers` against an AAO-compatible directory. Returns the set of publishers whose adagents.json authorizes the given agent_url, with provenance (discovery_method, manager_domain), per-publisher property counts, and lifecycle status. The publisher's own adagents.json remains the trust root; this endpoint is discovery, not authorization. Each `publisher_domain` row tells the operator which publishers to verify directly via the SDK's per-domain primitives.",
+  "type": "object",
+  "required": [
+    "agent_url",
+    "directory_indexed_at",
+    "publishers"
+  ],
+  "properties": {
+    "agent_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Canonicalized echo of the agent_url that was looked up. Lowercase host, default port stripped, trailing slash on path component normalized — matches the canonicalization the SDK applies in `verify_agent_authorization`."
+    },
+    "directory_indexed_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "When the directory last completed a refresh of any publisher in this result. Provenance anchor for the consumer's own cache. NULL on empty pages — there's no per-publisher anchor to report; consumers SHOULD treat a null value as 'no freshness assertion for this response' and not advance their own cache freshness."
+    },
+    "publishers": {
+      "type": "array",
+      "description": "Publishers whose adagents.json authorizes this agent. Empty array is a valid response (the directory has indexed this agent but no current authorizations resolve).",
+      "items": {
+        "$ref": "#/definitions/PublisherEntry"
+      }
+    },
+    "next_cursor": {
+      "type": ["string", "null"],
+      "description": "Opaque pagination cursor. Absent or null on the terminal page. Stable across the directory's refresh cycle for the lifetime of the cursor."
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "PublisherEntry": {
+      "type": "object",
+      "required": [
+        "publisher_domain",
+        "discovery_method",
+        "properties_authorized",
+        "properties_total",
+        "status",
+        "last_verified_at"
+      ],
+      "properties": {
+        "publisher_domain": {
+          "type": "string",
+          "description": "Publisher whose adagents.json authorizes the agent.",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "discovery_method": {
+          "type": "string",
+          "description": "How the directory discovered this authorization. `direct`: agent listed in publisher's own /.well-known/adagents.json. `authoritative_location`: publisher's /.well-known/adagents.json declared `authoritative_location` pointing to a manager file that lists the agent. `adagents_authoritative`: discovered via the manager file (publisher-declared in the manager's own properties[]). `ads_txt_managerdomain`: discovered via the publisher's ads.txt `MANAGERDOMAIN=` directive pointing to the manager file. The last three paths converge on the same manager file but have different trust profiles — the `managerdomain` path is the weakest because the manager file's `publisher_domain` anchor (the `managerdomain` fallback safety rule) is the only positive cross-check.",
+          "enum": [
+            "direct",
+            "authoritative_location",
+            "adagents_authoritative",
+            "ads_txt_managerdomain"
+          ]
+        },
+        "manager_domain": {
+          "type": ["string", "null"],
+          "description": "Domain of the manager file that authorizes this publisher → agent edge. Required when `discovery_method` is `authoritative_location`, `adagents_authoritative`, or `ads_txt_managerdomain`. Null or absent when `discovery_method` is `direct`.",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "properties_authorized": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Count of properties under THIS `publisher_domain` only that the agent's selectors resolve to. Never a network-wide count. The directory computes this by applying the publisher's `adagents.json` selector predicates against the publisher's own properties (federated) OR against the parent file's inline properties carrying matching `publisher_domain` (inline, per adcp#4825 resolution rule)."
+        },
+        "properties_total": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Count of properties under THIS `publisher_domain` only — total inventory the publisher's file declares. Never a network-wide count. On managed-network-shape parent files (per adcp#4825 inline resolution), this is the count of inline `properties[]` entries whose `publisher_domain` field matches this row's domain."
+        },
+        "property_ids": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Canonical list of `property_id`s under THIS `publisher_domain` that the agent's selectors resolve to. Present iff the request included `?include=properties`; absent otherwise. The set is the same population `properties_authorized` counts, surfaced as IDs so consumers can run full set-diff against a federated fetch (count-equality is not set-equality — a publisher rotating N properties leaves the count unchanged but the set entirely different). Per-publisher scope; never network-wide. Order is unspecified; consumers should treat as a set."
+        },
+        "signing_keys_pinned": {
+          "type": "boolean",
+          "description": "Whether the publisher's adagents.json entry for this agent pins `signing_keys[]`. When true, the agent's signed responses MUST verify against the pinned key set regardless of the agent's own JWKS. Operators should treat true as a signal that their published JWKS must match the publisher's pin."
+        },
+        "status": {
+          "type": "string",
+          "description": "Lifecycle state for this publisher → agent edge. v1: `authorized` (selector resolves to ≥ 1 property under this publisher) and `revoked` (this publisher_domain newly appears in a parent file's `revoked_publisher_domains[]`; emitted as a tombstone on the next sync after revocation lands, then dropped). Future states (`unbound`, `pending`) deferred — the directory does not have the crawler state to emit them honestly.",
+          "enum": ["authorized", "revoked"]
+        },
+        "last_verified_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the directory last fetched and validated this publisher's adagents.json. Distinct from the envelope's `directory_indexed_at` — `last_verified_at` is per-publisher freshness, the envelope value is the most recent refresh in the result set."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "discovery_method": {
+                "enum": ["authoritative_location", "adagents_authoritative", "ads_txt_managerdomain"]
+              }
+            }
+          },
+          "then": {
+            "required": ["manager_domain"],
+            "properties": {
+              "manager_domain": { "type": "string" }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    }
+  }
+}

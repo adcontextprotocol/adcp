@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { WorkOS } from '@workos-inc/node';
+import { Resend } from 'resend';
+import rateLimit from 'express-rate-limit';
 import { createLogger } from '../logger.js';
 import { requireAuth, requireAdmin, optionalAuth, isDevModeEnabled } from '../middleware/auth.js';
 import { enrichUserWithMembership } from '../utils/html-config.js';
@@ -7,8 +9,35 @@ import * as certDb from '../db/certification-db.js';
 import { query } from '../db/client.js';
 import { notifyUser } from '../notifications/notification-service.js';
 import { isUuid } from '../utils/uuid.js';
+import { CachedPostgresStore } from '../middleware/pg-rate-limit-store.js';
 
 const logger = createLogger('certification-routes');
+
+const resend = process.env.RESEND_API_KEY
+  ? new Resend(process.env.RESEND_API_KEY)
+  : null;
+
+// 3 requests per user per 24 h — prevents inbox flooding via the email relay
+const reviewRequestLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('cert-review-req:'),
+  keyGenerator: (req) => req.user?.id || req.ip || 'unknown',
+  validate: { keyGeneratorIpFallback: false },
+});
+
+// Low-volume admin repair endpoint. Key by admin identity rather than learner.
+const adminModuleCompletionLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('cert-admin-module-complete:'),
+  keyGenerator: (req) => req.user?.id || req.ip || 'unknown',
+  validate: { keyGeneratorIpFallback: false },
+});
 
 const AUTH_ENABLED = !!(
   process.env.WORKOS_API_KEY &&
@@ -17,6 +46,124 @@ const AUTH_ENABLED = !!(
 const workos = AUTH_ENABLED
   ? new WorkOS(process.env.WORKOS_API_KEY!, { clientId: process.env.WORKOS_CLIENT_ID! })
   : null;
+
+function extractNumericScores(value: unknown): Record<string, number> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const entries = Object.entries(value)
+    .filter((entry): entry is [string, number] => {
+      const [key, score] = entry;
+      return !key.startsWith('_') && typeof score === 'number' && Number.isFinite(score);
+    });
+  return entries.length > 0 ? Object.fromEntries(entries) : null;
+}
+
+function parseAdminModuleScores(value: unknown): Record<string, number> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const entries = Object.entries(value);
+  if (entries.length === 0) return null;
+  if (!entries.every(([, score]) => typeof score === 'number' && Number.isFinite(score))) {
+    return null;
+  }
+  return Object.fromEntries(entries) as Record<string, number>;
+}
+
+function validateModuleCompletionScores(
+  scores: Record<string, number>,
+  ac: certDb.AssessmentCriteria | null | undefined,
+): string | { weightedAvg: number } {
+  if (!ac?.dimensions?.length) {
+    return 'This module has no assessment criteria defined. Cannot validate scores.';
+  }
+
+  const scoreValues = Object.values(scores);
+  if (scoreValues.length === 0 || !scoreValues.every(v => v >= 0 && v <= 100)) {
+    return 'All score values must be numbers between 0 and 100.';
+  }
+
+  const definedDims = new Set(ac.dimensions.map(d => d.name));
+  const submittedDims = new Set(Object.keys(scores));
+  const missing = [...definedDims].filter(d => !submittedDims.has(d));
+  if (missing.length > 0) {
+    return `Missing required score dimensions: ${missing.join(', ')}. All defined dimensions must be scored.`;
+  }
+  const extra = [...submittedDims].filter(d => !definedDims.has(d));
+  if (extra.length > 0) {
+    return `Unknown score dimensions: ${extra.join(', ')}. Use only the defined dimensions: ${[...definedDims].join(', ')}`;
+  }
+
+  const belowFloor = Object.entries(scores).filter(([, score]) => score < 50);
+  if (belowFloor.length > 0) {
+    const dims = belowFloor.map(([dim]) => dim.replace(/_/g, ' ')).join(', ');
+    return `The learner has not yet demonstrated mastery in: ${dims}.`;
+  }
+
+  const weightMap = new Map(ac.dimensions.map(d => [d.name, d.weight]));
+  const weightedAvg = Object.entries(scores).reduce(
+    (sum, [dim, score]) => sum + score * ((weightMap.get(dim) ?? 0) / 100),
+    0,
+  );
+  const passingThreshold = ac.passing_threshold || 70;
+  if (weightedAvg < passingThreshold) {
+    return `Scores do not meet the module mastery threshold of ${passingThreshold}.`;
+  }
+
+  return { weightedAvg };
+}
+
+function getCriterionIds(mod: certDb.CertificationModule | null): string[] {
+  const exerciseDefs = mod?.exercise_definitions as certDb.ExerciseDefinition[] | null;
+  return (exerciseDefs ?? []).flatMap(ex =>
+    ex.success_criteria.map(sc => typeof sc === 'string' ? sc : sc.id)
+  );
+}
+
+function checkRequiredDemonstrations(
+  mod: certDb.CertificationModule | null,
+  checkpoint: certDb.TeachingCheckpoint,
+): string | null {
+  const requiredIds = getCriterionIds(mod);
+  if (requiredIds.length === 0) return null;
+
+  const verified = new Set(checkpoint.demonstrations_verified ?? []);
+  const missing = requiredIds.filter(id => !verified.has(id));
+  if (missing.length === 0) return null;
+
+  const exerciseDefs = mod?.exercise_definitions as certDb.ExerciseDefinition[] | null;
+  const idToText = new Map<string, string>();
+  for (const ex of exerciseDefs ?? []) {
+    for (const sc of ex.success_criteria) {
+      if (typeof sc === 'string') idToText.set(sc, sc);
+      else idToText.set(sc.id, sc.text);
+    }
+  }
+  const details = missing.map(id => `${id}: ${idToText.get(id) || id}`);
+  return `Required demonstrations not yet verified: ${details.join('; ')}`;
+}
+
+function validatePreliminaryScoreConsistency(
+  scores: Record<string, number>,
+  checkpoint: certDb.TeachingCheckpoint,
+): string | null {
+  if (!checkpoint.preliminary_scores) {
+    return 'The matching teaching checkpoint has no preliminary_scores.';
+  }
+  const jumps = Object.entries(scores)
+    .filter(([dim, score]) => {
+      const prelim = checkpoint.preliminary_scores![dim];
+      return prelim !== undefined && score - prelim > 20;
+    })
+    .map(([dim]) => dim.replace(/_/g, ' '));
+  if (jumps.length === 0) return null;
+  return `Score inconsistency detected in: ${jumps.join(', ')}. These dimensions changed >20 points from the checkpoint.`;
+}
+
+async function resolveCapstoneModuleIdForAttempt(
+  attempt: certDb.CertificationAttempt,
+): Promise<string | null> {
+  if (attempt.module_id) return attempt.module_id;
+  const modules = await certDb.getModulesForTrack(attempt.track_id);
+  return modules.find(m => m.format === 'capstone')?.id || null;
+}
 
 /**
  * Check if a user belongs to an organization.
@@ -203,7 +350,7 @@ export function createCertificationRouters() {
         return res.status(400).json({
           error: 'Prerequisites not met',
           missing: prereqs.missing,
-          message: `Complete these modules first: ${prereqs.missing.join(', ')}`,
+          message: `Complete these modules first: ${prereqs.missing.map(m => m.moduleId).join(', ')}`,
         });
       }
 
@@ -405,6 +552,56 @@ export function createCertificationRouters() {
       res.json({ status: 'snoozed', snooze_until: result.snooze_until });
     } catch (error) {
       logger.error({ error }, 'Failed to snooze certification expectation');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /api/me/certification/review-request — learner requests human review of an assessment
+  userRouter.post('/certification/review-request', reviewRequestLimiter, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const { module_id } = req.body as { module_id?: unknown };
+
+      if (!module_id || typeof module_id !== 'string' || !/^[A-Z][0-9]{1,2}$/.test(module_id)) {
+        return res.status(400).json({ error: 'module_id is required' });
+      }
+
+      if (!isUuid(userId)) {
+        return res.status(400).json({ error: 'Invalid user identity' });
+      }
+
+      const progress = await certDb.getModuleProgress(userId, module_id);
+      if (!progress || (progress.status !== 'completed' && progress.status !== 'tested_out')) {
+        return res.status(400).json({ error: 'No completed assessment found for this module' });
+      }
+
+      const completedAt = progress.completed_at
+        ? new Date(progress.completed_at).toUTCString()
+        : 'unknown';
+
+      if (resend) {
+        await resend.emails.send({
+          from: 'AgenticAdvertising.org <hello@updates.agenticadvertising.org>',
+          to: 'addie+certification@updates.agenticadvertising.org',
+          subject: `Assessment review request — ${module_id}`,
+          text: [
+            `Learner ID: ${userId}`,
+            `Learner Email: ${req.user!.email}`,
+            `Module: ${module_id}`,
+            `Status: ${progress.status}`,
+            `Completed: ${completedAt}`,
+            '',
+            'Look up this record in the admin portal:',
+            `/admin/certification?user=${userId}&module=${module_id}`,
+          ].join('\n'),
+        });
+      } else {
+        logger.warn({ userId, module_id }, 'Review request received but RESEND_API_KEY not configured');
+      }
+
+      res.json({ ok: true });
+    } catch (error) {
+      logger.error({ error }, 'Failed to submit review request');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -800,7 +997,7 @@ export function createCertificationRouters() {
     }
     backfillInProgress = true;
     try {
-      const { issueCredential, isCertifierConfigured, getCredentialBadgeUrl } =
+      const { issueCredential, isCertifierConfigured, getCredentialBadgeUrl, buildRecipientName } =
         await import('../services/certifier-client.js');
 
       if (!isCertifierConfigured()) {
@@ -868,7 +1065,7 @@ export function createCertificationRouters() {
             const credential = await issueCredential({
               groupId: cred.certifier_group_id,
               recipient: {
-                name: `${user.first_name} ${user.last_name}`.trim() || user.email,
+                name: buildRecipientName(user),
                 email: user.email,
               },
             });
@@ -964,12 +1161,14 @@ export function createCertificationRouters() {
         return res.status(400).json({ error: 'action must be "cancel" or "complete"' });
       }
 
-      // Verify attempt exists and is in_progress
+      // Verify attempt exists. Admin repair may re-run completion for a
+      // previously-passed attempt whose module/credential reconciliation failed.
       const attempt = await certDb.getAttempt(attemptId);
       if (!attempt) {
         return res.status(404).json({ error: 'Attempt not found' });
       }
-      if (attempt.status !== 'in_progress') {
+      const isPassedRepair = action === 'complete' && attempt.status === 'passed' && attempt.passing === true;
+      if (attempt.status !== 'in_progress' && !isPassedRepair) {
         return res.status(409).json({ error: `Attempt is already ${attempt.status}` });
       }
 
@@ -986,10 +1185,40 @@ export function createCertificationRouters() {
       }
 
       // action === 'complete'
-      if (!scores || Array.isArray(scores) || typeof scores !== 'object' || Object.keys(scores).length === 0) {
+      if (isPassedRepair) {
+        if (scores !== undefined) {
+          return res.status(400).json({ error: 'scores are not accepted when repairing a passed attempt' });
+        }
+        const preservedScores = extractNumericScores(attempt.scores);
+        if (!preservedScores) {
+          return res.status(409).json({ error: 'Attempt is missing recorded scores' });
+        }
+        const moduleId = await resolveCapstoneModuleIdForAttempt(attempt);
+        if (!moduleId) {
+          return res.status(409).json({ error: 'Attempt has no capstone module to reconcile' });
+        }
+
+        const warnings: string[] = [];
+        try {
+          await certDb.reconcilePassedAttemptModule(attempt, moduleId, preservedScores);
+        } catch (modError) {
+          warnings.push('Module completion failed — run backfill');
+          logger.error({ error: modError, attemptId, moduleId }, 'Failed to reconcile module completion after admin repair');
+        }
+        try {
+          await certDb.checkAndAwardCredentials(attempt.workos_user_id);
+        } catch (credError) {
+          warnings.push('Credential check failed — run backfill');
+          logger.error({ error: credError, attemptId }, 'Failed to check credentials after admin repair');
+        }
+        return res.json({ attempt, ...(warnings.length > 0 && { warnings }) });
+      }
+
+      const effectiveScores = scores;
+      if (!effectiveScores || Array.isArray(effectiveScores) || typeof effectiveScores !== 'object' || Object.keys(effectiveScores).length === 0) {
         return res.status(400).json({ error: 'scores must be a non-empty object' });
       }
-      const scoreValues = Object.values(scores);
+      const scoreValues = Object.values(effectiveScores);
       if (!scoreValues.every(s => typeof s === 'number' && Number.isFinite(s))) {
         return res.status(400).json({ error: 'All score values must be finite numbers' });
       }
@@ -1004,10 +1233,10 @@ export function createCertificationRouters() {
 
       let updated;
       try {
-        updated = await certDb.adminCompleteAttempt(attemptId, scores, overallScore, passing, reason.trim());
+        updated = await certDb.adminCompleteAttempt(attemptId, effectiveScores, overallScore, passing, reason.trim());
       } catch (err) {
         if (err instanceof Error && err.message.includes('not in_progress')) {
-          return res.status(409).json({ error: 'Attempt is no longer in_progress' });
+          return res.status(409).json({ error: 'Attempt can no longer be completed' });
         }
         throw err;
       }
@@ -1016,7 +1245,7 @@ export function createCertificationRouters() {
       const warnings: string[] = [];
       if (passing && updated.module_id) {
         try {
-          await certDb.completeModule(updated.workos_user_id, updated.module_id, scores);
+          await certDb.completeModule(updated.workos_user_id, updated.module_id, effectiveScores);
         } catch (modError) {
           warnings.push('Module completion failed — run backfill');
           logger.error({ error: modError, attemptId, moduleId: updated.module_id }, 'Failed to mark module complete after admin resolve');
@@ -1032,6 +1261,104 @@ export function createCertificationRouters() {
       return res.json({ attempt: updated, ...(warnings.length > 0 && { warnings }) });
     } catch (error) {
       logger.error({ error, attemptId: req.params.attemptId }, 'Failed to resolve stuck attempt');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /api/admin/certification/learners/:userId/modules/:moduleId/complete — admin repair for module completion
+  adminRouter.post('/learners/:userId/modules/:moduleId/complete', adminModuleCompletionLimiter, async (req, res) => {
+    const userId = req.params.userId;
+    const moduleId = req.params.moduleId.toUpperCase();
+    try {
+      const { scores, addie_thread_id, note } = req.body as {
+        scores?: unknown;
+        addie_thread_id?: unknown;
+        note?: unknown;
+      };
+
+      const adminUserId = req.user?.id;
+      if (!adminUserId) {
+        return res.status(401).json({ error: 'Admin user identity is required' });
+      }
+
+      const addieThreadId = typeof addie_thread_id === 'string' ? addie_thread_id.trim() : '';
+      if (!addieThreadId) {
+        return res.status(400).json({ error: 'addie_thread_id is required' });
+      }
+      if (addieThreadId.length > 500) {
+        return res.status(400).json({ error: 'addie_thread_id must be under 500 characters' });
+      }
+
+      let trimmedNote: string | null = null;
+      if (note !== undefined && note !== null) {
+        if (typeof note !== 'string') {
+          return res.status(400).json({ error: 'note must be a string when provided' });
+        }
+        trimmedNote = note.trim() || null;
+        if (trimmedNote && trimmedNote.length > 1000) {
+          return res.status(400).json({ error: 'note must be under 1000 characters' });
+        }
+      }
+
+      const effectiveScores = parseAdminModuleScores(scores);
+      if (!effectiveScores) {
+        return res.status(400).json({ error: 'scores must be a non-empty object of finite numbers' });
+      }
+
+      const mod = await certDb.getModule(moduleId);
+      if (!mod) {
+        return res.status(404).json({ error: 'Module not found' });
+      }
+
+      const scoreResult = validateModuleCompletionScores(effectiveScores, mod.assessment_criteria);
+      if (typeof scoreResult === 'string') {
+        return res.status(422).json({ error: scoreResult });
+      }
+
+      const checkpoint = await certDb.getLatestCheckpointForThread(userId, moduleId, addieThreadId);
+      if (!checkpoint) {
+        return res.status(409).json({
+          error: 'No teaching checkpoint found for this learner, module, and addie_thread_id',
+        });
+      }
+
+      const consistencyError = validatePreliminaryScoreConsistency(effectiveScores, checkpoint);
+      if (consistencyError) {
+        return res.status(409).json({ error: consistencyError });
+      }
+
+      const demoError = checkRequiredDemonstrations(mod, checkpoint);
+      if (demoError) {
+        return res.status(409).json({ error: demoError });
+      }
+
+      const { progress, audit } = await certDb.adminCompleteModule({
+        userId,
+        moduleId,
+        adminUserId,
+        addieThreadId,
+        score: effectiveScores,
+        note: trimmedNote,
+        teachingCheckpointId: checkpoint.id,
+      });
+
+      const warnings: string[] = [];
+      let credentialsAwarded: string[] = [];
+      try {
+        credentialsAwarded = await certDb.checkAndAwardCredentials(userId);
+      } catch (credError) {
+        warnings.push('Credential check failed — run backfill');
+        logger.error({ error: credError, userId, moduleId }, 'Failed to check credentials after admin module completion');
+      }
+
+      return res.json({
+        progress,
+        audit,
+        credentials_awarded: credentialsAwarded,
+        ...(warnings.length > 0 && { warnings }),
+      });
+    } catch (error) {
+      logger.error({ error, userId, moduleId }, 'Failed to admin-complete certification module');
       res.status(500).json({ error: 'Internal server error' });
     }
   });

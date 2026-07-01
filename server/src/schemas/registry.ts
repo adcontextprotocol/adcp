@@ -23,6 +23,259 @@ export const ErrorSchema = z
   .object({ error: z.string() })
   .openapi("Error");
 
+export const RateLimitErrorSchema = z
+  .object({
+    error: z.string(),
+    message: z.string().optional(),
+    retryAfter: z.number().int().optional().openapi({ description: "Seconds to wait before retrying." }),
+  })
+  .openapi("RateLimitError");
+
+const AdagentsCatalogItemSchema = z
+  .record(z.string(), z.unknown())
+  .openapi({ description: "Protocol-defined catalog object. See the adagents.json JSON Schema for the authoritative nested shape." });
+
+const HttpsUrlSchema = z
+  .string()
+  .url()
+  .regex(/^https:\/\//)
+  .openapi({
+    description: "HTTPS URL.",
+  });
+
+export const AdagentsAuthorizedAgentSchema = z
+  .object({
+    url: z.string().url().openapi({ description: "Agent endpoint URL." }),
+    authorized_for: z.string().optional(),
+    authorization_type: z.enum([
+      "property_ids",
+      "property_tags",
+      "inline_properties",
+      "publisher_properties",
+      "signal_ids",
+      "signal_tags",
+    ]).optional(),
+    property_ids: z.array(z.string()).optional(),
+    property_tags: z.array(z.string()).optional(),
+    properties: z.array(AdagentsCatalogItemSchema).optional(),
+    publisher_properties: z.array(z.object({
+      publisher_domain: z.string().optional(),
+      publisher_domains: z.array(z.string()).optional(),
+      selection_type: z.enum(["all", "by_id", "by_tag"]),
+      property_ids: z.array(z.string()).optional(),
+      property_tags: z.array(z.string()).optional(),
+    })).optional(),
+    collections: z.array(z.object({
+      publisher_domain: z.string(),
+      collection_ids: z.array(z.string()),
+    })).optional(),
+    placement_ids: z.array(z.string()).optional(),
+    placement_tags: z.array(z.string()).optional(),
+    delegation_type: z.enum(["direct", "delegated", "ad_network"]).optional(),
+    exclusive: z.boolean().optional(),
+    countries: z.array(z.string()).optional(),
+    effective_from: z.string().optional(),
+    effective_until: z.string().optional(),
+    signal_ids: z.array(z.string()).optional(),
+    signal_tags: z.array(z.string()).optional(),
+    signing_keys: z.array(z.record(z.string(), z.unknown())).optional(),
+  })
+  .passthrough()
+  .openapi("AdagentsAuthorizedAgent");
+
+export const AdagentsJsonSchema = z
+  .object({
+    $schema: z.string().url().optional(),
+    authorized_agents: z.array(AdagentsAuthorizedAgentSchema),
+    properties: z.array(AdagentsCatalogItemSchema).optional(),
+    catalog_etag: z.string().optional(),
+    formats: z.array(AdagentsCatalogItemSchema).optional(),
+    placements: z.array(AdagentsCatalogItemSchema).optional(),
+    placement_tags: z.record(z.string(), z.unknown()).optional(),
+    collections: z.array(AdagentsCatalogItemSchema).optional(),
+    signals: z.array(AdagentsCatalogItemSchema).optional(),
+    signal_tags: z.record(z.string(), z.unknown()).optional(),
+    contact: z.unknown().optional(),
+    superseded_by: HttpsUrlSchema.optional().openapi({
+      description:
+        "HTTPS URL for the canonical successor adagents.json document. Clients should re-fetch the successor and update cached mirror references before retiring use of this mirror.",
+    }),
+    last_updated: z.string().datetime().optional(),
+  })
+  .passthrough()
+  .openapi("AdagentsJson");
+
+export const CommunityMirrorAdagentsJsonSchema = z
+  .object({
+    $schema: z.string().url().optional(),
+    authorized_agents: z.array(AdagentsAuthorizedAgentSchema).max(0).openapi({
+      description: "Always empty for community mirrors; these catalogs never assert sales authorization.",
+    }),
+    properties: z.array(AdagentsCatalogItemSchema).optional(),
+    catalog_etag: z.string().optional(),
+    formats: z.array(AdagentsCatalogItemSchema).optional(),
+    placements: z.array(AdagentsCatalogItemSchema).optional(),
+    placement_tags: z.record(z.string(), z.unknown()).optional(),
+    collections: z.array(AdagentsCatalogItemSchema).optional(),
+    signals: z.array(AdagentsCatalogItemSchema).optional(),
+    signal_tags: z.record(z.string(), z.unknown()).optional(),
+    contact: z.unknown().optional(),
+    superseded_by: HttpsUrlSchema.optional().openapi({
+      description:
+        "HTTPS URL for the canonical successor adagents.json document. Clients should re-fetch the successor and update cached mirror references before retiring use of this mirror.",
+    }),
+    last_updated: z.string().datetime().optional(),
+  })
+  .passthrough()
+  .openapi("CommunityMirrorAdagentsJson");
+
+const AdagentsValidationIssueSchema = z
+  .object({
+    field: z.string(),
+    message: z.string(),
+    severity: z.literal("error"),
+  })
+  .openapi("AdagentsValidationIssue");
+
+const AdagentsValidationWarningSchema = z
+  .object({
+    field: z.string(),
+    message: z.string(),
+    suggestion: z.string().optional(),
+  })
+  .openapi("AdagentsValidationWarning");
+
+export const AdagentsValidationResultSchema = z
+  .object({
+    valid: z.boolean(),
+    errors: z.array(AdagentsValidationIssueSchema),
+    warnings: z.array(AdagentsValidationWarningSchema),
+    domain: z.string(),
+    url: z.string(),
+    status_code: z.number().int().optional(),
+    response_bytes: z.number().int().nonnegative().optional(),
+    resolved_url: z.string().optional(),
+    raw_data: z.unknown().optional(),
+    discovery_method: z.enum(["direct", "authoritative_location", "ads_txt_managerdomain", "adagents_authoritative"]),
+    manager_domain: z.string().optional(),
+  })
+  .openapi("AdagentsValidationResult");
+
+export const CreateAdagentsResponseSchema = z
+  .object({
+    success: z.literal(true),
+    data: z.object({
+      success: z.literal(true),
+      adagents_json: z.string().openapi({
+        description: "Pretty-printed adagents.json document generated by the service.",
+      }),
+      validation: AdagentsValidationResultSchema,
+    }),
+    timestamp: z.string().datetime(),
+  })
+  .openapi("CreateAdagentsResponse");
+
+const CommunityMirrorPlatformSchema = z
+  .string()
+  .regex(/^[a-z0-9_-]{1,64}$/)
+  .openapi({
+    description: "Lowercase platform identifier, normalized by the service.",
+    example: "example_platform",
+  });
+
+const CommunityMirrorPublishBaseShape = {
+  catalog_etag: z.string().min(1).max(255).optional(),
+  formats: z.array(AdagentsCatalogItemSchema).optional(),
+  properties: z.array(AdagentsCatalogItemSchema).optional(),
+  placements: z.array(AdagentsCatalogItemSchema).optional(),
+  placement_tags: z.record(z.string(), z.unknown()).optional(),
+  collections: z.array(AdagentsCatalogItemSchema).optional(),
+  signals: z.array(AdagentsCatalogItemSchema).optional(),
+  signal_tags: z.record(z.string(), z.unknown()).optional(),
+  contact: z.unknown().optional(),
+  superseded_by: HttpsUrlSchema.optional().openapi({
+    description:
+      "HTTPS URL for the canonical successor adagents.json document. Set this before deleting a mirror so buyers can migrate cached references.",
+  }),
+};
+
+const CommunityMirrorCatalogContentSchema = z.array(AdagentsCatalogItemSchema).min(1);
+
+export const CommunityMirrorPublishRequestSchema = z
+  .union([
+    z.object({ ...CommunityMirrorPublishBaseShape, formats: CommunityMirrorCatalogContentSchema }).passthrough(),
+    z.object({ ...CommunityMirrorPublishBaseShape, properties: CommunityMirrorCatalogContentSchema }).passthrough(),
+    z.object({ ...CommunityMirrorPublishBaseShape, placements: CommunityMirrorCatalogContentSchema }).passthrough(),
+    z.object({ ...CommunityMirrorPublishBaseShape, collections: CommunityMirrorCatalogContentSchema }).passthrough(),
+    z.object({ ...CommunityMirrorPublishBaseShape, signals: CommunityMirrorCatalogContentSchema }).passthrough(),
+  ])
+  .openapi("CommunityMirrorPublishRequest", {
+    description:
+      "Catalog-only adagents.json body for a community mirror. At least one of `formats`, `properties`, `placements`, `collections`, or `signals` must be present and non-empty. The service regenerates `$schema` and `last_updated` before persisting.",
+  });
+
+export const CommunityMirrorSummarySchema = z
+  .object({
+    platform: CommunityMirrorPlatformSchema,
+    catalog_etag: z.string().nullable(),
+    superseded_by: HttpsUrlSchema.nullable().openapi({
+      description: "HTTPS successor document URL, when this mirror has been superseded.",
+    }),
+    updated_at: z.string().datetime(),
+  })
+  .openapi("CommunityMirrorSummary");
+
+export const CommunityMirrorListResponseSchema = z
+  .object({
+    mirrors: z.array(CommunityMirrorSummarySchema),
+    total: z.number().int().nonnegative(),
+  })
+  .openapi("CommunityMirrorListResponse");
+
+export const CommunityMirrorGetResponseSchema = z
+  .object({
+    platform: CommunityMirrorPlatformSchema,
+    catalog_etag: z.string().nullable(),
+    superseded_by: HttpsUrlSchema.nullable().openapi({
+      description: "HTTPS successor document URL, when this mirror has been superseded.",
+    }),
+    adagents_json: CommunityMirrorAdagentsJsonSchema,
+    created_at: z.string().datetime(),
+    updated_at: z.string().datetime(),
+  })
+  .openapi("CommunityMirrorGetResponse");
+
+export const CommunityMirrorPublishResponseSchema = z
+  .object({
+    success: z.literal(true),
+    platform: CommunityMirrorPlatformSchema,
+    catalog_etag: z.string().nullable(),
+    superseded_by: HttpsUrlSchema.nullable().openapi({
+      description: "HTTPS successor document URL, when this mirror has been superseded.",
+    }),
+    publisher_domains: z.array(z.string()).openapi({
+      description: "Publisher domains updated from this community mirror catalog.",
+    }),
+    updated_at: z.string().datetime(),
+  })
+  .openapi("CommunityMirrorPublishResponse");
+
+export const CommunityMirrorPublishErrorSchema = z
+  .object({
+    error: z.string(),
+    details: z.array(z.unknown()).optional().openapi({
+      description: "Validation details for request-body parse failures or adagents.json conformance errors.",
+    }),
+  })
+  .openapi("CommunityMirrorPublishError");
+
+export const CommunityMirrorDeleteResponseSchema = z
+  .object({
+    success: z.literal(true),
+    platform: CommunityMirrorPlatformSchema,
+  })
+  .openapi("CommunityMirrorDeleteResponse");
+
 /**
  * Extended error shape for endpoints whose parser can tag rejections with
  * a stable `code` + `field` pointer (see `parseOAuthClientCredentialsInput`).
@@ -127,6 +380,46 @@ export const AgentCapabilitiesSchema = z
         can_preview: z.boolean(),
       })
       .optional(),
+    signals_capabilities: z
+      .object({
+        audience_types: z.array(z.string()),
+        can_match: z.boolean(),
+        can_activate: z.boolean(),
+        can_get_signals: z.boolean(),
+      })
+      .optional(),
+    measurement_capabilities: z
+      .object({
+        metrics: z.array(
+          z.object({
+            metric_id: z.string(),
+            standard_reference: z.string().optional(),
+            accreditations: z
+              .array(
+                z.object({
+                  accrediting_body: z.string(),
+                  certification_id: z.string().optional(),
+                  valid_until: z.string().optional(),
+                  evidence_url: z.string().optional(),
+                  verified_by_aao: z.literal(false).openapi({
+                    description:
+                      "Always `false` — accreditation claims are vendor-asserted. AAO does not independently verify; renderers should mark these as vendor claims.",
+                  }),
+                })
+              )
+              .optional(),
+            unit: z.string().optional(),
+            description: z.string().optional(),
+            methodology_url: z.string().optional(),
+            methodology_version: z.string().optional(),
+          })
+        ),
+      })
+      .optional()
+      .openapi({
+        description:
+          "Vendor-published per-metric catalog for measurement agents. Populated when the crawler successfully fetched and validated `get_adcp_capabilities.measurement` (AdCP 3.x). Mirrors the protocol shape — see the AdCP `get_adcp_capabilities` reference for field semantics.",
+      }),
   })
   .openapi("AgentCapabilities");
 
@@ -142,11 +435,18 @@ export const PropertySummarySchema = z
 const MemberRefSchema = z.object({
   slug: z.string().optional(),
   display_name: z.string().optional(),
-});
-
-const DiscoveredFromSchema = z.object({
-  publisher_domain: z.string().optional(),
-  authorized_for: z.string().optional(),
+  membership_tier: z.string().optional().openapi({
+    description:
+      "Raw AAO membership tier enum (e.g. `individual_professional`, `company_leader`). Present only when the profile owner has set their member card to public (`is_public=true`) AND the org has a resolvable tier. Absent for private profiles and for orgs without an active tier-bearing subscription.",
+  }),
+  membership_tier_label: z.string().optional().openapi({
+    description:
+      "Human-readable label for `membership_tier` (e.g. `Professional`, `Partner`, `Leader`). Matches the AAO pricing page. Use this for UI display; the raw enum is for programmatic gating. Presence rules match `membership_tier`.",
+  }),
+  is_founding_member: z.boolean().optional().openapi({
+    description:
+      "True when the profile owner carries the Founding Member badge (joined before the founding-cohort cutoff). Surfaced when the profile owner has set their member card to public (`is_public=true`). Absent for private profiles. Founding Member is orthogonal to tier — founding orgs typically display both (e.g. Scope3 shows `Partner` + `Founding Member`).",
+  }),
 });
 
 export const ResolvedBrandSchema = z
@@ -254,8 +554,18 @@ export const PropertyRegistryItemSchema = z
 export const AgentComplianceSchema = z
   .object({
     status: z.enum(["passing", "degraded", "failing", "unknown"]),
+    requested_compliance_target: z.string().nullable().optional().openapi({ description: "Requested compliance target before alias resolution, e.g. 3.0 or 3.1-beta." }),
+    adcp_version: z.string().nullable().optional().openapi({ description: "Concrete AdCP compliance bundle version used for the latest run, e.g. 3.0.12." }),
     lifecycle_stage: z.enum(["development", "testing", "production", "deprecated"]),
     tracks: z.record(z.string(), z.string()).openapi({ example: { core: "pass", products: "fail" } }),
+    track_details: z.array(z.object({
+      track: z.string(),
+      status: z.string(),
+      scenario_count: z.number().int(),
+      passed_count: z.number().int(),
+      duration_ms: z.number(),
+      has_coverage_gap_skip: z.boolean().optional(),
+    })).optional().openapi({ description: "Latest-run per-track summary. Skipped tracks with has_coverage_gap_skip=true represent selected coverage gaps, such as missing_test_controller." }),
     streak_days: z.number().int(),
     last_checked_at: z.string().nullable(),
     headline: z.string().nullable(),
@@ -287,10 +597,20 @@ export const VerificationBadgeSchema = z
 export const AgentComplianceDetailSchema = z
   .object({
     agent_url: z.string(),
+    requested_compliance_target: z.string().nullable().optional().openapi({ description: "Requested compliance target before alias resolution, e.g. 3.0 or 3.1-beta. Null for legacy rows before target recording." }),
+    adcp_version: z.string().nullable().optional().openapi({ description: "Concrete AdCP compliance bundle version used for the latest run, e.g. 3.0.12. Null for legacy rows before version recording." }),
     status: z.enum(["passing", "degraded", "failing", "unknown", "opted_out"]),
     lifecycle_stage: z.enum(["development", "testing", "production", "deprecated"]),
     compliance_opt_out: z.boolean().optional(),
     tracks: z.record(z.string(), z.string()).optional(),
+    track_details: z.array(z.object({
+      track: z.string(),
+      status: z.string(),
+      scenario_count: z.number().int(),
+      passed_count: z.number().int(),
+      duration_ms: z.number(),
+      has_coverage_gap_skip: z.boolean().optional(),
+    })).optional().openapi({ description: "Latest-run per-track summary. Skipped tracks with has_coverage_gap_skip=true represent selected coverage gaps, such as missing_test_controller." }),
     streak_days: z.number().int().optional(),
     last_checked_at: z.string().nullable().optional(),
     last_passed_at: z.string().nullable().optional(),
@@ -302,10 +622,37 @@ export const AgentComplianceDetailSchema = z
     check_interval_hours: z.number().int().optional().openapi({ description: "How often the heartbeat re-tests this agent, in hours" }),
     declared_specialisms: z.array(z.string()).optional().openapi({ description: "Specialisms the agent declared in get_adcp_capabilities, from the latest run" }),
     specialism_status: z.record(z.string(), z.enum(['passing', 'failing', 'untested', 'unknown'])).optional().openapi({ description: "Per-specialism pass/fail/untested status — keyed on declared specialism, derived from the matching storyboard's status" }),
+    storyboard_statuses: z.array(z.object({
+      storyboard_id: z.string(),
+      requested_compliance_target: z.string().nullable().optional(),
+      adcp_version: z.string().nullable().optional(),
+      title: z.string(),
+      category: z.string().nullable(),
+      track: z.string().nullable(),
+      status: z.enum(["passing", "failing", "partial", "untested"]),
+      steps_passed: z.number().int(),
+      steps_total: z.number().int(),
+      failure_count: z.number().int(),
+      skipped_count: z.number().int(),
+      first_failed_step_id: z.string().nullable(),
+      first_failed_step_title: z.string().nullable(),
+      first_failed_step_task: z.string().nullable(),
+      first_failure_message: z.string().nullable(),
+      last_tested_at: z.string().nullable(),
+      last_passed_at: z.string().nullable(),
+    })).optional().openapi({ description: "Owner-scoped per-storyboard diagnostics used by the dashboard. Empty for non-owners." }),
+    notices: z.array(z.any()).optional().openapi({ description: "Run-summary notices from the latest non-dry-run compliance run. Unknown codes/severities are preserved verbatim." }),
+    observations: z.array(z.object({
+      category: z.string(),
+      severity: z.string(),
+      message: z.string(),
+    })).optional().openapi({ description: "Public-safe advisory observations from the latest non-dry-run compliance run. Raw evidence is intentionally omitted; this array is not merged across runs, so cleared advisories disappear on the next fresh run." }),
     membership_tier: z.string().nullable().optional().openapi({ description: "Owner-scoped: the agent owner's membership tier. Populated only when the authenticated viewer owns the agent; null otherwise. Field is always present so response shape doesn't reveal ownership." }),
     membership_tier_label: z.string().nullable().optional().openapi({ description: "Owner-scoped: human-readable label for membership_tier (e.g. 'Builder'). Null for non-owners." }),
     subscription_status: z.string().nullable().optional().openapi({ description: "Owner-scoped: the agent owner's subscription status (active, past_due, trialing, etc.). Null for non-owners." }),
     is_api_access_tier: z.boolean().optional().openapi({ description: "Owner-scoped: true when the owner's tier and subscription status grant badge eligibility. False for non-owners. Single source of truth — UI should not re-derive." }),
+    verdict_source: z.enum(["heartbeat", "owner_test", "manual", "webhook"]).nullable().optional()
+      .openapi({ description: "Owner-scoped: triggered_by value of the most recent non-dry-run compliance check. Null for non-owners and when no run has been recorded. Operators use this as a UX cue ('did this verdict come from my recent test or the system heartbeat?')." }),
     verified: z.boolean().optional(),
     verified_badges: z.array(VerificationBadgeSchema).optional(),
   })
@@ -323,12 +670,20 @@ export const AgentVerificationSchema = z
 export const StoryboardStatusSchema = z
   .object({
     storyboard_id: z.string(),
+    requested_compliance_target: z.string().nullable().optional().openapi({ description: "Requested compliance target from the run that produced this storyboard verdict, e.g. 3.0 or 3.1-beta." }),
+    adcp_version: z.string().nullable().optional().openapi({ description: "Concrete AdCP compliance bundle version from the run that produced this storyboard verdict." }),
     title: z.string(),
     category: z.string().nullable(),
     track: z.string().nullable(),
     status: z.enum(["passing", "failing", "partial", "untested"]),
     steps_passed: z.number().int(),
     steps_total: z.number().int(),
+    failure_count: z.number().int().openapi({ description: "Root failing or actionable skipped step count. Cascaded prerequisite skips are excluded." }),
+    skipped_count: z.number().int().openapi({ description: "Cascaded prerequisite skip count for this storyboard verdict." }),
+    first_failed_step_id: z.string().nullable().openapi({ description: "First root failing or actionable skipped step id, when captured." }),
+    first_failed_step_title: z.string().nullable().openapi({ description: "First root failing or actionable skipped step title, when captured." }),
+    first_failed_step_task: z.string().nullable().openapi({ description: "Task/tool name for the first root failing or actionable skipped step, when captured." }),
+    first_failure_message: z.string().nullable().openapi({ description: "Runner error/detail text for the first root failing or actionable skipped step, when captured." }),
     last_tested_at: z.string().nullable(),
     last_passed_at: z.string().nullable(),
   })
@@ -360,25 +715,9 @@ export const FederatedAgentWithDetailsSchema = z
       })
       .optional(),
     added_date: z.string().optional(),
-    source: z
-      .enum(["registered", "discovered"])
-      .optional()
-      .openapi({
-        description:
-          "Provenance of this agent in the registry. " +
-          "`registered` = an AAO member has explicitly enrolled this agent on their member profile (canonical, attested). " +
-          "`discovered` = the crawler found this agent listed in some publisher's adagents.json file; the agent itself has not opted in to the registry. " +
-          "These are different trust levels — `registered` ≠ `discovered`. Filter by source if your use case depends on attestation.",
-      }),
     member: MemberRefSchema.optional().openapi({
       description:
-        "AAO member that owns this agent record, if any. Populated when `source` is `registered`. " +
-        "For `discovered` agents this is currently `null` even when the publisher_domain in `discovered_from` is owned by a member — see #3538 Problem 6.",
-    }),
-    discovered_from: DiscoveredFromSchema.optional().openapi({
-      description:
-        "Set when `source = 'discovered'`. Identifies the publisher_domain whose adagents.json listed this agent, and the `authorized_for` string from that listing. " +
-        "Mutually exclusive with the `member` field on the registered path.",
+        "AAO member that owns this agent record. The registry contains only agents that members have explicitly enrolled on their member profile.",
     }),
     health: AgentHealthSchema.optional(),
     stats: AgentStatsSchema.optional(),
@@ -392,22 +731,16 @@ export const FederatedAgentWithDetailsSchema = z
 export const FederatedPublisherSchema = z
   .object({
     domain: z.string(),
-    source: z.enum(["registered", "discovered"]).optional(),
     member: MemberRefSchema.optional(),
     agent_count: z.number().int().optional(),
     last_validated: z.string().optional(),
-    discovered_from: z
-      .object({ agent_url: z.string().optional() })
-      .optional(),
     has_valid_adagents: z.boolean().optional(),
-    discovered_at: z.string().optional(),
   })
   .openapi("FederatedPublisher");
 
 const DomainAgentRefSchema = z.object({
   url: z.string(),
   authorized_for: z.string().optional(),
-  source: z.enum(["registered", "discovered"]).optional(),
   member: MemberRefSchema.optional(),
 });
 
@@ -418,7 +751,6 @@ export const DomainLookupResultSchema = z
     sales_agents_claiming: z.array(
       z.object({
         url: z.string(),
-        source: z.enum(["registered", "discovered"]).optional(),
         member: MemberRefSchema.optional(),
       })
     ),
@@ -552,13 +884,106 @@ const PublisherPropertySchema = z.object({
   type: z.string().optional(),
   name: z.string().optional(),
   identifiers: z.array(PropertyIdentifierSchema).optional(),
-  tags: z.array(z.string()).optional(),
+  tags: z.array(z.string()).optional().openapi({
+    description:
+      "Arbitrary string tags on this property. The `relationship:` prefix tag (e.g. `relationship:owned`) is deprecated in favour of the `delegation_type` field and will be removed in a future release.",
+  }),
+  source: z.enum(["adagents_json", "community", "discovered", "brand_json"]).optional().openapi({
+    description:
+      "Where this property came from. `adagents_json` comes from the publisher's own adagents.json, `community` from an approved community adagents.json catalog, `discovered` from crawler or third-party signals, and `brand_json` from the publisher's brand.json when no federated-index data exists yet.",
+  }),
+  delegation_type: z.enum(["direct", "delegated", "ad_network"]).optional().openapi({
+    description:
+      "Delegation relationship declared in brand.json. Populated only when `source` is `brand_json` — for `adagents_json` and `discovered` sources the authoritative value is on the matching `authorized_agents` entry. Mirrors adagents.json `delegation_type` for bilateral verification: `direct` = publisher treats this as a direct buying path, even if a third party operates the software; `delegated` = a rep firm or manager is authorized to sell on the publisher's behalf (operator-declared, unilateral until corroborated by the publisher's adagents.json); `ad_network` = sold as part of a network/exchange package. `owned` properties have no `delegation_type` — ownership is implicit and has no adagents.json counterpart.",
+  }),
+});
+
+const PublisherBrandSummarySchema = z.object({
+  name: z.string().optional().openapi({ description: "Display name from brand.json or the registered brand row." }),
+  description: z.string().optional().openapi({ description: "Short brand or house description when present in brand.json." }),
+  logo_url: z.string().optional().openapi({ description: "First usable logo URL from brand.json." }),
+  colors: z.array(z.string()).optional().openapi({ description: "Representative hex colors from brand.json, capped for display." }),
+  industries: z.array(z.string()).optional().openapi({ description: "Industry labels from brand.json when present." }),
+});
+
+const PublisherFormatSummarySchema = z.object({
+  format_option_id: z.string().optional().openapi({ description: "Stable format option identifier from adagents.json `formats[]`." }),
+  display_name: z.string().openapi({ description: "Human-readable format label for catalog and publisher UI display." }),
+  format_kind: z.string().openapi({ description: "Canonical format discriminator, such as `image`, `video_hosted`, `native_in_feed`, or `custom`." }),
+  params: z.record(z.string(), z.unknown()).optional().openapi({ description: "Canonical format params from the publisher's adagents.json declaration." }),
+  applies_to_property_ids: z.array(z.string()).optional().openapi({ description: "Property IDs this format applies to; absent means all properties." }),
+  applies_to_property_tags: z.array(z.string()).optional().openapi({ description: "Property tags this format applies to; absent means all properties." }),
+  seller_preference: z.string().optional().openapi({ description: "Seller preference hint from the format declaration, when present." }),
+  experimental: z.boolean().optional().openapi({ description: "Whether this seller's format declaration is marked experimental." }),
 });
 
 const PublisherAuthorizedAgentSchema = z.object({
   url: z.string(),
   authorized_for: z.string().optional(),
-  source: z.enum(["adagents_json", "agent_claim"]),
+  source: z.enum(["adagents_json", "aao_hosted", "agent_claim"]).openapi({
+    description:
+      "How strongly this authorization is attested. `adagents_json`: the publisher's origin actually serves a valid adagents.json (origin-verified). `aao_hosted`: AAO is hosting the canonical document on the publisher's behalf — represents publisher intent but origin has NOT been verified to redirect to AAO. `agent_claim`: the agent claimed it; publisher has not confirmed.",
+  }),
+  properties_authorized: z.number().int().nonnegative().optional().openapi({
+    description:
+      "Count of this publisher's properties the agent is authorized to sell. Absent when `rollup_truncated` is set (call `/api/registry/publisher/authorization` for the per-agent count) or when properties are entirely brand.json-hydrated (no adagents.json claim has actually been made about them).",
+  }),
+  properties_total: z.number().int().nonnegative().optional().openapi({
+    description: "Total number of properties this publisher exposes through the registry. Same value across all agents in the response. Absent when `properties_authorized` is absent.",
+  }),
+  publisher_wide: z.boolean().optional().openapi({
+    description:
+      "True when the agent has only a publisher-wide authorization row and `properties_authorized` was synthesized as `properties_total`. False when the agent has property-level authorization rows. Absent when the rollup is absent.",
+  }),
+});
+
+const PublisherHostingSchema = z.object({
+  mode: z.enum(["self", "self_invalid", "aao_hosted", "self_redirected", "none"]).openapi({
+    description:
+      "Where this publisher's adagents.json lives. `self` = publisher hosts a valid file at their own /.well-known. `self_invalid` = publisher's /.well-known returns a file that fails validation (fixable misconfiguration, not absence). `aao_hosted` = the publisher hosts a stub at their own /.well-known whose `authoritative_location` points at AAO's canonical document. `self_redirected` = the publisher's stub `authoritative_location` resolves to a third-party HTTPS origin (a CDN, partner CMS, or sibling host) — verifiers should audit the TLS chain at `resolved_url`, not at the publisher's own origin. `none` = no adagents.json configured yet.",
+  }),
+  hosted_url: z.string().optional().openapi({
+    description: "Canonical AAO-hosted adagents.json URL. Present iff `mode === 'aao_hosted'`. Publishers reference this URL from their own /.well-known stub via the `authoritative_location` field (see https://docs.adcontextprotocol.org/docs/governance/property/adagents).",
+  }),
+  expected_url: z.string().openapi({
+    description: "Where adagents.json *should* live for this domain — the publisher's own /.well-known path. Always populated, regardless of `mode`.",
+  }),
+  resolved_url: z.string().nullable().optional().openapi({
+    description: "Where the canonical adagents.json document actually lives after following the publisher's `authoritative_location` stub or any HTTP-layer redirects. Populated when `mode === 'self_redirected'` (the third-party HTTPS origin verifiers should audit) and when `mode === 'aao_hosted'` AND the publisher has actively set up the redirect (`authoritative_location` in the manifest body or a network-layer redirect to AAO's hosted URL). NULL when there's no resolved-URL evidence to report.",
+  }),
+  last_validated: z.string().nullable().optional().openapi({
+    description: "ISO timestamp of the last successful validation crawl. Lets verifiers sanity-check freshness. NULL when never crawled.",
+  }),
+  last_http_status: z.number().int().min(100).max(599).nullable().optional().openapi({
+    description: "HTTP status code returned by AAO's most recent fetch attempt of the publisher's `/.well-known/adagents.json`. Verifier-grade chrome — lets a buy-side scraper confirm they see the same response AAO does. NULL until the first crawl records or for transient errors that never produced an HTTP response.",
+  }),
+  last_bytes: z.number().int().nonnegative().nullable().optional().openapi({
+    description: "Response body byte length from the most recent fetch (post-decompression). When `authoritative_location` was followed, measures the canonical document body, not the stub. NULL until the first crawl records.",
+  }),
+  origin_verified_at: z.string().nullable().optional().openapi({
+    description: "ISO timestamp of the last successful origin verification — AAO fetched the publisher's own /.well-known/adagents.json and confirmed `authoritative_location` points at our hosted URL. When set, the publisher's authorization rows have been promoted to `source='adagents_json'` (origin-attested). NULL when never verified or last attempt failed. Only populated when `mode === 'aao_hosted'`.",
+  }),
+  origin_last_checked_at: z.string().nullable().optional().openapi({
+    description: "ISO timestamp of the last verification attempt regardless of result. Lets a caller render \"checked X minutes ago, not yet verified\" vs \"never checked.\" Only populated when `mode === 'aao_hosted'`.",
+  }),
+});
+
+const PublisherFilesSchema = z.object({
+  adagents_json: z.object({
+    status: z.enum(["valid", "community", "invalid", "unknown", "checking"]).openapi({
+      description:
+        "What we know about the publisher's adagents.json right now. `valid` = crawler fetched a parsing-and-shape-valid file from the publisher origin. `community` = moderators approved a community adagents.json catalog for this domain. `invalid` = crawler fetched a file that failed validation. `unknown` = never crawled or last result is stale. `checking` = an auto-crawl was kicked off by this request; the page should poll for fresh data shortly.",
+    }),
+    expected_url: z.string().openapi({ description: "Where adagents.json should live on the publisher's own origin." }),
+    registry_url: z.string().optional().openapi({ description: "Registry-served adagents.json URL when the document is community or AgenticAdvertising.org hosted rather than served by the publisher origin." }),
+  }),
+  brand_json: z.object({
+    status: z.enum(["present", "unknown", "checking"]).openapi({
+      description:
+        "What we know about the publisher's brand.json. `present` = a brand record with manifest data exists. `unknown` = no record yet. `checking` = an auto-crawl was kicked off.",
+    }),
+    name: z.string().optional(),
+  }),
 });
 
 export const PublisherLookupResultSchema = z
@@ -566,8 +991,40 @@ export const PublisherLookupResultSchema = z
     domain: z.string().openapi({ example: "voxmedia.com" }),
     member: MemberRefSchema.nullable(),
     adagents_valid: z.boolean().nullable(),
+    discovery_method: z.enum(["direct", "authoritative_location", "ads_txt_managerdomain", "adagents_authoritative", "community_catalog"]).nullable().optional().openapi({
+      description:
+        "How the publisher's adagents.json was discovered on the most recent successful crawl or registry write. `direct`: publisher's own /.well-known/ served the document. `authoritative_location`: publisher's stub redirected to a canonical URL. `ads_txt_managerdomain`: manifest was discovered via ads.txt MANAGERDOMAIN delegation. `adagents_authoritative`: manager file named this publisher through publisher_properties fan-out. `community_catalog`: moderator-approved community catalog. Null until first crawl after migration 470.",
+    }),
+    manager_domain: z.string().nullable().optional().openapi({
+      description:
+        "The manager domain whose adagents.json was used to authorize this publisher's agents. Non-null only when `discovery_method` is `ads_txt_managerdomain`. Matches the MANAGERDOMAIN value from the publisher's ads.txt.",
+    }),
+    hosting: PublisherHostingSchema,
+    files: PublisherFilesSchema.optional().openapi({
+      description:
+        "Plain-English summary of what AAO has found at the publisher's origin. The publisher page leads with this — `you have a valid adagents.json` is the primary signal, not `mode === self`. Optional in the schema for backwards compatibility; the handler always populates it.",
+    }),
     properties: z.array(PublisherPropertySchema),
+    brand: PublisherBrandSummarySchema.optional().openapi({
+      description:
+        "Display-oriented brand identity summary from brand.json. The full raw document remains available from the publisher's /.well-known/brand.json or hosted registry URL.",
+    }),
+    formats: z.array(PublisherFormatSummarySchema).optional().openapi({
+      description:
+        "Display-oriented summary of top-level adagents.json `formats[]`, normalized for publisher pages and agent discovery clients. Each entry preserves `format_kind`, `format_option_id`, and canonical params.",
+    }),
     authorized_agents: z.array(PublisherAuthorizedAgentSchema),
+    rollup_truncated: z.object({
+      cap: z.number().int().positive().openapi({ description: "Maximum number of agents for which the rollup is computed in a single response." }),
+      total_agents: z.number().int().nonnegative().openapi({ description: "Total authorized-agent count for this publisher (the full population the cap was applied to)." }),
+    }).optional().openapi({
+      description:
+        "Set when the publisher has more authorized agents than the per-agent rollup cap. Above the cap, agents beyond `cap` are returned without `properties_authorized` / `properties_total` / `publisher_wide`; call `/api/registry/publisher/authorization?domain=X&agent=Y` for the per-agent count. Lets a caller decide whether to fan out individual calls or stop reading.",
+    }),
+    auto_crawl_triggered: z.boolean().optional().openapi({
+      description:
+        "Set to `true` when this request triggered a background crawl of the publisher's origin (we hadn't crawled before). The client should refetch in ~3-5s to pick up fresh data. Debounced per-domain so a tight refresh loop won't keep firing crawls.",
+    }),
   })
   .openapi("PublisherLookupResult");
 
@@ -595,6 +1052,8 @@ export const MonitoringSettingsSchema = z
 export const ComplianceRunSchema = z
   .object({
     id: z.string(),
+    requested_compliance_target: z.string().nullable().optional(),
+    adcp_version: z.string().nullable().optional(),
     overall_status: z.string(),
     headline: z.string().nullable(),
     tracks_passed: z.number().int(),
@@ -607,6 +1066,32 @@ export const ComplianceRunSchema = z
     tested_at: z.string(),
   })
   .openapi("ComplianceRun");
+
+export const ComplianceStepDiagnosticSchema = z
+  .object({
+    id: z.union([z.number(), z.string()]),
+    run_id: z.string(),
+    agent_url: z.string(),
+    storyboard_id: z.string(),
+    phase_id: z.string(),
+    step_id: z.string(),
+    task: z.string(),
+    step_passed: z.boolean(),
+    duration_ms: z.number().nullable().optional(),
+    request_url: z.string().nullable().optional(),
+    request_jsonb: z.any().optional(),
+    response_status: z.number().nullable().optional(),
+    response_headers_jsonb: z.record(z.string(), z.string()).nullable().optional(),
+    response_jsonb: z.any().optional(),
+    extraction_path: z.string().nullable().optional(),
+    extraction_note: z.string().nullable().optional(),
+    error_text: z.string().nullable().optional(),
+    adcp_error_jsonb: z.any().optional(),
+    failed_validations_jsonb: z.any().optional(),
+    served_by_agent_url: z.string().nullable().optional(),
+    captured_at: z.string(),
+  })
+  .openapi("ComplianceStepDiagnostic");
 
 export const OutboundRequestSchema = z
   .object({
@@ -674,4 +1159,3 @@ export const StoryboardDetailSchema = z
     track: z.string().optional(),
   })
   .openapi("StoryboardDetail");
-

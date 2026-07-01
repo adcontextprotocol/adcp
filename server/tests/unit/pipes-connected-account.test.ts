@@ -1,12 +1,25 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { mockGet, mockDelete } = vi.hoisted(() => ({ mockGet: vi.fn(), mockDelete: vi.fn() }));
-
-vi.mock('../../src/auth/workos-client.js', () => ({
-  getWorkos: () => ({ get: mockGet, delete: mockDelete }),
+const { mockGet, mockDelete, mockGetAccessToken } = vi.hoisted(() => ({
+  mockGet: vi.fn(),
+  mockDelete: vi.fn(),
+  mockGetAccessToken: vi.fn(),
 }));
 
-const { getGitHubConnectedAccount, disconnectGitHub, buildPipesReturnTo } = await import('../../src/services/pipes.js');
+vi.mock('../../src/auth/workos-client.js', () => ({
+  getWorkos: () => ({
+    get: mockGet,
+    delete: mockDelete,
+    pipes: { getAccessToken: mockGetAccessToken },
+  }),
+}));
+
+const {
+  getGitHubConnectedAccount,
+  disconnectGitHub,
+  buildPipesReturnTo,
+  getGitHubAccessToken,
+} = await import('../../src/services/pipes.js');
 
 describe('getGitHubConnectedAccount', () => {
   beforeEach(() => {
@@ -137,5 +150,54 @@ describe('disconnectGitHub', () => {
 
     expect(result.status).toBe('unavailable');
     expect((result as { status: 'unavailable'; reason: string }).reason).toBeTruthy();
+  });
+});
+
+describe('getGitHubAccessToken retry', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('retries after not_installed and returns ok if the second call resolves', async () => {
+    mockGetAccessToken
+      .mockResolvedValueOnce({ active: false, error: 'not_installed' })
+      .mockResolvedValueOnce({
+        active: true,
+        accessToken: { accessToken: 'gho_abc', scopes: ['repo'], missingScopes: [] },
+      });
+
+    const promise = getGitHubAccessToken('user_123');
+    await vi.advanceTimersByTimeAsync(1500);
+    const result = await promise;
+
+    expect(result).toEqual({ status: 'ok', accessToken: 'gho_abc', scopes: ['repo'], missingScopes: [] });
+    expect(mockGetAccessToken).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns not_connected when both attempts return not_installed', async () => {
+    mockGetAccessToken
+      .mockResolvedValueOnce({ active: false, error: 'not_installed' })
+      .mockResolvedValueOnce({ active: false, error: 'not_installed' });
+
+    const promise = getGitHubAccessToken('user_123');
+    await vi.advanceTimersByTimeAsync(1500);
+    const result = await promise;
+
+    expect(result).toEqual({ status: 'not_connected' });
+    expect(mockGetAccessToken).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not retry on errors other than not_installed', async () => {
+    mockGetAccessToken.mockResolvedValueOnce({ active: false, error: 'needs_reauthorization' });
+
+    const result = await getGitHubAccessToken('user_123');
+
+    expect(result.status).toBe('needs_reauthorization');
+    expect(mockGetAccessToken).toHaveBeenCalledTimes(1);
   });
 });

@@ -11,10 +11,11 @@ import { BrandManager } from '../../brand-manager.js';
 import { BrandDatabase } from '../../db/brand-db.js';
 import { registryRequestsDb } from '../../db/registry-requests-db.js';
 import { fetchBrandData, isBrandfetchConfigured, ENRICHMENT_CACHE_MAX_AGE_MS } from '../../services/brandfetch.js';
-import { downloadAndCacheLogos, isBrandfetchUrl } from '../../services/logo-cdn.js';
+import { downloadAndCacheLogos, getBrandAssetUrl, isBrandfetchUrl } from '../../services/logo-cdn.js';
 import { BrandLogoDatabase } from '../../db/brand-logo-db.js';
 import { safeFetch } from '../../utils/url-security.js';
 import { detectContentType, sanitizeSvg, validateLogoTags, computeSha256, extractDimensions, rebuildManifestLogos } from '../../services/brand-logo-service.js';
+import { notifyPendingBrandLogo } from '../../notifications/registry.js';
 import { query } from '../../db/client.js';
 import { createLogger } from '../../logger.js';
 
@@ -22,6 +23,15 @@ const logger = createLogger('brand-tools');
 const brandManager = new BrandManager();
 const brandDb = new BrandDatabase();
 const brandLogoDb = new BrandLogoDatabase();
+
+// Re-export the brand-canonical-document tools (#4527) so callers importing
+// from brand-tools.ts get the full Addie brand surface in one import. The
+// implementation lives in brand-canonical-tools.ts to keep this file focused
+// on the existing research/registry flow.
+export {
+  BRAND_CANONICAL_TOOLS,
+  createBrandCanonicalToolHandlers,
+} from './brand-canonical-tools.js';
 
 /**
  * Brand tool definitions for Addie
@@ -129,8 +139,8 @@ export const BRAND_TOOLS: AddieTool[] = [
   },
   {
     name: 'upload_brand_logo',
-    description: 'Upload a logo file for a brand in the registry. The logo is auto-approved and immediately visible.',
-    usage_hints: 'Use when a user shares a logo URL (press kit, brand portal) and wants to upload it for a brand.',
+    description: 'Fetch and promote a logo file for a brand in the registry. The upload queues for moderator review (community contribution) and, when approved, receives an AAO-hosted public /assets/brands URL suitable for brand.json. Blocked when a brand has a verified DNS owner — only that org can change its logo, and the human must use the brand-builder UI for owner-attested uploads.',
+    usage_hints: 'Use when a user shares a logo URL (press kit, brand portal) and explicitly wants AAO to host it for brand.json. Show the pending public URL/diff and wait for confirmation before treating it as publishable.',
     input_schema: {
       type: 'object',
       properties: {
@@ -176,8 +186,8 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
     const existing = await brandDb.getDiscoveredBrandByDomain(domain);
     if (existing?.has_brand_manifest && existing.brand_manifest && existing.last_validated) {
       const ageMs = Date.now() - new Date(existing.last_validated).getTime();
+      const manifest = existing.brand_manifest as Record<string, unknown>;
       if (ageMs < ENRICHMENT_CACHE_MAX_AGE_MS) {
-        const manifest = existing.brand_manifest as Record<string, unknown>;
         const response: Record<string, unknown> = {
           success: true,
           domain: existing.domain,
@@ -187,6 +197,7 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
           name: manifest.name,
           description: manifest.description,
           url: manifest.url,
+          tone: manifest.tone,
         };
         if (Array.isArray(manifest.logos) && manifest.logos.length > 0) {
           const logos = manifest.logos as Array<{ url: string; tags: string[] }>;
@@ -251,6 +262,7 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
               logos,
               colors: result.manifest!.colors,
               fonts: result.manifest!.fonts,
+              tone: result.manifest!.tone,
               ...(result.company ? { company: result.company } : {}),
               ...(result.raw?.qualityScore !== undefined ? { quality_score: result.raw.qualityScore } : {}),
               ...(result.raw?.isNsfw ? { is_nsfw: true } : {}),
@@ -276,6 +288,7 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
         name: result.manifest.name,
         description: result.manifest.description,
         url: result.manifest.url,
+        tone: result.manifest.tone,
       };
 
       if (result.manifest.logos && result.manifest.logos.length > 0) {
@@ -297,7 +310,6 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
     if (result.company) {
       response.company = result.company;
     }
-
     return JSON.stringify(response, null, 2);
   });
 
@@ -521,9 +533,10 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
     }
 
     // HTTPS only
+    let parsedLogoUrl: URL;
     try {
-      const parsed = new URL(logoUrl);
-      if (parsed.protocol !== 'https:') {
+      parsedLogoUrl = new URL(logoUrl);
+      if (parsedLogoUrl.protocol !== 'https:') {
         return JSON.stringify({ error: 'Only HTTPS URLs are accepted' });
       }
     } catch {
@@ -583,11 +596,40 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
     const sha256 = computeSha256(buffer);
     const { width, height } = await extractDimensions(buffer, contentType);
 
-    // Check logo count cap
-    const count = await brandLogoDb.countBrandLogos(domain);
-    if (count >= 10) {
-      return JSON.stringify({ error: 'Maximum 10 logos per brand' });
+    // Write-authority gate: refuse uploads when a verified DNS owner exists.
+    // Addie acts as a system caller and cannot prove org membership in the
+    // owning org — the HTTP route reserves verified-owner uploads for actual
+    // org members (#4743). Without this check, the chat surface is a bypass
+    // for the route-level gate.
+    const hostedBrand = await brandDb.getHostedBrandByDomain(domain);
+    if (hostedBrand?.domain_verified && hostedBrand.workos_organization_id) {
+      return JSON.stringify({
+        error: 'This brand is verified-owned. Addie cannot change logos on owner-verified brands — only members of the owning organization can, via the brand-builder UI.',
+        code: 'verified_owner_required',
+      });
     }
+
+    // Per-brand community-cap: Addie uploads count as community, so they
+    // share the reserved-slot budget with route-level community uploads.
+    // Keeps Addie from saturating a brand's slots and locking out the
+    // verified owner who might claim it tomorrow. 8/2 split matches the
+    // HTTP route's MAX_COMMUNITY_LOGOS_PER_BRAND.
+    const communityCount = await brandLogoDb.countLogosBySource(domain, ['community']);
+    if (communityCount >= 8) {
+      return JSON.stringify({
+        error: `This brand already has ${communityCount} community-contributed logos. Wait for moderators to clear some, or for the verified owner to claim and manage it.`,
+        code: 'community_cap_reached',
+      });
+    }
+
+    // No per-user threshold on the Addie path. The HTTP route uses
+    // `uploaded_by_user_id` as the bucket key; the Addie tool stores
+    // 'system:addie' across every chat session, which would make the
+    // counter a shared bucket — one user's batch session would DoS
+    // every Addie upload platform-wide for the threshold window. Chat
+    // sessions are already gated by AAO membership + Addie's own rate
+    // limiting; the per-brand community-cap above is the load-bearing
+    // defense against single-brand spam. See #4748 expert review.
 
     const logo = await brandLogoDb.insertBrandLogo({
       domain,
@@ -598,9 +640,22 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
       width,
       height,
       source: 'community',
-      review_status: 'approved',
+      // Always queue Addie uploads as pending — she's a system caller without
+      // org-membership context, so the auto-approval path (reserved for
+      // verified owners in #4743) doesn't apply.
+      review_status: 'pending',
       uploaded_by_user_id: 'system:addie',
+      source_flow: 'addie_brand_json_asset_promotion',
       upload_note: note,
+      original_filename: parsedLogoUrl.pathname.split('/').filter(Boolean).pop()?.slice(0, 255),
+      provenance: {
+        original_url_host: parsedLogoUrl.hostname,
+        original_url_path: parsedLogoUrl.pathname,
+        source_flow: 'addie_brand_json_asset_promotion',
+        approval_path: 'moderator_review_required',
+        intended_use: 'brand_json',
+        uploader_path: 'community',
+      },
     });
 
     if (!logo) {
@@ -626,13 +681,32 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
       await rebuildManifestLogos(domain, brandLogoDb, brandDb);
     }
 
+    // Fire-and-forget Slack notification so moderators see the pending upload.
+    notifyPendingBrandLogo({
+      domain,
+      logo_id: logo.id,
+      content_type: contentType,
+      tags,
+      upload_note: note,
+      source: 'addie',
+    }).then((threadTs) => {
+      if (threadTs) {
+        return brandLogoDb.setSlackThreadTs(logo.id, threadTs);
+      }
+    }).catch((err) => {
+      logger.warn({ err, domain }, 'Pending-logo Slack notification failed');
+    });
+
     // Exclude upload_note and original_filename from response (prompt injection vector)
     return JSON.stringify({
       success: true,
       domain,
       logo_id: logo.id,
-      review_status: 'approved',
-      url: `/logos/brands/${domain}/${logo.id}`,
+      review_status: 'pending',
+      message: 'Logo queued for moderator review (typically within 48h). The public asset URL will not resolve or appear in brand.json until approved.',
+      review_sla_hours: 48,
+      url: getBrandAssetUrl(domain, logo.id, logo.content_type),
+      legacy_url: `/logos/brands/${domain}/${logo.id}`,
       content_type: contentType,
       tags,
     }, null, 2);

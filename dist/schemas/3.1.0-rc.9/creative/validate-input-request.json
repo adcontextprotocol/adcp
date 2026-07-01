@@ -1,0 +1,94 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.9/creative/validate-input-request.json",
+  "title": "Validate Input Request",
+  "description": "Request payload for the validate_input task. Lets buyers dry-run a creative manifest against canonical formats and/or specific products before committing to a render. Cheaper than preview_creative (no synthesis cost). Used by build_creative internally to validate inputs before producing output. For genuinely nondeterministic generative platforms (Veo/Sora/Runway-class) where predictive validation is impossible, the platform's own post-synthesis QA loop applies — validate_input is the predictable-case primitive.\n\nThe `targets[]` array is a discriminated list of validation targets, mirroring the response shape on `validate-input-result.json#target`. Each entry has a `kind` (canonical | product | third_party_format) plus a kind-specific identifier. Discriminated-by-kind on both sides eliminates a wire-shape mismatch: a previous draft used `format_ids: string[]` for canonical names alongside `product_ids: string[]`, which collided with `Product.format_ids: FormatId[]` ({agent_url, id}) — codegen would emit the same field name with two different types. Discriminated `targets[]` makes the intent explicit and codegen-clean.",
+  "type": "object",
+  "required": ["manifest"],
+  "properties": {
+    "account": {
+      "$ref": "/schemas/3.1.0-rc.9/core/account-ref.json",
+      "description": "Optional account scope for seller-specific product validation. Required by sellers that route product declarations by buyer account."
+    },
+    "brand": {
+      "$ref": "/schemas/3.1.0-rc.9/core/brand-ref.json",
+      "description": "Optional brand scope when account is omitted or the seller keys sandbox validation by brand identity."
+    },
+    "manifest": {
+      "$ref": "/schemas/3.1.0-rc.9/core/creative-manifest.json",
+      "description": "Creative manifest to validate."
+    },
+    "targets": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50,
+      "description": "Discriminated list of validation targets. Each entry mirrors the `target` shape on `validate-input-result.json` so the request/response wire shapes match exactly. Multi-target requests enable universal-creative scenarios where one manifest targets multiple sellers' format declarations in a single round-trip; the response carries one result per target in the same order.",
+      "items": {
+        "type": "object",
+        "required": ["kind", "id"],
+        "discriminator": { "propertyName": "kind" },
+        "oneOf": [
+          {
+            "title": "Canonical Format Target",
+            "properties": {
+              "kind": { "type": "string", "const": "canonical" },
+              "id": {
+                "type": "string",
+                "description": "Canonical format name from `canonical-format-kind.json` (e.g., `image`, `video_hosted`, `audio_daast`). Validators check the manifest against the canonical's parameter schema."
+              }
+            },
+            "required": ["kind", "id"]
+          },
+          {
+            "title": "Product Target",
+            "properties": {
+              "kind": { "type": "string", "const": "product" },
+              "id": {
+                "type": "string",
+                "description": "Product ID. Validators check the manifest against the product's inline `ProductFormatDeclaration` narrowing of the canonical (parameter constraints, slot requirements, platform extensions)."
+              }
+            },
+            "required": ["kind", "id"]
+          },
+          {
+            "title": "Third-Party Format Target",
+            "properties": {
+              "kind": { "type": "string", "const": "third_party_format" },
+              "id": {
+                "type": "string",
+                "format": "uri",
+                "description": "URI-form format identifier referencing a third-party format definition (e.g., `https://flashtalking.example/formats/image_300x250@sha256:...`). Validators fetch the definition (digest-pinned, cached) and validate the manifest against it."
+              }
+            },
+            "required": ["kind", "id"]
+          }
+        ]
+      }
+    }
+  },
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Dry-run a video manifest against canonical video_hosted and a specific Meta product in one round-trip",
+      "data": {
+        "manifest": {
+          "format_kind": "video_hosted",
+          "assets": {
+            "video_main": {
+              "asset_type": "video",
+              "url": "https://cdn.acme.example/spring-30s.mp4",
+              "duration_ms": 30000,
+              "width": 1080,
+              "height": 1920
+            }
+          },
+          "brand": { "domain": "acme.example" }
+        },
+        "targets": [
+          { "kind": "canonical", "id": "video_hosted" },
+          { "kind": "product", "id": "meta_reels_us" }
+        ]
+      }
+    }
+  ]
+}

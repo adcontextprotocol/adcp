@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.14/core/assets/card-asset.json",
+  "title": "Card Asset",
+  "description": "A single card in a multi-card creative (image_carousel, future composed carousels). Carries: `media` (an image OR video asset), optional `headline` (short text), optional `description` (longer text), optional `cta` (call-to-action label), optional `landing_page_url` (url asset with `url_type: \"clickthrough\"`).\n\nCovers the multi-card patterns across Meta carousel, Pinterest sponsored pin, Snap Collection, TikTok carousel, and AI-surface result cards. The two-field text shape (`headline` + `description`) reflects how almost every adopter splits short labels from longer copy; Pinterest pin description and Meta per-card description both go in `description`.\n\nUsed as the array element type for the `cards` slot on image_carousel canonicals. Adopters MUST NOT invent per-card key conventions like `card_0_headline` / `cards.0.headline` — the manifest's `assets.cards` value is an array of card-asset objects, period. Per-card platform extensions (e.g., Meta-specific carousel attributes, Pinterest rich-pin metadata, Snap Collection price tags) attach via the `platform_extensions` field, never via inline non-canonical keys.",
+  "type": "object",
+  "required": ["asset_type", "media"],
+  "properties": {
+    "asset_type": {
+      "type": "string",
+      "const": "card",
+      "description": "Discriminator identifying this as a card asset. See /schemas/creative/asset-types for the registry."
+    },
+    "media": {
+      "description": "The card's primary visual asset. Either an `image` or `video` asset, matching the parent format's `allowed_card_media_asset_types` parameter.",
+      "oneOf": [
+        { "$ref": "/schemas/3.1.0-rc.14/core/assets/image-asset.json" },
+        { "$ref": "/schemas/3.1.0-rc.14/core/assets/video-asset.json" }
+      ],
+      "discriminator": { "propertyName": "asset_type" }
+    },
+    "headline": {
+      "type": "string",
+      "description": "Optional per-card short text label (typically 25-40 chars). Length governed by `card_headline_max_chars` on the format declaration. Meta carousel headline, Pinterest pin title, Snap Collection sticker text, TikTok caption-short."
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional per-card longer text (typically 100-500 chars). Distinct from `headline`: `description` is body copy, `headline` is the label. Length governed by `card_description_max_chars` on the format declaration. Meta carousel description, Pinterest pin description, AI-surface result body text, TikTok long caption."
+    },
+    "cta": {
+      "type": "string",
+      "description": "Optional per-card call-to-action label (e.g., 'SHOP_NOW', 'LEARN_MORE'). When the parent format declares `cta_values` (allowed CTA labels), the per-card `cta` MUST be one of those values. Lets a Meta or TikTok carousel show different CTAs per card."
+    },
+    "landing_page_url": {
+      "$ref": "/schemas/3.1.0-rc.14/core/assets/url-asset.json",
+      "description": "Optional per-card click-through URL. URL asset with `url_type: \"clickthrough\"`."
+    },
+    "platform_extensions": {
+      "type": "array",
+      "description": "Per-card platform-specific extensions (URI+digest references). Same hosting model as format-level platform_extensions. Use this for Meta carousel-card attributes, Pinterest pin overrides, etc. — NEVER inline non-canonical keys on the card object directly.",
+      "items": { "$ref": "/schemas/3.1.0-rc.14/core/platform-extension-ref.json" }
+    },
+    "provenance": {
+      "$ref": "/schemas/3.1.0-rc.14/core/provenance.json",
+      "description": "Provenance metadata for this card, overrides manifest-level provenance."
+    }
+  },
+  "additionalProperties": true
+}

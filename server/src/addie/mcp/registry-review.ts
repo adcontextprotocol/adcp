@@ -11,7 +11,7 @@ import { createLogger } from '../../logger.js';
 
 const logger = createLogger('addie-registry-review');
 import { ModelConfig } from '../../config/models.js';
-import { BrandDatabase } from '../../db/brand-db.js';
+import { BrandDatabase, sanitizeBrandSnapshot } from '../../db/brand-db.js';
 import { PropertyDatabase } from '../../db/property-db.js';
 import { BansDatabase } from '../../db/bans-db.js';
 import {
@@ -28,6 +28,10 @@ export interface ReviewResult {
 const brandDb = new BrandDatabase();
 const propertyDb = new PropertyDatabase();
 const bansDb = new BansDatabase();
+
+function reviewSnapshot(entityType: 'brand' | 'property', snapshot: Record<string, unknown>): Record<string, unknown> {
+  return entityType === 'brand' ? sanitizeBrandSnapshot(snapshot) : snapshot;
+}
 
 let client: Anthropic | null = null;
 function getClient(): Anthropic {
@@ -148,10 +152,12 @@ export async function reviewNewRecord(record: {
   snapshot: Record<string, unknown>;
   slack_thread_ts?: string;
 }): Promise<ReviewResult> {
+  const snapshot = reviewSnapshot(record.entity_type, record.snapshot);
+
   const prompt = `A community member (${record.editor_email || record.editor_user_id}) created a new ${record.entity_type} record for "${record.domain}".
 
 Record data:
-${JSON.stringify(record.snapshot, null, 2)}
+${JSON.stringify(snapshot, null, 2)}
 
 Does this look like a legitimate ${record.entity_type} record? Check for spam, nonsensical data, or obviously fake entries.`;
 
@@ -239,7 +245,9 @@ export async function reviewRegistryEdit(edit: {
   revision_number: number;
   slack_thread_ts?: string;
 }): Promise<ReviewResult> {
-  const diff = diffSnapshots(edit.old_snapshot, edit.new_snapshot);
+  const oldSnapshot = reviewSnapshot(edit.entity_type, edit.old_snapshot);
+  const newSnapshot = reviewSnapshot(edit.entity_type, edit.new_snapshot);
+  const diff = diffSnapshots(oldSnapshot, newSnapshot);
 
   const prompt = `A community member (${edit.editor_email || edit.editor_user_id}) edited the ${edit.entity_type} record for "${edit.domain}".
 

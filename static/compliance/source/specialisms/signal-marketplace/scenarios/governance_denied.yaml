@@ -21,12 +21,15 @@ narrative: |
   from the governance agent.
 
   By default, the governance agent is the training agent at test-agent.adcontextprotocol.org.
-  Override with --governance-agent-url to use a custom governance agent.
+  Override by supplying a different `governance_agent_url` in the run's initial context
+  (e.g., via `--context` on `adcp storyboard run` once the CLI supports it).
+
+context:
+  governance_agent_url: "https://test-agent.adcontextprotocol.org"
 
 agent:
   interaction_model: marketplace_catalog
   capabilities:
-    - catalog_signals
     - governance_aware
   examples:
     - "Any signal agent that honors governance before activation"
@@ -69,8 +72,8 @@ phases:
                 currency: "USD"
                 reallocation_threshold: 50
               flight:
-                start: "2026-04-01T00:00:00Z"
-                end: "2026-06-30T23:59:59Z"
+                start: "2099-04-01T00:00:00Z"
+                end: "2099-06-30T23:59:59Z"
               countries: ["US"]
           idempotency_key: "$generate:uuid_v4#signal_marketplace_governance_denied_governance_plan_setup_sync_plans"
         validations:
@@ -183,11 +186,12 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          idempotency_key: "signal-gov-denied-v1"
+          idempotency_key: "$generate:uuid_v4#signal-gov-denied"
 
           context:
             correlation_id: "signal_marketplace--governance_denied--activate"
         sample_response:
+          status: "failed"
           errors:
             - code: "GOVERNANCE_DENIED"
               message: "Signal activation requires governance approval. Call check_governance first — a governance plan is registered for this account."

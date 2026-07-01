@@ -46,6 +46,10 @@
             },
             "minItems": 1
           },
+          "action_source": {
+            "$ref": "/schemas/enums/action-source.json",
+            "description": "Flat action-source category for this event source, such as website, app, in_store, system_generated, or other. Producers SHOULD also populate `surface` when the flat value is too coarse, and SHOULD keep this field aligned with `surface.category` when the category is also an ActionSource value."
+          },
           "allowed_domains": {
             "type": "array",
             "description": "Domains authorized to send events for this event source",
@@ -53,6 +57,10 @@
               "type": "string"
             },
             "minItems": 1
+          },
+          "surface": {
+            "$ref": "/schemas/core/event-surface.json",
+            "description": "Optional structured surface this source represents, such as an owned channel, profile, feed, podcast, newsletter list, website, app, or store. Complements the flat `action_source` returned by sellers and avoids putting optimization-relevant surface meaning only in `ext`."
           }
         },
         "required": [

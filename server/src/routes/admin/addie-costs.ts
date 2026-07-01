@@ -18,18 +18,22 @@
  * The `inferred_tier` column reflects the most-lenient cap the caller
  * would have been subject to at the time of the call. For bare WorkOS
  * IDs we join through `organization_memberships` + `organizations` so
- * active-subscription members show `member_paid`; for everyone else we
- * fall back to the namespace-level inference (email/mcp/tavus/anon →
- * anonymous, slack/workos → member_free).
+ * entitlement-preserving subscriptions show `member_paid`; for everyone else
+ * we fall back to the namespace-level inference (email/mcp/tavus/anon →
+ * anonymous, slack/workos → member_free). WorkOS users in the
+ * `aao-admin` governance group or AgenticAdvertising.org org show
+ * `aao_team` and are uncapped.
  */
 
 import { Router } from 'express';
 import { createLogger } from '../../logger.js';
-import { requireAuth, requireAdmin } from '../../middleware/auth.js';
+import { requireGlobalAdmin } from '../../middleware/auth.js';
 import { getPool } from '../../db/client.js';
+import { TIER_PRESERVING_STATUSES } from '../../db/organization-db.js';
 import { DAILY_BUDGET_USD } from '../../addie/claude-cost-tracker.js';
 import {
   inferDisplayTier,
+  isValidScopeKey,
   microsToUsd,
   NAMESPACE_FALLBACK_TIER,
   type Namespace,
@@ -68,7 +72,7 @@ export function setupAddieCostRoutes(apiRouter: Router): void {
   // Returns 24h + 7d totals plus a per-namespace breakdown so operators
   // can see at a glance whether a namespace is driving spend (e.g., a
   // runaway email loop dominating the `email:` bucket).
-  apiRouter.get('/addie-costs/summary', requireAuth, requireAdmin, async (_req, res) => {
+  apiRouter.get('/addie-costs/summary', ...requireGlobalAdmin, async (_req, res) => {
     try {
       const pool = getPool();
 
@@ -144,7 +148,7 @@ export function setupAddieCostRoutes(apiRouter: Router): void {
   // Joins bare WorkOS scope keys back to users + orgs so operators can
   // tell at a glance which real members are approaching their cap; other
   // namespaces (email hash, mcp sub, tavus ip) stay opaque by design.
-  apiRouter.get('/addie-costs/leaderboard', requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get('/addie-costs/leaderboard', ...requireGlobalAdmin, async (req, res) => {
     try {
       const pool = getPool();
       const rawLimit = Number(req.query.limit);
@@ -175,7 +179,8 @@ export function setupAddieCostRoutes(apiRouter: Router): void {
         member_last_name: string | null;
         member_email: string | null;
         org_name: string | null;
-        org_has_active_subscription: boolean | null;
+        org_has_entitled_subscription: boolean | null;
+        is_aao_team: boolean | null;
       }>(
         `WITH scope_totals AS (
            SELECT
@@ -203,31 +208,52 @@ export function setupAddieCostRoutes(apiRouter: Router): void {
            u.last_name  AS member_last_name,
            u.email      AS member_email,
            best_org.name AS org_name,
-           best_org.has_active_subscription AS org_has_active_subscription
+           best_org.has_entitled_subscription AS org_has_entitled_subscription,
+           (
+             ${namespaceCaseSql('t.scope_key')} = 'workos'
+             AND (
+               EXISTS (
+                 SELECT 1
+                   FROM working_groups wg
+                   JOIN working_group_memberships wgm ON wgm.working_group_id = wg.id
+                  WHERE wg.slug = 'aao-admin'
+                    AND wg.status = 'active'
+                    AND wgm.workos_user_id = t.scope_key
+                    AND wgm.status = 'active'
+               )
+               OR EXISTS (
+                 SELECT 1
+                   FROM organization_memberships om
+                   JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
+                  WHERE om.workos_user_id = t.scope_key
+                    AND LOWER(o.name) = 'agenticadvertising.org'
+               )
+             )
+           ) AS is_aao_team
          FROM scope_totals t
          LEFT JOIN users u ON u.workos_user_id = t.scope_key
          LEFT JOIN LATERAL (
            SELECT
              o.name,
-             (o.subscription_status = 'active' AND o.subscription_canceled_at IS NULL) AS has_active_subscription
+             (o.subscription_status = ANY($3::text[]) AND o.subscription_canceled_at IS NULL) AS has_entitled_subscription
            FROM organization_memberships om
            JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
            WHERE om.workos_user_id = t.scope_key
            ORDER BY
-             CASE WHEN o.subscription_status = 'active' AND o.subscription_canceled_at IS NULL THEN 0 ELSE 1 END,
+             CASE WHEN o.subscription_status = ANY($3::text[]) AND o.subscription_canceled_at IS NULL THEN 0 ELSE 1 END,
              o.workos_organization_id
            LIMIT 1
          ) best_org ON true
          ORDER BY t.total_micros DESC, t.scope_key`,
-        [windowHours, limit],
+        [windowHours, limit, TIER_PRESERVING_STATUSES],
       );
 
       const leaderboard = rows.map(row => {
         const namespace = row.namespace;
-        const inferredTier = inferDisplayTier(namespace, row.org_has_active_subscription);
-        const capUsd = DAILY_BUDGET_USD[inferredTier];
+        const inferredTier = inferDisplayTier(namespace, row.org_has_entitled_subscription, row.is_aao_team);
+        const capUsd = inferredTier === 'aao_team' ? null : DAILY_BUDGET_USD[inferredTier];
         const spentUsd = microsToUsd(Number(row.total_micros));
-        const percentOfCap = capUsd > 0 ? Math.round((spentUsd / capUsd) * 1000) / 10 : 0;
+        const percentOfCap = capUsd && capUsd > 0 ? Math.round((spentUsd / capUsd) * 1000) / 10 : null;
 
         const displayName = [row.member_first_name, row.member_last_name].filter(Boolean).join(' ').trim() || null;
 
@@ -245,7 +271,7 @@ export function setupAddieCostRoutes(apiRouter: Router): void {
           member_name: displayName,
           member_email: row.member_email,
           org_name: row.org_name,
-          has_active_subscription: row.org_has_active_subscription,
+          has_active_subscription: row.org_has_entitled_subscription,
         };
       });
 
@@ -260,7 +286,7 @@ export function setupAddieCostRoutes(apiRouter: Router): void {
   // Returns recent events for a single scope so ops can see model mix,
   // spike timing, and token volume. Scope keys can contain `:` so the
   // param is URL-decoded by Express before we use it.
-  apiRouter.get('/addie-costs/scope/:scopeKey/events', requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get('/addie-costs/scope/:scopeKey/events', ...requireGlobalAdmin, async (req, res) => {
     try {
       const scopeKey = req.params.scopeKey;
       // Charset + length guard — accept any printable ASCII (no
@@ -271,7 +297,7 @@ export function setupAddieCostRoutes(apiRouter: Router): void {
       // traffic. SQL injection is already prevented by $N
       // parameterization; this regex is belt-and-suspenders to keep
       // control bytes out of logs.
-      if (!scopeKey || scopeKey.length > 256 || !/^[\x21-\x7E]+$/.test(scopeKey)) {
+      if (!isValidScopeKey(scopeKey)) {
         return res.status(400).json({ error: 'Invalid scope key' });
       }
       const pool = getPool();
@@ -320,6 +346,51 @@ export function setupAddieCostRoutes(apiRouter: Router): void {
     } catch (err) {
       logger.error({ err, scopeKey: req.params.scopeKey }, 'Failed to load scope events');
       res.status(500).json({ error: 'Failed to load events' });
+    }
+  });
+
+  // POST /api/admin/addie-costs/scope/:scopeKey/reset — clear the
+  // rolling 24h cap window for one caller. This is intentionally a
+  // narrow operational escape hatch: it restores access without making
+  // a human permanently uncapped and without deleting older 7-day
+  // observability rows.
+  apiRouter.post('/addie-costs/scope/:scopeKey/reset', ...requireGlobalAdmin, async (req, res) => {
+    try {
+      const scopeKey = req.params.scopeKey;
+      if (!isValidScopeKey(scopeKey)) {
+        return res.status(400).json({ error: 'Invalid scope key' });
+      }
+
+      const pool = getPool();
+      const { rows } = await pool.query<{ cost_usd_micros: string }>(
+        `DELETE FROM addie_token_cost_events
+         WHERE scope_key = $1
+           AND recorded_at > NOW() - INTERVAL '24 hours'
+         RETURNING cost_usd_micros::text`,
+        [scopeKey],
+      );
+      const deletedMicros = rows.reduce((sum, row) => sum + Number(row.cost_usd_micros), 0);
+
+      logger.info(
+        {
+          event: 'admin_addie_cost_scope_reset',
+          scopeKey,
+          deletedEvents: rows.length,
+          deletedCostUsd: microsToUsd(deletedMicros),
+          adminUserId: (req as unknown as { user?: { id?: string } }).user?.id,
+        },
+        'Admin reset Addie cost scope',
+      );
+
+      res.json({
+        scope_key: scopeKey,
+        window: '24h',
+        deleted_events: rows.length,
+        deleted_cost_usd: microsToUsd(deletedMicros),
+      });
+    } catch (err) {
+      logger.error({ err, scopeKey: req.params.scopeKey }, 'Failed to reset Addie cost scope');
+      res.status(500).json({ error: 'Failed to reset scope' });
     }
   });
 }

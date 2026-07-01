@@ -1,0 +1,354 @@
+---
+title: Authentication
+description: "AdCP authentication guide: public vs authenticated operations, static credential implementation, and credential management for buyer and seller agents."
+"og:title": "AdCP — Authentication"
+---
+
+
+AdCP uses a tiered authentication model where some operations are publicly accessible while others require authentication.
+
+## When Authentication is Required
+
+### Public Operations (No Authentication Required)
+
+These operations work without credentials to enable discovery and evaluation:
+
+- **`get_adcp_capabilities`** - Discover agent capabilities, portfolio, and supported features
+- **`list_creative_formats`** - Browse available creative formats
+- **`get_products`** - Discover inventory (returns limited results without auth)
+
+**Rationale**: Publishers want potential buyers to discover their capabilities before establishing a business relationship.
+
+**Important**: Unauthenticated `get_products` may return:
+- Partial catalog (standard products only)
+- No pricing information or CPM details
+- No custom product offerings
+- Generic format support only
+
+### Authenticated Operations (Credentials Required)
+
+These operations require valid credentials:
+
+- **`get_products`** (full access) - Complete catalog with pricing and custom products
+- **`create_media_buy`** - Create advertising campaigns
+- **`update_media_buy`** - Modify existing campaigns
+- **`sync_creatives`** - Upload creative assets
+- **`list_creatives`** - View your creative library
+- **`get_media_buy_delivery`** - Monitor campaign performance and metrics
+- **`provide_performance_feedback`** - Submit optimization signals
+
+**Rationale**: These operations involve financial commitments, access to proprietary data, or modifications to active campaigns.
+
+## Authentication Method
+
+AdCP supports three authentication mechanisms for authenticated operations. The choice depends on the operation's risk class and the AdCP version in use:
+
+| Mechanism | 3.0 (current) | 3.1+ | Notes |
+|---|---|---|---|
+| **RFC 9421 request signing** | RECOMMENDED for all authenticated operations | **REQUIRED** for mutating / financial operations | Asymmetric, body-bound, replay-resistant. See [RFC 9421 request signing](/dist/docs/3.1.0/building/by-layer/L1/security#request-signing). |
+| **Mutual TLS (mTLS)** | Permitted for any operation | Permitted as an alternative to 9421 | Transport-layer identity; recommended when the deployment already terminates mTLS at the edge. |
+| **Static Authorization credentials (Bearer or Basic)** | Permitted; effective baseline for 3.0 | **PROHIBITED for mutating / financial operations**; permitted for read / discovery only | Shared-secret transport. Bearer is the canonical example; HTTP Basic is also acceptable when sent over TLS and validated on every protected request. Documented sunset for mutating ops — see the [known limitation](/dist/docs/3.1.0/reference/known-limitations). |
+
+<Warning>
+  **3.0 mutating-operation floor.** Until 3.1 lands, static Authorization-header credentials over TLS are the effective floor for mutating operations. Operators handling spend commitments SHOULD ship RFC 9421 request signing before the 3.1 deprecation date to avoid a forced cutover.
+</Warning>
+
+### Static Authorization credentials (3.0 baseline)
+
+```
+Authorization: Bearer <token>
+Authorization: Basic <base64(username:password)>
+```
+
+Bearer tokens may be:
+- **Opaque tokens**: Server-validated strings mapped to agents
+- **JWT tokens**: Self-contained tokens with embedded claims
+
+HTTP Basic credentials are also a static shared-secret mechanism. They MUST be sent in the `Authorization` header over TLS, and servers MUST validate the credential on every protected request. Basic credentials are not stronger than Bearer tokens; they are accepted as the same conformance class because both carry a pre-provisioned shared secret on the transport.
+
+Implementations MUST enforce TLS 1.2+ on all static-credential-authenticated endpoints. See the [implementation security reference](/dist/docs/3.1.0/building/by-layer/L1/security) for transport requirements.
+
+The credential MUST be carried in the `Authorization` request header. Sellers MUST NOT require non-canonical aliases (e.g. `x-adcp-auth`, which appeared in some early MCP-only deployments) and MUST NOT advertise them as the supported header in agent cards, capability responses, or documentation. A seller MAY accept such an alias as a transitional input while it phases out an existing adopter's integration, but `Authorization: Bearer` or `Authorization: Basic` MUST also be accepted on the same endpoint. Buyer agents and SDKs SHOULD emit `Authorization: Bearer` unless a seller explicitly provisions Basic credentials; SDK examples and docstrings MUST NOT show alias headers as the canonical form.
+
+### RFC 9421 request signing (recommended; required for mutating ops in 3.1+)
+
+Signed requests bind `@method`, `@target-uri`, `@authority`, `content-type`, and `content-digest` under an `Ed25519`, `ecdsa-p256-sha256`, or `rsa-pss-sha512` signature with a ±60 s timestamp window and ≥128-bit nonce. The full verifier checklist, key-discovery rules (`brand.json` → `agents[]` → `jwks_uri`), and rotation semantics are defined in the [implementation security reference](/dist/docs/3.1.0/building/by-layer/L1/security#request-signing). Capability discovery via `get_adcp_capabilities.request_signing.supported` lets clients detect whether a seller enforces signing before sending a mutating call.
+
+### mTLS
+
+Operators terminating mTLS at the edge MAY use the peer certificate as the primary identity mechanism for AdCP operations. When mTLS is used, operators MUST pin identity to the certificate subject / SAN rather than any header field.
+
+### JWT Token Claims
+
+When using JWT tokens, include these standard claims:
+
+```json
+{
+  "sub": "agent_123",
+  "exp": 1706745600,
+  "iat": 1706742000
+}
+```
+
+Sales agents may require additional claims for authorization.
+
+## Agents and Accounts
+
+AdCP distinguishes between the **agent** (who is making requests) and the **account** (who gets billed):
+
+- **Agent**: The authenticated entity making API calls (identified by the token)
+- **Account**: The billing relationship determining rates and invoicing
+
+An agent may have access to multiple accounts (e.g., an agency managing several clients). See [Accounts and Agents](/dist/docs/3.1.0/building/by-layer/L2/accounts-and-agents) for details on account selection and billing attribution.
+
+For schema definitions, see [`account.json`](https://adcontextprotocol.org/schemas/3.1.0/core/account.json).
+
+## Tenant resolution
+
+AdCP resolves tenant from the authenticated principal, not from request payloads. Seller agents map the authenticated identity (bearer token, Basic credential, mTLS client cert, or RFC 9421 key) to the originating buyer's account via their own authorization context. Task payloads never carry tenant identity as a substitute for authentication — when a schema requires a globally-unique resource ID (`plan_id`, `rights_id`, `standards_id`, `event_source_id`, `list_id`) rather than an `account` envelope, the seller resolves ID → tenant via the same authorization context. The authenticated principal must hold access to the referenced resource, and the resource itself carries the brand it was provisioned for; envelope identity on those calls would be redundant and, if it disagreed with the authenticated principal, a spoofing vector.
+
+Compliance storyboards in the training agent inject envelope identity on these calls as a sandbox routing convention, because the training agent has no authenticated-principal layer of its own — see [Storyboard authoring](/dist/docs/3.1.0/contributing/storyboard-authoring). Production sellers do not require it.
+
+## Credential placement
+
+Credentials authenticating the **buyer principal** MUST arrive on the transport's authentication channel and MUST NOT be placed in the task payload — top-level, inside `context`, inside `ext`, or in any other nested location. The transport channel is:
+
+- **Static credentials over HTTP** — `Authorization: Bearer <token>` per [RFC 6750 §2](https://www.rfc-editor.org/rfc/rfc6750#section-2), or `Authorization: Basic <base64(username:password)>` when the seller provisions HTTP Basic credentials.
+- **RFC 9421 signed requests** — the `Signature` and `Signature-Input` headers per [RFC 9421 §2](https://www.rfc-editor.org/rfc/rfc9421#section-2). The signature itself is the credential; nothing in the payload authenticates the signer.
+- **MCP and A2A authentication framing** — the transport's authentication descriptor (e.g., MCP's `authInfo`, A2A's `authentication.schemes`). Discovery of the authentication requirement follows [RFC 9728 §3](https://www.rfc-editor.org/rfc/rfc9728#section-3) protected-resource metadata where applicable.
+- **Mutual TLS** — the peer certificate, per the mTLS row in the table above.
+
+The rule is transport-agnostic: it applies regardless of which mechanism the seller accepts. There is no AdCP version, capability, or seller policy under which a buyer principal authenticates via a payload field. The same placement rule applies to credentials or caller-supplied trust material a request tries to pass for a downstream evaluator call: those belong on the agent-to-evaluator transport or in account provisioning, not task payloads. A seller that detects a credential- or trust-material key in the payload (e.g., `<platform>_access_token`, `api_key`, `client_secret`, `bearer`, `authorization`, `jwk`, `jwks`, or `jwks_uri` at any nesting depth) SHOULD reject the request with [`CREDENTIAL_IN_ARGS`](/dist/docs/3.1.0/building/by-layer/L3/error-handling#authentication-and-access) under AdCP 3.1; the requirement upgrades to MUST 90 days after the 3.1 publication date. The code's recovery classification is `terminal` — agents MUST NOT auto-retry, since auto-retry re-logs the credential on each attempt and is itself the prompt-injection exfiltration surface this rule closes (see [Threats specific to agentic advertising](/dist/docs/3.1.0/building/concepts/security-model#threats-specific-to-agentic-advertising)).
+
+### Carve-outs
+
+The following credential surfaces are **not** buyer-principal credentials and the rule above does not apply to them:
+
+- **`push_notification_config.authentication.credentials`** ([schema](https://adcontextprotocol.org/schemas/3.1.0/core/push-notification-config.json)). This is the legacy Bearer / HMAC-SHA256 credential that the **seller** uses when calling **back** to the buyer's webhook endpoint. It authenticates the seller-as-caller against the buyer-as-receiver — orthogonal to the buyer-principal credential that authenticates the inbound AdCP request. The default 9421 webhook profile uses keys discovered via `brand.json` and crosses no shared secrets; the legacy block is a deprecated compatibility scheme removed in AdCP 4.0.
+- **Onboarding-time secrets exchanged out-of-band** — initial token issuance, OAuth dynamic registration responses, dashboard-issued API keys. These travel through the AAO authorization server or the seller's onboarding flow, not as AdCP task payloads.
+
+### Relay agents
+
+The agency / A2A relay topology (brand → relay → seller) authenticates **under the relay's own principal**. The relay either preserves the brand agent's RFC 9421 signature verbatim (pass-through model) or re-signs under its own key (re-signing model) — both options are described in [#2324](https://github.com/adcontextprotocol/adcp/issues/2324). Neither model permits forwarding the brand's transport credential as a relay-side payload field. Brand-agent identity, when the relay is the principal of record, MUST be carried in the request body as identity context (e.g., a buyer-side identity assertion verifiable by the seller against `adagents.json` / `authorized_operator[]`) — never as a forwarded transport credential. Relays MUST NOT echo or reattach buyer credentials in any args field on outbound seller-bound requests.
+
+## Protocol Configuration
+
+Most MCP and A2A integrations use `Authorization: Bearer <token>` ([RFC 6750 §2](https://www.rfc-editor.org/rfc/rfc6750#section-2)) as the authentication header. Configure your client with:
+
+```json
+{
+  "auth": {
+    "type": "bearer",
+    "token": "<your_token>"
+  }
+}
+```
+
+The client library handles adding the `Authorization: Bearer <token>` header to requests.
+
+If a seller explicitly provisions HTTP Basic credentials, the same transport rule applies: send `Authorization: Basic <base64(username:password)>` on every authenticated request over HTTPS.
+
+**Header alias policy by leg.** The two protocol legs differ in what aliases they accept beyond the standard `Authorization` header:
+
+- **A2A** — `Authorization` only. For Bearer credentials, send `Authorization: Bearer <token>` and declare a `bearerAuth` `HTTPAuthSecurityScheme` in the seller's agent card (see the [A2A guide — Agent Cards](/dist/docs/3.1.0/building/by-layer/L0/a2a-guide#agent-cards)). For Basic credentials, send `Authorization: Basic <base64(username:password)>` and declare HTTP Basic. The `x-adcp-auth` custom header is not recognized on the A2A surface.
+- **MCP** — `Authorization` is primary for Bearer and Basic credentials. `x-adcp-auth` is accepted as a back-compat Bearer alias for integrations predating adcp 4.5.0. New implementations should use the standard header on both legs.
+
+<Warning>
+**Sellers migrating to adcp 4.5.0.** If you previously configured `x-adcp-auth` as the A2A leg header via the `a2a_header_name` knob, verify that knob is set to the RFC 6750 default before updating your agent card to declare `bearerAuth` — buyers that have not yet migrated off the legacy header will otherwise receive HTTP 401.
+</Warning>
+
+## MCP Client Configuration
+
+When using the MCP protocol, authentication is handled by the transport layer, not by adding HTTP headers manually.
+
+### Using MCP Client Libraries
+
+The recommended approach is to use an MCP client library:
+
+<CodeGroup>
+
+```typescript TypeScript
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+
+const transport = new StreamableHTTPClientTransport(
+  new URL('https://test-agent.adcontextprotocol.org/sales/mcp'),
+  {
+    requestInit: {
+      headers: {
+        'Authorization': 'Bearer YOUR_TOKEN_HERE'
+      }
+    }
+  }
+);
+
+const client = new Client({ name: 'my-client', version: '1.0.0' });
+await client.connect(transport);
+```
+
+```python Python
+from mcp import ClientSession
+from mcp.client.streamable_http import streamablehttp_client
+
+async with streamablehttp_client(
+    "https://test-agent.adcontextprotocol.org/sales/mcp",
+    headers={"Authorization": "Bearer YOUR_TOKEN_HERE"}
+) as (read, write):
+    async with ClientSession(read, write) as session:
+        await session.initialize()
+```
+
+</CodeGroup>
+
+### Common Mistake: Raw HTTP Headers
+
+A common mistake is trying to add authentication headers to raw HTTP requests:
+
+```http
+# This won't work for MCP endpoints
+GET /mcp HTTP/1.1
+Authorization: Bearer YOUR_TOKEN
+```
+
+MCP uses a streaming protocol over HTTP. The authentication must be configured in the MCP client transport layer, which handles the protocol negotiation and message framing.
+
+### Troubleshooting Authentication
+
+If you're getting "authentication required" errors:
+
+1. **Verify you're using an MCP client library** - not making raw HTTP calls
+2. **Check the token format** - should be passed to the transport configuration
+3. **Test with the public test agent** - verify your setup works before testing custom agents
+4. **Check protocol version** - ensure client and server protocol versions are compatible
+
+<Tip>
+For OAuth handshake failures and RFC 9421 signing issues, use the [CLI auth graders](/dist/docs/3.1.0/building/verification/grading) — `diagnose-auth` probes RFC 9728 + RFC 8414 discovery and ranks hypotheses; `grade request-signing` runs every signing vector with per-vector diagnostics.
+</Tip>
+
+## Obtaining Credentials
+
+### Account Setup Process
+
+To access authenticated operations, you must establish an account with each sales agent:
+
+1. **Identify Sales Agents**: Discover sales agents via publisher `adagents.json` files
+2. **Contact Sales Team**: Reach out to the agent's sales or partnerships team
+3. **Complete Onboarding**: Provide business information, sign agreements, configure billing
+4. **Receive Credentials**: Get API keys or OAuth client credentials
+
+**Note**: Each sales agent manages their own accounts independently. You need separate credentials for each agent you work with.
+
+### Dynamic Registration (Optional)
+
+Some sales agents support OAuth 2.0 dynamic client registration:
+
+```http
+POST /oauth/register
+Content-Type: application/json
+
+{
+  "client_name": "Your Company Name",
+  "redirect_uris": ["https://yourapp.com/callback"],
+  "grant_types": ["authorization_code", "refresh_token"],
+  "scope": "adcp:products adcp:media_buys adcp:creatives"
+}
+```
+
+Check the sales agent's documentation or `adagents.json` for dynamic registration support.
+
+### Aggregation Platforms
+
+Consider using aggregation platforms (like Scope3) that manage credentials and relationships with multiple sales agents on your behalf. This simplifies:
+- Credential management
+- Financial relationships
+- Legal agreements
+- Compliance monitoring
+
+## Authenticating to AAO Platform Services
+
+The mechanisms above govern **agent-to-agent** auth (buyer ↔ sales agent). Authenticating to **AAO-hosted services** — the registry write API, the AAO MCP endpoint, the member dashboard — is a separate surface.
+
+AAO runs an OAuth 2.1 + OIDC authorization server. Clients discover it via standard well-knowns:
+
+- **Authorization server metadata (RFC 8414):** `https://agenticadvertising.org/.well-known/oauth-authorization-server`
+- **Protected-resource metadata (RFC 9728):** `/.well-known/oauth-protected-resource/api` (REST API) and `/.well-known/oauth-protected-resource/mcp` (MCP). Both list `https://agenticadvertising.org` as the authorization server.
+- **Flow:** authorization code with PKCE (S256). User identity is via WorkOS AuthKit; tokens are signed JWTs.
+- **Dynamic client registration (RFC 7591):** `POST /register`.
+- **Server-to-server:** there is no `client_credentials` grant. Backend services should use a WorkOS organization API key from the [AAO dashboard](https://agenticadvertising.org/dashboard/api-keys), not the OAuth `/token` endpoint.
+
+All AAO endpoints are HTTPS-only; reject any discovery document served over plain HTTP.
+
+A user JWT obtained from AAO is **not** an AdCP credential. Calls to a sales agent still use that agent's bearer / 9421 / mTLS credentials per the table above. Full reference: [AAO registry — Authentication](/dist/docs/3.1.0/registry#authentication).
+
+<Warning>
+  **If you discover an `authorization_endpoint` on a sales agent's RFC 9728 protected-resource metadata** (e.g., for an operator-account OAuth flow), pin the discovered `authorization_servers` issuer against what `adagents.json` — or out-of-band onboarding — authorized for that seller. Do not blindly trust an AS URL the resource itself returned, otherwise a malicious or compromised seller can route operator credentials to an attacker-controlled endpoint.
+</Warning>
+
+## Error Responses
+
+### Unauthenticated Request to Protected Operation
+
+```json
+{
+  "error": {
+    "code": "AUTH_REQUIRED",
+    "message": "Authentication required for this operation"
+  }
+}
+```
+
+### Invalid or Expired Credentials
+
+```json
+{
+  "error": {
+    "code": "AUTH_INVALID",
+    "message": "Invalid or expired credentials"
+  }
+}
+```
+
+### Insufficient Permissions
+
+```json
+{
+  "error": {
+    "code": "INSUFFICIENT_PERMISSIONS",
+    "message": "Agent does not have required permissions for this operation"
+  }
+}
+```
+
+## Best Practices
+
+1. **Secure Storage**: Store credentials securely (environment variables, secret managers)
+2. **Rotation**: Implement credential rotation policies
+3. **Scope Limitation**: Request minimum required permissions
+4. **Token Refresh**: Implement automatic token refresh for JWT tokens
+5. **Error Handling**: Handle authentication errors gracefully with retry logic
+
+## Testing Authentication
+
+The public test agent accepts a shared token — no signup required:
+
+```bash
+export ADCP_AUTH_TOKEN="1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ"
+export AGENT_URL="https://test-agent.adcontextprotocol.org/sales/mcp"
+```
+
+Configure your client with this token:
+
+```json
+{
+  "agent_uri": "https://test-agent.adcontextprotocol.org/sales/mcp",
+  "protocol": "mcp",
+  "auth": {
+    "type": "bearer",
+    "token": "1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ"
+  }
+}
+```
+
+For org-scoped usage tracking, replace the public token with your own API key from the [AAO dashboard](https://agenticadvertising.org/dashboard/api-keys).
+
+See [Sandbox Mode](/dist/docs/3.1.0/media-buy/advanced-topics/sandbox) for testing capabilities including sandbox mode for risk-free development.

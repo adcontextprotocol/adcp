@@ -1,0 +1,150 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.3/core/requirements/video-asset-requirements.json",
+  "title": "Video Asset Requirements",
+  "description": "Requirements for video creative assets. These define the technical constraints for video files.",
+  "type": "object",
+  "properties": {
+    "min_width": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum width in pixels"
+    },
+    "max_width": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum width in pixels"
+    },
+    "min_height": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum height in pixels"
+    },
+    "max_height": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum height in pixels"
+    },
+    "aspect_ratio": {
+      "type": "string",
+      "pattern": "^\\d+:\\d+$",
+      "description": "Required aspect ratio (e.g., '16:9', '9:16')"
+    },
+    "min_duration_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum duration in milliseconds"
+    },
+    "max_duration_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum duration in milliseconds"
+    },
+    "containers": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["mp4", "webm", "mov", "avi", "mkv"]
+      },
+      "description": "Accepted video container formats"
+    },
+    "codecs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["h264", "h265", "vp8", "vp9", "av1", "prores"]
+      },
+      "description": "Accepted video codecs"
+    },
+    "max_file_size_kb": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum file size in kilobytes"
+    },
+    "min_bitrate_kbps": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum video bitrate in kilobits per second"
+    },
+    "max_bitrate_kbps": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum video bitrate in kilobits per second"
+    },
+    "frame_rates": {
+      "type": "array",
+      "items": {
+        "type": "number",
+        "minimum": 1
+      },
+      "description": "Accepted frame rates in frames per second (e.g., [24, 30, 60])"
+    },
+    "audio_required": {
+      "type": "boolean",
+      "description": "Whether the video must include an audio track"
+    },
+    "frame_rate_type": {
+      "$ref": "/schemas/3.0.3/enums/frame-rate-type.json",
+      "description": "Required frame rate type. Broadcast and SSAI require constant frame rate for seamless splicing."
+    },
+    "scan_type": {
+      "$ref": "/schemas/3.0.3/enums/scan-type.json",
+      "description": "Required scan type. Modern delivery requires progressive scan."
+    },
+    "gop_type": {
+      "$ref": "/schemas/3.0.3/enums/gop-type.json",
+      "description": "Required GOP structure. SSAI and broadcast require closed GOPs for clean splice points."
+    },
+    "min_gop_interval_seconds": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Minimum keyframe interval in seconds"
+    },
+    "max_gop_interval_seconds": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Maximum keyframe interval in seconds. SSAI typically requires 1-2 second intervals."
+    },
+    "moov_atom_position": {
+      "$ref": "/schemas/3.0.3/enums/moov-atom-position.json",
+      "description": "Required moov atom position in MP4 container. 'start' enables progressive download without buffering the entire file."
+    },
+    "audio_codecs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["aac", "pcm", "ac3", "eac3", "mp3", "opus", "vorbis", "flac"]
+      },
+      "description": "Accepted audio codecs (e.g., ['aac', 'pcm', 'ac3'])"
+    },
+    "audio_sample_rates": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "description": "Accepted audio sample rates in Hz (e.g., [44100, 48000])"
+    },
+    "audio_channels": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/3.0.3/enums/audio-channel-layout.json"
+      },
+      "description": "Accepted audio channel configurations"
+    },
+    "loudness_lufs": {
+      "type": "number",
+      "description": "Target integrated loudness in LUFS (e.g., -24 for broadcast, -16 for streaming)"
+    },
+    "loudness_tolerance_db": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Acceptable deviation from loudness_lufs target in dB (e.g., 2 means -22 to -26 LUFS for a -24 target)"
+    },
+    "true_peak_dbfs": {
+      "type": "number",
+      "description": "Maximum true peak level in dBFS (e.g., -2 for broadcast)"
+    }
+  },
+  "additionalProperties": true
+}

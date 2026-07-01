@@ -349,7 +349,7 @@ Buyers should verify the measurement provider meets their campaign requirements 
 **Billing**: Charged a fixed price when the specified `event_type` fires. The pricing option declares what event triggers billing — this is independent of `optimization_goals`, which controls delivery optimization.
 
 **Parameters**:
-- `event_type` (required): The conversion event that triggers billing. Uses the standard event type enum (e.g., `purchase`, `lead`, `app_install`, `add_to_cart`, `subscribe`).
+- `event_type` (required): The conversion event that triggers billing. Uses the standard event type enum (e.g., `purchase`, `lead`, `app_install`, `add_to_cart`, `subscribe` for paid subscriptions, `follow` for free durable opt-ins).
 - `event_source_id` (optional): When present, only events from this specific source count toward billing. Must match an event source configured via `sync_event_sources`. When omitted, any event of the specified `event_type` counts.
 
 **Example** (different rates by event source):
@@ -850,6 +850,34 @@ A publisher offering Connected TV inventory with multiple pricing options:
 ```
 
 A buyer could choose CPP pricing if they're planning TV buys, CPCV if optimizing for engagement, or CPM for reach-based campaigns.
+
+## Negotiated and Premium Pricing
+
+Premium sellers — particularly in OOH, CTV sponsorships, and direct deals — often finalize pricing through negotiation rather than publishing fixed rates. AdCP supports this workflow through the existing brief-to-proposal path without requiring a separate quote or price-on-request mechanism.
+
+### Sellers are not required to publish wholesale prices
+
+Product discovery (`get_products`) does not require sellers to disclose wholesale or clearing prices. Sellers may publish products with limited or no public pricing detail — for example, a CTV sponsorship product with audience and format information but no `pricing_options`. The product is discoverable, but the buyer must submit a brief to receive a proposal with actual pricing.
+
+### Selective brief response
+
+Sellers control which briefs they respond to and what pricing they offer. When a seller receives a brief for inventory they choose not to transact on, the protocol-native options are:
+
+- **Omit the product from the proposal entirely** — the buyer sees no proposal for that inventory, signaling unavailability for this request
+- **Return `PROPOSAL_NOT_COMMITTED`** — an explicit signal that the seller reviewed the brief but is not offering a committable proposal at this time
+
+Neither requires the seller to disclose why they declined. This is the protocol-native equivalent of "price not available without negotiation."
+
+### The existing flow covers negotiated deals
+
+The standard path for negotiated-price inventory is:
+
+1. **Seller publishes products** with descriptive metadata (audience, formats, properties) but without wholesale pricing
+2. **Buyer submits a brief** via `get_products` describing their campaign goals and budget parameters
+3. **Seller returns a proposal** with negotiated pricing tailored to the specific brief — or declines to propose
+4. **Buyer refines or accepts** the proposal, then passes the `proposal_id` into `create_media_buy`
+
+This mirrors how premium direct deals work today: the seller sees the brief, decides whether to engage, and offers terms specific to the opportunity.
 
 ## Best Practices
 

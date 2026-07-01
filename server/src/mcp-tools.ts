@@ -173,6 +173,10 @@ export const TOOL_DEFINITIONS = [
           type: "string",
           description: "Optional ISO 8601 timestamp for evaluating time-bounded authorization",
         },
+        force_refresh: {
+          type: "boolean",
+          description: "Bypass cache and fetch the publisher's adagents.json live (default: false). Use when the file was recently updated and a fresh result is needed.",
+        },
       },
       required: ["domain", "agent_url"],
     },
@@ -493,6 +497,16 @@ export const TOOL_DEFINITIONS = [
           },
           description: "Property inventory types",
         },
+        formats: {
+          type: "array",
+          items: { type: "object" },
+          description: "Optional adagents.json formats[] publisher catalog entries",
+        },
+        placements: {
+          type: "array",
+          items: { type: "object" },
+          description: "Optional adagents.json placements[] entries",
+        },
         contact: {
           type: "object",
           properties: {
@@ -800,6 +814,7 @@ export class MCPToolHandler {
       case "validate_agent": {
         const domain = args?.domain as string;
         const agentUrl = args?.agent_url as string;
+        const forceRefresh = !!args?.force_refresh;
         const result = await this.validator.validate(domain, agentUrl, {
           property_id: args?.property_id as string | undefined,
           property_tags: Array.isArray(args?.property_tags) ? args.property_tags as string[] : undefined,
@@ -808,7 +823,7 @@ export class MCPToolHandler {
           placement_tags: Array.isArray(args?.placement_tags) ? args.placement_tags as string[] : undefined,
           country: args?.country as string | undefined,
           at: args?.at as string | undefined,
-        });
+        }, forceRefresh);
         return {
           content: [
             {
@@ -827,8 +842,10 @@ export class MCPToolHandler {
         const propertyType = args?.property_type as string;
         const propertyValue = args?.property_value as string;
 
-        // Find agents that can sell this property
-        const allAgents = await this.agentService.listAgents("buying");
+        // Find agents that can sell this property — sales-typed agents are
+        // the ones with publisher authorizations. Pre-#3540 this filtered
+        // on 'buying' (inverted-but-aligned bug); see #3774.
+        const allAgents = await this.agentService.listAgents("sales");
         const matchingAgents = [];
 
         for (const agent of allAgents) {
@@ -863,12 +880,7 @@ export class MCPToolHandler {
 
       // Publisher tools
       case "list_publishers": {
-        // Use federated index to include both registered and discovered publishers
         const publishers = await this.federatedIndex.listAllPublishers();
-        const bySource = {
-          registered: publishers.filter(p => p.source === 'registered').length,
-          discovered: publishers.filter(p => p.source === 'discovered').length,
-        };
 
         return {
           content: [
@@ -877,7 +889,7 @@ export class MCPToolHandler {
               resource: {
                 uri: "publishers://all",
                 mimeType: "application/json",
-                text: JSON.stringify({ publishers, count: publishers.length, sources: bySource }, null, 2),
+                text: JSON.stringify({ publishers, count: publishers.length }, null, 2),
               },
             },
           ],
@@ -1309,6 +1321,7 @@ export class MCPToolHandler {
         const existingBrand = await brandDb.getDiscoveredBrandByDomain(enrichDomain);
         if (existingBrand?.has_brand_manifest && existingBrand.brand_manifest && existingBrand.last_validated) {
           const ageMs = Date.now() - new Date(existingBrand.last_validated).getTime();
+          const { brand_context: _brandContext, ...manifest } = existingBrand.brand_manifest as Record<string, unknown>;
           if (ageMs < ENRICHMENT_CACHE_MAX_AGE_MS) {
             return {
               content: [
@@ -1321,8 +1334,8 @@ export class MCPToolHandler {
                       success: true,
                       domain: existingBrand.domain,
                       cached: true,
-                      manifest: existingBrand.brand_manifest,
-                      source: "enriched",
+                      manifest,
+                      source_type: existingBrand.source_type,
                       enrichment_provider: "brandfetch",
                     }, null, 2),
                   },
@@ -1353,22 +1366,28 @@ export class MCPToolHandler {
 
         const enrichment = await fetchBrandData(enrichDomain);
 
-        // Save enrichment to DB for future cache hits
-        if (enrichment.success && enrichment.manifest) {
-          brandDb.upsertDiscoveredBrand({
-            domain: enrichment.domain,
-            brand_name: enrichment.manifest.name,
-            brand_manifest: {
+        const manifest = enrichment.manifest
+          ? {
               name: enrichment.manifest.name,
               url: enrichment.manifest.url,
               description: enrichment.manifest.description,
               logos: enrichment.manifest.logos,
               colors: enrichment.manifest.colors,
               fonts: enrichment.manifest.fonts,
+              tone: enrichment.manifest.tone,
               ...(enrichment.company ? { company: enrichment.company } : {}),
-            },
+            }
+          : undefined;
+        const sourceType = enrichment.highQuality !== false ? 'enriched' : 'community';
+
+        // Save enrichment to DB for future cache hits
+        if (enrichment.success && enrichment.manifest) {
+          brandDb.upsertDiscoveredBrand({
+            domain: enrichment.domain,
+            brand_name: enrichment.manifest.name,
+            brand_manifest: manifest,
             has_brand_manifest: true,
-            source_type: 'enriched',
+            source_type: sourceType,
           }).catch((err) => {
             logger.warn({ err, domain: enrichDomain }, 'Failed to cache enrichment result');
           });
@@ -1382,8 +1401,12 @@ export class MCPToolHandler {
                 uri: `brand://enrichment/${encodeURIComponent(enrichDomain)}`,
                 mimeType: "application/json",
                 text: JSON.stringify({
-                  ...enrichment,
-                  source: "enriched",
+                  success: enrichment.success,
+                  domain: enrichment.domain,
+                  cached: false,
+                  ...(enrichment.error ? { error: enrichment.error } : {}),
+                  ...(manifest ? { manifest } : {}),
+                  source_type: enrichment.success ? sourceType : undefined,
                   enrichment_provider: "brandfetch",
                 }, null, 2),
               },
@@ -1773,6 +1796,8 @@ export class MCPToolHandler {
 
         const authorizedAgents = args?.authorized_agents as Array<{ url: string; authorized_for?: string }> || [];
         const propertyItems = args?.properties as Array<{ type: string; name: string }> || [];
+        const formats = args?.formats as Array<Record<string, unknown>> | undefined;
+        const placements = args?.placements as Array<Record<string, unknown>> | undefined;
         const contact = args?.contact as { name?: string; email?: string } | undefined;
 
         // Validate agent URLs
@@ -1800,6 +1825,12 @@ export class MCPToolHandler {
         };
         if (contact) {
           adagentsJson.contact = contact;
+        }
+        if (formats) {
+          adagentsJson.formats = formats;
+        }
+        if (placements) {
+          adagentsJson.placements = placements;
         }
 
         try {
@@ -2053,7 +2084,11 @@ export class MCPToolHandler {
 
     if (type === "all") {
       agents = await this.agentService.listAgents();
-    } else if (["creative", "signals", "buying"].includes(type)) {
+    } else if (["sales", "creative", "signals", "buying"].includes(type)) {
+      // 'sales' added per #3774 — pre-#3540 the only sell-side type was
+      // (incorrectly) 'buying', so this list never included 'sales'.
+      // Now that #3540 corrected the polarity, the resource handler
+      // needs to accept 'sales' or callers get "Unknown resource type".
       agents = await this.agentService.listAgents(type as AgentType);
     } else {
       throw new Error("Unknown resource type");

@@ -28,6 +28,7 @@ export type Severity = 'critical' | 'warning' | 'info';
 export type SubjectType =
   | 'organization'
   | 'user'
+  | 'domain'
   | 'subscription'
   | 'customer'
   | 'membership'

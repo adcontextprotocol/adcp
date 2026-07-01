@@ -148,7 +148,7 @@ function isWithinBusinessHours(constraint: BusinessHoursConstraint): boolean {
 /**
  * Job Scheduler - manages registration and execution of scheduled jobs
  */
-class JobScheduler {
+export class JobScheduler {
   private configs: Map<string, JobConfig> = new Map();
   private runningJobs: Map<string, RunningJob> = new Map();
   /** Consecutive failure count per job — resets on success. */
@@ -166,16 +166,15 @@ class JobScheduler {
       return Promise.resolve();
     }
     return new Promise<void>((resolve) => {
-      this.waitQueue.push(() => {
-        this.activeJobs++;
-        resolve();
-      });
+      this.waitQueue.push(resolve);
     });
   }
 
   private releaseSlot(): void {
     const next = this.waitQueue.shift();
     if (next) {
+      // Transfer this job's slot to the queued job. activeJobs already counts
+      // the slot, so do not increment it again or the scheduler can jam.
       next();
     } else {
       this.activeJobs--;
@@ -278,6 +277,8 @@ class JobScheduler {
 
     // Schedule periodic runs
     job.intervalId = setInterval(runJob, toMilliseconds(config.interval));
+    // Background loop; never block process (or a vitest worker) exit.
+    job.intervalId?.unref();
 
     this.runningJobs.set(name, job);
     logger.debug(

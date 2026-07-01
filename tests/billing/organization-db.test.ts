@@ -63,12 +63,55 @@ describe('organization-db', () => {
 
       expect(mockPool.query).toHaveBeenCalledWith(
         expect.stringContaining('INSERT INTO organizations'),
-        ['org_123', 'Test Org', false, null, null, null]
+        ['org_123', 'Test Org', false, null, null, null, null]
       );
       expect(result).toMatchObject({
         workos_organization_id: 'org_123',
         name: 'Test Org',
       });
+    });
+
+    test('persists email_domain (lowercased, trimmed) for non-personal orgs', async () => {
+      mockPool.query.mockResolvedValueOnce({
+        rows: [{ workos_organization_id: 'org_voise', name: 'Voise Tech', email_domain: 'voisetech.com' }],
+      });
+
+      const { OrganizationDatabase } = await import('../../server/src/db/organization-db.js');
+      const orgDb = new OrganizationDatabase();
+
+      await orgDb.createOrganization({
+        workos_organization_id: 'org_voise',
+        name: 'Voise Tech',
+        email_domain: '  Voisetech.COM  ',
+      });
+
+      expect(mockPool.query).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO organizations'),
+        ['org_voise', 'Voise Tech', false, null, null, null, 'voisetech.com']
+      );
+    });
+
+    test('forces email_domain NULL on personal orgs even if one is supplied', async () => {
+      // Personal-tier email_domain stays NULL by design — the column is the
+      // auto-membership inference key and must not light up for individual subs.
+      mockPool.query.mockResolvedValueOnce({
+        rows: [{ workos_organization_id: 'org_personal', name: 'Personal' }],
+      });
+
+      const { OrganizationDatabase } = await import('../../server/src/db/organization-db.js');
+      const orgDb = new OrganizationDatabase();
+
+      await orgDb.createOrganization({
+        workos_organization_id: 'org_personal',
+        name: 'Personal',
+        is_personal: true,
+        email_domain: 'someone.dev',
+      });
+
+      expect(mockPool.query).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO organizations'),
+        ['org_personal', 'Personal', true, null, null, null, null]
+      );
     });
 
     test('handles errors gracefully', async () => {
@@ -88,9 +131,12 @@ describe('organization-db', () => {
 
   describe('setStripeCustomerId', () => {
     test('updates existing organization', async () => {
-      mockPool.query.mockResolvedValueOnce({
-        rows: [],
-      });
+      mockPool.query
+        .mockResolvedValueOnce({
+          rows: [{ workos_organization_id: 'org_123', name: 'Test Org', stripe_customer_id: null }],
+        })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] });
 
       const { OrganizationDatabase } = await import('../../server/src/db/organization-db.js');
       const orgDb = new OrganizationDatabase();
@@ -101,6 +147,21 @@ describe('organization-db', () => {
         expect.stringContaining('UPDATE organizations'),
         ['cus_123', 'org_123']
       );
+    });
+
+    test('refuses to overwrite a different customer without force', async () => {
+      mockPool.query.mockResolvedValueOnce({
+        rows: [{ workos_organization_id: 'org_123', name: 'Test Org', stripe_customer_id: 'cus_existing' }],
+      });
+
+      const { OrganizationDatabase } = await import('../../server/src/db/organization-db.js');
+      const orgDb = new OrganizationDatabase();
+
+      await expect(
+        orgDb.setStripeCustomerId('org_123', 'cus_new')
+      ).rejects.toThrow('already linked to Stripe customer cus_existing');
+
+      expect(mockPool.query).toHaveBeenCalledTimes(1);
     });
 
     test('handles errors gracefully', async () => {
@@ -369,6 +430,30 @@ describe('organization-db', () => {
         subscription_interval: 'year',
         is_personal: false,
       })).toBe('company_standard');
+    });
+
+    test('lookup key corrects stale explicit tier when subscription is entitled', async () => {
+      const { resolveMembershipTier } = await import('../../server/src/db/organization-db.js');
+      expect(resolveMembershipTier({
+        membership_tier: 'individual_academic',
+        subscription_price_lookup_key: 'aao_membership_builder_2500',
+        subscription_status: 'active',
+        subscription_amount: 250000,
+        subscription_interval: 'year',
+        is_personal: false,
+      })).toBe('company_standard');
+    });
+
+    test('keeps explicit tier when lookup key is absent to avoid discount-based downgrades', async () => {
+      const { resolveMembershipTier } = await import('../../server/src/db/organization-db.js');
+      expect(resolveMembershipTier({
+        membership_tier: 'company_leader',
+        subscription_price_lookup_key: null,
+        subscription_status: 'active',
+        subscription_amount: 250000,
+        subscription_interval: 'year',
+        is_personal: false,
+      })).toBe('company_leader');
     });
 
     test('infers tier from active subscription when membership_tier is null', async () => {

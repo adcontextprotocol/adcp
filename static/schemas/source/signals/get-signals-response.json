@@ -7,6 +7,9 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
   "properties": {
@@ -15,14 +18,27 @@
       "description": "Array of matching signals",
       "items": {
         "type": "object",
+        "allOf": [
+          {
+            "$ref": "/schemas/core/signal-listing.json"
+          },
+          {
+            "$ref": "/schemas/core/signal-definition-enrichment.json"
+          }
+        ],
         "properties": {
           "signal_id": {
             "$ref": "/schemas/core/signal-id.json",
-            "description": "Universal signal identifier referencing the data provider's catalog. Use this to verify authorization and look up signal definitions."
+            "description": "DEPRECATED. Use signal_ref instead. Legacy SignalId retained for compatibility with older Signals Protocol clients.",
+            "deprecated": true
+          },
+          "signal_ref": {
+            "$ref": "/schemas/core/signal-ref.json",
+            "description": "Canonical signal reference for discovery, activation, and media-buy targeting. Provider-published signals use scope 'data_provider'. Source-native custom signals that are not published in adagents.json signals[] use scope 'signal_source'. Product-local refs are only meaningful when the response is explicitly scoped to a product context."
           },
           "signal_agent_segment_id": {
             "type": "string",
-            "description": "Opaque identifier used for activation. This is the signals agent's internal segment ID.",
+            "description": "Opaque resolved-segment handle issued by this signal source. Pass this string verbatim to activate_signal.signal_agent_segment_id, and echo it in package signal targeting when the selected product option exposes the same handle. Treat the value as provider-scoped and opaque: providers MAY namespace it so two providers can expose similarly named signals without relying on a shared taxonomy. Do not pass the signal_id object as this handle, and do not reconstruct a segment handle from categorical values when get_signals returned a resolved segment.",
             "x-entity": "signal_activation_id"
           },
           "name": {
@@ -65,17 +81,22 @@
           },
           "signal_type": {
             "$ref": "/schemas/enums/signal-catalog-type.json",
-            "description": "Catalog type of signal (marketplace, custom, owned)"
+            "description": "Commercial/provenance type of signal (marketplace, custom, owned)"
           },
           "data_provider": {
             "type": "string",
-            "description": "Human-readable name of the data provider"
+            "description": "Human-readable source name for the signal, when applicable. For data_provider-scoped signals this is the data provider name; for signal_source-scoped signals it may identify the signal source or proprietary origin."
           },
           "coverage_percentage": {
             "type": "number",
-            "description": "Percentage of audience coverage",
+            "description": "DEPRECATED for detailed planning. Optional legacy scalar percentage of audience coverage retained only as a fallback for clients that do not consume coverage_forecast. When coverage_forecast is present, coverage_forecast is authoritative for signal-level discovery and coverage_percentage is fallback-only. If coverage_forecast includes an absent bucket over the same denominator, coverage_percentage SHOULD align with 100 * (1 - absent coverage_rate.mid).",
             "minimum": 0,
-            "maximum": 100
+            "maximum": 100,
+            "deprecated": true
+          },
+          "coverage_forecast": {
+            "$ref": "/schemas/core/signal-coverage-forecast.json",
+            "description": "Optional forecast-shaped signal availability guidance. When present, this is authoritative for signal-level discovery coverage. Use this to disclose the denominator, bucket semantics, not-present bucket, aggregate present bucket, and per-value coverage distribution for the signal."
           },
           "deployments": {
             "type": "array",
@@ -86,7 +107,7 @@
           },
           "pricing_options": {
             "type": "array",
-            "description": "Pricing options available for this signal. The buyer selects one and passes its pricing_option_id in report_usage for billing verification.",
+            "description": "Pricing options available for this signal when it has an incremental price. The buyer selects one and passes its pricing_option_id in report_usage or package-level signal_targeting_groups for billing verification. Omit when pricing is unavailable to the caller, bundled into the destination product, or has no incremental cost.",
             "items": {
               "$ref": "/schemas/core/vendor-pricing-option.json"
             },
@@ -94,15 +115,15 @@
           }
         },
         "required": [
-          "signal_id",
           "signal_agent_segment_id",
           "name",
           "description",
           "signal_type",
-          "data_provider",
-          "coverage_percentage",
-          "deployments",
-          "pricing_options"
+          "deployments"
+        ],
+        "anyOf": [
+          { "required": ["signal_ref"] },
+          { "required": ["signal_id"] }
         ],
         "additionalProperties": true
       }
@@ -113,6 +134,73 @@
       "items": {
         "$ref": "/schemas/core/error.json"
       }
+    },
+    "incomplete": {
+      "type": "array",
+      "description": "Declares what the agent could not finish within the caller's time_budget or due to internal limits. Each entry identifies a scope that is missing or partial. Absent when the response is fully complete.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "string",
+            "enum": [
+              "signals",
+              "pricing",
+              "wholesale_feed"
+            ],
+            "description": "'signals': not all matching signals were returned. 'pricing': signals returned but pricing is absent or unconfirmed. 'wholesale_feed': in wholesale mode, full feed enumeration could not complete in the time budget."
+          },
+          "description": {
+            "type": "string",
+            "description": "Human-readable explanation of what is missing and why."
+          },
+          "estimated_wait": {
+            "allOf": [
+              {
+                "$ref": "/schemas/core/duration.json"
+              }
+            ],
+            "description": "How much additional time would resolve this scope. Allows the caller to decide whether to retry with a larger time_budget."
+          }
+        },
+        "required": [
+          "scope",
+          "description"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "wholesale_feed_version": {
+      "type": "string",
+      "description": "Opaque token representing the version of the wholesale signals feed state used to compose this response. Agents that implement conditional-fetch (if_wholesale_feed_version) MUST return this on every wholesale-mode response so callers can cache and probe later. Callers MUST treat the value as opaque — no format, no ordering, no inspection. The token is scope-keyed: it describes a version for the cache_scope declared on this response, NOT a global agent version. A caller caches `(cache_scope, wholesale_feed_version)` pairs and presents the matching token on the next request. Scoping dimensions: (agent, discovery_mode, filters, destinations, countries) for cache_scope: 'public'; that tuple plus account_id for cache_scope: 'account'. pagination.cursor is NOT part of the scoping tuple. See specs/wholesale-feed-webhooks.md for the full cache layering model.",
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "required_for_wholesale_request": {
+            "task": "get_signals",
+            "request_field": "discovery_mode",
+            "equals": "wholesale"
+          }
+        },
+        "spec": "specs/wholesale-feed-webhooks.md#consumer-pattern"
+      }
+    },
+    "pricing_version": {
+      "type": "string",
+      "description": "Opaque token representing the version of the pricing layer. When the agent supports independent pricing versioning, pricing_version changes when prices move but wholesale_feed_version changes only when structure/metadata moves. Same cache_scope keying as wholesale_feed_version. Agents not separating these MAY omit pricing_version and use wholesale_feed_version for both."
+    },
+    "cache_scope": {
+      "type": "string",
+      "enum": [
+        "public",
+        "account"
+      ],
+      "description": "Declares whether the wholesale_feed_version and pricing_version on this response describe a universal layer or an account-specific overlay. REQUIRED on every 3.1+ response (the 3.1 schema enforces this — the safety property of the two-layer cache model depends on it). 'public': this response describes the agent's published rate card; the caller MAY dedupe under (agent, discovery_mode, filters, destinations, countries) without scoping by account. 'account': this response includes account-specific overrides; the caller MUST cache the version under that tuple plus account_id. When the request did NOT include `account`, the agent MUST return `cache_scope: 'public'`. When the request included `account`, the agent MUST return either 'public' (this account prices off the public rate card — caller dedupes) or 'account' (account-specific overrides exist — caller caches under the account key). Agents MAY return 'public' on an account-scoped request that previously had overrides — callers SHOULD interpret this as a downgrade. Without schema-required cache_scope, an agent silently omitting the field on an account-scoped response would cause callers to mis-key the cache and serve account-overlay payloads to other accounts — the canonical safety invariant of the entire cache layering model. **Backward-compatibility note for 3.1 validators:** SDKs validating strictly against the 3.1 schema MUST select the validator based on the server-declared `adcp_version`. For responses with `adcp_version` starting `3.0`, the 3.1 cache_scope-required constraint MUST be relaxed — pre-3.1 agents correctly emit no cache_scope and remain conformant to their declared version. This is a tightening within 3.1, not a 3.0 break."
+    },
+    "unchanged": {
+      "type": "boolean",
+      "const": true,
+      "description": "Present and `true` ONLY on wholesale-mode responses when the request carried if_wholesale_feed_version (and/or if_pricing_version) matching the agent's current version for the caller's cache_scope, in which case signals[] MUST be omitted; wholesale_feed_version (echoed), cache_scope (echoed), and pricing_version (echoed when used) MUST still be present. Callers receiving unchanged: true MUST NOT mutate their local wholesale signals mirror. **One shape per state:** agents MUST NOT emit `unchanged: false` — the absence of the field IS the signal that the response carries signals."
     },
     "pagination": {
       "$ref": "/schemas/core/pagination-response.json"
@@ -128,8 +216,52 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": [
-    "signals"
-  ],
+  "if": {
+    "properties": {
+      "unchanged": {
+        "const": true
+      }
+    },
+    "required": [
+      "unchanged"
+    ]
+  },
+  "then": {
+    "description": "Wholesale-feed unchanged response: signals MUST be omitted; wholesale_feed_version and cache_scope MUST be present (echoed from the cached version).",
+    "required": [
+      "wholesale_feed_version",
+      "cache_scope"
+    ],
+    "not": {
+      "required": [
+        "signals"
+      ]
+    }
+  },
+  "else": {
+    "if": {
+      "properties": {
+        "status": {
+          "const": "failed"
+        }
+      },
+      "required": [
+        "status"
+      ]
+    },
+    "then": {
+      "description": "Failed response: errors[] carries the terminal failure details; signals[] and cache_scope are not required because no signal result was produced.",
+      "required": [
+        "errors"
+      ]
+    },
+    "else": {
+      "description": "Standard response: signals[] MUST be present and cache_scope MUST declare the response's cache layer. wholesale_feed_version is required by the wholesale-mode contract and verifier constraints, but is not schema-required here because this response schema is shared by non-wholesale reads.",
+      "required": [
+        "signals",
+        "cache_scope"
+      ]
+    }
+  },
   "additionalProperties": true
 }

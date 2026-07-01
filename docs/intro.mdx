@@ -16,6 +16,10 @@ The problem isn't her people. It's that every channel speaks a different languag
 
 AdCP is that standard. One protocol. Every platform. Every step of the campaign.
 
+## More than activation
+
+AdCP coordinates the full campaign lifecycle — from brief intake through measurement — not just activation. It works across every transaction model: direct deals, sponsorships, broadcast, and out-of-home, not only programmatic exchange. Most global ad spend flows through non-programmatic channels, and AdCP is designed for all of them.
+
 This page follows Alex's team through the entire workflow — from finding new partners to measuring results. Each section shows the human problem, the protocol solution, and the tasks that make it work. By the end, you'll understand every domain AdCP covers and how they connect.
 
 ---
@@ -26,7 +30,7 @@ This page follows Alex's team through the entire workflow — from finding new p
 
 Alex wants to work with publishers she's never talked to before. In the old world, that means sales calls, contracts, and weeks of integration work before she can even see what's available.
 
-With AdCP, discovery is built into the protocol. Every AdCP-enabled publisher hosts an `adagents.json` file — a machine-readable declaration of their properties, capabilities, and authorized agents. Alex's buyer agent reads it the same way a browser reads `robots.txt`.
+With AdCP, discovery is built into the protocol. Every AdCP-enabled publisher hosts an `adagents.json` file — a machine-readable declaration of their properties and authorized agents. Sales operators publish `brand.json` for company identity, sales-agent endpoints, and signing-key discovery. Alex's buyer agent can resolve both files the same way a browser reads `robots.txt`.
 
 ```
 https://streamhaus.tv/.well-known/adagents.json
@@ -280,7 +284,7 @@ For sellers that generate creative — AI assistants, conversational ad platform
 `update_media_buy` handles mid-flight changes: shift budget between packages, adjust flight dates, swap creative assignments. No need to cancel and recreate.
 
 <Card title="The trust surface underneath" icon="shield-check">
-That `idempotency_key` on Sam's request isn't decorative. Pinnacle's buyer agent signs the POST with RFC 9421 HTTP Message Signatures before it leaves the network. StreamHaus verifies Pinnacle's signature against the JWKS it publishes in `adagents.json`, then accepts the buy. When the campaign moves from `pending_start` to `active`, StreamHaus posts a signed webhook back to Pinnacle's orchestrator — same signature profile, keys published in its own `agents[]` entry under `adcp_use: "webhook-signing"`. If Sam's laptop drops the response and his agent retries, the `idempotency_key` makes the second call safe — StreamHaus returns the original buy with `replayed: true` instead of charging twice. Governance approvals ride along as signed JWS tokens on `check_governance` so no agent in the chain can forge Jordan's sign-off. See the [Security guide](/docs/building/implementation/security).
+That `idempotency_key` on Sam's request isn't decorative. Pinnacle's buyer agent signs the POST with RFC 9421 HTTP Message Signatures before it leaves the network. StreamHaus verifies Pinnacle's signature against Pinnacle's operator-published JWKS, then accepts the buy. When the campaign moves from `pending_start` to `active`, StreamHaus posts a signed webhook back to Pinnacle's orchestrator — same signature profile, with StreamHaus's request-signing key published through its `brand.json` `agents[]` entry and optionally pinned by publisher `adagents.json`. If Sam's laptop drops the response and his agent retries, the `idempotency_key` makes the second call safe — StreamHaus returns the original buy with `replayed: true` instead of charging twice. Governance approvals ride along as signed JWS tokens on `check_governance` so no agent in the chain can forge Jordan's sign-off. See the [Security guide](/docs/building/by-layer/L1/security).
 </Card>
 
 ---
@@ -656,7 +660,7 @@ AI is buying ads. Make sure it can buy yours.
 If you operate a DSP, SSP, publisher, data platform, creative platform, governance service, or any ad tech solution, AdCP lets AI agents discover and transact with your platform. To get started:
 
 1. **Implement an AdCP agent** — Expose your platform's capabilities as AdCP tasks over MCP or A2A. Start with `get_adcp_capabilities`.
-2. **Publish your adagents.json** — Declare your properties and authorized agents so buyers can discover you.
+2. **Publish discovery and authorization records** — Use `brand.json` for operator identity, agent endpoints, and signing-key discovery; use publisher `adagents.json` for properties and authorized agents.
 3. **Test your implementation** — Validate with [Addie](https://adcontextprotocol.org/chat) or the [client SDKs](/docs/building/schemas-and-sdks).
 
 Implement the protocol domains relevant to your business:
@@ -682,7 +686,7 @@ AdCP-enabled agents work across all your media partners through a single interfa
 
 <CodeGroup>
 ```bash JavaScript/TypeScript
-npm install @adcp/client
+npm install @adcp/sdk
 ```
 ```bash Python
 pip install adcp
@@ -692,7 +696,7 @@ go get github.com/adcontextprotocol/adcp-go/adcp
 ```
 </CodeGroup>
 
-- **NPM**: [@adcp/client](https://www.npmjs.com/package/@adcp/client) | [GitHub](https://github.com/adcontextprotocol/adcp-client)
+- **NPM**: [@adcp/sdk](https://www.npmjs.com/package/@adcp/sdk) | [GitHub](https://github.com/adcontextprotocol/adcp-client)
 - **PyPI**: [adcp](https://pypi.org/project/adcp/) | [GitHub](https://github.com/adcontextprotocol/adcp-client-python)
 - **Go**: [adcp-go](https://github.com/adcontextprotocol/adcp-go)
 

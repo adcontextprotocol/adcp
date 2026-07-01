@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/completion-source.json",
+  "title": "Completion Source",
+  "description": "Trust-source disambiguator for `completion_rate` — *who* attested to the completion event, not *how* (methodology granularity is a separate dimension; future qualifier keys may add it if buyer demand surfaces). The two paths can yield materially different rates, particularly in SSAI environments where the player's view of completion may differ from a vendor's. Used as a `qualifier.completion_source` key on `committed_metrics`, `missing_metrics`, and `metric_aggregates` to disambiguate which trust source the row represents. Edge cases: walled gardens where the seller is also the measurement vendor (YouTube, Spotify) collapse to `seller_attested` by trust-model logic — the same party served and counted. IAB-certified first-party podcast measurement (Podtrac, Triton on their own platforms; Art19 on its own platform) likewise collapses to `seller_attested`. The same vendor's offering on a third-party platform (Podtrac on a publisher who isn't Podtrac) is `vendor_attested`. The trust axis is *not* who runs the SDK — it's who is independent of the seller's revenue interest.",
+  "type": "string",
+  "enum": ["seller_attested", "vendor_attested"],
+  "enumDescriptions": {
+    "seller_attested": "The party serving the ad witnessed and counted the completion event. Includes ad-server / player completion beacons, walled-garden first-party measurement, and IAB-certified first-party podcast measurement on the platform's own inventory. Source of truth is the seller's delivery infrastructure.",
+    "vendor_attested": "An independent third-party measurement vendor (Nielsen, DV, IAS, Moat, HUMAN, Podtrac on third-party inventory, Edison Research panel, etc.) attested to the completion via SDK callbacks, server-beacon validation, or panel methodology. Source of truth is the vendor; vendor identity SHOULD be anchored on a matching `performance_standard.vendor` BrandRef in the buy contract — if a buyer wants vendor-attested completion for transparency without an accountability gate, they MAY commit a vendor metric via `vendor_metrics` on the product rather than `committed_metrics` with this qualifier."
+  }
+}

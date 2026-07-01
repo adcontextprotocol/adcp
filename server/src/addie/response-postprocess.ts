@@ -119,6 +119,96 @@ export const BANNED_RITUALS = BANNED_RITUAL_LITERALS;
 export const __test_BANNED_RITUAL_LITERALS = BANNED_RITUAL_LITERALS;
 
 // ---------------------------------------------------------------------------
+// Persona-collapse backstop: scrub model/provider self-disclosure
+// ---------------------------------------------------------------------------
+
+/**
+ * Patterns that signal Addie has broken character and disclosed the underlying
+ * model or vendor ("I'm Claude, an AI assistant made by Anthropic", "as a
+ * large language model …"). Under task-stress — a tool failure, a validation
+ * error, a capability it can't fulfil — the model can rationalize around the
+ * prompt-level identity rule and step out of persona. `rules/identity.md`
+ * is the probabilistic defense; this is the deterministic one.
+ *
+ * Each regex is matched against a single sentence (see `rewritePersonaCollapse`)
+ * so a match removes only the offending sentence, not the whole reply.
+ *
+ * Precision over recall on the model name: the bare word "Claude" is NOT a
+ * disclosure — Addie legitimately references "Claude Code" and "Claude Desktop"
+ * as MCP clients in its docs. The patterns anchor on first-person identity
+ * constructions ("I'm Claude", "Claude, an AI …", "powered by Claude") and on
+ * vendor attribution ("made by Anthropic"), never on the product names.
+ */
+export const PERSONA_COLLAPSE_PATTERNS: readonly RegExp[] = [
+  // First-person disclosure naming the model.
+  /\bi(?:['’]m|\s+am)\s+claude\b/i,
+  // "Claude, an AI assistant / a language model / the AI …"
+  /\bclaude\s*[,:]\s*(?:an?|the)\s+(?:ai\b|a\.i\.|artificial\s+intelligence|language\s+model|(?:ai\s+)?(?:assistant|chatbot|model))/i,
+  // Vendor attribution.
+  /\b(?:made|built|created|developed|trained|designed)\s+by\s+(?:anthropic|openai|google\s+deepmind)\b/i,
+  /\bpowered\s+by\s+(?:claude|anthropic|gpt-?\d*|openai)\b/i,
+  // First-person AI/model statement that also names the vendor in-sentence.
+  /\bi(?:['’]m|\s+am)\s+(?:an?\s+)?(?:ai|a\.i\.|artificial\s+intelligence|language)\b[^.?!]*\b(?:anthropic|openai)\b/i,
+  // Generic LLM self-reference used to step out of persona. Requires an
+  // AI/language qualifier so a bare "serves as a model for X" doesn't match.
+  /\bas\s+an?\s+(?:(?:ai|artificial\s+intelligence)\s+(?:language\s+)?model|language\s+model|llm)\b/i,
+  /\b(?:a\s+)?large\s+language\s+model\b/i,
+  /\bmy\s+underlying\s+(?:model|llm|language\s+model|architecture)\b/i,
+];
+
+/** True if any persona-collapse pattern matches the given text. */
+export function hasPersonaCollapse(text: string): boolean {
+  return PERSONA_COLLAPSE_PATTERNS.some((re) => re.test(text));
+}
+
+/**
+ * Remove any sentence that discloses the underlying model or vendor, leaving
+ * the rest of the reply intact. If every sentence was a disclosure the result
+ * is empty — the pipeline's empty-response guard then substitutes a fallback.
+ *
+ * Safety notes mirror `stripBannedRituals`:
+ *  - Scans and rewrites only outside fenced code blocks, so a disclosure quoted
+ *    inside ```…``` (e.g. documenting this very leak) is preserved.
+ *  - Idempotent: a scrubbed reply has no remaining matches, so a second pass
+ *    is a no-op.
+ *  - Fast path: if no disclosure appears outside code, the input is returned
+ *    byte-for-byte unchanged.
+ *
+ * @param text Raw assistant text from the model.
+ * @returns Text with model/provider self-disclosure sentences removed.
+ */
+export function rewritePersonaCollapse(text: string): string {
+  if (!text) return text;
+
+  // Split into [non-code, code, non-code, ...]; code blocks are odd indices.
+  const parts = text.split(/(```[\s\S]*?```)/g);
+
+  let matchOutsideCode = false;
+  for (let i = 0; i < parts.length; i += 2) {
+    if (hasPersonaCollapse(parts[i])) {
+      matchOutsideCode = true;
+      break;
+    }
+  }
+  if (!matchOutsideCode) return text;
+
+  for (let i = 0; i < parts.length; i += 2) {
+    const sentences = splitProseIntoSentences(parts[i]);
+    parts[i] = sentences.filter((s) => !hasPersonaCollapse(s)).join(' ');
+  }
+
+  // Collapse whitespace left where sentences were removed.
+  return parts
+    .join('')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/** Test-only export of the persona-collapse pattern list. */
+export const __test_PERSONA_COLLAPSE_PATTERNS = PERSONA_COLLAPSE_PATTERNS;
+
+// ---------------------------------------------------------------------------
 // Length post-processor: trim verbose responses to short questions
 // ---------------------------------------------------------------------------
 
@@ -276,17 +366,21 @@ export const __test_lengthThresholds = {
  * short follow-up prompts ("?", "what happened?"). Substituting a clarifying
  * line is better than shipping the void.
  */
-const EMPTY_RESPONSE_FALLBACK =
+export const EMPTY_RESPONSE_FALLBACK =
   "Sorry, I lost the thread there. Could you rephrase or give me a bit more context?";
 
 /**
  * Apply the full assistant-text post-processing chain in order:
  *
- * 1. `stripBannedRituals` — remove ritual phrases the model leaks despite
+ * 1. `rewritePersonaCollapse` — scrub any sentence that discloses the
+ *    underlying model or vendor, so a break-character leak never reaches the
+ *    user even when the prompt-level identity rule fails under task-stress.
+ * 2. `stripBannedRituals` — remove ritual phrases the model leaks despite
  *    response-style.md banning them.
- * 2. Empty-response guard — substitute a clarifying fallback if the model
- *    returned no content (or only ritual phrases that all got stripped).
- * 3. `truncateLongResponseToShortQuestion` — for short user questions,
+ * 3. Empty-response guard — substitute a clarifying fallback if the model
+ *    returned no content (or only ritual/persona-collapse text that all got
+ *    removed).
+ * 4. `truncateLongResponseToShortQuestion` — for short user questions,
  *    cap response length at the sentence boundary near 130 words and append
  *    a "go deeper?" suffix.
  *
@@ -299,7 +393,8 @@ const EMPTY_RESPONSE_FALLBACK =
  * @returns The post-processed text safe to return to the caller.
  */
 export function applyResponsePipeline(question: string, rawText: string): string {
-  const stripped = stripBannedRituals(rawText);
+  const personaSafe = rewritePersonaCollapse(rawText);
+  const stripped = stripBannedRituals(personaSafe);
   if (stripped.trim().length === 0) {
     return EMPTY_RESPONSE_FALLBACK;
   }

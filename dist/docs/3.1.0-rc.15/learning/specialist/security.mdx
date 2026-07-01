@@ -1,0 +1,99 @@
+---
+title: "S6: Security"
+sidebarTitle: "S6: Security"
+description: "AdCP specialist module S6: Security mastery. Threat model, five-layer defense model, idempotency semantics, governance token verification, SSRF discipline, and operational incident response."
+"og:title": "AdCP — S6: Security"
+---
+
+# S6: Security
+
+<Info>
+**Members only** — Requires Practitioner credential. ~60 minutes with Addie. Combines hands-on lab and adaptive exam.
+</Info>
+
+This specialist module tests your mastery of AdCP's security model — the five-layer defense: identity verification, tenant isolation, idempotency semantics, signed governance verification, and SSRF discipline. You'll exercise the controls the sandbox supports hands-on (idempotency semantics, SSRF discipline, and obtaining a signed governance token) and reason about the rest through threat scenarios and incident response. Addie evaluates both your hands-on execution and your security reasoning.
+
+Passing earns the **AdCP specialist — Security** credential.
+
+<Note>
+This module covers AdCP-specific controls — the threat model, layered defenses, and operational response patterns specific to agentic advertising systems. It is not a replacement for a general security program. Certified specialists can reason about how AdCP's controls compose; for OWASP Top 10 or general security engineering, see your organization's security training.
+</Note>
+
+## Specialisms this track prepares you to validate
+
+The following `specialisms` fall under the security domain. Each has its own compliance storyboard — see the [Compliance Catalog](/dist/docs/3.1.0-rc.15/building/verification/compliance-catalog) for the full taxonomy.
+
+| Specialism | Status | What it covers |
+|---|---|---|
+| `security` | stable | Authentication baseline — unauth rejection, static-credential enforcement, OAuth discovery + RFC 9728 audience binding |
+| `signed-requests` | stable | RFC 9421 transport-layer request-signing verification |
+
+## What you'll demonstrate
+
+- Explain the agentic advertising threat model: credential theft, replay attacks, cross-tenant data leakage, SSRF on outbound fetches, spoofed agent identity, unauthorized governance token use, and audit log tampering
+- Walk through AdCP's five-layer defense model — identity, isolation, idempotency, signed governance, auditability — and name the specific attack each layer closes
+- Mint an idempotency key and produce the three observable outcomes against a sandbox — successful first call, idempotent replay (`replayed: true`, unchanged resource), and conflict on payload change — and reason about the fourth: TTL expiry (the sandbox replay window is 24h, so expiry is reasoned about rather than observed in a session) and what a missing key removes from the seller's safety guarantees
+- Obtain and decode a signed governance token, then use the sandbox verifier to watch the checklist accept a valid token and reject a tampered one (signature), a misaddressed one (`aud` / confused-deputy), and one signed under a revoked key — explaining the attack each failing step closes and why revocation is checked before expiry
+- Specify the 6-point SSRF check on an outbound fetch (HTTPS-only enforcement, reserved-IP deny list including cloud metadata endpoints, IP-pin validation, redirect suppression, size and timeout caps, and suppressed error detail) and demonstrate the agent refusing a metadata-IP webhook target
+- Design an operational runbook covering credential compromise, webhook secret rotation, governance key revocation, and cross-party incident communication
+- Given an incident description, identify which defense layer failed and what specific control to harden
+
+<Note>
+S4 (Governance) covers the 15-step JWS seller verification from the **seller's** perspective — how a seller validates a governance token issued by a buyer's governance agent. S6 covers it from the **security operator's** perspective — verifying your own token issuance implementation is correct and reasoning about what each step closes. Overlap is intentional; the framing is different.
+</Note>
+
+## Prerequisite reading
+
+<CardGroup cols={2}>
+  <Card title="Security model" icon="shield" href="/dist/docs/3.1.0-rc.15/building/concepts/security-model">
+    AdCP's five-layer defense model: identity, isolation, idempotency, signed governance, and auditability.
+  </Card>
+  <Card title="Security implementation" icon="lock" href="/dist/docs/3.1.0-rc.15/building/by-layer/L1/security">
+    Implementation reference: idempotency enforcement, webhook HMAC verification, SSRF discipline, signed governance, principal isolation, and insert-rate ceiling.
+  </Card>
+  <Card title="Campaign governance specification" icon="file-code" href="/dist/docs/3.1.0-rc.15/governance/campaign/specification">
+    Governance token structure, the JWS verification model, and the correlation model for multi-party lifecycle tracking.
+  </Card>
+  <Card title="Operating an agent" icon="server" href="/dist/docs/3.1.0-rc.15/building/operating/operating-an-agent">
+    Security as an operating concern: credential management, rotation cadences, and incident response.
+  </Card>
+  <Card title="Accounts and security" icon="key" href="/dist/docs/3.1.0-rc.15/media-buy/advanced-topics/accounts-and-security">
+    Principal isolation, account-scoped access, and multi-tenant separation.
+  </Card>
+  <Card title="Authentication" icon="fingerprint" href="/dist/docs/3.1.0-rc.15/building/by-layer/L2/authentication">
+    static-credential enforcement, OAuth discovery, RFC 9728 audience binding, and the authentication baseline specialism.
+  </Card>
+</CardGroup>
+
+## Connecting to the test agent
+
+Lab exercises run against the public test agent. Use the shared token — no signup required:
+
+```bash
+export ADCP_AUTH_TOKEN="1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ"
+export AGENT_URL="https://test-agent.adcontextprotocol.org/mcp"
+```
+
+See the [Quickstart](/dist/docs/3.1.0-rc.15/quickstart) for a walkthrough of your first call.
+
+## Lab exercises
+
+1. **Threat model walkthrough** — Map each threat (credential theft, replay, cross-tenant leakage, SSRF, spoofed identity, unauthorized governance, audit tampering) to the specific AdCP control that closes it. Explain why no single layer is sufficient alone.
+2. **Idempotency lifecycle** — Using one idempotency key on a mutating call (e.g. `create_property_list`): (a) first call — observe success; (b) identical replay — observe `replayed: true` with an unchanged resource id, confirming no new side effect; (c) same key, different payload — observe the `IDEMPOTENCY_CONFLICT` error. Then reason about the fourth outcome — expiry after the replay window lapses (24h, so not reproducible in a session) — and explain what a missing idempotency key means for the seller's at-most-once safety guarantee.
+3. **Governance token verification** — Obtain a signed governance token from the sandbox governance agent (`sync_plans`, then an intent-phase `check_governance`) and decode its header (`alg`, `typ`, `kid`) and claims (`aud`, `sub`, `phase`, `jti`, `exp`). Then run the sandbox verifier (`comply_test_controller` scenario `verify_governance_token`) and watch the JWS checklist accept and reject tokens: a valid token passes every step; a tampered claim fails at the signature step (`governance_token_invalid`); a token bound to a different seller fails the `aud` byte-match (`governance_token_not_applicable` — confused deputy, via `mode: wrong_aud_demo`); and a token signed under a revoked key fails the revocation step (`governance_token_revoked`, via `mode: revoked_demo`). For each, explain the attack the failing step closes — and note that revocation is checked *before* expiry, so a revoked token is rejected even if it has also lapsed. (`jti` seen-before dedup — distinct from `aud` — is the step that stops replay of the same token.)
+4. **SSRF defense** — Register a webhook `notification_config` via `sync_accounts` whose URL targets the cloud-metadata address (`https://169.254.169.254/latest/meta-data/`); observe that the agent refuses it synchronously with a `VALIDATION_ERROR` on `notification_configs[].url`, and contrast with an accepted public host. Specify the 6-point SSRF check and explain what each point closes — the reserved-IP/metadata deny list, IP-pin-at-connect (DNS rebinding), redirect suppression, and suppressed error detail.
+5. **Principal isolation** — Scope a read to a different account than the one that created a resource and interpret the result correctly: distinguish an account-scoped *not-found* from an authorization *denial*. Explain the separation model — account-scoped access — and what would break (cross-tenant read/write on a leaked token) if account-scoped tokens were not enforced.
+6. **Incident runbook design** — Given a credential compromise scenario (API key leaked in a public repo), design the response: which keys to rotate and in what order, how to notify counterparties, what audit events to review, and how to verify the compromise window.
+7. **Defense layer diagnosis** — Given three incident descriptions (replay attack succeeded, cross-tenant data returned, governance token accepted after key revocation), identify which layer failed in each case and what specific control to harden.
+
+## Assessment
+
+| Dimension | Weight | What Addie evaluates |
+|-----------|--------|---------------------|
+| Threat model fluency | 20% | Can you name an attack and the specific layer that closes it? |
+| Hands-on idempotency | 20% | Can you produce the observable idempotency outcomes (success, replay, conflict) on demand and reason about expiry and a missing key? |
+| Governance verification | 25% | Can you walk the 15-step checklist and explain what each step prevents? |
+| SSRF discipline | 15% | Can you specify the 6-point check and demonstrate the agent refusing a metadata-IP webhook target? |
+| Operational design | 20% | Can you design a runbook for credential compromise, including rotation order and cross-party communication? |
+
+Passing threshold: 70%.

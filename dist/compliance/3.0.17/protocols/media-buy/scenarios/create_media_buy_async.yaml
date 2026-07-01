@@ -1,0 +1,232 @@
+id: media_buy_seller/create_media_buy_async
+version: "1.0.0"
+title: "Seller returns submitted task envelope when create_media_buy goes async"
+category: media_buy_seller
+summary: "Verifies the AdCP-payload wire shape of the submitted-arm response from create_media_buy: status='submitted', task_id present, no media_buy_id and no packages on the envelope."
+track: media_buy
+required_tools:
+  - create_media_buy
+  - comply_test_controller
+
+narrative: |
+  When create_media_buy cannot confirm the buy synchronously — e.g., the seller is
+  routing the request through IO signing, batch processing, or any out-of-band human
+  workflow — the task layer carries the result, not the response. The seller emits the
+  submitted task envelope: status='submitted', task_id present, no media_buy_id, no
+  packages. The buyer then polls tasks/get with task_id (or waits for a webhook) until
+  the task completes and the media_buy_id arrives on the completion artifact.
+
+  This scenario anchors the AdCP-payload-level invariant for that envelope. Three things
+  matter and are easy to regress:
+
+  1. status MUST be the literal string 'submitted' (not 'pending', not a MediaBuyStatus
+     value, not omitted)
+  2. task_id MUST be present at the top of the payload, snake_case (A2A adapters MAY
+     surface it as taskId on the wire, but the payload field emitted by the agent is
+     task_id)
+  3. media_buy_id and packages MUST NOT appear on the envelope — they land on the task's
+     completion artifact, not here. Sellers that return media_buy_id with status='submitted'
+     break the buyer's polling contract; buyers cannot tell whether the buy is queued or
+     confirmed.
+
+  Determinism. The submitted arm is implementation-dependent — most sellers route most
+  buys synchronously. To make this storyboard runnable across implementations, the test
+  harness uses comply_test_controller force_create_media_buy_arm to drive the next
+  create_media_buy call into the submitted arm. The directive is keyed to the caller's
+  authenticated sandbox account (account + principal pair); sellers that do not implement
+  the controller scenario return UNKNOWN_SCENARIO and the runner grades this storyboard
+  not_applicable rather than failed.
+
+  Round-trip integrity. The deterministic task_id is captured from the controller
+  response and reused as the expected task_id on the create_media_buy assertion, so the
+  storyboard catches sellers that fabricate a fresh task_id instead of honoring the
+  registered directive.
+
+  Out of scope (by design). Transport-level wire-shape assertions — A2A Task.state and
+  artifact.metadata.adcp_task_id placement, MCP structuredContent envelope details — are
+  runner-side concerns, not storyboard assertions. The runner exercises this scenario
+  against both transports and probes the transport envelope independently. See
+  adcp-client#904 for the runner-side probes; this storyboard provides the deterministic
+  driver.
+
+  The submitted → completed transition (forcing the task to resolve and asserting the
+  completion artifact carries media_buy_id) is deferred to a follow-up scenario. It needs
+  a force_task_completion controller scenario that does not exist yet.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - supports_test_controller
+  examples:
+    - "Sellers that route some create_media_buy calls through IO signing or batch processing"
+    - "Any seller exposing comply_test_controller in sandbox mode"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    Seller exposes comply_test_controller in sandbox mode and supports
+    force_create_media_buy_arm. The directive is keyed to the caller's
+    authenticated sandbox account; without controller support, the storyboard
+    grades not_applicable — sellers cannot be deterministically driven into
+    the submitted arm by buyer-initiated requests alone.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "async_signed_io_q2"
+      delivery_type: "guaranteed"
+      channels: ["video"]
+      format_ids:
+        - id: "video_30s"
+  pricing_options:
+    - product_id: "async_signed_io_q2"
+      pricing_option_id: "cpm_guaranteed"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 18.0
+
+phases:
+  - id: force_submitted_arm
+    title: "Drive next create_media_buy into submitted arm"
+    narrative: |
+      Tell the controller that the next create_media_buy call from the caller's
+      authenticated sandbox account should return the submitted task envelope.
+      The controller stores the directive against the (account, principal) pair
+      and consumes it on the next create_media_buy call. Sellers that do not
+      implement force_create_media_buy_arm return UNKNOWN_SCENARIO and the
+      runner grades this storyboard not_applicable.
+
+    steps:
+      - id: force_arm_submitted
+        title: "Force submitted arm on next create_media_buy"
+        requires_tool: comply_test_controller
+        narrative: |
+          Direct the controller to return the submitted envelope with a
+          deterministic task_id on the buyer's next create_media_buy call. The
+          message field is set to a representative IO-signing explanation so
+          buyers exercising prompt-injection sanitization on submitted.message
+          have a stable string to assert against.
+        task: comply_test_controller
+        comply_scenario: create_media_buy
+        stateful: true
+        context_outputs:
+          - name: forced_task_id
+            path: "forced.task_id"
+        expected: |
+          Return a successful directive:
+          - success: true
+          - forced.arm: submitted
+          - forced.task_id: deterministic task handle the next create_media_buy will return
+
+        sample_request:
+          scenario: "force_create_media_buy_arm"
+          params:
+            arm: "submitted"
+            task_id: "task_async_signed_io_q2"
+            message: "Awaiting IO signature from sales team; typical turnaround 2–4 hours"
+          context:
+            correlation_id: "create_media_buy_async--force_arm_submitted"
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Controller accepts the directive"
+          - check: field_value
+            path: "forced.arm"
+            value: "submitted"
+            description: "Controller echoes the forced arm"
+          - check: field_present
+            path: "forced.task_id"
+            description: "Controller echoes the deterministic task_id"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "create_media_buy_async--force_arm_submitted"
+            description: "Context correlation_id returned unchanged"
+
+  - id: submitted_arm_response
+    title: "create_media_buy returns submitted task envelope"
+    narrative: |
+      The buyer makes a normal create_media_buy call. Because the controller
+      registered a directive against this sandbox account, the seller MUST emit
+      the submitted task envelope: status='submitted', task_id matching the
+      forced value, no media_buy_id, no packages.
+
+      The response_schema check carries the absence invariant — the submitted
+      arm in create-media-buy-response.json has not.anyOf clauses for both
+      media_buy_id and packages, so a seller that emits either under
+      status='submitted' fails schema validation. The explicit field_value
+      check on status pins the literal 'submitted' value, since a malformed
+      seller might omit the discriminator and still satisfy the parent oneOf
+      via the error or success branch. The task_id check uses the captured
+      $context.forced_task_id so the storyboard fails if the seller ignores
+      the registered directive and fabricates its own task_id.
+
+    steps:
+      - id: create_media_buy_submitted
+        title: "Call create_media_buy and observe the submitted envelope"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Return the submitted task envelope:
+          - status: 'submitted' (literal, not a MediaBuyStatus value)
+          - task_id: matches the value registered by force_create_media_buy_arm
+          - no media_buy_id (issued on task completion, not here)
+          - no packages (issued on task completion, not here)
+          - message (optional): seller's explanation of the wait
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          start_time: "2026-07-01T00:00:00Z"
+          end_time: "2026-09-30T23:59:59Z"
+          packages:
+            - product_id: "async_signed_io_q2"
+              budget: 30000
+              pricing_option_id: "cpm_guaranteed"
+          push_notification_config:
+            url: "https://buyer.example/webhooks/adcp"
+            authentication:
+              schemes:
+                - "HMAC-SHA256"
+              credentials: "media-buy-seller-webhook-secret-token"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_create_media_buy_async_submitted_arm_response_create_media_buy_submitted"
+          context:
+            correlation_id: "create_media_buy_async--create_media_buy_submitted"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json — submitted-arm not.required clauses block media_buy_id and packages"
+          - check: field_value
+            path: "status"
+            value: "submitted"
+            description: "Status is the literal 'submitted' task-status value, not a MediaBuyStatus"
+          - check: field_present
+            path: "task_id"
+            description: "task_id is present at the top of the envelope (snake_case payload field, even when the A2A adapter surfaces it as taskId on the wire)"
+          - check: field_value
+            path: "task_id"
+            value: "$context.forced_task_id"
+            description: "task_id matches the captured value from the controller directive — sellers that fabricate a fresh task_id instead of honoring the registered one fail here"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "create_media_buy_async--create_media_buy_submitted"
+            description: "Context correlation_id returned unchanged"

@@ -4,6 +4,7 @@ description: "Creative formats in AdCP define asset requirements, technical cons
 "og:title": "AdCP — Creative Formats"
 ---
 
+> **Canonical formats in 3.1**: starting in 3.1, formats can be declared inline on products via `format_options` (an array of `ProductFormatDeclaration`s narrowing one of 12 canonical formats). This page describes the v1 format-registry model, which remains a first-class path through 4.x. For the canonical-formats model, see [canonical-formats](/docs/creative/canonical-formats) and the [migration guide](/docs/creative/canonical-formats-migration).
 
 Creative formats define the structural and technical requirements used to instantiate advertising creatives. A format specifies:
 - The asset types required (video, image, text, audio, etc.) via the `assets` array
@@ -62,6 +63,7 @@ Formats may be sourced from:
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/creative/list-creative-formats-response.json",
+  "status": "completed",
   "formats": [
     {
       "format_id": {
@@ -319,7 +321,12 @@ This unified approach helps creative tools and AI agents understand the full cap
 
 ### Third-Party Tracker Support
 
-Whether a format supports third-party measurement is determined by whether its `assets` array includes a tracker slot — an asset with `asset_type: "url"` and `url_type: "tracker_pixel"` or `"tracker_script"`. Buyer agents should check this before assigning creatives that require third-party verification.
+Whether a format supports third-party measurement is determined by whether its `assets` array includes a tracker slot. A tracker slot is any asset with `asset_type: "url"` AND either:
+
+- `url_type: "tracker_pixel"` or `url_type: "tracker_script"` (mechanism-side declaration), OR
+- `requirements.role` of `impression_tracker`, `click_tracker`, `viewability_tracker`, or `third_party_tracker` (purpose-side declaration; the slot accepts a tracker URL even if the format author declares the role rather than the mechanism)
+
+Buyer agents should check this before assigning creatives that require third-party verification.
 
 Most digital formats (display, video, CTV, audio, DOOH) include an optional `impression_tracker` asset. Formats without a tracker slot — such as broadcast TV spots — do not support creative-level pixel tracking. Measurement for these formats comes from external sources (panel data, set-top box telemetry) declared in the product's `billing_measurement` terms, not from creative-embedded pixels.
 
@@ -371,6 +378,25 @@ Each asset type has its own requirements schema that defines what constraints ap
 - `min_lines`, `max_lines` - Line count limits
 - `character_pattern` - Regex for allowed characters
 - `prohibited_terms` - Words/phrases not allowed
+- `allowed_values` - Closed list of permitted strings; submissions outside the list are rejected with `CREATIVE_VALUE_NOT_ALLOWED`
+
+**Closed-set text example (legal/brand-approved CTA list):**
+
+```json
+{
+  "asset_id": "cta_label",
+  "asset_type": "text",
+  "required": true,
+  "requirements": {
+    "max_length": 14,
+    "allowed_values": ["Shop Now", "Learn More", "Get Quote", "Find a Provider"]
+  }
+}
+```
+
+Sellers in regulated verticals (pharma, financial services) and brand-controlled programs use `allowed_values` to expose the exact strings legal or brand has pre-approved. All declared constraints are conjunctive (every allowed value must also satisfy `max_length`, `character_pattern`, etc.) and matching is case-sensitive — buyers MUST submit one of the listed strings verbatim. Buyer agents using LLMs to fill text slots should pass `allowed_values` as a constrained-sampling option rather than generating freely and retrying after rejection.
+
+When a submitted value is not in the list, sellers MUST return `CREATIVE_VALUE_NOT_ALLOWED` with `error.field` pointing at the offending asset path and `error.details.allowed_values` echoing the format's list so the buyer can re-prompt deterministically.
 
 **URL assets** (`asset_type: "url"`):
 - `role` - Standard purpose (clickthrough, impression_tracker, click_tracker, etc.)

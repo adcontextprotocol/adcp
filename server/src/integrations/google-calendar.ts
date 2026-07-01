@@ -8,7 +8,7 @@
  * See: https://developers.google.com/calendar/api/quickstart/nodejs
  */
 
-import { google, calendar_v3 } from 'googleapis';
+import { auth as googleAuth, calendar as buildCalendarClient, calendar_v3 } from '@googleapis/calendar';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('google-calendar');
@@ -113,7 +113,7 @@ async function getCalendarClient(): Promise<calendar_v3.Calendar> {
 
   // Prefer OAuth with refresh token
   if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET && GOOGLE_REFRESH_TOKEN) {
-    const oauth2Client = new google.auth.OAuth2(
+    const oauth2Client = new googleAuth.OAuth2(
       GOOGLE_CLIENT_ID,
       GOOGLE_CLIENT_SECRET
     );
@@ -121,21 +121,21 @@ async function getCalendarClient(): Promise<calendar_v3.Calendar> {
       refresh_token: GOOGLE_REFRESH_TOKEN,
     });
 
-    calendarClient = google.calendar({ version: 'v3', auth: oauth2Client });
+    calendarClient = buildCalendarClient({ version: 'v3', auth: oauth2Client });
     logger.info('Google Calendar client initialized with OAuth');
     return calendarClient;
   }
 
   // Fall back to service account
   if (GOOGLE_SERVICE_ACCOUNT_EMAIL && GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY) {
-    const auth = new google.auth.JWT({
+    const auth = new googleAuth.JWT({
       email: GOOGLE_SERVICE_ACCOUNT_EMAIL,
       key: GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY,
       scopes: ['https://www.googleapis.com/auth/calendar'],
       subject: GOOGLE_CALENDAR_IMPERSONATE_EMAIL,
     });
 
-    calendarClient = google.calendar({ version: 'v3', auth });
+    calendarClient = buildCalendarClient({ version: 'v3', auth });
     logger.info({ impersonating: GOOGLE_CALENDAR_IMPERSONATE_EMAIL }, 'Google Calendar client initialized with service account');
     return calendarClient;
   }

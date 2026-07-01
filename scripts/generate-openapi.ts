@@ -13,9 +13,20 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
-// Import triggers route & schema registration
-import "../server/src/routes/registry-api.js";
-import { registry } from "../server/src/schemas/registry.js";
+// Route registration transitively imports auth middleware, which constructs
+// WorkOS at module load. OpenAPI generation never talks to WorkOS; dummy
+// values keep local `npm test` aligned with the CI OpenAPI freshness step.
+process.env.WORKOS_API_KEY ??= "sk_dummy_openapi_only";
+process.env.WORKOS_CLIENT_ID ??= "client_dummy_openapi_only";
+process.env.STRIPE_SECRET_KEY ??= "sk_dummy_openapi_only";
+process.env.RESEND_API_KEY ??= "re_dummy_openapi_only";
+
+// Import triggers route & schema registration.
+await import("../server/src/routes/registry-api.js");
+await import("../server/src/schemas/member-agents-openapi.js");
+await import("../server/src/schemas/onboarding-openapi.js");
+await import("../server/src/schemas/catalog-openapi.js");
+const { registry } = await import("../server/src/schemas/registry.js");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -83,19 +94,26 @@ const doc = generator.generateDocument({
   security: [],
 });
 
-// Tag descriptions for the generated spec
+// Tag descriptions for the generated spec.
+// Mintlify renders nav groups in the order of this map, so "Member Agents"
+// is intentionally first — it sits directly under the prose
+// `Registering an agent` page in the side nav.
 const TAG_DESCRIPTIONS: Record<string, string> = {
+  "Onboarding": "Explicitly bootstrap a third-party integration into the AAO registry. Most callers don't need this tag — `POST /api/me/agents` auto-creates the org (for fresh users) and the member profile (for first-time agent registration) without a separate round trip. Use `POST /api/organizations` only when you need to override the auto-derived org name / company_type / revenue_tier. Tier transitions happen via the billing flow only; the Stripe webhook is the sole writer of `organizations.membership_tier`.",
+  "Member Agents": "Register, list, update, and remove agents on the caller's organization member profile. Authenticated programmatic surface for CI / scripts that don't want to round-trip the full member profile.",
   "Brand Resolution": "Resolve advertiser domains to canonical brand identities.",
   "Property Resolution": "Resolve publisher domains to their property configurations and authorized agents.",
   "Agent Discovery": "Browse the federated agent network, search agent inventory profiles, publisher index, and registry statistics.",
   "Change Feed": "Poll cursor-based registry change events for local sync.",
   "Lookups & Authorization": "Look up agents by domain or property, and validate ad-serving authorization.",
   "Validation Tools": "Validate publisher adagents.json files and generate compliant configurations.",
+  "Community Mirrors": "Publish, fetch, list, and retire catalog-only adagents.json mirrors for platforms that have not adopted AdCP.",
   "Search": "Cross-entity search across brands, publishers, agents, and properties.",
   "Agent Probing": "Connect to live agents and inspect their capabilities, formats, and inventory.",
   "Brand Discovery": "Discover and crawl brand.json files across domains.",
   "Agent Compliance": "Agent compliance status, storyboard test results, and compliance history.",
   "Policy Registry": "Browse, resolve, and contribute governance policies for campaign compliance.",
+  "Property Catalog": "Contribute facts to the property fact-graph: resolve identifiers to stable property_rids (which also contributes them, with provenance) and dispute catalog claims.",
 };
 
 const TAG_ORDER = Object.keys(TAG_DESCRIPTIONS);
@@ -113,11 +131,72 @@ if ((doc.components as any)?.parameters && Object.keys((doc.components as any).p
   delete (doc.components as any).parameters;
 }
 
+const outPath = path.join(__dirname, "..", "static", "openapi", "registry.yaml");
+
+// Merge-preserve hand-authored paths, components, and tag descriptors.
+// Some surfaces — notably the brand-registry (#4749) — are docs-only in
+// registry.yaml: routes exist in Express but were never given Zod schemas,
+// so the generator alone would drop them on every regen. Rather than force
+// every adopter to wire Zod schemas before they can ship a docs change,
+// the generator unions its tracked output with anything already on disk,
+// preserving fields the Zod registry doesn't own. Generator wins on
+// conflicts so Zod-backed paths remain the source of truth.
+// Read existing yaml in a single syscall — using existsSync followed by
+// readFileSync is a TOCTOU race CodeQL flags (the file could change between
+// the check and the read). ENOENT is the only error we treat as "no prior
+// yaml"; any other I/O error rethrows.
+let existingYaml: string | null = null;
+try {
+  existingYaml = fs.readFileSync(outPath, "utf-8");
+} catch (err) {
+  if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+    throw err;
+  }
+}
+if (existingYaml !== null) {
+  const existingDoc = YAML.parse(existingYaml) as any;
+
+  if (existingDoc?.paths) {
+    doc.paths = doc.paths ?? {};
+    for (const [pathKey, pathValue] of Object.entries(existingDoc.paths)) {
+      if (!(pathKey in doc.paths)) {
+        (doc.paths as any)[pathKey] = pathValue;
+      }
+    }
+  }
+
+  if (existingDoc?.components?.schemas) {
+    (doc.components as any) = (doc.components as any) ?? {};
+    (doc.components as any).schemas = (doc.components as any).schemas ?? {};
+    for (const [schemaKey, schemaValue] of Object.entries(existingDoc.components.schemas)) {
+      if (!(schemaKey in (doc.components as any).schemas)) {
+        (doc.components as any).schemas[schemaKey] = schemaValue;
+      }
+    }
+  }
+
+  if (Array.isArray(existingDoc?.tags)) {
+    const generatedTagNames = new Set((doc.tags ?? []).map((t: any) => t.name));
+    for (const tag of existingDoc.tags) {
+      if (tag?.name && !generatedTagNames.has(tag.name)) {
+        doc.tags = doc.tags ?? [];
+        doc.tags.push(tag);
+      }
+    }
+  }
+}
+
 const yamlStr = YAML.stringify(doc, {
   lineWidth: 0, // Don't wrap long strings
   aliasDuplicateObjects: false,
 });
 
-const outPath = path.join(__dirname, "..", "static", "openapi", "registry.yaml");
 fs.writeFileSync(outPath, yamlStr, "utf-8");
 console.log(`OpenAPI spec written to ${outPath}`);
+
+// Importing `server/src/routes/registry-api.js` pulls in auth middleware
+// and the pg rate-limit store, both of which arm module-level
+// `setInterval` timers for session-cache cleanup and rate-limit flushes.
+// Those keep the event loop alive after the yaml is written, so Node
+// will sit until the CI job timeout fires. Exit explicitly — we're done.
+process.exit(0);

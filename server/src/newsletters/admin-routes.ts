@@ -12,10 +12,62 @@ import { createLogger } from '../logger.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import type { NewsletterConfig, CustomSection } from './config.js';
 import { generateCoverForEdition } from './cover.js';
+import { sendNewsletter } from './send-pipeline.js';
 import { sendMarketingEmail } from '../notifications/email.js';
 import { query } from '../db/client.js';
 
 const logger = createLogger('newsletter-admin');
+const ET_TIME_ZONE = 'America/New_York';
+
+function getETParts(date: Date): { year: number; month: number; day: number; hour: number } {
+  const values: Record<string, string> = {};
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: ET_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    hourCycle: 'h23',
+  });
+  for (const part of formatter.formatToParts(date)) {
+    if (part.type !== 'literal') values[part.type] = part.value;
+  }
+  return {
+    year: parseInt(values.year, 10),
+    month: parseInt(values.month, 10),
+    day: parseInt(values.day, 10),
+    hour: parseInt(values.hour, 10),
+  };
+}
+
+function etWallTimeToUtc(year: number, month: number, day: number, hour: number): Date {
+  const utcGuess = new Date(Date.UTC(year, month - 1, day, hour, 0, 0));
+  const actualParts = getETParts(utcGuess);
+  const actualAsUtc = Date.UTC(
+    actualParts.year,
+    actualParts.month - 1,
+    actualParts.day,
+    actualParts.hour,
+    0,
+    0,
+  );
+  return new Date(utcGuess.getTime() - (actualAsUtc - utcGuess.getTime()));
+}
+
+function getNextSendWindowAt(config: NewsletterConfig): string | null {
+  const sendHour = config.cadence.sendHourET;
+  if (!Number.isInteger(sendHour) || sendHour < 0 || sendHour > 23) return null;
+
+  const nowParts = getETParts(new Date());
+  for (let dayOffset = 0; dayOffset < 370; dayOffset++) {
+    const candidateNoon = new Date(Date.UTC(nowParts.year, nowParts.month - 1, nowParts.day + dayOffset, 12));
+    if (!config.cadence.shouldRunToday(candidateNoon)) continue;
+    const candidateParts = getETParts(candidateNoon);
+    return etWallTimeToUtc(candidateParts.year, candidateParts.month, candidateParts.day, sendHour).toISOString();
+  }
+
+  return null;
+}
 
 /** Build the uiConfig payload for the admin page */
 function buildUiConfig(config: NewsletterConfig, content: unknown) {
@@ -48,6 +100,11 @@ function buildUiConfig(config: NewsletterConfig, content: unknown) {
     editableFields: config.editableFields,
     hasInstructionEditing: !!config.applyInstruction,
     hasCandidatePool: hasCandidates,
+    cadence: {
+      generateHourET: config.cadence.generateHourET,
+      sendHourET: config.cadence.sendHourET,
+      nextSendWindowAt: getNextSendWindowAt(config),
+    },
     sections,
   };
 }
@@ -255,6 +312,33 @@ export function createNewsletterAdminRoutes(config: NewsletterConfig): Router {
     } catch (err) {
       logger.error({ error: err, newsletterId: config.id }, 'Failed to approve edition');
       res.status(500).json({ error: 'Failed to approve edition' });
+    }
+  });
+
+  // ─── Send Now ─────────────────────────────────────────────────────
+
+  router.post('/editions/:id/send-now', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) return res.status(400).json({ error: 'Invalid edition ID' });
+
+      const edition = await config.db.getCurrent();
+      if (!edition || edition.id !== id) return res.status(404).json({ error: 'Edition not found' });
+      if (edition.status !== 'approved') {
+        return res.status(400).json({ error: 'Only approved editions can be sent. Approve the draft first.' });
+      }
+
+      const result = await sendNewsletter(config, edition);
+      const updated = await config.db.getCurrent();
+      const digest = updated && updated.id === id ? updated : edition;
+      const subject = config.generateSubject(digest.content);
+      const uiConfig = buildUiConfig(config, digest.content);
+
+      logger.info({ id, newsletterId: config.id, user: req.user?.email, sent: result.sent }, 'Edition sent via admin');
+      res.json({ digest, subject, uiConfig, result });
+    } catch (err) {
+      logger.error({ error: err, newsletterId: config.id }, 'Failed to send edition');
+      res.status(500).json({ error: 'Failed to send edition' });
     }
   });
 

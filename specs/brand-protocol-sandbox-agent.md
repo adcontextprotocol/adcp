@@ -4,7 +4,7 @@ Spec for an embedded brand protocol agent that Addie invokes during certificatio
 
 ## Context
 
-The existing training agent (`server/src/training-agent/`) is a standalone MCP server exposed at `/api/training-agent/mcp`. It handles media-buy tasks (get_products, create_media_buy, etc.) with deterministic responses from in-memory seed data. External agents connect to it over HTTP.
+The existing training agent (`server/src/training-agent/`) is a multi-tenant MCP server exposed at six per-specialism endpoints under `/api/training-agent/<tenant>/mcp` (`sales`, `signals`, `governance`, `creative`, `creative-builder`, `brand`), with the legacy `/api/training-agent/mcp` URL preserved as a back-compat alias. The `brand` tenant handles brand protocol tasks (get_brand_identity, get_rights, acquire_rights) with deterministic responses from in-memory seed data. External agents connect to it over HTTP.
 
 The brand protocol sandbox agent is different. It does not need to be an external MCP server. It is a set of Addie tools that return canned brand protocol responses from in-memory seed data. Addie calls these tools during certification modules C2, C3, and specialist exams, the same way she calls `search_docs` or `get_products` today.
 

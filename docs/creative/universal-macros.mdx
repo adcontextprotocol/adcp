@@ -164,6 +164,38 @@ For audio formats with content context:
 | `{INSTALLMENT_ID}` | Podcast episode identifier | `ep_2025_01_15` |
 | `{AUDIO_DURATION}` | Content duration in seconds | `3600` |
 
+### Impression Identification
+
+| Macro | Description | Example Value |
+|-------|-------------|---------------|
+| `{IMPRESSION_ID}` | Upstream-minted unique identifier per impression (publisher or ad-decision layer) | `8c9e2f3a-7b1c-4d5e-9f6a-1a2b3c4d5e6f` (UUID), `01ARZ3NDEKTSV4RRFFQ69G5FAV` (ULID), or equivalent |
+
+The `{IMPRESSION_ID}` macro carries a unique identifier for one impression opportunity. It is a general-purpose impression key — buyers, measurement vendors, attribution providers, and verification services all use this kind of identifier to deduplicate impression events, reconcile pixel firings across vendors, join impressions to clicks, and detect retries. Whichever upstream layer mints the value (see hierarchy below) substitutes it into creative tracking URLs, and any downstream consumer that needs to identify the impression uses the same value.
+
+**Common use cases:**
+
+- **Per-impression deduplication.** A single impression often fires many pixels (impression, viewability, video quartiles, completion, third-party verification). All of them sharing one `{IMPRESSION_ID}` lets downstream consumers reconcile "is this the same impression?" without time- or URL-based heuristics.
+- **TMP cross-identity dedup.** When a TMP impression resolves to multiple user identities, the buyer's impression tracker writes the same `{IMPRESSION_ID}` to every identity's log so distinct-impression counts dedup correctly. See [Impression Tracker Implementation](/docs/trusted-match/impression-tracker-implementation).
+- **Cross-vendor reconciliation.** Advertisers comparing delivery between an ad server, a verification vendor, and a measurement vendor join on `{IMPRESSION_ID}` rather than building cross-walks.
+- **Pixel retry dedup.** A pixel firing twice (network retry, page refresh) carries the same `{IMPRESSION_ID}`, so a server-side dedup pass on the id catches retries without over-counting.
+
+**When to include it:**
+
+- **Recommended on every impression tracking URL** — the macro is small, cheap, and the use cases above all benefit when it is consistently present.
+- **Required for TMP context-only impressions** — when Identity Match returned no eligibility (or wasn't called) and no `{TMPX}` is present on the pixel, `{IMPRESSION_ID}` is the only available cross-identity dedup key for the buyer's impression tracker.
+
+**Format is implementation choice.** The protocol requires uniqueness with sufficient entropy to avoid cross-seller / cross-time collisions; it does not pin a wire format. UUID (any version), ULID, snowflake-style IDs, or any other collision-resistant identifier scheme are all acceptable. Buyers MUST treat the value as an opaque string for dedup purposes — no parsing, no format assumptions.
+
+**Three valid sources for the value, in priority order:**
+
+1. **Publisher-side mint** (highest priority): the publisher's own first-party code mints a fresh identifier per impression opportunity — e.g., server-side, before the ad request reaches the decision layer — and passes it forward so the decision layer can substitute it via `{IMPRESSION_ID}`. Works for both context-only and identity-bearing impressions.
+2. **Decision-layer mint** (used when the publisher hasn't minted): the ad-decision layer (Prebid TMP module, ad server, SSP, or equivalent client) mints the identifier at the context↔identity join and substitutes it via `{IMPRESSION_ID}`. Also works for both context-only and identity-bearing impressions.
+3. **Buyer-side mint at TMPX decode** (fallback, identity-bearing only): when neither layer above minted, the buyer's impression tracker mints the id locally at TMPX decode time per [`Impression Tracker Implementation`](/docs/trusted-match/impression-tracker-implementation). This works only when `{TMPX}` is present — it cannot cover context-only impressions.
+
+Each layer MUST defer to whatever value an upstream layer already produced — minting a fresh id at a lower layer when a higher layer already supplied one would split logs for the same impression across two ids. In practice this means: if the publisher minted, the decision layer passes it through; if either of those minted, the buyer uses the value from the pixel rather than minting at decode.
+
+**Relationship to `{CACHEBUSTER}`.** The two are not interchangeable. `{CACHEBUSTER}` is a low-entropy anti-cache value sufficient to defeat HTTP intermediaries; it is not a globally-unique impression key. Both can appear in the same tracking URL serving different purposes.
+
 ### TMP Exposure Tracking
 
 | Macro | Description | Example Value |
@@ -205,11 +237,29 @@ For catalog-driven creatives (carousels, dynamic product ads, job boards, store 
 
 Use the macro that matches your catalog's `content_id_type`. For example, a product catalog with `content_id_type: "gtin"` uses `{GTIN}` in tracker URLs; a job catalog uses `{JOB_ID}`.
 
+#### Catalog content macros
+
+The macros above resolve to the catalog item's **identifier**. Catalog **content** macros resolve to a catalog item's scalar **field values**, for catalog-driven creative templates (`sponsored_placement` / DPA — Meta DPA, Snap Collection, TikTok Shopping). They are the substitute-the-value analog of the ID macros above: same single-brace family, same substitution-safety rules below, just more tokens.
+
+| Macro | Description | `catalog_field` | Example Value |
+|-------|-------------|-----------------|---------------|
+| `{ITEM_NAME}` | Item name/title | `name` | `Summer Sale` |
+| `{ITEM_DESCRIPTION}` | Item description | `description` | `Up to 50% off summer collection` |
+| `{ITEM_TAGLINE}` | Promotional tagline | `tagline` | `Start measuring today` |
+| `{ITEM_PRICE}` | Price amount | `price.amount` | `29.99` |
+| `{ITEM_PRICE_CURRENCY}` | ISO 4217 currency code | `price.currency` | `USD` |
+
+Each token maps 1:1 to a documented catalog item field via the existing `catalog_field` dot-notation vocabulary used by [`field_bindings`](/docs/creative/catalogs#field-bindings) — content macros do **not** introduce a parallel field vocabulary. The five tokens are deliberately small and cross-vertical; vertical-specific deep fields (e.g. `star_rating`, `salary.min`) are served by `field_bindings` scalars, not universal content macros. URL-valued and image-valued fields (e.g. `landing_url`, image pools) bind via `field_bindings` to `url`/asset slots and are **not** content macros — substituting a whole URL as an entire `href` would also break the `encodeURIComponent`-equivalent percent-encoding contract below.
+
+**Single-brace `{MACRO}` only.** `{{double-brace}}` is **not** an AdCP content-macro syntax and MUST NOT be used. Double-brace is reserved as one of the downstream ad-server macro syntaxes (`%%...%%`, `${...}`, `[...]`, `{{...}}`) that the sales agent MUST neutralize/percent-encode (see the nested-expansion rule below); adopting it for AdCP content macros would relax that guarantee and collide with downstream ad servers that interpret `{{...}}` natively.
+
+Which catalog items render is **seller-declared** via the `fanout_mode` enum on the [`sponsored_placement`](/docs/creative/canonical-formats) format (`single_item` / `per_item` / `multi_item_in_creative`) — there is no buyer-side selection field. On ML-optimized DPA surfaces (Meta Advantage+, TikTok Shopping) the platform commonly overrides buyer-authored overlay text, so content macros are a buyer-declared **hint** the seller MAY honor, not a guaranteed substitution.
+
 #### Substitution safety (catalog-item macros)
 
 Catalog-item macros are the one macro class where the value originates in **buyer-controlled data** (the catalog feed) and expands at impression time into **publisher-controlled contexts** (impression tracker URLs, click tracker URLs, VAST tracking-event URLs, AND landing / clickthrough URLs — the full set of [URL substitution targets](#overview) above). That flow is attacker-adjacent: a catalog value containing `&`, `#`, `?`, CR/LF, a stray URL fragment, or a Unicode bidi override can break out of the URL context, inject a Host-header via CRLF, or spoof audit-log rendering if substituted raw.
 
-The following rules apply to all catalog-item macros listed above (`{CATALOG_ID}`, `{SKU}`, `{GTIN}`, `{OFFERING_ID}`, `{JOB_ID}`, `{HOTEL_ID}`, `{FLIGHT_ID}`, `{VEHICLE_ID}`, `{LISTING_ID}`, `{STORE_ID}`, `{PROGRAM_ID}`, `{DESTINATION_ID}`):
+The following rules apply to all catalog-item macros listed above — both the ID macros (`{CATALOG_ID}`, `{SKU}`, `{GTIN}`, `{OFFERING_ID}`, `{JOB_ID}`, `{HOTEL_ID}`, `{FLIGHT_ID}`, `{VEHICLE_ID}`, `{LISTING_ID}`, `{STORE_ID}`, `{PROGRAM_ID}`, `{DESTINATION_ID}`) and the content macros (`{ITEM_NAME}`, `{ITEM_DESCRIPTION}`, `{ITEM_TAGLINE}`, `{ITEM_PRICE}`, `{ITEM_PRICE_CURRENCY}`):
 
 - **Normalize to Unicode NFC before encoding.** Prior to percent-encoding, catalog-item values that are not already in Unicode Normalization Form C (NFC) MUST be normalized to NFC per Unicode Standard Annex #15. Sellers and buyers MAY send catalog values in any normalization form at `sync_catalogs` ingest (the catalog is stored as-supplied); the normalization to NFC is a step in the substitution pipeline immediately before percent-encoding, not a catalog-ingest requirement. Without this step, two implementations that both satisfy the unreserved-whitelist rule below produce different bytes for the same visual string — `café` (NFC: U+00E9) and `cafe\u0301` (NFD: U+0065 + combining U+0301) encode to `caf%C3%A9` vs `e%CC%81` respectively. NFC matches web-platform convention (WHATWG URL, HTML5 DOM, W3C Character Model). NFKC / NFKD are **not** acceptable substitutes — their compatibility folding silently mutates fullwidth/halfwidth variants and other visually-distinct glyphs that legitimately appear in Japanese/Korean retailer catalogs.
 - **Percent-encode every octet that is not in the RFC 3986 `unreserved` set.** Sales agents MUST percent-encode the NFC-normalized catalog-item value such that only RFC 3986 `unreserved` characters (`ALPHA / DIGIT / "-" / "." / "_" / "~"`) remain unescaped before substituting it into a URL context (query string, path segment, or fragment). Non-ASCII octets MUST be percent-encoded after UTF-8 encoding per RFC 3986 §2.5. This is the `encodeURIComponent`-equivalent contract: reserved characters (`: / ? # [ ] @ ! $ & ' ( ) * + , ; =`) are escaped as one would expect, but so are CR (`%0D`), LF (`%0A`), space (`%20`), C0/C1 control characters, and Unicode bidi overrides — the broader enumeration closes CRLF-injection and bidi-spoofing vectors that a reserved-only rule would leave open. Encoding is applied exactly once at substitution time; downstream VAST players and ad servers firing the URL verbatim is the expected contract — they do not and MUST NOT re-decode before firing.
@@ -218,7 +268,7 @@ The following rules apply to all catalog-item macros listed above (`{CATALOG_ID}
 
 Non-catalog macros (`{MEDIA_BUY_ID}`, `{PACKAGE_ID}`, `{CREATIVE_ID}`, `{GEO}`, `{COUNTRY}`, `{DEVICE_TYPE}`, etc.) are populated from publisher- or ad-server-mediated state, not from buyer-supplied feed data. Their encoding contract is governed by the ad-server integration (OpenRTB, VAST), which percent-encodes by convention. Some macros in this class derive from attacker-spoofable inputs (`{USER_AGENT}`, `{REFERRER}`, `{PAGE_URL}`, `{DOMAIN}`, `{APP_BUNDLE}` come from request headers or page metadata); the OpenRTB / ad-server encoding convention is the control today. This spec's normative MUST deliberately scopes to the buyer-controlled catalog-item class — a narrower, verifiable contract than a universal canonicalization rule.
 
-**Conformance fixture.** Reference test vectors pinning the encoding behavior — reserved-character breakout, nested-expansion literal preservation, CRLF injection, non-ASCII — are tracked at [`static/test-vectors/catalog-macro-substitution.json`](https://github.com/adcontextprotocol/adcp/blob/main/static/test-vectors/catalog-macro-substitution.json). Sales agents SHOULD validate their substitution code against these vectors before shipping.
+**Conformance fixture.** Reference test vectors pinning the encoding behavior — reserved-character breakout, nested-expansion literal preservation, CRLF injection, non-ASCII — are versioned at [`static/compliance/source/test-vectors/catalog-macro-substitution.json`](https://github.com/adcontextprotocol/adcp/blob/main/static/compliance/source/test-vectors/catalog-macro-substitution.json). Sales agents SHOULD validate their substitution code against these vectors before shipping.
 
 ### Creative Variant Macros
 
@@ -477,6 +527,60 @@ When you create a media buy via `create_media_buy`, the sales agent:
 
 4. **Leaves VAST macros unchanged** (for video formats)
 
+#### Implementing translation with the SDK
+
+Sales agents don't have to hand-roll the rewrite. The `@adcp/sdk` package ships a
+`translateUniversalMacros` helper that applies a per-macro mapping to a tracking
+URL's query-parameter values. Each macro maps to either a **native** ad-server token
+(left raw, filled by the ad server at impression time) or a concrete **value** the
+agent already knows (substituted now, percent-encoded per RFC 3986):
+
+```typescript
+import { translateUniversalMacros } from '@adcp/sdk';
+
+const mapping = {
+  // AdCP identifiers the agent knows at media-buy creation → concrete values
+  '{MEDIA_BUY_ID}': { value: 'mb_spring_2025' },
+  '{PACKAGE_ID}': { value: 'pkg_ctv_prime' },
+  // Runtime macros → the ad server's native syntax (Google Ad Manager shown)
+  '{CACHEBUSTER}': { native: '%%CACHEBUSTER%%' },
+  '{DEVICE_ID}': { native: '%%ADVERTISING_IDENTIFIER_PLAIN%%' },
+};
+
+const { url, dropped_params, unmapped_macros, dropped_consent_macros, suspect_native_values } =
+  translateUniversalMacros(
+    'https://track.brand.com/imp?buy={MEDIA_BUY_ID}&pkg={PACKAGE_ID}&cb={CACHEBUSTER}&device={DEVICE_ID}',
+    mapping,
+  );
+
+// url:
+//   https://track.brand.com/imp?buy=mb_spring_2025&pkg=pkg_ctv_prime&cb=%%CACHEBUSTER%%&device=%%ADVERTISING_IDENTIFIER_PLAIN%%
+// dropped_params: []           (every macro was mapped)
+// unmapped_macros: []
+// dropped_consent_macros: []   (no consent macro was dropped)
+// suspect_native_values: []    (no value entry looks like a native token)
+```
+
+Behavior:
+
+- **`native` entries are inserted verbatim** — `%%CACHEBUSTER%%` is not percent-encoded,
+  so the ad server still recognizes it.
+- **`value` entries are RFC-3986 percent-encoded**, so a value containing reserved
+  characters can't break or inject into the URL.
+- **A parameter whose universal macro the agent does not support is dropped entirely**
+  (its key is reported in `dropped_params`, the macro in `unmapped_macros`) — better to
+  omit a tracker the agent can't fill than to emit a broken one. A dropped
+  consent/privacy macro (`{GDPR_CONSENT}`, `{US_PRIVACY}`, …) is also surfaced in
+  **`dropped_consent_macros`** — **inspect it** so a forgotten mapping doesn't silently
+  ship a consent-degraded pixel.
+- **Already-minted parameters pass through untouched** — `pkg_id=123456` (no macro) is
+  left exactly as-is.
+- **`suspect_native_values`** flags any `value` entry shaped like a native token
+  (`%%…%%`, `{{…}}`, `${…}`, `[UPPER_SNAKE]`) — almost always a mapping that should have
+  used the `native` arm.
+- Only query-parameter **values** are translated; a macro in a key position is left
+  untouched.
+
 ### 4. Impression Time
 
 The publisher's ad server replaces remaining macros with actual values:
@@ -639,7 +743,16 @@ Sales agents must translate universal macros to their ad server's native syntax.
 
 ### Click Tracker Insertion
 
-Sales agents must automatically insert click tracking macros into clickable elements:
+A click on a creative produces two distinct signals, and AdCP models them as **separate asset slots**:
+
+| Slot | Asset | Role | OpenRTB Native parallel |
+|------|-------|------|--------------------------|
+| `landing_page_url` | `url` | The single terminal destination the user navigates to. | `link.url` |
+| `click_tracker` | `pixel_tracker` (`event: click`) | A measurement hop that fires on click **without** navigating the user there. Any number may be present. | `link.clicktrackers[]` |
+
+This separation is inherited from IAB OpenRTB Native: a click has **exactly one destination** and **N fire-and-forget click trackers** (the `link.fallback` deeplink is an alternative form of that one destination, not a second one). At serve time the sales agent fires every `click_tracker` as a count beacon and navigates the user to the one `landing_page_url`. Both slots are defined in [Asset Types](/docs/creative/asset-types).
+
+**Macro insertion.** Sales agents insert their ad server's click-tracking macro ahead of the destination so the platform records the click and forwards the user. The destination encoding is ad-server-specific (GAM uses append-style `%%CLICK_URL_UNESC%%<landing>`; other servers ship a self-contained `?...&rurl=<encoded-landing>` form):
 
 **Original creative**:
 ```html
@@ -650,6 +763,12 @@ Sales agents must automatically insert click tracking macros into clickable elem
 ```html
 <a href="%%CLICK_URL_UNESC%%https://brand.com/product">Click here</a>
 ```
+
+**Preserving the buyer's clickthrough parameters.** Inserting a click macro can strip query parameters already present on the buyer-supplied clickthrough URL — including ones the agent does not recognize, such as a buyer-side vendor's click identifier — which silently breaks downstream attribution. An agent that forwards these parameters applies the encoding discipline [Substitution safety](#substitution-safety-catalog-item-macros) defines for catalog-item values (Unicode NFC normalization, then percent-encoding to the RFC 3986 `unreserved` set) to any value derived from buyer- or third-party-supplied data, so preservation does not reopen URL-context breakout, CRLF injection, or bidi spoofing. Whether to make parameter preservation a normative requirement is part of the click-tracking proposal under working-group review ([#5693](https://github.com/adcontextprotocol/adcp/issues/5693)).
+
+**Getting a buyer's click identifier onto the landing.** A `click_tracker` is a count beacon: it records the click but does not place its identifier into the user's landing session, because only `landing_page_url` is navigated. When a buyer needs its click identifier to reach the landing (for click-level conversion attribution), the reliable, redirect-free pattern is to put that identifier directly on the `landing_page_url` it supplies — either as a literal value (`&buyer_click_id=abc123`) or composed from an AdCP macro the buyer controls (`&buyer_click_id={CREATIVE_ID}`, expanded by the sales agent at serve time). `{buyer_click_id}` is not itself an AdCP macro — the macro set is a closed registry (see [Available Macros](#available-macros-by-format)), so the buyer supplies the value, not a new token. Because the identifier rides on the one navigated URL, no party's redirect has to be the terminal hop. This works for any identifier the buyer can supply or derive ahead of serve time, and avoids multi-party redirect chaining entirely.
+
+Identifiers that can only be minted at click time (inside a vendor's own redirect) cannot survive on a count beacon, and routing the user *through* the vendor's redirect so its identifier lands requires a chaining contract AdCP does not define. A buyer-declarable "this tracker must be in the navigation path" slot semantic is under working-group discussion ([#5693](https://github.com/adcontextprotocol/adcp/issues/5693)); until it lands, the count beacon is the default and in-path identifier survival is out of scope.
 
 ### Mapping Storage
 

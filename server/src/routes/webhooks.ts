@@ -27,7 +27,7 @@ import {
   parseWebhookPayload as parseLumaWebhook,
   type LumaWebhookPayload,
 } from '../luma/client.js';
-import { createEventFromLuma } from '../luma/sync.js';
+import { createEventFromLuma, updateEventFromLuma } from '../luma/sync.js';
 import { eventsDb } from '../db/events-db.js';
 import { CommunityDatabase } from '../db/community-db.js';
 import {
@@ -52,11 +52,15 @@ import {
 import * as relationshipDb from '../db/relationship-db.js';
 import * as personEvents from '../db/person-events-db.js';
 import { emailDb } from '../db/email-db.js';
+import { getThreadService } from '../addie/thread-service.js';
+import { createEscalation } from '../db/escalation-db.js';
+import { Resend } from 'resend';
 
 const logger = createLogger('webhooks');
 
 const RESEND_WEBHOOK_SECRET = process.env.RESEND_WEBHOOK_SECRET;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const resendClient = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 // Initialize Anthropic client for insight extraction
 const anthropic = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
@@ -132,6 +136,7 @@ type AddieContext =
   | { type: 'prospect'; addiePosition: AddiePosition; addieAddress: string }
   | { type: 'working-group'; groupId: string; addiePosition: AddiePosition; addieAddress: string }
   | { type: 'feed'; slug: string }
+  | { type: 'certification'; addiePosition: AddiePosition; addieAddress: string }
   | { type: 'unrouted' };
 
 /**
@@ -188,6 +193,10 @@ function parseAddieContext(toAddresses: string[], ccAddresses: string[] = []): A
 
       if (context.startsWith('wg-')) {
         return { type: 'working-group', groupId: context.substring(3), addiePosition: position, addieAddress: email };
+      }
+
+      if (context === 'certification') {
+        return { type: 'certification', addiePosition: position, addieAddress: email };
       }
 
       // Any other addie+<context> — route as prospect so the email gets processed
@@ -893,6 +902,97 @@ async function handleUnroutedEmail(data: ResendInboundPayload['data']): Promise<
 }
 
 // ============================================================================
+// Certification Review Handler
+// ============================================================================
+
+/**
+ * Handle inbound emails addressed to addie+certification@updates.agenticadvertising.org.
+ *
+ * The review-request endpoint sends a structured email there; Resend bounces it
+ * back as an inbound webhook. This handler:
+ *   1. Creates an addie_threads row (channel=email) so the thread appears in admin views.
+ *   2. Creates an addie_escalations row (needs_human_action) so it surfaces in triage.
+ *   3. Sends an ack email to the learner so they know the request landed.
+ */
+async function handleCertificationEmail(data: ResendInboundPayload['data']): Promise<void> {
+  const emailText = data.text || '';
+
+  const userIdMatch = emailText.match(/^Learner ID:\s*(.+)$/m);
+  const learnerEmailMatch = emailText.match(/^Learner Email:\s*(.+)$/m);
+  const moduleIdMatch = emailText.match(/^Module:\s*(.+)$/m);
+  const statusMatch = emailText.match(/^Status:\s*(.+)$/m);
+
+  const userId = userIdMatch?.[1]?.trim();
+  const learnerEmail = learnerEmailMatch?.[1]?.trim();
+  const moduleId = moduleIdMatch?.[1]?.trim();
+  const status = statusMatch?.[1]?.trim();
+
+  logger.info({
+    emailId: data.email_id,
+    userId,
+    moduleId,
+    status,
+    hasLearnerEmail: !!learnerEmail,
+  }, 'Processing certification review request via email');
+
+  const threadService = getThreadService();
+  const thread = await threadService.getOrCreateThread({
+    channel: 'email',
+    external_id: `cert-review:${data.email_id}`,
+    user_type: userId ? 'workos' : 'anonymous',
+    user_id: userId || undefined,
+    title: moduleId ? `Cert review request: ${moduleId}` : 'Cert review request',
+    context: {
+      cert_review: true,
+      module_id: moduleId,
+      learner_email: learnerEmail,
+    },
+  });
+
+  await createEscalation({
+    thread_id: thread.thread_id,
+    workos_user_id: userId || undefined,
+    user_email: learnerEmail || undefined,
+    category: 'needs_human_action',
+    priority: 'normal',
+    summary: moduleId
+      ? `Learner requested human review of ${moduleId} assessment (status: ${status ?? 'unknown'})`
+      : 'Learner requested human review of an assessment',
+    original_request: emailText.substring(0, 2000),
+    addie_context: JSON.stringify({ source: 'cert-review-email', module_id: moduleId }),
+  });
+
+  logger.info({
+    emailId: data.email_id,
+    threadId: thread.thread_id,
+    userId,
+    moduleId,
+  }, 'Certification review escalation created');
+
+  if (learnerEmail && resendClient) {
+    try {
+      await resendClient.emails.send({
+        from: 'Addie from AgenticAdvertising.org <addie@updates.agenticadvertising.org>',
+        to: learnerEmail,
+        subject: `Re: Assessment review request — ${moduleId ?? 'your module'}`,
+        text: [
+          'Hi,',
+          '',
+          `Your request for a human review of${moduleId ? ` module ${moduleId}` : ' your assessment'} has been received and is in the queue.`,
+          '',
+          'A member of the AgenticAdvertising.org team will review your assessment and follow up via email.',
+          '',
+          '— Addie',
+        ].join('\n'),
+      });
+      logger.info({ emailId: data.email_id, learnerEmail }, 'Sent cert review ack to learner');
+    } catch (err) {
+      logger.error({ error: err, emailId: data.email_id, learnerEmail }, 'Failed to send cert review ack');
+    }
+  }
+}
+
+// ============================================================================
 // Luma Webhook Handlers
 // ============================================================================
 
@@ -1066,42 +1166,15 @@ async function handleLumaEventUpdated(payload: LumaWebhookPayload): Promise<void
     return;
   }
 
-  const pool = getPool();
-
-  // Find our event by Luma event ID
-  const eventResult = await pool.query(
-    `SELECT id FROM events WHERE luma_event_id = $1`,
-    [lumaEvent.api_id]
-  );
-
-  if (eventResult.rows.length === 0) {
+  const updated = await updateEventFromLuma(lumaEvent);
+  if (!updated) {
     // Event doesn't exist yet — create it
     logger.info({ lumaEventId: lumaEvent.api_id }, 'Luma event.updated for unknown event, creating');
     await createEventFromLuma(lumaEvent);
     return;
   }
 
-  const eventId = eventResult.rows[0].id;
-
-  // Update our event with Luma changes (all fields that createEventFromLuma maps)
-  await eventsDb.updateEvent(eventId, {
-    title: lumaEvent.name,
-    description: lumaEvent.description || undefined,
-    start_time: new Date(lumaEvent.start_at),
-    end_time: new Date(lumaEvent.end_at),
-    timezone: lumaEvent.timezone,
-    venue_name: lumaEvent.geo_address_json?.description || undefined,
-    venue_address: lumaEvent.geo_address_json?.full_address || undefined,
-    venue_city: lumaEvent.geo_address_json?.city || undefined,
-    venue_state: lumaEvent.geo_address_json?.region || undefined,
-    venue_country: lumaEvent.geo_address_json?.country || undefined,
-    venue_lat: lumaEvent.geo_address_json?.latitude || lumaEvent.geo_latitude || undefined,
-    venue_lng: lumaEvent.geo_address_json?.longitude || lumaEvent.geo_longitude || undefined,
-    virtual_url: lumaEvent.meeting_url || lumaEvent.zoom_meeting_url || undefined,
-    featured_image_url: lumaEvent.cover_url || undefined,
-  });
-
-  logger.info({ eventId, lumaEventId: lumaEvent.api_id }, 'Updated event from Luma webhook');
+  logger.info({ eventId: updated.id, lumaEventId: lumaEvent.api_id }, 'Updated event from Luma webhook');
 }
 
 /**
@@ -1389,6 +1462,11 @@ export function createWebhooksRouter(): Router {
               feedId: result.feedId,
               perspectiveId: result.perspectiveId,
             });
+          }
+
+          case 'certification': {
+            await handleCertificationEmail(data);
+            return res.status(200).json({ ok: true, context: 'certification' });
           }
 
           case 'unrouted':

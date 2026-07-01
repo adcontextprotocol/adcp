@@ -2,20 +2,24 @@ id: media_buy_seller/proposal_finalize
 version: "1.0.0"
 title: "Seller handles proposal refinement and finalize"
 category: media_buy_seller
-summary: "Verifies the full proposal lifecycle: brief with proposals, refine a proposal, finalize to committed, and accept via create_media_buy."
+summary: "Verifies the full proposal lifecycle: brief with proposals, refine a proposal, finalize to committed, and execute via create_media_buy."
 track: media_buy
 required_tools:
   - get_products
   - create_media_buy
 
+requires_capability:
+  path: media_buy.supports_proposals
+  equals: true
+
 narrative: |
   Proposals are curated media plans that the seller generates alongside products. The buyer
   reviews proposals, refines them (adjust budget splits, swap products, add constraints),
   and then finalizes a proposal to get firm pricing and an inventory hold. Once committed,
-  the buyer accepts the proposal via create_media_buy.
+  the buyer accepts/executes the proposal via create_media_buy.
 
   The proposal lifecycle is: draft (indicative pricing) -> refine -> finalize (firm pricing,
-  inventory hold) -> create_media_buy (accept and go live).
+  inventory hold; not buyer acceptance) -> create_media_buy (accept/execute and go live).
 
   This scenario exercises the complete proposal flow including the finalize action, which
   transitions a proposal from draft to committed status with an expires_at hold window.
@@ -98,6 +102,10 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
 
+        context_outputs:
+          - path: "proposals[0].proposal_id"
+            key: "proposal_id"
+
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
@@ -137,7 +145,7 @@ phases:
           buying_mode: "refine"
           refine:
             - scope: "proposal"
-              proposal_id: "balanced_reach_q2"
+              proposal_id: "$context.proposal_id"
               ask: "Shift 60% of budget to CTV. Drop the display product and redistribute that budget to video."
             - scope: "request"
               ask: "All products must support frequency capping at 3 per day."
@@ -152,6 +160,53 @@ phases:
           - check: field_present
             path: "proposals"
             description: "Response contains updated proposals"
+
+  - id: unknown_proposal_finalize
+    title: "Reject unknown proposals during finalization"
+    narrative: |
+      The buyer asks to finalize a proposal reference that was never issued by
+      the seller. The request is schema-valid; the rejection is semantic and
+      must use the canonical proposal-not-found code.
+
+    steps:
+      - id: get_products_finalize_unknown_proposal
+        title: "Reject finalize against an unknown proposal"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        expected: |
+          Reject with:
+          - code: PROPOSAL_NOT_FOUND
+          - recovery: correctable
+          - field: refine[0].proposal_id
+
+        sample_request:
+          buying_mode: "refine"
+          refine:
+            - scope: "proposal"
+              proposal_id: "prop_unknown_proposal_not_found"
+              action: "finalize"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+
+        validations:
+          - check: error_code
+            value: "PROPOSAL_NOT_FOUND"
+            description: "Unknown proposal finalize returns the canonical proposal-not-found code"
+          - check: field_value
+            path: "adcp_error.recovery"
+            value: "correctable"
+            description: "Recovery is correctable"
+          - check: field_value
+            path: "adcp_error.field"
+            value: "refine[0].proposal_id"
+            description: "Error field identifies the missing proposal reference"
 
   - id: finalize_proposal
     title: "Finalize the proposal"
@@ -178,18 +233,22 @@ phases:
           - proposals[0].proposal_status: committed
           - proposals[0].expires_at: timestamp for the inventory hold window
           - Firm pricing (not indicative)
-          - The proposal is ready to accept via create_media_buy
+          - The proposal is ready to execute via create_media_buy
 
         sample_request:
           buying_mode: "refine"
           refine:
             - scope: "proposal"
-              proposal_id: "balanced_reach_q2"
+              proposal_id: "$context.proposal_id"
               action: "finalize"
           account:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+
+        context_outputs:
+          - path: "proposals[0].insertion_order.io_id"
+            key: "io_id"
 
         validations:
           - check: response_schema
@@ -199,11 +258,11 @@ phases:
             description: "Response contains the finalized proposal"
 
   - id: accept_proposal
-    title: "Accept the committed proposal"
+    title: "Execute the committed proposal"
     narrative: |
-      The buyer accepts the committed proposal by creating a media buy with the
-      proposal_id. The seller converts the proposal's product selections and budget
-      allocations into active packages.
+      The buyer accepts/executes the committed proposal by creating a media buy
+      with the proposal_id. The seller converts the proposal's product selections
+      and budget allocations into active packages.
 
     steps:
       - id: create_media_buy
@@ -230,14 +289,111 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
             sandbox: true
-          proposal_id: "balanced_reach_q2"
+          proposal_id: "$context.proposal_id"
           total_budget:
             amount: 50000
             currency: "USD"
-          start_time: "2026-04-01T00:00:00Z"
-          end_time: "2026-06-30T23:59:59Z"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          io_acceptance:
+            io_id: "$context.io_id"
+            accepted_at: "2026-03-15T14:30:00Z"
+            signatory: "ops@acmeoutdoor.example"
 
           idempotency_key: "$generate:uuid_v4#media_buy_seller_proposal_finalize_accept_proposal_create_media_buy"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"
+
+  - id: unknown_proposal_references
+    title: "Reject unknown proposal references"
+    narrative: |
+      The buyer references proposal IDs that were never issued by the seller.
+      These requests are schema-valid; the rejection is semantic. The seller
+      must return the canonical PROPOSAL_NOT_FOUND code rather than generic
+      NOT_FOUND, INVALID_REQUEST, or platform-specific proposal errors.
+
+    steps:
+      - id: get_products_refine_unknown_proposal
+        title: "Reject refine against an unknown proposal"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        expected: |
+          Reject with:
+          - code: PROPOSAL_NOT_FOUND
+          - recovery: correctable
+          - field: refine[0].proposal_id
+
+        sample_request:
+          buying_mode: "refine"
+          refine:
+            - scope: "proposal"
+              proposal_id: "prop_unknown_proposal_not_found"
+              ask: "Shift budget toward premium video."
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+
+        validations:
+          - check: error_code
+            value: "PROPOSAL_NOT_FOUND"
+            description: "Unknown proposal refine returns the canonical proposal-not-found code"
+          - check: field_value
+            path: "adcp_error.recovery"
+            value: "correctable"
+            description: "Recovery is correctable"
+          - check: field_value
+            path: "adcp_error.field"
+            value: "refine[0].proposal_id"
+            description: "Error field identifies the missing proposal reference"
+
+      - id: create_media_buy_unknown_proposal
+        title: "Reject create_media_buy from an unknown proposal"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        expected: |
+          Reject with:
+          - code: PROPOSAL_NOT_FOUND
+          - recovery: correctable
+          - field: proposal_id
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          proposal_id: "prop_unknown_proposal_not_found"
+          total_budget:
+            amount: 50000
+            currency: "USD"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_proposal_finalize_unknown_proposal_create_media_buy"
+        validations:
+          - check: error_code
+            value: "PROPOSAL_NOT_FOUND"
+            description: "Unknown proposal create returns the canonical proposal-not-found code"
+          - check: field_value
+            path: "adcp_error.recovery"
+            value: "correctable"
+            description: "Recovery is correctable"
+          - check: field_value
+            path: "adcp_error.field"
+            value: "proposal_id"
+            description: "Error field identifies the missing proposal reference"

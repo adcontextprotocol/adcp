@@ -1,0 +1,141 @@
+---
+title: list_transformers
+description: "list_transformers discovers account-scoped creative transformers — the agent-offered, selectable units of build capability (voices, models, styles) used by build_creative."
+"og:title": "AdCP — list_transformers"
+testable: true
+---
+
+
+Discover the **transformers** a creative agent offers for your account. A transformer is the creative analog of a media-buy product: an agent-offered, account-scoped, selectable unit of build capability (a voice, a model, a style, a director) with a typed configuration surface and per-account pricing. You discover transformers here, then select one with `transformer_id` in [`build_creative`](/dist/docs/3.1.0-rc.13/creative/task-reference/build_creative).
+
+**Response Time**: ~1 second (account-scoped lookup)
+
+**Authentication**: Account-scoped. Transformers, their enumerable option values, and pricing are resolved for the calling credential — including custom values you configured (e.g. cloned voices) that exist only for your account.
+
+**Request Schema**: [`/schemas/3.1.0-rc.13/creative/list-transformers-request.json`](https://adcontextprotocol.org/schemas/3.1.0-rc.13/creative/list-transformers-request.json)
+**Response Schema**: [`/schemas/3.1.0-rc.13/creative/list-transformers-response.json`](https://adcontextprotocol.org/schemas/3.1.0-rc.13/creative/list-transformers-response.json)
+
+Offered only by agents that set `creative.supports_transformers: true` in [`get_adcp_capabilities`](/dist/docs/3.1.0-rc.13/protocol/get_adcp_capabilities).
+
+## Why transformers
+
+The set of render knobs a creative agent exposes — and their legal values — is **account-specific and dynamic**. Your configured voices aren't a global enum or a list you hold; the *agent* knows them, and the set changes when you add one. So discovery flows agent → buyer, the same way `get_products` surfaces account-scoped inventory. `list_transformers` is that discovery surface for creative build capability.
+
+The agent chooses granularity: a distinct voice or model may be its own transformer, or a single transformer may expose `voice`/`model` as an enumerable `config` param. Either way you use the same call — list transformers, expand a param if you want its values.
+
+## Request Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `transformer_ids` | string[] | No | Return only these specific transformer IDs |
+| `input_format_ids` | FormatID[] | No | Filter to transformers that accept any of these formats as input |
+| `output_format_ids` | FormatID[] | No | Filter to transformers that can produce any of these output formats |
+| `name_search` | string | No | Search transformers by name (case-insensitive partial match) |
+| `brief` | string | No | Natural-language brief to rank/filter transformers and their option values (e.g. "warm female Spanish-language voiceover"). Curates to intent rather than returning the full set. |
+| `expand_params` | string[] | No | Param `field` names for which to return the **first page** of account-scoped option **values** inline on `params[].options[]`. Omit for the lean default (descriptors only). |
+| `expand_pagination` | object[] | No | Fetch the **next page** of a specific param's options, scoped per `{ transformer_id, field, options_cursor }` (cursor from a prior response's `params[].options_cursor`). Use once you hold a cursor, instead of `expand_params`. |
+| `include_pricing` | boolean | No | Include `pricing_options` on each transformer. Requires `account`. |
+| `account` | AccountRef | Conditional | Required when `include_pricing` is true. Transformers are account-scoped regardless. |
+| `pagination` | object | No | `max_results` and `cursor` (opaque cursor from previous response) |
+
+### The `expand` mode
+
+By default the response returns each transformer's param **schemas** with small closed enums inlined (e.g. `mastering_preset`). To get the **values** of an account-scoped enumerable param (e.g. your voices), name it in `expand_params` — that returns the **first page** on `params[].options[]`. When a param's values are truncated, its `params[].options_cursor` is set; fetch the next page by passing `{ transformer_id, field, options_cursor }` in **`expand_pagination`** (each `(transformer, param)` pages independently). Values are brief-filtered — "warm Spanish female voice" narrows a 300-voice catalog to a handful instead of dumping all of them. There is no separate options endpoint; value enumeration (and its pagination) is a mode of this one tool.
+
+## Response
+
+| Field | Description |
+|-------|-------------|
+| `transformers` | Array of transformer descriptors (see below) |
+| `errors` | Optional array of task-specific errors and warnings |
+| `pagination` | Pagination cursor when more transformers are available |
+
+Each transformer carries:
+
+| Field | Description |
+|-------|-------------|
+| `transformer_id` | Stable id; pass to `build_creative` `transformer_id` |
+| `name` | Human-readable name |
+| `input_format_ids` / `output_format_ids` | What it accepts and produces. A `build_creative` target MUST be a subset of `output_format_ids`. Empty `input_format_ids` means it builds from a brief (pure generation). |
+| `params` | Config knobs (see [Transformer Param](https://adcontextprotocol.org/schemas/3.1.0-rc.13/core/transformer-param.json)): `field`, `type`, `value_source` (`inline`/`range`/`enumerable`/`free_text`), `allowed_values`/`minimum`/`maximum`, `options[]`+`options_cursor` (when expanded), `max_length` (for `free_text`), `default`. `free_text` is an open buyer-authored string (e.g. a `negative_prompt`); a param MUST NOT be a generation-count knob — count rides `max_variants`/`max_creatives`. |
+| `pricing_options` | Per-account rate card (when `include_pricing`). Uses the `per_unit` model (e.g. $/generated image, $/second). A pricing option may carry `applies_to_output_format_ids` to price different outputs differently (e.g. a multi-publisher template per publisher format); an unscoped option is the default, and an output matching no option (with no unscoped default) is rejected `UNPRICEABLE_OUTPUT` (no fallback). The applied option is echoed per-leaf on the `build_creative` response and reconciled via `report_usage`. |
+
+See [Transformer schema](https://adcontextprotocol.org/schemas/3.1.0-rc.13/core/transformer.json) for the complete object.
+
+## Common Scenarios
+
+### Discover voices for a brief, with values
+
+<CodeGroup>
+
+```javascript test=false
+import { testAgent } from '@adcp/sdk/testing';
+import { ListTransformersResponseSchema } from '@adcp/sdk';
+
+const result = await testAgent.listTransformers({
+  account: { account_id: 'acct_acme' },
+  brief: 'warm female Spanish-language voiceover',
+  output_format_ids: [{ agent_url: 'https://creative.audiostack.example', id: 'audio_vo' }],
+  expand_params: ['voice'],
+  include_pricing: true,
+});
+
+const parsed = ListTransformersResponseSchema.parse(result);
+for (const t of parsed.transformers) {
+  console.log(t.transformer_id, t.name);
+  const voice = t.params?.find((p) => p.field === 'voice');
+  for (const opt of voice?.options ?? []) console.log('  voice:', opt.value, opt.metadata);
+}
+```
+
+```python test=false
+import asyncio
+from adcp.testing import test_agent
+from adcp import ListTransformersResponse
+
+async def main():
+    result = await test_agent.list_transformers(
+        account={"account_id": "acct_acme"},
+        brief="warm female Spanish-language voiceover",
+        output_format_ids=[{"agent_url": "https://creative.audiostack.example", "id": "audio_vo"}],
+        expand_params=["voice"],
+        include_pricing=True,
+    )
+    parsed = ListTransformersResponse.model_validate(result)
+    for t in parsed.transformers:
+        print(t.transformer_id, t.name)
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Then build with the selected transformer
+
+Pass the chosen `transformer_id` and a typed `config` (keyed by each param's `field`) to [`build_creative`](/dist/docs/3.1.0-rc.13/creative/task-reference/build_creative):
+
+```json test=false
+{
+  "transformer_id": "audiostack_voiceover",
+  "config": { "voice": "isaac", "speaking_rate": 1.1, "mastering_preset": "podcast" },
+  "creative_manifest": { "format_id": { "agent_url": "https://creative.audiostack.example", "id": "script" }, "assets": { "script": { "asset_type": "text", "content": "Discover the new winter collection." } } },
+  "target_format_id": { "agent_url": "https://creative.audiostack.example", "id": "audio_vo" },
+  "account": { "account_id": "acct_acme" },
+  "idempotency_key": "0c1d2e3f-4a5b-6c7d-8e9f-a0b1c2d3e4f5"
+}
+```
+
+## Error Handling
+
+| Code | Meaning | Recovery |
+|------|---------|----------|
+| `AUTH_MISSING` | `include_pricing` requested without a resolvable account | Supply `account` / authenticate |
+| `INVALID_REQUEST` | Malformed filter or pagination cursor | Correct the request |
+
+Unknown `expand_params` (a `field` no transformer exposes) are ignored, not an error — the param simply returns no `options`.
+
+## Learn More
+
+- [build_creative](/dist/docs/3.1.0-rc.13/creative/task-reference/build_creative) — select a transformer and produce creatives (incl. variants)
+- [get_adcp_capabilities](/dist/docs/3.1.0-rc.13/protocol/get_adcp_capabilities) — `creative.supports_transformers` discriminator
+- [Vendor pricing](https://adcontextprotocol.org/schemas/3.1.0-rc.13/core/vendor-pricing-option.json) — the `per_unit` rate model

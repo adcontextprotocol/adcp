@@ -26,25 +26,52 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vites
 import request from 'supertest';
 import type { Pool } from 'pg';
 
+// Set WorkOS env before vi.mock factories run — auth.ts constructs WorkOS
+// at module load and the factory's vi.importActual triggers that load.
+// Hoisted block runs before mock factories regardless of file ordering.
+vi.hoisted(() => {
+  process.env.WORKOS_API_KEY = process.env.WORKOS_API_KEY ?? 'test';
+  process.env.WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID ?? 'client_test';
+});
+
 // Bypass WorkOS auth — the registry feed requires `requireAuth`. Stamp
-// every request with a fixed test user. Other public registry endpoints
-// use `optAuth` (no-op without a session), so the pass-through here is
-// only load-bearing for /registry/feed.
-const TEST_USER_ID = 'user_test_registry_baseline_endpoints';
+// every requireAuth request with a fixed default test user. Other public
+// registry endpoints use `optAuth` (no-op without a session), which the
+// real implementation leaves alone; we follow suit by default so the
+// existing baseline assertions keep their anonymous-caller behavior.
+//
+// The scope-matrix tests below swap callers per request via
+// `setOptAuthUser(...)` — that lets us exercise the auth × scope filter
+// matrix without rebuilding the route's dependency graph.
+const DEFAULT_TEST_USER_ID = 'user_test_registry_baseline_endpoints';
+const authState = vi.hoisted(() => ({
+  optAuthUser: null as { id: string; email: string } | null,
+}));
 vi.mock('../../src/middleware/auth.js', async () => {
   const actual = await vi.importActual<Record<string, unknown>>(
     '../../src/middleware/auth.js'
   );
-  const pass = (req: { user: unknown }, _res: unknown, next: () => void) => {
-    req.user = { id: TEST_USER_ID, email: 'registry-baseline@test.com' };
+  const requireAuthPass = (req: { user: unknown }, _res: unknown, next: () => void) => {
+    req.user = { id: DEFAULT_TEST_USER_ID, email: 'registry-baseline@test.com' };
+    next();
+  };
+  const optAuthPass = (req: { user: unknown }, _res: unknown, next: () => void) => {
+    if (authState.optAuthUser) {
+      req.user = authState.optAuthUser;
+    }
     next();
   };
   return {
     ...actual,
-    requireAuth: pass,
+    requireAuth: requireAuthPass,
+    optionalAuth: optAuthPass,
     requireAdmin: (_req: unknown, _res: unknown, next: () => void) => next(),
   };
 });
+
+function setOptAuthUser(user: { id: string; email: string } | null) {
+  authState.optAuthUser = user;
+}
 
 vi.mock('../../src/middleware/csrf.js', async () => {
   const actual = await vi.importActual<Record<string, unknown>>(
@@ -81,7 +108,9 @@ const PUB_B = `${DOMAIN_PREFIX}pinnacle${DOMAIN_SUFFIX}`;
 const AGENT_X = `${AGENT_PREFIX}sales-x.registry-baseline.example`;
 const AGENT_Y = `${AGENT_PREFIX}sales-y.registry-baseline.example`;
 const ORG_ID = 'org_endpoint_registry_baseline';
+const ORG_ID_EXACT = 'org_endpoint_registry_baseline_exact';
 const MEMBER_SLUG = 'endpoint-acme-baseline';
+const MEMBER_SLUG_EXACT = 'endpoint-acme-exact-baseline';
 
 describe('Registry reader baseline — public endpoints', () => {
   let server: HTTPServer;
@@ -119,8 +148,21 @@ describe('Registry reader baseline — public endpoints', () => {
       'DELETE FROM discovered_agents WHERE agent_url LIKE $1',
       [AGENT_LIKE]
     );
-    await pool.query('DELETE FROM member_profiles WHERE workos_organization_id = $1', [ORG_ID]);
-    await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [ORG_ID]);
+    await pool.query('DELETE FROM organization_domains WHERE workos_organization_id LIKE $1 OR domain LIKE $2', [`${ORG_ID}%`, DOMAIN_LIKE]);
+    await pool.query('DELETE FROM member_profiles WHERE workos_organization_id LIKE $1', [`${ORG_ID}%`]);
+    await pool.query('DELETE FROM organizations WHERE workos_organization_id LIKE $1', [`${ORG_ID}%`]);
+  }
+
+  async function seedBrandPrimary(orgId: string, domain: string) {
+    await pool.query(
+      `INSERT INTO organization_domains
+         (workos_organization_id, domain, verified, is_primary, source, created_at, updated_at)
+       VALUES ($1, $2, true, true, 'workos', NOW(), NOW())
+       ON CONFLICT (domain) DO UPDATE SET
+         workos_organization_id = EXCLUDED.workos_organization_id,
+         verified = true, is_primary = true, source = 'workos'`,
+      [orgId, domain],
+    );
   }
 
   beforeAll(async () => {
@@ -261,7 +303,7 @@ describe('Registry reader baseline — public endpoints', () => {
       });
     });
 
-    // ── /registry/publisher ────────────────────────────────────────
+    // ── /registry/publisher ────────────────────────────────────────────
 
     it('GET /api/registry/publisher returns properties + authorized agents for a seeded domain', async () => {
       const res = await request(app).get(
@@ -288,41 +330,141 @@ describe('Registry reader baseline — public endpoints', () => {
       });
 
       // Authorized agents: includes both adagents_json and agent_claim
-      // sources, projected as {url, authorized_for, source}.
+      // sources, projected as {url, authorized_for, source}. Each agent
+      // also carries a per-publisher rollup of property authorization.
+      const agentsByUrl = new Map(
+        res.body.authorized_agents.map((a: { url: string }) => [a.url, a])
+      );
+      // AGENT_X: property-level row exists for `home` only → 1 of 2.
+      expect(agentsByUrl.get(AGENT_X)).toMatchObject({
+        url: AGENT_X,
+        authorized_for: 'all',
+        source: 'adagents_json',
+        properties_authorized: 1,
+        properties_total: 2,
+        publisher_wide: false,
+      });
+      // AGENT_Y: property-level row exists for `mobile` only → 1 of 2.
+      expect(agentsByUrl.get(AGENT_Y)).toMatchObject({
+        url: AGENT_Y,
+        source: 'agent_claim',
+        properties_authorized: 1,
+        properties_total: 2,
+        publisher_wide: false,
+      });
+    });
+
+    it('GET /api/registry/publisher reports publisher-wide auth as N of N', async () => {
+      // Drop AGENT_X's property-level row so only the publisher-wide
+      // authorization remains. The rollup should collapse to "all".
+      await pool.query(
+        `DELETE FROM agent_property_authorizations
+         WHERE agent_url = $1
+           AND property_id IN (
+             SELECT id FROM discovered_properties WHERE publisher_domain = $2
+           )`,
+        [AGENT_X, PUB_A]
+      );
+
+      const res = await request(app).get(
+        `/api/registry/publisher?domain=${encodeURIComponent(PUB_A)}`
+      );
+      expect(res.status).toBe(200);
       const agentsByUrl = new Map(
         res.body.authorized_agents.map((a: { url: string }) => [a.url, a])
       );
       expect(agentsByUrl.get(AGENT_X)).toMatchObject({
         url: AGENT_X,
-        authorized_for: 'all',
-        source: 'adagents_json',
-      });
-      expect(agentsByUrl.get(AGENT_Y)).toMatchObject({
-        url: AGENT_Y,
-        source: 'agent_claim',
+        properties_authorized: 2,
+        properties_total: 2,
+        publisher_wide: true,
       });
     });
 
-    // ── /registry/publishers ───────────────────────────────────────
+    // ── /registry/publisher/authorization ──────────────────────
 
-    it('GET /api/registry/publishers includes our seeded publisher with discovered source', async () => {
+    it('GET /api/registry/publisher/authorization returns the per-property breakdown', async () => {
+      const res = await request(app).get(
+        `/api/registry/publisher/authorization?domain=${encodeURIComponent(PUB_A)}&agent=${encodeURIComponent(AGENT_X)}`
+      );
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({
+        publisher_domain: PUB_A,
+        agent_url: AGENT_X,
+        authorized: 1,
+        total: 2,
+        publisher_wide: false,
+        source: 'adagents_json',
+      });
+      expect(res.body.unauthorized_properties).toHaveLength(1);
+      expect(res.body.unauthorized_properties[0]).toMatchObject({
+        name: 'Endpoint Mobile',
+      });
+    });
+
+    it('GET /api/registry/publisher/authorization reports publisher-wide as N of N with no unauthorized list', async () => {
+      // Drop AGENT_X's property-level row → only publisher-wide remains.
+      await pool.query(
+        `DELETE FROM agent_property_authorizations
+         WHERE agent_url = $1
+           AND property_id IN (
+             SELECT id FROM discovered_properties WHERE publisher_domain = $2
+           )`,
+        [AGENT_X, PUB_A]
+      );
+
+      const res = await request(app).get(
+        `/api/registry/publisher/authorization?domain=${encodeURIComponent(PUB_A)}&agent=${encodeURIComponent(AGENT_X)}`
+      );
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({
+        authorized: 2,
+        total: 2,
+        publisher_wide: true,
+        unauthorized_properties: [],
+      });
+    });
+
+    it('GET /api/registry/publisher/authorization 404s when the agent is not authorized', async () => {
+      const res = await request(app).get(
+        `/api/registry/publisher/authorization?domain=${encodeURIComponent(PUB_A)}&agent=${encodeURIComponent('https://unknown-agent.example')}`
+      );
+      expect(res.status).toBe(404);
+    });
+
+    it('GET /api/registry/publisher/authorization returns 400 when params are missing', async () => {
+      const res = await request(app).get(
+        `/api/registry/publisher/authorization?domain=${encodeURIComponent(PUB_A)}`
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it('GET /api/registry/publisher/authorization tolerates trailing slash on agent URL', async () => {
+      const res = await request(app).get(
+        `/api/registry/publisher/authorization?domain=${encodeURIComponent(PUB_A)}&agent=${encodeURIComponent(AGENT_X + '/')}`
+      );
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ publisher_domain: PUB_A, authorized: 1, total: 2 });
+    });
+
+    // ── /registry/publishers ─────────────────────────────────────────────
+
+    it('GET /api/registry/publishers does not surface crawler-only publishers', async () => {
+      // Registry contains only publishers that members have explicitly
+      // enrolled. PUB_A in this fixture exists only in the crawler graph
+      // (discovered_publishers), so it must not appear in the public list.
       const res = await request(app).get('/api/registry/publishers');
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body.publishers)).toBe(true);
-      expect(res.body.sources).toMatchObject({
-        registered: expect.any(Number),
-        discovered: expect.any(Number),
-      });
+      expect(res.body.sources).toBeUndefined();
 
       const ours = res.body.publishers.find(
         (p: { domain: string }) => p.domain === PUB_A
       );
-      expect(ours).toBeTruthy();
-      expect(ours.source).toBe('discovered');
-      expect(ours.has_valid_adagents).toBe(true);
+      expect(ours).toBeUndefined();
     });
 
-    // ── /registry/operator ─────────────────────────────────────────
+    // ── /registry/operator ──────────────────────────────────────────────
 
     it('GET /api/registry/operator returns null member when no profile owns the domain', async () => {
       // No member_profile seeded for PUB_A, so the operator endpoint
@@ -356,12 +498,11 @@ describe('Registry reader baseline — public endpoints', () => {
       await pool.query(
         `INSERT INTO member_profiles (
            workos_organization_id, display_name, slug,
-           agents, primary_brand_domain, is_public,
+           agents, is_public,
            created_at, updated_at
-         ) VALUES ($1, 'Endpoint Baseline Org', $2, $3::jsonb, $4, true, NOW(), NOW())
+         ) VALUES ($1, 'Endpoint Baseline Org', $2, $3::jsonb, true, NOW(), NOW())
          ON CONFLICT (workos_organization_id) DO UPDATE SET
            agents = EXCLUDED.agents,
-           primary_brand_domain = EXCLUDED.primary_brand_domain,
            is_public = EXCLUDED.is_public,
            updated_at = NOW()`,
         [
@@ -370,9 +511,9 @@ describe('Registry reader baseline — public endpoints', () => {
           JSON.stringify([
             { url: AGENT_X, name: 'Endpoint Sales X', type: 'sales', visibility: 'public' },
           ]),
-          PUB_A,
         ]
       );
+      await seedBrandPrimary(ORG_ID, PUB_A);
 
       const res = await request(app).get(
         `/api/registry/operator?domain=${encodeURIComponent(PUB_A)}`
@@ -402,11 +543,149 @@ describe('Registry reader baseline — public endpoints', () => {
       });
     });
 
-    // ── /registry/stats ────────────────────────────────────────────
+    it('GET /api/registry/operator falls back from subdomain to verified parent domain', async () => {
+      await pool.query(
+        `INSERT INTO organizations (workos_organization_id, name, created_at, updated_at)
+         VALUES ($1, 'Endpoint Parent Org', NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO NOTHING`,
+        [ORG_ID],
+      );
+      await pool.query(
+        `INSERT INTO member_profiles (
+           workos_organization_id, display_name, slug,
+           agents, is_public, created_at, updated_at
+         ) VALUES ($1, 'Endpoint Parent Org', $2, $3::jsonb, true, NOW(), NOW())`,
+        [
+          ORG_ID,
+          MEMBER_SLUG,
+          JSON.stringify([
+            { url: AGENT_X, name: 'Endpoint Sales X', type: 'sales', visibility: 'public' },
+          ]),
+        ],
+      );
+      await seedBrandPrimary(ORG_ID, PUB_A);
 
-    it('GET /api/registry/stats reflects at least our seeded counts', async () => {
+      const subdomain = `sales.${PUB_A}`;
+      const res = await request(app).get(
+        `/api/registry/operator?domain=${encodeURIComponent(subdomain)}`,
+      );
+      expect(res.status).toBe(200);
+      expect(res.body.domain).toBe(subdomain);
+      expect(res.body.member).toMatchObject({
+        slug: MEMBER_SLUG,
+        display_name: 'Endpoint Parent Org',
+      });
+      expect(res.body.agents[0]).toMatchObject({ url: AGENT_X });
+    });
+
+    it('GET /api/registry/operator does not fall back through an unverified parent domain', async () => {
+      await pool.query(
+        `INSERT INTO organizations (workos_organization_id, name, created_at, updated_at)
+         VALUES ($1, 'Endpoint Unverified Org', NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO NOTHING`,
+        [ORG_ID],
+      );
+      await pool.query(
+        `INSERT INTO member_profiles (
+           workos_organization_id, display_name, slug,
+           agents, is_public, created_at, updated_at
+         ) VALUES ($1, 'Endpoint Unverified Org', $2, '[]'::jsonb, true, NOW(), NOW())`,
+        [ORG_ID, MEMBER_SLUG],
+      );
+      await pool.query(
+        `INSERT INTO organization_domains
+           (workos_organization_id, domain, verified, is_primary, source, created_at, updated_at)
+         VALUES ($1, $2, false, true, 'test', NOW(), NOW())`,
+        [ORG_ID, PUB_A],
+      );
+
+      const res = await request(app).get(
+        `/api/registry/operator?domain=${encodeURIComponent(`sales.${PUB_A}`)}`,
+      );
+      expect(res.status).toBe(200);
+      expect(res.body.member).toBeNull();
+      expect(res.body.agents).toEqual([]);
+    });
+
+    it('GET /api/registry/operator prefers a verified exact linked subdomain over a verified parent domain', async () => {
+      const exactDomain = `sales.${PUB_A}`;
+      await pool.query(
+        `INSERT INTO organizations (workos_organization_id, name, created_at, updated_at)
+         VALUES
+           ($1, 'Endpoint Parent Org', NOW(), NOW()),
+           ($2, 'Endpoint Exact Org', NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO NOTHING`,
+        [ORG_ID, ORG_ID_EXACT],
+      );
+      await pool.query(
+        `INSERT INTO member_profiles (
+           workos_organization_id, display_name, slug,
+           agents, is_public, created_at, updated_at
+         ) VALUES
+           ($1, 'Endpoint Parent Org', $2, '[]'::jsonb, true, NOW(), NOW()),
+           ($3, 'Endpoint Exact Org', $4, '[]'::jsonb, true, NOW(), NOW())`,
+        [ORG_ID, MEMBER_SLUG, ORG_ID_EXACT, MEMBER_SLUG_EXACT],
+      );
+      await seedBrandPrimary(ORG_ID, PUB_A);
+      await pool.query(
+        `INSERT INTO organization_domains
+           (workos_organization_id, domain, verified, is_primary, source, created_at, updated_at)
+         VALUES ($1, $2, true, true, 'test', NOW(), NOW())`,
+        [ORG_ID_EXACT, exactDomain],
+      );
+
+      const res = await request(app).get(
+        `/api/registry/operator?domain=${encodeURIComponent(exactDomain)}`,
+      );
+      expect(res.status).toBe(200);
+      expect(res.body.member).toMatchObject({
+        slug: MEMBER_SLUG_EXACT,
+        display_name: 'Endpoint Exact Org',
+      });
+    });
+
+    it('GET /api/registry/operator ignores an unverified exact linked domain and falls back to a verified parent', async () => {
+      const exactDomain = `sales.${PUB_A}`;
+      await pool.query(
+        `INSERT INTO organizations (workos_organization_id, name, created_at, updated_at)
+         VALUES
+           ($1, 'Endpoint Parent Org', NOW(), NOW()),
+           ($2, 'Endpoint Exact Org', NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO NOTHING`,
+        [ORG_ID, ORG_ID_EXACT],
+      );
+      await pool.query(
+        `INSERT INTO member_profiles (
+           workos_organization_id, display_name, slug,
+           agents, is_public, created_at, updated_at
+         ) VALUES ($1, 'Endpoint Parent Org', $2, '[]'::jsonb, true, NOW(), NOW())`,
+        [ORG_ID, MEMBER_SLUG],
+      );
+      await seedBrandPrimary(ORG_ID, PUB_A);
+      await pool.query(
+        `INSERT INTO organization_domains
+           (workos_organization_id, domain, verified, is_primary, source, created_at, updated_at)
+         VALUES ($1, $2, false, true, 'test', NOW(), NOW())`,
+        [ORG_ID_EXACT, exactDomain],
+      );
+
+      const res = await request(app).get(
+        `/api/registry/operator?domain=${encodeURIComponent(exactDomain)}`,
+      );
+      expect(res.status).toBe(200);
+      expect(res.body.member).toMatchObject({
+        slug: MEMBER_SLUG,
+        display_name: 'Endpoint Parent Org',
+      });
+    });
+
+    // ── /registry/stats ──────────────────────────────────────────────
+
+    it('GET /api/registry/stats reflects at least our seeded auth-graph counts', async () => {
       const res = await request(app).get('/api/registry/stats');
       expect(res.status).toBe(200);
+      // The publisher-authorization graph still tracks the underlying
+      // authorizations and properties — surfaced under `auth_graph_*`.
       // Lower-bounds: our seed adds ≥2 agents, ≥1 publisher, ≥2 properties,
       // ≥2 authorizations (one each in adagents_json + agent_claim).
       expect(res.body.discovered_agents).toBeGreaterThanOrEqual(2);
@@ -419,82 +698,212 @@ describe('Registry reader baseline — public endpoints', () => {
       expect(res.body.properties_by_type.mobile_app).toBeGreaterThanOrEqual(1);
     });
 
-    // ── /registry/agents ───────────────────────────────────────────
+    // ── /registry/agents ───────────────────────────────────────────────
 
-    it('GET /api/registry/agents includes our seeded agents with full DSP-discovery projection', async () => {
+    it('GET /api/registry/agents?source=registered returns 400 (param removed, not deprecated)', async () => {
+      // The `?source=` filter is gone (#3772). Reject explicitly so a caller
+      // passing `?source=discovered` doesn't silently get the registered-only
+      // set — that's correct-by-coincidence on the registered case and
+      // wrong-by-coincidence on the discovered case.
+      const registered = await request(app).get('/api/registry/agents?source=registered');
+      expect(registered.status).toBe(400);
+      expect(registered.body.error).toMatch(/source/i);
+
+      const discovered = await request(app).get('/api/registry/agents?source=discovered');
+      expect(discovered.status).toBe(400);
+      expect(discovered.body.error).toMatch(/source/i);
+
+      const bogus = await request(app).get('/api/registry/agents?source=anything');
+      expect(bogus.status).toBe(400);
+    });
+
+    it('GET /api/registry/agents surfaces registered agents and excludes crawler-only agents', async () => {
+      // Pins both halves of the registered-only contract:
+      //   1. registered agents (member-enrolled) DO appear with member metadata,
+      //   2. crawler-only agents (in discovered_agents but not on any member
+      //      profile) do NOT appear.
+      // Without the positive case a future bug that makes listAllAgents return
+      // [] unconditionally would still pass — the negative-only assertion is
+      // true-by-default when the catalog is empty.
+      const REGISTERED_URL = `${AGENT_PREFIX}registered.registry-baseline.example`;
+      await pool.query(
+        `INSERT INTO organizations (workos_organization_id, name, created_at, updated_at)
+         VALUES ($1, 'Endpoint Baseline Org', NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO NOTHING`,
+        [ORG_ID]
+      );
+      await pool.query(
+        `INSERT INTO member_profiles (
+           workos_organization_id, display_name, slug,
+           agents, is_public,
+           created_at, updated_at
+         ) VALUES ($1, 'Endpoint Baseline Org', $2, $3::jsonb, true, NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO UPDATE SET
+           agents = EXCLUDED.agents,
+           is_public = EXCLUDED.is_public,
+           updated_at = NOW()`,
+        [
+          ORG_ID,
+          MEMBER_SLUG,
+          JSON.stringify([
+            { url: REGISTERED_URL, name: 'Endpoint Registered', type: 'sales', visibility: 'public' },
+          ]),
+        ]
+      );
+      await seedBrandPrimary(ORG_ID, PUB_A);
+
       const res = await request(app).get('/api/registry/agents');
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body.agents)).toBe(true);
-      expect(res.body.sources).toMatchObject({
-        registered: expect.any(Number),
-        discovered: expect.any(Number),
+      expect(res.body.sources).toBeUndefined();
+
+      // Positive: member-enrolled agent surfaces with the member ref.
+      const registered = res.body.agents.find(
+        (a: { url: string }) => a.url === REGISTERED_URL,
+      );
+      expect(registered).toBeTruthy();
+      expect(registered.member).toMatchObject({
+        slug: MEMBER_SLUG,
+        display_name: 'Endpoint Baseline Org',
       });
+      // `added_date` is dropped from the projection — we have no real
+      // enrollment-date source on the wire today, so the field is omitted
+      // rather than stamped with `today`.
+      expect(registered.added_date).toBeUndefined();
+
+      // Negative: crawler-only agents (seeded in discovered_agents only)
+      // must not appear.
+      const x = res.body.agents.find((a: { url: string }) => a.url === AGENT_X);
+      const y = res.body.agents.find((a: { url: string }) => a.url === AGENT_Y);
+      expect(x).toBeUndefined();
+      expect(y).toBeUndefined();
+    });
+
+    it('GET /api/registry/agents: public agent on private-profile member appears (regression guard for #4194)', async () => {
+      // Pins the fix from PR #4194: before the fix, `member_profiles.is_public`
+      // was also used as a gate on the registry surface, silently hiding
+      // `visibility='public'` agents on profiles with is_public=false. The
+      // per-agent `visibility` field is the only listing gate; is_public
+      // controls only the /Members directory.
+      const PRIV_ORG = `${ORG_ID}_priv`;
+      const PRIV_AGENT = `${AGENT_PREFIX}pub-on-private.registry-baseline.example`;
+      await pool.query(
+        `INSERT INTO organizations (workos_organization_id, name, created_at, updated_at)
+         VALUES ($1, 'Pub-on-Private Org', NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO NOTHING`,
+        [PRIV_ORG],
+      );
+      await pool.query(
+        `INSERT INTO member_profiles (
+           workos_organization_id, display_name, slug,
+           agents, is_public,
+           created_at, updated_at
+         ) VALUES ($1, 'Pub-on-Private Org', $2, $3::jsonb, false, NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO UPDATE SET
+           agents = EXCLUDED.agents, is_public = EXCLUDED.is_public, updated_at = NOW()`,
+        [
+          PRIV_ORG,
+          'endpoint-pub-on-private-baseline',
+          JSON.stringify([
+            { url: PRIV_AGENT, name: 'Pub On Private', type: 'buying', visibility: 'public' },
+          ]),
+        ],
+      );
+      await seedBrandPrimary(PRIV_ORG, PUB_A);
+      try {
+        const res = await request(app).get('/api/registry/agents');
+        expect(res.status).toBe(200);
+
+        const found = res.body.agents.find((a: { url: string }) => a.url === PRIV_AGENT);
+        expect(found).toBeTruthy();
+        expect(found.member).toMatchObject({ slug: 'endpoint-pub-on-private-baseline' });
+      } finally {
+        await pool.query(`DELETE FROM organization_domains WHERE workos_organization_id = $1`, [PRIV_ORG]);
+        await pool.query(`DELETE FROM member_profiles WHERE workos_organization_id = $1`, [PRIV_ORG]);
+        await pool.query(`DELETE FROM organizations WHERE workos_organization_id = $1`, [PRIV_ORG]);
+      }
+    });
+
+    it('GET /api/registry/agents?properties=true does not surface crawler-only agents', async () => {
+      // The registered-only registry surface excludes agents that exist
+      // only in the crawler graph regardless of enrichment flags.
+      const res = await request(app).get('/api/registry/agents?properties=true');
+      expect(res.status).toBe(200);
 
       const x = res.body.agents.find((a: { url: string }) => a.url === AGENT_X);
       const y = res.body.agents.find((a: { url: string }) => a.url === AGENT_Y);
-      expect(x).toBeTruthy();
-      expect(y).toBeTruthy();
-      expect(x.source).toBe('discovered');
-      expect(x.type).toBe('sales');
-      expect(x.protocol).toBe('mcp');
-      // discovered_from is the DSP-discovery breadcrumb — sourced from
-      // the bulk-auth join via discovered_agents.source_domain. PR 4
-      // must not drop or rename this field.
-      expect(x.discovered_from).toMatchObject({ publisher_domain: PUB_A });
-      // added_date is sourced from discovered_at; pin presence as a
-      // non-empty string but not an exact value.
-      expect(typeof x.added_date).toBe('string');
-      expect(x.added_date.length).toBeGreaterThan(0);
+      expect(x).toBeUndefined();
+      expect(y).toBeUndefined();
     });
 
-    it('GET /api/registry/agents?properties=true enriches sales agents only', async () => {
-      // Post-#3540 (refs #3538 Problem 1b), enrichment runs on type='sales'
-      // — the agents that hold publisher authorizations and call
+    it('GET /api/registry/agents?properties=true enriches sales agents only (#3540 polarity)', async () => {
+      // Pins the #3540 invariant against the registered-only surface
+      // (refs #3538 Problem 1b). Enrichment runs on `type='sales'` — the
+      // agents that hold publisher authorizations and call
       // list_authorized_properties. Pre-#3540 the readers filtered on
-      // 'buying' (an inverted-but-aligned bug from #3495). This test pins
-      // the corrected polarity.
+      // `type='buying'` (an inverted-but-aligned bug from #3495). The
+      // discovered-agent removal must not silently drop this polarity
+      // assertion: a future refactor that re-introduces the inversion
+      // would otherwise skate through CI green.
       //
-      // Seed an additional buying-typed agent so we exercise the negative
-      // branch. AGENT_X (already seeded above as 'sales' with property auth
-      // on PUB_A's home) drives the positive branch.
-      const BUYER_URL = 'https://endpoint-buyer.registry-baseline.example';
-      await fedDb.upsertAgent({
-        agent_url: BUYER_URL,
-        source_type: 'adagents_json',
-        source_domain: PUB_B,
-        agent_type: 'buying',
-        protocol: 'mcp',
-        name: 'Endpoint Buyer',
-      });
-      // Authorize the buyer on the existing PUB_A home property. Post-#3540
-      // this auth must NOT produce enrichment, because the filter is now
-      // 'sales' and buying agents are excluded.
-      const props = await fedDb.getPropertiesForDomain(PUB_A);
-      const home = props.find((p) => p.name === 'Endpoint Home') as unknown as { id: string };
-      await fedDb.upsertAgentPropertyAuthorization({
-        agent_url: BUYER_URL,
-        property_id: home.id,
-      });
+      // Both agents are registered on the same member profile. Property
+      // authorizations on the auth-graph tables (agent_property_
+      // authorizations × discovered_properties) drive the enrichment;
+      // those rows are seeded by the outer beforeEach. AGENT_X is
+      // registered as sales, AGENT_Y as buying — same fixtures, opposite
+      // polarity.
+      await pool.query(
+        `INSERT INTO organizations (workos_organization_id, name, created_at, updated_at)
+         VALUES ($1, 'Endpoint Baseline Org', NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO NOTHING`,
+        [ORG_ID]
+      );
+      await pool.query(
+        `INSERT INTO member_profiles (
+           workos_organization_id, display_name, slug,
+           agents, is_public,
+           created_at, updated_at
+         ) VALUES ($1, 'Endpoint Baseline Org', $2, $3::jsonb, true, NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO UPDATE SET
+           agents = EXCLUDED.agents,
+           is_public = EXCLUDED.is_public,
+           updated_at = NOW()`,
+        [
+          ORG_ID,
+          MEMBER_SLUG,
+          JSON.stringify([
+            { url: AGENT_X, name: 'Endpoint Sales X', type: 'sales', visibility: 'public' },
+            { url: AGENT_Y, name: 'Endpoint Buyer Y', type: 'buying', visibility: 'public' },
+          ]),
+        ]
+      );
+      await seedBrandPrimary(ORG_ID, PUB_A);
 
       const res = await request(app).get('/api/registry/agents?properties=true');
       expect(res.status).toBe(200);
 
-      // AGENT_X (sales, property auth on home) MUST be enriched.
+      // Sales agent: enriched. AGENT_X has property auth on PUB_A's
+      // home property, so publisher_domains and property_summary are
+      // populated.
       const x = res.body.agents.find((a: { url: string }) => a.url === AGENT_X);
       expect(x).toBeTruthy();
+      expect(x.type).toBe('sales');
       expect(x.publisher_domains).toEqual([PUB_A]);
       expect(x.property_summary).toMatchObject({
         total_count: 1,
-        publisher_count: 1,
         count_by_type: { website: 1 },
       });
 
       // Buying-typed agents must NOT receive property enrichment, even
-      // when ?properties=true is set. This is the inversion fix in #3540.
-      const buyer = res.body.agents.find((a: { url: string }) => a.url === BUYER_URL);
-      expect(buyer).toBeTruthy();
-      expect(buyer.publisher_domains).toBeUndefined();
-      expect(buyer.property_summary).toBeUndefined();
+      // when ?properties=true is set and even when the agent has rows
+      // in agent_property_authorizations. This is the inversion fix in
+      // #3540 — the polarity that must hold across the discovered-agent
+      // removal.
+      const y = res.body.agents.find((a: { url: string }) => a.url === AGENT_Y);
+      expect(y).toBeTruthy();
+      expect(y.type).toBe('buying');
+      expect(y.publisher_domains).toBeUndefined();
+      expect(y.property_summary).toBeUndefined();
     });
   });
 
@@ -516,6 +925,223 @@ describe('Registry reader baseline — public endpoints', () => {
     it('rejects an invalid cursor format with 400', async () => {
       const res = await request(app).get('/api/registry/feed?cursor=not-a-uuid');
       expect(res.status).toBe(400);
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // /registry/operator ?scope= filter × auth-tier matrix.
+  //
+  // `scope` only narrows what auth would otherwise unlock — never
+  // escalates. The 12-cell matrix below pins one assertion per cell so
+  // a future refactor that quietly inverts a row (e.g. lets `scope=member`
+  // expose members_only to anonymous callers) flips red.
+  // ──────────────────────────────────────────────────────────────────
+
+  describe('/registry/operator ?scope= × auth tier matrix', () => {
+    const SCOPE_DOMAIN = 'endpoint-scope-matrix.registry-baseline.example';
+    const SCOPE_OWNER_ORG = 'org_endpoint_scope_owner';
+    const SCOPE_OTHER_API_ORG = 'org_endpoint_scope_other_api';
+    const SCOPE_EXPLORER_ORG = 'org_endpoint_scope_explorer';
+    const SCOPE_OWNER_USER = 'user_endpoint_scope_owner';
+    const SCOPE_OTHER_API_USER = 'user_endpoint_scope_other_api';
+    const SCOPE_EXPLORER_USER = 'user_endpoint_scope_explorer';
+    const SCOPE_SLUG = 'endpoint-scope-matrix';
+
+    const PUBLIC_URL = 'https://public.scope-matrix.example';
+    const MEMBERS_URL = 'https://members.scope-matrix.example';
+    const PRIVATE_URL = 'https://private.scope-matrix.example';
+
+    async function seedOrg(orgId: string, tier: string | null) {
+      await pool.query(
+        `INSERT INTO organizations (
+           workos_organization_id, name, is_personal, membership_tier,
+           subscription_status, created_at, updated_at
+         ) VALUES ($1, $2, true, $3, $4, NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO UPDATE SET
+           membership_tier = EXCLUDED.membership_tier,
+           subscription_status = EXCLUDED.subscription_status`,
+        [orgId, `Scope Matrix ${orgId}`, tier, tier ? 'active' : null],
+      );
+    }
+
+    async function provisionUser(userId: string, orgId: string) {
+      await pool.query(
+        `INSERT INTO users (workos_user_id, email, primary_organization_id, created_at, updated_at)
+         VALUES ($1, $2, $3, NOW(), NOW())
+         ON CONFLICT (workos_user_id) DO UPDATE SET primary_organization_id = EXCLUDED.primary_organization_id`,
+        [userId, `${userId}@example.com`, orgId],
+      );
+      // resolvePrimaryOrganization trusts the cached column only when a
+      // current organization_memberships row backs it.
+      await pool.query(
+        `INSERT INTO organization_memberships
+           (workos_user_id, workos_organization_id, role, email, created_at, updated_at)
+         VALUES ($1, $2, 'admin', $3, NOW(), NOW())
+         ON CONFLICT (workos_user_id, workos_organization_id) DO NOTHING`,
+        [userId, orgId, `${userId}@example.com`],
+      );
+    }
+
+    async function clearScopeFixtures() {
+      const orgs = [SCOPE_OWNER_ORG, SCOPE_OTHER_API_ORG, SCOPE_EXPLORER_ORG];
+      const users = [SCOPE_OWNER_USER, SCOPE_OTHER_API_USER, SCOPE_EXPLORER_USER];
+      await pool.query(
+        `DELETE FROM organization_domains WHERE workos_organization_id = ANY($1::text[]) OR domain = $2`,
+        [orgs, SCOPE_DOMAIN],
+      );
+      await pool.query(
+        `DELETE FROM member_profiles WHERE workos_organization_id = ANY($1::text[])`,
+        [orgs],
+      );
+      await pool.query(
+        `DELETE FROM organization_memberships WHERE workos_user_id = ANY($1::text[])`,
+        [users],
+      );
+      await pool.query(
+        `DELETE FROM users WHERE workos_user_id = ANY($1::text[])`,
+        [users],
+      );
+      await pool.query(
+        `DELETE FROM organizations WHERE workos_organization_id = ANY($1::text[])`,
+        [orgs],
+      );
+    }
+
+    beforeEach(async () => {
+      await clearScopeFixtures();
+      // Owner: API-tier org that owns the queried domain + a profile with
+      // one agent per visibility bucket. Other-API: API-tier org with no
+      // ownership claim. Explorer: no-API-tier org.
+      await seedOrg(SCOPE_OWNER_ORG, 'company_standard');
+      await seedOrg(SCOPE_OTHER_API_ORG, 'company_standard');
+      await seedOrg(SCOPE_EXPLORER_ORG, 'individual_academic');
+      await provisionUser(SCOPE_OWNER_USER, SCOPE_OWNER_ORG);
+      await provisionUser(SCOPE_OTHER_API_USER, SCOPE_OTHER_API_ORG);
+      await provisionUser(SCOPE_EXPLORER_USER, SCOPE_EXPLORER_ORG);
+      await pool.query(
+        `INSERT INTO member_profiles (
+           workos_organization_id, display_name, slug,
+           agents, is_public, created_at, updated_at
+         ) VALUES ($1, 'Scope Matrix Owner', $2, $3::jsonb, true, NOW(), NOW())`,
+        [
+          SCOPE_OWNER_ORG,
+          SCOPE_SLUG,
+          JSON.stringify([
+            { url: PUBLIC_URL, name: 'Public', type: 'sales', visibility: 'public' },
+            { url: MEMBERS_URL, name: 'Members', type: 'sales', visibility: 'members_only' },
+            { url: PRIVATE_URL, name: 'Private', type: 'sales', visibility: 'private' },
+          ]),
+        ],
+      );
+      await pool.query(
+        `INSERT INTO organization_domains
+           (workos_organization_id, domain, verified, is_primary, source, created_at, updated_at)
+         VALUES ($1, $2, true, true, 'workos', NOW(), NOW())
+         ON CONFLICT (domain) DO UPDATE SET
+           workos_organization_id = EXCLUDED.workos_organization_id,
+           verified = true, is_primary = true, source = 'workos'`,
+        [SCOPE_OWNER_ORG, SCOPE_DOMAIN],
+      );
+    });
+
+    afterAll(async () => {
+      await clearScopeFixtures();
+      setOptAuthUser(null);
+    });
+
+    type CallerKind = 'anonymous' | 'owner' | 'other_api' | 'explorer';
+    function setCaller(kind: CallerKind) {
+      if (kind === 'anonymous') return setOptAuthUser(null);
+      const id = kind === 'owner' ? SCOPE_OWNER_USER
+        : kind === 'other_api' ? SCOPE_OTHER_API_USER
+        : SCOPE_EXPLORER_USER;
+      setOptAuthUser({ id, email: `${id}@example.com` });
+    }
+
+    async function fetchAgents(scope: string | null, kind: CallerKind): Promise<string[]> {
+      setCaller(kind);
+      const qs = scope === null ? '' : `&scope=${encodeURIComponent(scope)}`;
+      const res = await request(app).get(
+        `/api/registry/operator?domain=${encodeURIComponent(SCOPE_DOMAIN)}${qs}`,
+      );
+      expect(res.status).toBe(200);
+      return (res.body.agents as Array<{ url: string }>).map(a => a.url).sort();
+    }
+
+    // ── scope omitted (existing tier-aware behavior) ──────────────────
+    it('scope omitted, anonymous → public only', async () => {
+      expect(await fetchAgents(null, 'anonymous')).toEqual([PUBLIC_URL]);
+    });
+    it('scope omitted, explorer (no API tier) → public only', async () => {
+      expect(await fetchAgents(null, 'explorer')).toEqual([PUBLIC_URL]);
+    });
+    it('scope omitted, API-tier non-owner → public + members_only', async () => {
+      expect(await fetchAgents(null, 'other_api')).toEqual(
+        [MEMBERS_URL, PUBLIC_URL].sort(),
+      );
+    });
+    it('scope omitted, profile owner → all three buckets', async () => {
+      expect(await fetchAgents(null, 'owner')).toEqual(
+        [MEMBERS_URL, PRIVATE_URL, PUBLIC_URL].sort(),
+      );
+    });
+
+    // ── scope=public ──────────────────────────────────────────────────
+    it('scope=public collapses every caller to public only', async () => {
+      for (const kind of ['anonymous', 'explorer', 'other_api', 'owner'] as const) {
+        expect(await fetchAgents('public', kind)).toEqual([PUBLIC_URL]);
+      }
+    });
+
+    // ── scope=member ──────────────────────────────────────────────────
+    it('scope=member from anonymous silently degrades to public only', async () => {
+      expect(await fetchAgents('member', 'anonymous')).toEqual([PUBLIC_URL]);
+    });
+    it('scope=member from explorer (no API tier) silently degrades to public only', async () => {
+      expect(await fetchAgents('member', 'explorer')).toEqual([PUBLIC_URL]);
+    });
+    it('scope=member from API-tier non-owner → public + members_only', async () => {
+      expect(await fetchAgents('member', 'other_api')).toEqual(
+        [MEMBERS_URL, PUBLIC_URL].sort(),
+      );
+    });
+    it('scope=member from owner → public + members_only (private excluded by scope)', async () => {
+      expect(await fetchAgents('member', 'owner')).toEqual(
+        [MEMBERS_URL, PUBLIC_URL].sort(),
+      );
+    });
+
+    // ── scope=private ─────────────────────────────────────────────────
+    it('scope=private from non-owner callers returns empty (no 403)', async () => {
+      for (const kind of ['anonymous', 'explorer', 'other_api'] as const) {
+        expect(await fetchAgents('private', kind)).toEqual([]);
+      }
+    });
+    it('scope=private from owner → only private agents', async () => {
+      expect(await fetchAgents('private', 'owner')).toEqual([PRIVATE_URL]);
+    });
+
+    // ── scope=all (explicit) matches omitted ─────────────────────────
+    it('scope=all is equivalent to omitting scope', async () => {
+      expect(await fetchAgents('all', 'owner')).toEqual(
+        await fetchAgents(null, 'owner'),
+      );
+      expect(await fetchAgents('all', 'other_api')).toEqual(
+        await fetchAgents(null, 'other_api'),
+      );
+      expect(await fetchAgents('all', 'anonymous')).toEqual(
+        await fetchAgents(null, 'anonymous'),
+      );
+    });
+
+    // ── validation ────────────────────────────────────────────────────
+    it('rejects unknown scope with 400', async () => {
+      setCaller('owner');
+      const res = await request(app).get(
+        `/api/registry/operator?domain=${encodeURIComponent(SCOPE_DOMAIN)}&scope=membr`,
+      );
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/scope/i);
     });
   });
 });

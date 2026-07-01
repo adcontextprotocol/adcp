@@ -25,6 +25,9 @@ vi.mock('../../src/services/brand-logo-service.js', async () => {
   return {
     ...actual,
     checkLogoUrlIsImage: vi.fn().mockResolvedValue({ ok: true, contentType: 'image/png' }),
+    // Pass-through so manifest writes use the original URL — these tests assert
+    // on `logos[0].url` and don't care about cross-origin rehosting.
+    rehostExternalLogo: vi.fn().mockImplementation(async (url: string) => url),
   };
 });
 
@@ -57,6 +60,19 @@ describe('Brand orphan-adoption integration', () => {
   // this as a real parallelism risk in the #3186 review.
   async function clearTestFixtures() {
     await pool.query('DELETE FROM brands WHERE domain = $1', [TEST_DOMAIN]);
+    // Defensive: also delete any organization_domains row pinned to TEST_DOMAIN
+    // by domain, not just by org_id. The ON CONFLICT (domain) DO UPDATE in the
+    // seed below would otherwise trample a third-party org's row if one slipped
+    // in via a parallel test. See nodejs-testing-expert flag on #3186.
+    await pool.query('DELETE FROM organization_domains WHERE domain = $1', [TEST_DOMAIN]);
+    await pool.query(
+      'DELETE FROM organization_domains WHERE workos_organization_id IN ($1, $2)',
+      [PRIOR_ORG, NEW_ORG]
+    );
+    await pool.query(
+      'DELETE FROM member_profiles WHERE workos_organization_id IN ($1, $2)',
+      [PRIOR_ORG, NEW_ORG]
+    );
     await pool.query(
       'DELETE FROM organizations WHERE workos_organization_id IN ($1, $2)',
       [PRIOR_ORG, NEW_ORG]
@@ -80,6 +96,16 @@ describe('Brand orphan-adoption integration', () => {
       [PRIOR_ORG, NEW_ORG]
     );
 
+    // Seed the brand-primary on organization_domains for NEW_ORG so the
+    // resolver returns TEST_DOMAIN — updateBrandIdentity reads via
+    // getBrandPrimaryDomain(workosOrganizationId).
+    await pool.query(
+      `INSERT INTO organization_domains (workos_organization_id, domain, verified, is_primary, source)
+       VALUES ($1, $2, true, true, 'manual')
+       ON CONFLICT (domain) DO UPDATE SET workos_organization_id = $1, is_primary = true, verified = true`,
+      [NEW_ORG, TEST_DOMAIN]
+    );
+
     // Seed a hosted brand owned by the prior org with a recognizable manifest.
     const result = await pool.query<{ id: string }>(
       `INSERT INTO brands (
@@ -91,6 +117,10 @@ describe('Brand orphan-adoption integration', () => {
         TEST_DOMAIN,
         PRIOR_ORG,
         JSON.stringify({
+          brand_context: {
+            brand: { voice: { summary: 'Legacy context must stay private.' } },
+            positioning: { value_proposition: 'Legacy positioning.' },
+          },
           brands: [{
             id: 'prior',
             names: [{ en: 'Prior Brand' }],
@@ -152,7 +182,7 @@ describe('Brand orphan-adoption integration', () => {
       updateBrandIdentity({
         workosOrganizationId: NEW_ORG,
         displayName: 'New Owner Inc',
-        profile: { id: 'profile-test', primary_brand_domain: TEST_DOMAIN },
+        profile: { id: 'profile-test' },
         logoUrl: 'https://newowner.example.com/logo.png',
         // adoptPriorManifest intentionally omitted
       })
@@ -170,7 +200,7 @@ describe('Brand orphan-adoption integration', () => {
     const result = await updateBrandIdentity({
       workosOrganizationId: NEW_ORG,
       displayName: 'New Owner Inc',
-      profile: { id: 'profile-test', primary_brand_domain: TEST_DOMAIN },
+      profile: { id: 'profile-test' },
       logoUrl: 'https://newowner.example.com/logo.png',
       adoptPriorManifest: false,
     });
@@ -200,6 +230,7 @@ describe('Brand orphan-adoption integration', () => {
     const logos = r.brand_manifest.brands?.[0]?.logos ?? [];
     expect(logos.length).toBe(1);
     expect(logos[0].url).toBe('https://newowner.example.com/logo.png');
+    expect('brand_context' in r.brand_manifest).toBe(false);
   });
 
   it('updateBrandIdentity with adoptPriorManifest=true keeps the prior manifest and merges the new logo', async () => {
@@ -208,7 +239,7 @@ describe('Brand orphan-adoption integration', () => {
     const result = await updateBrandIdentity({
       workosOrganizationId: NEW_ORG,
       displayName: 'New Owner Inc',
-      profile: { id: 'profile-test', primary_brand_domain: TEST_DOMAIN },
+      profile: { id: 'profile-test' },
       logoUrl: 'https://newowner.example.com/logo.png',
       adoptPriorManifest: true,
     });
@@ -221,6 +252,7 @@ describe('Brand orphan-adoption integration', () => {
       workos_organization_id: string | null;
       is_public: boolean;
       brand_manifest: {
+        brand_context?: unknown;
         brands?: Array<{
           id?: string;
           names?: Array<Record<string, string>>;
@@ -246,6 +278,7 @@ describe('Brand orphan-adoption integration', () => {
     expect(primary?.colors?.primary).toBe('#aabbcc');
     expect(primary?.id).toBe('prior'); // prior brand id survives
     expect(primary?.names).toEqual([{ en: 'Prior Brand' }]); // prior name survives
+    expect('brand_context' in r.brand_manifest).toBe(false);
   });
 
   it('cross-org write to a non-orphaned brand still throws cross_org_ownership (not the orphan code)', async () => {
@@ -258,7 +291,7 @@ describe('Brand orphan-adoption integration', () => {
       updateBrandIdentity({
         workosOrganizationId: NEW_ORG,
         displayName: 'New Owner Inc',
-        profile: { id: 'profile-test', primary_brand_domain: TEST_DOMAIN },
+        profile: { id: 'profile-test' },
         logoUrl: 'https://newowner.example.com/logo.png',
         adoptPriorManifest: true, // even with adopt set, cross-org wins
       })

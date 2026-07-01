@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.6/core/assets/asset-union.json",
+  "title": "AssetVariant",
+  "description": "Canonical union of all asset variant schemas. Referenced from creative-asset.json and creative-manifest.json to ensure a single named type is emitted by schema-to-TypeScript tooling. Add new asset types here and to the creative/asset-types registry.",
+  "type": "object",
+  "oneOf": [
+    { "$ref": "/schemas/3.1.0-rc.6/core/assets/image-asset.json" },
+    { "$ref": "/schemas/3.1.0-rc.6/core/assets/video-asset.json" },
+    { "$ref": "/schemas/3.1.0-rc.6/core/assets/audio-asset.json" },
+    { "$ref": "/schemas/3.1.0-rc.6/core/assets/vast-asset.json" },
+    { "$ref": "/schemas/3.1.0-rc.6/core/assets/text-asset.json" },
+    { "$ref": "/schemas/3.1.0-rc.6/core/assets/url-asset.json" },
+    { "$ref": "/schemas/3.1.0-rc.6/core/assets/html-asset.json" },
+    { "$ref": "/schemas/3.1.0-rc.6/core/assets/javascript-asset.json" },
+    { "$ref": "/schemas/3.1.0-rc.6/core/assets/zip-asset.json" },
+    { "$ref": "/schemas/3.1.0-rc.6/core/assets/webhook-asset.json" },
+    { "$ref": "/schemas/3.1.0-rc.6/core/assets/css-asset.json" },
+    { "$ref": "/schemas/3.1.0-rc.6/core/assets/daast-asset.json" },
+    { "$ref": "/schemas/3.1.0-rc.6/core/assets/markdown-asset.json" },
+    { "$ref": "/schemas/3.1.0-rc.6/core/assets/brief-asset.json" },
+    { "$ref": "/schemas/3.1.0-rc.6/core/assets/catalog-asset.json" },
+    { "$ref": "/schemas/3.1.0-rc.6/core/assets/card-asset.json" },
+    { "$ref": "/schemas/3.1.0-rc.6/core/assets/pixel-tracker-asset.json" },
+    { "$ref": "/schemas/3.1.0-rc.6/core/assets/vast-tracker-asset.json" },
+    { "$ref": "/schemas/3.1.0-rc.6/core/assets/daast-tracker-asset.json" }
+  ],
+  "discriminator": {
+    "propertyName": "asset_type"
+  }
+}

@@ -7,11 +7,13 @@ testable: false
 
 Returns all accounts the authenticated agent can operate on this vendor agent. Use this to discover existing accounts, check status changes on pending accounts, and retrieve `account_id` values for use in protocol operations.
 
+For upstream-managed account namespaces, `list_accounts` is not optional discovery polish; it is the namespace discovery contract. The upstream platform owns the accessible account set, so buyers MUST resolve an explicit `account_id` before the first account-scoped request. If the authenticated credential can access more than one account, the seller MUST expose `list_accounts`; if it can access exactly one account, the seller SHOULD expose `list_accounts` returning that singleton so SDKs can auto-select it and still send `{ "account_id": "..." }` on required-account calls. `sync_accounts` provisioning does not create account-id accounts in 3.0.x unless a future explicit capability declares that mode; if `sync_accounts` is exposed on these sellers today, use it only for settings updates against an account already identified by `account_id`.
+
 `list_accounts` works across all vendor protocols — media buy agents, signals agents, governance agents, and creative agents all return accounts through this same task.
 
 **Response Time**: ~1s.
 
-**Request Schema**: [`/schemas/v3/account/list-accounts-request.json`](https://adcontextprotocol.org/schemas/v3/account/list-accounts-request.json)
+**Request Schema**: [`static/schemas/source/account/list-accounts-request.json`](https://github.com/adcontextprotocol/adcp/blob/main/static/schemas/source/account/list-accounts-request.json)
 **Response Schema**: [`/schemas/v3/account/list-accounts-response.json`](https://adcontextprotocol.org/schemas/v3/account/list-accounts-response.json)
 
 ## Quick Start
@@ -21,8 +23,8 @@ List all accounts this agent can operate:
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
-import { ListAccountsResponseSchema } from "@adcp/client";
+import { testAgent } from "@adcp/sdk/testing";
+import { ListAccountsResponseSchema } from "@adcp/sdk";
 
 const result = await testAgent.listAccounts({});
 
@@ -61,12 +63,15 @@ asyncio.run(main())
 
 ## Request Parameters
 
-All parameters are optional. An empty request returns all accounts.
+All parameters are optional. An empty request returns all accounts visible to
+the authenticated caller. Use `account` when re-reading one known account by
+`account_id` or by natural key (`brand` + `operator`, optionally `sandbox`).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `account` | object | No | Exact account filter. Pass `{ "account_id": "..." }` after discovery, or a natural key with `brand`, `operator`, and optional `sandbox` for buyer-declared account sellers. The seller returns only matching accounts visible to the authenticated caller. |
 | `status` | string | No | Filter by account status: `active`, `pending_approval`, `rejected`, `payment_required`, `suspended`, or `closed`. |
-| `sandbox` | boolean | No | When true, return only sandbox accounts. When false or omitted, return only production accounts. Primarily used with explicit accounts (`require_operator_auth: true`) where sandbox accounts are pre-existing test accounts on the platform. |
+| `sandbox` | boolean | No | When true, return only sandbox accounts. When false, return only production accounts. Omit to return both. Primarily used with account-id namespaces where sandbox accounts are pre-existing test accounts on the platform. |
 | `pagination` | object | No | Pagination cursor for large account sets. |
 
 ## Response
@@ -92,6 +97,18 @@ All parameters are optional. An empty request returns all accounts.
 | `governance_agents` | Governance agent endpoints registered on this account. Present when governance agents have been configured via [`sync_governance`](/docs/accounts/tasks/sync_governance). |
 | `setup` | Present when `status: "pending_approval"`. Contains `url` for completing setup and `message` explaining what's needed. |
 | `authorization` | Optional. The calling agent's scope grant for this account — `allowed_tasks`, `field_scopes`, `scope_name`, `read_only`. Applies to every vendor agent type (media-buy, signals, governance, creative, brand) — the Accounts Protocol surface is shared. Vendor agents that support scope introspection SHOULD populate this; media-buy sales agents claiming the `attestation_verifier` standard scope MUST populate it. Absence means the vendor agent does not advertise introspectable scope for this account; callers MUST NOT infer access from absence and fall back to error-driven discovery via the RBAC error codes. See [Caller authorization](/docs/accounts/overview#caller-authorization) for the full shape and semantics. |
+| `notification_configs` | Account-level webhook subscribers registered via [`sync_accounts`](/docs/accounts/tasks/sync_accounts#account-level-webhook-subscriptions). Each entry carries `subscriber_id`, `url`, `event_types[]`, and `active`. Present when the account has any persisted subscribers. `subscriber_id` is the account-scoped logical key; re-registering the same subscriber replaces that subscriber's config. `authentication.credentials` is omitted on every entry (write-only). Use this surface to verify what's active after a sync, audit fan-out across multiple subscribers, and detect drift between buyer-side expectations and seller-side persisted state. This is not an account lifecycle feed; account status changes are read from the account's `status` field or from the one-shot `sync_accounts.push_notification_config` async result channel. |
+
+### Single-publisher cardinality
+
+A seller serving exactly one publisher entity MAY return that entity as the sole account on `list_accounts` responses, regardless of calling principal. The *"Direct advertiser with single account"* example in [`list-accounts-response.json`](https://github.com/adcontextprotocol/adcp/blob/main/static/schemas/source/account/list-accounts-response.json) is canonical for this case — a single-element `accounts[]` with no `pagination` envelope at all.
+
+Pagination conformance requiring `pagination.has_more: true` does not apply when:
+
+- `pagination` is absent entirely (canonical single-account shape), or
+- `pagination.total_count` is present and ≤ 1
+
+Runners SHOULD grade pagination-walk phases as `not_applicable` in either case. This pattern is conformant; the spec carries no `minItems` constraint on `accounts[]` and the single-account example is normative.
 
 ## Common Scenarios
 
@@ -102,8 +119,8 @@ After `sync_accounts` returns `pending_approval`, poll until the account is read
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
-import { ListAccountsResponseSchema } from "@adcp/client";
+import { testAgent } from "@adcp/sdk/testing";
+import { ListAccountsResponseSchema } from "@adcp/sdk";
 
 async function waitForAccount(targetAccountId, maxAttempts = 20) {
   for (let i = 0; i < maxAttempts; i++) {
@@ -166,8 +183,8 @@ async def wait_for_account(target_account_id: str, max_attempts: int = 20):
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
-import { ListAccountsResponseSchema } from "@adcp/client";
+import { testAgent } from "@adcp/sdk/testing";
+import { ListAccountsResponseSchema } from "@adcp/sdk";
 
 const result = await testAgent.listAccounts({ status: "active" });
 

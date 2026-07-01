@@ -37,20 +37,32 @@ async function cleanup(pool: Pool) {
 async function seedPayingOrg(pool: Pool, orgId: string, domain: string, opts: {
   subscription_status?: string;
   canceled?: boolean;
+  membership_tier?: string | null;
+  subscription_price_lookup_key?: string | null;
+  subscription_amount?: number | null;
+  subscription_interval?: string | null;
+  is_personal?: boolean;
   auto_provision_direct?: boolean;
   auto_provision_hierarchy?: boolean;
 } = {}) {
   await pool.query(
     `INSERT INTO organizations (
-       workos_organization_id, name, email_domain, subscription_status, subscription_canceled_at,
+       workos_organization_id, name, email_domain, is_personal,
+       subscription_status, subscription_canceled_at, membership_tier,
+       subscription_price_lookup_key, subscription_amount, subscription_interval,
        auto_provision_verified_domain, auto_provision_brand_hierarchy_children,
        created_at, updated_at
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())
      ON CONFLICT (workos_organization_id) DO UPDATE
        SET email_domain = EXCLUDED.email_domain,
+           is_personal = EXCLUDED.is_personal,
            subscription_status = EXCLUDED.subscription_status,
            subscription_canceled_at = EXCLUDED.subscription_canceled_at,
+           membership_tier = EXCLUDED.membership_tier,
+           subscription_price_lookup_key = EXCLUDED.subscription_price_lookup_key,
+           subscription_amount = EXCLUDED.subscription_amount,
+           subscription_interval = EXCLUDED.subscription_interval,
            auto_provision_verified_domain = EXCLUDED.auto_provision_verified_domain,
            auto_provision_brand_hierarchy_children = EXCLUDED.auto_provision_brand_hierarchy_children,
            auto_provision_hierarchy_enabled_at = NULL,
@@ -59,8 +71,13 @@ async function seedPayingOrg(pool: Pool, orgId: string, domain: string, opts: {
       orgId,
       `Org ${orgId}`,
       domain,
+      opts.is_personal ?? false,
       opts.subscription_status ?? 'active',
       opts.canceled ? new Date() : null,
+      opts.membership_tier ?? null,
+      opts.subscription_price_lookup_key ?? null,
+      opts.subscription_amount ?? null,
+      opts.subscription_interval ?? null,
       opts.auto_provision_direct ?? true,
       opts.auto_provision_hierarchy ?? false,
     ],
@@ -136,6 +153,16 @@ describe('findPayingOrgForDomain', () => {
     expect(result!.hierarchy_chain).toEqual([CHILD_DOMAIN]);
     expect(result!.auto_provision_direct_allowed).toBe(true);
     expect(result!.auto_provision_hierarchy_allowed).toBe(false); // default
+  });
+
+  it('treats past_due as an entitlement-preserving verified-domain match', async () => {
+    await seedPayingOrg(pool, TEST_DIRECT_ORG, CHILD_DOMAIN, { subscription_status: 'past_due' });
+
+    const result = await findPayingOrgForDomain(CHILD_DOMAIN);
+
+    expect(result).not.toBeNull();
+    expect(result!.organization_id).toBe(TEST_DIRECT_ORG);
+    expect(result!.matched_domain).toBe(CHILD_DOMAIN);
   });
 
   it('walks brands.house_domain to inherit from a paying parent', async () => {
@@ -336,6 +363,53 @@ describe('resolveEffectiveMembership coherence with findPayingOrgForDomain', () 
     await cleanup(pool);
   });
 
+  it('resolves direct membership tier through the shared fallback when the column is null', async () => {
+    await seedPayingOrg(pool, TEST_DIRECT_ORG, CHILD_DOMAIN, {
+      membership_tier: null,
+      subscription_price_lookup_key: 'aao_membership_professional_250',
+      subscription_amount: 5000,
+      subscription_interval: 'year',
+      is_personal: true,
+    });
+
+    const result = await resolveEffectiveMembership(TEST_DIRECT_ORG);
+
+    expect(result.is_member).toBe(true);
+    expect(result.is_inherited).toBe(false);
+    expect(result.membership_tier).toBe('individual_professional');
+  });
+
+  it('resolves past_due direct membership during the Stripe dunning window', async () => {
+    await seedPayingOrg(pool, TEST_DIRECT_ORG, CHILD_DOMAIN, {
+      subscription_status: 'past_due',
+      membership_tier: 'company_icl',
+      subscription_amount: 700000,
+      subscription_interval: 'year',
+      is_personal: false,
+    });
+
+    const result = await resolveEffectiveMembership(TEST_DIRECT_ORG);
+
+    expect(result.is_member).toBe(true);
+    expect(result.is_inherited).toBe(false);
+    expect(result.membership_tier).toBe('company_icl');
+  });
+
+  it('resolves direct membership tier through amount fallback when lookup key is absent', async () => {
+    await seedPayingOrg(pool, TEST_DIRECT_ORG, CHILD_DOMAIN, {
+      membership_tier: null,
+      subscription_price_lookup_key: null,
+      subscription_amount: 250000,
+      subscription_interval: 'year',
+      is_personal: false,
+    });
+
+    const result = await resolveEffectiveMembership(TEST_DIRECT_ORG);
+
+    expect(result.is_member).toBe(true);
+    expect(result.membership_tier).toBe('company_standard');
+  });
+
   it('inherited membership requires the parent to opt into auto_provision_brand_hierarchy_children', async () => {
     // Parent paying, brand hierarchy says child→parent, but parent has NOT
     // opted in. Pre-fix this would resolve `is_member: true` for the child;
@@ -361,7 +435,14 @@ describe('resolveEffectiveMembership coherence with findPayingOrgForDomain', () 
   });
 
   it('inherited membership granted when parent has opted in', async () => {
-    await seedPayingOrg(pool, TEST_PARENT_ORG, PARENT_DOMAIN, { auto_provision_hierarchy: true });
+    await seedPayingOrg(pool, TEST_PARENT_ORG, PARENT_DOMAIN, {
+      auto_provision_hierarchy: true,
+      membership_tier: null,
+      subscription_price_lookup_key: 'aao_membership_builder_2500',
+      subscription_amount: 250000,
+      subscription_interval: 'year',
+      is_personal: false,
+    });
     await seedBrandHierarchy(pool, CHILD_DOMAIN, PARENT_DOMAIN);
     const CHILD_ORG = 'org_inherit_child_test_2';
     await pool.query(
@@ -376,6 +457,7 @@ describe('resolveEffectiveMembership coherence with findPayingOrgForDomain', () 
       expect(result.is_member).toBe(true);
       expect(result.is_inherited).toBe(true);
       expect(result.paying_org_id).toBe(TEST_PARENT_ORG);
+      expect(result.membership_tier).toBe('company_standard');
     } finally {
       await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [CHILD_ORG]);
     }

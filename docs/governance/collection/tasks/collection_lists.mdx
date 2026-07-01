@@ -145,6 +145,7 @@ Create a new collection list on a governance agent.
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/collection/create-collection-list-response.json",
+  "status": "completed",
   "list": {
     "list_id": "cl_novamotors_dna_2026",
     "name": "Nova Motors CTV Do Not Air — 2026",
@@ -180,6 +181,7 @@ Retrieve a collection list with resolved collections. Sellers call this to fetch
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/collection/get-collection-list-response.json",
+  "status": "completed",
   "list": {
     "list_id": "cl_novamotors_dna_2026",
     "name": "Nova Motors CTV Do Not Air — 2026",
@@ -319,7 +321,7 @@ This excludes specific sports programs by Gracenote ID (SP-prefixed for sports) 
 
 ## Security considerations
 
-Collection lists gate delivery decisions, so the `auth_token` and webhook callbacks need explicit lifecycle rules. General controls in [Security](/docs/building/implementation/security) apply; the collection-list-specific rules:
+Collection lists gate delivery decisions, so the `auth_token` and webhook callbacks need explicit lifecycle rules. General controls in [Security](/docs/building/by-layer/L1/security) apply; the collection-list-specific rules:
 
 **`auth_token` scope, revocation, and log hygiene.** Each token authorizes exactly one `list_id`; do not reuse a token across lists. Governance agents MUST issue a distinct token per seller that receives the list — shared tokens cannot be revoked per relationship and make list-wide rotation the only response to a single compromise. Tokens MUST NOT be written to logs, cache keys, or metric labels, and error responses from `get_collection_list` MUST NOT echo the presented token.
 
@@ -328,9 +330,9 @@ Collection lists gate delivery decisions, so the `auth_token` and webhook callba
 - **Normal deletion or end-of-relationship**: the token MUST fail subsequent `get_collection_list` calls immediately, but sellers with a cached resolution MAY continue serving from cache until `cache_valid_until`. A natural relationship end is not a compromise.
 - **Compromise-driven revocation**: the governance agent MUST signal cache invalidation. Either return a reduced `cache_valid_until` (at or before `now`) on the next poll that the seller still has access to complete, or emit a `collection_list_changed` webhook whose `change_summary` conveys that the list version has been invalidated so cached copies are discarded. Leaving compromised content in seller caches until the scheduled TTL is not acceptable.
 
-**Webhook URL validation.** The `webhook_url` on `update_collection_list` is SSRF-equivalent to any other buyer-provided callback URL. Apply the canonical [Webhook URL validation (SSRF)](/docs/building/implementation/security#webhook-url-validation-ssrf) rules — HTTPS only, validated IP ranges (IPv4 and IPv6 including `::ffff:0:0/96`), connection pinning (not just DNS re-resolution), no redirect following, size and timeout caps.
+**Webhook URL validation.** The `webhook_url` on `update_collection_list` is SSRF-equivalent to any other buyer-provided callback URL. Apply the canonical [Webhook URL validation (SSRF)](/docs/building/by-layer/L1/security#webhook-url-validation-ssrf) rules — HTTPS only, validated IP ranges (IPv4 and IPv6 including `::ffff:0:0/96`), connection pinning (not just DNS re-resolution), no redirect following, size and timeout caps.
 
-**Webhook signature algorithm.** The webhook signature MUST follow the [standard webhook signing rules](/docs/building/implementation/security#webhook-security). By default, the RFC 9421 [webhook callbacks profile](/docs/building/implementation/security#webhook-callbacks) applies: the governance agent signs with its `adcp_use: "webhook-signing"` key published at the `jwks_uri` of its `agents[]` entry in its own brand.json; the subscribing seller verifies covered components `@method`, `@target-uri`, `@authority`, `content-type`, `content-digest`, with `tag="adcp/webhook-signing/v1"`. The deprecated HMAC-SHA256 fallback applies only when the subscribing seller populates `authentication.credentials` on the webhook registration; that path follows the [Legacy HMAC-SHA256 fallback](/docs/building/implementation/security#legacy-hmac-sha256-fallback-deprecated-removed-in-40) rules, and any body `signature` field under that path is a convenience copy — recipients MUST verify against the headers and MUST NOT trust the body value.
+**Webhook signature algorithm.** The webhook signature MUST follow the [standard webhook signing rules](/docs/building/by-layer/L1/security#webhook-security). By default, the RFC 9421 [webhook callbacks profile](/docs/building/by-layer/L1/security#webhook-callbacks) applies: the governance agent signs with its `adcp_use: "request-signing"` key published at the `jwks_uri` of its `agents[]` entry in its own brand.json; deprecated `webhook-signing` keys remain accepted during the compatibility window. The subscribing seller verifies covered components `@method`, `@target-uri`, `@authority`, `content-type`, `content-digest`, with `tag="adcp/webhook-signing/v1"`. The deprecated HMAC-SHA256 fallback applies only when the subscribing seller populates `authentication.credentials` on the webhook registration; that path follows the [Legacy HMAC-SHA256 fallback](/docs/building/by-layer/L1/security#legacy-hmac-sha256-fallback-deprecated-removed-in-40) rules, and any body `signature` field under that path is a convenience copy — recipients MUST verify against the headers and MUST NOT trust the body value.
 
 **Distribution-ID inputs.** Governance agents SHOULD validate identifier format before persisting (IMDb: `^tt\d+$`, EIDR: `10.5240/...`, Gracenote: vendor-prefixed) and SHOULD enforce per-account rate limits on list mutations to prevent list-bloat DoS. Surface unresolved identifiers in `coverage_gaps` rather than silently dropping them.
 

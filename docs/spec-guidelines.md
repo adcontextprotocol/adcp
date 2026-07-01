@@ -95,6 +95,42 @@ When the same concept appears in multiple places with different subsets:
 - Adding new values is non-breaking
 - Documentation clarifies typical usage without restricting capability
 
+## Specialist Module Naming
+
+### Core Principle
+
+Specialist module names must reflect the **technical capability** being taught — what practitioners verify, resolve, or operate — not the business or marketing category.
+
+A module titled "Brand" is ambiguous: does it teach brand-safety policy, brand-identity schema validation, or brand-campaign strategy? A module titled "Brand Identity & Verification" tells a developer exactly what they will learn to do.
+
+### Naming Consistency
+
+The module name must be consistent across all four surfaces where it appears:
+
+1. **Page title** — the `title:` frontmatter in the module's `.mdx` file
+2. **Badge** — the `adcp_specialist_*` credential suffix (e.g., `adcp_specialist_signals`)
+3. **Sidebar navigation** — the `sidebarTitle:` frontmatter
+4. **Specialist overview table** — the row in the certification overview page
+
+If any of these diverge, implementers looking at one surface form a different mental model than those reading another. Keep all four in sync.
+
+### Good vs. Bad Names
+
+| Avoid | Prefer | Why |
+|-------|--------|-----|
+| Brand | Brand Identity & Verification | "Brand" reads as marketing; the module teaches schema validation and identity resolution |
+| Ads | Creative Asset Management | "Ads" is too broad; the module covers creative formats, asset pipelines, and approval flows |
+| Data | Signals & Audience Activation | "Data" is generic; the module teaches signal discovery, privacy controls, and activation loops |
+
+### Naming Checklist
+
+Before proposing a new specialist module:
+
+- [ ] Does the name describe the technical workflow, not the business domain?
+- [ ] Would a developer unfamiliar with AdCP understand what the module teaches from the name alone?
+- [ ] Is the name consistent across page title, badge, sidebar, and overview table?
+- [ ] Does the badge suffix (`adcp_specialist_*`) read naturally in a credential context?
+
 ## Enum Design
 
 ### Enum File Structure
@@ -122,6 +158,20 @@ Create a dedicated enum file when:
 - Values represent a closed set of options
 - The concept is fundamental to the protocol
 - Type safety would benefit implementers
+
+### Enum membership — when to add a value
+
+Adding a value to an *existing* enum is a curation decision, not a default. An enum is a curated roster of real, shared semantics — not a registry of every vendor or integration. A value earns membership when **all** hold:
+
+- **Published** — it names an externally-documented concept with a stable definition, not a per-buyer or per-integration shape.
+- **Natively supported** — at least one real implementer handles it directly, without bespoke per-value mapping (for a `feed_format`, the seller parses it natively without `feed_field_mappings`).
+- **Shared demand** — it is relevant across more than one producer **and** more than one consumer (a shared dialect, not branding for a single bilateral integration).
+
+A material **dialect** of an existing value earns its own value only when its differences would make the parent value's consumer mis-handle it — a renamed primary key, composite-encoded fields, or a field the parent treats as optional but the dialect requires. Cosmetic or additive-optional differences do not; use the parent value. When a concept fails these tests, model it through the schema's existing extension path (`custom` + a mapping, or `ext`) rather than minting an enum value.
+
+This is distinct from [Platform Agnosticism](#platform-agnosticism): a `feed_format` value legitimately names a vendor's *published spec* (the value **is** the spec), whereas platform-agnosticism forbids a vendor-specific *version of a general concept*.
+
+**Worked example — `feed_format` ([#3456](https://github.com/adcontextprotocol/adcp/issues/3456)).** `tiktok_shop`, `pinterest_catalog`, and `openai_product_feed` qualify: published, Google-Merchant-Center-derived feed dialects that real sellers parse natively, each with deltas a strict GMC parser would mis-handle. A feed without a published, natively-parsed spec uses `custom` + `feed_field_mappings`.
 
 ## Field Design
 
@@ -235,6 +285,41 @@ The rule to apply: if the name asks "which vendor-equivalent version of somethin
 - Vendor names in **example blocks** (email addresses, sample IDs) are fine.
 - When uncertain, ask: "Is this field or value representing *one vendor's version of something the protocol already has a general concept for*?" If yes, it belongs under `ext.{vendor}`.
 
+## Reserved SDK-Internal Keys
+
+**RULE**: The top-level key `ctx_metadata` is reserved on AdCP resource objects as an adapter-internal round-trip cache for state that an SDK or platform adapter needs to carry across calls but that buyers MUST NOT see or rely on. Adapters MUST strip `ctx_metadata` from any payload before wire egress. When the key was present and non-empty at strip time, adapters MUST emit a warning-level log entry so operators can detect accidental key collisions with custom adapter code. (An empty or absent `ctx_metadata` is silent — only a non-empty value triggers the warning.)
+
+**Why**: Platform adapters (e.g. Google Ad Manager, Kevel, custom seller infrastructure) often need to associate adapter-internal identifiers — GAM ad-unit IDs, key-value pairs, placement IDs — with AdCP resources that the buyer-facing SDK returns. The reference Prebid `salesagent` Python implementation uses an `implementation_config` JSON column on its Product model for exactly this purpose. Without a reserved name, every SDK invents its own (`implementation_config`, `_internal`, `sdk_state`, etc.); a fourth SDK then collides with one of them, or two SDKs converging on the same name produce ambiguous semantics. One reserved name removes the coordination problem.
+
+**Scope**: The reservation applies to AdCP resource objects whose schemas declare `additionalProperties: true` — including `Product`, `MediaBuy`, `Package`, `Creative`, `AudienceSegment`, `Signal`, and `RightsGrant`. The reservation travels with the resource wherever it appears: top-level in a response envelope, nested inside another resource (e.g. `Package` inside `MediaBuy`), or inside an array of resources (e.g. each element of `products: Product[]`). Adapters MUST strip the key from every occurrence before egress, not just the outermost one.
+
+`PropertyList` and `CollectionList` declare `additionalProperties: false` and are out of scope until a follow-up PR widens those schemas; until then, adapters needing round-trip state for those resources should track it out-of-band.
+
+**Distinction from neighboring conventions**:
+
+- `ext.{vendor}` — vendor-namespaced, **buyer-visible**, travels on the wire. Use for vendor-specific data the buyer should see (e.g. `ext.gam.line_item_id`).
+- `context` / `context_id` — caller-echoed correlation data, also wire-visible. Despite the prefix-match, `ctx_metadata` is not a sub-namespace of these — they are unrelated concepts and travel on different layers.
+- `ctx_metadata` — **adapter-internal only**, MUST be stripped before egress, never reaches the buyer.
+
+**Adapter conformance**:
+
+```
+1. Read ctx_metadata from inbound resource (publisher → SDK direction).
+2. Carry it in adapter-local state.
+3. Before serializing the resource for wire egress (SDK → buyer direction):
+   a. Remove the ctx_metadata key.
+   b. If the key was present and non-empty, emit a warning-level log:
+      "stripping reserved ctx_metadata before egress on <resource_type>"
+4. Buyer-facing surfaces MUST NOT expose ctx_metadata in any documentation,
+   typed shape, or example.
+```
+
+**Reviewer checklist**:
+
+- Reject any spec, schema, or example that promotes `ctx_metadata` as a buyer-readable field.
+- Reject any SDK contribution that surfaces `ctx_metadata` in a buyer-facing typed return.
+- Accept SDK code that reads/writes `ctx_metadata` as adapter-internal state, provided the egress-strip + warning-log path is in place.
+
 ## Breaking Changes
 
 ### What Constitutes a Breaking Change
@@ -261,6 +346,44 @@ When making breaking changes:
 3. **Document migration**: Provide before/after examples
 4. **Deprecation period**: Support both versions for defined period
 
+## JSON Schema Conventions
+
+### Nullable Scalars
+
+For AdCP 3.x draft-07 schemas, encode nullable scalar fields as a JSON Schema
+type union:
+
+```json
+{ "type": ["string", "null"] }
+```
+
+Use the same pattern for nullable numbers, integers, booleans, and mixed scalar
+value buckets. Do not introduce OpenAPI-style `nullable: true` in source
+schemas; it is not part of JSON Schema Draft 07 and creates inconsistent SDK
+projection rules.
+
+Nullable enums must include `null` in both the `type` union and the `enum` value
+set:
+
+```json
+{
+  "type": ["string", "null"],
+  "enum": ["active", "paused", null]
+}
+```
+
+Nullability and presence are separate in JSON Schema Draft 07:
+
+- `type: ["string", "null"]` means the field may be `null` when it is present.
+- The enclosing object's `required` array controls whether the field must be present.
+- Optional nullable fields therefore have three states: omitted, present with `null`,
+  and present with a scalar value.
+- Required nullable fields have two states: present with `null` or present with a
+  scalar value.
+
+When omission and explicit `null` carry different semantics, state that distinction
+in the field description so SDK generators do not collapse the cases.
+
 ## Testing Schemas
 
 All schema changes must:
@@ -269,7 +392,7 @@ All schema changes must:
 2. ✅ Pass example data through validation
 3. ✅ Generate types successfully (Python, TypeScript)
 4. ✅ Update documentation to match
-5. ✅ Include changeset describing the change
+5. ✅ Include an `adcontextprotocol` changeset describing the schema change
 
 ## Review Checklist
 
@@ -282,7 +405,7 @@ Before merging schema changes, verify:
 - [ ] Documentation updated to match schemas
 - [ ] Examples validate against new schemas
 - [ ] Type generation tested
-- [ ] Changeset created with proper version bump
+- [ ] `adcontextprotocol` changeset created with proper version bump
 
 ## Philosophy
 

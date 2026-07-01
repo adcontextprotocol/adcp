@@ -22,6 +22,7 @@ import {
 import { getThreadService } from '../thread-service.js';
 import { sendChannelMessage } from '../../slack/client.js';
 import { getEscalationChannel } from '../../db/system-settings-db.js';
+import { redactSupportSecrets } from '../../services/support-redaction.js';
 
 const logger = createLogger('addie-escalation-tools');
 
@@ -281,11 +282,11 @@ export function createEscalationToolHandlers(
       throw new ToolError(`priority must be one of: ${validPriorities.join(', ')}`);
     }
 
-    const summary = input.summary as string;
+    const summary = redactSupportSecrets(input.summary as string) ?? '';
     const category = input.category as EscalationCategory;
     const priority = (input.priority as EscalationPriority) || 'normal';
-    const originalRequest = input.original_request as string | undefined;
-    const addieContext = input.addie_context as string | undefined;
+    const originalRequest = redactSupportSecrets(input.original_request as string | undefined);
+    const addieContext = redactSupportSecrets(input.addie_context as string | undefined);
     const userEmail = input.user_email as string | undefined;
     const userSlackHandle = input.user_slack_handle as string | undefined;
     const perspectiveId = input.perspective_id as string | undefined;
@@ -347,6 +348,7 @@ export function createEscalationToolHandlers(
 
       // 3. Send notification to escalation channel
       const escalationChannelId = await getEscalationChannelId();
+      let notificationSent = false;
       if (escalationChannelId) {
         const result = await sendEscalationNotification(
           escalation.id,
@@ -369,6 +371,7 @@ export function createEscalationToolHandlers(
         if (result.ok && result.ts) {
           try {
             await markNotificationSent(escalation.id, escalationChannelId, result.ts);
+            notificationSent = true;
             logger.info({ escalationId: escalation.id, channelId: escalationChannelId }, 'Sent escalation notification');
           } catch (notifyError) {
             logger.error(
@@ -381,7 +384,9 @@ export function createEscalationToolHandlers(
         logger.warn({ escalationId: escalation.id }, 'No escalation channel configured - notification not sent');
       }
 
-      return `Escalation created (ID: ${escalation.id}). I've notified the AgenticAdvertising.org team and they'll follow up with you soon.`;
+      return notificationSent
+        ? `Support request created (ID: ${escalation.id}). I've notified the AgenticAdvertising.org team and they'll follow up with you soon.`
+        : `Support request created (ID: ${escalation.id}). The request is in your dashboard, but the team notification channel is not configured. You can add details or close it from your dashboard.`;
     } catch (error) {
       logger.error({ error, category, threadId }, 'Failed to create escalation');
       return 'I tried to escalate this but encountered an error. Please reach out directly to the AgenticAdvertising.org team for help.';

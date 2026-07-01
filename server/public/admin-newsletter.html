@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="/sage-icon.svg" type="image/svg+xml">
   <title>Admin - Newsletter</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
   <script src="/admin-sidebar.js"></script>
   <link rel="stylesheet" href="/design-system.css">
   <style>
@@ -17,8 +19,14 @@
     .status-draft { background: #fef3c7; color: #92400e; }
     .status-approved { background: #d1fae5; color: #065f46; }
     .status-sent { background: #dbeafe; color: #1e40af; }
+    .status-skipped { background: #fee2e2; color: #991b1b; }
     .recipient-count { font-size: 13px; color: #666; padding: 4px 10px; background: #f1f5f9; border-radius: 12px; }
     .optin-stats { font-size: 12px; color: #666; margin-top: 4px; text-align: right; }
+    .send-status-panel { border: 1px solid var(--color-border, #e5e7eb); border-left: 4px solid var(--nl-primary); background: var(--color-bg-card, #fff); border-radius: 8px; padding: 14px 16px; margin-bottom: 16px; display: grid; gap: 8px; }
+    .send-status-title { font-size: 14px; font-weight: 700; color: var(--color-text-heading, #1a1a2e); }
+    .send-status-copy { font-size: 13px; color: var(--color-text-secondary, #4b5563); line-height: 1.45; }
+    .send-status-meta { display: flex; gap: 8px; flex-wrap: wrap; }
+    .send-status-chip { font-size: 12px; color: #374151; background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 12px; padding: 3px 8px; }
 
     .section { background: var(--color-bg-card, #fff); border-radius: 8px; padding: 20px; margin-bottom: 16px; box-shadow: var(--shadow-xs, 0 1px 2px rgba(0,0,0,0.05)); position: relative; }
     .section.hidden-section { opacity: 0.5; }
@@ -30,7 +38,8 @@
 
     .editable { padding: 8px 12px; border: 1px solid transparent; border-radius: 4px; min-height: 20px; line-height: 1.5; cursor: pointer; }
     .editable:hover { border-color: #d1d5db; }
-    .editable[contenteditable="true"] { border-color: var(--nl-primary); outline: none; background: var(--nl-light); }
+    .editable a { pointer-events: none; }
+    .editable[contenteditable="true"] { border-color: var(--nl-primary); outline: none; background: var(--nl-light); cursor: text; white-space: pre-wrap; }
 
     .item-card { padding: 12px; border: 1px solid var(--color-border, #e5e5e5); border-radius: 6px; margin-bottom: 8px; }
     .item-badge { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; color: white; margin-right: 8px; }
@@ -56,17 +65,30 @@
 
     .custom-section-card { border: 2px dashed var(--nl-primary); border-radius: 8px; padding: 16px; margin-bottom: 16px; background: var(--nl-light); }
     .custom-section-card h3 { margin: 0 0 8px 0; font-size: 15px; color: var(--nl-primary); }
-    .custom-section-body { white-space: pre-wrap; font-size: 14px; color: #333; line-height: 1.6; }
+    .custom-section-body { font-size: 14px; color: #333; line-height: 1.6; }
+    .markdown-content p { margin: 0 0 8px 0; }
+    .markdown-content p:last-child { margin-bottom: 0; }
+    .markdown-content ul, .markdown-content ol { margin: 8px 0; padding-left: 22px; }
+    .markdown-content li { margin-bottom: 4px; }
+    .markdown-content blockquote { margin: 8px 0; padding-left: 12px; border-left: 3px solid var(--nl-primary); color: var(--color-text-secondary); }
+    .markdown-content code { background: var(--color-bg-subtle); padding: 2px 4px; border-radius: var(--radius-sm); font-size: 0.92em; }
+    .markdown-content pre { background: var(--color-bg-subtle); padding: 10px 12px; border-radius: var(--radius-md); overflow-x: auto; }
+    .markdown-content h1, .markdown-content h2, .markdown-content h3 { color: var(--color-text-heading); line-height: 1.25; margin: 14px 0 8px; }
+    .markdown-content h1 { font-size: 20px; }
+    .markdown-content h2 { font-size: 17px; }
+    .markdown-content h3 { font-size: 15px; }
+    .rendered-pasted-content { cursor: default; }
 
-    .paste-area { width: 100%; min-height: 200px; font-family: monospace; font-size: 13px; padding: 12px; border: 1px solid #d1d5db; border-radius: 6px; resize: vertical; box-sizing: border-box; }
+    .paste-area { width: 100%; min-height: 200px; font-family: monospace; font-size: 13px; padding: 12px; border: 1px solid var(--color-border-strong); border-radius: 6px; resize: vertical; box-sizing: border-box; }
     .paste-area:focus { border-color: var(--nl-primary); outline: none; }
+    .paste-warning { background: var(--color-warning-50); border: 1px solid var(--color-warning-200); border-left: 4px solid var(--color-warning-500); border-radius: 6px; padding: 10px 12px; margin-bottom: 12px; color: var(--color-warning-800); font-size: 13px; line-height: 1.45; }
 
-    .mode-tabs { display: flex; gap: 0; margin-bottom: 16px; border-bottom: 2px solid #e5e7eb; }
-    .mode-tab { padding: 8px 16px; font-size: 14px; font-weight: 500; color: #666; cursor: pointer; border: none; border-bottom: 2px solid transparent; margin-bottom: -2px; background: none; }
+    .mode-tabs { display: flex; gap: 0; margin-bottom: 16px; border-bottom: 2px solid var(--color-border); }
+    .mode-tab { padding: 8px 16px; font-size: 14px; font-weight: 500; color: var(--color-text-secondary); cursor: pointer; border: none; border-bottom: 2px solid transparent; margin-bottom: -2px; background: none; }
     .mode-tab.active { color: var(--nl-primary); border-bottom-color: var(--nl-primary); }
 
-    .instruction-bar { position: sticky; bottom: 0; padding: 12px 16px; background: #fff; border-top: 1px solid #e5e5e5; display: flex; gap: 8px; }
-    .instruction-bar input { flex: 1; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; }
+    .instruction-bar { position: sticky; bottom: 0; padding: 12px 16px; background: var(--color-bg-card); border-top: 1px solid var(--color-border); display: flex; gap: 8px; }
+    .instruction-bar input { flex: 1; padding: 8px 12px; border: 1px solid var(--color-border-strong); border-radius: 6px; font-size: 14px; }
     .instruction-bar input:focus { border-color: var(--nl-primary); outline: none; }
 
     .cover-preview { max-width: 300px; border-radius: 6px; margin-top: 8px; }
@@ -92,15 +114,20 @@
     </div>
 
     <div id="editorContent" style="display:none;">
+      <div id="sendStatusPanel" class="send-status-panel"></div>
+
       <div class="mode-tabs">
-        <button class="mode-tab active" onclick="switchMode('edit')">Edit Sections</button>
-        <button class="mode-tab" onclick="switchMode('paste')">Paste Content</button>
+        <button class="mode-tab active" onclick="switchMode('edit')">Edit sections</button>
+        <button class="mode-tab" onclick="switchMode('paste')">Paste content</button>
       </div>
 
       <!-- Paste mode -->
       <div id="pasteMode" style="display:none;">
         <div class="section">
-          <h2>Paste Your Newsletter</h2>
+          <h2>Paste your newsletter</h2>
+          <div class="paste-warning">
+            Replace content hides the auto-generated body sections and sends this pasted body instead. Custom sections still send unless you remove them separately.
+          </div>
           <p class="section-hint">Replaces all auto-generated sections. Use **bold**, [links](url), and `code` markdown.</p>
           <div style="margin-bottom:12px;">
             <label style="font-size:13px;color:#666;display:block;margin-bottom:4px;">Subject line override (optional)</label>
@@ -113,7 +140,7 @@
           <label style="font-size:13px;color:#666;display:block;margin-bottom:4px;">Body</label>
           <textarea id="pasteBody" class="paste-area" placeholder="Paste your newsletter content here..."></textarea>
           <div style="margin-top:12px;display:flex;gap:8px;">
-            <button class="btn btn-nl" onclick="submitPaste()">Replace Content</button>
+            <button class="btn btn-nl" onclick="submitPaste()">Replace content</button>
             <button class="btn btn-outline" onclick="switchMode('edit')">Cancel</button>
           </div>
         </div>
@@ -181,6 +208,9 @@
     let currentSubject = '';
     let uiConfig = null;
     let recipientCount = null;
+    let activeEditable = null;
+    let editSaveChain = Promise.resolve();
+    let pendingEditSaves = 0;
 
     function esc(s) {
       const d = document.createElement('div');
@@ -202,6 +232,384 @@
       });
     }
 
+    // ─── Formatting helpers ─────────────────────────────────────────
+
+    function isSafeHttpUrl(url) {
+      try {
+        const parsed = new URL(url, window.location.origin);
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+      } catch {
+        return false;
+      }
+    }
+
+    function decodeHtml(html) {
+      const textarea = document.createElement('textarea');
+      textarea.innerHTML = html;
+      return textarea.value;
+    }
+
+    function renderInlineMarkdown(text) {
+      return esc(text)
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_match, label, escapedUrl) => {
+          const url = decodeHtml(escapedUrl);
+          if (!isSafeHttpUrl(url)) return label;
+          return `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+        })
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    }
+
+    function renderMarkdown(markdown) {
+      const text = String(markdown || '');
+      if (!text.trim()) return '';
+
+      const lines = text.replace(/\r\n?/g, '\n').split('\n');
+      const out = [];
+      let paragraph = [];
+
+      function flushParagraph() {
+        if (paragraph.length === 0) return;
+        out.push(`<p>${renderInlineMarkdown(paragraph.join('\n')).replace(/\n/g, '<br>')}</p>`);
+        paragraph = [];
+      }
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const trimmed = line.trim();
+
+        if (trimmed.startsWith('```')) {
+          flushParagraph();
+          const code = [];
+          i++;
+          while (i < lines.length && !lines[i].trim().startsWith('```')) {
+            code.push(lines[i]);
+            i++;
+          }
+          out.push(`<pre><code>${esc(code.join('\n'))}</code></pre>`);
+          continue;
+        }
+
+        if (!trimmed) {
+          flushParagraph();
+          continue;
+        }
+
+        const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
+        if (heading) {
+          flushParagraph();
+          const level = heading[1].length;
+          out.push(`<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`);
+          continue;
+        }
+
+        if (/^[-*]\s+/.test(trimmed)) {
+          flushParagraph();
+          const items = [];
+          while (i < lines.length && /^[-*]\s+/.test(lines[i].trim())) {
+            items.push(`<li>${renderInlineMarkdown(lines[i].trim().replace(/^[-*]\s+/, ''))}</li>`);
+            i++;
+          }
+          i--;
+          out.push(`<ul>${items.join('')}</ul>`);
+          continue;
+        }
+
+        if (/^\d+\.\s+/.test(trimmed)) {
+          flushParagraph();
+          const items = [];
+          while (i < lines.length && /^\d+\.\s+/.test(lines[i].trim())) {
+            items.push(`<li>${renderInlineMarkdown(lines[i].trim().replace(/^\d+\.\s+/, ''))}</li>`);
+            i++;
+          }
+          i--;
+          out.push(`<ol>${items.join('')}</ol>`);
+          continue;
+        }
+
+        if (/^>\s?/.test(trimmed)) {
+          flushParagraph();
+          const quote = [];
+          while (i < lines.length && /^>\s?/.test(lines[i].trim())) {
+            quote.push(lines[i].trim().replace(/^>\s?/, ''));
+            i++;
+          }
+          i--;
+          out.push(`<blockquote><p>${renderInlineMarkdown(quote.join('\n')).replace(/\n/g, '<br>')}</p></blockquote>`);
+          continue;
+        }
+
+        paragraph.push(line);
+      }
+
+      flushParagraph();
+      return out.join('');
+    }
+
+    function renderPastedMarkdown(markdown) {
+      const text = String(markdown || '');
+      if (!text.trim()) return '';
+      if (window.marked?.parse && window.DOMPurify?.sanitize) {
+        const renderer = new window.marked.Renderer();
+        renderer.html = (token) => esc(typeof token === 'string' ? token : token?.text || '');
+        renderer.image = () => '';
+        renderer.link = (hrefOrToken, _title, linkText) => {
+          const href = typeof hrefOrToken === 'object' ? hrefOrToken.href : hrefOrToken;
+          const textValue = typeof hrefOrToken === 'object' ? hrefOrToken.text : linkText;
+          if (!isSafeHttpUrl(href || '')) return textValue || '';
+          return `<a href="${esc(href)}">${textValue || esc(href)}</a>`;
+        };
+        return window.DOMPurify.sanitize(window.marked.parse(text, { renderer }));
+      }
+      return renderMarkdown(text);
+    }
+
+    function htmlToMarkdown(html) {
+      if (!html) return '';
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const ignored = new Set(['script', 'style', 'iframe', 'object', 'embed', 'link', 'meta', 'svg', 'math']);
+
+      function compactInline(text) {
+        return text.replace(/[ \t\r\n]+/g, ' ').trim();
+      }
+
+      function childrenToMarkdown(node) {
+        return Array.from(node.childNodes).map(nodeToMarkdown).join('');
+      }
+
+      function blockMarkdown(markdown) {
+        const block = markdown
+          .replace(/[ \t]+\n/g, '\n')
+          .replace(/\n{3,}/g, '\n\n')
+          .trim();
+        return block ? `\n\n${block}\n\n` : '';
+      }
+
+      function listItemMarkdown(node, marker) {
+        const text = childrenToMarkdown(node)
+          .replace(/[ \t]+\n/g, '\n')
+          .replace(/\n{3,}/g, '\n\n')
+          .trim();
+        if (!text) return '';
+        const lines = text.split('\n');
+        return `${marker} ${lines[0]}${lines.slice(1).map(line => `\n  ${line}`).join('')}\n`;
+      }
+
+      function listMarkdown(node, ordered) {
+        const items = Array.from(node.children).filter(child => child.tagName.toLowerCase() === 'li');
+        const markdown = items.map((item, index) => listItemMarkdown(item, ordered ? `${index + 1}.` : '-')).join('');
+        return markdown ? `\n${markdown}\n` : '';
+      }
+
+      function nodeToMarkdown(node) {
+        if (node.nodeType === Node.TEXT_NODE) return node.nodeValue || '';
+        if (node.nodeType !== Node.ELEMENT_NODE) return '';
+
+        const tag = node.tagName.toLowerCase();
+        if (ignored.has(tag)) return '';
+
+        const childMarkdown = childrenToMarkdown(node);
+        const inline = compactInline(childMarkdown);
+
+        switch (tag) {
+          case 'br':
+            return '\n';
+          case 'strong':
+          case 'b':
+            return inline ? `**${inline}**` : '';
+          case 'em':
+          case 'i':
+            return inline ? `*${inline}*` : '';
+          case 'code':
+            return inline ? `\`${inline}\`` : '';
+          case 'pre':
+            return `\n\n\`\`\`\n${(node.textContent || '').trim()}\n\`\`\`\n\n`;
+          case 'a': {
+            const href = node.getAttribute('href') || '';
+            return inline && isSafeHttpUrl(href) ? `[${inline}](${href})` : inline;
+          }
+          case 'li':
+            return listItemMarkdown(node, '-');
+          case 'ul':
+            return listMarkdown(node, false);
+          case 'ol':
+            return listMarkdown(node, true);
+          case 'blockquote':
+            return childMarkdown.trim() ? `\n\n${childMarkdown.trim().split('\n').map(line => line.trim() ? `> ${line}` : '>').join('\n')}\n\n` : '';
+          case 'h1':
+            return inline ? `\n\n# ${inline}\n\n` : '';
+          case 'h2':
+            return inline ? `\n\n## ${inline}\n\n` : '';
+          case 'h3':
+            return inline ? `\n\n### ${inline}\n\n` : '';
+          case 'p':
+          case 'div':
+          case 'section':
+          case 'article':
+            return blockMarkdown(childMarkdown);
+          default:
+            return childMarkdown;
+        }
+      }
+
+      return childrenToMarkdown(doc.body)
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+    }
+
+    function insertTextAtCursor(text) {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) return false;
+      selection.deleteFromDocument();
+      const range = selection.getRangeAt(0);
+      const node = document.createTextNode(text);
+      range.insertNode(node);
+      range.setStartAfter(node);
+      range.setEndAfter(node);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return true;
+    }
+
+    function handleRichTextPaste(event) {
+      const html = event.clipboardData?.getData('text/html');
+      if (!html || !html.trim()) return;
+      const markdown = htmlToMarkdown(html);
+      const safeText = markdown || event.clipboardData?.getData('text/plain') || '';
+      event.preventDefault();
+
+      const el = event.currentTarget;
+      if (typeof el.selectionStart === 'number' && typeof el.selectionEnd === 'number') {
+        const start = el.selectionStart;
+        const end = el.selectionEnd;
+        el.value = `${el.value.slice(0, start)}${safeText}${el.value.slice(end)}`;
+        const caret = start + safeText.length;
+        el.setSelectionRange(caret, caret);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        return;
+      }
+
+      insertTextAtCursor(safeText);
+    }
+
+    function wireRichTextPaste(textareaId) {
+      const el = document.getElementById(textareaId);
+      if (!el) return;
+      el.addEventListener('paste', handleRichTextPaste);
+    }
+
+    function editableText(el) {
+      return (el.innerText || el.textContent || '').replace(/\u00a0/g, ' ').trim();
+    }
+
+    function formatETDateTime(value) {
+      if (!value) return '';
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return '';
+      return d.toLocaleString('en-US', {
+        timeZone: 'America/New_York',
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        timeZoneName: 'short',
+      });
+    }
+
+    function formatHourET(hour) {
+      const h = Number(hour);
+      if (!Number.isFinite(h)) return 'the scheduled send window';
+      const suffix = h >= 12 ? 'pm' : 'am';
+      const twelveHour = h % 12 || 12;
+      return `${twelveHour}${suffix} ET`;
+    }
+
+    function getSendWindowInfo() {
+      const nextSendAt = uiConfig?.cadence?.nextSendWindowAt;
+      const formatted = formatETDateTime(nextSendAt);
+      if (!formatted) {
+        return {
+          formatted: formatHourET(uiConfig?.cadence?.sendHourET),
+          isOpen: false,
+        };
+      }
+      return {
+        formatted,
+        isOpen: new Date(nextSendAt).getTime() <= Date.now(),
+      };
+    }
+
+    function formatSendWindowChip() {
+      const info = getSendWindowInfo();
+      return `${info.isOpen ? 'Send window open since' : 'Scheduled send'}: ${info.formatted}`;
+    }
+
+    function renderSendStatus() {
+      const status = currentDigest?.status;
+      const stats = currentDigest?.send_stats || {};
+      const emailCount = Number(stats.email_count || 0);
+      const slackCount = Number(stats.slack_count || 0);
+      const bySegment = stats.by_segment && typeof stats.by_segment === 'object' ? stats.by_segment : null;
+      const segmentText = bySegment
+        ? Object.entries(bySegment).map(([k, v]) => `${k}: ${v}`).join(' · ')
+        : '';
+
+      if (status === 'draft') {
+        return `
+          <div class="send-status-title">Draft only</div>
+          <div class="send-status-copy">This edition has not been queued. Send tests, finish edits, then approve it for the scheduled sender.</div>
+          <div class="send-status-meta">
+            <span class="send-status-chip">${esc(formatSendWindowChip())}</span>
+            ${recipientCount ? `<span class="send-status-chip">${esc(String(recipientCount.emailCount))} eligible email recipients</span>` : ''}
+          </div>`;
+      }
+
+      if (status === 'approved') {
+        return `
+          <div class="send-status-title">Queued for delivery</div>
+          <div class="send-status-copy">Approved editions are picked up by the scheduled sender on the next eligible run. Use Send now if this should go immediately.</div>
+          <div class="send-status-meta">
+            <span class="send-status-chip">${esc(formatSendWindowChip())}</span>
+            ${currentDigest.approved_at ? `<span class="send-status-chip">Approved ${esc(formatETDateTime(currentDigest.approved_at))}</span>` : ''}
+            ${currentDigest.approved_by ? `<span class="send-status-chip">By ${esc(currentDigest.approved_by)}</span>` : ''}
+            ${recipientCount ? `<span class="send-status-chip">${esc(String(recipientCount.emailCount))} eligible email recipients</span>` : ''}
+          </div>`;
+      }
+
+      if (status === 'sent') {
+        return `
+          <div class="send-status-title">Sent</div>
+          <div class="send-status-copy">Delivery is complete. The edition is locked against further edits.</div>
+          <div class="send-status-meta">
+            ${currentDigest.sent_at ? `<span class="send-status-chip">Sent ${esc(formatETDateTime(currentDigest.sent_at))}</span>` : ''}
+            <span class="send-status-chip">${esc(String(emailCount))} emails</span>
+            <span class="send-status-chip">${esc(String(slackCount))} Slack posts</span>
+            ${segmentText ? `<span class="send-status-chip">${esc(segmentText)}</span>` : ''}
+            ${currentDigest.perspective_id ? `<span class="send-status-chip">Perspective linked</span>` : '<span class="send-status-chip">Perspective pending</span>'}
+          </div>`;
+      }
+
+      if (status === 'skipped') {
+        return `
+          <div class="send-status-title">Skipped</div>
+          <div class="send-status-copy">This edition was skipped by the sender and cannot be sent from this screen.</div>`;
+      }
+
+      return '';
+    }
+
+    function placeCaretAtEnd(el) {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+
     // ─── Mode switching ─────────────────────────────────────────────
 
     function switchMode(mode) {
@@ -210,6 +618,15 @@
       });
       document.getElementById('editMode').style.display = mode === 'edit' ? 'block' : 'none';
       document.getElementById('pasteMode').style.display = mode === 'paste' ? 'block' : 'none';
+      if (mode === 'paste') populatePasteForm();
+    }
+
+    function populatePasteForm() {
+      if (!currentDigest?.content) return;
+      const c = currentDigest.content;
+      document.getElementById('pasteSubject').value = c.emailSubject || '';
+      document.getElementById('pasteStatusLine').value = c.statusLine || c.openingTake || '';
+      document.getElementById('pasteBody').value = c.pastedContent || '';
     }
 
     // ─── Load ───────────────────────────────────────────────────────
@@ -282,12 +699,15 @@
           <div style="display: flex; align-items: center; gap: 8px; justify-content: flex-end;">
             ${badge}
             <span class="status-badge status-${esc(status)}">${esc(status)}</span>
-            ${status === 'draft' ? `<button class="btn btn-nl" onclick="sendTest()">Send Test</button>` : ''}
-            ${status === 'draft' ? `<button class="btn btn-success" onclick="approveEdition()">Approve & Queue</button>` : ''}
+            ${status === 'draft' || status === 'approved' ? `<button class="btn btn-outline" onclick="sendTest()">Send test</button>` : ''}
+            ${status === 'draft' ? `<button class="btn btn-success" onclick="approveEdition()">Approve for scheduled send</button>` : ''}
+            ${status === 'approved' ? `<button class="btn btn-nl" onclick="sendNow(event)">Send now</button>` : ''}
           </div>
           ${optInBar}
         </div>
       `;
+
+      document.getElementById('sendStatusPanel').innerHTML = renderSendStatus();
 
       // Subject
       document.getElementById('subjectLine').innerHTML = `<strong>Subject:</strong> ${esc(currentSubject)}`;
@@ -309,63 +729,74 @@
         fieldsEl.innerHTML += `
           <div class="section">
             <h2>${esc(label)}</h2>
-            <div class="editable" contenteditable="false" onclick="startEdit(this, '${field}')">${esc(val) || '<em style="color:#888;">Click to edit</em>'}</div>
+            <div class="editable markdown-content" contenteditable="false" onclick="startEdit(this, '${field}')">${renderMarkdown(val) || '<em style="color:#888;">Click to edit</em>'}</div>
           </div>`;
       }
 
       // Sections from uiConfig — cherry-pick interface
       const container = document.getElementById('sectionsContainer');
       container.innerHTML = '';
-      let halfBuffer = [];
-      for (const sec of uiConfig.sections) {
-        const isHidden = hidden.has(sec.key);
-        const hasCandidates = sec.candidateCount > 0;
-        const hasIncluded = sec.includedCount > 0;
-
-        // Build candidate pool HTML with include/dismiss buttons per item
-        let candidatePoolHtml = '';
-        if (hasCandidates) {
-          candidatePoolHtml = `
-            <div style="margin-top:12px;padding-top:12px;border-top:1px dashed #d1d5db;">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                <span style="font-size:12px;font-weight:600;color:#888;text-transform:uppercase;">Available (${sec.candidateCount})</span>
-                <button class="btn btn-outline btn-sm" onclick="includeAll('${sec.key}')">Include All</button>
-              </div>
-              <div class="candidate-pool" data-section="${sec.key}">${sec.candidateHtml}</div>
-            </div>`;
-        }
-
-        const card = `
-          <div class="section${isHidden ? ' hidden-section' : ''}" id="section_${sec.key}">
+      if (String(c.pastedContent || '').trim()) {
+        container.innerHTML = `
+          <div class="section">
             <div class="section-toggle">
-              <label><input type="checkbox" ${isHidden ? '' : 'checked'} onchange="toggleSection('${sec.key}', this.checked)"> Include in email</label>
+              ${status === 'draft' ? '<button class="btn btn-outline btn-sm" onclick="clearPastedContent()">Clear pasted content</button>' : ''}
             </div>
-            <h2>${esc(sec.label)} ${hasIncluded ? `<span class="count">(${sec.includedCount} included)</span>` : ''}</h2>
-            ${sec.hint ? `<p class="section-hint">${esc(sec.hint)}</p>` : ''}
-            <div class="included-items section-content" data-section="${sec.key}">${sec.includedHtml}</div>
-            ${candidatePoolHtml}
+            <h2>Pasted content</h2>
+            <div class="custom-section-body markdown-content rendered-pasted-content" contenteditable="false">${renderPastedMarkdown(c.pastedContent)}</div>
           </div>`;
+      } else {
+        let halfBuffer = [];
+        for (const sec of uiConfig.sections) {
+          const isHidden = hidden.has(sec.key);
+          const hasCandidates = sec.candidateCount > 0;
+          const hasIncluded = sec.includedCount > 0;
 
-        if (sec.layout === 'half') {
-          halfBuffer.push(card);
-          if (halfBuffer.length === 2) {
-            container.innerHTML += `<div class="two-col">${halfBuffer.join('')}</div>`;
-            halfBuffer = [];
+          // Build candidate pool HTML with include/dismiss buttons per item
+          let candidatePoolHtml = '';
+          if (hasCandidates) {
+            candidatePoolHtml = `
+              <div style="margin-top:12px;padding-top:12px;border-top:1px dashed #d1d5db;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                  <span style="font-size:12px;font-weight:600;color:#888;text-transform:uppercase;">Available (${sec.candidateCount})</span>
+                  <button class="btn btn-outline btn-sm" onclick="includeAll('${sec.key}')">Include All</button>
+                </div>
+                <div class="candidate-pool" data-section="${sec.key}">${sec.candidateHtml}</div>
+              </div>`;
           }
-        } else {
-          if (halfBuffer.length > 0) {
-            container.innerHTML += `<div class="two-col">${halfBuffer.join('')}</div>`;
-            halfBuffer = [];
+
+          const card = `
+            <div class="section${isHidden ? ' hidden-section' : ''}" id="section_${sec.key}">
+              <div class="section-toggle">
+                <label><input type="checkbox" ${isHidden ? '' : 'checked'} onchange="toggleSection('${sec.key}', this.checked)"> Include in email</label>
+              </div>
+              <h2>${esc(sec.label)} ${hasIncluded ? `<span class="count">(${sec.includedCount} included)</span>` : ''}</h2>
+              ${sec.hint ? `<p class="section-hint">${esc(sec.hint)}</p>` : ''}
+              <div class="included-items section-content" data-section="${sec.key}">${sec.includedHtml}</div>
+              ${candidatePoolHtml}
+            </div>`;
+
+          if (sec.layout === 'half') {
+            halfBuffer.push(card);
+            if (halfBuffer.length === 2) {
+              container.innerHTML += `<div class="two-col">${halfBuffer.join('')}</div>`;
+              halfBuffer = [];
+            }
+          } else {
+            if (halfBuffer.length > 0) {
+              container.innerHTML += `<div class="two-col">${halfBuffer.join('')}</div>`;
+              halfBuffer = [];
+            }
+            container.innerHTML += card;
           }
-          container.innerHTML += card;
         }
-      }
-      if (halfBuffer.length > 0) {
-        container.innerHTML += `<div class="two-col">${halfBuffer.join('')}</div>`;
+        if (halfBuffer.length > 0) {
+          container.innerHTML += `<div class="two-col">${halfBuffer.join('')}</div>`;
+        }
       }
 
       // Add action buttons to each item card
-      if (status === 'draft') {
+      if (status === 'draft' && !String(c.pastedContent || '').trim()) {
         // Included items get a "Remove" button
         document.querySelectorAll('.included-items .item-card[data-id]').forEach(card => {
           const id = card.getAttribute('data-id');
@@ -411,7 +842,7 @@
               <h3><span class="item-badge badge-custom">CUSTOM</span> ${esc(cs.title || 'Untitled')}</h3>
               <button class="btn btn-danger btn-sm" onclick="deleteCustomSection('${esc(cs.id)}')">Remove</button>
             </div>
-            <div class="custom-section-body">${esc(cs.body)}</div>
+            <div class="custom-section-body markdown-content">${renderMarkdown(cs.body)}</div>
           </div>`;
       }
     }
@@ -420,6 +851,8 @@
       if (data.digest) currentDigest = data.digest;
       if (data.subject) currentSubject = data.subject;
       if (data.uiConfig) uiConfig = data.uiConfig;
+      if (pendingEditSaves > 0) return;
+      if (activeEditable?.dataset.editing === 'true') return;
       render();
     }
 
@@ -427,31 +860,77 @@
 
     function startEdit(el, field) {
       if (currentDigest?.status !== 'draft') return;
-      el.innerHTML = esc(currentDigest.content[field] || '');
+      if (el.contentEditable === 'true') return;
+      if (el.dataset.editing === 'true') return;
+      if (activeEditable && activeEditable !== el) activeEditable.blur();
+
+      const previousValue = currentDigest.content[field];
+      const previousSubject = currentSubject;
+      const originalText = currentDigest.content[field] || '';
+
+      activeEditable = el;
+      el.dataset.editing = 'true';
+      el.innerHTML = esc(originalText);
       el.contentEditable = 'true';
       el.focus();
+      placeCaretAtEnd(el);
+
+      let finished = false;
+
+      function cleanup() {
+        el.contentEditable = 'false';
+        delete el.dataset.editing;
+        el.removeEventListener('keydown', onKey);
+        el.removeEventListener('paste', handleRichTextPaste);
+        if (activeEditable === el) activeEditable = null;
+      }
 
       function save() {
-        el.contentEditable = 'false';
-        el.removeEventListener('blur', save);
-        el.removeEventListener('keydown', onKey);
-        const value = el.textContent.trim();
-        api('/editions/' + currentDigest.id + '/edit', {
+        if (finished) return;
+        finished = true;
+        const value = editableText(el);
+        currentDigest.content[field] = value || undefined;
+        if (field === 'emailSubject' && value) currentSubject = value;
+        cleanup();
+        el.innerHTML = renderMarkdown(value) || '<em style="color:#888;">Click to edit</em>';
+
+        const request = editSaveChain.catch(() => {}).then(() => api('/editions/' + currentDigest.id + '/edit', {
           method: 'POST',
           body: JSON.stringify({ field, value }),
-        }).then(r => r.json()).then(data => {
+        })).then(async r => {
+          const data = await r.json();
+          if (!r.ok) throw new Error(data.error || 'Save failed');
+          return data;
+        });
+        editSaveChain = request.catch(() => {});
+
+        pendingEditSaves += 1;
+        request.then(data => {
+          pendingEditSaves -= 1;
           updateFromResponse(data);
           toast('Saved');
-        }).catch(() => toast('Save failed'));
+        }).catch((err) => {
+          pendingEditSaves -= 1;
+          currentDigest.content[field] = previousValue;
+          currentSubject = previousSubject;
+          if (activeEditable?.dataset.editing !== 'true') render();
+          toast('Save failed: ' + esc(err.message));
+        });
       }
 
       function onKey(e) {
-        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); }
-        if (e.key === 'Escape') { el.contentEditable = 'false'; el.removeEventListener('blur', save); el.removeEventListener('keydown', onKey); render(); }
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); el.blur(); }
+        if (e.key === 'Escape') {
+          finished = true;
+          el.removeEventListener('blur', save);
+          cleanup();
+          render();
+        }
       }
 
-      el.addEventListener('blur', save);
+      el.addEventListener('blur', save, { once: true });
       el.addEventListener('keydown', onKey);
+      el.addEventListener('paste', handleRichTextPaste);
     }
 
     // ─── Cherry-pick actions ───────────────────────────────────────
@@ -579,6 +1058,17 @@
       } catch (err) { toast('Paste failed: ' + esc(err.message)); }
     }
 
+    async function clearPastedContent() {
+      if (!window.confirm('Clear pasted content and return to auto-generated sections?')) return;
+      try {
+        const res = await api('/editions/' + currentDigest.id + '/paste-content', { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        updateFromResponse(data);
+        toast('Pasted content cleared');
+      } catch (err) { toast('Clear failed: ' + esc(err.message)); }
+    }
+
     // ─── Instruction editing ────────────────────────────────────────
 
     async function applyInstruction() {
@@ -650,15 +1140,41 @@
 
     async function approveEdition() {
       const count = recipientCount ? ` This will go to ${recipientCount.emailCount} recipients.` : '';
-      if (!confirm('Approve this edition?' + count + ' It will be sent on the next scheduled run.')) return;
+      const sendWindow = getSendWindowInfo();
+      const timing = sendWindow.isOpen
+        ? ' The send window is already open; the sender will pick it up on the next scheduled check.'
+        : ` The sender will pick it up at ${sendWindow.formatted}.`;
+      if (!confirm('Approve this edition for scheduled delivery?' + count + timing)) return;
       try {
         const res = await api('/editions/' + currentDigest.id + '/approve', { method: 'POST' });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
         currentDigest = data.digest;
         render();
-        toast('Approved');
+        toast('Approved for scheduled send');
       } catch (err) { toast('Approve failed: ' + esc(err.message)); }
+    }
+
+    async function sendNow(event) {
+      const btn = event?.currentTarget;
+      const count = recipientCount ? ` This will go to ${recipientCount.emailCount} recipients and post to Slack if configured.` : '';
+      if (!confirm('Send this approved edition now?' + count)) return;
+      try {
+        if (btn) { btn.disabled = true; btn.textContent = 'Sending...'; }
+        const res = await api('/editions/' + currentDigest.id + '/send-now', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        currentDigest = data.digest;
+        currentSubject = data.subject || currentSubject;
+        uiConfig = data.uiConfig || uiConfig;
+        applyConfig();
+        render();
+        const sent = data.result?.sent;
+        toast(Number.isFinite(sent) ? `Sent ${sent} emails` : 'Sent');
+      } catch (err) {
+        toast('Send failed: ' + esc(err.message));
+        if (btn) { btn.disabled = false; btn.textContent = 'Send now'; }
+      }
     }
 
     async function sendTest() {
@@ -674,6 +1190,8 @@
       } catch (err) { toast('Send failed: ' + esc(err.message)); }
     }
 
+    wireRichTextPaste('pasteBody');
+    wireRichTextPaste('newSectionBody');
     loadEdition();
   </script>
 </body>

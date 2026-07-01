@@ -149,10 +149,111 @@ export class EventsDatabase {
   }
 
   /**
+   * Get event by Luma URL slug (the path segment from luma.com/<slug> or
+   * lu.ma/<slug>). Distinct from Luma's internal api_id stored in
+   * luma_event_id — URL slugs aren't stored in their own column, so we match
+   * on luma_url's trailing path.
+   */
+  async getEventByLumaUrlSlug(slug: string): Promise<Event | null> {
+    const escaped = escapeLikePattern(slug);
+    // Match the slug as the trailing path segment regardless of optional
+    // trailing slash, query string, or fragment — luma.com/<slug>,
+    // luma.com/<slug>/, luma.com/<slug>?foo, luma.com/<slug>#bar.
+    const result = await query<Event>(
+      `SELECT * FROM events
+       WHERE luma_url LIKE '%/' || $1 ESCAPE '\\'
+          OR luma_url LIKE '%/' || $1 || '/%' ESCAPE '\\'
+          OR luma_url LIKE '%/' || $1 || '?%' ESCAPE '\\'
+          OR luma_url LIKE '%/' || $1 || '#%' ESCAPE '\\'
+       LIMIT 1`,
+      [escaped]
+    );
+
+    return result.rows[0] ? this.deserializeEvent(result.rows[0]) : null;
+  }
+
+  /**
+   * Get an event slug redirect.
+   */
+  async getEventSlugRedirect(oldSlug: string): Promise<{ old_slug: string; current_slug: string; event_id: string } | null> {
+    const result = await query<{ old_slug: string; current_slug: string; event_id: string }>(
+      `SELECT r.old_slug, e.slug AS current_slug, r.event_id
+       FROM event_slug_redirects r
+       JOIN events e ON e.id = r.event_id
+       WHERE r.old_slug = $1`,
+      [oldSlug]
+    );
+
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Resolve an old slug to its canonical event row.
+   */
+  async getEventByRedirectSlug(oldSlug: string): Promise<Event | null> {
+    const result = await query<Event>(
+      `SELECT e.*
+       FROM event_slug_redirects r
+       JOIN events e ON e.id = r.event_id
+       WHERE r.old_slug = $1
+       LIMIT 1`,
+      [oldSlug]
+    );
+
+    return result.rows[0] ? this.deserializeEvent(result.rows[0]) : null;
+  }
+
+  /**
+   * Record a redirect from a previous event slug to the event's current slug.
+   */
+  async createSlugRedirect(eventId: string, oldSlug: string): Promise<void> {
+    await query(
+      `INSERT INTO event_slug_redirects (old_slug, event_id)
+       VALUES ($1, $2)
+       ON CONFLICT (old_slug) DO UPDATE SET
+         event_id = EXCLUDED.event_id,
+         created_at = NOW()`,
+      [oldSlug, eventId]
+    );
+  }
+
+  /**
+   * Remove a stale redirect when a previous slug becomes canonical again.
+   */
+  async removeSlugRedirect(oldSlug: string): Promise<void> {
+    await query('DELETE FROM event_slug_redirects WHERE old_slug = $1', [oldSlug]);
+  }
+
+  /**
+   * Find an event by a fuzzy title match. Last-resort fallback for callers
+   * (Addie tools) that pass user-typed strings like "foundry". Only matches
+   * published/completed events to avoid leaking drafts. Ambiguous matches
+   * return null so the caller can ask the user to disambiguate.
+   */
+  async findEventByTitleFuzzy(query_text: string): Promise<Event | null> {
+    const escaped = escapeLikePattern(query_text);
+    const result = await query<Event>(
+      `SELECT * FROM events
+       WHERE status IN ('published', 'completed')
+         AND visibility = 'public'
+         AND title ILIKE '%' || $1 || '%' ESCAPE '\\'
+       ORDER BY ABS(EXTRACT(EPOCH FROM (start_time - NOW()))) ASC
+       LIMIT 2`,
+      [escaped]
+    );
+
+    if (result.rows.length === 1) {
+      return this.deserializeEvent(result.rows[0]);
+    }
+    return null;
+  }
+
+  /**
    * Update an event
    */
   async updateEvent(id: string, updates: UpdateEventInput): Promise<Event | null> {
     const COLUMN_MAP: Record<keyof UpdateEventInput, string> = {
+      slug: 'slug',
       title: 'title',
       description: 'description',
       short_description: 'short_description',
@@ -327,12 +428,22 @@ export class EventsDatabase {
    * Check if slug is available
    */
   async isSlugAvailable(slug: string, excludeId?: string): Promise<boolean> {
-    let sql = 'SELECT 1 FROM events WHERE slug = $1';
+    let sql = `
+      SELECT 1 FROM events WHERE slug = $1
+    `;
     const params: unknown[] = [slug];
 
     if (excludeId) {
-      sql += ' AND id != $2';
+      sql += ' AND id::text != $2';
       params.push(excludeId);
+    }
+
+    sql += `
+      UNION ALL
+      SELECT 1 FROM event_slug_redirects WHERE old_slug = $1
+    `;
+    if (excludeId) {
+      sql += ' AND event_id::text != $2';
     }
 
     sql += ' LIMIT 1';

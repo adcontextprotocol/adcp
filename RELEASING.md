@@ -1,6 +1,6 @@
 # Release Process
 
-This document describes how to manage releases of the AdCP specification using Changesets.
+This document describes how to manage releases of the AdCP specification using Changesets. **For deeper operational guidance** — release lines, cherry-pick conventions, the forward-merge workflow, manual resolution recipes, and the 3.1.0 transition plan — see `.agents/playbook.md` (§ Release lines). The playbook is canonical; this file is the introductory walkthrough.
 
 ## Overview
 
@@ -11,6 +11,8 @@ We use [Changesets](https://github.com/changesets/changesets) to manage versions
 - Updates documentation examples
 - Generates CHANGELOG entries
 - Creates git tags
+
+AdCP runs **two release lines simultaneously**: `main` (next minor, currently `3.1.0-beta.N`) and `3.0.x` (patches to the current stable). Most contributors only touch `main` — the cherry-pick + forward-merge dance is documented in the playbook for cases where a fix needs to ship in both lines.
 
 ## Workflow
 
@@ -188,6 +190,20 @@ Our version management is automated through npm scripts:
 The `scripts/update-schema-versions.js` script updates the schema registry version to match package.json.
 
 ## Troubleshooting
+
+### Forward-merge PR fails on `Check for changeset`
+
+PRs whose head branch starts with `forward-merge/` skip the changeset check (the merge brings package-changing commits whose changesets were already consumed by 3.0.x's Version Packages cut). If the check is firing on a forward-merge PR, the head branch isn't using the `forward-merge/` prefix — rename it:
+
+```bash
+git push origin HEAD:refs/heads/forward-merge/3.0.x-<descriptor>
+```
+
+See `.agents/playbook.md` for the full manual forward-merge runbook.
+
+### Forward-merge workflow fails loud on content conflicts
+
+Expected behavior when 3.0.x has changes in the cross-line-divergent files (`error-code.json`, `storyboard-schema.yaml`, `runner-output-contract.yaml`, `error.json`, `get-adcp-capabilities-response.json`, `training-agent-storyboards.yml`, `error-handling.mdx`). The workflow's error message includes the manual resolution recipe. See `.agents/playbook.md` (§ Cherry-pick convention) for the full procedure and rationale.
 
 ### Changesets not found
 

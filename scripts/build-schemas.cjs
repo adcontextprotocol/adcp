@@ -30,6 +30,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const semver = require('semver');
 
 const SOURCE_DIR = path.join(__dirname, '../static/schemas/source');
 const DIST_DIR = path.join(__dirname, '../dist/schemas');
@@ -56,16 +57,21 @@ function getAllReleasedVersions() {
 
   const entries = fs.readdirSync(DIST_DIR, { withFileTypes: true });
   return entries
-    .filter(e => e.isDirectory() && /^\d+\.\d+\.\d+$/.test(e.name))
+    .filter(e => e.isDirectory() && semver.valid(e.name) !== null && semver.prerelease(e.name) === null)
     .map(e => e.name)
-    .sort((a, b) => {
-      // Sort by semver (descending)
-      const [aMajor, aMinor, aPatch] = a.split('.').map(Number);
-      const [bMajor, bMinor, bPatch] = b.split('.').map(Number);
-      if (aMajor !== bMajor) return bMajor - aMajor;
-      if (aMinor !== bMinor) return bMinor - aMinor;
-      return bPatch - aPatch;
-    });
+    .sort(semver.rcompare);
+}
+
+function getAllSchemaVersions() {
+  if (!fs.existsSync(DIST_DIR)) {
+    return [];
+  }
+
+  const entries = fs.readdirSync(DIST_DIR, { withFileTypes: true });
+  return entries
+    .filter(e => e.isDirectory() && semver.valid(e.name) !== null)
+    .map(e => e.name)
+    .sort(semver.rcompare);
 }
 
 /**
@@ -108,6 +114,107 @@ function getMinorVersion(version) {
   return `${parts[0]}.${parts[1]}`;
 }
 
+function getReleaseMetadata(version, knownVersions = []) {
+  if (version === 'latest') {
+    return {
+      stability: 'development',
+      prerelease: false,
+      deprecated: false,
+    };
+  }
+
+  const match = String(version).match(/^\d+\.\d+\.\d+(?:-([0-9A-Za-z.-]+))?$/);
+  if (!match) {
+    throw new Error(`Invalid semantic version: ${version}. Expected format: major.minor.patch[-prerelease]`);
+  }
+
+  const prerelease = match[1] || '';
+  if (!prerelease) {
+    return {
+      stability: 'stable',
+      prerelease: false,
+      deprecated: false,
+    };
+  }
+
+  const label = prerelease.split('.')[0].toLowerCase();
+  const stableVersion = String(version).split('-')[0];
+  const supersededBy = knownVersions.includes(stableVersion) ? stableVersion : undefined;
+  const metadata = {
+    stability: label === 'rc' ? 'rc' : label === 'beta' ? 'beta' : 'prerelease',
+    prerelease: true,
+    deprecated: Boolean(supersededBy),
+  };
+  if (supersededBy) {
+    metadata.superseded_by = supersededBy;
+  }
+  return metadata;
+}
+
+function buildRootSchemaDiscovery() {
+  const stableVersions = getAllReleasedVersions();
+  const allVersions = getAllSchemaVersions();
+  const latestStable = stableVersions[0] || null;
+  const latestByMajor = {};
+  const latestByMinor = {};
+  const aliases = {};
+
+  for (const version of stableVersions) {
+    const major = getMajorVersion(version);
+    const minor = getMinorVersion(version);
+    if (!latestByMajor[major]) {
+      latestByMajor[major] = version;
+      aliases[`v${major}`] = version;
+    }
+    if (!latestByMinor[minor]) {
+      latestByMinor[minor] = version;
+      aliases[`v${minor}`] = version;
+    }
+  }
+
+  return {
+    $schema: 'http://json-schema.org/draft-07/schema#',
+    $id: '/schemas/index.json',
+    title: 'AdCP Schema Discovery',
+    description: 'Root discovery document for file-based AdCP schema consumers. Use latest_stable or a major/minor alias target instead of choosing by directory listing.',
+    latest: latestStable,
+    latest_stable: latestStable,
+    channel: 'stable',
+    aliases,
+    latest_by_major: latestByMajor,
+    latest_by_minor: latestByMinor,
+    versions: allVersions.map((version) => ({
+      version,
+      ...getReleaseMetadata(version, allVersions),
+      path: `/schemas/${version}/`,
+      index: `/schemas/${version}/index.json`,
+    })),
+  };
+}
+
+function writeRootSchemaDiscovery() {
+  const discovery = buildRootSchemaDiscovery();
+  ensureDir(DIST_DIR);
+
+  fs.writeFileSync(
+    path.join(DIST_DIR, 'index.json'),
+    JSON.stringify(discovery, null, 2) + '\n',
+    'utf8'
+  );
+
+  fs.writeFileSync(
+    path.join(DIST_DIR, 'latest.json'),
+    JSON.stringify({
+      latest: discovery.latest_stable,
+      latest_stable: discovery.latest_stable,
+      channel: 'stable',
+      path: discovery.latest_stable ? `/schemas/${discovery.latest_stable}/` : null,
+      index: discovery.latest_stable ? `/schemas/${discovery.latest_stable}/index.json` : null,
+    }, null, 2) + '\n',
+    'utf8'
+  );
+}
+
 function ensureDir(dir) {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
@@ -142,7 +249,13 @@ function ensureDir(dir) {
 // Otherwise the schema's top-level `required` array MUST include
 // `idempotency_key`.
 
-const READ_ONLY_VERB_PATTERN = /(^|-)(get|list|check|validate|preview)-/;
+// Read-only verb pattern. Anchored to the start so tools like
+// `create-collection-list-request.json` aren't mis-classified as read-only
+// because they happen to contain `-list-` mid-name. An optional single-word
+// domain prefix (e.g., `si-get-`, `tasks-list-`) is allowed; the prefix MUST
+// be a single hyphen-free token, ruling out compound names like
+// `create-collection-list-`.
+const READ_ONLY_VERB_PATTERN = /^(?:[a-z]+-)?(get|list|check|validate|preview|search)-/;
 const NON_OPERATION_ALLOWLIST = new Set([
   // Embedded input types / utility request shapes that aren't operations
   // themselves — they're referenced via $ref from operation schemas.
@@ -171,6 +284,22 @@ function isNonMutatingRequestBasename(basename) {
 function hasNaturallyIdempotentMarker(schema) {
   const haystack = String(schema.$comment || '') + ' ' + String(schema.description || '');
   return /naturally idempotent/i.test(haystack);
+}
+
+// Classify a request schema as mutating or non-mutating using the same rules
+// the lint enforces. Returns true if the operation mutates state.
+//
+// Read-only verb basenames (get-/list-/check-/validate-/preview-) and the
+// NON_OPERATION_ALLOWLIST entries are non-mutating utility shapes.
+// Anything else is a state-changing operation: it MUST either declare
+// idempotency_key in `required` or carry a "naturally idempotent" marker
+// (which means it uses a different idempotency key like session_id).
+// Both forms are mutating; the lint above guarantees one of them is present.
+//
+// Used by both lintMutatingRequestsRequireIdempotencyKey and the manifest
+// generator — single source of truth for "is this a mutating tool?".
+function classifyRequestMutating(filePath) {
+  return !isNonMutatingRequestBasename(path.basename(filePath));
 }
 
 function lintMutatingRequestsRequireIdempotencyKey(sourceDir) {
@@ -210,6 +339,87 @@ function lintMutatingRequestsRequireIdempotencyKey(sourceDir) {
       `  A) Add "idempotency_key" to the top-level "required" array (the common case — any create/update/delete/sync/activate/submit operation).\n` +
       `  B) If the operation is genuinely read-only, rename the schema file to start with get-/list-/check-/validate-/preview- (or add it to NON_OPERATION_ALLOWLIST in scripts/build-schemas.cjs if it's a core utility).\n` +
       `  C) If the operation is naturally idempotent by some other key (e.g., session_id), add the phrase "naturally idempotent" to the schema's description or $comment, matching the pattern in sponsored-intelligence/si-terminate-session-request.json.`
+    );
+  }
+}
+
+// ── Error code enumMetadata coverage lint ─────────────────────────────────
+//
+// Every value in enums/error-code.json `enum` MUST have a structured
+// `enumMetadata[code]` entry with `recovery` (one of correctable/transient/
+// terminal) and `suggestion` (string remediation hint). This lint stops the
+// recovery-classification drift that bit the TS SDK (adcp-client#1135 — 17
+// missing codes, 3 wrong recovery values that ran for over a year because
+// SDKs were hand-curating from `enumDescriptions` prose).
+//
+// We also cross-check that the structured `recovery` matches the prose
+// `Recovery: X` in `enumDescriptions` — if either side drifts, the build
+// fails. SDKs MUST consume `enumMetadata` going forward; `enumDescriptions`
+// remains the human-readable narrative.
+//
+// See adcp#3725 for the full proposal and rationale.
+
+const VALID_RECOVERY_VALUES = new Set(['correctable', 'transient', 'terminal']);
+const RECOVERY_PROSE_PATTERN = /Recovery:\s*(correctable|transient|terminal)\b/i;
+
+function lintErrorCodeEnumMetadata(sourceDir) {
+  const errorCodePath = path.join(sourceDir, 'enums', 'error-code.json');
+  const schema = JSON.parse(fs.readFileSync(errorCodePath, 'utf8'));
+  const violations = [];
+
+  if (!Array.isArray(schema.enum) || schema.enum.length === 0) {
+    throw new Error(`Schema enumMetadata lint: enums/error-code.json has no \`enum\` array.`);
+  }
+  if (!schema.enumMetadata || typeof schema.enumMetadata !== 'object') {
+    throw new Error(
+      `Schema enumMetadata lint: enums/error-code.json is missing the \`enumMetadata\` block.\n` +
+      `Add an enumMetadata object with one entry per code: { "<CODE>": { "recovery": "...", "suggestion": "..." } }.`
+    );
+  }
+
+  const enumCodes = new Set(schema.enum);
+  const metaCodes = new Set(
+    Object.keys(schema.enumMetadata).filter(k => !k.startsWith('$'))
+  );
+
+  for (const code of enumCodes) {
+    const meta = schema.enumMetadata[code];
+    if (!meta || typeof meta !== 'object') {
+      violations.push(`  ${code}: missing enumMetadata entry`);
+      continue;
+    }
+    if (!VALID_RECOVERY_VALUES.has(meta.recovery)) {
+      violations.push(`  ${code}: enumMetadata.recovery="${meta.recovery}" — must be correctable | transient | terminal`);
+    }
+    if (typeof meta.suggestion !== 'string' || meta.suggestion.length === 0) {
+      violations.push(`  ${code}: enumMetadata.suggestion missing or empty`);
+    }
+
+    // Cross-check structured recovery against the prose in enumDescriptions.
+    // If they disagree, one of them is wrong — bail and let the author fix it.
+    const prose = schema.enumDescriptions && schema.enumDescriptions[code];
+    if (typeof prose === 'string') {
+      const m = prose.match(RECOVERY_PROSE_PATTERN);
+      if (m && m[1].toLowerCase() !== meta.recovery) {
+        violations.push(
+          `  ${code}: enumMetadata.recovery="${meta.recovery}" disagrees with prose "Recovery: ${m[1]}" in enumDescriptions`
+        );
+      }
+    }
+  }
+
+  for (const code of metaCodes) {
+    if (!enumCodes.has(code)) {
+      violations.push(`  ${code}: enumMetadata entry has no matching enum value (typo or stale entry?)`);
+    }
+  }
+
+  if (violations.length > 0) {
+    throw new Error(
+      `Schema enumMetadata lint: ${violations.length} issue(s) in enums/error-code.json.\n\n` +
+      violations.join('\n') +
+      `\n\nSee adcp#3725. SDKs depend on enumMetadata to classify error recovery — drift here ships ` +
+      `as recovery bugs in every downstream SDK.`
     );
   }
 }
@@ -537,6 +747,329 @@ function buildExtensions(sourceDir, targetDir, version) {
   };
 }
 
+// ── Manifest generation (adcp#3725) ───────────────────────────────────────
+//
+// Emit a single manifest.json artifact per version that gives SDKs a
+// machine-readable view of every tool, error code, and specialism — the
+// metadata each SDK currently hand-rolls and drifts on.
+//
+// Tool name derivation: the basename `<name>-request.json` → tool name
+// `<name>` with hyphens converted to underscores. The matching response
+// is `<name>-response.json`; async variants follow the same prefix.
+//
+// Protocol derivation: the source directory name. Tools at the source
+// root (none today, but reserved) are intentionally excluded — every tool
+// must live under a protocol directory.
+//
+// `mutating`: classifyRequestMutating() — same logic the idempotency-key
+// lint enforces, so manifest and lint can never disagree.
+//
+// `error_codes`: derived from enums/error-code.json's enum + enumMetadata
+// + enumDescriptions. The lint above guarantees these are in sync.
+//
+// `specialisms`: derived from static/compliance/source/specialisms/*/
+// index.yaml. Each specialism contributes:
+//   - entry_point_tools: the curated `required_tools` from index.yaml — the
+//     minimal contract the spec asserts implementers MUST ship.
+//   - exercised_tools: the full set of tools called across the specialism's
+//     own phases[].steps[].task plus every scenario in requires_scenarios
+//     (resolved via scenario.id from the compliance source tree).
+// SDKs use entry_point_tools to gate "did I declare the right specialism?"
+// and exercised_tools to gate "does my agent answer every call the
+// conformance kit will make?". The two sets are usually distinct;
+// shipping only entry_point_tools (#3725 review feedback) was misleading.
+// Inverse mapping (tool → specialisms[]) is folded back onto each tool
+// based on exercised_tools, since that's the surface SDK authors care about.
+
+// Keep this set in sync with the `protocol` enum in
+// static/schemas/source/manifest.schema.json. Adding a protocol surface
+// requires updating both — the script enum gates which directories are
+// scanned for tools; the meta-schema enum gates which protocol values are
+// valid in the emitted manifest.
+const MANIFEST_PROTOCOLS = new Set([
+  'media-buy', 'signals', 'governance', 'account', 'creative',
+  'brand', 'content-standards', 'property', 'collection',
+  'sponsored-intelligence', 'protocol', 'compliance', 'trusted-match', 'a2ui'
+]);
+
+// Strip the `Recovery: <verdict>(...).` sentence from an error-code
+// description. The structured `recovery` and `suggestion` fields carry the
+// same semantic — emitting the prose verbatim in the manifest would force
+// SDKs to choose between two surfaces.
+//
+// Three patterns occur in the corpus:
+//   1) `Recovery: <verdict>.`              — bare verdict + period
+//   2) `Recovery: <verdict> (...).`         — parenthetical suggestion + period
+//   3) `Recovery: <verdict> <clause>.`      — clause continuation to end of string
+//
+// (1) and (2) preserve any content after the Recovery sentence (e.g.
+// REFERENCE_NOT_FOUND's uniform-response MUST summary that follows
+// `Recovery: correctable.`). (3) only ever runs to end of string in the
+// corpus; no description has additional sentences after a clause-style
+// Recovery continuation.
+function stripRecoveryProse(desc) {
+  if (typeof desc !== 'string') return desc;
+  // Patterns 1+2: verdict optionally followed by a balanced (single-level)
+  // parenthetical, then a period. The parenthetical may contain dotted
+  // identifiers — match `[^)]*` to consume everything up to the closing
+  // paren regardless of internal periods.
+  const verdictThenPeriod = /\s*Recovery:\s*(?:correctable|transient|terminal)(?:\s*\([^)]*\))?\.\s*/;
+  if (verdictThenPeriod.test(desc)) {
+    return desc.replace(verdictThenPeriod, ' ').replace(/\s{2,}/g, ' ').trim();
+  }
+  // Pattern 3: clause continuation. Strip from `Recovery:` to end of string.
+  const clauseToEnd = /\s*Recovery:\s*(?:correctable|transient|terminal)\b[\s\S]+$/;
+  return desc.replace(clauseToEnd, '').replace(/\s{2,}/g, ' ').trim();
+}
+
+// Build a Map<scenarioId, Set<task>> by walking the entire compliance source
+// tree. Mirrors the resolution model used by lint-storyboard-branch-sets.cjs:
+// a `requires_scenarios` entry names a scenario's `id` field (e.g.
+// `media_buy_seller/refine_products`), and the runner finds the scenario by
+// id, not by file path.
+function indexScenarioTasks(repoRoot) {
+  const yaml = require('js-yaml');
+  const sourceRoot = path.join(repoRoot, 'static', 'compliance', 'source');
+  const index = new Map();
+  if (!fs.existsSync(sourceRoot)) return index;
+
+  function walk(dir) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(p);
+        continue;
+      }
+      if (!entry.name.endsWith('.yaml')) continue;
+      let doc;
+      try { doc = yaml.load(fs.readFileSync(p, 'utf8')); }
+      catch { continue; }
+      if (!doc || typeof doc !== 'object' || typeof doc.id !== 'string') continue;
+      if (!Array.isArray(doc.phases)) continue;
+      index.set(doc.id, collectTasksFromPhases(doc.phases));
+    }
+  }
+  walk(sourceRoot);
+  return index;
+}
+
+// Walk a storyboard's phases and collect the tasks an agent MUST handle to
+// pass conformance for that storyboard. Steps with `requires_tool: <X>` are
+// conditional — the runner only executes them if the agent claims tool X —
+// so they're optional surface and intentionally excluded here. Without that
+// filter, optional test-harness tools (e.g. comply_test_controller, gated
+// across many storyboards) would propagate to every specialism's
+// exercised_tools and overstate the required surface.
+function collectTasksFromPhases(phases) {
+  const tasks = new Set();
+  if (!Array.isArray(phases)) return tasks;
+  for (const phase of phases) {
+    if (!phase || !Array.isArray(phase.steps)) continue;
+    for (const step of phase.steps) {
+      if (!step || typeof step.task !== 'string' || step.task.length === 0) continue;
+      if (step.requires_tool) continue;
+      tasks.add(step.task);
+    }
+  }
+  return tasks;
+}
+
+function loadSpecialisms(repoRoot) {
+  const yaml = require('js-yaml');
+  const specialismsDir = path.join(repoRoot, 'static', 'compliance', 'source', 'specialisms');
+  if (!fs.existsSync(specialismsDir)) return [];
+
+  const scenarioIndex = indexScenarioTasks(repoRoot);
+
+  const out = [];
+  for (const entry of fs.readdirSync(specialismsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const indexPath = path.join(specialismsDir, entry.name, 'index.yaml');
+    if (!fs.existsSync(indexPath)) continue;
+    const doc = yaml.load(fs.readFileSync(indexPath, 'utf8'));
+    if (!doc || typeof doc !== 'object') continue;
+
+    const entryPointTools = Array.isArray(doc.required_tools) ? doc.required_tools : [];
+    const exercised = new Set(entryPointTools);
+
+    // Tools called directly by this specialism's own phases.
+    for (const t of collectTasksFromPhases(doc.phases)) exercised.add(t);
+
+    // Tools called by every linked scenario.
+    if (Array.isArray(doc.requires_scenarios)) {
+      for (const scenarioId of doc.requires_scenarios) {
+        if (typeof scenarioId !== 'string') continue;
+        const scenarioTasks = scenarioIndex.get(scenarioId);
+        if (!scenarioTasks) {
+          throw new Error(
+            `Manifest generation: specialism "${doc.id || entry.name}" requires_scenarios entry ` +
+            `"${scenarioId}" does not match any scenario id in the compliance source tree. ` +
+            `Either fix the reference or add the missing scenario file.`
+          );
+        }
+        for (const t of scenarioTasks) exercised.add(t);
+      }
+    }
+
+    out.push({
+      id: doc.id || entry.name,
+      protocol: doc.protocol || null,
+      title: doc.title || null,
+      entry_point_tools: entryPointTools,
+      exercised_tools: Array.from(exercised).sort()
+    });
+  }
+  return out;
+}
+
+function discoverTools(sourceDir) {
+  const tools = [];
+  const entries = fs.readdirSync(sourceDir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    if (!MANIFEST_PROTOCOLS.has(entry.name)) continue;
+    const protocol = entry.name;
+    const protoDir = path.join(sourceDir, entry.name);
+    const files = fs.readdirSync(protoDir, { withFileTypes: true });
+    for (const f of files) {
+      if (!f.isFile()) continue;
+      if (!f.name.endsWith('-request.json')) continue;
+      // Skip embedded utility request shapes — they're not standalone tools.
+      // Authors adding a new utility shape under a protocol directory MUST
+      // add it to NON_OPERATION_ALLOWLIST or the manifest will emit it as
+      // a tool name, which would surface in every SDK's generated client.
+      if (NON_OPERATION_ALLOWLIST.has(f.name)) continue;
+      const toolBase = f.name.replace(/-request\.json$/, '');
+      const toolName = toolBase.replace(/-/g, '_');
+      const requestPath = path.join(protoDir, f.name);
+      const responseName = `${toolBase}-response.json`;
+      const responsePath = path.join(protoDir, responseName);
+      if (!fs.existsSync(responsePath)) {
+        // A request with no matching response is a bug, not a tool — surface it.
+        throw new Error(
+          `Manifest generation: ${protocol}/${f.name} has no matching response schema (${responseName}). ` +
+          `Either add the response file or move the request out of the protocol directory.`
+        );
+      }
+      const mutating = classifyRequestMutating(requestPath);
+
+      const asyncVariants = files
+        .filter(g => g.isFile() && g.name.startsWith(`${toolBase}-async-response-`) && g.name.endsWith('.json'))
+        .map(g => `${protocol}/${g.name}`)
+        .sort();
+
+      tools.push({
+        name: toolName,
+        protocol,
+        mutating,
+        request_schema: `${protocol}/${f.name}`,
+        response_schema: `${protocol}/${responseName}`,
+        async_response_schemas: asyncVariants
+      });
+    }
+  }
+  // Sort tools alphabetically by name for stable output.
+  tools.sort((a, b) => a.name.localeCompare(b.name));
+  return tools;
+}
+
+function buildManifest(sourceDir, urlVersion, semverVersion, repoRoot) {
+  // Tools.
+  const tools = discoverTools(sourceDir);
+
+  // Specialisms — and the inverse tool→specialisms[] map. The inverse uses
+  // `exercised_tools` (the union of own phases + linked scenarios) because
+  // that's the surface SDK authors care about: "if I'm implementing
+  // sales_guaranteed, every tool the conformance kit will call".
+  const specialismsRaw = loadSpecialisms(repoRoot);
+  const toolToSpecialisms = new Map();
+  for (const sp of specialismsRaw) {
+    for (const t of sp.exercised_tools) {
+      if (!toolToSpecialisms.has(t)) toolToSpecialisms.set(t, []);
+      toolToSpecialisms.get(t).push(sp.id);
+    }
+  }
+  for (const tool of tools) {
+    const sp = toolToSpecialisms.get(tool.name);
+    if (sp && sp.length > 0) tool.specialisms = sp.slice().sort();
+  }
+
+  // Error codes — pull from enums/error-code.json (enum + enumMetadata +
+  // enumDescriptions). The lint guarantees these three are in sync; here
+  // we just merge them into a per-code object for the manifest.
+  //
+  // The description is the enumDescriptions string with the trailing
+  // `Recovery: X (suggestion)` prose stripped — that semantic now lives
+  // structurally in `recovery` and `suggestion`, and we don't want SDK
+  // consumers to see it twice.
+  const errorCodeSchema = JSON.parse(
+    fs.readFileSync(path.join(sourceDir, 'enums', 'error-code.json'), 'utf8')
+  );
+  const errorCodes = {};
+  for (const code of errorCodeSchema.enum) {
+    const meta = errorCodeSchema.enumMetadata[code];
+    const desc = stripRecoveryProse(errorCodeSchema.enumDescriptions[code]);
+    errorCodes[code] = {
+      recovery: meta.recovery,
+      description: desc,
+      suggestion: meta.suggestion
+    };
+  }
+
+  // Specialism block.
+  const specialisms = {};
+  for (const sp of specialismsRaw.slice().sort((a, b) => a.id.localeCompare(b.id))) {
+    specialisms[sp.id] = {
+      protocol: sp.protocol,
+      ...(sp.title ? { title: sp.title } : {}),
+      entry_point_tools: sp.entry_point_tools.slice().sort(),
+      exercised_tools: sp.exercised_tools.slice()
+    };
+  }
+
+  // Tool block — keyed by tool name.
+  const toolsObj = {};
+  for (const t of tools) {
+    toolsObj[t.name] = {
+      protocol: t.protocol,
+      mutating: t.mutating,
+      request_schema: t.request_schema,
+      response_schema: t.response_schema,
+      async_response_schemas: t.async_response_schemas,
+      ...(t.specialisms ? { specialisms: t.specialisms } : {})
+    };
+  }
+
+  return {
+    $schema: `/schemas/${urlVersion}/manifest.schema.json`,
+    adcp_version: semverVersion,
+    generated_at: new Date().toISOString(),
+    tools: toolsObj,
+    error_code_policy: {
+      default_unknown_recovery: 'transient',
+      note: "Sellers MAY return platform-specific codes that are not listed in error_codes. Agents MUST classify unknown codes as default_unknown_recovery and SHOULD retry with backoff before surfacing to the operator. Throwing on an unknown code is non-conformant client behavior."
+    },
+    error_codes: errorCodes,
+    specialisms
+  };
+}
+
+function writeManifest(sourceDir, targetDir, urlVersion, semverVersion, repoRoot) {
+  const manifest = buildManifest(sourceDir, urlVersion, semverVersion, repoRoot);
+  fs.writeFileSync(
+    path.join(targetDir, 'manifest.json'),
+    JSON.stringify(manifest, null, 2) + '\n',
+    'utf8'
+  );
+  const stats = {
+    tools: Object.keys(manifest.tools).length,
+    mutating: Object.values(manifest.tools).filter(t => t.mutating).length,
+    error_codes: Object.keys(manifest.error_codes).length,
+    specialisms: Object.keys(manifest.specialisms).length
+  };
+  return stats;
+}
+
 function copyAndTransformSchemas(sourceDir, targetDir, version) {
   const entries = fs.readdirSync(sourceDir, { withFileTypes: true });
 
@@ -580,16 +1113,70 @@ function copyAndTransformSchemas(sourceDir, targetDir, version) {
         schema.adcp_version = version;
         schema.lastUpdated = new Date().toISOString().split('T')[0];
         schema.baseUrl = `/schemas/${version}`;
+        schema.protocol_layers = [
+          {
+            id: 'negotiation',
+            title: 'Negotiation layer',
+            description: 'Planning-time protocols for discovery, buying, creative, signals, accounts, governance, brand identity, and sponsored intelligence.',
+            schema_groups: ['media-buy', 'creative', 'signals', 'account', 'governance', 'brand', 'sponsored-intelligence']
+          },
+          {
+            id: 'decisioning-serving',
+            title: 'Decisioning and serving layer',
+            description: 'Trusted Match Protocol schemas for serve-time Context Match and Identity Match decisions.',
+            schema_groups: ['trusted-match']
+          }
+        ];
+        Object.assign(schema, getReleaseMetadata(version, getAllSchemaVersions()));
         if (!schema.versioning) {
           schema.versioning = {};
         }
-        schema.versioning.note = `AdCP uses build-time versioning. This directory contains schemas for AdCP ${version}. Full semantic versions are available at /schemas/{version}/ (e.g., /schemas/2.5.0/). Major version aliases point to the latest release: /schemas/v${getMajorVersion(version)}/ → /schemas/${version}/.`;
+        schema.versioning.note = `AdCP uses build-time versioning. This directory contains schemas for AdCP ${version}. Full semantic versions are available at /schemas/{version}/ (e.g., /schemas/2.5.0/). Major version aliases point to the latest stable release in that major line; use /schemas/index.json or /schemas/latest.json for the canonical file-based pointer.`;
         content = JSON.stringify(schema, null, 2);
       }
 
       fs.writeFileSync(targetPath, content);
     }
   }
+}
+
+function copyAsyncResponseRefsToCore(targetDir) {
+  const asyncRefDir = path.join(targetDir, 'core', 'async-response-refs');
+
+  if (fs.existsSync(asyncRefDir)) {
+    fs.rmSync(asyncRefDir, { recursive: true, force: true });
+  }
+  ensureDir(asyncRefDir);
+
+  let count = 0;
+
+  function walk(dir) {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      const rel = path.relative(targetDir, fullPath);
+
+      if (entry.isDirectory()) {
+        if (rel === 'bundled' || rel.startsWith(`bundled${path.sep}`)) continue;
+        if (rel === path.join('core', 'async-response-refs') || rel.startsWith(`${path.join('core', 'async-response-refs')}${path.sep}`)) continue;
+        walk(fullPath);
+        continue;
+      }
+
+      if (!entry.isFile()) continue;
+      if (!entry.name.endsWith('.json')) continue;
+      if (!/-async-response-(submitted|working|input-required)\.json$/.test(entry.name)) continue;
+      if (rel.startsWith(`core${path.sep}`)) continue;
+
+      const targetPath = path.join(asyncRefDir, rel);
+      ensureDir(path.dirname(targetPath));
+      fs.copyFileSync(fullPath, targetPath);
+      count++;
+    }
+  }
+
+  walk(targetDir);
+  return count;
 }
 
 function updateSourceRegistry(version) {
@@ -659,9 +1246,18 @@ function resolveRefs(schema, sourceDir, ancestorRefs = new Set()) {
         newAncestors.add(refPath);
         // Recursively resolve refs in the referenced schema
         const resolvedRef = resolveRefs(refContent, sourceDir, newAncestors);
-        // Merge the resolved content (remove $id, $schema from merged content)
-        const { $id, $schema, ...rest } = resolvedRef;
+        // Merge the resolved content. Drop `$schema` (only meaningful at
+        // document root). Preserve `$id` on the inlined subtree so SDK
+        // error reporting can name the deep sub-schema (#3868) — if the
+        // parent already declared its own `$id` (the deprecated-alias
+        // pattern: `{ $id: ".../signal-pricing-option.json", $ref: ".../vendor-pricing-option.json" }`),
+        // keep the parent's `$id` so the alias's identity wins over the
+        // target's.
+        const { $schema, $id: refId, ...rest } = resolvedRef;
         Object.assign(result, rest);
+        if (refId !== undefined && result.$id === undefined) {
+          result.$id = refId;
+        }
       } catch (error) {
         // If we can't resolve, keep the original $ref
         result[key] = value;
@@ -897,6 +1493,313 @@ function hoistDuplicateInlineEnums(schema) {
 }
 
 /**
+ * Hoist complex schemas explicitly marked with `x-adcp-hoist: true` into
+ * root `$defs` and replace every inline occurrence with a `$ref` pointer.
+ *
+ * Companion to `hoistDuplicateInlineEnums`. Pure enums hoist automatically
+ * because the merge is semantics-preserving. Complex objects do not:
+ * structural identity ≠ semantic identity (e.g. BriefAsset and VASTAsset
+ * happen to share fields today but represent different lifecycle concepts).
+ * Spec authors opt in per-schema by setting `x-adcp-hoist: true` on the
+ * source schema's root. The marker is a build-time directive, not a wire
+ * contract — it is stripped from the bundled output (both at canonical
+ * `$defs` entries and anywhere a stray marker survived a pre-existing
+ * `$defs` block).
+ *
+ * Name derivation: uses `title`, sanitized to PascalCase, suffixed with an
+ * integer ONLY when colliding with a pre-existing `$defs` key. Two marked
+ * schemas with the same title but distinct shapes is a hard error — the
+ * suffix path would silently rename one of them, defeating the directive's
+ * purpose. A schema marked `x-adcp-hoist: true` without a usable `title`
+ * is also a hard error — the directive is meant to be deliberate.
+ *
+ * Hoists at any occurrence count (≥1). The directive declares intent
+ * ("this is a canonical named type"); the bundler honors it even when the
+ * schema appears only once, so adding a second use later does not change
+ * the codegen surface.
+ *
+ * See issue #4557.
+ */
+const HOIST_MARKER = 'x-adcp-hoist';
+
+function hoistMarkedSchemas(schema) {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
+    return schema;
+  }
+
+  function isMarked(s) {
+    return s && typeof s === 'object' && !Array.isArray(s) && s[HOIST_MARKER] === true;
+  }
+
+  function canonicalize(value) {
+    if (value === null || typeof value !== 'object') return value;
+    if (Array.isArray(value)) return value.map(canonicalize);
+    return Object.keys(value)
+      .sort()
+      .reduce((acc, k) => { acc[k] = canonicalize(value[k]); return acc; }, {});
+  }
+
+  function fingerprint(s) {
+    const { [HOIST_MARKER]: _omit, ...rest } = s;
+    return JSON.stringify(canonicalize(rest));
+  }
+
+  function sanitizeName(title) {
+    let name = title.replace(/[^a-zA-Z0-9]+(.)/g, (_, c) => c.toUpperCase()).replace(/[^a-zA-Z0-9]/g, '');
+    return name.charAt(0).toUpperCase() + name.slice(1);
+  }
+
+  // Pass 1: collect every marked schema, excluding existing $defs blocks
+  // (those are already canonical). Recurse into marked nodes too so nested
+  // markers (a marked schema referenced inside another marked schema) are
+  // also tracked.
+  const seen = new Map(); // fingerprint -> { schema, title }
+
+  function track(s) {
+    const fp = fingerprint(s);
+    if (!seen.has(fp)) seen.set(fp, { schema: s, title: s.title });
+  }
+
+  function collect(node) {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        if (isMarked(item)) track(item);
+        collect(item);
+      }
+      return;
+    }
+    for (const [key, val] of Object.entries(node)) {
+      if (key === '$defs' || key === 'definitions') continue;
+      if (isMarked(val)) track(val);
+      collect(val);
+    }
+  }
+
+  collect(schema);
+
+  if (seen.size === 0) {
+    // No markers found at hoist-eligible sites. Still strip any stray
+    // markers that may live inside pre-existing $defs entries — the
+    // directive must not leak into the bundled output regardless of
+    // where it was authored.
+    stripStrayMarkers(schema);
+    return schema;
+  }
+
+  // Map each fingerprint to a $defs name derived from title.
+  // Two distinct fingerprints producing the same sanitized base name is
+  // a spec-author bug — the directive promises "this title is canonical".
+  // Reject loudly rather than silently suffixing one of them.
+  const hoistMap = new Map();
+  const basenameToFingerprint = new Map();
+  const existingDefs = new Set(Object.keys(schema.$defs || {}));
+  const usedNames = new Set(existingDefs);
+
+  for (const [fp, { schema: s, title }] of seen) {
+    if (!title || typeof title !== 'string') {
+      throw new Error(
+        `${HOIST_MARKER}: true requires a non-empty \`title\` on the source schema. ` +
+        `Got: ${JSON.stringify(s).slice(0, 200)}`
+      );
+    }
+    const base = sanitizeName(title);
+    if (!base) {
+      throw new Error(`${HOIST_MARKER}: title '${title}' sanitizes to an empty name.`);
+    }
+    const priorFp = basenameToFingerprint.get(base);
+    if (priorFp && priorFp !== fp) {
+      throw new Error(
+        `${HOIST_MARKER}: two distinct schemas marked with title '${title}' ` +
+        `would both derive the $defs name '${base}'. Pick distinct titles — ` +
+        `the directive promises a canonical name and silently suffixing one ` +
+        `would defeat the purpose.`
+      );
+    }
+    basenameToFingerprint.set(base, fp);
+    // Suffix only against pre-existing $defs (legitimate name collision
+    // with non-marker definitions). Same-title-across-marked-sites was
+    // rejected above.
+    let safeName = base;
+    let idx = 2;
+    while (usedNames.has(safeName)) { safeName = base + idx++; }
+    usedNames.add(safeName);
+    hoistMap.set(fp, safeName);
+  }
+
+  // Build canonical $defs entries with the directive stripped (it is a
+  // build-time annotation, not a wire contract).
+  const rootDefs = { ...(schema.$defs || {}) };
+  for (const [fp, defName] of hoistMap) {
+    const { [HOIST_MARKER]: _omit, ...canonical } = seen.get(fp).schema;
+    rootDefs[defName] = canonical;
+  }
+  schema.$defs = rootDefs;
+
+  // Pass 2: replace marked occurrences with $ref. Walks the entire schema
+  // (including inside $defs) so nested markers — a marked schema reached
+  // through another marked schema — also collapse to $refs. The `isMarked`
+  // check guards against re-replacing the canonical entries we just
+  // placed in rootDefs (their outer marker is already stripped).
+  function replace(node) {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (let i = 0; i < node.length; i++) {
+        if (isMarked(node[i])) {
+          const fp = fingerprint(node[i]);
+          if (hoistMap.has(fp)) { node[i] = { $ref: `#/$defs/${hoistMap.get(fp)}` }; continue; }
+        }
+        replace(node[i]);
+      }
+      return;
+    }
+    for (const key of Object.keys(node)) {
+      const val = node[key];
+      if (isMarked(val)) {
+        const fp = fingerprint(val);
+        if (hoistMap.has(fp)) { node[key] = { $ref: `#/$defs/${hoistMap.get(fp)}` }; continue; }
+      }
+      replace(val);
+    }
+  }
+
+  replace(schema);
+
+  // Final sweep: delete any stray `x-adcp-hoist` keys that survived (e.g.
+  // markers authored inside a pre-existing $defs entry that Pass 1
+  // skipped). The directive must never appear in bundled output.
+  stripStrayMarkers(schema);
+
+  return schema;
+}
+
+function stripStrayMarkers(node) {
+  if (!node || typeof node !== 'object') return;
+  if (Array.isArray(node)) {
+    for (const item of node) stripStrayMarkers(item);
+    return;
+  }
+  if (HOIST_MARKER in node) delete node[HOIST_MARKER];
+  for (const val of Object.values(node)) stripStrayMarkers(val);
+}
+
+/**
+ * Walk a bundled schema and rewrite every nested `$id` from the
+ * source-form (`/schemas/core/foo.json`) to the versioned flat-tree
+ * URI (`/schemas/{version}/core/foo.json`). The root `$id` is left
+ * unchanged here — it gets the bundled-tree rewrite separately.
+ *
+ * Why a post-pass: `resolveRefs` reads source files and now preserves
+ * inlined `$id`s, but it doesn't carry the version. Stamping versions
+ * here keeps `resolveRefs` version-agnostic and matches the flat-tree
+ * `$id` rewrite that `applyVersionToSchemas` performs on dist files.
+ */
+function versionInlineSchemaIds(schema, version) {
+  function walk(node, isRoot) {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item, false);
+      return;
+    }
+    for (const [key, value] of Object.entries(node)) {
+      if (key === '$id' && !isRoot && typeof value === 'string' && value.startsWith('/schemas/') && !value.startsWith(`/schemas/${version}/`)) {
+        node[key] = value.replace('/schemas/', `/schemas/${version}/`);
+      } else if (value && typeof value === 'object') {
+        walk(value, false);
+      }
+    }
+  }
+  walk(schema, true);
+}
+
+/**
+ * Strip `$id` from any inlined subtree whose descendants contain a
+ * local `$ref` (i.e. `#/...` rooted at the document).
+ *
+ * `hoistDuplicateInlineEnums` and `hoistNestedDefsToRoot` move shared
+ * definitions to the document's root `$defs` block and rewrite their
+ * call-sites to `{$ref: "#/$defs/Foo"}`. JSON Schema resolves those
+ * relative fragment refs against the *nearest enclosing `$id`* — so
+ * preserving `$id` on an inlined subtree changes the resolution scope,
+ * and a hoisted `#/$defs/Foo` inside that subtree no longer reaches
+ * the root-level definition. Ajv reports
+ * "can't resolve reference #/$defs/Foo from id <inlined-$id>".
+ *
+ * Strip the conflicting `$id` so the local fragment resolves against
+ * the document root again. Subtrees that don't contain hoisted refs
+ * keep their `$id` and surface the deep schema identity to SDK error
+ * reporting (the value preserved by #3868).
+ */
+function stripIdsFromSubtreesWithLocalRefs(schema) {
+  function hasLocalRef(node) {
+    if (!node || typeof node !== 'object') return false;
+    if (Array.isArray(node)) return node.some(hasLocalRef);
+    if (typeof node.$ref === 'string' && node.$ref.startsWith('#/')) return true;
+    for (const value of Object.values(node)) {
+      if (value && typeof value === 'object' && hasLocalRef(value)) return true;
+    }
+    return false;
+  }
+  function walk(node, isRoot) {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item, false);
+      return;
+    }
+    if (!isRoot && typeof node.$id === 'string' && hasLocalRef(node)) {
+      delete node.$id;
+    }
+    for (const value of Object.values(node)) {
+      if (value && typeof value === 'object') walk(value, false);
+    }
+  }
+  walk(schema, true);
+}
+
+/**
+ * Dedupe `$id` within a bundled schema document.
+ *
+ * Same source schema referenced from multiple co-locations (e.g.
+ * `version-envelope` in an `allOf`, `activation-key` in two `oneOf`
+ * branches of a deployment shape) produces multiple inlined subtrees
+ * with identical `$id` values. Ajv rejects this with "reference X
+ * resolves to more than one schema" — even in `strict: false` mode,
+ * because duplicate `$id` registration is a structural error, not a
+ * strictness lint.
+ *
+ * First-wins: keep `$id` on the first occurrence the walker visits,
+ * strip it from subsequent occurrences. The first occurrence anchors
+ * the schema's identity for SDK error reporting (longest-prefix-match
+ * walks up to find the nearest `$id`-bearing ancestor); subsequent
+ * occurrences fall back to that nearest ancestor — typically the
+ * response root, which is fine because they describe the same shape.
+ *
+ * The root `$id` is recorded as seen so a nested occurrence with the
+ * same value (degenerate but possible) doesn't shadow it.
+ */
+function dedupBundledSchemaIds(schema) {
+  const seen = new Set();
+  function walk(node, isRoot) {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item, false);
+      return;
+    }
+    if (typeof node.$id === 'string') {
+      if (seen.has(node.$id)) {
+        delete node.$id;
+      } else {
+        seen.add(node.$id);
+      }
+    }
+    for (const value of Object.values(node)) {
+      if (value && typeof value === 'object') walk(value, false);
+    }
+  }
+  walk(schema, true);
+}
+
+/**
  * Generate bundled (dereferenced) schemas
  * These have all $ref resolved inline for tools that can't handle references
  */
@@ -955,7 +1858,36 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
       // numbered-suffix codegen artifact. See #3145.
       hoistDuplicateInlineEnums(dereferenced);
 
-      // Update $id to indicate this is a bundled schema
+      // Hoist complex schemas explicitly marked with `x-adcp-hoist: true`
+      // to $defs and replace inline occurrences with $ref. Opt-in companion
+      // to the pure-enum auto-hoist for spec-author-declared canonical
+      // shared types. See #4557.
+      hoistMarkedSchemas(dereferenced);
+
+      // Stamp inlined sub-schema `$id`s with the version (#3868). Source
+      // schemas declare `$id` as `/schemas/core/foo.json` (unversioned);
+      // `resolveRefs` now preserves these on inlined subtrees so SDK
+      // error reporting can name the deep sub-schema. Rewrite each
+      // inner `$id` to the versioned flat-tree URI
+      // (`/schemas/{version}/core/foo.json`) — the published identity
+      // of the un-bundled sub-schema, which is what consumers want to
+      // resolve. The root `$id` is rewritten separately below to the
+      // bundled URI.
+      versionInlineSchemaIds(dereferenced, version);
+
+      // Strip $id from subtrees whose descendants contain hoisted
+      // local refs — preserving $id there would change the resolution
+      // scope and break `#/$defs/...` lookups against the document
+      // root.
+      stripIdsFromSubtreesWithLocalRefs(dereferenced);
+
+      // Dedupe inlined $ids — Ajv (and any draft-07 validator) refuses
+      // to compile a schema with duplicate $ids, even in non-strict
+      // mode. First-wins keeps the bundle compilable while preserving
+      // the deep $id at the first occurrence of each sub-schema.
+      dedupBundledSchemaIds(dereferenced);
+
+      // Update root $id to indicate this is a bundled schema
       if (dereferenced.$id) {
         dereferenced.$id = dereferenced.$id.replace('/schemas/', `/schemas/${version}/bundled/`);
       }
@@ -1084,6 +2016,12 @@ async function main() {
   // constraint on example payloads embedded in schema files. Issue #3502.
   lintVendorMetricSemanticUniqueness(SOURCE_DIR);
 
+  // Lint error-code enumMetadata coverage: every enum value MUST have a
+  // structured recovery classification, and that classification MUST agree
+  // with the "Recovery: X" prose in enumDescriptions. Stops the
+  // hand-transcribed-recovery drift bug (adcp#3725).
+  lintErrorCodeEnumMetadata(SOURCE_DIR);
+
   // Update source registry version
   updateSourceRegistry(version);
 
@@ -1102,6 +2040,8 @@ async function main() {
     console.log(`📋 Creating release: dist/schemas/${version}/`);
     ensureDir(versionDir);
     copyAndTransformSchemas(SOURCE_DIR, versionDir, version);
+    const asyncRefCount = copyAsyncResponseRefsToCore(versionDir);
+    console.log(`   ✓ Copied ${asyncRefCount} async response schemas to core/async-response-refs/`);
 
     // Build extensions (auto-discovered, filtered by version)
     console.log(`🔌 Building extensions for ${version}`);
@@ -1111,6 +2051,10 @@ async function main() {
     } else {
       console.log(`   ✓ Included ${extResult.included}/${extResult.total} extensions: ${extResult.extensions.join(', ') || 'none'}`);
     }
+
+    // Generate the canonical tool/error/specialism manifest (adcp#3725).
+    const manifestStats = writeManifest(SOURCE_DIR, versionDir, version, version, path.join(__dirname, '..'));
+    console.log(`📑 Generated manifest.json (${manifestStats.tools} tools, ${manifestStats.mutating} mutating, ${manifestStats.error_codes} error codes, ${manifestStats.specialisms} specialisms)`);
 
     // Generate bundled schemas for release
     const bundledDir = path.join(versionDir, 'bundled');
@@ -1129,9 +2073,13 @@ async function main() {
     console.log(`📋 Updating latest/ to match release`);
     ensureDir(latestDir);
     copyAndTransformSchemas(SOURCE_DIR, latestDir, 'latest');
+    copyAsyncResponseRefsToCore(latestDir);
 
     // Build extensions for latest (using full version for filtering)
     buildExtensions(SOURCE_DIR, latestDir, version);
+
+    // Manifest for latest/.
+    writeManifest(SOURCE_DIR, latestDir, 'latest', version, path.join(__dirname, '..'));
 
     // Generate bundled schemas for latest
     const latestBundledDir = path.join(latestDir, 'bundled');
@@ -1142,9 +2090,10 @@ async function main() {
 
     // Stage the new versioned directory for git commit
     // This is needed for the changesets workflow to include it in the version commit
+    writeRootSchemaDiscovery();
     console.log(`📝 Staging dist/schemas/${version}/ for git commit`);
     try {
-      execSync(`git add dist/schemas/${version}/`, { cwd: path.join(__dirname, '..'), stdio: 'inherit' });
+      execSync(`git add dist/schemas/${version}/ dist/schemas/index.json dist/schemas/latest.json`, { cwd: path.join(__dirname, '..'), stdio: 'inherit' });
     } catch (error) {
       // Not in a git repo or git add failed - that's okay for non-CI builds
       console.log(`   (git add skipped - not in git context or git not available)`);
@@ -1179,6 +2128,8 @@ async function main() {
     console.log(`📋 Building schemas to dist/schemas/latest/`);
     ensureDir(latestDir);
     copyAndTransformSchemas(SOURCE_DIR, latestDir, 'latest');
+    const asyncRefCount = copyAsyncResponseRefsToCore(latestDir);
+    console.log(`   ✓ Copied ${asyncRefCount} async response schemas to core/async-response-refs/`);
 
     // Build extensions (auto-discovered, filtered by current version)
     console.log(`🔌 Building extensions for ${version}`);
@@ -1188,6 +2139,10 @@ async function main() {
     } else {
       console.log(`   ✓ Included ${extResult.included}/${extResult.total} extensions: ${extResult.extensions.join(', ') || 'none'}`);
     }
+
+    // Generate the canonical tool/error/specialism manifest (adcp#3725).
+    const manifestStats = writeManifest(SOURCE_DIR, latestDir, 'latest', version, path.join(__dirname, '..'));
+    console.log(`📑 Generated manifest.json (${manifestStats.tools} tools, ${manifestStats.mutating} mutating, ${manifestStats.error_codes} error codes, ${manifestStats.specialisms} specialisms)`);
 
     // Generate bundled schemas for latest
     const bundledDir = path.join(latestDir, 'bundled');
@@ -1200,6 +2155,7 @@ async function main() {
 
     // Note: Version aliases (v2, v2.5, v1) are handled by HTTP middleware
     // No symlinks needed - the server rewrites URLs dynamically
+    writeRootSchemaDiscovery();
 
     // Show available paths
     const latestPerMinor = getLatestPatchPerMinor();
@@ -1228,7 +2184,7 @@ async function main() {
   console.log('📖 See docs/reference/versioning.mdx for guidance on which to use.');
 }
 
-module.exports = { hoistDuplicateInlineEnums };
+module.exports = { hoistDuplicateInlineEnums, hoistMarkedSchemas, resolveRefs, versionInlineSchemaIds, dedupBundledSchemaIds, stripIdsFromSubtreesWithLocalRefs, copyAsyncResponseRefsToCore };
 
 if (require.main === module) {
   main().catch(err => {

@@ -9,14 +9,25 @@ import { Router } from 'express';
 import type { RequestHandler } from 'express';
 import { z } from 'zod';
 import { CatalogDatabase, type ResolveMode, type Provenance } from '../db/catalog-db.js';
+import { CollectionCatalogDatabase } from '../db/collection-catalog-db.js';
+import { CatalogEventsDatabase } from '../db/catalog-events-db.js';
 import { CatalogDisputesDatabase, type DisputeType } from '../db/catalog-disputes-db.js';
+import { getClient } from '../db/client.js';
 import { fileDispute } from '../services/catalog-governance.js';
 import { normalizeIdentifier } from '../services/identifier-normalization.js';
+import {
+  COLLECTION_KIND_VALUES,
+  DISTRIBUTION_IDENTIFIER_TYPE_VALUES,
+  isValidCollectionPublisherDomain,
+} from '../services/collection-identifier-normalization.js';
+import { canonicalizePublisherDomain } from '../services/publisher-domain.js';
 import { loadTrancoList, lookupTrancoRanks, isTrancoLoaded } from '../services/tranco-ingestion.js';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('catalog-api');
 const catalogDb = new CatalogDatabase();
+const collectionCatalogDb = new CollectionCatalogDatabase();
+const catalogEventsDb = new CatalogEventsDatabase();
 const disputesDb = new CatalogDisputesDatabase();
 
 // ── Zod Schemas ─────────────────────────────────────────────────
@@ -25,6 +36,24 @@ const IdentifierSchema = z.object({
   type: z.string(),
   value: z.string(),
 });
+
+const DistributionIdentifierSchema = z.object({
+  type: z.enum(DISTRIBUTION_IDENTIFIER_TYPE_VALUES),
+  value: z.string().min(1),
+});
+
+const CollectionDistributionSchema = z.object({
+  publisher_domain: z.string().min(1).transform((value) => canonicalizePublisherDomain(value))
+    .refine(isValidCollectionPublisherDomain, 'Invalid publisher_domain'),
+  identifiers: z.array(DistributionIdentifierSchema).min(1),
+}).passthrough();
+
+const CommunityCollectionUpsertSchema = z.object({
+  collection_id: z.string().min(1).optional(),
+  name: z.string().min(1).max(500),
+  kind: z.enum(COLLECTION_KIND_VALUES).optional(),
+  distribution: z.array(CollectionDistributionSchema).min(1),
+}).passthrough();
 
 const ProvenanceSchema = z.object({
   type: z.enum([
@@ -48,18 +77,82 @@ const DisputeRequestSchema = z.object({
   evidence: z.string().max(5000).optional(),
 });
 
+function parseOptionalQueryInt(
+  value: unknown,
+  name: string,
+  options: { defaultValue?: number; min?: number; max?: number } = {},
+): { ok: true; value: number | undefined } | { ok: false; error: string } {
+  if (value === undefined) return { ok: true, value: options.defaultValue };
+  if (typeof value !== 'string' || value.trim() === '') {
+    return { ok: false, error: `${name} must be an integer` };
+  }
+  if (!/^\d+$/.test(value)) {
+    return { ok: false, error: `${name} must be an integer` };
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) {
+    return { ok: false, error: `${name} must be a safe integer` };
+  }
+  if (options.min !== undefined && parsed < options.min) {
+    return { ok: false, error: `${name} must be greater than or equal to ${options.min}` };
+  }
+  if (options.max !== undefined && parsed > options.max) {
+    return { ok: false, error: `${name} must be less than or equal to ${options.max}` };
+  }
+  return { ok: true, value: parsed };
+}
+
+function collectionEventPayload(event: {
+  collection_rid: string;
+  publisher_domain: string;
+  collection_id: string | null;
+  name: string | null;
+  kind: string | null;
+  source: string;
+  status: string;
+  identifiers: Array<{ publisher_domain: string; type: string; value: string }>;
+  collection?: Record<string, unknown>;
+}): Record<string, unknown> {
+  return {
+    collection_rid: event.collection_rid,
+    publisher_domain: event.publisher_domain,
+    collection_id: event.collection_id,
+    name: event.name,
+    kind: event.kind,
+    source: event.source,
+    status: event.status,
+    identifiers: event.identifiers,
+    collection: event.collection,
+  };
+}
+
 // ── Config ──────────────────────────────────────────────────────
 
 export interface CatalogApiConfig {
   requireAuth?: RequestHandler;
   requireAdmin?: RequestHandler;
+  requireGlobalAdmin?: RequestHandler[];
 }
 
 // ── Router factory ──────────────────────────────────────────────
 
 export function createCatalogApiRouter(config: CatalogApiConfig): Router {
   const router = Router();
-  const { requireAuth: authMiddleware, requireAdmin: adminAuthMiddleware } = config;
+  const {
+    requireAuth: authMiddleware,
+    requireAdmin: adminAuthMiddleware,
+    requireGlobalAdmin: globalAdminMiddleware,
+  } = config;
+  const adminMiddleware = adminAuthMiddleware
+    ? (authMiddleware ? [authMiddleware, adminAuthMiddleware] : [adminAuthMiddleware])
+    : authMiddleware ? [authMiddleware] : [];
+  const collectionWriteMiddleware = globalAdminMiddleware ?? adminMiddleware;
+  const requireCatalogWriteConfigured: RequestHandler = (_req, res, next) => {
+    if (!globalAdminMiddleware && (!authMiddleware || !adminAuthMiddleware)) {
+      return res.status(503).json({ error: 'Catalog write endpoints require authentication and admin middleware configuration' });
+    }
+    next();
+  };
 
   // ── POST /api/registry/resolve ──────────────────────────────
 
@@ -155,6 +248,251 @@ export function createCatalogApiRouter(config: CatalogApiConfig): Router {
     }
   });
 
+  // ── GET /api/registry/catalog/collections ───────────────────
+
+  router.get('/catalog/collections', async (req, res) => {
+    try {
+      const limit = parseOptionalQueryInt(req.query.limit, 'limit', { min: 1, max: 1000 });
+      if (!limit.ok) return res.status(400).json({ error: limit.error });
+      const offset = parseOptionalQueryInt(req.query.offset, 'offset', { min: 0 });
+      if (!offset.ok) return res.status(400).json({ error: offset.error });
+
+      const result = await collectionCatalogDb.listCollections({
+        publisher_domain: req.query.publisher_domain as string | undefined,
+        source: req.query.source as string | undefined,
+        status: req.query.status as string | undefined,
+        identifier_type: req.query.identifier_type as string | undefined,
+        distribution_publisher_domain: req.query.distribution_publisher_domain as string | undefined,
+        search: req.query.search as string | undefined,
+        limit: limit.value,
+        offset: offset.value,
+      });
+
+      const entries = await Promise.all(
+        result.collections.map(async (collection) => {
+          const full = await collectionCatalogDb.getCollection(collection.collection_rid);
+          return {
+            collection_rid: collection.collection_rid,
+            publisher_domain: collection.publisher_domain,
+            collection_id: collection.collection_id,
+            name: collection.name,
+            kind: collection.kind,
+            source: collection.source,
+            status: collection.status,
+            identifiers: full?.identifiers.map((i) => ({
+              publisher_domain: i.distribution_publisher_domain,
+              type: i.identifier_type,
+              value: i.identifier_value,
+            })) ?? [],
+            collection: collection.collection_json,
+          };
+        }),
+      );
+
+      return res.json({
+        entries,
+        total: result.total,
+        next_offset: result.next_offset,
+      });
+    } catch (err) {
+      logger.error(`Collection catalog browse error: ${err instanceof Error ? err.message : String(err)}`);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // ── GET /api/registry/catalog/collections/sync ──────────────
+
+  router.get('/catalog/collections/sync', async (req, res) => {
+    try {
+      const limit = parseOptionalQueryInt(req.query.limit, 'limit', { defaultValue: 1000, min: 1, max: 1000 });
+      if (!limit.ok) return res.status(400).json({ error: limit.error });
+      const offset = parseOptionalQueryInt(req.query.offset, 'offset', { defaultValue: 0, min: 0 });
+      if (!offset.ok) return res.status(400).json({ error: offset.error });
+      const result = await collectionCatalogDb.syncCollections(limit.value, offset.value);
+      return res.json(result);
+    } catch (err) {
+      logger.error(`Collection catalog sync error: ${err instanceof Error ? err.message : String(err)}`);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // ── PUT /api/registry/catalog/collections/:publisher/:collection ─
+
+  router.put(
+    '/catalog/collections/:publisherDomain/:collectionId',
+    requireCatalogWriteConfigured,
+    ...collectionWriteMiddleware,
+    async (req, res) => {
+      const publisherDomain = canonicalizePublisherDomain(req.params.publisherDomain);
+      const collectionId = req.params.collectionId?.trim();
+      if (!isValidCollectionPublisherDomain(publisherDomain)) {
+        return res.status(400).json({ error: 'Invalid publisher_domain' });
+      }
+      if (!collectionId) {
+        return res.status(400).json({ error: 'collection_id is required' });
+      }
+
+      try {
+        const rawCollection = req.body?.collection
+          && typeof req.body.collection === 'object'
+          && !Array.isArray(req.body.collection)
+          ? req.body.collection
+          : req.body;
+        const parsed = CommunityCollectionUpsertSchema.safeParse(rawCollection);
+        if (!parsed.success) {
+          return res.status(400).json({ error: 'Invalid collection', details: parsed.error.issues });
+        }
+        if (parsed.data.collection_id && parsed.data.collection_id !== collectionId) {
+          return res.status(400).json({
+            error: 'collection_id in body must match the collection_id path parameter',
+          });
+        }
+
+        const client = await getClient();
+        try {
+          await client.query('BEGIN');
+          const authoritative = await client.query<{ collection_rid: string }>(
+            `SELECT collection_rid
+               FROM catalog_collections
+              WHERE publisher_domain = $1
+                AND collection_id = $2
+                AND source = 'authoritative'
+                AND status <> 'removed'
+              LIMIT 1`,
+            [publisherDomain, collectionId],
+          );
+          if (authoritative.rows.length > 0) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+              error: 'Cannot edit authoritative collection managed via publisher adagents.json',
+              publisher_domain: publisherDomain,
+              collection_id: collectionId,
+            });
+          }
+
+          const collection = {
+            ...parsed.data,
+            collection_id: collectionId,
+          };
+          const actor = req.user?.id ? `api:community_collection:${req.user.id}` : 'api:community_collection';
+          const event = await collectionCatalogDb.projectCollection(client, {
+            publisherDomain,
+            collection,
+            evidence: 'community',
+            confidence: 'strong',
+            source: 'contributed',
+            adagentsUrl: null,
+            createdBy: actor,
+          });
+          if (event) {
+            await catalogEventsDb.writeEvent(
+              {
+                event_type: event.event_type,
+                entity_type: 'collection',
+                entity_id: event.collection_rid,
+                payload: collectionEventPayload(event),
+                actor,
+              },
+              client,
+            );
+          }
+          await client.query('COMMIT');
+          return res.json({
+            success: true,
+            event_type: event?.event_type ?? null,
+            collection: event
+              ? collectionEventPayload(event)
+              : {
+                  publisher_domain: publisherDomain,
+                  collection_id: collectionId,
+                  source: 'contributed',
+                  status: 'active',
+                },
+          });
+        } catch (err) {
+          await client.query('ROLLBACK').catch(() => undefined);
+          throw err;
+        } finally {
+          client.release();
+        }
+      } catch (err) {
+        logger.error({ err, publisherDomain, collectionId }, 'Community collection upsert failed');
+        return res.status(500).json({ error: 'Failed to upsert collection' });
+      }
+    },
+  );
+
+  async function sendCollectionIdentifierLookup(
+    res: Parameters<RequestHandler>[1],
+    publisherDomain: string,
+    identifierType: string,
+    identifierValue: string,
+  ) {
+    const collection = await collectionCatalogDb.lookupByDistributionIdentifier(
+      publisherDomain,
+      identifierType,
+      identifierValue,
+    );
+    if (!collection) {
+      return res.status(404).json({ error: 'Collection identifier not found in catalog' });
+    }
+
+    return res.json({
+      collection_rid: collection.collection_rid,
+      publisher_domain: collection.publisher_domain,
+      collection_id: collection.collection_id,
+      name: collection.name,
+      kind: collection.kind,
+      source: collection.source,
+      status: collection.status,
+      identifiers: collection.identifiers.map((i) => ({
+        publisher_domain: i.distribution_publisher_domain,
+        type: i.identifier_type,
+        value: i.identifier_value,
+      })),
+      collection: collection.collection_json,
+    });
+  }
+
+  // ── GET /api/registry/catalog/collections/distribution ───────
+
+  router.get('/catalog/collections/distribution', async (req, res) => {
+    try {
+      const publisherDomain = req.query.publisher_domain;
+      const identifierType = req.query.identifier_type;
+      const identifierValue = req.query.identifier_value;
+      if (
+        typeof publisherDomain !== 'string'
+        || typeof identifierType !== 'string'
+        || typeof identifierValue !== 'string'
+      ) {
+        return res.status(400).json({
+          error: 'publisher_domain, identifier_type, and identifier_value query parameters are required',
+        });
+      }
+      return sendCollectionIdentifierLookup(res, publisherDomain, identifierType, identifierValue);
+    } catch (err) {
+      logger.error(`Collection identifier lookup error: ${err instanceof Error ? err.message : String(err)}`);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // ── GET /api/registry/catalog/collections/distribution/:publisher/:type/:value ──
+
+  router.get('/catalog/collections/distribution/:publisherDomain/:identifierType/:identifierValue', async (req, res) => {
+    try {
+      return sendCollectionIdentifierLookup(
+        res,
+        req.params.publisherDomain,
+        req.params.identifierType,
+        req.params.identifierValue,
+      );
+    } catch (err) {
+      logger.error(`Collection identifier lookup error: ${err instanceof Error ? err.message : String(err)}`);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   // ── GET /api/registry/catalog/:identifier/activity ──────────
 
   router.get('/catalog/:identifierType/:identifierValue/activity', async (req, res) => {
@@ -234,10 +572,6 @@ export function createCatalogApiRouter(config: CatalogApiConfig): Router {
   // ── POST /api/registry/catalog/seed/gcs ────────────────────────
   // Admin endpoint: one-shot import from GCS CSVs into catalog tables.
   // Pulls CSVs directly from public GCS bucket, no local filesystem needed.
-
-  const adminMiddleware = adminAuthMiddleware
-    ? (authMiddleware ? [authMiddleware, adminAuthMiddleware] : [adminAuthMiddleware])
-    : authMiddleware ? [authMiddleware] : [];
 
   router.post('/catalog/seed/gcs', async (req, res, next) => {
     if (!adminAuthMiddleware && !authMiddleware) {

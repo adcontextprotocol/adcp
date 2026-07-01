@@ -21,8 +21,10 @@ Use the public test token to get started immediately — no signup required:
 
 ```bash
 export ADCP_AUTH_TOKEN="1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ"
-export AGENT_URL="https://test-agent.adcontextprotocol.org/mcp"
+export AGENT_URL="https://test-agent.adcontextprotocol.org/sales/mcp"
 ```
+
+The test agent is path-routed: `/sales/mcp` serves media-buy tools (this quickstart's path), and sibling URLs serve the other specialisms — `/signals/mcp`, `/governance/mcp`, `/creative/mcp`, `/creative-builder/mcp`, `/brand/mcp`. Hit [`/.well-known/adagents.json`](https://test-agent.adcontextprotocol.org/.well-known/adagents.json) for the full tenant + tool list.
 
 For your own API key (org-scoped, usage tracking), create one at the [AAO dashboard](https://agenticadvertising.org/dashboard/api-keys).
 
@@ -239,7 +241,7 @@ When the operation completes, the agent POSTs a signed request to your URL. The 
 }
 ```
 
-Verify the signature before trusting the payload — resolve the `keyid` via the seller's `adagents.json` JWKS, run the AdCP webhook verifier checklist, and reject unknown keys, expired dates, or mismatched digests with a typed `webhook_signature_*` reason code:
+Verify the signature before trusting the payload — resolve the `keyid` via the seller operator's `brand.json` `agents[].jwks_uri`, apply any publisher `adagents.json` `signing_keys[]` pin when present, run the AdCP webhook verifier checklist, and reject unknown keys, expired dates, or mismatched digests with a typed `webhook_signature_*` reason code:
 
 ```typescript
 app.post('/webhooks/adcp/*', async (req, res) => {
@@ -269,22 +271,22 @@ See the [Security guide](/docs/building/implementation/security) and [Webhooks g
 The examples above use raw HTTP for clarity. In practice, use the AdCP client library which handles SSE parsing, retries, and authentication:
 
 ```bash
-npm install @adcp/client  # JavaScript/TypeScript
+npm install @adcp/sdk  # JavaScript/TypeScript
 pip install adcp          # Python
 ```
 
 ```javascript
-import { AdCPClient } from '@adcp/client';
+import { ADCPMultiAgentClient } from '@adcp/sdk';
 
-const client = new AdCPClient([{
+const client = new ADCPMultiAgentClient([{
   id: 'test',
   name: 'Test Agent',
-  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
+  agent_uri: 'https://test-agent.adcontextprotocol.org/sales/mcp',
   protocol: 'mcp',
   auth_token: process.env.ADCP_AUTH_TOKEN,
 }]);
 
-const result = await client.agent('test').executeTask('get_products', {
+const result = await client.agent('test').getProducts({
   brief: 'Video ads for pet food brand',
   brand: { domain: 'premiumpetfoods.com' },
 });
@@ -294,11 +296,12 @@ console.log(result.data.products);
 
 ## What's next
 
-- **[Build an Agent](/docs/building/build-an-agent)** — use skill files to generate a storyboard-compliant agent with a coding agent
-- **[Validate Your Agent](/docs/building/validate-your-agent)** — test your agent with storyboards and compliance checks
-- **[Compliance Catalog](/docs/building/compliance-catalog)** — the domains and specialisms an agent can claim, and the storyboards that verify each claim
-- **[MCP integration guide](/docs/building/integration/mcp-guide)** — transport, sessions, auth details
-- **[A2A integration guide](/docs/building/integration/a2a-guide)** — streaming, artifacts, push notifications
+- **[Build an agent](/docs/building/by-layer/L4/build-an-agent)** — use skill files to generate a storyboard-compliant agent with a coding agent
+- **[Validate your agent](/docs/building/verification/validate-your-agent)** — test your agent with storyboards and compliance checks
+- **[Compliance Catalog](/docs/building/verification/compliance-catalog)** — the domains and specialisms an agent can claim, and the storyboards that verify each claim
+- **[MCP integration guide](/docs/building/by-layer/L0/mcp-guide)** — transport, sessions, auth details
+- **[A2A integration guide](/docs/building/by-layer/L0/a2a-guide)** — streaming, artifacts, push notifications
+- **[Media buy lifecycle](/docs/media-buy/media-buys/lifecycle)** — state machine, sequenced flow, guaranteed deal IO path, creative sync timing
 - **[Task reference](/docs/media-buy/task-reference)** — all available tasks with testable examples
-- **[Error handling](/docs/building/implementation/transport-errors)** — error codes, recovery strategies
-- **[Authentication](/docs/building/integration/authentication)** — production credential setup
+- **[Error handling](/docs/building/operating/transport-errors)** — error codes, recovery strategies
+- **[Authentication](/docs/building/by-layer/L2/authentication)** — production credential setup

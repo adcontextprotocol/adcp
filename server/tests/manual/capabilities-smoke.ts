@@ -14,24 +14,33 @@ import {
   resolveStoryboardsForCapabilities,
 } from '@adcp/sdk/testing';
 import { PUBLIC_TEST_AGENT } from '../../src/config/test-agent.js';
+import {
+  hostedComplianceOptions,
+  hostedComplianceTarget,
+  withHostedTestOptions,
+} from '../../src/services/hosted-compliance-version.js';
 
 const agentUrl = process.argv[2] || PUBLIC_TEST_AGENT.url;
 const token = process.env.AGENT_TOKEN || PUBLIC_TEST_AGENT.token;
+const complianceTarget = hostedComplianceTarget();
+const complianceOptions = hostedComplianceOptions(complianceTarget);
 
 function line() {
   console.log('='.repeat(70));
 }
 
 async function main() {
-  console.log(`\nAgent: ${agentUrl}\n`);
+  console.log(`\nAgent: ${agentUrl}`);
+  console.log(`Compliance target: ${complianceTarget.requested}`);
+  console.log(`Compliance version: ${complianceTarget.version}\n`);
 
   line();
   console.log('Step 1: testCapabilityDiscovery');
   line();
 
-  const caps = await testCapabilityDiscovery(agentUrl, {
+  const caps = await testCapabilityDiscovery(agentUrl, withHostedTestOptions({
     auth: { type: 'bearer', token },
-  });
+  }, complianceTarget));
 
   const profile = caps.profile;
   if (!profile) {
@@ -65,7 +74,9 @@ async function main() {
     resolved = resolveStoryboardsForCapabilities({
       supported_protocols: supportedProtocols,
       specialisms,
-    });
+      major_versions: profile.adcp_major_versions,
+      supported_versions: profile.adcp_supported_versions,
+    }, complianceOptions);
   } catch (err) {
     console.log('\nResolution FAILED:', err instanceof Error ? err.message : err);
     console.log('→ /applicable-storyboards would return 422 unknown_specialism');

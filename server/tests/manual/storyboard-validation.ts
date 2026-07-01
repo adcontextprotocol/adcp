@@ -15,6 +15,7 @@ import {
   listStoryboards,
   getStoryboard,
 } from '../../src/services/storyboards.js';
+import { hostedComplianceTarget } from '../../src/services/hosted-compliance-version.js';
 
 const TEST_AGENT_URL = process.env.TEST_AGENT_URL || 'https://test-agent.adcontextprotocol.org/mcp';
 const TEST_AGENT_TOKEN = process.env.TEST_AGENT_TOKEN || '1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ';
@@ -22,6 +23,7 @@ const TEST_AGENT_TOKEN = process.env.TEST_AGENT_TOKEN || '1v8tAhASaUYYp4odoQ1PnM
 const args = process.argv.slice(2);
 const storyboardFilter = args.includes('--storyboard') ? args[args.indexOf('--storyboard') + 1] : undefined;
 const agentUrl = args.includes('--agent') ? args[args.indexOf('--agent') + 1] : TEST_AGENT_URL;
+const complianceTarget = hostedComplianceTarget();
 
 interface TrackDetail {
   track: string;
@@ -34,6 +36,7 @@ interface StoryboardResult {
   title: string;
   tracks_tested: string[];
   track_details: TrackDetail[];
+  scenarios_known: string[];
   tracks_passed: number;
   tracks_failed: number;
   tracks_partial: number;
@@ -48,7 +51,7 @@ async function runStoryboard(storyboardId: string): Promise<StoryboardResult> {
   if (!sb) {
     return {
       id: storyboardId, title: '(not found)',
-      tracks_tested: [], track_details: [], tracks_passed: 0,
+      tracks_tested: [], track_details: [], scenarios_known: [], tracks_passed: 0,
       tracks_failed: 0, tracks_partial: 0, tracks_skipped: 0,
       duration_ms: 0, observations: [], error: 'Storyboard not found',
     };
@@ -59,7 +62,7 @@ async function runStoryboard(storyboardId: string): Promise<StoryboardResult> {
       storyboards: [storyboardId],
       timeout_ms: 90_000,
       auth: { type: 'bearer', token: TEST_AGENT_TOKEN },
-    });
+    }, complianceTarget);
 
     const trackDetails: TrackDetail[] = result.tracks.map(t => ({
       track: t.track,
@@ -78,6 +81,7 @@ async function runStoryboard(storyboardId: string): Promise<StoryboardResult> {
       title: sb.title,
       tracks_tested: result.tracks.map(t => t.track),
       track_details: trackDetails,
+      scenarios_known: trackDetails.flatMap(t => t.scenarios.map(s => s.scenario)),
       tracks_passed: result.summary.tracks_passed,
       tracks_failed: result.summary.tracks_failed,
       tracks_partial: result.summary.tracks_partial,
@@ -88,7 +92,7 @@ async function runStoryboard(storyboardId: string): Promise<StoryboardResult> {
   } catch (err) {
     return {
       id: storyboardId, title: sb.title,
-      tracks_tested: [], track_details: [], tracks_passed: 0, tracks_failed: 0,
+      tracks_tested: [], track_details: [], scenarios_known: [], tracks_passed: 0, tracks_failed: 0,
       tracks_partial: 0, tracks_skipped: 0, duration_ms: 0, observations: [],
       error: err instanceof Error ? err.message : String(err),
     };

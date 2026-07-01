@@ -1,0 +1,574 @@
+#!/usr/bin/env node
+/**
+ * Validate every storyboard step's `validations[].path` resolves to a field
+ * defined by its `response_schema_ref`. Companion to
+ * `lint-storyboard-context-output-paths.cjs` — that one catches captures
+ * from undefined paths; this one catches assertions on undefined paths.
+ *
+ * Per #3918 follow-up: a `check: field_present, path: "media_buy_oid"`
+ * (typo) silently passes against any conformant agent that returns the
+ * actual `media_buy_id` — the storyboard nominally asserts something but
+ * the assertion's target doesn't exist.
+ *
+ * Coverage: every step under `static/compliance/source/` that declares
+ * `response_schema_ref` and has at least one `validations[]` entry whose
+ * `check` is a path-bearing form. Path-bearing checks are:
+ *   - field_present
+ *   - field_value
+ *   - field_value_or_absent
+ *   - field_absent
+ *   - field_pattern
+ *   - field_contains
+ *   - envelope_field_present
+ *   - envelope_field_absent
+ *   - envelope_field_pattern
+ *
+ * Non-path-bearing checks (error_code, response_schema, http_status_in,
+ * http_status, any_of, on_401_require_header) are skipped — they don't
+ * carry a path to validate.
+ *
+ * Rule:
+ *   path_not_in_schema — `path` does not resolve to any defined property
+ *                        in the response schema (after $ref / oneOf / anyOf
+ *                        resolution and numeric-index descent into items).
+ */
+
+'use strict';
+
+const fs = require('node:fs');
+const path = require('node:path');
+const yaml = require('js-yaml');
+
+const STORYBOARD_DIR = path.resolve(__dirname, '..', 'static', 'compliance', 'source');
+const SCHEMA_DIR = path.resolve(__dirname, '..', 'static', 'schemas', 'source');
+const ALLOWLIST_PATH = path.join(__dirname, 'storyboard-validations-paths-allowlist.json');
+
+const PATH_BEARING_CHECKS = new Set([
+  'field_present',
+  'field_value',
+  'field_value_or_absent',
+  'field_absent',
+  'field_pattern',
+  'field_contains',
+  'envelope_field_present',
+  'envelope_field_absent',
+  'envelope_field_pattern',
+]);
+
+function loadAllowlist() {
+  if (!fs.existsSync(ALLOWLIST_PATH)) return [];
+  const doc = JSON.parse(fs.readFileSync(ALLOWLIST_PATH, 'utf8'));
+  return Array.isArray(doc.allowlist) ? doc.allowlist : [];
+}
+
+function isAllowlisted(allowlist, filePath, stepId, validationPath) {
+  const rel = path.relative(path.resolve(__dirname, '..'), filePath);
+  return allowlist.some(
+    (entry) =>
+      entry.file === rel &&
+      entry.step === stepId &&
+      entry.path === validationPath,
+  );
+}
+
+function walkYaml(dir) {
+  const out = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...walkYaml(full));
+    else if (entry.isFile() && (entry.name.endsWith('.yaml') || entry.name.endsWith('.yml'))) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+function parsePath(raw) {
+  if (!raw) return [];
+  return raw.replace(/\[(\d+|\*)\]/g, '.$1').split('.').filter(Boolean);
+}
+
+function schemaRefToPath(ref) {
+  if (!ref) return null;
+  const trimmed = ref.startsWith('/schemas/') ? ref.slice('/schemas/'.length) : ref;
+  return path.join(SCHEMA_DIR, trimmed);
+}
+
+const schemaCache = new Map();
+
+function loadSchema(ref) {
+  const full = schemaRefToPath(ref);
+  if (!full) return null;
+  if (schemaCache.has(full)) return schemaCache.get(full);
+  let doc = null;
+  try {
+    doc = JSON.parse(fs.readFileSync(full, 'utf8'));
+  } catch {
+    doc = null;
+  }
+  schemaCache.set(full, doc);
+  return doc;
+}
+
+function isRuntimeSchemaRef(ref) {
+  return typeof ref === 'string' && ref.startsWith('$test_kit.');
+}
+
+/**
+ * `core/protocol-envelope.json` and `core/version-envelope.json` define
+ * fields wrapping or mixed into every task response — `status`, `task_id`,
+ * `context_id`, `replayed`, `adcp_error`, `adcp_version`,
+ * `adcp_major_version`, etc. Protocol-envelope fields never appear in the
+ * per-task response schemas this lint walks; version-envelope fields are
+ * composed via allOf into source schemas but can be absent from older built
+ * artifacts and still need envelope-scoped validation semantics.
+ *
+ * Storyboards do assert on envelope fields (e.g., `path: "replayed"`,
+ * `path: "adcp_error"`), so the resolver falls back to the envelope when
+ * a top-level segment isn't found in the response schema. Only the FIRST
+ * segment is matched against the envelope — once we descend into an
+ * envelope property, further resolution proceeds normally.
+ */
+const ENVELOPE_REF = 'core/protocol-envelope.json';
+const VERSION_ENVELOPE_REF = 'core/version-envelope.json';
+const ENVELOPE_REFS = [ENVELOPE_REF, VERSION_ENVELOPE_REF];
+
+function isEnvelopeProperty(name) {
+  for (const ref of ENVELOPE_REFS) {
+    const envelope = loadSchema(ref);
+    if (envelope?.properties && Object.prototype.hasOwnProperty.call(envelope.properties, name)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function pathResolvesAgainstAnyEnvelope(segments) {
+  for (const ref of ENVELOPE_REFS) {
+    const envelope = loadSchema(ref);
+    if (envelope && pathResolves(envelope, segments)) return true;
+  }
+  return false;
+}
+
+function pathIsForbiddenByAnyEnvelope(segments) {
+  for (const ref of ENVELOPE_REFS) {
+    const envelope = loadSchema(ref);
+    if (envelope && pathIsForbiddenByRequiredNot(envelope, segments)) return true;
+  }
+  return false;
+}
+
+/**
+ * A node is a "pure extension point" when it declares `additionalProperties:
+ * true` AND has no `properties` / `items` / composite variants. Examples:
+ * `core/context.json` (opaque correlation data, by spec design) and
+ * `error.details` (additionalProperties: true because the structured shape
+ * lives in per-error-code `error-details/<code>.json` schemas selected at
+ * runtime). Once we descend into one of these, any remaining path segments
+ * are accepted — the spec deliberately does not constrain what lives below.
+ *
+ * Mixed schemas (declared `properties` AND `additionalProperties: true`) are
+ * NOT pure extension points — those use `additionalProperties: true` for
+ * forward-compat extension, not as an open container, so paths through them
+ * MUST hit defined properties.
+ */
+function isPureExtensionPoint(node) {
+  if (!node || typeof node !== 'object') return false;
+  if (node.additionalProperties !== true) return false;
+  if (node.properties && Object.keys(node.properties).length > 0) return false;
+  if (node.items) return false;
+  if (Array.isArray(node.oneOf) || Array.isArray(node.anyOf) || Array.isArray(node.allOf)) return false;
+  return true;
+}
+
+function pathResolves(node, segments, seen = new Set()) {
+  if (!node || typeof node !== 'object') return false;
+  if (segments.length === 0) return true;
+
+  if (node.$ref) {
+    if (seen.has(node.$ref)) return false;
+    const next = new Set(seen);
+    next.add(node.$ref);
+    const resolved = loadSchema(node.$ref);
+    return pathResolves(resolved, segments, next);
+  }
+
+  const [seg, ...rest] = segments;
+
+  if (/^\d+$/.test(seg) || seg === '*') {
+    if (node.items && pathResolves(node.items, rest, seen)) return true;
+  } else if (node.properties && Object.prototype.hasOwnProperty.call(node.properties, seg)) {
+    if (pathResolves(node.properties[seg], rest, seen)) return true;
+  }
+
+  // Union semantics across `oneOf` / `anyOf` / `allOf` — see
+  // lint-storyboard-context-output-paths.cjs for the rationale.
+  const variants = node.oneOf || node.anyOf || node.allOf;
+  if (Array.isArray(variants)) {
+    for (const variant of variants) {
+      if (pathResolves(variant, segments, seen)) return true;
+    }
+  }
+
+  if (isPureExtensionPoint(node)) return true;
+
+  return false;
+}
+
+function* findStepsWithValidations(node, trail) {
+  if (Array.isArray(node)) {
+    for (let i = 0; i < node.length; i++) {
+      yield* findStepsWithValidations(node[i], [...trail, i]);
+    }
+    return;
+  }
+  if (node && typeof node === 'object') {
+    if (
+      typeof node.response_schema_ref === 'string' &&
+      Array.isArray(node.validations) &&
+      node.validations.length > 0
+    ) {
+      yield {
+        responseRef: node.response_schema_ref,
+        validations: node.validations,
+        stepId: typeof node.id === 'string' ? node.id : null,
+        expectedArm: typeof node.expected_arm === 'string' ? node.expected_arm : null,
+        expectError: node.expect_error === true,
+        trail: [...trail],
+      };
+    }
+    for (const key of Object.keys(node)) {
+      yield* findStepsWithValidations(node[key], [...trail, key]);
+    }
+  }
+}
+
+/**
+ * Walk a node's `oneOf` / `anyOf` (after $ref / allOf flattening) looking
+ * for the variant whose discriminator matches `expectedArm`. The match rule:
+ * any property in that variant declares `const: "<expectedArm>"`. Returns
+ * the matching variant, or null when no variant matches (an authoring bug
+ * the lint surfaces as `unknown_expected_arm`).
+ */
+function findArmByDiscriminator(node, expectedArm, seen = new Set()) {
+  if (!node || typeof node !== 'object') return null;
+  if (node.$ref) {
+    if (seen.has(node.$ref)) return null;
+    const next = new Set(seen);
+    next.add(node.$ref);
+    return findArmByDiscriminator(loadSchema(node.$ref), expectedArm, next);
+  }
+  const variants = node.oneOf || node.anyOf;
+  if (!Array.isArray(variants)) return null;
+  for (const variant of variants) {
+    if (!variant || typeof variant !== 'object') continue;
+    const props = variant.properties || {};
+    for (const propName of Object.keys(props)) {
+      const propSchema = props[propName];
+      if (propSchema && propSchema.const === expectedArm) {
+        return variant;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Find the response schema's "Error arm" — the oneOf branch whose `required`
+ * list includes `errors` and which has no const discriminator (so it isn't
+ * already const-tagged with a status value). Used as a fallback when a step
+ * has `expect_error: true` but no explicit `expected_arm`.
+ */
+function findErrorArm(node, seen = new Set()) {
+  if (!node || typeof node !== 'object') return null;
+  if (node.$ref) {
+    if (seen.has(node.$ref)) return null;
+    const next = new Set(seen);
+    next.add(node.$ref);
+    return findErrorArm(loadSchema(node.$ref), next);
+  }
+  const variants = node.oneOf || node.anyOf;
+  if (!Array.isArray(variants)) return null;
+  for (const variant of variants) {
+    if (!variant || typeof variant !== 'object') continue;
+    const required = Array.isArray(variant.required) ? variant.required : [];
+    if (!required.includes('errors')) continue;
+    const props = variant.properties || {};
+    let hasConstDiscriminator = false;
+    for (const propName of Object.keys(props)) {
+      if (props[propName] && props[propName].const !== undefined) {
+        hasConstDiscriminator = true;
+        break;
+      }
+    }
+    if (!hasConstDiscriminator) return variant;
+  }
+  return null;
+}
+
+/**
+ * Resolve which schema node the lint should validate paths against, given
+ * the step's `expected_arm` and `expect_error` annotations. Returns either:
+ *   { schema: <node> } — proceed normally with this schema (full or arm-restricted)
+ *   { error: 'unknown_expected_arm' } — author named an arm that doesn't exist
+ */
+function resolveExpectedArmSchema(schema, expectedArm, expectError) {
+  if (typeof expectedArm === 'string' && expectedArm.length > 0) {
+    const arm = findArmByDiscriminator(schema, expectedArm);
+    if (!arm) return { error: 'unknown_expected_arm' };
+    return { schema: arm };
+  }
+  if (expectError) {
+    const arm = findErrorArm(schema);
+    if (arm) return { schema: arm };
+  }
+  return { schema };
+}
+
+function pathResolvesAgainstResponseOrEnvelope(schema, segments) {
+  if (pathResolves(schema, segments)) return true;
+  // Fall back to the protocol/version envelopes. Storyboards address
+  // envelope-level fields with bare top-level names (e.g., `replayed`,
+  // `adcp_error`, `status`, `adcp_version`), so we only consult envelope
+  // schemas when the FIRST segment matches an envelope property; subsequent
+  // segments resolve through that envelope's own definition of the field.
+  if (segments.length > 0 && isEnvelopeProperty(segments[0])) {
+    if (pathResolvesAgainstAnyEnvelope(segments)) return true;
+  }
+  return false;
+}
+
+function pathIsForbiddenByRequiredNot(node, segments, seen = new Set()) {
+  if (!node || typeof node !== 'object') return false;
+  if (segments.length !== 1) return false;
+
+  if (node.$ref) {
+    if (seen.has(node.$ref)) return false;
+    const next = new Set(seen);
+    next.add(node.$ref);
+    return pathIsForbiddenByRequiredNot(loadSchema(node.$ref), segments, next);
+  }
+
+  const [seg] = segments;
+  const notNode = node.not;
+  const notVariants = notNode && typeof notNode === 'object'
+    ? [notNode, ...(Array.isArray(notNode.anyOf) ? notNode.anyOf : []), ...(Array.isArray(notNode.oneOf) ? notNode.oneOf : [])]
+    : [];
+  for (const variant of notVariants) {
+    const required = variant && typeof variant === 'object' && Array.isArray(variant.required)
+      ? variant.required
+      : [];
+    if (required.includes(seg)) return true;
+  }
+
+  const variants = node.oneOf || node.anyOf || node.allOf;
+  if (Array.isArray(variants)) {
+    for (const variant of variants) {
+      if (pathIsForbiddenByRequiredNot(variant, segments, seen)) return true;
+    }
+  }
+
+  return false;
+}
+
+function absentPathForbiddenState(schema, segments) {
+  return {
+    forbiddenBySchema: pathIsForbiddenByRequiredNot(schema, segments),
+    forbiddenByEnvelope: pathIsForbiddenByAnyEnvelope(segments),
+  };
+}
+
+function lintDoc(doc, filePath, allowlist = []) {
+  const violations = [];
+  if (!doc) return violations;
+  for (const step of findStepsWithValidations(doc, [])) {
+    const pathValidations = step.validations
+      .map((v, index) => ({ v, index }))
+      .filter(({ v }) => {
+        if (!v || typeof v !== 'object') return false;
+        if (!PATH_BEARING_CHECKS.has(v.check)) return false;
+        return typeof v.path === 'string' && v.path.length > 0;
+      });
+    if (pathValidations.length === 0) continue;
+
+    const fullSchema = loadSchema(step.responseRef);
+    if (!fullSchema) {
+      if (isRuntimeSchemaRef(step.responseRef)) {
+        for (const { v, index } of pathValidations) {
+          const segments = parsePath(v.path);
+          if (pathResolvesAgainstAnyEnvelope(segments)) continue;
+          if (isAllowlisted(allowlist, filePath, step.stepId, v.path)) continue;
+          violations.push({
+            rule: 'runtime_response_schema_unresolved_path',
+            filePath,
+            stepId: step.stepId,
+            responseRef: step.responseRef,
+            validationPath: v.path,
+            check: v.check,
+            index,
+          });
+        }
+        continue;
+      }
+      violations.push({
+        rule: 'response_schema_not_found',
+        filePath,
+        stepId: step.stepId,
+        responseRef: step.responseRef,
+      });
+      continue;
+    }
+    const armResult = resolveExpectedArmSchema(fullSchema, step.expectedArm, step.expectError);
+    if (armResult.error === 'unknown_expected_arm') {
+      violations.push({
+        rule: 'unknown_expected_arm',
+        filePath,
+        stepId: step.stepId,
+        responseRef: step.responseRef,
+        expectedArm: step.expectedArm,
+      });
+      continue;
+    }
+    const schema = armResult.schema;
+    for (const { v, index: i } of pathValidations) {
+      const rawPath = v.path;
+      const segments = parsePath(rawPath);
+      if (segments.includes('*') && v.check !== 'field_contains') {
+        violations.push({
+          rule: 'wildcard_unsupported_check',
+          filePath,
+          stepId: step.stepId,
+          responseRef: step.responseRef,
+          validationPath: rawPath,
+          check: v.check,
+          index: i,
+        });
+        continue;
+      }
+      if (
+        v.check === 'envelope_field_present' ||
+        v.check === 'envelope_field_absent' ||
+        v.check === 'envelope_field_pattern'
+      ) {
+        const resolvesOnEnvelope = pathResolvesAgainstAnyEnvelope(segments);
+        const forbiddenOnEnvelope = pathIsForbiddenByAnyEnvelope(segments);
+        if ((v.check === 'envelope_field_present' || v.check === 'envelope_field_pattern') && resolvesOnEnvelope) continue;
+        if (v.check === 'envelope_field_absent' && (resolvesOnEnvelope || forbiddenOnEnvelope)) continue;
+        if (isAllowlisted(allowlist, filePath, step.stepId, rawPath)) continue;
+        violations.push({
+          rule: 'path_not_in_schema',
+          filePath,
+          stepId: step.stepId,
+          responseRef: step.responseRef,
+          validationPath: rawPath,
+          check: v.check,
+          index: i,
+        });
+        continue;
+      }
+      if (pathResolvesAgainstResponseOrEnvelope(schema, segments)) continue;
+      if (v.check === 'field_absent' || v.check === 'envelope_field_absent') {
+        const { forbiddenBySchema, forbiddenByEnvelope } = absentPathForbiddenState(schema, segments);
+        if (v.check === 'field_absent' && forbiddenBySchema && !forbiddenByEnvelope) continue;
+      }
+      if (isAllowlisted(allowlist, filePath, step.stepId, rawPath)) continue;
+      violations.push({
+        rule: 'path_not_in_schema',
+        filePath,
+        stepId: step.stepId,
+        responseRef: step.responseRef,
+        validationPath: rawPath,
+        check: v.check,
+        index: i,
+      });
+    }
+  }
+  return violations;
+}
+
+function lint() {
+  const violations = [];
+  const files = walkYaml(STORYBOARD_DIR);
+  const allowlist = loadAllowlist();
+  for (const file of files) {
+    let doc;
+    try {
+      doc = yaml.load(fs.readFileSync(file, 'utf8'));
+    } catch {
+      // YAML parse errors are surfaced by sibling lints; skip rather than
+      // double-report.
+      continue;
+    }
+    violations.push(...lintDoc(doc, file, allowlist));
+  }
+  return violations;
+}
+
+const RULE_MESSAGES = {
+  path_not_in_schema: ({ validationPath, responseRef, check }) =>
+    `validations[].path \`${validationPath}\` (check: \`${check}\`) does not resolve to any defined ` +
+    `field in \`${responseRef}\`. The storyboard asserts on a path the spec schema does not define — ` +
+    'a real agent\'s response will silently pass `field_absent` and silently fail `field_present` / ' +
+    '`field_value` / `field_value_or_absent` regardless of what the agent actually returns.\n' +
+    '    Fix one of:\n' +
+    '      1. Update the path to a field that exists in the response schema.\n' +
+    '      2. Update the response_schema_ref to the schema that defines this path.\n' +
+    '      3. If the path traverses a documented extension point (error.details polymorphism, ' +
+    'additionalProperties: true convention), add an entry to ' +
+    '`scripts/storyboard-validations-paths-allowlist.json` with a `reason` string.',
+  response_schema_not_found: ({ responseRef }) =>
+    `response_schema_ref \`${responseRef}\` could not be loaded — fix the ref or the schema path.`,
+  runtime_response_schema_unresolved_path: ({ validationPath, responseRef, check }) =>
+    `validations[].path \`${validationPath}\` (check: \`${check}\`) uses runtime response_schema_ref ` +
+    `\`${responseRef}\`, so the source-tree lint can only validate protocol envelope fields. ` +
+    'Use an envelope field, a concrete response_schema_ref, or add a documented allowlist entry.',
+  unknown_expected_arm: ({ expectedArm, responseRef }) =>
+    `expected_arm \`${expectedArm}\` does not match any oneOf/anyOf branch in \`${responseRef}\`. ` +
+    'Match rule: a branch must declare some property with `const: "<expected_arm>"`. ' +
+    'Verify the discriminator value against the response schema.',
+  wildcard_unsupported_check: ({ validationPath, check }) =>
+    `validations[].path \`${validationPath}\` uses [*] but check \`${check}\` does not support wildcard ` +
+    'runtime semantics. Use `field_contains` for wildcard membership checks, or use a concrete index.',
+};
+
+function formatMessage(violation) {
+  const builder = RULE_MESSAGES[violation.rule];
+  return builder ? builder(violation) : `unknown rule ${violation.rule}`;
+}
+
+function main() {
+  const violations = lint();
+  if (violations.length === 0) {
+    const fileCount = walkYaml(STORYBOARD_DIR).length;
+    console.log(`  storyboard validations path lint: clean (${fileCount} storyboard files scanned)`);
+    return;
+  }
+  for (const v of violations) {
+    const rel = path.relative(path.resolve(__dirname, '..'), v.filePath);
+    const stepLabel = v.stepId ? `:${v.stepId}` : '';
+    console.error(`  error: ${rel}${stepLabel} — ${formatMessage(v)}`);
+  }
+  console.error(`\n  ${violations.length} storyboard validations path violation(s).`);
+  process.exit(1);
+}
+
+if (require.main === module) main();
+
+module.exports = {
+  RULE_MESSAGES,
+  PATH_BEARING_CHECKS,
+  ENVELOPE_REF,
+  lint,
+  lintDoc,
+  loadSchema,
+  loadAllowlist,
+  isEnvelopeProperty,
+  pathResolves,
+  pathResolvesAgainstResponseOrEnvelope,
+  findArmByDiscriminator,
+  findErrorArm,
+  resolveExpectedArmSchema,
+  parsePath,
+  formatMessage,
+};

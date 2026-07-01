@@ -1,0 +1,40 @@
+[
+  {
+    "id": "stage-sdk-schema-bundle-cache-copy",
+    "title": "Staged SDK schema bundle cache copy",
+    "kind": "node_modules_sdk_cache_mutation",
+    "status": "temporary",
+    "owner": "compliance",
+    "upstream": "adcontextprotocol/adcp-client#2105",
+    "problem": "The 3.0 compatibility storyboard lane needs the archived 3.0.x schema bundle available under the SDK schemas-data cache key used by the runner.",
+    "localBehavior": "Copy a repo-built or archived dist/schemas/<version> tree into node_modules/@adcp/sdk/dist/lib/schemas-data/<bundle-key> before running compatibility storyboards.",
+    "removalCondition": "Remove when the compatibility lane passes the archived schema root through public SDK schemaRoot options instead of staging it into node_modules.",
+    "paths": [
+      "scripts/stage-sdk-schema-bundle.sh"
+    ],
+    "terms": [
+      "node_modules/@adcp/sdk/dist/lib/schemas-data"
+    ]
+  },
+  {
+    "id": "current-compliance-cache-overlay",
+    "title": "Current-source compliance and schema overlay into SDK cache",
+    "kind": "node_modules_sdk_cache_mutation",
+    "status": "temporary",
+    "owner": "compliance",
+    "upstream": "adcontextprotocol/adcp-client#2105",
+    "problem": "The SDK package ships a snapshot of compliance bundles, schema bundles, and generated validators. Current PR storyboard runs need to grade current repo source before a new protocol bundle exists.",
+    "localBehavior": "Build current compliance/schema bundles, copy them into the SDK cache, and patch generated validator enum literals for same-PR comply_test_controller additions.",
+    "removalCondition": "Remove when the storyboard matrix passes current compliance and schema roots through public SDK options instead of overlaying the SDK cache.",
+    "paths": [
+      "scripts/overlay-compliance-cache.sh",
+      "scripts/run-storyboards-matrix.sh"
+    ],
+    "terms": [
+      "node_modules/@adcp/sdk/compliance/cache",
+      "node_modules/@adcp/sdk/ADCP_VERSION",
+      "node_modules/@adcp/sdk/dist/lib/types/schemas.generated.js",
+      "schemas.generated.js"
+    ]
+  }
+]

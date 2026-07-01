@@ -44,6 +44,10 @@
       "type": "string",
       "description": "Token from si_get_offering response for session continuity. Brand uses this to recall what products were shown to the user, enabling natural references like 'the second one' or 'that blue shoe'."
     },
+    "sponsored_context_receipt": {
+      "$ref": "/schemas/sponsored-intelligence/si-sponsored-context-receipt.json",
+      "description": "Host receipt for sponsored context accepted from a prior si_get_offering response or other pre-session context package. This records the accepted context_use, disclosure commitment, paying_principal, and host receipt for audit."
+    },
     "idempotency_key": {
       "type": "string",
       "description": "Client-generated unique key for this request. Prevents duplicate session creation on retries. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",

@@ -1,0 +1,1525 @@
+---
+title: Media Products
+description: "AdCP media products — the core sellable unit in the protocol. Covers product structure, pricing options, delivery types, format references, and catalog-driven inventory."
+"og:title": "AdCP — Media Products"
+---
+
+
+A **Product** is the core sellable unit in AdCP. This document details the Product model, including its pricing and delivery types, and how products are discovered and structured in the system.
+
+<Tip>
+**Pricing Models**
+Products declare which pricing models they support. Buyers select a specific pricing option when creating media buys. See the complete [Pricing Models Guide](/dist/docs/3.1.0-rc.6/media-buy/advanced-topics/pricing-models) for details on CPM, CPCV, CPP, CPC, CPA, vCPM, flat rate, and time-based pricing.
+</Tip>
+
+## The Product Model
+
+- `product_id` (string, required)
+- `name` (string, required)
+- `description` (string, required)
+- `publisher_properties` (list[PublisherPropertySelector], required): Publisher properties covered by this product. See [Property Targeting](#property-targeting).
+- `channels` (list[string], optional): Advertising channels this product is sold as (e.g., `["retail_media"]`, `["display", "olv"]`). Sellers SHOULD declare `channels` on products that span non-obvious channels, particularly retail media, CTV/OLV, and multi-channel bundles. Product channels SHOULD be a subset of the union of their properties' `supported_channels`. See [Media Channel Taxonomy](/dist/docs/3.1.0-rc.6/reference/media-channel-taxonomy).
+- `video_placement_types` (list[string], optional): Declared video placement types that may be included in this product, using IAB Tech Lab/OpenRTB 2.6 `video.plcmt` definitions with AdCP-native names: `instream`, `accompanying_content`, `interstitial`, and `standalone`. Aggregate products and ad-network products may include multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.
+- `format_ids` (list[FormatID], conditional): Legacy named-format references. Products must include `format_ids`, `format_options`, or both. See [Creative Formats](/dist/docs/3.1.0-rc.6/creative/formats).
+- `format_options` (list[ProductFormatDeclaration], conditional): 3.1+ canonical format-option declarations accepted by this product. Buyers prefer `format_options` when both format fields are present. Product-level formats are the upper bound for the sellable product; placement-level formats can narrow this set but cannot add formats the product does not accept. Buyer `FormatOptionRef` selectors use `{scope: "publisher", publisher_domain, format_option_id}` for publisher-declared options and `{scope: "product", format_option_id}` for product-local options.
+- `placements` (list[Placement], optional): Specific public ad placements within this product. Each placement declares `kind` (`publisher_ref` or `seller_inline`) and `mode` (`targetable` or `included`); seller-private delivery objects are not exposed here. See [Placements](#placements).
+- `shows` (list[CollectionSelector], optional): Shows covered by this product, grouped by publisher. Each entry has `publisher_domain` and `collection_ids` referencing shows in the publisher's `adagents.json`. See [Collections and installments](/dist/docs/3.1.0-rc.6/media-buy/product-discovery/collections-and-installments).
+- `episodes` (list[Episode], optional): Specific episodes available within this product. See [Collections and installments](/dist/docs/3.1.0-rc.6/media-buy/product-discovery/collections-and-installments).
+- `delivery_type` (string, required): Either `"guaranteed"` or `"non_guaranteed"`.
+- `exclusivity` (string, optional): Whether this product offers exclusive access. `"none"` (default when absent) — multiple advertisers can buy simultaneously. `"category"` — one advertiser per industry category. `"exclusive"` — sole sponsorship. Most relevant for guaranteed products tied to specific shows or placements.
+- `pricing_options` (list[PricingOption], required): Array of available pricing models for this product. See [Pricing Models](#pricing-models).
+- `delivery_measurement` (object, optional): Who measures ad delivery — the ad server and viewability vendor used to count impressions. New implementations populate `vendors` as a structured `BrandRef` array (e.g., `[{ "domain": "googleadmanager.com" }, { "domain": "integralads.com" }]`); the legacy `provider` string is deprecated. When absent, buyers should apply their own measurement defaults. See [Delivery Measurement](#delivery-measurement).
+- `outcome_measurement` (OutcomeMeasurement, **deprecated**): Legacy field for declaring business outcome measurement (lift, brand lift, foot traffic). New implementations declare outcome metrics via `reporting_capabilities.available_metrics` and pin attribution methodology + window via the `qualifier` slot on `committed_metrics`. Retained for one-minor backwards compatibility; removed at the next major. See [Commerce Media](/dist/docs/3.1.0-rc.6/media-buy/commerce-media) for the migration pattern.
+- `creative_policy` (CreativePolicy, optional): Creative requirements and restrictions.
+- `is_custom` (bool, optional): `true` if the product was generated for a specific brief.
+- `expires_at` (datetime, optional): If `is_custom`, the time the product is no longer valid.
+- `property_targeting_allowed` (bool, optional, default: false): Whether buyers can filter this product to a subset of its `publisher_properties`. When `false` (default), the product is "all or nothing" - buyers must accept all properties or the product is excluded from `property_list` filtering results. See [Property Targeting](#property-targeting).
+- `collection_targeting_allowed` (bool, optional, default: false): Whether buyers can target a subset of this product's `shows`. When `false` (default), the product is a bundle — buyers get all listed shows. When `true`, buyers can select specific shows in the media buy.
+- `data_provider_signals` (list[DataProviderSignalSelector], **deprecated**): Legacy/non-selectable metadata for data-provider signals already bundled into or associated with this product. New implementations should use `included_signals`.
+- `included_signals` (list[SignalListing], optional): Non-selectable signal metadata for signals already included in, bundled with, or planned into this product. These describe what the product is; buyers do not select them in package `signal_targeting_groups`.
+- `signal_targeting_allowed` (bool, optional, default: false): Whether this product has a package-level signal targeting surface. Editability is controlled by `signal_targeting_rules`.
+- `signal_targeting_options` (list[ProductSignalTargetingOption], optional): Inline seller-offered signals that may be buyer-selected or seller-applied for this product. These may be product-local signal options or data-provider signals the seller is authorized to apply. See [Signal Targeting](#signal-targeting).
+- `signal_targeting_rules` (SignalTargetingRules, optional): Composition rules such as single/multi-select limits for the selectable signals.
+- `catalog_types` (list[string], optional): Catalog types this product supports for catalog-driven campaigns. A sponsored product listing declares `["product"]`, a job board declares `["job", "offering"]`. Buyers match synced catalogs to products via this field. See [Catalogs](/dist/docs/3.1.0-rc.6/creative/catalogs).
+- `catalog_match` (object, optional): When the buyer provides a `catalog` on `get_products`, indicates which catalog items are eligible for this product. Contains `matched_gtins` (cross-retailer GTIN matches), `matched_ids` (generic item ID matches), `matched_count`, and `submitted_count`.
+- `metric_optimization` (object, optional): Metric optimization capabilities for this product. Presence indicates the product supports `optimization_goals` with `kind: "metric"`. See [Metric optimization](#metric-optimization).
+- `max_optimization_goals` (integer, optional): Maximum number of `optimization_goals` this product accepts on a package. When absent, no limit is declared. Most social platforms accept only 1.
+- `conversion_tracking` (object, optional): Conversion event tracking capabilities. Presence indicates the product supports `optimization_goals` with `kind: "event"`. See [Conversion tracking](#conversion-tracking-1).
+- `product_card` (object, optional): Visual card definition for displaying this product in user interfaces. See [Product Cards](#product-cards).
+
+### Metric optimization
+
+Products that support `optimization_goals` with `kind: "metric"` declare their capabilities in `metric_optimization`. No event source or conversion tracking setup is required for metric goals — the seller tracks these metrics natively.
+
+```json
+{
+  "metric_optimization": {
+    "supported_metrics": ["clicks", "views", "completed_views", "engagements"],
+    "supported_view_durations": [2, 6, 15],
+    "supported_targets": ["cost_per", "threshold_rate"]
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `supported_metrics` | string[] | Yes | Metric kinds this product can optimize for. Buyers should only request metric goals for kinds listed here. |
+| `supported_view_durations` | number[] | No | Video view duration thresholds (in seconds) supported for `completed_views` goals. When absent, the seller uses their platform default. |
+| `supported_targets` | string[] | No | Target kinds available: `cost_per`, `threshold_rate`. Values match `target.kind` on the optimization goal. Only listed kinds are accepted. When omitted, buyers can set target-less metric goals (maximize volume) but cannot set specific targets. |
+
+### Conversion tracking
+
+Products that support `optimization_goals` with `kind: "event"` declare their capabilities in `conversion_tracking`. Seller-level capabilities (supported event types, UID types, attribution windows) are declared in [`get_adcp_capabilities`](/dist/docs/3.1.0-rc.6/protocol/get_adcp_capabilities).
+
+```json
+{
+  "conversion_tracking": {
+    "action_sources": ["website", "app"],
+    "supported_targets": ["cost_per", "per_ad_spend", "maximize_value"],
+    "platform_managed": false
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `action_sources` | string[] | No | Action sources relevant to this product (e.g., a retail media product might have `in_store` and `website`). |
+| `supported_targets` | string[] | No | Target kinds available for event goals: `cost_per`, `per_ad_spend`, `maximize_value`. Values match `target.kind` on the optimization goal. Only listed kinds are accepted. When omitted, buyers can still set target-less event goals. |
+| `platform_managed` | boolean | No | Whether the seller provides always-on measurement (e.g., retailer purchase attribution). When true, `sync_event_sources` returns seller-managed event sources. |
+
+See [Conversion Tracking & Optimization Goals](/dist/docs/3.1.0-rc.6/media-buy/conversion-tracking) for the full optimization goals reference.
+
+### Pricing Models
+
+Publishers declare which pricing models they support for each product. Buyers select from the available options when creating a media buy. This approach supports:
+
+- **Multiple pricing models per product** - Publishers can offer the same inventory via different pricing structures
+- **Multi-currency support** - Publishers declare supported currencies per `pricing_options` entry; buyers can use `filters.pricing_currencies` during discovery to narrow media product transaction currencies and must use a supported currency at buy time
+- **Flexible pricing** - Support for CPM, CPCV, CPP (GRP-based), CPA, and more
+
+#### Supported Pricing Models
+
+- **CPM** (Cost Per Mille) - Cost per 1,000 impressions (traditional display)
+- **CPC** (Cost Per Click) - Cost per click on the ad
+- **CPCV** (Cost Per Completed View) - Cost per 100% video/audio completion
+- **CPV** (Cost Per View) - Cost per view at publisher-defined threshold
+- **CPA** (Cost Per Acquisition) - Cost per conversion event (purchase, lead, signup, etc.)
+- **CPP** (Cost Per Point) - Cost per Gross Rating Point (TV/audio)
+- **Flat Rate** - Fixed cost regardless of delivery volume
+- **Time** - Cost per time unit (day, week, month) that scales with campaign duration
+
+#### PricingOption Structure
+
+Each pricing option includes:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.1.0-rc.6/pricing-options/cpcv-option.json",
+  "pricing_option_id": "cpcv_usd_guaranteed",
+  "pricing_model": "cpcv",
+  "fixed_price": 0.15,
+  "currency": "USD",
+  "min_spend_per_package": 5000
+}
+```
+
+For auction-based pricing (no `fixed_price`), use `floor_price` for minimum bid constraints and optional `price_guidance` for percentile hints. Bid-based auction models (`cpm`, `vcpm`, `cpc`, `cpcv`, `cpv`) may also include `max_bid` as a boolean signal that `bid_price` switches from exact honored price to buyer ceiling mode:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.1.0-rc.6/pricing-options/cpm-option.json",
+  "pricing_option_id": "cpm_usd_auction",
+  "pricing_model": "cpm",
+  "currency": "USD",
+  "floor_price": 10.00,
+  "max_bid": true,
+  "price_guidance": {
+    "p25": 12.50,
+    "p50": 15.00,
+    "p75": 18.00,
+    "p90": 22.00
+  }
+}
+```
+
+#### Delivery Measurement
+
+Products SHOULD declare their measurement provider when available:
+```json
+{
+  "delivery_measurement": {
+    "provider": "Google Ad Manager with IAS viewability verification",
+    "notes": "MRC-accredited viewability. 50% in-view for 1s display / 2s video."
+  }
+}
+```
+
+Common provider examples:
+- `"Google Ad Manager with IAS viewability"`
+- `"Nielsen DAR for P18-49 demographic measurement"`
+- `"Geopath DOOH traffic counts updated monthly"`
+- `"Comscore vCE for video completion tracking"`
+- `"Self-reported impressions from proprietary ad server"`
+
+Guaranteed products can also declare `performance_standards`, `measurement_terms`, and `cancellation_policy` that define accountability obligations at the buy level. See [Accountability](/dist/docs/3.1.0-rc.6/media-buy/advanced-topics/accountability).
+
+### Outcome Measurement Object
+
+For products that include outcome measurement (common in retail media):
+```json
+{
+  "type": "incremental_sales_lift",
+  "attribution": "deterministic_purchase",
+  "window": { "interval": 30, "unit": "days" },
+  "reporting": "weekly_dashboard"
+}
+```
+
+### CreativePolicy Object
+
+Defines creative requirements and restrictions:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.1.0-rc.6/core/creative-policy.json",
+  "co_branding": "required",
+  "landing_page": "retailer_site_only",
+  "templates_available": true
+}
+```
+
+### Placements
+
+Products can optionally declare specific public ad placements within their inventory. Placement IDs are publisher-scoped. When a placement exists in a publisher's `adagents.json` placement declarations, the product placement references that entry with `kind: "publisher_ref"`, `publisher_domain`, and `placement_id`. The product may omit `name` in that case because the publisher declaration resolves the name and other public metadata. When no public publisher declaration exists, the sales agent defines an inline placement with `kind: "seller_inline"` and buyer-facing fields such as `name`, `description`, formats, and tags; its `placement_id` is still interpreted in the publisher namespace, or in the seller agent's own publisher namespace when `publisher_domain` is omitted. Whether a publisher reference resolved from publisher-hosted adagents.json or a community-maintained fallback file is resolver metadata, not a separate placement kind.
+
+- **`kind: "publisher_ref"`** - Publisher-scoped placement reference resolved from the named publisher's `adagents.json`; requires `publisher_domain`
+- **`kind: "seller_inline"`** - Public buyer-facing placement metadata defined inline by the sales agent; requires `name`
+- **`publisher_domain`** - Domain whose `adagents.json` defines the referenced placement. New multi-publisher products SHOULD include it so the placement namespace is explicit.
+- **`placement_id`** - Placement ID in the publisher namespace. Buyers reference it with `publisher_domain` in `creative_assignments[].placement_refs`; legacy `placement_ids` strings are only unambiguous in single-publisher contexts.
+- **`mode: "targetable"`** - The buyer may reference this publisher-scoped placement when assigning creatives or otherwise selecting placements within the product
+- **`mode: "included"`** - The public placement is part of the product's described composition, but the buyer cannot cherry-pick it by `placement_id`
+- **`video_placement_types`** - Declared video placement types for OLV and other video placements. Concrete placements usually declare one value; aggregate placements may declare multiple.
+- **Publisher reference rule** - Publisher-referenced product placements resolve to `{publisher_domain, placement_id}` in the publisher's `adagents.json`
+- **Private inventory rule** - Seller-private delivery objects, ad-server mappings, and source/origin details must stay out of `get_products`
+- **Creative assignment** - Different creatives can be assigned to targetable placements
+- **Omitting placement targeting** - Creatives without `placement_refs` or legacy `placement_ids` run on all buyer-targetable placements in the package, and the seller still controls included-only delivery composition
+- **Use registered IDs when available** - If the publisher declares canonical `placements` in `adagents.json`, product placements SHOULD use the catalog ID as `placement_id`
+- **Preserve registry semantics** - When a product references a registered placement, it is referring to that same placement. The product may narrow `format_ids` or `format_options`, or add operational detail, but it should not change the placement's meaning incompatibly
+- **Tags stay useful at product level** - Product placements can carry `tags` for grouping and should align with registry tags when the placement comes from the publisher registry
+
+`mode` is required for new senders as of May 25, 2026. During the six-month migration window ending November 25, 2026, buyers may tolerate legacy products where `placements[]` entries omit `mode` and treat those placements as targetable for creative assignment. After November 25, 2026, buyers should fail closed on missing `mode`.
+
+Publishers can authorize agents for specific placements in `adagents.json` with `authorized_agents[].placement_ids` or `authorized_agents[].placement_tags`. Sales agents should only return publisher-referenced placements they are authorized to sell.
+
+#### Video placement types
+
+Video products can declare `video_placement_types` at the product level, placement level, or both. The vocabulary follows the IAB Tech Lab/OpenRTB 2.6 `video.plcmt` definitions, but AdCP uses readable field and value names rather than the OpenRTB wire name:
+
+| Value | Meaning |
+|---|---|
+| `instream` | Video ads before, during, or after streaming video content requested by the user |
+| `accompanying_content` | Video ads in a player with accompanying video content associated with the page or app content |
+| `interstitial` | Video ads shown as an interstitial experience, typically between content or app states |
+| `standalone` | Video ads shown without associated video content, also called no-content or standalone video |
+
+The field is an array because a sellable product can aggregate multiple placement types. For example, an OLV network product might include both `instream` and `accompanying_content`, while individual targetable placements narrow to one type. When both product and placement declarations are present, the product-level array should be the union of the video placement types the seller may deliver under that product.
+
+This is a discovery signal, not a verification claim. Buyers can filter for products that can satisfy a requested type with `get_products.filters.video_placement_types`, but sellers should not return mixed, non-targetable bundles for an instream-only filter unless they can constrain delivery to instream inventory during planning or purchase.
+
+#### Format precedence with placements
+
+Product-level `format_ids` and `format_options` define the creative formats accepted by the product as a whole. Placement-level `format_ids` or `format_options`, whether returned inline on the product placement or inherited from a public publisher placement declaration, only narrow that product-wide set for the specific placement.
+
+If both product and placement format declarations are present, buyers compute the effective accepted formats for that placement as their intersection. For legacy `format_ids`, first project named formats to canonical declarations through `canonical`, `v1_format_ref`, or the canonical mapping registry; do not compare raw `(agent_url, id)` values after projection. A legacy 300x250 display ID and a canonical `image` declaration with `width: 300` and `height: 250` are compatible. For 3.1+ `format_options`, match publisher-declared options by `{publisher_domain, format_option_id}`, match product-local options by `format_option_id` when `publisher_domain` is omitted, and otherwise match declarations with the same `format_kind` whose placement parameters narrow the product declaration.
+
+Product gating is stricter than equivalence matching. When the product or placement declares fixed constraints such as `width`, `height`, `duration_ms_exact`, or a duration range, the buyer's selected format or creative manifest must declare and satisfy those constraints. A broad request (`format_kind: "image"` with no dimensions, or `video_hosted` with no duration) does not satisfy a fixed-size or fixed-duration product. For ranges, satisfaction means containment: a range-based request satisfies a product only when every value it permits falls within the product's accepted range; overlap alone is insufficient. An exact duration satisfies a range when the exact value falls inside it. The reverse is allowed: a broad product declaration can accept a specific 300x250 image or 30-second video unless another product constraint excludes it. See [format matching vs product satisfaction](/dist/docs/3.1.0-rc.6/creative/canonical-formats#format-matching-vs-product-satisfaction).
+
+If a placement has no format declaration, it inherits the product-level formats. A placement-only format that is absent from the product-level declaration is a seller conformance error, not an expansion of the product's creative contract; buyers should fail closed for that format and not treat it as accepted.
+
+#### Placement Object Structure
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.1.0-rc.6/core/placement.json",
+  "kind": "publisher_ref",
+  "publisher_domain": "daily-pulse.example",
+  "placement_id": "homepage_banner",
+  "name": "Homepage Banner",
+  "description": "Above-the-fold banner on the homepage",
+  "mode": "targetable",
+  "tags": ["homepage", "display", "premium"],
+  "format_ids": [
+    {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"},
+    {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_970x250"}
+  ]
+}
+```
+
+#### Example: Product with Placements
+
+```json
+{
+  "product_id": "news_site_premium",
+  "name": "News Site Premium Package",
+  "description": "Premium placements across news site",
+  "format_ids": [
+    {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"},
+    {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}
+  ],
+  "placements": [
+    {
+      "kind": "publisher_ref",
+      "placement_id": "homepage_banner",
+      "publisher_domain": "daily-pulse.example",
+      "name": "Homepage Banner",
+      "mode": "targetable",
+      "tags": ["homepage", "display", "premium"],
+      "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"}]
+    },
+    {
+      "kind": "publisher_ref",
+      "placement_id": "article_sidebar",
+      "publisher_domain": "daily-pulse.example",
+      "name": "Article Sidebar",
+      "mode": "targetable",
+      "tags": ["article", "display"],
+      "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}]
+    },
+    {
+      "kind": "seller_inline",
+      "placement_id": "premium_rotation",
+      "name": "Premium rotation",
+      "mode": "included",
+      "tags": ["premium"]
+    }
+  ],
+  "delivery_type": "guaranteed",
+  "pricing_options": [...]
+}
+```
+
+When creating a media buy, buyers can assign different creatives to different placements:
+
+```json
+{
+  "packages": [
+    {
+      "product_id": "news_site_premium",
+      "creative_assignments": [
+        {
+          "creative_id": "creative_1",
+          "placement_refs": [
+            {
+              "publisher_domain": "daily-pulse.example",
+              "placement_id": "homepage_banner"
+            }
+          ]
+        },
+        {
+          "creative_id": "creative_2",
+          "placement_refs": [
+            {
+              "publisher_domain": "daily-pulse.example",
+              "placement_id": "article_sidebar"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+See [Creative Assignment and Placement Targeting](/dist/docs/3.1.0-rc.6/media-buy/media-buys/index.mdx#creative-assignment-and-placement-targeting) for more details.
+
+### Collections and installments
+
+Shows are a third product dimension alongside formats and placements. While placements describe *where* an ad appears and formats describe *what* the ad looks like, shows describe the *content context* — the programming a viewer is watching. Products can declare `shows` and `episodes` so buyers can target specific shows or episodes when purchasing inventory.
+
+See [Collections and installments](/dist/docs/3.1.0-rc.6/media-buy/product-discovery/collections-and-installments) for the full model, examples, and targeting details.
+
+### Exclusivity
+
+The `exclusivity` field indicates whether a product offers exclusive access to its inventory. Defaults to `"none"` when absent.
+
+| Value | Meaning |
+|---|---|
+| `none` | Multiple advertisers can buy this product simultaneously |
+| `category` | One advertiser per industry category (e.g., one auto brand per collection sponsorship) |
+| `exclusive` | Sole sponsorship — only one advertiser can buy this product |
+
+Exclusivity is most relevant for guaranteed products tied to specific shows or placements, where advertisers want brand separation or sole ownership of a content association.
+
+#### When to use each level
+
+- **`none`**: Programmatic inventory, run-of-network, open auction products. Multiple advertisers sharing the same inventory is expected.
+- **`category`**: Podcast or CTV sponsorships where competitive separation matters. One auto brand per collection, one fintech brand per installment — but multiple non-competing advertisers can buy simultaneously.
+- **`exclusive`**: Sole sponsorship of a single collection or event. The advertiser is the only brand associated with the content.
+
+Publishers SHOULD include `exclusivity` on guaranteed products with `shows`. The implicit default of `"none"` is ambiguous for collection-level inventory — buyers cannot tell whether the publisher intends shared inventory or simply omitted the field.
+
+#### Content sponsorship pattern
+
+A product combining `delivery_type: "guaranteed"`, `exclusivity: "exclusive"`, and `shows` represents a content sponsorship — the advertiser becomes the sole sponsor of specific content. This is the standard pattern for podcast title sponsorships, CTV collection sponsorships, and event-based takeovers.
+
+```json
+{
+  "product_id": "signal_noise_sponsor",
+  "name": "Signal & Noise — Exclusive Sponsorship",
+  "description": "Sole sponsorship of Signal & Noise, a weekly technology podcast. Includes pre-roll and mid-roll placements across all episodes.",
+  "publisher_properties": [
+    { "publisher_domain": "crestnetwork.example", "property_ids": ["crest_podcasts"] }
+  ],
+  "format_ids": [
+    { "agent_url": "https://ads.crestnetwork.example", "id": "audio_pre_roll_30s" },
+    { "agent_url": "https://ads.crestnetwork.example", "id": "audio_mid_roll_60s" }
+  ],
+  "collections": [{ "publisher_domain": "crestnetwork.example", "collection_ids": ["signal_noise"] }],
+  "delivery_type": "guaranteed",
+  "exclusivity": "exclusive",
+  "pricing_options": [
+    {
+      "pricing_option_id": "flat_monthly",
+      "pricing_model": "flat_rate",
+      "fixed_price": 25000,
+      "currency": "USD"
+    }
+  ]
+}
+```
+
+Category exclusivity works for multi-collection bundles where the publisher separates competing brands across a network but still sells to multiple non-competing advertisers:
+
+```json
+{
+  "product_id": "crest_business_bundle",
+  "name": "Crest Business Podcast Bundle — Category Sponsorship",
+  "description": "Sponsorship across three business podcasts. One advertiser per industry category across all shows.",
+  "publisher_properties": [
+    { "publisher_domain": "crestnetwork.example", "property_ids": ["crest_podcasts"] }
+  ],
+  "format_ids": [
+    { "agent_url": "https://ads.crestnetwork.example", "id": "audio_pre_roll_30s" },
+    { "agent_url": "https://ads.crestnetwork.example", "id": "audio_mid_roll_60s" }
+  ],
+  "collections": [{ "publisher_domain": "crestnetwork.example", "collection_ids": ["signal_noise", "market_beat", "founder_stories"] }],
+  "delivery_type": "guaranteed",
+  "exclusivity": "category",
+  "pricing_options": [
+    {
+      "pricing_option_id": "flat_quarterly",
+      "pricing_model": "flat_rate",
+      "fixed_price": 60000,
+      "currency": "USD"
+    }
+  ]
+}
+```
+
+### Property Targeting
+
+The `property_targeting_allowed` flag indicates whether buyers can filter a product to a subset of its `publisher_properties` when using property list filtering via `get_products`.
+
+#### Behavior
+
+- **`property_targeting_allowed: false` (default)**: The product is "all or nothing." If the buyer's `property_list` doesn't include all of the product's properties, the product is excluded from results entirely.
+
+- **`property_targeting_allowed: true`**: Buyers can filter the product to properties matching their `property_list`. The product is included in results if there is any intersection between its properties and the buyer's list.
+
+#### Use Cases
+
+| Use Case | `property_targeting_allowed` | Why |
+|----------|------------------------------|-----|
+| Run of Network | `false` | Buyers must accept the entire network |
+| Premium Bundles | `false` | Sports + News bundle sold together |
+| Flexible Inventory | `true` | Buyers can target specific sites within a category |
+
+#### Examples
+
+**All-or-nothing product** (`property_targeting_allowed: false`):
+```json
+{
+  "product_id": "premium_news_bundle",
+  "name": "Premium News Bundle",
+  "publisher_properties": [
+    { "publisher_domain": "news.example.com", "property_ids": ["site_a", "site_b", "site_c"] }
+  ],
+  "property_targeting_allowed": false
+}
+```
+
+When a buyer calls `get_products` with a `property_list` containing only `site_a` and `site_b`, this product is **excluded** because the buyer's list doesn't include all properties (`site_c` is missing).
+
+**Flexible product** (`property_targeting_allowed: true`):
+```json
+{
+  "product_id": "news_category_flexible",
+  "name": "News Category - Flexible Targeting",
+  "publisher_properties": [
+    { "publisher_domain": "news.example.com", "property_ids": ["tech", "sports", "finance", "politics"] }
+  ],
+  "property_targeting_allowed": true
+}
+```
+
+When a buyer calls `get_products` with a `property_list` containing only `tech` and `sports`, this product is **included** because there is an intersection. The buyer can then purchase this product and target only the matching properties via `targeting_overlay.property_list` in the package.
+
+### Signal Targeting
+
+Products use three different signal fields with different meanings:
+
+- **`data_provider_signals`** is deprecated legacy/non-selectable metadata for data-provider signals already bundled into or associated with the product. New implementations should use `included_signals`.
+- **`included_signals`** is the structured, non-selectable surface. Use it when a signal is already bundled into, included in, or planned into the product. It has no per-product targeting price and no seller activation handle.
+- **`signal_targeting_options`** is the inline selectable/composable surface. Use it when a seller-offered signal can appear on a package and the product needs to expose a product-specific menu, price, activation handle, default/fixed choice, grouping hint, or brief/refine-selected subset.
+
+`Product.signal_targeting_allowed` and `signal_targeting_rules` are the canonical product contract for signal composition. `get_signals` is the canonical broad signal discovery surface; wholesale products can use `signal_targeting_allowed: true` with no inline `signal_targeting_options` to tell buyers to call `get_signals` for the selectable signal feed. Brief/refine responses can return inline `signal_targeting_options` for the relevant subset or product-specific overrides. Sellers do not need to expose product-local options through `get_signals` unless they also want those signals to be discoverable outside this product. Sellers MUST set `signal_targeting_allowed: true` whenever they return `signal_targeting_options` or `signal_targeting_rules`, and MUST use `included_signals` rather than `signal_targeting_options` for signals that are bundled but not represented as package signal groups.
+
+Signals are named targetable dimensions, similar to feature values. A signal definition declares `value_type` (`binary`, `categorical`, or `numeric`) and may carry richer metadata over time. Product signal listings use `signal_ref` with an explicit resolution scope: `{ "scope": "product", "signal_id": "..." }` refers to a product-local signal defined by the listing, `{ "scope": "data_provider", "data_provider_domain": "...", "signal_id": "..." }` refers to a signal defined in a data provider's published adagents.json `signals[]`, and `{ "scope": "signal_source", "signal_source_url": "...", "signal_id": "..." }` refers to a source-native signal. `signal_ref.scope` is the resolution path, not provenance, and authoritative enrichment lives on the seller, signal source, or data-provider signal definition. For `scope: "product"`, the product listing MUST include `name` and `value_type` because the product is the definition boundary. For `scope: "data_provider"` or `scope: "signal_source"`, `signal_ref` is sufficient and any inline name, description, value type, range, or methodology is contextual, not authoritative. For product-local signals exposed on both `get_signals` and `get_products`, `signal_ref.signal_id` MUST match the seller's `get_signals.signals[].signal_ref.signal_id` for the same signal.
+
+Signal targeting composition is declared on each product, not in seller-wide `get_adcp_capabilities`, because one seller can sell products backed by different ad servers or platforms with different include/exclude and grouping limits. Buyers should read any inline `signal_targeting_options` and `signal_targeting_rules` from the specific product they are composing.
+
+- **`signal_targeting_allowed: false` (default)**: Signals are bundled into the product terms and are not represented as package-level signal groups. The buyer buys the product as offered and does not select or receive echoed signal groups on the package.
+- **`signal_targeting_allowed: true`**: The product has a package-level signal targeting surface. In wholesale discovery, if inline `signal_targeting_options` is omitted, buyers use `get_signals` to discover the selectable signal feed. In brief/refine results, sellers may include inline `signal_targeting_options` for the relevant subset or product-specific overrides.
+- **`signal_targeting_rules`**: Optional storefront composition rules. Use `resolution_model`, `selection_mode`, `min_selected_signals`, `max_selected_signals`, `max_selected_per_group`, `selection_group_rules`, `max_signal_targeting_groups`, and `max_signals_per_targeting_group` when the seller needs to express optional, required, single-select, mutually exclusive, fixed, seller-planned, or grouped signal choices. `resolution_model: "direct_targeting"` means selected signals are applied as targeting predicates to the package inventory. `resolution_model: "seller_planned"` means selected signals are planning inputs that the seller resolves against product-specific inventory, timing, availability, reach, or pacing constraints; buyers should not attempt to decompose the signal selection into lower-level inventory or schedule decisions. `selection_mode: "required"` means at least `min_selected_signals`, or 1 when `min_selected_signals` is omitted. All explicit package-level signal selection uses the grouped expression shape: top-level `operator: "all"` with child groups using `operator: "any"` for include groups and `operator: "none"` for exclusion groups. If `selection_mode` is `fixed`, buyers render `default_selected` signals as read-only; sellers apply those signals even when the buyer omits `targeting_overlay.signal_targeting_groups`. When `selection_group_rules` are present, each child group MUST contain signals from exactly one `selection_group` and one targeting mode, and buyers MUST send at most one child group for each `(selection_group, targeting_mode)` pair. Sellers MUST reject duplicate, mixed, or collapsed child groups.
+- **`activation_status: "requires_activation"`**: `get_products` alone is not sufficient to select the signal unless the buyer already has an activation key the seller accepts. The product option MUST include `signal_agent_segment_id` so the buyer can activate the signal through `activate_signal`, then include the activation key if the seller requires it on the package.
+
+`allowed_targeting_modes` on each signal option controls which buy-time child group operators are valid: `"include"` maps to `operator: "any"`, and `"exclude"` maps to `operator: "none"`. `selection_group` is a product-defined composability bucket for limits like `max_selected_per_group` and `selection_group_rules`; it is not a pointer to a specific child group in the package's `signal_targeting_groups.groups[]`. Use the same `selection_group` when options are freely OR-combinable in one child group for a targeting mode. Use different `selection_group` values when options must be represented as separate ANDed clauses, such as a product backed by one ad server that exposes both audience segments and key-value targeting planes that cannot be collapsed into the same child expression. Different `selection_group` values by themselves are descriptive; sellers should publish `selection_group_rules` when group boundaries affect validation.
+
+```json
+{
+  "product_id": "retail_video_premium",
+  "name": "Retail Video Premium",
+  "signal_targeting_allowed": true,
+  "signal_targeting_rules": {
+    "resolution_model": "direct_targeting",
+    "selection_mode": "optional",
+    "max_selected_signals": 2,
+    "max_selected_per_group": 1,
+    "selection_group_rules": [
+      {
+        "selection_group": "retail_audience",
+        "targeting_mode": "include",
+        "selection_mode": "optional",
+        "max_selected_signals": 1
+      }
+    ],
+    "max_signal_targeting_groups": 2,
+    "max_signals_per_targeting_group": 3
+  },
+  "signal_targeting_options": [
+    {
+      "signal_ref": {
+        "scope": "data_provider",
+        "data_provider_domain": "pinnacle-data.example",
+        "signal_id": "auto_intenders"
+      },
+      "selection_group": "retail_audience",
+      "allowed_targeting_modes": ["include", "exclude"],
+      "activation_status": "ready",
+      "default_selected": false,
+      "pricing_options": [
+        {
+          "pricing_option_id": "signal_cpm_usd_250",
+          "model": "cpm",
+          "cpm": 2.50,
+          "currency": "USD"
+        }
+      ]
+    }
+  ]
+}
+```
+
+A product can also disclose included, non-selectable signals without opening a package-level signal targeting surface:
+
+```json
+{
+  "product_id": "broadcast_auto_intenders_weekly_reach",
+  "name": "Broadcast Auto Intenders Weekly Reach",
+  "signal_targeting_allowed": false,
+  "included_signals": [
+    {
+      "signal_ref": {
+        "scope": "data_provider",
+        "data_provider_domain": "pinnacle-data.example",
+        "signal_id": "auto_intenders"
+      }
+    }
+  ]
+}
+```
+
+Here the buyer can inspect or verify the Pinnacle Data signal definition through the referenced provider's adagents.json `signals[]`, but cannot add or remove that signal in `create_media_buy`.
+
+A wholesale product with a large or account-specific signal menu can point buyers to `get_signals` instead of inlining every option:
+
+```json
+{
+  "product_id": "retail_display_open_exchange",
+  "name": "Retail Display Open Exchange",
+  "signal_targeting_allowed": true,
+  "signal_targeting_rules": {
+    "resolution_model": "direct_targeting",
+    "selection_mode": "optional",
+    "max_signal_targeting_groups": 2
+  }
+}
+```
+
+In that shape, because `signal_targeting_allowed` is true and no inline `signal_targeting_options` are returned, the buyer calls `get_signals` to discover candidate signals. Before committing spend, the buyer SHOULD confirm product eligibility by calling `get_products` for the target product or using `filters.signal_targeting` with the candidate `signal_ref` entries and intended include/exclude modes. The buyer then passes selected `signal_ref` entries in `packages[].targeting_overlay.signal_targeting_groups`. The seller validates that the selected signals are available for the product and account, but storefronts should use `get_products` first so unsupported signal combinations fail during product discovery rather than at `create_media_buy`.
+
+At buy time, package-level `signal_targeting_groups` carries the selected `signal_ref`, value expression, optional seller execution handle (`signal_agent_segment_id`), and signal `pricing_option_id` when the signal has its own price. A simple include-only selection is represented as one child group with `operator: "any"`; grouped inclusion/exclusion uses additional `any` and `none` groups, such as `(A OR B) AND NOT (C)`. This is separate from the package's `pricing_option_id`, which prices the media product itself. Product-scoped signal pricing in `signal_targeting_options[].pricing_options` is authoritative for that product; broader `get_signals` pricing is a default discovery view unless the product omits a price. Sellers MUST echo all applied package signal groups in the resulting package state, including fixed/default selections the seller applied without buyer edits.
+
+For provider-published signals, `signal_ref.data_provider_domain` identifies the upstream data provider and `signal_ref.signal_id` identifies the public signal definition in that provider's adagents.json `signals[]`. Buyers that need provenance verification can fetch that domain's `adagents.json` and confirm the seller appears in `authorized_agents` for that signal or its tags. For product-local signals, use `scope: "product"` and `signal_id`; the ID is meaningful only within the selected product/package context.
+
+Backend execution kind is not part of signal identity. A GAM-backed seller can expose an audience segment, a key-value rule, or another custom-targeting primitive as ordinary `signal_ref` options. If those signals can be combined by the platform in one OR clause, put them in the same `selection_group`; if they require separate clauses, put them in separate `selection_group`s and publish `selection_group_rules` so storefronts compose one child group per `(selection_group, targeting_mode)`.
+
+For seller-planned guaranteed products, such as linear broadcast audio schedules, the selected audience can be portable while the plan is not. In that case, publish the shared audience as a `scope: "data_provider"` signal if it appears across products, set `resolution_model: "seller_planned"` on products where the seller resolves that audience against time-based avails or reach goals, and use `selection_mode: "required"` or `selection_group_rules[].selection_mode: "required"` when an audience choice is mandatory for the package. For non-guaranteed products where selected signals are applied as ordinary targeting predicates, use the default `resolution_model: "direct_targeting"` and point the product to `get_signals` when the wholesale signal menu should not be duplicated inline.
+
+The `seller_planned` model applies to any supply type where inventory is scheduled in advance and constrained by time-bound availability rather than continuously auctioned: live sports, political programming, and tentpole broadcasts follow the same pattern as linear broadcast audio.
+
+### Custom & Account-Specific Products
+
+A server can offer a general catalog, but it can also return:
+- **Account-Specific Products**: Products reserved for or negotiated with specific accounts (buyers, agencies, or brands)
+- **Custom Products**: Dynamically generated products with `is_custom: true` and an `expires_at` timestamp
+
+## Product Examples
+
+### Standard CTV Product (Multiple Pricing Options)
+```json
+{
+  "product_id": "connected_tv_prime",
+  "name": "Connected TV - Prime Time",
+  "description": "Premium CTV inventory 8PM-11PM",
+  "publisher_properties": [
+    { "publisher_domain": "streaming.example.com", "selection_type": "all" }
+  ],
+  "format_ids": [
+    {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "video_15s"
+    },
+    {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "video_30s"
+    }
+  ],
+  "delivery_type": "guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "cpm_usd_guaranteed",
+      "pricing_model": "cpm",
+      "fixed_price": 45.00,
+      "currency": "USD",
+      "min_spend_per_package": 10000
+    },
+    {
+      "pricing_option_id": "cpcv_usd_guaranteed",
+      "pricing_model": "cpcv",
+      "fixed_price": 0.18,
+      "currency": "USD",
+      "min_spend_per_package": 10000
+    },
+    {
+      "pricing_option_id": "cpp_usd_p18-49",
+      "pricing_model": "cpp",
+      "fixed_price": 250.00,
+      "currency": "USD",
+      "parameters": {
+        "demographic": "P18-49",
+        "min_points": 50
+      },
+      "min_spend_per_package": 12500
+    }
+  ],
+  "delivery_measurement": {
+    "provider": "Nielsen DAR for P18-49 demographic measurement",
+    "notes": "Panel-based measurement for GRP delivery. Impressions measured via Comscore vCE."
+  }
+}
+```
+
+### Auction-Based Display Product
+```json
+{
+  "product_id": "custom_abc123",
+  "name": "Custom - Gaming Enthusiasts",
+  "description": "Custom audience package for gaming campaign",
+  "publisher_properties": [
+    { "publisher_domain": "gaming.example.com", "selection_type": "all" }
+  ],
+  "format_ids": [
+    {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "display_300x250"
+    },
+    {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "display_728x90"
+    }
+  ],
+  "delivery_type": "non_guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "cpm_usd_auction",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "floor_price": 5.00,
+      "price_guidance": {
+        "p50": 8.00,
+        "p75": 12.00
+      }
+    },
+    {
+      "pricing_option_id": "cpc_usd_auction",
+      "pricing_model": "cpc",
+      "currency": "USD",
+      "floor_price": 0.50,
+      "price_guidance": {
+        "p50": 1.20,
+        "p75": 2.00
+      }
+    }
+  ],
+  "delivery_measurement": {
+    "provider": "Google Ad Manager with IAS viewability",
+    "notes": "MRC-accredited viewability. 50% in-view for 1s display."
+  },
+  "is_custom": true,
+  "expires_at": "2025-02-15T00:00:00Z"
+}
+```
+
+### Retail Media Product with Measurement
+```json
+{
+  "product_id": "albertsons_pet_category_offsite",
+  "name": "Pet Category Shoppers - Offsite Display & Video",
+  "description": "Target Albertsons shoppers who have purchased pet products in the last 90 days. Reach them across premium display and video inventory.",
+  "publisher_properties": [
+    { "publisher_domain": "groceryretail.example.com", "selection_type": "all" }
+  ],
+  "format_ids": [
+    {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "display_300x250"
+    },
+    {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "display_728x90"
+    },
+    {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "video_15s"
+    }
+  ],
+  "delivery_type": "guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "cpm_usd_guaranteed",
+      "pricing_model": "cpm",
+      "fixed_price": 13.50,
+      "currency": "USD",
+      "min_spend_per_package": 10000
+    }
+  ],
+  "delivery_measurement": {
+    "provider": "Self-reported impressions from proprietary ad server",
+    "notes": "Impressions counted per IAB guidelines. Viewability measured via IAS."
+  },
+  "outcome_measurement": {
+    "type": "incremental_sales_lift",
+    "attribution": "deterministic_purchase",
+    "window": { "interval": 30, "unit": "days" },
+    "reporting": "weekly_dashboard"
+  },
+  "creative_policy": {
+    "co_branding": "optional",
+    "landing_page": "must_include_retailer",
+    "templates_available": true
+  }
+}
+```
+
+## Product Cards
+
+Product cards provide visual representations of products for display in user interfaces. Publishers can optionally include card definitions that reference card formats and provide the assets needed to render attractive visual cards.
+
+### Card Types
+
+Publishers should provide at least the standard card, and optionally a detailed card:
+
+**Standard Card** (`product_card`):
+- Compact 300x400px card for product grids and lists
+- Supports 2x density images for retina displays
+- Quick visual identification of products
+
+**Detailed Card** (`product_card_detailed`, optional):
+- Responsive layout with text description alongside hero carousel
+- Markdown specifications section below
+- Full product documentation similar to media kits
+
+### Structure
+
+```json
+{
+  "product_id": "ctv_premium",
+  "name": "Premium CTV Inventory",
+  // ... other product fields ...
+
+  "product_card": {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "product_card_standard"
+    },
+    "manifest": {
+      "display_name": "Premium CTV - Living Room Audiences",
+      "hero_image_url": "https://cdn.example.com/products/ctv_hero.jpg",
+      "brief_highlight": "Perfect for reaching cord-cutters and premium streaming audiences"
+    }
+  },
+
+  "product_card_detailed": {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "product_card_detailed"
+    },
+    "manifest": {
+      "display_name": "Premium CTV - Living Room Audiences",
+      "description": "Reach high-income households with premium CTV inventory during peak viewing hours...",
+      "carousel_images": [
+        "https://cdn.example.com/products/ctv_context1.jpg",
+        "https://cdn.example.com/products/ctv_context2.jpg"
+      ],
+      "specifications_markdown": "# Technical Specifications\n\n..."
+    }
+  }
+}
+```
+
+### Rendering Cards
+
+Cards can be rendered in two ways:
+
+1. **Via `preview_creative`**: Pass the card format and manifest to generate a rendered card
+2. **Pre-rendered**: Publishers can pre-generate cards and serve them directly
+
+This flexibility allows publishers to choose between dynamic generation or static hosting based on their infrastructure.
+
+### Standard Card Formats
+
+The AdCP reference creative agent defines two standard card formats:
+
+- **`product_card_standard`** (300x400px) - Compact card for product browsing
+- **`product_card_detailed`** (responsive) - Rich card with carousel and full specs
+
+Publishers can also define custom card formats to match their branding or highlight unique product attributes.
+
+**Note**: Standard card format definitions are maintained in the [creative-agent repository](https://github.com/adcontextprotocol/creative-agent), not in this protocol specification.
+
+### When to Include Product Cards
+
+Product cards are optional but recommended for:
+- Products with strong visual identity (e.g., specific shows, events, publications)
+- Premium products where visual presentation enhances perceived value
+- Complex products where visual highlights help explain capabilities
+- Products targeting specific audiences that benefit from visual representation
+
+Use the detailed card variant when you want to provide comprehensive product documentation similar to media kit pages.
+
+### Client Rendering Guidelines
+
+When displaying products in UIs, clients should follow this fallback order:
+
+1. **If `product_card` exists** → Render card via `preview_creative` or display pre-rendered image
+2. **If neither exists** → Render text-only representation (product name + description)
+3. **If card rendering fails** → Gracefully fall back to text-only representation
+
+This ensures a consistent user experience regardless of what product metadata is available.
+
+## Proposals
+
+Publishers can return **proposals** alongside products - structured media plans with budget allocations that buyers can execute through a defined path. Committed proposals execute directly; draft proposals must be finalized first.
+
+### What Are Proposals?
+
+A proposal is a recommended buying strategy that groups products with suggested budget allocations. Proposals encode publisher expertise - the kind of media planning guidance that traditionally required human sales reps.
+
+Key characteristics:
+- **Actionable**: A returned proposal is buyable through its lifecycle. `proposal_status: "draft"` means finalize first; `proposal_status: "committed"` means execute via `create_media_buy` with `proposal_id` before `expires_at`.
+- **Budget-agnostic**: Allocations use percentages, allowing the same proposal to scale to any budget
+- **Forecast-equipped**: Proposals and allocations can include delivery forecasts to help buyers evaluate expected performance before purchase
+
+### Proposal Structure
+
+```json
+{
+  "proposal_id": "swiss_balanced_v1",
+  "name": "Swiss Multi-Channel Plan",
+  "description": "Balanced coverage across devices and language regions",
+  "allocations": [
+    {
+      "product_id": "ch_desktop_de",
+      "allocation_percentage": 20,
+      "pricing_option_id": "cpm_usd_fixed",
+      "rationale": "Primary desktop audience in German Switzerland",
+      "tags": ["desktop", "german"]
+    },
+    {
+      "product_id": "ch_desktop_fr",
+      "allocation_percentage": 30,
+      "tags": ["desktop", "french"]
+    },
+    {
+      "product_id": "ch_mobile_de",
+      "allocation_percentage": 8,
+      "tags": ["mobile", "german"]
+    },
+    {
+      "product_id": "ch_mobile_fr",
+      "allocation_percentage": 12,
+      "tags": ["mobile", "french"]
+    },
+    {
+      "product_id": "ch_inapp_de",
+      "allocation_percentage": 12,
+      "tags": ["in-app", "german"]
+    },
+    {
+      "product_id": "ch_inapp_fr",
+      "allocation_percentage": 18,
+      "tags": ["in-app", "french"]
+    }
+  ],
+  "total_budget_guidance": {
+    "min": 30000,
+    "recommended": 50000,
+    "currency": "USD"
+  },
+  "brief_alignment": "Achieves 50/20/30 channel split (desktop/mobile/in-app) and 40/60 language split (German/French)",
+  "forecast": {
+    "points": [
+      {
+        "budget": 50000,
+        "metrics": {
+          "impressions": { "low": 800000, "mid": 1200000, "high": 1500000 },
+          "reach": { "low": 400000, "mid": 600000, "high": 750000 },
+          "clicks": { "mid": 4800 }
+        }
+      }
+    ],
+    "method": "modeled",
+    "currency": "USD",
+    "valid_until": "2025-04-15T00:00:00Z"
+  }
+}
+```
+
+The `tags` field enables grouping allocations by dimension:
+- **By channel**: desktop (50%) + mobile (20%) + in-app (30%) = 100%
+- **By language**: German (40%) + French (60%) = 100%
+
+### Iterating on Proposals
+
+Proposals can be refined using `buying_mode: "refine"` with the `refine` array. Reference proposals by ID — the seller returns an updated proposal with revised allocations, forecasts, and pricing:
+
+```
+// Initial discovery
+get_products({
+  buying_mode: "brief",
+  brief: "Swiss campaign, $50k, 50% desktop/20% mobile/30% in-app, 40% German/60% French"
+})
+
+// Response includes proposal "swiss_balanced_v1"
+
+// Refine the proposal
+get_products({
+  buying_mode: "refine",
+  refine: [
+    { scope: "product",  product_id:  "ch_desktop_de" },
+    { scope: "product",  product_id:  "ch_desktop_fr" },
+    { scope: "product",  product_id:  "ch_mobile_de" },
+    { scope: "product",  product_id:  "ch_mobile_fr" },
+    { scope: "product",  product_id:  "ch_inapp_de" },
+    { scope: "product",  product_id:  "ch_inapp_fr" },
+    { scope: "proposal", proposal_id: "swiss_balanced_v1", ask: "focus more on German speakers - try 60/40 instead of 40/60" }
+  ]
+})
+
+// Seller returns an updated proposal with revised allocations
+```
+
+See [`get_products` refinement](/dist/docs/3.1.0-rc.6/media-buy/task-reference/get_products#refinement) for the full workflow and examples.
+
+### Executing a Proposal
+
+To execute a committed proposal, provide the `proposal_id` and `total_budget` in `create_media_buy`:
+
+```json
+{
+  "proposal_id": "swiss_balanced_v1",
+  "total_budget": {
+    "amount": 50000,
+    "currency": "USD"
+  },
+  "brand": { "domain": "acmecorp.com" },
+  "start_time": "2025-04-01T00:00:00Z",
+  "end_time": "2025-04-30T23:59:59Z"
+}
+```
+
+The publisher converts the proposal's allocation percentages into packages:
+- `ch_desktop_de`: 20% × \$50,000 = \$10,000
+
+Finalization is the seller commitment step: it firms pricing, terms, availability, and any inventory hold. It is not buyer acceptance. `create_media_buy(proposal_id)` is the acceptance/execution step. Sellers reject attempts to execute a draft proposal with `PROPOSAL_NOT_COMMITTED`; finalize with `get_products` in `refine` mode and `action: "finalize"` before retrying create.
+- `ch_desktop_fr`: 30% × \$50,000 = \$15,000
+- etc.
+
+This approach simplifies complex multi-line-item campaigns to a single proposal execution.
+
+### When Publishers Return Proposals
+
+Publishers include proposals when:
+- The brief requests specific allocation strategies (channel splits, language splits, etc.)
+- The publisher can provide strategic guidance based on campaign goals
+- Multiple products work better together than individually
+
+Publishers typically omit proposals in `wholesale` mode (the buyer is directing targeting and allocation themselves) or when the brief doesn't suggest a multi-product strategy.
+
+Proposals are optional — publishers may return only products if allocation guidance isn't applicable. In `refine` mode, sellers MAY return proposals alongside refined products even when the buyer did not include proposal entries. Proposals are a seller suggestion — allocation and campaign optimization are primarily orchestrator (buyer-side agent) responsibilities.
+
+### Delivery Forecasts
+
+Publishers can attach delivery forecasts to proposals and individual allocations to help buyers evaluate expected performance before committing budget.
+
+Each forecast contains a `points` array of one or more ForecastPoints. For spend curves, each point pairs a budget level with metric ranges (low/mid/high) — multiple points at ascending budgets show how delivery scales with spend. For availability forecasts, points omit budget and express total available inventory for the requested targeting and dates.
+
+Metric keys come from two vocabularies:
+- **Delivery/engagement**: `forecastable-metric` enum values (impressions, reach, clicks, spend, views, completed_views, grps, etc.)
+- **Outcomes**: `event-type` enum values (`purchase`, `lead`, `app_install`, `add_to_cart`, `subscribe` for paid subscriptions, `follow` for free durable opt-ins, etc.)
+
+This lets sellers forecast both delivery ("1.2M impressions") and outcomes ("1,800 purchases") in a single forecast. Each forecast declares its method:
+
+- **`estimate`** — rough approximation based on historical averages or heuristics
+- **`modeled`** — derived from predictive models or historical data
+- **`guaranteed`** — contractually committed delivery levels backed by reserved inventory
+
+Each metric value is a ForecastRange object. Provide `mid` for a point estimate, `low` and `high` for a range, or all three. At minimum, either `mid` or both `low` and `high` must be present.
+
+Forecast points can also carry `dimensions` when a seller needs to expose availability by country, region, placement, device, audience, signal value, or an intersection such as placement x country or product x signal. `dimensions` is an array; each item declares one `kind` (`geo`, `placement`, `device_type`, `device_platform`, `audience`, or `signal`) and uses the same canonical identifiers as targeting and delivery reporting, such as `geo_level`/`geo_code` for geography, `placement_ref` for placements, and `signal_ref` plus `signal_value`/`presence` for signal buckets. Metro rows use `system` values from `metro-system` (`nielsen_dma`, `uk_itl1`, `uk_itl2`, `eurostat_nuts2`, `custom`); postal rows use `system` values from `postal-system` (`us_zip`, `us_zip_plus_four`, `gb_outward`, `gb_full`, `ca_fsa`, `ca_full`, `de_plz`, `fr_code_postal`, `au_postcode`, `ch_plz`, `at_plz`); country and region rows omit `system`. When multiple dimension items appear on one point, the point represents the intersection of those constraints. Dimension order has no meaning; buyers normalize row identity from `(forecast_range_unit, budget if present, product_id if present, dimensions sorted by kind)`. Sellers MUST NOT repeat the same `kind` on one point. If a seller needs multiple geo, placement, audience, or signal slices, it should emit multiple points instead. This keeps dimensional availability inside one product or proposal instead of forcing sellers to create separate products for every country, placement, or signal value. Dimension rows are independent of `pricing_options`; the product's pricing options still describe how the product is bought.
+
+Forecast points may include measurement-aware forecasts alongside standard delivery metrics:
+- **`viewability`** mirrors the `get_media_buy_delivery` `viewability` block, but numeric values use ForecastRange objects. Sellers SHOULD only emit forecast viewability when the product can report corresponding delivery viewability. Forecast `standard` is required whenever forecast viewability values are present because MRC and GroupM rows are not interchangeable; delivery `viewability.standard` remains optional for 3.x compatibility but SHOULD be populated.
+- **`vendor_metric_values`** mirrors delivery reporting for vendor-defined metrics, but `value` and `measurable_impressions` use ForecastRange objects. Sellers SHOULD only forecast vendor metrics that the product declares in `reporting_capabilities.vendor_metrics`.
+
+#### Forecast Range Units
+
+The `forecast_range_unit` field tells consumers how to interpret the points array — what axis the curve represents:
+
+- **`spend`** (default) — points at ascending budget levels. Standard budget curve.
+- **`availability`** — each point represents total available inventory for the requested targeting and dates. Budget is omitted; use `metrics.spend` to express estimated cost. Typical for guaranteed and direct-sold inventory.
+- **`reach_freq`** — points at ascending reach/frequency targets. Used in broadcast planning where the publisher shows how cost scales with frequency goals.
+- **`weekly`** / **`daily`** — metrics are per-period values. Budget refers to total campaign spend. A frequency of 3.2 with `weekly` means 3.2 exposures per week.
+- **`clicks`** / **`conversions`** — points at ascending outcome targets. Used in goal-based planning (e.g., "tell me your conversion goal, I'll tell you the budget").
+- **`package`** — each point represents a distinct inventory package (e.g., Good/Better/Best tiers). Points are separate products with different inventory compositions, not levels on a spend curve. Used by broadcast TV, audio, and DOOH sellers.
+
+A spend curve and a reach/frequency curve may contain identical data — the difference is the publisher's intent. A spend curve says "here's what different budgets buy." A reach/frequency curve says "here's what it costs to hit different frequency targets." Consumers can read either curve in either direction.
+
+Temporal units (`weekly`, `daily`) change how metrics are interpreted. Without a range unit (or with `spend`), a frequency of 3.2 means 3.2 total campaign exposures. With `weekly`, it means 3.2 exposures per week.
+
+Forecasts can appear at two levels:
+- **Proposal-level**: aggregate forecast for the entire media plan
+- **Allocation-level**: per-product forecast for individual line items
+
+Allocation-level forecasts may not sum to the proposal-level forecast due to audience overlap and frequency capping. When both are present, the proposal-level forecast is authoritative for total delivery estimation.
+
+For cross-channel planning, forecasts declare a `reach_unit` (individuals, households, devices, accounts, cookies) so buyers can compare reach across publishers. GRP-based forecasts (linear TV, radio) use `demographic_system` and `demographic` to specify the target demo, following the same pattern as CPP pricing.
+
+When a forecast is based on third-party measurement, the `measurement_source` field declares which provider's data was used to produce the numbers. This is distinct from `demographic_system`, which specifies demographic notation — `measurement_source` identifies whose data produced the forecast numbers. A forecast can use Nielsen demographic codes (`demographic_system: "nielsen"`) while the impression numbers come from VideoAmp (`measurement_source: "videoamp"`).
+
+Sellers whose forecasts are based on third-party measurement use `measured_impressions` to express delivery as counted by the `measurement_source` provider. This is distinct from `impressions`, which represents ad-server or first-party estimated delivery. The two metrics are independent of the guarantee — `measured_impressions` can appear on both guaranteed and non-guaranteed forecasts:
+
+- **Guaranteed broadcast**: `method: "guaranteed"` + `measured_impressions` + `measurement_source: "nielsen"` — the seller contractually commits to Nielsen-measured delivery
+- **Non-guaranteed CTV**: `method: "modeled"` + `measured_impressions` + `measurement_source: "videoamp"` — VideoAmp-measured estimate, no contractual commitment
+- **Programmatic display**: `method: "modeled"` + `impressions` — ad-server counts, no third-party currency needed
+
+Sellers may include both `measured_impressions` and `impressions` in the same point when the buyer needs both the third-party-measured figure and the ad-server estimate.
+
+Podcast sellers use `downloads` as their primary delivery currency per IAB Podcast Measurement guidelines, in place of or alongside `impressions`.
+
+#### Budget Curve
+
+Multiple forecast points at ascending budget levels show how metrics scale with spend, helping buyers find the optimal investment level:
+
+```json
+{
+  "points": [
+    {
+      "budget": 25000,
+      "metrics": {
+        "impressions": { "low": 400000, "mid": 500000, "high": 600000 },
+        "reach": { "mid": 180000 },
+        "clicks": { "mid": 2000 }
+      }
+    },
+    {
+      "budget": 50000,
+      "metrics": {
+        "impressions": { "low": 850000, "mid": 1050000, "high": 1200000 },
+        "reach": { "mid": 320000 },
+        "clicks": { "mid": 4200 }
+      }
+    },
+    {
+      "budget": 100000,
+      "metrics": {
+        "impressions": { "low": 1500000, "mid": 1900000, "high": 2200000 },
+        "reach": { "mid": 500000 },
+        "clicks": { "mid": 7600 }
+      }
+    }
+  ],
+  "method": "modeled",
+  "currency": "USD",
+  "reach_unit": "individuals"
+}
+```
+
+The curve reveals diminishing returns — doubling budget from \$50K to \$100K increases reach by ~56%, not 2x. Buyers can use this to negotiate or reallocate budget across publishers.
+
+#### Availability Forecast
+
+For guaranteed and direct-sold inventory, the forecast is an availability check — how much inventory exists on this placement with this targeting in this flight window. Budget is omitted because available inventory doesn't depend on how much the buyer wants to spend. The seller can include `metrics.spend` to express the estimated cost of the available inventory:
+
+```json
+{
+  "points": [
+    {
+      "metrics": {
+        "impressions": { "low": 320000, "mid": 400000, "high": 480000 },
+        "reach": { "low": 200000, "mid": 260000, "high": 300000 },
+        "spend": { "low": 6400, "mid": 8000, "high": 9600 }
+      }
+    }
+  ],
+  "forecast_range_unit": "availability",
+  "method": "guaranteed",
+  "currency": "USD"
+}
+```
+
+The buyer agent can compare available impressions against budget requirements to identify underdelivery. If the buyer needs 500,000 impressions at a \$20 CPM to spend their full \$10K budget, and the forecast shows 400,000 mid available, the buyer knows \$2K of budget must be allocated elsewhere.
+
+#### Dimensional Availability and Measurement
+
+Sellers can expose availability by country, placement, signal value, placement x country, product x signal, or other dimensional intersections as forecast points on the same product. A point with multiple `dimensions` items represents the intersection of all listed constraints. Rows are comparable when they use the same dimension grain, such as placement x country rows for several countries or signal-value rows for one product baseline. Buyers MUST NOT sum rows unless the seller explicitly documents that the rows form a complete, non-overlapping partition.
+
+Within a single point, dimension items are ANDed, not ORed. Sellers MUST NOT emit more than one item per `kind`; buyers MUST NOT infer OR semantics from order or repetition. Repeated peer values such as two `geo` country rows in one point are a seller conformance issue.
+
+Only count or currency metrics, such as `impressions`, `clicks`, `spend`, `measured_impressions`, and `viewable_impressions`, are candidates for rollup, and only inside a declared complete, non-overlapping partition. Reach, frequency, rates, averages, `viewability.viewable_rate`, `viewability.viewed_seconds`, and `vendor_metric_values[].value` are non-additive unless the seller or measurement vendor publishes an explicit rollup method. Vendor metric coverage counts such as `vendor_metric_values[].measurable_impressions` follow the same partition rule as other counts.
+
+This avoids product-per-country or product-per-placement expansion while still giving buyer agents the planning rows they need:
+
+```json
+{
+  "points": [
+    {
+      "dimensions": [
+        {
+          "kind": "placement",
+          "placement_ref": {
+            "publisher_domain": "publisher.example",
+            "placement_id": "header_bidding"
+          },
+          "placement_name": "Header bidding"
+        },
+        {
+          "kind": "geo",
+          "geo_level": "country",
+          "geo_code": "US",
+          "geo_name": "United States"
+        }
+      ],
+      "metrics": {
+        "impressions": { "low": 900000, "mid": 1200000, "high": 1400000 },
+        "spend": { "mid": 24000 }
+      },
+      "viewability": {
+        "vendor": { "domain": "measurementvendor.example" },
+        "measurable_impressions": { "mid": 1050000 },
+        "viewable_rate": { "low": 0.68, "mid": 0.73, "high": 0.78 },
+        "standard": "mrc"
+      },
+      "vendor_metric_values": [
+        {
+          "vendor": { "domain": "attentionvendor.example" },
+          "metric_id": "attention_units",
+          "value": { "low": 3.9, "mid": 4.4, "high": 4.9 },
+          "unit": "score",
+          "measurable_impressions": { "mid": 980000 }
+        }
+      ]
+    },
+    {
+      "dimensions": [
+        {
+          "kind": "placement",
+          "placement_ref": {
+            "publisher_domain": "publisher.example",
+            "placement_id": "header_bidding"
+          },
+          "placement_name": "Header bidding"
+        },
+        {
+          "kind": "geo",
+          "geo_level": "country",
+          "geo_code": "CA",
+          "geo_name": "Canada"
+        }
+      ],
+      "metrics": {
+        "impressions": { "low": 250000, "mid": 320000, "high": 380000 },
+        "spend": { "mid": 9600 }
+      },
+      "viewability": {
+        "vendor": { "domain": "measurementvendor.example" },
+        "viewable_rate": { "mid": 0.81 },
+        "standard": "mrc"
+      }
+    }
+  ],
+  "forecast_range_unit": "availability",
+  "method": "modeled",
+  "currency": "USD"
+}
+```
+
+Each point is a row in the forecast, not a separate product. Buyers can compare country-by-placement avails, viewability expectations, and vendor measurement forecasts while still selecting from the product's normal pricing options when they create the buy.
+
+A buyer agent turns a chosen dimensional row into a buy through the existing buy-time surfaces:
+- `kind: "geo"` rows map to `packages[].targeting_overlay.geo_countries`, `geo_regions`, `geo_metros`, or `geo_postal_areas`, depending on `geo_level` and seller support. Country rows use ISO 3166-1 alpha-2 `geo_code`; region rows use ISO 3166-2 `geo_code`; metro and postal rows include the corresponding targeting `system` enum.
+- `kind: "device_type"` and `kind: "device_platform"` rows map to the corresponding targeting overlay fields when the seller supports device targeting.
+- `kind: "audience"` rows map to `audience_include` or signal targeting only when the audience is selectable for that product; informational audience rows are planning signals, not automatic targeting handles.
+- `kind: "placement"` rows map first to product refinement or seller-supported placement targeting for the package. `dimensions[].placement_ref` identifies the inventory slice the forecast row describes; it does not by itself narrow the purchased package and buyers SHOULD NOT treat it as a shortcut for `creative_assignments[].placement_refs`. If the buyer wants to buy only that placement, the product must expose the placement as `mode: "targetable"` or the buyer should request a refined product/proposal. `creative_assignments[].placement_refs` is only the creative-routing surface after the buy's inventory scope is established; it does not by itself narrow the purchased inventory. Proposal-level forecast points with placement dimensions should include `product_id` when the placement maps to one allocation's product; without product context, placement rows on proposal-level forecasts are informational planning rows, not directly executable choices.
+
+`kind: "signal"` rows use canonical `signal_ref` plus optional `signal_value` to describe a signal bucket. Use `presence: "present"` for rows where the signal is available with the supplied value, and `presence: "absent"` with `signal_value: null` for the explicit not-present bucket. `signal_id` is only a shorthand when the enclosing object already identifies the signal unambiguously, such as a coverage forecast nested directly under a single `get_signals` item. Product-level forecasts use `ForecastPoint.product_id` for product context; do not add a separate product dimension item.
+
+After purchase, buyers verify one-dimensional marginals with `get_media_buy_delivery.reporting_dimensions` (`geo`, `device_type`, `device_platform`, `audience`, or `placement`) and reconcile measurement expectations through the package's `committed_metrics`, `performance_standards`, and reported `viewability` / `vendor_metric_values`. Standard delivery reporting does not currently return cross-dimensional intersections such as placement x country or product x signal; sellers that need exact post-buy reconciliation for those intersections must expose a seller-specific reporting surface or a future standard intersection capability.
+
+#### CTV with GRP Demographics
+
+TV and audio forecasts use `demographic_system` and `demographic` to specify the target demo, and `measurement_source` to declare whose audience data the forecast is modeled against:
+
+```json
+{
+  "points": [
+    {
+      "budget": 75000,
+      "metrics": {
+        "grps": { "low": 45, "mid": 60, "high": 72 },
+        "impressions": { "mid": 3200000 },
+        "reach": { "low": 800000, "mid": 1100000, "high": 1300000 },
+        "frequency": { "mid": 2.9 }
+      }
+    }
+  ],
+  "method": "modeled",
+  "measurement_source": "nielsen",
+  "currency": "USD",
+  "demographic_system": "nielsen",
+  "demographic": "P18-49",
+  "reach_unit": "households"
+}
+```
+
+The `measurement_source: "nielsen"` tells the buyer agent that the GRP and impression numbers are modeled against Nielsen data. The `reach_unit: "households"` tells buyers this CTV publisher counts reach by household, not individual. A display publisher reporting `reach_unit: "devices"` is measuring something different — buyers should not directly compare the two reach numbers.
+
+Note that `measurement_source` and `demographic_system` can differ. A CTV publisher might use Nielsen's demographic notation (`demographic_system: "nielsen"`, `demographic: "P18-49"`) while the underlying audience data comes from VideoAmp (`measurement_source: "videoamp"`). The demographic system specifies the notation; the measurement source specifies whose numbers produced the forecast.
+
+#### Retail Media with Outcome Forecasts
+
+Retail media publishers can forecast both delivery metrics and conversion outcomes. Outcome metric keys use `event-type` values:
+
+```json
+{
+  "points": [
+    {
+      "budget": 30000,
+      "metrics": {
+        "impressions": { "low": 600000, "mid": 750000, "high": 900000 },
+        "clicks": { "mid": 6000 },
+        "purchase": { "low": 1200, "mid": 1800, "high": 2400 },
+        "add_to_cart": { "mid": 4500 }
+      }
+    }
+  ],
+  "method": "modeled",
+  "currency": "USD"
+}
+```
+
+Here `impressions` and `clicks` are `forecastable-metric` values while `purchase` and `add_to_cart` are `event-type` values. Both use ForecastRange (low/mid/high) and coexist in the same metrics map.
+
+#### Allocation-Level Forecasts
+
+When a proposal includes per-allocation forecasts, buyers can evaluate each product independently:
+
+```json
+{
+  "proposal_id": "retail_holiday_v1",
+  "name": "Holiday Retail Campaign",
+  "allocations": [
+    {
+      "product_id": "sponsored_search",
+      "allocation_percentage": 40,
+      "forecast": {
+        "points": [
+          {
+            "budget": 20000,
+            "metrics": {
+              "impressions": { "mid": 500000 },
+              "clicks": { "mid": 15000 },
+              "purchase": { "mid": 900 }
+            }
+          }
+        ],
+        "method": "modeled",
+        "currency": "USD"
+      }
+    },
+    {
+      "product_id": "offsite_display",
+      "allocation_percentage": 60,
+      "forecast": {
+        "points": [
+          {
+            "budget": 30000,
+            "metrics": {
+              "impressions": { "low": 1800000, "mid": 2200000, "high": 2600000 },
+              "reach": { "mid": 450000 },
+              "purchase": { "low": 400, "mid": 600, "high": 800 }
+            }
+          }
+        ],
+        "method": "modeled",
+        "currency": "USD",
+        "reach_unit": "accounts"
+      }
+    }
+  ],
+  "forecast": {
+    "points": [
+      {
+        "budget": 50000,
+        "metrics": {
+          "impressions": { "low": 2100000, "mid": 2700000, "high": 3100000 },
+          "reach": { "mid": 520000 },
+          "purchase": { "low": 1100, "mid": 1500, "high": 1900 }
+        }
+      }
+    ],
+    "method": "modeled",
+    "currency": "USD",
+    "reach_unit": "accounts"
+  }
+}
+```
+
+Note that the allocation forecasts (900 + 600 = 1,500 purchases) happen to match the proposal forecast in this example, but they often won't — audience overlap and frequency capping mean the whole is typically less than the sum of its parts. The proposal-level forecast is authoritative for total delivery.
+
+#### Broadcast Audio Spot Plan
+
+Broadcast and audio publishers can return spot-plan proposals with `daypart_targets` on each allocation and weekly frequency projections via `forecast_range_unit: "weekly"`. This pattern lets the publisher solve the optimization problem — the buyer specifies frequency goals, and the publisher returns the plan that achieves them:
+
+```json
+{
+  "proposal_id": "iheart_q4_audio",
+  "name": "Q4 Audio - Adults 25-54",
+  "allocations": [
+    {
+      "product_id": "morning_drive_30s",
+      "allocation_percentage": 50,
+      "daypart_targets": [
+        {
+          "days": ["monday", "tuesday", "wednesday", "thursday", "friday"],
+          "start_hour": 6,
+          "end_hour": 10,
+          "label": "Morning Drive"
+        }
+      ],
+      "rationale": "Morning drive delivers highest reach against P25-54 with 3x weekly frequency at 2 spots/day",
+      "forecast": {
+        "points": [
+          {
+            "budget": 37500,
+            "metrics": {
+              "grps": { "mid": 42 },
+              "reach": { "low": 140000, "mid": 180000, "high": 210000 },
+              "frequency": { "mid": 3.2 },
+              "impressions": { "mid": 576000 }
+            }
+          }
+        ],
+        "forecast_range_unit": "weekly",
+        "method": "modeled",
+        "currency": "USD",
+        "demographic_system": "nielsen",
+        "demographic": "P25-54",
+        "reach_unit": "individuals"
+      }
+    },
+    {
+      "product_id": "afternoon_drive_30s",
+      "allocation_percentage": 30,
+      "daypart_targets": [
+        {
+          "days": ["monday", "tuesday", "wednesday", "thursday", "friday"],
+          "start_hour": 15,
+          "end_hour": 19,
+          "label": "Afternoon Drive"
+        }
+      ],
+      "rationale": "Afternoon drive complements morning with incremental reach and frequency overlap",
+      "forecast": {
+        "points": [
+          {
+            "budget": 22500,
+            "metrics": {
+              "grps": { "mid": 28 },
+              "reach": { "low": 95000, "mid": 120000, "high": 145000 },
+              "frequency": { "mid": 2.4 },
+              "impressions": { "mid": 288000 }
+            }
+          }
+        ],
+        "forecast_range_unit": "weekly",
+        "method": "modeled",
+        "currency": "USD",
+        "demographic_system": "nielsen",
+        "demographic": "P25-54",
+        "reach_unit": "individuals"
+      }
+    },
+    {
+      "product_id": "daytime_30s",
+      "allocation_percentage": 20,
+      "daypart_targets": [
+        {
+          "days": ["monday", "tuesday", "wednesday", "thursday", "friday"],
+          "start_hour": 10,
+          "end_hour": 15,
+          "label": "Daytime"
+        }
+      ],
+      "rationale": "Daytime fill provides frequency reinforcement at lower CPP",
+      "forecast": {
+        "points": [
+          {
+            "budget": 15000,
+            "metrics": {
+              "grps": { "mid": 18 },
+              "reach": { "low": 60000, "mid": 80000, "high": 95000 },
+              "frequency": { "mid": 1.8 },
+              "impressions": { "mid": 144000 }
+            }
+          }
+        ],
+        "forecast_range_unit": "weekly",
+        "method": "modeled",
+        "currency": "USD",
+        "demographic_system": "nielsen",
+        "demographic": "P25-54",
+        "reach_unit": "individuals"
+      }
+    }
+  ],
+  "forecast": {
+    "points": [
+      {
+        "budget": 75000,
+        "metrics": {
+          "grps": { "mid": 82 },
+          "reach": { "low": 220000, "mid": 280000, "high": 330000 },
+          "frequency": { "mid": 4.1 },
+          "impressions": { "mid": 1008000 }
+        }
+      }
+    ],
+    "forecast_range_unit": "weekly",
+    "method": "modeled",
+    "currency": "USD",
+    "demographic_system": "nielsen",
+    "demographic": "P25-54",
+    "reach_unit": "individuals"
+  }
+}
+```
+
+The `forecast_range_unit: "weekly"` on each forecast tells the buyer that all metrics are per-week values — frequency of 3.2 means 3.2 exposures per week, not 3.2 over the entire campaign. Budget (\$75K) is total campaign spend.
+
+The `daypart_targets` on each allocation specify the publisher's recommended time windows. These are the same structure used in `targeting` for hard daypart constraints — here the publisher is prescribing the spot plan rather than the buyer constraining it.
+
+Note that allocation-level reach doesn't sum to the proposal level (180K + 120K + 80K > 280K) because of audience overlap across dayparts — the same listener may hear morning drive and afternoon drive spots. The proposal-level forecast accounts for this overlap.
+
+#### Broadcast TV Package Forecast
+
+Broadcast TV sellers offer distinct inventory packages rather than impressions at variable spend levels. The `forecast_range_unit: "package"` tells the buyer that each point is a separate package, not a position on a spend curve. Each point includes a `label` so the buyer agent can identify and reference individual packages. A broadcaster might offer a daytime rotator, a prime-access + daytime bundle, and a full prime package:
+
+```json
+{
+  "points": [
+    {
+      "label": "Daytime Rotator",
+      "budget": 50000,
+      "metrics": {
+        "measured_impressions": { "mid": 800000 },
+        "grps": { "mid": 35 },
+        "reach": { "mid": 220000 },
+        "frequency": { "mid": 2.1 }
+      }
+    },
+    {
+      "label": "Prime Access + Daytime",
+      "budget": 85000,
+      "metrics": {
+        "measured_impressions": { "mid": 1400000 },
+        "grps": { "mid": 58 },
+        "reach": { "low": 290000, "high": 390000 },
+        "frequency": { "mid": 3.4 }
+      }
+    },
+    {
+      "label": "Full Prime",
+      "budget": 150000,
+      "metrics": {
+        "measured_impressions": { "mid": 2600000 },
+        "grps": { "mid": 95 },
+        "reach": { "low": 420000, "high": 540000 },
+        "frequency": { "mid": 5.2 }
+      }
+    }
+  ],
+  "forecast_range_unit": "package",
+  "method": "modeled",
+  "measurement_source": "nielsen",
+  "currency": "USD",
+  "demographic_system": "nielsen",
+  "demographic": "P18-49",
+  "reach_unit": "households"
+}
+```
+
+Each point represents a distinct package — different dayparts, unit types, and flight structures — not the same product at three spend levels. The `label` field lets buyer agents reference packages by name when negotiating or requesting specific options. The `measurement_source: "nielsen"` tells the buyer agent that the impression and GRP numbers are modeled against Nielsen data, not the broadcaster's own measurement. The `measured_impressions` metric expresses delivery as counted by Nielsen — paired with `method: "modeled"`, these are Nielsen-measured estimates. To make them contractual commitments, the seller would use `method: "guaranteed"` instead.
+
+If packages share the same inventory pool and differ only in volume or mix, use `package` forecast points on one product. If they represent fundamentally different inventory (different shows, properties, or dayparts with no overlap), create separate products with their own forecasts.
+
+Sellers expressing the same inventory in multiple measurement currencies (e.g., both Nielsen and VideoAmp) should provide separate DeliveryForecast objects, one per `measurement_source`.
+
+## Integration with Discovery
+
+Products are discovered through the [Product Discovery](/dist/docs/3.1.0-rc.6/media-buy/product-discovery) process, which uses natural language to match campaign briefs with available inventory. Once products are identified, they can be purchased via `create_media_buy`.
+
+## See Also
+
+- [Product Discovery](/dist/docs/3.1.0-rc.6/media-buy/product-discovery) - How to discover products using natural language
+- [Media Buys](/dist/docs/3.1.0-rc.6/media-buy/media-buys) - How to purchase products
+- [Targeting](/dist/docs/3.1.0-rc.6/media-buy/advanced-topics/targeting) - Detailed targeting options
+- [Creative Formats](/dist/docs/3.1.0-rc.6/creative/formats) - Understanding format specifications and discovery

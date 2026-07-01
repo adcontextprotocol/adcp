@@ -6,6 +6,7 @@ category: sales_catalog_driven
 summary: "Seller that renders dynamic ads from product catalogs, tracks conversions, and optimizes delivery based on performance feedback."
 track: media_buy
 required_tools:
+  - sync_governance
   - get_products
   - create_media_buy
 requires_scenarios:
@@ -13,13 +14,26 @@ requires_scenarios:
   - media_buy_seller/delivery_reporting
   - media_buy_seller/pending_creatives_to_start
   - media_buy_seller/invalid_transitions
+  - governance_aware_seller/governance_multi_agent_rejected
 
 # Cross-step assertion (adcp#2664). status.monotonic rejects resource
 # status transitions observed across steps that aren't on the spec
 # lifecycle graph — e.g. active → pending_creatives on a media_buy or
 # approved → pending on a catalog_item.
+#
+# Cross-resource assertion (adcp#2859). impairment.coherence verifies that
+# catalog_item.withdrawn transitions propagate to any non-terminal media buy
+# that references the item: the buy's impairments[] MUST list an entry for
+# the withdrawn catalog item, and the buy's health MUST be `impaired`.
+# Inverse direction is also enforced — a buy reporting an impairment whose
+# referenced catalog_item is no longer offline fails the check. Out of
+# scope: terminal-status buys MAY remain unreported; materiality
+# (package_ids minItems:1) is enforced at the schema layer (#2855), not
+# here. Grades not_applicable until the storyboard exercises both a
+# catalog-item transition AND a media-buy snapshot read (#2860).
 invariants:
   - status.monotonic
+  - impairment.coherence
 
 narrative: |
   You run a platform that supports catalog-driven advertising — think Snap Dynamic Ads,
@@ -35,6 +49,9 @@ narrative: |
   The key difference from the standard media buy flow is that creatives are catalog-driven —
   the buyer doesn't build individual ads. They push a feed, and your platform renders
   the right item to the right user at the right time.
+
+context:
+  governance_agent_url: "https://test-agent.adcontextprotocol.org"
 
 agent:
   interaction_model: media_buy_seller
@@ -89,6 +106,14 @@ phases:
           - check: field_present
             path: "supported_protocols"
             description: "Agent declares supported protocols"
+          - check: field_contains
+            path: "supported_protocols[*]"
+            value: "media_buy"
+            description: "Agent declares media_buy protocol support"
+          - check: field_contains
+            path: "specialisms[*]"
+            value: "sales-catalog-driven"
+            description: "Agent declares sales-catalog-driven specialism"
 
           - check: field_present
             path: "context"
@@ -141,6 +166,50 @@ phases:
           - check: field_value
             path: "context.correlation_id"
             value: "sales_catalog_driven--sync_accounts"
+            description: "Context correlation_id returned unchanged"
+      - id: sync_governance
+        title: "Register governance agent"
+        narrative: |
+          The buyer registers the configured governance agent on the account before
+          catalog sync and catalog-driven media-buy creation.
+        task: sync_governance
+        schema_ref: "account/sync-governance-request.json"
+        response_schema_ref: "account/sync-governance-response.json"
+        doc_ref: "/accounts/tasks/sync_governance"
+        stateful: true
+        expected: |
+          Acknowledge governance registration for the account:
+          - status: synced
+          - governance_agents[0].url echoes the configured governance agent
+
+        sample_request:
+          accounts:
+            - account:
+                brand:
+                  domain: "amsterdam-steakhouse.example"
+                operator: "pinnacle-agency.example"
+              governance_agents:
+                - url: "$context.governance_agent_url"
+                  authentication:
+                    schemes: ["Bearer"]
+                    credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+          idempotency_key: "$generate:uuid_v4#sales_catalog_driven_account_setup_sync_governance"
+          context:
+            correlation_id: "sales_catalog_driven--sync_governance"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-governance-response.json schema"
+          - check: field_value
+            path: "accounts[0].status"
+            value: "synced"
+            description: "Governance agent is registered on the account"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_catalog_driven--sync_governance"
             description: "Context correlation_id returned unchanged"
   - id: catalog_sync
     title: "Product catalog sync"
@@ -289,7 +358,7 @@ phases:
       into a URL context. Nested macro expansion is prohibited.
 
       This phase exercises the rule with three attacker-shaped catalog values
-      drawn from the unit-test fixture at `static/test-vectors/catalog-macro-substitution.json`:
+      drawn from the versioned compliance fixture at `test-vectors/catalog-macro-substitution.json`:
       reserved-char breakout, nested-expansion preservation, and non-ASCII
       UTF-8. The remaining canonical vectors (CRLF injection, bidi-override,
       mixed path/query, url-scheme injection) are exercised at the unit-test
@@ -423,7 +492,7 @@ phases:
           # Each binding: `catalog_item_id` is the item_id in the synced
           # catalog; `vector_name` is the fixture entry whose raw_value and
           # expected_encoded the runner loads from
-          # static/test-vectors/catalog-macro-substitution.json.
+          # test-vectors/catalog-macro-substitution.json.
           - macro: "{SKU}"
             catalog_item_id: "reserved_char_breakout"
             vector_name: "reserved-character-breakout"
@@ -522,8 +591,8 @@ phases:
             brand:
               domain: "amsterdam-steakhouse.example"
             operator: "pinnacle-agency.example"
-          start_time: "2026-04-07T00:00:00Z"
-          end_time: "2026-06-30T23:59:59Z"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
           packages:
             - product_id: "local_display_dynamic"
               pricing_option_id: "cpm_standard"
@@ -640,25 +709,25 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "acmeoutdoor.example"
+              domain: "amsterdam-steakhouse.example"
             operator: "pinnacle-agency.example"
           event_source_id: "amsterdam_website"
           events:
             - event_id: "evt_001"
               event_type: "purchase"
-              event_time: "2026-04-15T19:30:00Z"
+              event_time: "2099-04-15T19:30:00Z"
               content_ids: ["ribeye_36oz"]
               value: 89.00
               currency: "USD"
             - event_id: "evt_002"
               event_type: "lead"
-              event_time: "2026-04-15T20:15:00Z"
+              event_time: "2099-04-15T20:15:00Z"
               content_ids: ["wagyu_flight"]
               value: 195.00
               currency: "USD"
             - event_id: "evt_003"
               event_type: "page_view"
-              event_time: "2026-04-15T20:45:00Z"
+              event_time: "2099-04-15T20:45:00Z"
               content_ids: ["seafood_tower"]
 
           idempotency_key: "$generate:uuid_v4#sales_catalog_driven_conversion_tracking_log_events"
@@ -709,12 +778,12 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "acmeoutdoor.example"
+              domain: "amsterdam-steakhouse.example"
             operator: "pinnacle-agency.example"
           media_buy_id: "$context.media_buy_id"
           measurement_period:
-            start: "2026-04-07T00:00:00Z"
-            end: "2026-04-14T23:59:59Z"
+            start: "2099-04-07T00:00:00Z"
+            end: "2099-04-14T23:59:59Z"
           performance_index: 1.4
           metric_type: "conversion_rate"
           feedback_source: "buyer_attribution"

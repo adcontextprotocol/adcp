@@ -13,12 +13,12 @@ The [Signals Protocol](/docs/signals/overview) connects many types of companies.
 ```
 Data providers ──┐
 Retailers ───────┤
-Publishers ──────┤──→ Signal catalog ──→ Signal agent ──→ Buyer agent ──→ Campaign targeting
-CDPs ────────────┤    (adagents.json)    (get_signals)     (activate)
+Publishers ──────┤──→ Published signals ─→ Signal agent ──→ Buyer agent ──→ Campaign targeting
+CDPs ────────────┤     (adagents.json)      (get_signals)     (activate)
 Identity cos ────┘
 ```
 
-Every company that owns targetable data can publish a **signal catalog** via `/.well-known/adagents.json`. Signal agents discover these catalogs and make them available to buyers through `get_signals` and `activate_signal`.
+Every company that owns targetable data can publish **signal definitions** via `/.well-known/adagents.json`. Signal agents discover these definitions and make them available to buyers through `get_signals` and `activate_signal`.
 
 ## Find your role
 
@@ -55,10 +55,10 @@ Every company that owns targetable data can publish a **signal catalog** via `/.
 
 **Examples**: Automotive data companies, financial data providers, behavioral data companies
 
-**Your role**: You own audience segments, propensity models, or behavioral data. You publish a signal catalog so that signal agents can discover and resell your data.
+**Your role**: You own audience segments, propensity models, or behavioral data. You publish signal definitions so that signal agents can discover and resell your data.
 
 **What you build**:
-1. A signal catalog in your `/.well-known/adagents.json` describing your signals, their value types, and which agents are authorized to resell them
+1. Published signal definitions in your `/.well-known/adagents.json` describing your signals, their value types, and which agents are authorized to resell them
 2. Nothing else — signal agents handle discovery and activation on your behalf
 
 **Signal types you'd publish**:
@@ -92,7 +92,7 @@ Every company that owns targetable data can publish a **signal catalog** via `/.
 ```
 
 **Next steps**:
-- [Data provider guide](/docs/signals/data-providers) — complete walkthrough of signal catalogs
+- [Data provider guide](/docs/signals/data-providers) — complete walkthrough of published signal definitions
 - [Signals specification](/docs/signals/specification) — protocol details
 - [S3: Signals specialist module](/docs/learning/specialist/signals) — hands-on lab with sandbox signal agent
 
@@ -105,10 +105,10 @@ Every company that owns targetable data can publish a **signal catalog** via `/.
 **Your role**: You publish geographic and behavioral signals derived from opted-in mobile device data — foot traffic patterns, trade areas, dwell time, and commute behavior. These signals let buyers target audiences based on where people go in the physical world.
 
 **What you build**:
-1. A signal catalog in your `/.well-known/adagents.json` describing your geo signals and their value types
+1. Published signal definitions in your `/.well-known/adagents.json` describing your geo signals and their value types
 2. Nothing else — signal agents handle discovery and activation on your behalf
 
-**Example signal catalog**:
+**Example published signal definitions**:
 
 ```json
 {
@@ -199,7 +199,7 @@ AdCP supports location-derived **audience segments** — groups of people who vi
 </Note>
 
 **Next steps**:
-- [Data provider guide](/docs/signals/data-providers) — complete walkthrough of signal catalogs
+- [Data provider guide](/docs/signals/data-providers) — complete walkthrough of published signal definitions
 - [Signals specification](/docs/signals/specification) — protocol details
 - [S3: Signals specialist module](/docs/learning/specialist/signals) — hands-on lab with sandbox signal agent
 
@@ -281,7 +281,7 @@ Your first-party purchase data (category buyers, loyalty tiers, basket value, ne
 
 **Next steps**:
 - [Commerce media guide](/docs/media-buy/commerce-media) — maps retail concepts to AdCP
-- [Data provider guide](/docs/signals/data-providers) — how to publish your signal catalog
+- [Data provider guide](/docs/signals/data-providers) — how to publish your signal definitions
 - [Conversion tracking](/docs/media-buy/conversion-tracking/index) — closed-loop measurement with `sync_event_sources` and `log_event`
 - [Seller integration guide](/docs/building/implementation/seller-integration) — building your sales agent
 
@@ -362,7 +362,7 @@ Your first-party purchase data (category buyers, loyalty tiers, basket value, ne
 **What doesn't fit (yet)**: Your core identity resolution service — matching Device A to Person B — is infrastructure that enhances other signals, not a signal itself. AdCP doesn't yet have a protocol for identity resolution as a service. This is on the [roadmap](/docs/reference/roadmap).
 
 **Where you add value today**:
-1. **Publish demographic and financial segments** as signals in your catalog
+1. **Publish demographic and financial segments** as signal definitions
 2. **Enhance other providers' signals** with cross-device reach (your identity graph makes their binary signals addressable across more devices)
 3. **Partner with signal agents** who can combine your identity data with other providers' behavioral data
 
@@ -371,7 +371,7 @@ Your first-party purchase data (category buyers, loyalty tiers, basket value, ne
 </Note>
 
 **Next steps**:
-- [Data provider guide](/docs/signals/data-providers) — publish your signal catalog
+- [Data provider guide](/docs/signals/data-providers) — publish your signal definitions
 - [Platform/intermediary track](/docs/learning/tracks/platform) — if you're building infrastructure that connects data to platforms
 
 ---
@@ -402,7 +402,7 @@ The CDP operates a signal agent that serves brand-specific custom segments. Each
 
 The signal agent returns only segments authorized for that brand's account. This maps naturally to how CDPs already work — brand-scoped audience management.
 
-### Approach 2: Brand publishes catalog, CDP hosts agent
+### Approach 2: Brand publishes definitions, CDP hosts agent
 
 The brand lists their custom signals in their own `adagents.json` (at `acme-brand.example/.well-known/adagents.json`) with the CDP's signal agent as an authorized agent. This gives the brand transparency and control over what's published.
 
@@ -418,7 +418,7 @@ The brand lists their custom signals in their own `adagents.json` (at `acme-bran
 **Key concern — privacy**: First-party data activation must respect consent. The CDP is responsible for ensuring that only consented segments are published. The `activate_signal` task supports `deactivate` action for compliance (removing segments from platforms when consent is withdrawn or campaigns end).
 
 **Next steps**:
-- [Data provider guide](/docs/signals/data-providers) — catalog structure
+- [Data provider guide](/docs/signals/data-providers) — signal definition structure
 - [Platform/intermediary track](/docs/learning/tracks/platform) — building MCP-based infrastructure
 - [Signals specification](/docs/signals/specification) — protocol conformance requirements
 
@@ -496,7 +496,7 @@ The signal agent pushes segment membership into your clean room. The brand's fir
 Data that lives in your warehouse — a retailer's purchase data, a brand's CRM segments, a provider's behavioral models — can be published as signals. The signal agent queries your platform's APIs to serve `get_signals` requests. The underlying data never leaves the warehouse; only targeting keys (segment IDs, activation keys) flow to DSPs.
 
 A retailer whose shopper data lives in your platform would:
-1. Publish a signal catalog via `adagents.json` describing their signals
+1. Publish signal definitions via `adagents.json` describing their signals
 2. Partner with a signal agent that has API access to your platform
 3. The signal agent handles `get_signals` (checking availability) and `activate_signal` (pushing targeting keys to DSPs)
 
@@ -514,7 +514,7 @@ To participate as a destination platform, you'd implement the receiving side: ac
 
 ## Try it hands-on
 
-The training agent at `https://test-agent.adcontextprotocol.org/mcp` includes sandbox signal providers covering automotive data, geo/mobility, retail purchase data, identity/demographics, publisher contextual signals, and CDP audiences.
+The training agent's signals tenant at `https://test-agent.adcontextprotocol.org/signals/mcp` includes sandbox signal providers covering automotive data, geo/mobility, retail purchase data, identity/demographics, publisher contextual signals, and CDP audiences.
 
 Use `get_signals` to discover signals and `activate_signal` to activate them — all in sandbox mode with no real data or cost.
 

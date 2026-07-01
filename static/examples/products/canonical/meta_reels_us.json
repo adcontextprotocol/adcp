@@ -1,0 +1,85 @@
+{
+  "$schema": "/schemas/core/product.json",
+  "product_id": "meta_reels_us",
+  "name": "Meta Reels \u2014 United States",
+  "description": "9:16 vertical short-form video on Meta Reels (Facebook + Instagram). Buyers upload H.264 mp4 (3-90s) plus headline and primary text; Meta serves to Reels feeds with placement-native UI overlays. Conversion tracking is campaign-scoped and configured via `sync_event_sources` (event_log surface) — NOT via the creative format declaration.",
+  "publisher_properties": [
+    {
+      "publisher_domain": "meta.com",
+      "selection_type": "all"
+    }
+  ],
+  "channels": [
+    "social"
+  ],
+  "delivery_type": "non_guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "cpm_floor",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "floor_price": 5.5
+    }
+  ],
+  "reporting_capabilities": {
+    "available_reporting_frequencies": [
+      "hourly",
+      "daily"
+    ],
+    "expected_delay_minutes": 60,
+    "timezone": "America/Los_Angeles",
+    "supports_webhooks": true,
+    "available_metrics": [
+      "impressions",
+      "clicks",
+      "spend",
+      "completion_rate",
+      "viewability"
+    ],
+    "date_range_support": "date_range"
+  },
+  "format_options": [
+    {
+      "format_kind": "video_hosted",
+      "format_option_id": "meta_reels",
+      "v1_format_ref": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org/translated/meta",
+          "id": "meta_reels"
+        }
+      ],
+      "params": {
+        "orientation": "vertical",
+        "aspect_ratio": "9:16",
+        "duration_ms_range": [
+          3000,
+          90000
+        ],
+        "min_width": 1080,
+        "min_height": 1920,
+        "max_file_size_mb": 200,
+        "video_codecs": [
+          "h264"
+        ],
+        "audio_codecs": [
+          "aac"
+        ],
+        "containers": [
+          "mp4"
+        ],
+        "headline_max_chars": 40,
+        "primary_text_max_chars": 125,
+        "captions": "recommended",
+        "cta_values": [
+          "LEARN_MORE",
+          "SHOP_NOW",
+          "DOWNLOAD",
+          "SIGN_UP",
+          "CONTACT_US",
+          "BOOK_NOW"
+        ],
+        "composition_model": "deterministic"
+      }
+    }
+  ]
+}

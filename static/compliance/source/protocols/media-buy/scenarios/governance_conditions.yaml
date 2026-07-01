@@ -19,7 +19,11 @@ narrative: |
   in its response.
 
   By default, the governance agent is the training agent at test-agent.adcontextprotocol.org.
-  Override with --governance-agent-url to use a custom governance agent.
+  Override by supplying a different `governance_agent_url` in the run's initial context
+  (e.g., via `--context` on `adcp storyboard run` once the CLI supports it).
+
+context:
+  governance_agent_url: "https://test-agent.adcontextprotocol.org"
 
 agent:
   interaction_model: media_buy_seller
@@ -57,7 +61,7 @@ phases:
         expected: |
           The governance agent acknowledges the plan with a plan_id.
         sample_request:
-          idempotency_key: "comply-gov-conditions-sync-plans-v1"
+          idempotency_key: "$generate:uuid_v4#governance_conditions_sync_plans"
           plans:
             - plan_id: "comply-gov-conditions-plan"
               brand:
@@ -68,8 +72,8 @@ phases:
                 currency: "USD"
                 reallocation_threshold: 100000
               flight:
-                start: "2026-04-01T00:00:00Z"
-                end: "2026-06-30T23:59:59Z"
+                start: "2020-01-01T00:00:00Z"
+                end: "2099-06-30T23:59:59Z"
               countries: ["US", "CA"]
               custom_policies:
                 - policy_id: "ctv_weekly_reporting"
@@ -154,6 +158,11 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+        context_outputs:
+          - name: product_id
+            path: "products[0].product_id"
+          - name: pricing_option_id
+            path: "products[0].pricing_options[0].pricing_option_id"
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
@@ -172,7 +181,7 @@ phases:
         expected: |
           The buy succeeds with governance conditions attached:
           - media_buy_id: present
-          - status: active or pending_creatives
+          - media_buy_status: active, pending_start, or pending_creatives (deprecated top-level status may mirror this during the 3.1 migration window)
           - governance_context: token from the governance agent
           - conditions visible to the buyer
         sample_request:
@@ -183,12 +192,12 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
             sandbox: true
-          start_time: "2026-04-01T00:00:00Z"
-          end_time: "2026-06-30T23:59:59Z"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
           packages:
-            - product_id: "outdoor_ctv_q2"
+            - product_id: "$context.product_id"
               budget: 25000
-              pricing_option_id: "cpm_standard"
+              pricing_option_id: "$context.pricing_option_id"
           idempotency_key: "$generate:uuid_v4#media_buy_seller_governance_conditions_buy_with_conditions_create_media_buy_conditions"
         validations:
           - check: response_schema

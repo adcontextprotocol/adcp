@@ -10,6 +10,8 @@ import { isWorkOSApiKeyFormat } from './api-key-format.js';
 import { verifyWorkOSJWT, looksLikeJWT } from '../auth/workos-jwt.js';
 import { storeRefreshedSession, getRefreshedSession, cleanExpiredRefreshes } from '../db/session-refresh-db.js';
 import { getPool } from '../db/client.js';
+import { constantTimeEqual } from '../utils/constant-time-equal.js';
+import { resolveEffectiveMembership } from '../db/org-filters.js';
 
 const logger = createLogger('auth-middleware');
 
@@ -62,8 +64,16 @@ function warnOncePerSession(
   }
 }
 
+function startBackgroundCleanup(callback: () => void, intervalMs: number): ReturnType<typeof setInterval> {
+  const timer = setInterval(callback, intervalMs) as ReturnType<typeof setInterval> & {
+    unref?: () => void;
+  };
+  timer.unref?.();
+  return timer;
+}
+
 // Clean up expired cache entries periodically (every 5 minutes)
-setInterval(() => {
+const cacheCleanupTimer = startBackgroundCleanup(() => {
   const now = Date.now();
   let cleaned = 0;
   for (const [key, value] of sessionCache.entries()) {
@@ -87,7 +97,7 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 // Clean up expired DB session refresh entries (every 10 minutes)
-setInterval(() => {
+const dbRefreshCleanupTimer = startBackgroundCleanup(() => {
   cleanExpiredRefreshes().then(cleaned => {
     if (cleaned > 0) {
       logger.debug({ cleaned }, 'Cleaned expired session refresh DB entries');
@@ -105,7 +115,7 @@ const banCache = new Map<string, CachedBanCheck>();
 const BAN_CACHE_TTL_MS = 60 * 1000;
 
 // Clean up expired ban cache entries alongside session cache
-setInterval(() => {
+const banCacheCleanupTimer = startBackgroundCleanup(() => {
   const now = Date.now();
   for (const [key, value] of banCache.entries()) {
     if (value.expiresAt < now) {
@@ -113,6 +123,12 @@ setInterval(() => {
     }
   }
 }, 5 * 60 * 1000);
+
+export function stopAuthTimers(): void {
+  clearInterval(cacheCleanupTimer);
+  clearInterval(dbRefreshCleanupTimer);
+  clearInterval(banCacheCleanupTimer);
+}
 
 /**
  * Check platform ban with caching. Returns the ban if active, or null if not banned.
@@ -215,6 +231,8 @@ export interface ValidatedApiKey {
   permissions: string[];
 }
 
+type ApiKeySyntheticUser = WorkOSUser & { isMember?: boolean };
+
 /**
  * Validate a WorkOS API key from the Authorization header
  * Returns the validated API key info or null if invalid
@@ -249,6 +267,27 @@ export async function validateWorkOSApiKey(req: Request): Promise<ValidatedApiKe
  */
 function apiKeyHasPermission(apiKey: ValidatedApiKey, permission: string): boolean {
   return apiKey.permissions.includes(permission);
+}
+
+async function buildApiKeyUser(apiKey: ValidatedApiKey): Promise<ApiKeySyntheticUser> {
+  let isMember = false;
+  try {
+    const membership = await resolveEffectiveMembership(apiKey.organizationId);
+    isMember = membership.is_member;
+  } catch (err) {
+    logger.warn({ err, apiKeyId: apiKey.id, organizationId: apiKey.organizationId }, 'Failed to resolve API key owner membership');
+  }
+
+  return {
+    id: `api_key_${apiKey.id}`,
+    email: `api-key@org-${apiKey.organizationId}`,
+    firstName: 'API',
+    lastName: apiKey.name,
+    emailVerified: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    isMember,
+  };
 }
 
 /**
@@ -648,7 +687,83 @@ function hasValidAdminApiKey(req: Request): boolean {
   const token = authHeader.slice(7);
   // Don't match WorkOS API keys - those are handled separately
   if (isWorkOSApiKeyFormat(token)) return false;
-  return token === ADMIN_API_KEY;
+  return constantTimeEqual(token, ADMIN_API_KEY);
+}
+
+/**
+ * True if `id` is a synthetic user (static admin API key or per-org WorkOS
+ * API key). Synthetic users don't represent a person, so they have no
+ * identity binding.
+ */
+function isSyntheticUser(id: string): boolean {
+  return id === 'admin_api_key' || id.startsWith('api_key_');
+}
+
+/**
+ * Drop any cached sessions whose WorkOS user id matches one of the given
+ * ids, on either auth credential (post-swap canonical or actual auth).
+ * Called when an identity binding changes (mergeUsers, admin rebind) so
+ * subsequent requests re-resolve identity instead of serving a stale swap.
+ */
+export function invalidateSessionsForUsers(workosUserIds: string[]): void {
+  if (workosUserIds.length === 0) return;
+  const ids = new Set(workosUserIds);
+  for (const [key, value] of sessionCache.entries()) {
+    if (ids.has(value.user.id) || (value.user.authWorkosUserId && ids.has(value.user.authWorkosUserId))) {
+      sessionCache.delete(key);
+    }
+  }
+  for (const [key, value] of bearerJwtCache.entries()) {
+    if (ids.has(value.user.id) || (value.user.authWorkosUserId && ids.has(value.user.authWorkosUserId))) {
+      bearerJwtCache.delete(key);
+    }
+  }
+}
+
+/**
+ * Resolve the identity for a WorkOS user. Sets `user.identityId` and, when
+ * the authenticated user is a non-primary binding, swaps `user.id` to the
+ * identity's primary workos_user_id so app-state reads land on the right
+ * person. The original authenticated id is preserved on `user.authWorkosUserId`.
+ *
+ * Skipped for synthetic users (admin API key, WorkOS API key) — they don't
+ * represent a person. Failures are swallowed: identity resolution must
+ * never block an authenticated request, and a degraded request that sees
+ * only the auth user's slice of data is still better than a 500.
+ */
+async function attachIdentityId(user: WorkOSUser): Promise<void> {
+  if (isSyntheticUser(user.id)) return;
+  try {
+    const result = await getPool().query<{
+      identity_id: string;
+      primary_workos_user_id: string | null;
+    }>(
+      `SELECT iwu.identity_id, primary_iwu.workos_user_id AS primary_workos_user_id
+         FROM identity_workos_users iwu
+         LEFT JOIN identity_workos_users primary_iwu
+           ON primary_iwu.identity_id = iwu.identity_id
+          AND primary_iwu.is_primary = TRUE
+        WHERE iwu.workos_user_id = $1`,
+      [user.id]
+    );
+    const row = result.rows[0];
+    if (!row) return;
+
+    user.identityId = row.identity_id;
+
+    if (row.primary_workos_user_id && row.primary_workos_user_id !== user.id) {
+      // Non-primary binding signed in. Swap id so app-state reads see the
+      // canonical person; preserve the actual auth user on authWorkosUserId.
+      logger.debug(
+        { authWorkosUserId: user.id, canonicalUserId: row.primary_workos_user_id, identityId: row.identity_id },
+        'Identity id-swap: routing non-primary binding to canonical user'
+      );
+      user.authWorkosUserId = user.id;
+      user.id = row.primary_workos_user_id;
+    }
+  } catch (err) {
+    logger.warn({ err, userId: user.id }, 'Failed to resolve identity_id');
+  }
 }
 
 /**
@@ -685,20 +800,10 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   if (apiKey) {
     logger.debug({ path: req.path, apiKeyId: apiKey.id }, 'Authenticated via WorkOS API key');
     // Create a synthetic user for API key auth - the organization owns the key
-    req.user = {
-      id: `api_key_${apiKey.id}`,
-      email: `api-key@org-${apiKey.organizationId}`,
-      firstName: 'API',
-      lastName: apiKey.name,
-      emailVerified: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+    req.user = await buildApiKeyUser(apiKey);
     req.accessToken = 'workos-api-key';
     // Store API key info for permission checks
     (req as Request & { apiKey?: ValidatedApiKey }).apiKey = apiKey;
-    // API keys are org-scoped, so the caller is a member by definition
-    (req.user as unknown as Record<string, unknown>).isMember = true;
 
     // Check platform ban for API key
     const apiKeyBan = await checkPlatformBan(
@@ -734,6 +839,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       logger.warn({ err: banError, userId: jwtAuth.user.id, path: req.path }, 'Ban check failed — allowing request through');
     }
 
+    await attachIdentityId(req.user);
     return next();
   }
 
@@ -748,6 +854,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       if (devConfig) {
         (req.user as unknown as Record<string, unknown>).isMember = devConfig.isMember;
       }
+      await attachIdentityId(req.user);
       return next();
     }
     // No dev session - redirect to dev login page
@@ -1042,6 +1149,9 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       );
     }
 
+    // Resolve identityId once before caching so cache hits inherit it.
+    await attachIdentityId(user);
+
     // Cache the validated session
     sessionCache.set(cacheKey, {
       user,
@@ -1250,6 +1360,36 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
   // Check for WorkOS API key with admin permission
   const apiKey = (req as Request & { apiKey?: ValidatedApiKey }).apiKey;
   if (apiKey) {
+    // Cross-tenant defense for routes whose path resolves a specific
+    // target org via `:orgId`. The `admin:*` permission is tenant-scoped
+    // by issuance: it grants admin access *within* the org that minted
+    // the key, not across orgs. Without this gate, any org holding an
+    // `admin:*` key could mutate any other org's data exposed by a
+    // cross-org admin route. Surfaced by security review on #4498.
+    //
+    // KNOWN GAP: routes that target an org via a differently-named param
+    // (`:id`, `:userId`, profile UUIDs) silently skip this default gate.
+    // Member-profile admin PUT/DELETE uses `refuseCrossTenantAdminApiKey`
+    // after a profile-id → org lookup; `/api/admin/users/*` uses the
+    // `requireGlobalAdmin` chain (which composes a global-state refusal).
+    // Cousin routes that operate on global state via `:id` (notably
+    // `admin/feeds.ts` and `admin/notification-channels.ts`) are tracked
+    // in #4501 and should adopt `requireGlobalAdmin` once cross-tenant
+    // exposure is escalated. Pushing this default catches every admin
+    // route that uses `:orgId` for free, while leaving the higher-risk
+    // routes explicit.
+    const targetOrgId = req.params.orgId;
+    if (targetOrgId && apiKey.organizationId !== targetOrgId) {
+      logger.warn(
+        { path: req.path, method: req.method, apiKeyId: apiKey.id, apiKeyOrgId: apiKey.organizationId, targetOrgId },
+        'Refused cross-tenant admin API key',
+      );
+      return res.status(403).json({
+        error: 'cross_tenant_api_key',
+        message: `API key issued by ${apiKey.organizationId} cannot operate on ${targetOrgId}`,
+      });
+    }
+
     const isReadOnlyRequest = req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS';
 
     // admin:* grants full access (read and write)
@@ -1295,6 +1435,7 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
       if (mockUser) {
         req.user = mockUser;
         req.accessToken = 'dev-mode-token';
+        await attachIdentityId(req.user);
       }
     }
 
@@ -1395,6 +1536,98 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
   logger.debug({ userId: req.user.id, email: req.user.email }, 'Admin access granted');
   next();
 }
+
+/**
+ * Reject the request when the caller is using a WorkOS API key whose
+ * `organizationId` does not match `targetOrgId`. Returns true if the
+ * request was refused (response sent), false if the caller may proceed.
+ *
+ * Use this on admin routes whose target org is NOT resolvable from
+ * `req.params.orgId` — e.g. routes keyed by a profile UUID (`:id`) or
+ * a global user id (`:userId`). The default cross-tenant gate in
+ * `requireAdmin` keys off `req.params.orgId` and silently skips on those
+ * routes; the security review on #4498 flagged this as a real bypass
+ * for `/api/admin/member-profiles/:id`. Resolve the target org from the
+ * resource (the profile's `workos_organization_id`, the user's primary
+ * org, etc.) and pass it here.
+ *
+ * Static `ADMIN_API_KEY` and SSO admin users do not set `req.apiKey`
+ * and pass through unchanged.
+ */
+export function refuseCrossTenantAdminApiKey(
+  req: Request,
+  res: Response,
+  targetOrgId: string,
+): boolean {
+  const apiKey = (req as Request & { apiKey?: ValidatedApiKey }).apiKey;
+  if (!apiKey) return false;
+  if (apiKey.organizationId === targetOrgId) return false;
+  logger.warn(
+    {
+      path: req.path,
+      method: req.method,
+      apiKeyId: apiKey.id,
+      apiKeyOrgId: apiKey.organizationId,
+      targetOrgId,
+    },
+    'Refused cross-tenant admin API key (per-route gate)',
+  );
+  res.status(403).json({
+    error: 'cross_tenant_api_key',
+    message: `API key issued by ${apiKey.organizationId} cannot operate on ${targetOrgId}`,
+  });
+  return true;
+}
+
+/**
+ * Reject the request when the caller is using a WorkOS API key,
+ * regardless of which org issued it. Use this on admin routes that
+ * operate on cross-org / global state (e.g. `/api/admin/users/:userId/*`
+ * routes that mutate the global `users` row and every membership for
+ * that user). Tenant-scoped keys have no principled "target org" claim
+ * on these routes, so the only safe answer is to require a higher-trust
+ * principal (static `ADMIN_API_KEY` or SSO admin).
+ */
+export function refuseAnyApiKeyOnGlobalAdmin(
+  req: Request,
+  res: Response,
+): boolean {
+  const apiKey = (req as Request & { apiKey?: ValidatedApiKey }).apiKey;
+  if (!apiKey) return false;
+  logger.warn(
+    { path: req.path, method: req.method, apiKeyId: apiKey.id, apiKeyOrgId: apiKey.organizationId },
+    'Refused tenant-scoped API key on global admin route',
+  );
+  res.status(403).json({
+    error: 'global_admin_required',
+    message:
+      'This admin route operates on cross-org / global state and is not reachable via tenant-scoped WorkOS API keys. Use a static ADMIN_API_KEY or an SSO admin session.',
+  });
+  return true;
+}
+
+/**
+ * Composite middleware chain for admin routes that operate on cross-
+ * org / global state. Wraps `requireAuth` + a global-admin gate +
+ * `requireAdmin` so every route mounted under it inherits the cross-
+ * tenant-API-key refusal by default — preventing the regression class
+ * where a new admin route is added but the per-handler call is
+ * forgotten. Use as `router.<verb>('/path', ...requireGlobalAdmin, handler)`.
+ *
+ * Surfaced by both code-review and security-review on PR #4646: 7 of
+ * the 13 routes on `/api/admin/users` originally relied on
+ * `requireAdmin` alone and were exposed to cross-tenant `admin:*` keys
+ * despite operating on global state.
+ */
+const refuseAnyApiKeyMiddleware: import('express').RequestHandler = (req, res, next) => {
+  if (refuseAnyApiKeyOnGlobalAdmin(req, res)) return;
+  next();
+};
+export const requireGlobalAdmin: import('express').RequestHandler[] = [
+  requireAuth,
+  refuseAnyApiKeyMiddleware,
+  requireAdmin,
+];
 
 
 /**
@@ -1560,6 +1793,64 @@ function extractSealedSession(req: Request): string | undefined {
  * Supports both cookie-based auth (web) and Authorization header (native apps)
  */
 export async function optionalAuth(req: Request, res: Response, next: NextFunction) {
+  if (hasValidAdminApiKey(req)) {
+    logger.debug({ path: req.path }, 'Authenticated via static admin API key (optional auth)');
+    req.user = {
+      id: 'admin_api_key',
+      email: 'admin-api-key@internal',
+      firstName: 'Admin',
+      lastName: 'API Key',
+      emailVerified: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    req.accessToken = 'admin-api-key';
+    (req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey = true;
+    return next();
+  }
+
+  const apiKey = await validateWorkOSApiKey(req);
+  if (apiKey) {
+    logger.debug({ path: req.path, apiKeyId: apiKey.id }, 'Authenticated via WorkOS API key (optional auth)');
+    req.user = await buildApiKeyUser(apiKey);
+    req.accessToken = 'workos-api-key';
+    (req as Request & { apiKey?: ValidatedApiKey }).apiKey = apiKey;
+
+    const apiKeyBan = await checkPlatformBan(
+      `apikey:${apiKey.id}`,
+      () => bansDb.checkPlatformBanForApiKey(apiKey.id, apiKey.organizationId)
+    );
+    if (apiKeyBan) {
+      logger.info({ apiKeyId: apiKey.id, banId: apiKeyBan.id }, 'API key optional-auth request blocked by platform ban');
+      return sendBanResponse(res, apiKeyBan);
+    }
+
+    return next();
+  }
+
+  const jwtAuth = await validateWorkOSBearerJWT(req);
+  if (jwtAuth) {
+    logger.debug({ path: req.path, userId: jwtAuth.user.id }, 'Authenticated via OAuth user JWT (optional auth)');
+    req.user = jwtAuth.user;
+    req.accessToken = jwtAuth.rawToken;
+
+    try {
+      const userBan = await checkPlatformBan(
+        `user:${jwtAuth.user.id}`,
+        () => bansDb.checkPlatformBan(jwtAuth.user.id),
+      );
+      if (userBan) {
+        logger.info({ userId: jwtAuth.user.id, banId: userBan.id }, 'User optional-auth request blocked by platform ban');
+        return sendBanResponse(res, userBan);
+      }
+    } catch (banError) {
+      logger.warn({ err: banError, userId: jwtAuth.user.id, path: req.path }, 'Ban check failed — allowing optional-auth request through');
+    }
+
+    await attachIdentityId(req.user);
+    return next();
+  }
+
   // Dev mode: set dev user if logged in via dev-session cookie
   if (DEV_MODE_ENABLED) {
     const devUser = createDevUser(req);
@@ -1730,6 +2021,11 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
           'Impersonation session detected (optional auth)'
         );
       }
+
+      // Resolve identityId before caching — sessionCache is shared with
+      // requireAuth, so skipping it here would let an optionalAuth request
+      // poison subsequent requireAuth cache hits with identityId=undefined.
+      await attachIdentityId(user);
 
       // Cache the validated session
       sessionCache.set(cacheKey, {

@@ -12,7 +12,7 @@
 
 import { Router } from 'express';
 import { createLogger } from '../../logger.js';
-import { requireAuth, requireAdmin } from '../../middleware/auth.js';
+import { requireGlobalAdmin } from '../../middleware/auth.js';
 import {
   PERSONAS,
   simulate,
@@ -25,7 +25,7 @@ const logger = createLogger('admin-simulations');
 export function setupSimulationRoutes(apiRouter: Router): void {
 
   // GET /api/admin/simulations/personas — List available personas
-  apiRouter.get('/simulations/personas', requireAuth, requireAdmin, (_req, res) => {
+  apiRouter.get('/simulations/personas', ...requireGlobalAdmin, (_req, res) => {
     res.json({
       personas: PERSONAS.map((p, i) => ({
         index: i,
@@ -41,7 +41,7 @@ export function setupSimulationRoutes(apiRouter: Router): void {
   });
 
   // POST /api/admin/simulations/run — Run simulations
-  apiRouter.post('/simulations/run', requireAuth, requireAdmin, (req, res) => {
+  apiRouter.post('/simulations/run', ...requireGlobalAdmin, (req, res) => {
     try {
       const durationDays = Math.max(1, Math.min(parseInt(req.body.durationDays) || 60, 365));
       const personaIndexes: number[] | undefined = req.body.personas;
@@ -63,7 +63,7 @@ export function setupSimulationRoutes(apiRouter: Router): void {
   });
 
   // GET /api/admin/simulations/assessment — Historical behavior assessment
-  apiRouter.get('/simulations/assessment', requireAuth, requireAdmin, async (_req, res) => {
+  apiRouter.get('/simulations/assessment', ...requireGlobalAdmin, async (_req, res) => {
     try {
       const assessment = await assessHistoricalBehavior();
       res.json(assessment);

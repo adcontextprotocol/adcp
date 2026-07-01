@@ -12,16 +12,22 @@ import { stripeCustomerResolvesInvariant } from '../../../src/audit/integrity/in
 import { orgRowMatchesLiveStripeSubInvariant } from '../../../src/audit/integrity/invariants/org-row-matches-live-stripe-sub.js';
 import { stripeSubReflectedInOrgRowInvariant } from '../../../src/audit/integrity/invariants/stripe-sub-reflected-in-org-row.js';
 import { workosMembershipRowExistsInWorkosInvariant } from '../../../src/audit/integrity/invariants/workos-membership-row-exists-in-workos.js';
+import { everyEntitledOrgHasResolvableTierInvariant } from '../../../src/audit/integrity/invariants/every-entitled-org-has-resolvable-tier.js';
+import { uniqueOrgPerEmailDomainInvariant } from '../../../src/audit/integrity/invariants/unique-org-per-email-domain.js';
+import { workosVerifiedDomainsMirroredInvariant } from '../../../src/audit/integrity/invariants/workos-verified-domains-mirrored.js';
+import { personalMemberCompanyOrgSplitInvariant } from '../../../src/audit/integrity/invariants/personal-member-company-org-split.js';
 import { ALL_INVARIANTS, getInvariantByName } from '../../../src/audit/integrity/invariants/index.js';
 import type { InvariantContext } from '../../../src/audit/integrity/types.js';
 
-const EXPECTED_INVARIANT_COUNT = 7;
+const EXPECTED_INVARIANT_COUNT = 11;
 
 const mockPoolQuery = vi.fn();
 const mockStripeCustomersRetrieve = vi.fn();
 const mockStripeSubsList = vi.fn();
 const mockStripeSubsRetrieve = vi.fn();
+const mockStripeProductsRetrieve = vi.fn();
 const mockWorkosListMemberships = vi.fn();
+const mockWorkosGetOrganization = vi.fn();
 
 function makeCtx(): InvariantContext {
   return {
@@ -29,8 +35,10 @@ function makeCtx(): InvariantContext {
     stripe: {
       customers: { retrieve: mockStripeCustomersRetrieve },
       subscriptions: { list: mockStripeSubsList, retrieve: mockStripeSubsRetrieve },
+      products: { retrieve: mockStripeProductsRetrieve },
     } as unknown as InvariantContext['stripe'],
     workos: {
+      organizations: { getOrganization: mockWorkosGetOrganization },
       userManagement: { listOrganizationMemberships: mockWorkosListMemberships },
     } as unknown as InvariantContext['workos'],
     logger: {
@@ -46,7 +54,9 @@ beforeEach(() => {
   mockStripeCustomersRetrieve.mockReset();
   mockStripeSubsList.mockReset();
   mockStripeSubsRetrieve.mockReset();
+  mockStripeProductsRetrieve.mockReset();
   mockWorkosListMemberships.mockReset();
+  mockWorkosGetOrganization.mockReset();
 });
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -62,6 +72,7 @@ describe('invariants registry', () => {
 
   it('resolves invariants by name', () => {
     expect(getInvariantByName('one-active-stripe-sub-per-org')).toBe(oneActiveStripeSubPerOrgInvariant);
+    expect(getInvariantByName('workos-verified-domains-mirrored')).toBe(workosVerifiedDomainsMirroredInvariant);
     expect(getInvariantByName('does-not-exist')).toBeUndefined();
   });
 
@@ -70,6 +81,130 @@ describe('invariants registry', () => {
       expect(inv.description.length).toBeGreaterThan(20);
       expect(['critical', 'warning', 'info']).toContain(inv.severity);
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// workos-verified-domains-mirrored
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('workos-verified-domains-mirrored', () => {
+  it('passes when every WorkOS verified domain has a matching verified local row', async () => {
+    mockPoolQuery
+      .mockResolvedValueOnce({
+        rows: [{ workos_organization_id: 'org_acme', name: 'Acme' }],
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            domain: 'acme.test',
+            workos_organization_id: 'org_acme',
+            org_name: 'Acme',
+            verified: true,
+            is_primary: true,
+          },
+        ],
+      });
+    mockWorkosGetOrganization.mockResolvedValueOnce({
+      id: 'org_acme',
+      name: 'Acme',
+      domains: [{ domain: 'acme.test', state: 'verified' }],
+    });
+
+    const result = await workosVerifiedDomainsMirroredInvariant.check(makeCtx());
+
+    expect(result.checked).toBe(1);
+    expect(result.violations).toEqual([]);
+  });
+
+  it('flags a verified WorkOS domain that is missing locally', async () => {
+    mockPoolQuery
+      .mockResolvedValueOnce({
+        rows: [{ workos_organization_id: 'org_spanglish', name: 'Spanglish Movies' }],
+      })
+      .mockResolvedValueOnce({ rows: [] });
+    mockWorkosGetOrganization.mockResolvedValueOnce({
+      id: 'org_spanglish',
+      name: 'Spanglish Movies',
+      domains: [{ domain: 'spanglishmovies.com', state: 'verified' }],
+    });
+
+    const result = await workosVerifiedDomainsMirroredInvariant.check(makeCtx());
+
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].severity).toBe('critical');
+    expect(result.violations[0].subject_type).toBe('domain');
+    expect(result.violations[0].subject_id).toBe('spanglishmovies.com');
+    expect(result.violations[0].message).toContain('no local row');
+  });
+
+  it('flags a verified WorkOS domain whose local row belongs to another org', async () => {
+    mockPoolQuery
+      .mockResolvedValueOnce({
+        rows: [{ workos_organization_id: 'org_spanglish', name: 'Spanglish Movies' }],
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            domain: 'spanglishmovies.com',
+            workos_organization_id: 'org_personal',
+            org_name: 'Gustavo Workspace',
+            verified: false,
+            is_primary: false,
+          },
+        ],
+      });
+    mockWorkosGetOrganization.mockResolvedValueOnce({
+      id: 'org_spanglish',
+      name: 'Spanglish Movies',
+      domains: [{ domain: 'spanglishmovies.com', state: 'verified' }],
+    });
+
+    const result = await workosVerifiedDomainsMirroredInvariant.check(makeCtx());
+
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].message).toContain('local row belongs');
+    expect(result.violations[0].details?.local_workos_organization_id).toBe('org_personal');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// personal-member-company-org-split
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('personal-member-company-org-split', () => {
+  it('passes when no split rows are returned', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] });
+
+    const result = await personalMemberCompanyOrgSplitInvariant.check(makeCtx());
+
+    expect(result.checked).toBe(0);
+    expect(result.violations).toEqual([]);
+  });
+
+  it('flags an active personal workspace holding a company domain for the same user', async () => {
+    mockPoolQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          personal_org_id: 'org_personal',
+          personal_org_name: 'Gustavo Workspace',
+          company_org_id: 'org_spanglish',
+          company_org_name: 'Spanglish Movies',
+          domain: 'latinxctv.com',
+          domain_verified: false,
+          user_email: 'gustavo@spanglishmovies.com',
+          company_member_status: 'prospect',
+          company_subscription_status: null,
+        },
+      ],
+    });
+
+    const result = await personalMemberCompanyOrgSplitInvariant.check(makeCtx());
+
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].subject_id).toBe('org_spanglish');
+    expect(result.violations[0].message).toContain('active personal workspace');
+    expect(result.violations[0].details?.personal_org_id).toBe('org_personal');
   });
 });
 
@@ -355,9 +490,12 @@ describe('stripe-sub-reflected-in-org-row', () => {
     id: string;
     status: 'active' | 'trialing' | 'past_due' | 'canceled' | 'incomplete';
     customer: string;
-    lookup_key: string;
+    lookup_key: string | null;
     unit_amount: number;
+    product: string | { id: string; metadata?: Record<string, string> };
   }> = {}) {
+    const lookupKey = 'lookup_key' in overrides ? overrides.lookup_key : 'aao_membership_professional_250';
+    const product = 'product' in overrides ? overrides.product : 'prod_default';
     return {
       id: overrides.id ?? 'sub_1',
       status: overrides.status ?? 'active',
@@ -365,8 +503,9 @@ describe('stripe-sub-reflected-in-org-row', () => {
       items: {
         data: [{
           price: {
-            lookup_key: overrides.lookup_key ?? 'aao_membership_professional_250',
+            lookup_key: lookupKey,
             unit_amount: overrides.unit_amount ?? 25000,
+            product,
           },
         }],
       },
@@ -396,6 +535,8 @@ describe('stripe-sub-reflected-in-org-row', () => {
         stripe_customer_id: 'cus_1',
         subscription_status: 'active',
         stripe_subscription_id: 'sub_1',
+        subscription_price_lookup_key: 'aao_membership_professional_250',
+        subscription_amount: 25000,
       }],
     });
 
@@ -476,11 +617,125 @@ describe('stripe-sub-reflected-in-org-row', () => {
     expect(result.violations).toEqual([]);
   });
 
-  it('skips subs with no lookup_key (probably misconfigured)', async () => {
-    const sub = membershipSub();
-    (sub.items.data[0].price as { lookup_key: string | null }).lookup_key = null;
+  it('skips subs with no lookup_key AND no membership product metadata', async () => {
+    // Truly non-membership subs (event tickets, one-offs) shouldn't be in scope.
+    // Confirms the metadata fallback doesn't accidentally widen the filter to
+    // every sub on the AAO Stripe account.
+    const sub = membershipSub({
+      lookup_key: null,
+      product: { id: 'prod_event', metadata: { category: 'event' } },
+    });
     mockSubsListWith([sub]);
     mockPoolQuery.mockResolvedValue({ rows: [] });
+
+    const result = await stripeSubReflectedInOrgRowInvariant.check(makeCtx());
+
+    expect(result.checked).toBe(0);
+    expect(result.violations).toEqual([]);
+  });
+
+  it('flags Bidcliq-shape: founding Startup/SMB sub ($2.5K) with no lookup_key but membership product metadata, customer not linked', async () => {
+    // Bidcliq (May 2026): founding-era Startup/SMB Stripe sub whose price
+    // lacks the aao_membership_ lookup_key convention. The product carries
+    // category=membership metadata. Pre-fix this filter excluded them; the
+    // orphan-customer detection downstream never saw them, so admins had no
+    // signal that paying customers weren't linked to AAO orgs.
+    //
+    // `product` is a string id here, matching what Stripe actually returns
+    // post the expand-depth fix. The invariant resolves it via the
+    // `isMembershipSubWithProductFetch` fallback (one `products.retrieve`).
+    const sub = membershipSub({
+      id: 'sub_bidcliq',
+      customer: 'cus_bidcliq',
+      lookup_key: null,
+      unit_amount: 250000,
+      product: 'prod_founding_smb',
+    });
+    mockSubsListWith([sub]);
+    mockStripeProductsRetrieve.mockResolvedValueOnce({
+      id: 'prod_founding_smb',
+      metadata: { category: 'membership' },
+    });
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] }); // no AAO org linked to cus_bidcliq
+
+    const result = await stripeSubReflectedInOrgRowInvariant.check(makeCtx());
+
+    expect(mockStripeProductsRetrieve).toHaveBeenCalledWith('prod_founding_smb');
+    expect(result.checked).toBe(1);
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].severity).toBe('warning');
+    expect(result.violations[0].subject_type).toBe('customer');
+    expect(result.violations[0].subject_id).toBe('cus_bidcliq');
+    // Substring asserted intentionally: this string is the admin-facing
+    // signal for the orphan-customer remediation path. Treat as load-bearing.
+    expect(result.violations[0].message).toContain('not linked to any AAO organization');
+  });
+
+  it('flags Equativ-shape: founding Corporate sub ($10K) with metadata-only classification, customer not linked', async () => {
+    // Equativ (May 2026): corporate-tier founding sub at the higher amount.
+    // Confirms the metadata fallback isn't accidentally specialized to the
+    // Startup/SMB price level — any membership-tagged product at any
+    // amount must be in scope.
+    const sub = membershipSub({
+      id: 'sub_equativ',
+      customer: 'cus_equativ',
+      lookup_key: null,
+      unit_amount: 1000000,
+      product: 'prod_founding_corp',
+    });
+    mockSubsListWith([sub]);
+    mockStripeProductsRetrieve.mockResolvedValueOnce({
+      id: 'prod_founding_corp',
+      metadata: { category: 'membership' },
+    });
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] });
+
+    const result = await stripeSubReflectedInOrgRowInvariant.check(makeCtx());
+
+    expect(mockStripeProductsRetrieve).toHaveBeenCalledWith('prod_founding_corp');
+    expect(result.checked).toBe(1);
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].severity).toBe('warning');
+    expect(result.violations[0].subject_id).toBe('cus_equativ');
+    expect(result.violations[0].details?.unit_amount).toBe(1000000);
+  });
+
+  it('caches product fetches across subs that share a product id (one retrieve, not N)', async () => {
+    // Two founding-era subs on the same Stripe product. The per-run
+    // productCache in the invariant should fold them into a single
+    // products.retrieve. Without the cache, an account with the
+    // Startup/SMB cohort would multiply Stripe API calls per audit run.
+    const sub1 = membershipSub({
+      id: 'sub_a', customer: 'cus_a', lookup_key: null, product: 'prod_founding_smb',
+    });
+    const sub2 = membershipSub({
+      id: 'sub_b', customer: 'cus_b', lookup_key: null, product: 'prod_founding_smb',
+    });
+    mockSubsListWith([sub1, sub2]);
+    mockStripeProductsRetrieve.mockResolvedValueOnce({
+      id: 'prod_founding_smb',
+      metadata: { category: 'membership' },
+    });
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] });
+
+    const result = await stripeSubReflectedInOrgRowInvariant.check(makeCtx());
+
+    expect(mockStripeProductsRetrieve).toHaveBeenCalledTimes(1);
+    expect(result.checked).toBe(2);
+    expect(result.violations).toHaveLength(2);
+  });
+
+  it('skips a sub whose product fetch fails (Stripe transient) — does not throw the whole audit', async () => {
+    // Founding-era sub whose products.retrieve rejects. The helper swallows
+    // and returns false; invariant continues. Behavior trade-off: a flaky
+    // Stripe momentarily hides a real founding-era sub from the audit run,
+    // but the next run will catch it. Worse alternative would be throwing
+    // and losing the rest of the audit's findings.
+    const sub = membershipSub({
+      id: 'sub_flaky', customer: 'cus_flaky', lookup_key: null, product: 'prod_flaky',
+    });
+    mockSubsListWith([sub]);
+    mockStripeProductsRetrieve.mockRejectedValueOnce(new Error('Stripe transient'));
 
     const result = await stripeSubReflectedInOrgRowInvariant.check(makeCtx());
 
@@ -497,6 +752,8 @@ describe('stripe-sub-reflected-in-org-row', () => {
         stripe_customer_id: 'cus_pd',
         subscription_status: 'past_due',
         stripe_subscription_id: 'sub_1',
+        subscription_price_lookup_key: 'aao_membership_professional_250',
+        subscription_amount: 25000,
       }],
     });
 
@@ -532,18 +789,19 @@ describe('stripe-sub-reflected-in-org-row', () => {
 describe('workos-membership-row-exists-in-workos', () => {
   it('passes when every sampled membership row resolves in WorkOS', async () => {
     mockPoolQuery.mockResolvedValueOnce({
-      rows: [{ workos_user_id: 'u_1', workos_organization_id: 'org_1', workos_membership_id: 'mem_1', status: 'active' }],
+      rows: [{ workos_user_id: 'u_1', workos_organization_id: 'org_1', workos_membership_id: 'mem_1' }],
     });
     mockWorkosListMemberships.mockResolvedValueOnce({ data: [{ id: 'mem_1' }] });
 
     const result = await workosMembershipRowExistsInWorkosInvariant.check(makeCtx());
     expect(result.checked).toBe(1);
     expect(result.violations).toEqual([]);
+    expect(mockPoolQuery.mock.calls[0][0]).not.toContain('status');
   });
 
   it('flags rows that no longer exist in WorkOS', async () => {
     mockPoolQuery.mockResolvedValueOnce({
-      rows: [{ workos_user_id: 'u_stale', workos_organization_id: 'org_1', workos_membership_id: 'mem_stale', status: 'active' }],
+      rows: [{ workos_user_id: 'u_stale', workos_organization_id: 'org_1', workos_membership_id: 'mem_stale' }],
     });
     mockWorkosListMemberships.mockResolvedValueOnce({ data: [] });
 
@@ -556,7 +814,7 @@ describe('workos-membership-row-exists-in-workos', () => {
 
   it('records a warning when WorkOS lookup fails', async () => {
     mockPoolQuery.mockResolvedValueOnce({
-      rows: [{ workos_user_id: 'u_1', workos_organization_id: 'org_1', workos_membership_id: 'mem_1', status: 'active' }],
+      rows: [{ workos_user_id: 'u_1', workos_organization_id: 'org_1', workos_membership_id: 'mem_1' }],
     });
     mockWorkosListMemberships.mockRejectedValueOnce(new Error('WorkOS down'));
 
@@ -575,5 +833,422 @@ describe('workos-membership-row-exists-in-workos', () => {
     });
 
     expect(mockPoolQuery).toHaveBeenCalledWith(expect.any(String), [50]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// every-entitled-org-has-resolvable-tier
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('every-entitled-org-has-resolvable-tier', () => {
+  function row(overrides: Partial<{
+    workos_organization_id: string;
+    name: string;
+    stripe_customer_id: string | null;
+    stripe_subscription_id: string | null;
+    membership_tier: string | null;
+    subscription_status: string | null;
+    subscription_price_lookup_key: string | null;
+    subscription_amount: number | null;
+    subscription_interval: string | null;
+    is_personal: boolean;
+  }> = {}) {
+    // `'key' in overrides` preserves explicit null in test fixtures; `??`
+    // would substitute the default when the caller intentionally passed
+    // null (the Adzymic-shape case).
+    return {
+      workos_organization_id: overrides.workos_organization_id ?? 'org_1',
+      name: overrides.name ?? 'Acme',
+      stripe_customer_id: 'stripe_customer_id' in overrides ? overrides.stripe_customer_id : 'cus_1',
+      stripe_subscription_id:
+        'stripe_subscription_id' in overrides ? overrides.stripe_subscription_id : 'sub_1',
+      membership_tier: 'membership_tier' in overrides ? overrides.membership_tier : null,
+      subscription_status:
+        'subscription_status' in overrides ? overrides.subscription_status : 'active',
+      subscription_price_lookup_key:
+        'subscription_price_lookup_key' in overrides
+          ? overrides.subscription_price_lookup_key
+          : 'aao_membership_professional_250',
+      subscription_amount:
+        'subscription_amount' in overrides ? overrides.subscription_amount : 25000,
+      subscription_interval:
+        'subscription_interval' in overrides ? overrides.subscription_interval : 'year',
+      is_personal: overrides.is_personal ?? false,
+    };
+  }
+
+  it('passes when every entitled org resolves to a non-null tier', async () => {
+    mockPoolQuery.mockResolvedValueOnce({
+      rows: [
+        row({ membership_tier: 'company_standard' }),
+        row({
+          workos_organization_id: 'org_2',
+          name: 'Builder Co',
+          membership_tier: null, // null column but lookup_key resolves
+          subscription_price_lookup_key: 'aao_membership_corporate_under5m',
+        }),
+      ],
+    });
+
+    const result = await everyEntitledOrgHasResolvableTierInvariant.check(makeCtx());
+
+    expect(result.checked).toBe(2);
+    expect(result.violations).toEqual([]);
+  });
+
+  it('flags Adzymic-shape: status=active but lookup_key/amount/sub_id all null', async () => {
+    mockPoolQuery.mockResolvedValueOnce({
+      rows: [
+        row({
+          workos_organization_id: 'org_adzymic',
+          name: 'Adzymic',
+          stripe_subscription_id: null,
+          membership_tier: null,
+          subscription_status: 'active',
+          subscription_price_lookup_key: null,
+          subscription_amount: null,
+          subscription_interval: null,
+          is_personal: false,
+        }),
+      ],
+    });
+
+    const result = await everyEntitledOrgHasResolvableTierInvariant.check(makeCtx());
+
+    expect(result.checked).toBe(1);
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].severity).toBe('critical');
+    expect(result.violations[0].subject_type).toBe('organization');
+    expect(result.violations[0].subject_id).toBe('org_adzymic');
+    expect(result.violations[0].message).toContain('tier pending sync');
+    expect(result.violations[0].details?.subscription_status).toBe('active');
+    expect(result.violations[0].details?.subscription_price_lookup_key).toBeNull();
+    expect(result.violations[0].remediation_hint).toContain('/sync');
+  });
+
+  it('flags trialing and past_due rows with NULL product fields the same way', async () => {
+    mockPoolQuery.mockResolvedValueOnce({
+      rows: [
+        row({
+          workos_organization_id: 'org_trial',
+          name: 'Trial Co',
+          subscription_status: 'trialing',
+          subscription_price_lookup_key: null,
+          subscription_amount: null,
+          stripe_subscription_id: null,
+        }),
+        row({
+          workos_organization_id: 'org_pd',
+          name: 'PastDue Co',
+          subscription_status: 'past_due',
+          subscription_price_lookup_key: null,
+          subscription_amount: null,
+          stripe_subscription_id: null,
+        }),
+      ],
+    });
+
+    const result = await everyEntitledOrgHasResolvableTierInvariant.check(makeCtx());
+    expect(result.violations).toHaveLength(2);
+    expect(result.violations.every((v) => v.severity === 'critical')).toBe(true);
+  });
+
+  it('does not flag when membership_tier column itself is set, even if lookup_key is null', async () => {
+    // Backfill 332 set membership_tier directly from amount-based inference;
+    // those rows resolve via the cached column even when lookup_key is null.
+    mockPoolQuery.mockResolvedValueOnce({
+      rows: [
+        row({
+          membership_tier: 'company_icl',
+          subscription_price_lookup_key: null,
+          subscription_amount: 1000000,
+        }),
+      ],
+    });
+
+    const result = await everyEntitledOrgHasResolvableTierInvariant.check(makeCtx());
+    expect(result.violations).toEqual([]);
+  });
+
+  it('does not query non-entitled rows', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] });
+
+    await everyEntitledOrgHasResolvableTierInvariant.check(makeCtx());
+
+    const [, params] = mockPoolQuery.mock.calls[0] as [string, unknown[]];
+    expect(params[0]).toEqual(expect.arrayContaining(['active', 'trialing', 'past_due']));
+    // The query must filter to entitled statuses; canceled/incomplete rows
+    // shouldn't be in scope.
+    expect(params[0]).not.toContain('canceled');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// stripe-sub-reflected-in-org-row — Adzymic-shape regression
+// (existing tests above cover Lina-shape with status=NULL; this one covers
+//  partial-truth where status='active' but key fields are NULL.)
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('stripe-sub-reflected-in-org-row partial-truth', () => {
+  function membershipSub(overrides: Partial<{
+    id: string;
+    status: 'active' | 'trialing' | 'past_due' | 'canceled' | 'incomplete';
+    customer: string;
+    lookup_key: string;
+    unit_amount: number;
+  }> = {}) {
+    return {
+      id: overrides.id ?? 'sub_1',
+      status: overrides.status ?? 'active',
+      customer: overrides.customer ?? 'cus_1',
+      items: {
+        data: [{
+          price: {
+            lookup_key: overrides.lookup_key ?? 'aao_membership_corporate_under5m',
+            unit_amount: overrides.unit_amount ?? 250000,
+          },
+        }],
+      },
+    };
+  }
+
+  function mockSubsListWith(activeSubs: unknown[], trialingSubs: unknown[] = []): void {
+    mockStripeSubsList
+      .mockImplementationOnce(() => ({
+        async *[Symbol.asyncIterator]() { for (const s of activeSubs) yield s; },
+      }))
+      .mockImplementationOnce(() => ({
+        async *[Symbol.asyncIterator]() { for (const s of trialingSubs) yield s; },
+      }));
+  }
+
+  it('flags Adzymic-shape: status=active in DB but stripe_subscription_id and lookup_key NULL', async () => {
+    mockSubsListWith([membershipSub({ id: 'sub_adz', customer: 'cus_adz' })]);
+    mockPoolQuery.mockResolvedValueOnce({
+      rows: [{
+        workos_organization_id: 'org_adz',
+        name: 'Adzymic',
+        stripe_customer_id: 'cus_adz',
+        subscription_status: 'active',
+        stripe_subscription_id: null,
+        subscription_price_lookup_key: null,
+        subscription_amount: null,
+      }],
+    });
+
+    const result = await stripeSubReflectedInOrgRowInvariant.check(makeCtx());
+
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].severity).toBe('critical');
+    expect(result.violations[0].subject_id).toBe('org_adz');
+    expect(result.violations[0].message).toContain('partial-truth');
+    expect(result.violations[0].details?.partial_truth).toBe(true);
+    expect(result.violations[0].details?.db_subscription_status).toBe('active');
+    expect(result.violations[0].details?.db_subscription_price_lookup_key).toBeNull();
+  });
+
+  it('does not flag a row with status=active AND populated lookup_key + sub_id (fully reflected)', async () => {
+    mockSubsListWith([membershipSub({ customer: 'cus_ok' })]);
+    mockPoolQuery.mockResolvedValueOnce({
+      rows: [{
+        workos_organization_id: 'org_ok',
+        name: 'OK Co',
+        stripe_customer_id: 'cus_ok',
+        subscription_status: 'active',
+        stripe_subscription_id: 'sub_1',
+        subscription_price_lookup_key: 'aao_membership_corporate_under5m',
+        subscription_amount: 250000,
+      }],
+    });
+
+    const result = await stripeSubReflectedInOrgRowInvariant.check(makeCtx());
+    expect(result.violations).toEqual([]);
+  });
+
+  it('does not flag Advertible-shape: $0 founding sub resolved via membership_tier', async () => {
+    mockSubsListWith([
+      membershipSub({
+        id: 'sub_advertible',
+        customer: 'cus_advertible',
+        lookup_key: null,
+        unit_amount: 0,
+        product: 'prod_founding',
+      }),
+    ]);
+    mockStripeProductsRetrieve.mockResolvedValueOnce({
+      id: 'prod_founding',
+      metadata: { category: 'membership', tier: 'company_standard' },
+    });
+    mockPoolQuery.mockResolvedValueOnce({
+      rows: [{
+        workos_organization_id: 'org_advertible',
+        name: 'Advertible',
+        stripe_customer_id: 'cus_advertible',
+        subscription_status: 'active',
+        stripe_subscription_id: 'sub_advertible',
+        membership_tier: 'company_standard',
+        subscription_price_lookup_key: null,
+        subscription_amount: 0,
+      }],
+    });
+
+    const result = await stripeSubReflectedInOrgRowInvariant.check(makeCtx());
+    expect(result.violations).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// unique-org-per-email-domain
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('unique-org-per-email-domain', () => {
+  // Helper: each row mirrors what the invariant's CTE returns. Field names
+  // match the SQL (snake_case from pg, including the `created_at::text` cast
+  // that gives ISO strings instead of Date objects).
+  function row(overrides: {
+    workos_organization_id: string;
+    name: string;
+    email_domain: string;
+    created_at: string;
+    member_count: number;
+    has_stripe_customer: boolean;
+    has_active_subscription: boolean;
+    member_status?: string;
+  }) {
+    return {
+      workos_organization_id: overrides.workos_organization_id,
+      name: overrides.name,
+      email_domain: overrides.email_domain,
+      created_at: overrides.created_at,
+      member_count: overrides.member_count,
+      has_stripe_customer: overrides.has_stripe_customer,
+      has_active_subscription: overrides.has_active_subscription,
+      member_status: overrides.member_status ?? (overrides.has_active_subscription ? 'member' : 'prospect'),
+    };
+  }
+
+  it('passes when every email_domain has exactly one org', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] });
+
+    const result = await uniqueOrgPerEmailDomainInvariant.check(makeCtx());
+
+    expect(result.checked).toBe(0);
+    expect(result.violations).toEqual([]);
+  });
+
+  it('flags April-20-import shape: empty stub vs. populated December row', async () => {
+    // The most common pattern from the May 2026 audit: a 0-member stub
+    // created by the unconditional re-import on April 20, alongside a
+    // populated row from the original December import.
+    mockPoolQuery.mockResolvedValueOnce({
+      rows: [
+        row({
+          workos_organization_id: 'org_dec_real',
+          name: 'DoubleVerify',
+          email_domain: 'doubleverify.com',
+          created_at: '2025-12-31T15:24:06.000Z',
+          member_count: 7,
+          has_stripe_customer: true,
+          has_active_subscription: true,
+        }),
+        row({
+          workos_organization_id: 'org_apr_stub',
+          name: 'Doubleverify',
+          email_domain: 'doubleverify.com',
+          created_at: '2026-04-20T03:47:40.000Z',
+          member_count: 0,
+          has_stripe_customer: false,
+          has_active_subscription: false,
+        }),
+      ],
+    });
+
+    const result = await uniqueOrgPerEmailDomainInvariant.check(makeCtx());
+
+    expect(result.checked).toBe(2);
+    expect(result.violations).toHaveLength(1);
+    const v = result.violations[0];
+    expect(v.severity).toBe('warning');
+    expect(v.subject_id).toBe('org_apr_stub');
+    expect((v.details as { keeper: { workos_organization_id: string } }).keeper.workos_organization_id)
+      .toBe('org_dec_real');
+    expect(v.message).toContain('DoubleVerify');
+    expect(v.message).toContain('7 members');
+    expect(v.remediation_hint).toContain('DELETE FROM organizations');
+  });
+
+  it('emits one violation per duplicate when three rows share a domain', async () => {
+    mockPoolQuery.mockResolvedValueOnce({
+      rows: [
+        row({ workos_organization_id: 'org_keep',  name: 'Acme', email_domain: 'acme.com', created_at: '2025-12-01T00:00:00Z', member_count: 5, has_stripe_customer: true,  has_active_subscription: true }),
+        row({ workos_organization_id: 'org_dup_a', name: 'Acme', email_domain: 'acme.com', created_at: '2026-01-01T00:00:00Z', member_count: 0, has_stripe_customer: false, has_active_subscription: false }),
+        row({ workos_organization_id: 'org_dup_b', name: 'Acme', email_domain: 'acme.com', created_at: '2026-04-20T00:00:00Z', member_count: 0, has_stripe_customer: false, has_active_subscription: false }),
+      ],
+    });
+
+    const result = await uniqueOrgPerEmailDomainInvariant.check(makeCtx());
+
+    expect(result.violations).toHaveLength(2);
+    const subjects = result.violations.map((v) => v.subject_id).sort();
+    expect(subjects).toEqual(['org_dup_a', 'org_dup_b']);
+    // Both violations name the same keeper.
+    for (const v of result.violations) {
+      expect((v.details as { keeper: { workos_organization_id: string } }).keeper.workos_organization_id)
+        .toBe('org_keep');
+    }
+  });
+
+  it('keeps the row with active subscription even if it was created later', async () => {
+    // Real-world ordering: a stub got created first, then the actual
+    // company signed up and got a Stripe sub. The active-sub row should
+    // win regardless of created_at order.
+    mockPoolQuery.mockResolvedValueOnce({
+      rows: [
+        row({ workos_organization_id: 'org_old_stub', name: 'Acme', email_domain: 'acme.com', created_at: '2025-01-01T00:00:00Z', member_count: 0, has_stripe_customer: false, has_active_subscription: false }),
+        row({ workos_organization_id: 'org_real',     name: 'Acme', email_domain: 'acme.com', created_at: '2026-04-20T00:00:00Z', member_count: 3, has_stripe_customer: true,  has_active_subscription: true }),
+      ],
+    });
+
+    const result = await uniqueOrgPerEmailDomainInvariant.check(makeCtx());
+
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].subject_id).toBe('org_old_stub');
+    expect((result.violations[0].details as { keeper: { workos_organization_id: string } }).keeper.workos_organization_id)
+      .toBe('org_real');
+  });
+
+  it('breaks ties on created_at when scores are equal (older row wins)', async () => {
+    // Two stubs with identical scores. Older one is the canonical keeper.
+    mockPoolQuery.mockResolvedValueOnce({
+      rows: [
+        row({ workos_organization_id: 'org_dec', name: 'X', email_domain: 'x.com', created_at: '2025-12-31T00:00:00Z', member_count: 0, has_stripe_customer: false, has_active_subscription: false }),
+        row({ workos_organization_id: 'org_apr', name: 'X', email_domain: 'x.com', created_at: '2026-04-20T00:00:00Z', member_count: 0, has_stripe_customer: false, has_active_subscription: false }),
+      ],
+    });
+
+    const result = await uniqueOrgPerEmailDomainInvariant.check(makeCtx());
+
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].subject_id).toBe('org_apr'); // April stub flagged
+    expect((result.violations[0].details as { keeper: { workos_organization_id: string } }).keeper.workos_organization_id)
+      .toBe('org_dec');
+  });
+
+  it('does not flag personal workspaces (filtered by SQL — invariant relies on the CTE)', async () => {
+    // Personal workspaces share email_domain by construction (the user's
+    // personal email maps to a single domain like gmail.com). The
+    // invariant's CTE filters them out with `is_personal = false`, so the
+    // mock just returns nothing — confirms the predicate doesn't double-
+    // count personal-org pairs as a duplicate-company finding.
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] });
+
+    const result = await uniqueOrgPerEmailDomainInvariant.check(makeCtx());
+
+    expect(result.violations).toEqual([]);
+    // Spot-check that the SQL excludes personal workspaces — guards
+    // against a future refactor that drops the predicate and starts
+    // flagging gmail.com pairs as company duplicates.
+    const sql = (mockPoolQuery.mock.calls[0] as [string, unknown[]])[0];
+    expect(sql).toMatch(/is_personal/);
   });
 });

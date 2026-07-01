@@ -2,7 +2,8 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/data-provider-signal-selector.json",
   "title": "Data Provider Signal Selector",
-  "description": "Selects signals from a data provider's adagents.json catalog. Used for product definitions and agent authorization. Supports three selection patterns: all signals, specific IDs, or by tags.",
+  "description": "Selects signals from a data provider's adagents.json signals[]. Used for product definitions and agent authorization. Supports three selection patterns: all signals, specific IDs, or by tags.",
+  "x-adcp-hoist": true,
   "discriminator": {
     "propertyName": "selection_type"
   },
@@ -44,7 +45,7 @@
         },
         "signal_ids": {
           "type": "array",
-          "description": "Specific signal IDs from the data provider's catalog",
+          "description": "Specific signal IDs from the data provider's published signal definitions",
           "items": {
             "type": "string",
             "pattern": "^[a-zA-Z0-9_-]+$"
@@ -75,7 +76,7 @@
         },
         "signal_tags": {
           "type": "array",
-          "description": "Signal tags from the data provider's catalog. Selector covers all signals with these tags",
+          "description": "Signal tags from the data provider's published signal definitions. Selector covers all signals with these tags",
           "items": {
             "type": "string",
             "pattern": "^[a-z0-9_-]+$"

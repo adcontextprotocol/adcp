@@ -33,7 +33,7 @@
       gap: var(--space-4);
       margin-bottom: var(--space-5);
       padding: var(--space-5);
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       border-radius: var(--radius-md);
     }
     .filter-group label {
@@ -72,11 +72,11 @@
       background: var(--color-primary-700);
     }
     .btn-secondary {
-      background: var(--color-gray-200);
+      background: var(--color-bg-button-secondary);
       color: var(--color-text-heading);
     }
     .btn-secondary:hover {
-      background: var(--color-gray-300);
+      background: var(--color-bg-button-secondary-hover);
     }
     .brands-table {
       width: 100%;
@@ -84,7 +84,7 @@
       margin-top: var(--space-5);
     }
     .brands-table th {
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       padding: var(--space-3);
       text-align: left;
       font-weight: var(--font-semibold);
@@ -96,7 +96,7 @@
       border-bottom: var(--border-1) solid var(--color-gray-200);
     }
     .brands-table tr:hover {
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
     }
     .domain-link {
       color: var(--color-text-heading);
@@ -129,22 +129,22 @@
       color: var(--color-warning-700);
     }
     .source-enriched {
-      background: var(--color-gray-200);
-      color: var(--color-gray-600);
+      background: var(--color-bg-button-secondary);
+      color: var(--color-text-secondary);
     }
     .keller-badge {
       display: inline-block;
       padding: var(--space-1) var(--space-2);
       border-radius: var(--radius-sm);
       font-size: var(--text-xs);
-      background: var(--color-gray-100);
-      color: var(--color-gray-600);
+      background: var(--color-bg-subtle);
+      color: var(--color-text-secondary);
     }
     .has-manifest {
       color: var(--color-success-600);
     }
     .no-manifest {
-      color: var(--color-gray-400);
+      color: var(--color-text-muted);
     }
     .loading {
       text-align: center;
@@ -161,7 +161,7 @@
       transition: var(--transition-all);
     }
     .btn-icon:hover {
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       border-color: var(--color-brand);
     }
     .btn-icon:disabled {
@@ -175,7 +175,7 @@
       margin-bottom: var(--space-5);
     }
     .stat-card {
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       padding: var(--space-4);
       border-radius: var(--radius-md);
       text-align: center;
@@ -260,7 +260,7 @@
       border-top: var(--border-1) solid var(--color-gray-200);
     }
     .research-results {
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       padding: var(--space-4);
       border-radius: var(--radius-md);
       margin-bottom: var(--space-4);
@@ -288,22 +288,22 @@
       width: 20px;
       height: 20px;
       border-radius: var(--radius-sm);
-      border: 1px solid var(--color-gray-300);
+      border: 1px solid var(--color-border-strong);
       vertical-align: middle;
       margin-right: var(--space-1);
     }
     .error-message {
-      background: var(--color-error-50);
+      background: var(--color-error-bg);
       border: 1px solid var(--color-error-200);
-      color: var(--color-error-700);
+      color: var(--color-error-fg);
       padding: var(--space-3);
       border-radius: var(--radius-md);
       margin-bottom: var(--space-4);
     }
     .success-message {
-      background: var(--color-success-50);
+      background: var(--color-success-bg);
       border: 1px solid var(--color-success-200);
-      color: var(--color-success-700);
+      color: var(--color-success-fg);
       padding: var(--space-3);
       border-radius: var(--radius-md);
       margin-bottom: var(--space-4);
@@ -892,7 +892,7 @@
         const response = await fetch(`/api/brands/resolve?domain=${encodeURIComponent(domain)}`);
         const data = await response.json();
 
-        let html = '<pre style="background: var(--color-gray-50); padding: var(--space-4); border-radius: var(--radius-md); overflow: auto;">';
+        let html = '<pre style="background: var(--color-bg-subtle); padding: var(--space-4); border-radius: var(--radius-md); overflow: auto;">';
         html += JSON.stringify(data, null, 2);
         html += '</pre>';
 
@@ -993,7 +993,7 @@
     function renderAliasChips() {
       const container = document.getElementById('aliasChips');
       container.innerHTML = currentAliases.map(a =>
-        `<span style="display: inline-flex; align-items: center; gap: var(--space-1); padding: 2px 8px; background: var(--color-gray-100); border-radius: var(--radius-full); font-size: var(--text-xs);">${escapeHtml(a)} <button onclick="removeAliasChip('${escapeHtml(a)}')" style="background: none; border: none; cursor: pointer; font-size: 14px; color: var(--color-text-muted); padding: 0;">&times;</button></span>`
+        `<span style="display: inline-flex; align-items: center; gap: var(--space-1); padding: 2px 8px; background: var(--color-bg-subtle); border-radius: var(--radius-full); font-size: var(--text-xs);">${escapeHtml(a)} <button onclick="removeAliasChip('${escapeHtml(a)}')" style="background: none; border: none; cursor: pointer; font-size: 14px; color: var(--color-text-muted); padding: 0;">&times;</button></span>`
       ).join('');
     }
 

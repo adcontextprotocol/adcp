@@ -165,7 +165,7 @@
     }
 
     .message--user .message-avatar {
-      background: var(--color-gray-200);
+      background: var(--color-bg-button-secondary);
     }
 
     .message-content {
@@ -507,6 +507,149 @@
       align-items: flex-end;
     }
 
+    .attachment-button {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      border: 1px solid var(--color-border);
+      background: var(--color-bg-card);
+      color: var(--color-text-secondary);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: border-color 0.2s, color 0.2s, background 0.2s;
+      flex-shrink: 0;
+      align-self: flex-end;
+      margin-bottom: 4px;
+    }
+
+    .attachment-button:hover:not(:disabled) {
+      border-color: var(--color-brand);
+      color: var(--color-brand);
+      background: var(--color-bg-subtle);
+    }
+
+    .attachment-button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .attachment-button svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .attachment-tray {
+      display: none;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .attachment-tray.visible {
+      display: flex;
+    }
+
+    .attachment-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      max-width: 220px;
+      padding: 6px 8px;
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      background: var(--color-bg-card);
+      color: var(--color-text);
+      font-size: 12px;
+    }
+
+    .attachment-chip-preview {
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      flex-shrink: 0;
+      background: var(--color-bg-subtle);
+      border: 1px solid var(--color-border);
+      object-fit: cover;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--color-text-muted);
+      font-size: 10px;
+      font-weight: 600;
+    }
+
+    .attachment-chip-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+
+    .attachment-chip-remove {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: none;
+      background: transparent;
+      color: var(--color-text-muted);
+      cursor: pointer;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      line-height: 1;
+    }
+
+    .attachment-chip-remove:hover {
+      background: var(--color-bg-subtle);
+      color: var(--color-text);
+    }
+
+    .message-attachments {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .message-content > .message-attachments:not(:first-child) {
+      margin-top: 8px;
+    }
+
+    .message-attachment {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      max-width: 220px;
+      padding: 6px 8px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.16);
+      font-size: 12px;
+    }
+
+    .message-attachment img {
+      width: 44px;
+      height: 44px;
+      border-radius: 6px;
+      object-fit: cover;
+      background: rgba(255, 255, 255, 0.16);
+    }
+
+    .message-attachment span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+
+    .chat-container.drag-over .chat-input-container {
+      box-shadow: inset 0 0 0 2px var(--color-brand);
+      border-radius: 12px;
+    }
+
     .chat-input {
       flex: 1;
       padding: 12px 16px;
@@ -648,7 +791,7 @@
       text-align: center;
       padding: 16px;
       color: var(--color-error-600);
-      background: var(--color-error-50);
+      background: var(--color-error-bg);
       border-radius: var(--radius-lg);
       margin-bottom: 16px;
     }
@@ -814,6 +957,87 @@
       color: white;
     }
 
+    .copy-btn {
+      background: none;
+      border: 1px solid var(--color-border);
+      border-radius: 4px;
+      padding: 4px 8px;
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--color-text-muted);
+      transition: all 0.2s;
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+
+    .copy-btn:hover {
+      background: var(--color-bg-subtle);
+      color: var(--color-brand);
+      border-color: var(--color-brand);
+    }
+
+    .copy-btn.copied {
+      color: var(--color-success-fg);
+      border-color: var(--color-success-fg);
+    }
+
+    .user-copy-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 8px;
+    }
+
+    @media (min-width: 601px) and (hover: hover) and (pointer: fine) {
+      .message--user .message-content {
+        position: relative;
+      }
+
+      .message--user .user-copy-actions {
+        position: absolute;
+        top: 50%;
+        right: calc(100% + 8px);
+        margin-top: 0;
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(-50%);
+        transition: opacity 0.2s;
+        z-index: 1;
+      }
+
+      .message--user:hover .user-copy-actions,
+      .message--user:focus-within .user-copy-actions {
+        opacity: 1;
+        pointer-events: auto;
+      }
+    }
+
+    @media (any-pointer: coarse) {
+      .message--user .message-content {
+        position: static;
+      }
+
+      .message--user .user-copy-actions {
+        position: static;
+        margin-top: 8px;
+        opacity: 1;
+        pointer-events: auto;
+        transform: none;
+      }
+    }
+
+    .user-copy-actions .copy-btn {
+      background: var(--color-bg-card);
+      color: var(--color-text-heading);
+      border-color: var(--color-border-strong);
+      margin-left: 0;
+    }
+
+    .user-copy-actions .copy-btn:hover {
+      background: var(--color-bg-subtle);
+      color: var(--color-brand);
+      border-color: var(--color-brand);
+    }
+
     .feedback-expand {
       background: none;
       border: none;
@@ -887,7 +1111,7 @@
     }
 
     .feedback-tag.selected {
-      background: var(--color-primary-100);
+      background: var(--color-brand-bg);
       border-color: var(--color-brand);
       color: var(--color-brand);
     }
@@ -1166,7 +1390,7 @@
     }
 
     .sidebar-tab.active {
-      background: var(--color-primary-50);
+      background: var(--color-brand-bg);
       color: var(--color-brand);
       font-weight: 500;
     }
@@ -1275,7 +1499,7 @@
     }
 
     .tab-item.active {
-      background: var(--color-primary-50);
+      background: var(--color-brand-bg);
       font-weight: 500;
     }
 
@@ -1307,7 +1531,7 @@
     }
 
     .tab-item-indicator--idle {
-      background: var(--color-gray-300);
+      background: var(--color-bg-button-secondary-hover);
     }
 
     @keyframes pulse {
@@ -1540,7 +1764,7 @@
     .video-call-btn:hover {
       border-color: var(--color-brand);
       color: var(--color-brand);
-      background: var(--color-primary-50);
+      background: var(--color-brand-bg);
     }
     .video-call-btn:disabled {
       opacity: 0.5;
@@ -2632,7 +2856,14 @@
       </div>
 
       <div class="chat-input-container">
+        <div class="attachment-tray" id="attachmentTray" aria-live="polite"></div>
         <div class="chat-input-wrapper">
+          <input type="file" id="attachmentInput" accept="image/png,image/jpeg,image/gif,image/webp,application/pdf" multiple hidden>
+          <button class="attachment-button" id="attachmentButton" type="button" title="Attach file" aria-label="Attach file">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21.44 11.05 12.25 20.24a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+            </svg>
+          </button>
           <textarea
             class="chat-input"
             id="chatInput"
@@ -2665,6 +2896,9 @@
       const messagesContainer = document.getElementById('messagesContainer');
       const welcomeMessage = document.getElementById('welcomeMessage');
       const chatInput = document.getElementById('chatInput');
+      const attachmentInput = document.getElementById('attachmentInput');
+      const attachmentButton = document.getElementById('attachmentButton');
+      const attachmentTray = document.getElementById('attachmentTray');
       const sendButton = document.getElementById('sendButton');
       const suggestedPrompts = document.getElementById('suggestedPrompts');
       const statusDot = document.getElementById('statusDot');
@@ -2746,6 +2980,7 @@
       let conversationId = null;
       let isLoading = false;
       let isReady = false;
+      let isReadOnly = false;
       let impersonationInfo = null;
       let isAuthenticated = false;
       let videoCallActive = false;
@@ -2765,6 +3000,20 @@
       // Tab state - persisted to localStorage
       let activeTabs = []; // [{id, title, channel, isLoading, unreadCount}]
       let currentTabId = 'home'; // 'home' or conversation_id
+
+      const ALLOWED_ATTACHMENT_TYPES = new Set([
+        'image/png',
+        'image/jpeg',
+        'image/gif',
+        'image/webp',
+        'application/pdf'
+      ]);
+      const ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024;
+      const ATTACHMENT_MAX_TOTAL_BYTES = 6 * 1024 * 1024;
+      const ATTACHMENT_MAX_COUNT = 4;
+      let pendingAttachments = [];
+      let pendingAttachmentReads = 0;
+      let attachmentGeneration = 0;
 
       // Event delegation for member card clicks (more secure than inline onclick)
       messagesContainer.addEventListener('click', function(e) {
@@ -2822,6 +3071,12 @@
         return fetch(url, { ...options, headers, credentials: 'include' });
       }
 
+      function getSelectedOrganizationId() {
+        const urlOrg = new URLSearchParams(window.location.search).get('org');
+        if (urlOrg) return urlOrg;
+        return localStorage.getItem('selectedOrgId') || null;
+      }
+
       // Check for impersonation and authentication
       async function checkImpersonation() {
         try {
@@ -2859,6 +3114,7 @@
           chatSidebar.classList.add('visible');
           sidebarToggleBtn.classList.add('visible');
           loadActiveTabs(); // Restore from localStorage
+          await restoreCurrentTab();
           loadThreads();
         } catch (error) {
           // Network error — don't assume anonymous, just skip the banner
@@ -2965,6 +3221,40 @@
         }
       }
 
+      function saveCurrentTab(id) {
+        try {
+          localStorage.setItem('addie_current_tab', id);
+        } catch (e) {
+          console.warn('Failed to save current tab to localStorage');
+        }
+      }
+
+      function clearCurrentTab() {
+        try {
+          localStorage.removeItem('addie_current_tab');
+        } catch (e) {
+          console.warn('Failed to clear current tab from localStorage');
+        }
+      }
+
+      async function restoreCurrentTab() {
+        try {
+          const saved = localStorage.getItem('addie_current_tab');
+          if (!saved) return;
+
+          const tab = activeTabs.find(t => t.id === saved);
+          if (!tab) {
+            clearCurrentTab();
+            return;
+          }
+
+          await switchToConversation(tab.id, tab.channel);
+        } catch (e) {
+          console.warn('Failed to restore current tab from localStorage');
+          clearCurrentTab();
+        }
+      }
+
       // Add a conversation to active tabs
       function addActiveTab(id, title, channel = 'web') {
         // Check if already in active tabs
@@ -3034,7 +3324,7 @@
         activeTabsList.innerHTML = '';
         if (activeTabs.length === 0) return;
 
-        activeTabs.forEach(tab => {
+        [...activeTabs].reverse().forEach(tab => {
           const indicatorClass = tab.isLoading ? 'tab-item-indicator--thinking' :
                                  tab.unreadCount > 0 ? 'tab-item-indicator--ready' :
                                  'tab-item-indicator--idle';
@@ -3146,10 +3436,12 @@
       // Switch to home tab
       function switchToHome() {
         currentTabId = 'home';
+        clearCurrentTab();
         conversationId = null;
         currentChannel = 'web';
         lastAssistantMessageId = null;
         clearSessionFeedbackTimer();
+        clearAttachments();
 
         // Update UI
         homeTab.classList.add('active');
@@ -3254,10 +3546,12 @@
       // Switch to a different conversation
       async function switchToConversation(newConversationId, channel = 'web') {
         if (newConversationId === conversationId && channel === currentChannel) return;
+        clearAttachments();
 
         conversationId = newConversationId;
         currentChannel = channel;
         currentTabId = newConversationId;
+        saveCurrentTab(newConversationId);
 
         // Update home tab state
         homeTab.classList.remove('active');
@@ -3306,6 +3600,8 @@
           }
         } catch (error) {
           console.error('Failed to load conversation:', error);
+          removeActiveTab(newConversationId);
+          switchToHome();
           showError('Failed to load conversation');
         }
 
@@ -3315,8 +3611,11 @@
 
       // Set read-only mode for the chat input
       function setReadOnlyMode(readOnly, channel) {
+        isReadOnly = readOnly;
         if (readOnly) {
           chatInput.disabled = true;
+          attachmentButton.disabled = true;
+          clearAttachments();
           chatInput.placeholder = channel === 'video'
             ? 'This is a video call transcript'
             : 'This is a Slack conversation - reply in Slack to continue';
@@ -3324,9 +3623,10 @@
           sendButton.style.opacity = '0.5';
         } else {
           chatInput.disabled = false;
+          attachmentButton.disabled = false;
           chatInput.placeholder = 'Ask Addie anything...';
-          sendButton.disabled = false;
           sendButton.style.opacity = '1';
+          updateSendButton();
         }
       }
 
@@ -3335,8 +3635,10 @@
         conversationId = null;
         currentChannel = 'web';
         currentTabId = 'home'; // New chat starts from home
+        clearCurrentTab();
         lastAssistantMessageId = null;
         clearSessionFeedbackTimer();
+        clearAttachments();
 
         // Clear messages and show home
         clearChatMessages();
@@ -3374,7 +3676,9 @@
         addieHomeContent.innerHTML = '';
 
         try {
-          const response = await authFetch('/api/me/addie-home?format=html');
+          const selectedOrgId = getSelectedOrganizationId();
+          const orgParam = selectedOrgId ? `&org=${encodeURIComponent(selectedOrgId)}` : '';
+          const response = await authFetch(`/api/me/addie-home?format=html${orgParam}`);
           if (!response.ok) {
             throw new Error('Failed to load home content');
           }
@@ -3509,7 +3813,192 @@
       // Update send button state
       function updateSendButton() {
         const hasText = chatInput.value.trim().length > 0;
-        sendButton.disabled = !hasText || isLoading || !isReady;
+        const hasAttachments = pendingAttachments.length > 0;
+        sendButton.disabled = (!hasText && !hasAttachments) || pendingAttachmentReads > 0 || isLoading || !isReady || isReadOnly;
+      }
+
+      function getAttachmentKind(file) {
+        if (!file || !ALLOWED_ATTACHMENT_TYPES.has(file.type)) return null;
+        return file.type === 'application/pdf' ? 'document' : 'image';
+      }
+
+      function formatBytes(bytes) {
+        if (bytes < 1024 * 1024) return Math.ceil(bytes / 1024) + 'KB';
+        return (bytes / 1024 / 1024).toFixed(bytes % (1024 * 1024) === 0 ? 0 : 1) + 'MB';
+      }
+
+      function readFileAsBase64(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = typeof reader.result === 'string' ? reader.result : '';
+            const comma = result.indexOf(',');
+            resolve(comma >= 0 ? result.slice(comma + 1) : result);
+          };
+          reader.onerror = () => reject(reader.error || new Error('Could not read file'));
+          reader.readAsDataURL(file);
+        });
+      }
+
+      async function addAttachmentFiles(fileList) {
+        if (isReadOnly) return;
+        const files = Array.from(fileList || []);
+        if (files.length === 0) return;
+
+        const generation = attachmentGeneration;
+        pendingAttachmentReads++;
+        updateSendButton();
+        try {
+          for (const file of files) {
+            if (generation !== attachmentGeneration || isReadOnly) break;
+            const kind = getAttachmentKind(file);
+            if (!kind) {
+              showError('Unsupported file type. Use PNG, JPEG, GIF, WebP, or PDF.');
+              continue;
+            }
+            if (file.size > ATTACHMENT_MAX_BYTES) {
+              showError(`"${file.name}" is too large. Files must be under 5MB.`);
+              continue;
+            }
+            if (pendingAttachments.length >= ATTACHMENT_MAX_COUNT) {
+              showError(`Attach up to ${ATTACHMENT_MAX_COUNT} files per message.`);
+              break;
+            }
+            const totalBytes = pendingAttachments.reduce((sum, item) => sum + item.size, 0) + file.size;
+            if (totalBytes > ATTACHMENT_MAX_TOTAL_BYTES) {
+              showError('Attachments must total under 6MB.');
+              continue;
+            }
+
+            try {
+              const data = await readFileAsBase64(file);
+              if (generation !== attachmentGeneration || isReadOnly) break;
+              pendingAttachments.push({
+                id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                kind,
+                mediaType: file.type,
+                name: file.name || (kind === 'document' ? 'document.pdf' : 'image'),
+                size: file.size,
+                data,
+                previewUrl: kind === 'image' ? URL.createObjectURL(file) : null,
+              });
+            } catch {
+              showError(`Could not read "${file.name}".`);
+            }
+          }
+        } finally {
+          if (generation === attachmentGeneration) {
+            pendingAttachmentReads--;
+            renderAttachmentTray();
+            updateSendButton();
+          }
+        }
+      }
+
+      function removeAttachment(id) {
+        const attachment = pendingAttachments.find(item => item.id === id);
+        if (attachment?.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+        pendingAttachments = pendingAttachments.filter(item => item.id !== id);
+        renderAttachmentTray();
+        updateSendButton();
+      }
+
+      function clearAttachments() {
+        attachmentGeneration++;
+        pendingAttachmentReads = 0;
+        pendingAttachments.forEach(item => {
+          if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+        });
+        pendingAttachments = [];
+        renderAttachmentTray();
+        updateSendButton();
+      }
+
+      function renderAttachmentTray() {
+        attachmentTray.innerHTML = '';
+        attachmentTray.classList.toggle('visible', pendingAttachments.length > 0);
+
+        pendingAttachments.forEach((attachment) => {
+          const chip = document.createElement('div');
+          chip.className = 'attachment-chip';
+
+          if (attachment.previewUrl) {
+            const image = document.createElement('img');
+            image.className = 'attachment-chip-preview';
+            image.src = attachment.previewUrl;
+            image.alt = '';
+            chip.appendChild(image);
+          } else {
+            const preview = document.createElement('div');
+            preview.className = 'attachment-chip-preview';
+            preview.textContent = 'PDF';
+            chip.appendChild(preview);
+          }
+
+          const name = document.createElement('span');
+          name.className = 'attachment-chip-name';
+          name.textContent = `${attachment.name} (${formatBytes(attachment.size)})`;
+          chip.appendChild(name);
+
+          const remove = document.createElement('button');
+          remove.className = 'attachment-chip-remove';
+          remove.type = 'button';
+          remove.title = 'Remove attachment';
+          remove.setAttribute('aria-label', `Remove ${attachment.name}`);
+          remove.textContent = '×';
+          remove.addEventListener('click', () => removeAttachment(attachment.id));
+          chip.appendChild(remove);
+
+          attachmentTray.appendChild(chip);
+        });
+      }
+
+      function attachmentSummary(attachments) {
+        if (attachments.length === 0) return '';
+        return `${attachments.length} attachment${attachments.length === 1 ? '' : 's'}`;
+      }
+
+      function buildAttachmentPayload(attachments) {
+        return attachments.map((attachment) => ({
+          type: attachment.kind,
+          media_type: attachment.mediaType,
+          filename: attachment.name,
+          size_bytes: attachment.size,
+          data: attachment.data,
+        }));
+      }
+
+      function renderMessageAttachments(attachments) {
+        if (!attachments || attachments.length === 0) return null;
+        const container = document.createElement('div');
+        container.className = 'message-attachments';
+
+        attachments.forEach((attachment) => {
+          const item = document.createElement('div');
+          item.className = 'message-attachment';
+
+          if (attachment.previewUrl) {
+            const image = document.createElement('img');
+            image.src = attachment.previewUrl;
+            image.alt = attachment.name;
+            const revokePreviewUrl = () => URL.revokeObjectURL(attachment.previewUrl);
+            image.addEventListener('load', revokePreviewUrl, { once: true });
+            image.addEventListener('error', revokePreviewUrl, { once: true });
+            item.appendChild(image);
+          } else {
+            const preview = document.createElement('div');
+            preview.className = 'attachment-chip-preview';
+            preview.textContent = 'PDF';
+            item.appendChild(preview);
+          }
+
+          const label = document.createElement('span');
+          label.textContent = attachment.name;
+          item.appendChild(label);
+          container.appendChild(item);
+        });
+
+        return container;
       }
 
       // Track member card clicks for analytics
@@ -3597,20 +4086,50 @@
         return `<div class="member-cards-container">${cards}</div>`;
       }
 
-      // Render markdown using marked library
-      function renderMessage(text) {
-        // Configure marked for security and compatibility
-        marked.setOptions({
-          breaks: true, // Convert \n to <br>
-          gfm: true, // GitHub flavored markdown
-        });
-
-        // Helper to escape HTML attribute values
+      // Shared renderer factory — opens external links in a new tab (chat is an SPA;
+      // navigating away loses context). Used by both the main chat and SI modal paths.
+      function createAdcpMarkdownRenderer() {
         const escapeAttr = (str) => str
           .replace(/&/g, '&amp;')
           .replace(/"/g, '&quot;')
           .replace(/</g, '&lt;')
           .replace(/>/g, '&gt;');
+
+        const renderer = new marked.Renderer();
+        renderer.link = function(href, title, text) {
+          // Handle marked v17+ which passes an object
+          if (href !== null && typeof href === 'object') {
+            const link = href;
+            href = link.href;
+            title = link.title;
+            text = link.text;
+          }
+          const safeHref = /^(https?:\/\/|mailto:|#|\/)/i.test(href) ? href : '#';
+          const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
+          const isAnchor = /^#/.test(href);
+          const targetAttr = !isAnchor ? ' target="_blank" rel="noopener noreferrer"' : '';
+          return `<a href="${escapeAttr(safeHref)}"${titleAttr}${targetAttr}>${text}</a>`;
+        };
+        renderer.image = function(href, title, text) {
+          // Handle marked v17+ which passes an object
+          if (href !== null && typeof href === 'object') {
+            const img = href;
+            href = img.href;
+            title = img.title;
+            text = img.text;
+          }
+          const safeHref = /^(https?:\/\/|data:image\/)/i.test(href) ? escapeAttr(href) : '';
+          if (!safeHref) return '';
+          const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
+          const altAttr = text ? ` alt="${escapeAttr(text)}"` : ' alt="Image"';
+          return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer" class="chat-image-wrap"><img src="${safeHref}"${altAttr}${titleAttr} loading="lazy"></a>`;
+        };
+        return renderer;
+      }
+
+      // Render markdown using marked library
+      function renderMessage(text) {
+        marked.setOptions({ breaks: true, gfm: true });
 
         // Check for embedded ADDIE_DATA blocks and extract them
         const dataBlockRegex = /<!--ADDIE_DATA:([\s\S]*?):ADDIE_DATA-->/g;
@@ -3627,44 +4146,7 @@
           }
         });
 
-        // Use marked's built-in renderer with custom link and image handling
-        const renderer = new marked.Renderer();
-        renderer.link = function(href, title, text) {
-          // Handle marked v17+ which passes an object
-          if (typeof href === 'object') {
-            const link = href;
-            href = link.href;
-            title = link.title;
-            text = link.text;
-          }
-          // Validate URL scheme - only allow safe protocols
-          const safeHref = /^(https?:\/\/|mailto:|#|\/)/i.test(href) ? href : '#';
-          const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
-          // Open all navigable links in new tab — chat is an SPA, navigating away loses context
-          const isAnchor = /^#/.test(href);
-          const targetAttr = !isAnchor ? ' target="_blank" rel="noopener noreferrer"' : '';
-          return `<a href="${escapeAttr(safeHref)}"${titleAttr}${targetAttr}>${text}</a>`;
-        };
-
-        // Custom image renderer
-        renderer.image = function(href, title, text) {
-          // Handle marked v17+ which passes an object
-          if (typeof href === 'object') {
-            const img = href;
-            href = img.href;
-            title = img.title;
-            text = img.text;
-          }
-          // Validate URL scheme - only allow safe protocols
-          const safeHref = /^(https?:\/\/|data:image\/)/i.test(href) ? escapeAttr(href) : '';
-          if (!safeHref) return '';
-          const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
-          const altAttr = text ? ` alt="${escapeAttr(text)}"` : ' alt="Image"';
-          // Wrap in container to reserve space and prevent layout shift while loading
-          return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer" class="chat-image-wrap"><img src="${safeHref}"${altAttr}${titleAttr} loading="lazy"></a>`;
-        };
-
-        let html = DOMPurify.sanitize(marked.parse(processedText, { renderer }));
+        let html = DOMPurify.sanitize(marked.parse(processedText, { renderer: createAdcpMarkdownRenderer() }));
 
         // Replace placeholders with rendered components
         dataBlocks.forEach((data, index) => {
@@ -3730,7 +4212,7 @@
       }
 
       // Add message to chat
-      function addMessage(content, role, messageId = null) {
+      function addMessage(content, role, messageId = null, attachments = []) {
         // Switch to conversation mode
         const chatContainer = document.getElementById('chatContainer');
         if (chatContainer) chatContainer.classList.add('has-messages');
@@ -3754,13 +4236,20 @@
         const contentDiv = document.createElement('div');
         contentDiv.className = 'message-content';
         contentDiv.dir = 'auto';
-        contentDiv.innerHTML = renderMessage(content);
+        contentDiv.innerHTML = content ? renderMessage(content) : '';
         setupChatImages(contentDiv);
+        const attachmentsEl = renderMessageAttachments(attachments);
+        if (attachmentsEl) contentDiv.appendChild(attachmentsEl);
 
         // Add feedback controls for assistant messages
         if (role === 'assistant' && messageId) {
-          const feedbackDiv = createFeedbackUI(messageId);
+          const feedbackDiv = createFeedbackUI(messageId, content);
           contentDiv.appendChild(feedbackDiv);
+        } else if (role === 'user') {
+          const actionsDiv = document.createElement('div');
+          actionsDiv.className = 'user-copy-actions';
+          actionsDiv.appendChild(createCopyButton(content, 'Copy message'));
+          contentDiv.appendChild(actionsDiv);
         }
 
         messageDiv.appendChild(avatarDiv);
@@ -3773,8 +4262,54 @@
         return messageDiv;
       }
 
+      function fallbackCopy(text, btn) {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+          document.execCommand('copy');
+          btn.textContent = 'Copied!';
+          btn.classList.add('copied');
+          setTimeout(() => {
+            btn.textContent = 'Copy';
+            btn.classList.remove('copied');
+          }, 1500);
+        } catch (e) {
+          console.error('Copy to clipboard failed:', e);
+        } finally {
+          document.body.removeChild(textarea);
+        }
+      }
+
+      function createCopyButton(text, title) {
+        const copyBtn = document.createElement('button');
+        copyBtn.type = 'button';
+        copyBtn.className = 'copy-btn';
+        copyBtn.textContent = 'Copy';
+        copyBtn.title = title;
+        copyBtn.setAttribute('aria-label', title);
+        copyBtn.addEventListener('click', () => {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(() => {
+              copyBtn.textContent = 'Copied!';
+              copyBtn.classList.add('copied');
+              setTimeout(() => {
+                copyBtn.textContent = 'Copy';
+                copyBtn.classList.remove('copied');
+              }, 1500);
+            }).catch(() => fallbackCopy(text, copyBtn));
+          } else {
+            fallbackCopy(text, copyBtn);
+          }
+        });
+        return copyBtn;
+      }
+
       // Create feedback UI for a message
-      function createFeedbackUI(messageId) {
+      function createFeedbackUI(messageId, rawContent) {
         const container = document.createElement('div');
         container.className = 'message-feedback';
         container.innerHTML = `
@@ -3856,6 +4391,10 @@
           await submitFeedback(messageId, selectedRating || 3, category, Array.from(selectedTags), suggestion);
           showFeedbackSuccess(container);
         });
+
+        if (rawContent) {
+          container.appendChild(createCopyButton(rawContent, 'Copy response'));
+        }
 
         return container;
       }
@@ -4057,6 +4596,10 @@
                openBrackets === closeBrackets;
       }
 
+      function hasCodeFence(text) {
+        return text.includes('```');
+      }
+
       // Strip markdown markers for plain text display during streaming
       function stripMarkdownMarkers(text) {
         return text
@@ -4077,6 +4620,13 @@
       // Strategy: Split into paragraphs, render complete ones with balanced markdown,
       // show the incomplete trailing paragraph as plain text (with markers stripped)
       function appendToStreamingMessage(contentDiv, text, fullContent) {
+        if (hasCodeFence(fullContent)) {
+          contentDiv.innerHTML = renderMessage(fullContent) + '<span class="streaming-cursor">|</span>';
+          setupChatImages(contentDiv);
+          messagesContainer.scrollTop = messagesContainer.scrollHeight;
+          return;
+        }
+
         // Split on paragraph breaks (double newline)
         const paragraphs = fullContent.split(/\n\n/);
 
@@ -4134,7 +4684,7 @@
 
         // Add feedback controls
         if (messageId) {
-          const feedbackDiv = createFeedbackUI(messageId);
+          const feedbackDiv = createFeedbackUI(messageId, fullContent);
           contentDiv.appendChild(feedbackDiv);
         }
 
@@ -4235,7 +4785,8 @@
       // Send message with streaming
       async function sendMessage() {
         const message = chatInput.value.trim();
-        if (!message || isLoading || !isReady) {
+        const attachmentsToSend = pendingAttachments.slice();
+        if ((!message && attachmentsToSend.length === 0) || isLoading || !isReady || isReadOnly) {
           pendingMessageSource = null;
           return;
         }
@@ -4255,10 +4806,13 @@
         requestNotificationPermission();
 
         // Add user message
-        addMessage(message, 'user');
+        addMessage(message, 'user', null, attachmentsToSend);
 
         // Clear input
         chatInput.value = '';
+        pendingAttachments = [];
+        renderAttachmentTray();
+        updateSendButton();
         autoResize();
 
         // Track if this is a new conversation
@@ -4281,6 +4835,8 @@
               message,
               conversation_id: conversationId,
               message_source: messageSource,
+              organization_id: getSelectedOrganizationId(),
+              attachments: buildAttachmentPayload(attachmentsToSend),
             }),
           });
 
@@ -4311,6 +4867,8 @@
           let buffer = '';
           let currentEventType = '';
           let newConversationId = null;
+          let sawDone = false;
+          let streamFailure = null;
 
           // Helper to process SSE lines (uses closure for currentEventType)
           const processLines = (lines) => {
@@ -4336,9 +4894,11 @@
 
                   // For new conversations, add to active tabs and update currentTabId
                   if (isNewConversation && newConversationId) {
-                    const title = message.slice(0, 50) + (message.length > 50 ? '...' : '');
+                    const titleSource = message || attachmentSummary(attachmentsToSend);
+                    const title = titleSource.slice(0, 50) + (titleSource.length > 50 ? '...' : '');
                     addActiveTab(newConversationId, title, 'web');
                     currentTabId = newConversationId;
+                    saveCurrentTab(newConversationId);
                     homeTab.classList.remove('active');
 
                     // Mark as loading
@@ -4348,6 +4908,7 @@
                     updateTabState(conversationId, { isLoading: true });
                   }
                 } else if (currentEventType === 'done') {
+                  sawDone = true;
                   messageId = data.message_id;
                   conversationId = data.conversation_id;
 
@@ -4362,6 +4923,9 @@
                     console.log('SI agents available for CTA:', data.si_agents);
                     pendingSiAgents = data.si_agents;
                   }
+                } else if (currentEventType === 'stream_error') {
+                  streamFailure = data.reason || 'Reply interrupted';
+                  throw new Error(streamFailure);
                 } else if (currentEventType === 'error') {
                   throw new Error(data.error || 'Unknown error');
                 }
@@ -4392,6 +4956,10 @@
             buffer = lines.pop() || ''; // Keep incomplete line in buffer
 
             processLines(lines);
+          }
+
+          if (!sawDone) {
+            throw new Error(streamFailure || 'Reply did not complete');
           }
 
           // Finalize the message with feedback UI
@@ -4465,6 +5033,42 @@
         autoResize();
         updateSendButton();
         clearSessionFeedbackTimer(); // Reset idle timer when user types
+      });
+
+      attachmentButton.addEventListener('click', () => {
+        attachmentInput.click();
+      });
+
+      attachmentInput.addEventListener('change', () => {
+        addAttachmentFiles(attachmentInput.files);
+        attachmentInput.value = '';
+      });
+
+      chatInput.addEventListener('paste', (e) => {
+        const files = Array.from(e.clipboardData?.files || []);
+        if (files.some(file => getAttachmentKind(file))) {
+          e.preventDefault();
+          addAttachmentFiles(files);
+        }
+      });
+
+      ['dragenter', 'dragover'].forEach(eventName => {
+        document.addEventListener(eventName, (e) => {
+          if (Array.from(e.dataTransfer?.items || []).some(item => item.kind === 'file')) {
+            e.preventDefault();
+            document.getElementById('chatContainer')?.classList.add('drag-over');
+          }
+        });
+      });
+
+      ['dragleave', 'drop'].forEach(eventName => {
+        document.addEventListener(eventName, (e) => {
+          document.getElementById('chatContainer')?.classList.remove('drag-over');
+          if (eventName === 'drop' && e.dataTransfer?.files?.length) {
+            e.preventDefault();
+            addAttachmentFiles(e.dataTransfer.files);
+          }
+        });
       });
 
       chatInput.addEventListener('keydown', (e) => {
@@ -4738,7 +5342,7 @@
 
         // Parse markdown for assistant messages
         if (role === 'assistant' && window.marked) {
-          contentDiv.innerHTML = DOMPurify.sanitize(marked.parse(content || ''));
+          contentDiv.innerHTML = DOMPurify.sanitize(marked.parse(content || '', { breaks: true, gfm: true, renderer: createAdcpMarkdownRenderer() }));
         } else {
           contentDiv.textContent = content || '';
         }
@@ -5446,6 +6050,7 @@
           const reader = response.body.getReader();
           const decoder = new TextDecoder();
           let buffer = '';
+          const siStreamRenderer = window.marked ? createAdcpMarkdownRenderer() : null;
 
           while (true) {
             const { done, value } = await reader.read();
@@ -5465,8 +6070,8 @@
                   if (event.type === 'text') {
                     streamedText += event.text;
                     // Update content with markdown parsing
-                    if (window.marked) {
-                      contentDiv.innerHTML = DOMPurify.sanitize(marked.parse(streamedText));
+                    if (siStreamRenderer) {
+                      contentDiv.innerHTML = DOMPurify.sanitize(marked.parse(streamedText, { breaks: true, gfm: true, renderer: siStreamRenderer }));
                     } else {
                       contentDiv.textContent = streamedText;
                     }
@@ -5604,6 +6209,14 @@
       }
 
       function endVideoCall() {
+        // Best-effort: tell Tavus to release the session immediately so it
+        // doesn't hold a concurrent slot until the ~25min idle timeout.
+        if (videoConversationId) {
+          authFetch(`/api/addie/video/session/${encodeURIComponent(videoConversationId)}/end`, {
+            method: 'POST',
+          }).catch(() => {});
+        }
+
         videoCallActive = false;
         videoCallFrame.src = 'about:blank';
         videoPanel.classList.remove('active');

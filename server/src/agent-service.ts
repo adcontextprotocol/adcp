@@ -1,7 +1,5 @@
 import { MemberDatabase } from "./db/member-db.js";
-import { FederatedIndexDatabase, type DiscoveredAgent } from "./db/federated-index-db.js";
 import type { Agent, AgentType, AgentConfig, AgentVisibility, MemberProfile } from "./types.js";
-import { isValidAgentType } from "./types.js";
 
 export interface AgentListOptions {
   type?: AgentType;
@@ -13,22 +11,21 @@ export interface AgentListOptions {
 }
 
 /**
- * Service for accessing agents from member profiles and discovered agents
- * Merges registered agents (from member profiles) with discovered agents (from federated discovery)
+ * Service for accessing agents from member profiles.
+ *
+ * The registry contains only agents that AAO members have explicitly
+ * enrolled on their member profile. Agents found by the crawler in
+ * adagents.json but not enrolled by their owner are not surfaced here.
  */
 export class AgentService {
   private memberDb: MemberDatabase;
-  private federatedDb: FederatedIndexDatabase;
 
   constructor() {
     this.memberDb = new MemberDatabase();
-    this.federatedDb = new FederatedIndexDatabase();
   }
 
   /**
    * List agents visible to the requesting viewer, optionally filtered by type.
-   * Includes both registered agents (from member profiles) and discovered agents.
-   * Registered agents take precedence for deduplication.
    */
   async listAgents(typeOrOptions?: AgentType | AgentListOptions): Promise<Agent[]> {
     const options: AgentListOptions = typeof typeOrOptions === 'string' || typeOrOptions === undefined
@@ -36,39 +33,22 @@ export class AgentService {
       : typeOrOptions;
     const { type, viewerHasApiAccess = false } = options;
 
-    // API-access viewers can see members_only agents even on profiles that
-    // have opted out of the public directory — that's the entire Scope3
-    // use case. Public-only viewers are still scoped to public profiles.
-    const profiles = viewerHasApiAccess
-      ? await this.memberDb.listProfiles()
-      : await this.memberDb.listProfiles({ is_public: true });
+    // Walk every member profile. `member_profiles.is_public` is the
+    // member-directory gate, not an agent-visibility gate (legacy from
+    // before per-agent `visibility` existed). Per-agent `visibility` is
+    // the only gate for whether an agent is exposed.
+    const profiles = await this.memberDb.listProfiles();
     const agentsByUrl = new Map<string, Agent>();
 
-    // First, collect registered agents from member profiles
     for (const profile of profiles) {
       for (const agentConfig of profile.agents || []) {
         if (!this.isVisibleToViewer(agentConfig.visibility, viewerHasApiAccess)) continue;
-        // Public agents on a profile that opted out of the public directory
-        // remain only available to API-access viewers — there is no public
-        // surface to leak them to.
-        if (agentConfig.visibility === 'public' && !profile.is_public && !viewerHasApiAccess) continue;
 
         const agentType = agentConfig.type || "unknown";
         if (type && agentType !== type) continue;
 
         agentsByUrl.set(agentConfig.url, this.configToAgent(agentConfig, profile));
       }
-    }
-
-    // Then, add discovered agents (if not already registered)
-    const discoveredAgents = await this.federatedDb.getAllDiscoveredAgents(type);
-    for (const discovered of discoveredAgents) {
-      if (agentsByUrl.has(discovered.agent_url)) continue; // Skip if already registered
-
-      const agentType = isValidAgentType(discovered.agent_type) ? discovered.agent_type : "unknown";
-      if (type && agentType !== type) continue;
-
-      agentsByUrl.set(discovered.agent_url, this.discoveredToAgent(discovered));
     }
 
     return Array.from(agentsByUrl.values());
@@ -86,31 +66,19 @@ export class AgentService {
   }
 
   /**
-   * Get agent by URL
-   * Checks registered agents first, then discovered agents
+   * Get agent by URL.
    */
   async getAgentByUrl(url: string, options: { viewerHasApiAccess?: boolean } = {}): Promise<Agent | undefined> {
     const viewerHasApiAccess = options.viewerHasApiAccess ?? false;
-    // Mirror listAgents: API-access viewers can look up members_only agents
-    // on private profiles; unauth viewers stay scoped to public profiles.
-    const profiles = viewerHasApiAccess
-      ? await this.memberDb.listProfiles()
-      : await this.memberDb.listProfiles({ is_public: true });
+    // Mirror listAgents: per-agent `visibility` is the gate; the parent
+    // profile's `is_public` only controls the member-directory listing.
+    const profiles = await this.memberDb.listProfiles();
 
     for (const profile of profiles) {
       for (const agentConfig of profile.agents || []) {
         if (agentConfig.url !== url) continue;
         if (!this.isVisibleToViewer(agentConfig.visibility, viewerHasApiAccess)) continue;
-        if (agentConfig.visibility === 'public' && !profile.is_public && !viewerHasApiAccess) continue;
         return this.configToAgent(agentConfig, profile);
-      }
-    }
-
-    // Check discovered agents
-    const discoveredAgents = await this.federatedDb.getAllDiscoveredAgents();
-    for (const discovered of discoveredAgents) {
-      if (discovered.agent_url === url) {
-        return this.discoveredToAgent(discovered);
       }
     }
 
@@ -173,26 +141,8 @@ export class AgentService {
         website: profile.contact_website || "",
       },
       added_date: profile.created_at.toISOString().split("T")[0],
+      ...(config.health_check_url ? { health_check_url: config.health_check_url } : {}),
     };
   }
 
-  /**
-   * Convert DiscoveredAgent to Agent format
-   */
-  private discoveredToAgent(discovered: DiscoveredAgent): Agent {
-    return {
-      name: discovered.name || new URL(discovered.agent_url).hostname,
-      url: discovered.agent_url,
-      type: isValidAgentType(discovered.agent_type) ? discovered.agent_type : "unknown",
-      protocol: (discovered.protocol as "mcp" | "a2a") || "mcp",
-      description: `Discovered from ${discovered.source_domain}`,
-      mcp_endpoint: discovered.agent_url,
-      contact: {
-        name: discovered.source_domain,
-        email: "",
-        website: discovered.source_domain.startsWith("http") ? discovered.source_domain : `https://${discovered.source_domain}`,
-      },
-      added_date: discovered.discovered_at?.toISOString().split("T")[0] || new Date().toISOString().split("T")[0],
-    };
-  }
 }

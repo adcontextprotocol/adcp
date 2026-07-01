@@ -1,4 +1,5 @@
 import { query } from './client.js';
+import { canonicalizePublisherDomain } from '../services/publisher-domain.js';
 
 /**
  * Discovered agent from adagents.json or list_authorized_properties
@@ -14,6 +15,8 @@ export interface DiscoveredAgent {
   discovered_at?: Date;
   last_validated?: Date;
   expires_at?: Date;
+  probe_failure_count?: number;
+  next_probe_after?: Date;
 }
 
 /**
@@ -30,7 +33,21 @@ export interface DiscoveredPublisher {
 }
 
 /**
- * Agent-publisher authorization (from adagents.json or agent claims)
+ * Agent-publisher authorization.
+ *
+ * `source` distinguishes how strongly the row is attested:
+ *  - `adagents_json`: the publisher's origin actually serves a valid
+ *    adagents.json (either directly at /.well-known or via a stub with
+ *    `authoritative_location`). Origin-verified.
+ *  - `aao_hosted`: AAO is hosting the canonical document on the
+ *    publisher's behalf, but the publisher's origin has NOT been
+ *    verified to point at us yet. The hosted document represents the
+ *    publisher's intent; it does not yet carry the same trust weight as
+ *    an origin-verified row. Promotion to `adagents_json` requires a
+ *    successful round-trip fetch of the publisher's /.well-known.
+ *  - `agent_claim`: the agent claimed authorization via a
+ *    list_authorized_properties response; the publisher has not
+ *    confirmed it.
  */
 export interface AgentPublisherAuthorization {
   id?: string;
@@ -38,9 +55,29 @@ export interface AgentPublisherAuthorization {
   publisher_domain: string;
   authorized_for?: string;
   property_ids?: string[];
-  source: 'adagents_json' | 'agent_claim';
+  source: 'adagents_json' | 'aao_hosted' | 'agent_claim';
   discovered_at?: Date;
   last_validated?: Date;
+}
+
+/**
+ * Detailed agent → publisher row for the AAO directory inverse-lookup
+ * endpoint (adcp#4823). Layered on top of AgentPublisherAuthorization
+ * with provenance, per-publisher counts, and lifecycle status — all
+ * computed from the cached publishers.adagents_json blob.
+ */
+export interface AgentPublisherDetailRow {
+  publisher_domain: string;
+  source: 'adagents_json' | 'agent_claim';
+  authz_last_validated: Date | null;
+  publisher_last_validated: Date | null;
+  discovery_method: 'direct' | 'authoritative_location' | 'ads_txt_managerdomain' | 'adagents_authoritative' | 'community_catalog' | null;
+  manager_domain: string | null;
+  properties_total: number;
+  properties_authorized: number;
+  property_ids: string[] | null;
+  signing_keys_pinned: boolean;
+  status: 'authorized' | 'revoked';
 }
 
 /**
@@ -62,6 +99,7 @@ export interface DiscoveredProperty {
   name: string;
   identifiers: PropertyIdentifier[];
   tags?: string[];
+  source_type?: 'adagents_json' | 'aao_hosted' | 'community';
   discovered_at?: Date;
   last_validated?: Date;
   expires_at?: Date;
@@ -122,10 +160,11 @@ export class FederatedIndexDatabase {
            v.authorized_for,
            NULL::text[] AS property_ids,
            CASE v.evidence
-             WHEN 'adagents_json' THEN 'adagents_json'
-             WHEN 'agent_claim'   THEN 'agent_claim'
-             WHEN 'override'      THEN 'adagents_json'
-             WHEN 'community'     THEN 'agent_claim'
+             WHEN 'adagents_json'          THEN 'adagents_json'
+             WHEN 'agent_claim'            THEN 'agent_claim'
+             WHEN 'override'               THEN 'adagents_json'
+             WHEN 'community'              THEN 'agent_claim'
+             WHEN 'adagents_authoritative' THEN 'adagents_json'
            END AS source,
            v.created_at AS discovered_at,
            v.updated_at AS last_validated,
@@ -171,10 +210,11 @@ export class FederatedIndexDatabase {
            v.authorized_for,
            NULL::text[] AS property_ids,
            CASE v.evidence
-             WHEN 'adagents_json' THEN 'adagents_json'
-             WHEN 'agent_claim'   THEN 'agent_claim'
-             WHEN 'override'      THEN 'adagents_json'
-             WHEN 'community'     THEN 'agent_claim'
+             WHEN 'adagents_json'          THEN 'adagents_json'
+             WHEN 'agent_claim'            THEN 'agent_claim'
+             WHEN 'override'               THEN 'adagents_json'
+             WHEN 'community'              THEN 'agent_claim'
+             WHEN 'adagents_authoritative' THEN 'adagents_json'
            END AS source,
            v.created_at AS discovered_at,
            v.updated_at AS last_validated,
@@ -192,6 +232,169 @@ export class FederatedIndexDatabase {
        )
        SELECT * FROM deduped ORDER BY source, publisher_domain`,
       [agentUrl]
+    );
+    return result.rows;
+  }
+
+  /**
+   * Detailed publisher row for the AAO directory inverse-lookup endpoint
+   * (adcp#4823 / GET /v1/agents/{agent_url}/publishers). Layered on top of
+   * the existing publisher → agent authorization edge with provenance
+   * (discovery_method, manager_domain), per-publisher property counts,
+   * signing-key pin status, and revocation lifecycle.
+   *
+   * Computed at query time from the cached `publishers.adagents_json`
+   * JSONB blob — no per-row HTTP fetches. The endpoint is hot-path read
+   * for sync clients, so all derivations live in SQL.
+   */
+  async getPublishersForAgentDetail(
+    agentUrl: string,
+    opts: {
+      cursor?: string;
+      since?: Date;
+      includeRevoked?: boolean;
+      includePropertyIds?: boolean;
+      limit: number;
+    },
+  ): Promise<AgentPublisherDetailRow[]> {
+    const since = opts.since ?? null;
+    const cursor = opts.cursor ?? '';
+    const limit = opts.limit;
+    const includeRevoked = opts.includeRevoked ?? false;
+    const includePropertyIds = opts.includePropertyIds ?? false;
+
+    // Dual-read pattern matches getDomainsForAgent / getAgentsForDomain:
+    // UNION ALL with explicit src_priority (legacy=0 wins on collision) +
+    // DISTINCT ON ordered by (publisher_domain, src_priority,
+    // authz_last_validated DESC) so the surviving row is deterministic and
+    // freshest. Canonical form for the agent (LOWER+RTRIM(/)+BTRIM) mirrors
+    // the writer's canonicalizer in publisher-db.ts.
+    const result = await query<AgentPublisherDetailRow>(
+      `WITH authz_unioned AS (
+         SELECT publisher_domain, source, last_validated AS authz_last_validated, 0 AS src_priority
+           FROM agent_publisher_authorizations
+          WHERE agent_url = $1
+         UNION ALL
+         SELECT
+           v.publisher_domain,
+           CASE v.evidence
+             WHEN 'adagents_json'          THEN 'adagents_json'
+             WHEN 'agent_claim'            THEN 'agent_claim'
+             WHEN 'override'               THEN 'adagents_json'
+             WHEN 'community'              THEN 'agent_claim'
+             WHEN 'adagents_authoritative' THEN 'adagents_json'
+           END AS source,
+           v.updated_at AS authz_last_validated,
+           1 AS src_priority
+           FROM v_effective_agent_authorizations v
+          WHERE v.agent_url_canonical = CASE WHEN $1 = '*' THEN '*' ELSE LOWER(RTRIM(BTRIM($1), '/')) END
+            AND v.property_rid IS NULL
+            AND v.property_id_slug IS NULL
+       ), dedup AS (
+         SELECT DISTINCT ON (publisher_domain)
+                publisher_domain, source, authz_last_validated
+           FROM authz_unioned
+          ORDER BY publisher_domain, src_priority, authz_last_validated DESC NULLS LAST
+       ), enriched AS (
+         -- Walk the publishers.adagents_json blob ONCE per row to derive
+         -- signing_keys_pinned and is_revoked in a single CTE, then reuse
+         -- both in the SELECT and WHERE. Avoids triple-walking the JSONB
+         -- (signing_keys_pinned + status CASE + WHERE NOT EXISTS) per row,
+         -- which dominates the query plan at managed-network fan-outs.
+         --
+         -- For fan-out children (publishers.adagents_json IS NULL, with
+         -- manager_domain set), revocation must consult the MANAGER's
+         -- blob — that's where revoked_publisher_domains[] lives for a
+         -- managed-network parent file. Without the manager-side check
+         -- the spec's "Revocation under inline resolution" rule (adagents
+         -- .mdx §Resolution paths) is unenforceable for the canonical
+         -- cafemedia case.
+         SELECT
+           d.publisher_domain,
+           d.source,
+           d.authz_last_validated,
+           pub.last_validated AS publisher_last_validated,
+           pub.discovery_method,
+           pub.manager_domain,
+           COALESCE((
+             SELECT bool_or(
+               jsonb_typeof(agent->'signing_keys') = 'array'
+               AND jsonb_array_length(agent->'signing_keys') > 0
+             )
+               FROM jsonb_array_elements(
+                 COALESCE(pub.adagents_json->'authorized_agents', '[]'::jsonb)
+               ) AS agent
+              WHERE LOWER(RTRIM(BTRIM(agent->>'url'), '/'))
+                  = CASE WHEN $1 = '*' THEN '*' ELSE LOWER(RTRIM(BTRIM($1), '/')) END
+           ), false) AS signing_keys_pinned,
+           (
+             EXISTS (
+               SELECT 1
+                 FROM jsonb_array_elements(
+                   COALESCE(pub.adagents_json->'revoked_publisher_domains', '[]'::jsonb)
+                 ) AS rpd
+                WHERE rpd->>'publisher_domain' = d.publisher_domain
+             )
+             OR EXISTS (
+               SELECT 1
+                 FROM jsonb_array_elements(
+                   COALESCE(mgr.adagents_json->'revoked_publisher_domains', '[]'::jsonb)
+                 ) AS rpd
+                WHERE rpd->>'publisher_domain' = d.publisher_domain
+             )
+           ) AS is_revoked
+         FROM dedup d
+         LEFT JOIN publishers pub ON pub.domain = d.publisher_domain
+         LEFT JOIN publishers mgr ON mgr.domain = pub.manager_domain
+       )
+       SELECT
+         e.publisher_domain,
+         e.source,
+         e.authz_last_validated,
+         e.publisher_last_validated,
+         e.discovery_method,
+         e.manager_domain,
+         -- properties_total: count of properties under THIS publisher_domain
+         -- in discovered_properties. Per-publisher scope; never network-wide.
+         COALESCE((
+           SELECT COUNT(*)::int
+             FROM discovered_properties dp
+            WHERE dp.publisher_domain = e.publisher_domain
+         ), 0) AS properties_total,
+         -- properties_authorized: count of canonical property_id strings under
+         -- THIS publisher_domain the agent is authorized for. Filtered to
+         -- dp.property_id IS NOT NULL so this count is symmetric with the
+         -- property_ids ARRAY_AGG below (MUST len(property_ids) ==
+         -- properties_authorized per spec).
+         COALESCE((
+           SELECT COUNT(DISTINCT dp.property_id)::int
+             FROM agent_property_authorizations apa
+             JOIN discovered_properties dp ON dp.id = apa.property_id
+            WHERE apa.agent_url = $1
+              AND dp.publisher_domain = e.publisher_domain
+              AND dp.property_id IS NOT NULL
+         ), 0) AS properties_authorized,
+         -- property_ids: resolved property_id strings, present only when
+         -- ?include=properties was requested ($6=true). CASE WHEN short-circuits
+         -- the subquery when false, so there is no cost on default calls.
+         -- Only properties with a non-null property_id are included.
+         CASE WHEN $6::boolean THEN (
+           SELECT ARRAY_AGG(DISTINCT dp.property_id ORDER BY dp.property_id)
+             FROM agent_property_authorizations apa
+             JOIN discovered_properties dp ON dp.id = apa.property_id
+            WHERE apa.agent_url = $1
+              AND dp.publisher_domain = e.publisher_domain
+              AND dp.property_id IS NOT NULL
+         ) ELSE NULL END AS property_ids,
+         e.signing_keys_pinned,
+         CASE WHEN e.is_revoked THEN 'revoked' ELSE 'authorized' END AS status
+       FROM enriched e
+       WHERE e.publisher_domain > $2
+         AND ($3::timestamptz IS NULL OR COALESCE(e.publisher_last_validated, e.authz_last_validated) >= $3)
+         AND ($4::boolean OR NOT e.is_revoked)
+       ORDER BY e.publisher_domain
+       LIMIT $5`,
+      [agentUrl, cursor, since, includeRevoked, limit, includePropertyIds],
     );
     return result.rows;
   }
@@ -258,10 +461,11 @@ export class FederatedIndexDatabase {
              v.authorized_for,
              NULL::text[] AS property_ids,
              CASE v.evidence
-               WHEN 'adagents_json' THEN 'adagents_json'
-               WHEN 'agent_claim'   THEN 'agent_claim'
-               WHEN 'override'      THEN 'adagents_json'
-               WHEN 'community'     THEN 'agent_claim'
+               WHEN 'adagents_json'          THEN 'adagents_json'
+               WHEN 'agent_claim'            THEN 'agent_claim'
+               WHEN 'override'               THEN 'adagents_json'
+               WHEN 'community'              THEN 'agent_claim'
+               WHEN 'adagents_authoritative' THEN 'adagents_json'
              END AS source,
              v.created_at AS discovered_at,
              v.updated_at AS last_validated,
@@ -298,18 +502,30 @@ export class FederatedIndexDatabase {
    * Reads from both the catalog-side `publishers` overlay (PR 1 of #3177)
    * and the legacy `discovered_publishers` table during the dual-write
    * window. A presence in `publishers` with `source_type='adagents_json'`
-   * means the crawler successfully validated and cached the file — that
-   * always wins. Otherwise fall back to bool_or over discovered_publishers
-   * so the historical three-state contract (true / false / null) is
-   * preserved when only the legacy path has data.
+   * means the crawler successfully validated and cached the publisher-origin
+   * file. Community catalog rows are intentionally excluded here: they are
+   * valid registry documents, but not origin validation, and must not suppress
+   * crawl-on-view or turn hosting.mode into `self`.
    */
   async hasValidAdagents(domain: string): Promise<boolean | null> {
-    const result = await query<{ catalog_present: boolean; legacy_or: boolean | null }>(
+    const result = await query<{ catalog_present: boolean; catalog_invalid: boolean; legacy_or: boolean | null }>(
       `SELECT
          EXISTS(
            SELECT 1 FROM publishers
-            WHERE domain = $1 AND source_type = 'adagents_json'
+            WHERE domain = $1
+              AND adagents_json IS NOT NULL
+              AND source_type = 'adagents_json'
+              AND review_status = 'approved'
          ) AS catalog_present,
+         EXISTS(
+           SELECT 1 FROM publishers
+            WHERE domain = $1
+              AND source_type <> 'adagents_json'
+              AND (
+                last_validation_error IS NOT NULL
+                OR last_validation_issues IS NOT NULL
+              )
+         ) AS catalog_invalid,
          (SELECT bool_or(has_valid_adagents)
             FROM discovered_publishers
            WHERE domain = $1) AS legacy_or`,
@@ -318,8 +534,19 @@ export class FederatedIndexDatabase {
     const row = result.rows[0];
     if (!row) return null;
     if (row.catalog_present) return true;
+    if (row.catalog_invalid) return false;
     if (row.legacy_or === null) return null;
     return row.legacy_or;
+  }
+
+  async markPublisherHasInvalidAdagents(domain: string): Promise<void> {
+    await query(
+      `UPDATE discovered_publishers
+          SET has_valid_adagents = FALSE,
+              last_validated = NOW()
+        WHERE domain = $1`,
+      [domain],
+    );
   }
 
   /**
@@ -374,7 +601,8 @@ export class FederatedIndexDatabase {
   async getAllDiscoveredAgents(agentType?: string): Promise<DiscoveredAgent[]> {
     let sql = `
       SELECT id, agent_url, source_type, source_domain, name, agent_type, protocol,
-             discovered_at, last_validated, expires_at
+             discovered_at, last_validated, expires_at,
+             probe_failure_count, next_probe_after
       FROM discovered_agents
     `;
     const params: unknown[] = [];
@@ -416,6 +644,52 @@ export class FederatedIndexDatabase {
   // ============================================
   // CRUD Operations (for crawler)
   // ============================================
+
+  /**
+   * Hard-delete legacy adagents_json authorization rows for a
+   * publisher whose canonical agent_url is no longer in the latest
+   * crawled manifest. Called once per domain after the per-agent
+   * upsert loop. agent_claim rows are untouched (they belong to a
+   * different publisher's discovery flow).
+   *
+   * `currentAgentUrls` is the canonical-form list — already trimmed,
+   * lowercased, and stripped of trailing slashes. The DELETE
+   * canonicalizes the stored agent_url with the same shape so a
+   * historical non-canonical row still matches.
+   */
+  async reconcileAdagentsAuthorizations(
+    publisherDomain: string,
+    currentAgentUrls: string[],
+  ): Promise<void> {
+    // Canonicalize both sides in SQL so a caller that forgets to
+    // canonicalize doesn't silently nuke every adagents_json row for
+    // the publisher. The stored side mirrors the writer's canonical
+    // form (lowercase, no trailing slash, '*' literal preserved); the
+    // input side runs the same shape.
+    //
+    // Cross-publisher safety: the DELETE is scoped by `publisher_domain`
+    // and `source='adagents_json'`. A NULL agent_url in any row would
+    // make the CASE expression NULL, the IN comparison NULL, and
+    // `NOT NULL` NULL — Postgres treats NULL as not-true so the row
+    // is preserved (fail-safe). The agent_url column is NOT NULL by
+    // schema (migration 025) so this is theoretical, but the canonical
+    // SQL pattern doesn't rely on the schema invariant.
+    await query(
+      `DELETE FROM agent_publisher_authorizations
+        WHERE publisher_domain = $1
+          AND source = 'adagents_json'
+          AND NOT (
+            CASE WHEN agent_url = '*' THEN '*'
+                 ELSE LOWER(RTRIM(BTRIM(agent_url), '/')) END
+            IN (
+              SELECT CASE WHEN u = '*' THEN '*'
+                          ELSE LOWER(RTRIM(BTRIM(u), '/')) END
+                FROM unnest($2::text[]) AS u
+            )
+          )`,
+      [publisherDomain, currentAgentUrls],
+    );
+  }
 
   /**
    * Upsert a discovered agent
@@ -513,6 +787,76 @@ export class FederatedIndexDatabase {
   }
 
   /**
+   * Register an agent discovered via publisher_properties as a sales_candidate.
+   * Only writes sales_candidate when the existing agent_type is NULL or 'unknown' —
+   * never downgrades a confirmed type (sales, creative, signals, buyer).
+   */
+  async upsertSalesCandidate(agentUrl: string, sourceDomain: string): Promise<void> {
+    await query(
+      `INSERT INTO discovered_agents (agent_url, source_type, source_domain, agent_type)
+       VALUES ($1, 'adagents_json', $2, 'sales_candidate')
+       ON CONFLICT (agent_url) DO UPDATE SET
+         agent_type = CASE
+           WHEN discovered_agents.agent_type IS NULL OR discovered_agents.agent_type = 'unknown'
+           THEN 'sales_candidate'
+           ELSE discovered_agents.agent_type
+         END,
+         last_validated = NOW()`,
+      [agentUrl, sourceDomain]
+    );
+  }
+
+  /**
+   * Return sales_candidate agents that are due for probing (backoff window has expired).
+   */
+  async getSalesCandidatesForProbe(): Promise<DiscoveredAgent[]> {
+    const result = await query<DiscoveredAgent>(
+      `SELECT id, agent_url, source_type, source_domain, name, agent_type, protocol,
+              discovered_at, last_validated, expires_at,
+              probe_failure_count, next_probe_after
+       FROM discovered_agents
+       WHERE agent_type = 'sales_candidate'
+         AND (next_probe_after IS NULL OR next_probe_after <= NOW())`,
+      []
+    );
+    return result.rows;
+  }
+
+  /**
+   * Promote a sales_candidate to a confirmed sales agent and reset backoff.
+   */
+  async promoteSalesCandidateToSales(agentUrl: string): Promise<void> {
+    await query(
+      `UPDATE discovered_agents
+       SET agent_type = 'sales',
+           probe_failure_count = 0,
+           next_probe_after = NULL,
+           last_validated = NOW()
+       WHERE agent_url = $1 AND agent_type = 'sales_candidate'`,
+      [agentUrl]
+    );
+  }
+
+  /**
+   * Record a failed probe for a sales_candidate and advance the backoff window.
+   * Schedule: first failure → 1 day, 1–2 failures → 7 days, 3+ → 30 days.
+   */
+  async recordSalesCandidateProbeFailure(agentUrl: string): Promise<void> {
+    await query(
+      `UPDATE discovered_agents
+       SET probe_failure_count = probe_failure_count + 1,
+           next_probe_after = NOW() + CASE
+             WHEN probe_failure_count = 0 THEN INTERVAL '1 day'
+             WHEN probe_failure_count < 3  THEN INTERVAL '7 days'
+             ELSE INTERVAL '30 days'
+           END,
+           last_validated = NOW()
+       WHERE agent_url = $1 AND agent_type = 'sales_candidate'`,
+      [agentUrl]
+    );
+  }
+
+  /**
    * Mark publisher as having valid adagents.json
    */
   async markPublisherHasValidAdagents(domain: string): Promise<void> {
@@ -534,8 +878,8 @@ export class FederatedIndexDatabase {
   async upsertProperty(property: DiscoveredProperty): Promise<DiscoveredProperty> {
     const result = await query<DiscoveredProperty>(
       `INSERT INTO discovered_properties (
-         property_id, publisher_domain, property_type, name, identifiers, tags, expires_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+         property_id, publisher_domain, property_type, name, identifiers, tags, source_type, expires_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (publisher_domain, name, property_type) DO UPDATE SET
          property_id = COALESCE(EXCLUDED.property_id, discovered_properties.property_id),
          identifiers = EXCLUDED.identifiers,
@@ -550,6 +894,7 @@ export class FederatedIndexDatabase {
         property.name,
         JSON.stringify(property.identifiers),
         property.tags || [],
+        property.source_type || 'adagents_json',
         property.expires_at || null,
       ]
     );
@@ -639,6 +984,16 @@ export class FederatedIndexDatabase {
             AND prop->>'property_id' = cp.property_id
             AND prop->>'name' IS NOT NULL
             AND prop->>'property_type' IS NOT NULL
+            AND LOWER(REGEXP_REPLACE(
+                  REGEXP_REPLACE(
+                    BTRIM(COALESCE(NULLIF(prop->>'publisher_domain', ''), pub.domain)),
+                    '^https?://',
+                    '',
+                    'i'
+                  ),
+                  '[./]+$',
+                  ''
+                )) = pub.domain
        ), deduped AS (
          SELECT DISTINCT ON (publisher_domain, name, property_type)
                 id, property_id, publisher_domain, property_type, name,
@@ -665,11 +1020,17 @@ export class FederatedIndexDatabase {
    * removed and the query collapses to catalog-only.
    */
   async getPropertiesForDomain(domain: string): Promise<DiscoveredProperty[]> {
+    const canonicalDomain = canonicalizePublisherDomain(domain);
     const result = await query<DiscoveredProperty>(
       `WITH unioned AS (
          SELECT id, property_id, publisher_domain, property_type, name,
                 identifiers, tags, discovered_at, last_validated, expires_at,
-                0 AS src_priority
+                source_type,
+                CASE
+                  WHEN source_type IN ('adagents_json', 'aao_hosted') THEN 0
+                  WHEN source_type = 'community' THEN 2
+                  ELSE 3
+                END AS src_priority
            FROM discovered_properties
           WHERE publisher_domain = $1
          UNION ALL
@@ -693,7 +1054,14 @@ export class FederatedIndexDatabase {
            cp.created_at AS discovered_at,
            p.last_validated AS last_validated,
            p.expires_at AS expires_at,
-           1 AS src_priority
+           CASE
+             WHEN p.source_type = 'community' THEN 'community'
+             ELSE 'adagents_json'
+           END AS source_type,
+           CASE
+             WHEN p.source_type = 'community' THEN 2
+             ELSE 0
+           END AS src_priority
            FROM publishers p
           CROSS JOIN LATERAL jsonb_array_elements(
             CASE WHEN jsonb_typeof(p.adagents_json->'properties') = 'array'
@@ -702,20 +1070,38 @@ export class FederatedIndexDatabase {
           ) AS prop
            LEFT JOIN catalog_properties cp
                   ON cp.property_id = prop->>'property_id'
-                 AND cp.created_by = 'adagents_json:' || p.domain
+                 AND cp.created_by = CASE
+                   WHEN p.source_type = 'community'
+                    AND p.discovery_method = 'community_catalog'
+                    AND p.created_by_user_id IS NOT NULL
+                   THEN p.created_by_user_id
+                   ELSE 'adagents_json:' || p.domain
+                 END
           WHERE p.domain = $1
-            AND p.source_type = 'adagents_json'
+            AND p.source_type IN ('adagents_json', 'community')
+            AND p.review_status = 'approved'
             AND prop->>'name' IS NOT NULL
             AND prop->>'property_type' IS NOT NULL
+            AND LOWER(REGEXP_REPLACE(
+                  REGEXP_REPLACE(
+                    BTRIM(COALESCE(NULLIF(prop->>'publisher_domain', ''), p.domain)),
+                    '^https?://',
+                    '',
+                    'i'
+                  ),
+                  '[./]+$',
+                  ''
+                )) = p.domain
        ), deduped AS (
          SELECT DISTINCT ON (publisher_domain, name, property_type)
                 id, property_id, publisher_domain, property_type, name,
-                identifiers, tags, discovered_at, last_validated, expires_at
+                identifiers, tags, discovered_at, last_validated, expires_at,
+                source_type
            FROM unioned
           ORDER BY publisher_domain, name, property_type, src_priority
        )
        SELECT * FROM deduped ORDER BY property_type, name`,
-      [domain]
+      [canonicalDomain]
     );
     return result.rows.map(row => this.deserializeProperty(row));
   }
@@ -1041,6 +1427,7 @@ export class FederatedIndexDatabase {
     agentUrl: string,
     publisherDomain: string
   ): Promise<'adagents_json' | 'agent_claim' | 'none'> {
+    const canonicalDomain = canonicalizePublisherDomain(publisherDomain);
     const authResult = await query<{ source: string }>(
       `WITH unioned AS (
          SELECT source, 0 AS src_priority
@@ -1049,10 +1436,11 @@ export class FederatedIndexDatabase {
          UNION ALL
          SELECT
            CASE v.evidence
-             WHEN 'adagents_json' THEN 'adagents_json'
-             WHEN 'agent_claim'   THEN 'agent_claim'
-             WHEN 'override'      THEN 'adagents_json'
-             WHEN 'community'     THEN 'agent_claim'
+             WHEN 'adagents_json'          THEN 'adagents_json'
+             WHEN 'agent_claim'            THEN 'agent_claim'
+             WHEN 'override'               THEN 'adagents_json'
+             WHEN 'community'              THEN 'agent_claim'
+             WHEN 'adagents_authoritative' THEN 'adagents_json'
            END AS source,
            1 AS src_priority
            FROM v_effective_agent_authorizations v
@@ -1065,7 +1453,7 @@ export class FederatedIndexDatabase {
         ORDER BY src_priority,
                  CASE source WHEN 'adagents_json' THEN 0 ELSE 1 END
         LIMIT 1`,
-      [agentUrl, publisherDomain]
+      [agentUrl, canonicalDomain]
     );
 
     if (authResult.rows.length === 0) return 'none';
@@ -1142,8 +1530,13 @@ export class FederatedIndexDatabase {
     publisherDomain: string
   ): Promise<DiscoveredProperty[]> {
     const all = await this.getPropertiesForAgent(agentUrl);
+    // Canonicalize both sides so a runtime query for `"https://cnn.com"` or
+    // `"cnn.com."` resolves a stored property whose `publisher_domain` was
+    // written as `"cnn.com"`. Read-side of the writer's canonicalization
+    // boundary; legacy rows may also carry non-canonical forms.
+    const target = canonicalizePublisherDomain(publisherDomain);
     return all
-      .filter((p) => p.publisher_domain === publisherDomain)
+      .filter((p) => canonicalizePublisherDomain(p.publisher_domain) === target)
       .sort((a, b) => a.property_type.localeCompare(b.property_type) || a.name.localeCompare(b.name));
   }
 

@@ -31,7 +31,7 @@ jobs:
     name: No duplicate migration numbers
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.0
         with:
           fetch-depth: 0
 
@@ -61,6 +61,19 @@ jobs:
             main_files=$(git ls-tree --name-only -r origin/main -- server/src/db/migrations/ \
               | sed 's|.*/||' \
               | grep '\.sql$' || true)
+
+            # If this ref intentionally deletes or renames a migration from
+            # current main, do not keep the old main filename in the stale-merge
+            # union. New files that appeared on main after a stale PR merge ref
+            # are still included because they are not deleted by this ref.
+            deleted_main_files=$(git diff --name-status origin/main...HEAD -- server/src/db/migrations/ \
+              | awk '$1 == "D" { print $2 } $1 ~ /^R/ { print $2 }' \
+              | sed 's|.*/||' || true)
+            if [ -n "$deleted_main_files" ]; then
+              main_files=$(comm -23 \
+                <(printf '%s\n' "$main_files" | sort -u) \
+                <(printf '%s\n' "$deleted_main_files" | sort -u))
+            fi
           fi
 
           # Union of both file lists, unique by full filename.

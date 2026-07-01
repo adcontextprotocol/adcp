@@ -70,8 +70,8 @@
       transition: var(--transition-all);
     }
     .source-filter-btn:hover {
-      background: var(--color-gray-50);
-      border-color: var(--color-gray-300);
+      background: var(--color-bg-subtle);
+      border-color: var(--color-border-strong);
     }
     .source-filter-btn.active {
       background: var(--color-brand);
@@ -110,11 +110,11 @@
       background: var(--color-primary-700);
     }
     .btn-secondary {
-      background: var(--color-gray-200);
+      background: var(--color-bg-button-secondary);
       color: var(--color-text-heading);
     }
     .btn-secondary:hover {
-      background: var(--color-gray-300);
+      background: var(--color-bg-button-secondary-hover);
     }
     .btn-sm {
       padding: var(--space-1_5) var(--space-3);
@@ -127,7 +127,7 @@
       border-collapse: collapse;
     }
     .domains-table th {
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       padding: var(--space-3);
       text-align: left;
       font-weight: var(--font-semibold);
@@ -141,7 +141,7 @@
       font-size: var(--text-sm);
     }
     .domains-table tr:hover {
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
     }
 
     /* Status badges */
@@ -223,7 +223,7 @@
           <p class="subtitle">Organizations mapped to the brand registry for hierarchy and membership inheritance.</p>
 
           <div style="display: flex; gap: var(--space-4); margin-bottom: var(--space-4);">
-            <div style="flex: 1; padding: var(--space-4); border-radius: var(--radius-md); background: var(--color-gray-50); text-align: center;">
+            <div style="flex: 1; padding: var(--space-4); border-radius: var(--radius-md); background: var(--color-bg-subtle); text-align: center;">
               <div style="font-size: var(--text-2xl); font-weight: 600; color: var(--color-text-heading);" id="stat-total">-</div>
               <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">With domain</div>
             </div>
@@ -595,7 +595,7 @@
           const e = enrichment.enrichment;
           const parts = [];
           if (e.companyName) parts.push(`<strong>${e.companyName}</strong>`);
-          if (e.industry) parts.push(`<span class="source-badge" style="background: var(--color-gray-100); color: var(--color-text-secondary);">${e.industry}</span>`);
+          if (e.industry) parts.push(`<span class="source-badge" style="background: var(--color-bg-subtle); color: var(--color-text-secondary);">${e.industry}</span>`);
           if (e.employeeCountRange || e.employeeCount) parts.push(`${e.employeeCountRange || e.employeeCount + ' employees'}`);
           if (e.revenueRange) parts.push(`${e.revenueRange}`);
           if (enrichment.suggested?.companyType) {

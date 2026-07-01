@@ -27,6 +27,9 @@ export type IssueChallengeResult =
       verification_strategy: string | null;
       verification_token: string | null;
       verification_prefix: string | null;
+      dns_record_name: string;
+      dns_record_type: 'TXT';
+      dns_record_value: string | null;
       already_verified: boolean;
       // True when a brand row exists for this domain with an orphaned manifest
       // (a prior owner relinquished). Tells callers whether to surface the
@@ -35,7 +38,11 @@ export type IssueChallengeResult =
     }
   | { ok: false; code: 'invalid_domain'; message: string }
   | { ok: false; code: 'collision'; message: string }
-  | { ok: false; code: 'workos_error'; message: string };
+  | { ok: false; code: 'workos_error'; message: string }
+  // Kept for API compatibility with older callers. Current WorkOS Domain
+  // Verification may return no verification_prefix, which means the TXT
+  // record name is the domain apex itself.
+  | { ok: false; code: 'workos_misconfigured'; message: string };
 
 export type VerifyChallengeResult =
   | {
@@ -46,7 +53,7 @@ export type VerifyChallengeResult =
       brand: { brand_domain: string; domain_verified: boolean } | null;
     }
   | { ok: false; code: 'no_challenge'; message: string }
-  | { ok: false; code: 'still_pending'; message: string; state: string; retry_after_seconds?: number }
+  | { ok: false; code: 'still_pending'; message: string; state: string; retry_after_seconds?: number; dns_record_name?: string }
   | { ok: false; code: 'workos_error'; message: string };
 
 /**
@@ -59,6 +66,10 @@ export type VerifyChallengeResult =
 function isVerifiedState(state: unknown): boolean {
   const s = String(state);
   return s === 'verified' || s === 'legacy_verified';
+}
+
+function dnsRecordName(domain: string, verificationPrefix?: string | null): string {
+  return verificationPrefix ? `${verificationPrefix}.${domain}` : domain;
 }
 
 // In-process verify cooldown to stop autonomous LLM loops from polling. DNS
@@ -130,21 +141,44 @@ export async function issueDomainChallenge(input: {
   // Idempotent re-issue: if the domain is already attached to this org
   // (pending or verified), surface the existing challenge instead of
   // creating a new one. WorkOS would reject the duplicate create anyway.
+  //
+  // Broken state: WorkOS returned a pending domain with no verificationToken.
+  // Recoverable — delete and recreate produces a usable challenge. A missing
+  // verificationPrefix is valid; it means publish the TXT at the domain apex.
   try {
     const existing = await workos.organizations.getOrganization(orgId);
     const existingDomain = existing.domains.find(d => d.domain.toLowerCase() === domain);
     if (existingDomain) {
-      return {
-        ok: true,
-        domain,
-        workos_domain_id: existingDomain.id,
-        state: String(existingDomain.state),
-        verification_strategy: existingDomain.verificationStrategy ?? null,
-        verification_token: existingDomain.verificationToken ?? null,
-        verification_prefix: existingDomain.verificationPrefix ?? null,
-        already_verified: isVerifiedState(existingDomain.state),
-        prior_manifest_exists: priorManifestExists,
-      };
+      const verified = isVerifiedState(existingDomain.state);
+      const tokenMissing = !existingDomain.verificationToken;
+      if (!verified && tokenMissing) {
+        logger.warn(
+          { orgId, domain, existingDomainId: existingDomain.id, state: String(existingDomain.state) },
+          'brand-claim: existing org-domain has null verificationToken; deleting to recreate',
+        );
+        try {
+          await workos.organizationDomains.deleteOrganizationDomain(existingDomain.id);
+        } catch (err) {
+          logger.error({ err, orgId, domain, existingDomainId: existingDomain.id }, 'brand-claim: failed to delete broken existing org-domain');
+          return { ok: false, code: 'workos_error', message: 'Failed to clear a broken pending challenge for this domain. Try again or contact support.' };
+        }
+        // Fall through to the create branch below.
+      } else {
+        return {
+          ok: true,
+          domain,
+          workos_domain_id: existingDomain.id,
+          state: String(existingDomain.state),
+          verification_strategy: existingDomain.verificationStrategy ?? null,
+          verification_token: existingDomain.verificationToken ?? null,
+          verification_prefix: existingDomain.verificationPrefix ?? null,
+          dns_record_name: dnsRecordName(domain, existingDomain.verificationPrefix),
+          dns_record_type: 'TXT',
+          dns_record_value: existingDomain.verificationToken ?? null,
+          already_verified: verified,
+          prior_manifest_exists: priorManifestExists,
+        };
+      }
     }
   } catch (err) {
     logger.warn({ err, orgId }, 'brand-claim: org pre-check failed, will attempt create');
@@ -160,6 +194,9 @@ export async function issueDomainChallenge(input: {
       verification_strategy: created.verificationStrategy ?? 'dns',
       verification_token: created.verificationToken ?? null,
       verification_prefix: created.verificationPrefix ?? null,
+      dns_record_name: dnsRecordName(domain, created.verificationPrefix),
+      dns_record_type: 'TXT',
+      dns_record_value: created.verificationToken ?? null,
       already_verified: isVerifiedState(created.state),
       prior_manifest_exists: priorManifestExists,
     };
@@ -254,11 +291,13 @@ export async function verifyDomainChallenge(input: {
     } catch (err: any) {
       const status = err?.status ?? err?.response?.status;
       if (status === 422 || status === 400) {
+        const recordName = dnsRecordName(domain, existingDomain.verificationPrefix);
         return {
           ok: false,
           code: 'still_pending',
-          message: 'WorkOS could not find a matching DNS TXT record. Make sure verification_prefix.{domain} is published with the verification_token, then retry.',
+          message: `WorkOS could not find a matching DNS TXT record. Make sure ${recordName} is published with the verification token, then retry.`,
           state: String(existingDomain.state),
+          dns_record_name: recordName,
         };
       }
       logger.error({ err, orgId, domain }, 'workos.organizationDomains.verifyOrganizationDomain failed');

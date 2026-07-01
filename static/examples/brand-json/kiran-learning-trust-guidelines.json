@@ -1,0 +1,407 @@
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
+  "version": "1.0",
+  "id": "kiran_learning_trust",
+  "names": [
+    {
+      "en": "Kiran Learning Trust"
+    }
+  ],
+  "last_updated": "2026-05-27T00:00:00Z",
+  "url": "https://kiran-learning.example",
+  "description": "Fictional foundation brand focused on expanding access to education, skills, and community opportunity.",
+  "industries": [
+    "philanthropy",
+    "education",
+    "economic_development"
+  ],
+  "target_audience": "Learners, community partners, funders, educators, and program operators.",
+  "properties": [
+    {
+      "type": "website",
+      "identifier": "kiran-learning.example",
+      "primary": true
+    }
+  ],
+  "logos": [
+    {
+      "id": "vertical_full_color",
+      "url": "https://assets.kiran-learning.example/logos/kiran-vertical-full-color.svg",
+      "orientation": "vertical",
+      "background": "light-bg",
+      "variant": "primary",
+      "slots": [
+        "logo_card_light",
+        "marketplace_listing",
+        "co_brand_lockup"
+      ],
+      "usage": "Preferred full-color mark for light gray or white backgrounds."
+    },
+    {
+      "id": "vertical_white",
+      "url": "https://assets.kiran-learning.example/logos/kiran-vertical-white.svg",
+      "orientation": "vertical",
+      "background": "dark-bg",
+      "variant": "secondary",
+      "slots": [
+        "logo_card_dark",
+        "ad_end_card",
+        "footer"
+      ],
+      "usage": "White mark for charcoal backgrounds and dark photography with simple negative space."
+    },
+    {
+      "id": "circle_profile_mark",
+      "url": "https://assets.kiran-learning.example/logos/kiran-circle-icon.svg",
+      "orientation": "square",
+      "background": "transparent-bg",
+      "variant": "icon",
+      "slots": [
+        "profile_mark",
+        "favicon",
+        "social_profile_mark"
+      ],
+      "usage": "Social profile mark and favicon only; do not use as a replacement for the full mark in partner lockups."
+    }
+  ],
+  "colors": {
+    "primary": "#E8562A",
+    "secondary": [
+      "#F2A01F",
+      "#FFD05A",
+      "#6AA84F"
+    ],
+    "accent": [
+      "#B8343A",
+      "#4CC7B0"
+    ],
+    "background": [
+      "#EFEAE1",
+      "#1D1B18"
+    ],
+    "text": "#1D1B18",
+    "clay": "#E8562A",
+    "gold": "#F2A01F",
+    "sun": "#FFD05A",
+    "leaf": "#6AA84F",
+    "redwood": "#B8343A",
+    "teal": "#4CC7B0",
+    "warm_gray": "#EFEAE1",
+    "charcoal": "#1D1B18",
+    "white": "#FFFFFF"
+  },
+  "fonts": {
+    "primary": {
+      "family": "Kiran Sans",
+      "fallbacks": [
+        "Helvetica",
+        "Arial",
+        "sans-serif"
+      ]
+    },
+    "secondary": {
+      "family": "Kiran Sans Narrow",
+      "fallbacks": [
+        "Helvetica",
+        "Arial",
+        "sans-serif"
+      ]
+    }
+  },
+  "tone": {
+    "voice": "clear, warm, rigorous, inclusive, and quietly optimistic",
+    "attributes": [
+      "human",
+      "specific",
+      "aspirational",
+      "grounded",
+      "inclusive",
+      "calm"
+    ],
+    "dos": [
+      "Write about people with agency and dignity.",
+      "Use direct explanations before institutional language.",
+      "Create hierarchy with simple sentences and generous space.",
+      "Use program names consistently across partner materials."
+    ],
+    "donts": [
+      "Do not use savior language.",
+      "Do not overstate program outcomes.",
+      "Do not use the mark as a word inside body copy.",
+      "Do not translate the organization name unless a localized legal name has been approved."
+    ]
+  },
+  "visual_guidelines": {
+    "photography": {
+      "realism": "natural",
+      "lighting": "soft daylight",
+      "color_temperature": "warm",
+      "contrast": "medium",
+      "depth_of_field": "medium",
+      "subject": {
+        "people": {
+          "age_range": "16+",
+          "diversity": "authentic learners, educators, and community partners",
+          "mood": [
+            "capable",
+            "focused",
+            "optimistic"
+          ]
+        },
+        "product_focus": "lifestyle",
+        "setting": "real learning and work environments",
+        "consent": "Use only consented photography with accurate location and program context."
+      },
+      "framing": {
+        "subject_position": "primary subject as focus",
+        "crop_style": "supportive environment visible around subject",
+        "perspective": "eye-level"
+      },
+      "preferred_aspect_ratios": [
+        "16:9",
+        "4:5",
+        "1:1"
+      ],
+      "tags": [
+        "authentic",
+        "community",
+        "bright color",
+        "not staged"
+      ]
+    },
+    "graphic_style": {
+      "style_type": "geometric",
+      "stroke_style": "mixed",
+      "stroke_weight": "thin outline for circle elements",
+      "tags": [
+        "simple",
+        "open",
+        "circle-based",
+        "warm"
+      ]
+    },
+    "shapes": {
+      "primary_shape": "overlapping learning circles",
+      "secondary_shapes": [
+        "outline circle",
+        "program arc",
+        "partner keyline"
+      ],
+      "usage": {
+        "max_per_layout": 2,
+        "overlap_allowed": true,
+        "ratio": "1:1.6"
+      }
+    },
+    "iconography": {
+      "style": "glyph",
+      "stroke_weight": "1.5px",
+      "corner_style": "mixed",
+      "usage": {
+        "max_per_frame": 3,
+        "size_ratio": "1:10",
+        "guidance": "Use icons for navigation, topic markers, or small explanatory cues. Do not use icons as hero images."
+      },
+      "coloration": "Use charcoal on warm gray and white on charcoal; color may emphasize one relevant element only."
+    },
+    "composition": {
+      "overlays": {
+        "gradient_style": "none"
+      },
+      "texture": {
+        "style": "none"
+      },
+      "backgrounds": {
+        "types_allowed": [
+          "solid_color",
+          "image"
+        ],
+        "guidance": "Warm gray should dominate most institutional layouts. Charcoal backgrounds signal formal or high-emphasis moments."
+      }
+    },
+    "spacing": {
+      "unit": "4px",
+      "scale": {
+        "xs": "4px",
+        "sm": "8px",
+        "md": "16px",
+        "lg": "24px",
+        "xl": "40px",
+        "2xl": "64px"
+      }
+    },
+    "logo_placement": {
+      "preferred_position": "bottom-left",
+      "min_clear_space": "1x full mark height",
+      "min_height": "24px digital / 9mm print",
+      "background_contrast": "any",
+      "configuration": "Vertical mark preferred; horizontal lockups require approval."
+    },
+    "colorways": [
+      {
+        "name": "warm_gray_dominant",
+        "foreground": "#1D1B18",
+        "background": "#EFEAE1",
+        "accent": "#E8562A"
+      },
+      {
+        "name": "charcoal_formal",
+        "foreground": "#FFFFFF",
+        "background": "#1D1B18",
+        "accent": "#F2A01F"
+      },
+      {
+        "name": "white_program",
+        "foreground": "#1D1B18",
+        "background": "#FFFFFF",
+        "accent": "#4CC7B0"
+      }
+    ],
+    "logo_usage_rules": [
+      {
+        "logo_id": "vertical_full_color",
+        "logo_variant": "primary",
+        "slots": [
+          "logo_card_light",
+          "co_brand_lockup",
+          "marketplace_listing"
+        ],
+        "contexts": [
+          "institutional",
+          "partner_campaign",
+          "program_material"
+        ],
+        "minimum_size": {
+          "height": "24px"
+        },
+        "clear_space": "1x full mark height",
+        "allowed_backgrounds": [
+          {
+            "kind": "name",
+            "name": "warm_gray"
+          },
+          {
+            "kind": "name",
+            "name": "white"
+          }
+        ],
+        "forbidden_contexts": [
+          "read_through_text",
+          "low_resolution_reproduction"
+        ],
+        "severity": "must",
+        "description": "Use the full-color vertical mark where format and background allow."
+      }
+    ],
+    "mark_lockups": [
+      {
+        "lockup_type": "co_brand",
+        "ordering": "brand_first",
+        "brand_logo_id": "vertical_full_color",
+        "contexts": [
+          "partner_campaign",
+          "sponsored_content",
+          "program_material"
+        ],
+        "separator": {
+          "type": "keyline",
+          "color": {
+            "kind": "name",
+            "name": "charcoal"
+          },
+          "width": "1px"
+        },
+        "min_gap": "1x clear space",
+        "brand_min_optical_weight_ratio": 1,
+        "partner_max_optical_weight_ratio": 1,
+        "severity": "must",
+        "description": "Separate partner marks with a keyline and keep partner marks optically no larger than the Kiran Learning Trust mark."
+      }
+    ],
+    "type_scale": {
+      "heading": {
+        "font": "primary",
+        "size": "56-96px",
+        "weight": "300",
+        "line_height": "1.05",
+        "letter_spacing": "0",
+        "text_transform": "none"
+      },
+      "subheading": {
+        "font": "primary",
+        "size": "32-48px",
+        "weight": "400",
+        "line_height": "1.15",
+        "letter_spacing": "0",
+        "text_transform": "none"
+      },
+      "body": {
+        "font": "secondary",
+        "size": "16-20px",
+        "weight": "400",
+        "line_height": "1.45",
+        "letter_spacing": "0",
+        "text_transform": "none"
+      },
+      "caption": {
+        "font": "secondary",
+        "size": "12-14px",
+        "weight": "500",
+        "line_height": "1.35",
+        "letter_spacing": "0",
+        "text_transform": "none"
+      }
+    },
+    "motion": {
+      "transition_style": "fade",
+      "animation_speed": "moderate",
+      "pacing": "moderate",
+      "kinetic_typography": false,
+      "tags": [
+        "build to final mark",
+        "hold final frame"
+      ]
+    },
+    "restrictions": [
+      "Use the full-color vertical mark whenever format and background allow.",
+      "Do not omit the center circle from the mark.",
+      "Do not recolor, outline, fragment, or independently resize mark elements.",
+      "Do not translate the organization name in the logo.",
+      "Do not use the mark as a read-through in text.",
+      "Do not use more than one accent color in a layout.",
+      "Do not use icons as hero imagery or replacements for photography.",
+      "In co-branding, separate partner marks with a keyline and preserve free space around each mark.",
+      "Do not give partner marks greater optical weight than the Kiran Learning Trust mark unless a signed partner agreement says otherwise."
+    ]
+  },
+  "contact": {
+    "email": "brand@kiran-learning.example"
+  },
+  "ext": {
+    "example_status": "fictional_public_schema_fitness_example",
+    "source_pattern": "Synthetic conversion from a hypothetical brand standards PDF. No real brand source text or asset URL is represented.",
+    "schema_fit_notes": {
+      "strong_fit": [
+        "colors",
+        "fonts",
+        "tone",
+        "visual_guidelines.photography",
+        "visual_guidelines.iconography",
+        "visual_guidelines.motion",
+        "visual_guidelines.restrictions",
+        "visual_guidelines.logo_usage_rules",
+        "visual_guidelines.mark_lockups",
+        "logos[].slots[]"
+      ],
+      "remaining_source_gaps": [
+        "No durable downloadable production asset package, agent declarations, or trademark registration data is modeled because the hypothetical source guide does not provide it."
+      ],
+      "not_source_gaps": [
+        "agents",
+        "authorized_operators",
+        "trademarks",
+        "asset_libraries"
+      ]
+    }
+  }
+}

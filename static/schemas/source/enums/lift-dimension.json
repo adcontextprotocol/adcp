@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/lift-dimension.json",
+  "title": "Lift Dimension",
+  "description": "Brand-lift dimension disambiguator. Brand lift is multidimensional in production — Kantar, Upwave, Cint, DoubleVerify, and similar vendors report awareness, consideration, favorability, purchase intent, and ad recall as separate measurements with their own sample sizes and confidence intervals. Used as a `qualifier.lift_dimension` key on `committed_metrics`, `missing_metrics`, `metric_aggregates`, and `performance-feedback.metric` to disambiguate which dimension of `brand_lift` a row represents. Two `brand_lift` rows under different lift dimensions represent different surveyed outcomes and must not be combined into a single number.",
+  "type": "string",
+  "enum": ["awareness", "consideration", "favorability", "purchase_intent", "ad_recall"],
+  "enumDescriptions": {
+    "awareness": "Lift in unaided or aided brand awareness — typically measured as 'have you heard of [brand]'.",
+    "consideration": "Lift in brand consideration — 'would you consider buying [brand] next time'.",
+    "favorability": "Lift in brand favorability or affinity — 'how favorable is your view of [brand]'.",
+    "purchase_intent": "Lift in stated purchase intent — 'are you likely to buy [brand] in the next [N] days'.",
+    "ad_recall": "Lift in unaided or aided ad recall — 'do you remember seeing an ad for [brand]'."
+  }
+}

@@ -8,6 +8,7 @@ import type { AlertSection } from '../types.js';
 import type { MemberContext } from '../../member-context.js';
 import { getPendingInvoicesByEmail } from '../../../billing/stripe-client.js';
 import { createLogger } from '../../../logger.js';
+import { describeEscalationSla, listEscalationsForUser } from '../../../db/escalation-db.js';
 
 const logger = createLogger('addie-home-builder-alerts');
 
@@ -16,6 +17,39 @@ const logger = createLogger('addie-home-builder-alerts');
  */
 export async function buildAlerts(memberContext: MemberContext): Promise<AlertSection[]> {
   const alerts: AlertSection[] = [];
+  const workosUserId = memberContext.workos_user?.workos_user_id;
+  const slackUserId = memberContext.slack_user?.slack_user_id;
+
+  if (workosUserId || slackUserId) {
+    try {
+      const escalations = await listEscalationsForUser(workosUserId, slackUserId);
+      const active = escalations.filter(e => (
+        e.status === 'open' || e.status === 'acknowledged' || e.status === 'in_progress'
+      ));
+
+      if (active.length > 0) {
+        const followUp = active.find(e => describeEscalationSla(e).needs_follow_up);
+        const newest = active[0];
+        const current = followUp || newest;
+        const statusLabel = current.status === 'open'
+          ? 'waiting for team pickup'
+          : current.status === 'acknowledged'
+            ? 'seen by the team'
+            : 'being worked on';
+
+        alerts.push({
+          id: 'open-escalation',
+          severity: followUp ? 'urgent' : 'warning',
+          title: active.length === 1 ? 'Support request open' : `${active.length} support requests open`,
+          message: `"${current.summary}" is ${statusLabel}. You can add details or close it from your dashboard.`,
+          actionLabel: 'View request',
+          actionUrl: 'https://agenticadvertising.org/dashboard#escalations',
+        });
+      }
+    } catch (error) {
+      logger.warn({ error, workosUserId, slackUserId }, 'Failed to fetch escalations for home alerts');
+    }
+  }
 
   // 1. Account not linked (important for guests)
   if (!memberContext.slack_linked) {

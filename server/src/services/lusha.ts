@@ -1,12 +1,13 @@
 /**
  * Lusha API client for company enrichment
- * https://docs.lusha.com/apis/openapi/company-enrichment
+ * https://docs.lusha.com/apis/openapi/enrichment
  */
 
 import { logger } from '../logger.js';
 import type { CompanyTypeValue } from '../config/company-types.js';
 
 const LUSHA_API_BASE = 'https://api.lusha.com';
+const LUSHA_MAX_BATCH_SIZE = 100;
 
 export interface LushaCompanyData {
   companyId: string;
@@ -46,11 +47,12 @@ export interface CompanyEnrichmentResult {
  * https://docs.lusha.com/apis/openapi/company-filters
  */
 export interface CompanySearchFilters {
-  industryIds?: number[];           // Industry IDs from /prospecting/filters/companies/industries_labels
+  industryIds?: (number | string)[]; // Industry IDs/labels from /v3/companies/prospecting/filters/industriesLabels
+  industryLabels?: string[];        // Industry labels for the V3 industriesLabels filter
   minEmployees?: number;            // Minimum employee count
   maxEmployees?: number;            // Maximum employee count
-  companySizeIds?: string[];        // Size IDs from /prospecting/filters/companies/sizes
-  revenueIds?: string[];            // Revenue range IDs from /prospecting/filters/companies/revenues
+  companySizeIds?: string[];        // Size filter IDs from /v3/companies/prospecting/filters/sizes
+  revenueIds?: string[];            // Revenue range IDs from /v3/companies/prospecting/filters/revenues
   countries?: string[];             // Country codes (e.g., ['US', 'UK'])
   states?: string[];                // State/region names
   cities?: string[];                // City names
@@ -70,6 +72,237 @@ export interface FilterOption {
   id: string | number;
   label: string;
   count?: number;
+}
+
+type UnknownRecord = Record<string, unknown>;
+
+function isRecord(value: unknown): value is UnknownRecord {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
+function asNumber(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+function asStringArray(value: unknown): string[] | undefined {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : undefined;
+}
+
+function nestedRecord(value: unknown, key: string): UnknownRecord | undefined {
+  return isRecord(value) && isRecord(value[key]) ? value[key] : undefined;
+}
+
+function firstRecord(value: unknown): UnknownRecord | undefined {
+  return Array.isArray(value) ? value.find(isRecord) : undefined;
+}
+
+function normalizeDomain(domain: string | undefined): string | undefined {
+  return domain?.replace(/^www\./i, '');
+}
+
+function formatCompactCurrency(value: number): string {
+  if (value >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(value % 1_000_000_000 === 0 ? 0 : 1)}B`;
+  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(value % 1_000_000 === 0 ? 0 : 1)}M`;
+  if (value >= 1_000) return `$${(value / 1_000).toFixed(value % 1_000 === 0 ? 0 : 1)}K`;
+  return `$${value}`;
+}
+
+function formatRange(min: number | undefined, max: number | undefined): string | undefined {
+  if (min !== undefined && max !== undefined) return `${min}-${max}`;
+  if (min !== undefined) return `${min}+`;
+  if (max !== undefined) return `Up to ${max}`;
+  return undefined;
+}
+
+function formatRevenueRangeFromBounds(min: number | undefined, max: number | undefined): string | undefined {
+  if (min !== undefined && max !== undefined) return `${formatCompactCurrency(min)}-${formatCompactCurrency(max)}`;
+  if (min !== undefined) return `${formatCompactCurrency(min)}+`;
+  if (max !== undefined) return `Up to ${formatCompactCurrency(max)}`;
+  return undefined;
+}
+
+function rangeToken(min: number | undefined, max: number | undefined): string | undefined {
+  if (min === undefined && max === undefined) return undefined;
+  return `range:${min ?? ''}:${max ?? ''}`;
+}
+
+function parseCompactNumberToken(value: string): number | undefined {
+  const match = value.match(/(\d+(?:\.\d+)?)\s*([kmb])?/i);
+  if (!match) return undefined;
+
+  const base = Number(match[1]);
+  if (!Number.isFinite(base)) return undefined;
+
+  const suffix = match[2]?.toLowerCase();
+  if (suffix === 'b') return base * 1_000_000_000;
+  if (suffix === 'm') return base * 1_000_000;
+  if (suffix === 'k') return base * 1_000;
+  return base;
+}
+
+function parseRangeToken(value: string): { min?: number; max?: number } | null {
+  if (value.startsWith('range:')) {
+    const [, minRaw, maxRaw] = value.split(':');
+    const min = minRaw ? asNumber(minRaw) : undefined;
+    const max = maxRaw ? asNumber(maxRaw) : undefined;
+    return min !== undefined || max !== undefined ? { min, max } : null;
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (isRecord(parsed)) {
+      const min = asNumber(parsed.min);
+      const max = asNumber(parsed.max);
+      if (min !== undefined || max !== undefined) return { min, max };
+    }
+  } catch {
+    // Keep parsing common display forms below.
+  }
+
+  const numbers = (value.match(/\d+(?:\.\d+)?\s*[kmb]?/gi) ?? [])
+    .map(parseCompactNumberToken)
+    .filter((number): number is number => number !== undefined);
+  if (numbers.length >= 2) return { min: numbers[0], max: numbers[1] };
+  if (numbers.length === 1 && /over|\+|plus|above|greater/i.test(value)) return { min: numbers[0] };
+  if (numbers.length === 1 && /under|up to|less|below/i.test(value)) return { max: numbers[0] };
+  return null;
+}
+
+function rangesFromIds(ids: string[] | undefined): Array<{ min?: number; max?: number }> | undefined {
+  const ranges = ids?.map(parseRangeToken).filter((range): range is { min?: number; max?: number } => !!range) ?? [];
+  return ranges.length ? ranges : undefined;
+}
+
+function buildLocations(filters: CompanySearchFilters): UnknownRecord[] | undefined {
+  const { countries, states, cities } = filters;
+  const maxLength = Math.max(countries?.length ?? 0, states?.length ?? 0, cities?.length ?? 0);
+  if (maxLength === 0) return undefined;
+
+  const locations: UnknownRecord[] = [];
+  for (let index = 0; index < maxLength; index += 1) {
+    const location: UnknownRecord = {};
+    const country = countries?.[index] ?? (countries?.length === 1 ? countries[0] : undefined);
+    const state = states?.[index] ?? (states?.length === 1 ? states[0] : undefined);
+    const city = cities?.[index] ?? (cities?.length === 1 ? cities[0] : undefined);
+    if (country) location.country = country;
+    if (state) location.state = state;
+    if (city) location.city = city;
+    if (Object.keys(location).length) locations.push(location);
+  }
+
+  return locations.length ? locations : undefined;
+}
+
+function getBillingCredits(responseData: UnknownRecord): number | undefined {
+  return asNumber(nestedRecord(responseData, 'billing')?.creditsCharged) ?? asNumber(responseData.creditsUsed);
+}
+
+function getErrorMessage(response: Response, errorText: string): string {
+  if (response.status === 401) return 'Invalid API key';
+  if (response.status === 402) return 'Insufficient Lusha credits';
+  if (response.status === 403) return 'Lusha API access forbidden or V3 access not enabled';
+  if (response.status === 404) return 'Company not found';
+  if (response.status === 429) return 'Rate limit exceeded';
+
+  try {
+    const parsed = JSON.parse(errorText) as unknown;
+    if (isRecord(parsed) && asString(parsed.message)) {
+      return asString(parsed.message)!;
+    }
+  } catch {
+    // Fall through to status-only error.
+  }
+
+  return `API error: ${response.status}`;
+}
+
+function mapLushaCompanyData(companyInfo: UnknownRecord, fallbackDomain?: string): LushaCompanyData {
+  const employeeCount = companyInfo.employeeCount;
+  const employeeCountRecord = isRecord(employeeCount) ? employeeCount : undefined;
+  const employeeCountArray = Array.isArray(employeeCount) ? employeeCount : undefined;
+  const employeeMin = asNumber(employeeCountRecord?.min) ?? asNumber(employeeCountArray?.[0]);
+  const employeeMax = asNumber(employeeCountRecord?.max) ?? asNumber(employeeCountArray?.[1]);
+
+  const revenueRange = companyInfo.revenueRange;
+  const revenueRangeRecord = isRecord(revenueRange) ? revenueRange : undefined;
+  const revenueRangeArray = Array.isArray(revenueRange) ? revenueRange : undefined;
+  const revenueMin = asNumber(revenueRangeRecord?.min) ?? asNumber(revenueRangeArray?.[0]);
+  const revenueMax = asNumber(revenueRangeRecord?.max) ?? asNumber(revenueRangeArray?.[1]);
+
+  const location = nestedRecord(companyInfo, 'location') ?? companyInfo;
+  const socialLinks = nestedRecord(companyInfo, 'socialLinks');
+  const sicCode = firstRecord(companyInfo.sicCodes) ?? firstRecord(nestedRecord(companyInfo, 'industryPrimaryGroupDetails')?.sics);
+  const naicsCode = firstRecord(companyInfo.naicsCodes) ?? firstRecord(nestedRecord(companyInfo, 'industryPrimaryGroupDetails')?.naics);
+  const sicCodeValue = sicCode?.code ?? sicCode?.sic ?? companyInfo.sicsCode;
+  const naicsCodeValue = naicsCode?.code ?? naicsCode?.naics ?? companyInfo.naicsCode;
+  const foundedYearRaw = companyInfo.yearFounded ?? companyInfo.foundedYear ?? companyInfo.founded;
+  const foundedYear = asNumber(foundedYearRaw);
+  const domainValue = normalizeDomain(
+    asString(companyInfo.domain) ??
+    asString(companyInfo.fqdn) ??
+    fallbackDomain
+  );
+
+  return {
+    companyId: String(companyInfo.id ?? companyInfo.companyId ?? companyInfo.lushaCompanyId ?? ''),
+    companyName: String(companyInfo.name ?? companyInfo.companyName ?? ''),
+    domain: domainValue ?? fallbackDomain ?? '',
+    description: asString(companyInfo.description),
+    employeeCount: asNumber(employeeCountRecord?.exact) ?? employeeMin ?? asNumber(companyInfo.employeeCount),
+    employeeCountRange: formatRange(employeeMin, employeeMax) ?? asString(companyInfo.employeeCountRange),
+    revenue: revenueMin ?? asNumber(companyInfo.revenue),
+    revenueRange: formatRevenueRangeFromBounds(revenueMin, revenueMax) ?? asString(revenueRange) ?? asString(companyInfo.estimatedRevenue),
+    mainIndustry: asString(companyInfo.industry) ?? asString(companyInfo.mainIndustry),
+    subIndustry: asString(companyInfo.subIndustry),
+    foundedYear,
+    country: asString(location.country),
+    countryIso2: asString(location.countryIso2),
+    city: asString(location.city),
+    state: asString(location.state),
+    fullAddress: asString(companyInfo.fullAddress) ?? asString(companyInfo.rawLocation) ?? asString(companyInfo.address),
+    continent: asString(location.continent),
+    linkedinUrl: asString(socialLinks?.linkedin) ?? asString(companyInfo.linkedinUrl) ?? asString(companyInfo.linkedin),
+    specialties: asStringArray(companyInfo.specialities) ?? asStringArray(companyInfo.specialties) ?? asStringArray(companyInfo.specialitiesRefactored),
+    sicsCode: sicCodeValue === undefined ? undefined : String(sicCodeValue),
+    sicsDescription: asString(sicCode?.description) ?? asString(companyInfo.sicsDescription),
+    naicsCode: naicsCodeValue === undefined ? undefined : String(naicsCodeValue),
+    naicsDescription: asString(naicsCode?.description) ?? asString(companyInfo.naicsDescription),
+  };
+}
+
+function normalizeFilterOption(value: unknown): FilterOption | null {
+  if (typeof value === 'string' || typeof value === 'number') {
+    return { id: value, label: String(value) };
+  }
+  if (!isRecord(value)) return null;
+
+  const range = isRecord(value.range) ? value.range : value;
+  const min = asNumber(range.min);
+  const max = asNumber(range.max);
+  const rangeId = rangeToken(min, max);
+  const label =
+    asString(value.label) ??
+    asString(value.name) ??
+    asString(value.value) ??
+    asString(value.description) ??
+    (min !== undefined || max !== undefined ? formatRange(min, max) : undefined);
+
+  if (!label) return null;
+
+  return {
+    id: rangeId ?? (value.id as string | number | undefined) ?? label,
+    label,
+    count: asNumber(value.count),
+  };
 }
 
 /**
@@ -284,22 +517,25 @@ export class LushaClient {
     this.apiKey = apiKey;
   }
 
+  private headers(): Record<string, string> {
+    return {
+      'api_key': this.apiKey,
+      'Content-Type': 'application/json',
+    };
+  }
+
   /**
-   * Enrich company data by domain using the v2 bulk API
-   * https://docs.lusha.com/apis/openapi/company-enrichment
+   * Enrich company data by domain using the V3 search-and-enrich API.
+   * https://docs.lusha.com/apis/openapi/search-and-enrich/searchandenrichcompanies
    */
   async enrichCompanyByDomain(domain: string): Promise<CompanyEnrichmentResult> {
     try {
-      // Use the v2 bulk API with a single company
-      // Each company needs a unique `id` string to correlate request/response
-      const response = await fetch(`${LUSHA_API_BASE}/bulk/company/v2`, {
+      const response = await fetch(`${LUSHA_API_BASE}/v3/companies/search-and-enrich`, {
         method: 'POST',
-        headers: {
-          'api_key': this.apiKey,
-          'Content-Type': 'application/json',
-        },
+        headers: this.headers(),
         body: JSON.stringify({
-          companies: [{ id: '1', domain }],
+          companies: [{ clientReferenceId: '1', domain }],
+          options: { includePartialProfiles: true },
         }),
       });
 
@@ -307,48 +543,16 @@ export class LushaClient {
         const errorText = await response.text();
         logger.warn({ domain, status: response.status, error: errorText }, 'Lusha API error');
 
-        if (response.status === 404) {
-          return { success: false, error: 'Company not found' };
-        }
-        if (response.status === 401) {
-          return { success: false, error: 'Invalid API key' };
-        }
-        if (response.status === 429) {
-          return { success: false, error: 'Rate limit exceeded' };
-        }
-
-        return { success: false, error: `API error: ${response.status}` };
+        return { success: false, error: getErrorMessage(response, errorText) };
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const responseData = await response.json() as any;
+      const responseData = await response.json() as UnknownRecord;
 
       // Log the raw response for debugging
       logger.debug({ domain, responseKeys: Object.keys(responseData) }, 'Lusha API raw response');
 
-      // v2 bulk API returns results indexed by the request ID we provided
-      // Format: { "1": { id, name, ... }, "2": { ... }, ... }
-      // The key matches the `id` field we sent in the request
-      let data: Record<string, unknown> | null = null;
-
-      // Check if response is directly indexed by our request ID
-      if (responseData['1']) {
-        data = responseData['1'];
-      } else if (responseData.data?.companies) {
-        // Fallback: MCP-style companies indexed by ID
-        const companies = responseData.data.companies;
-        const companyIds = Object.keys(companies);
-        if (companyIds.length > 0) {
-          data = companies[companyIds[0]];
-        }
-      } else {
-        // Fallback: Array-style response
-        const results = responseData.data || responseData.results || responseData;
-        const companyResults = Array.isArray(results) ? results : [results];
-        if (companyResults.length > 0) {
-          data = companyResults[0];
-        }
-      }
+      const results = Array.isArray(responseData.results) ? responseData.results.filter(isRecord) : [];
+      const data = results.find((result) => result.clientReferenceId === '1') ?? results[0] ?? null;
 
       if (!data) {
         return { success: false, error: 'No results returned' };
@@ -356,78 +560,11 @@ export class LushaClient {
 
       // Check if the company was found
       if (data.status === 'NOT_FOUND' || data.error) {
-        return { success: false, error: String(data.error) || 'Company not found' };
+        const itemError = isRecord(data.error) ? data.error : null;
+        return { success: false, error: asString(itemError?.message) ?? asString(data.error) ?? 'Company not found' };
       }
 
-      // Map Lusha v2 bulk API response to our interface
-      // Response format example:
-      // { id, lushaCompanyId, name, companySize: [min, max], revenueRange: [min, max],
-      //   fqdn, founded, description, logoUrl, linkedin, mainIndustry, subIndustry,
-      //   city, state, country, countryIso2, continent, rawLocation, specialities }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const companyInfo = (data.company || data) as any;
-
-      // Parse employee count from companySize array [min, max]
-      let employeeCount: number | undefined;
-      let employeeCountRange: string | undefined;
-      if (Array.isArray(companyInfo.companySize) && companyInfo.companySize.length >= 2) {
-        const [min, max] = companyInfo.companySize;
-        employeeCount = min; // Use min as primary count
-        employeeCountRange = `${min}-${max}`;
-      } else if (companyInfo.employeeCount) {
-        employeeCount = companyInfo.employeeCount;
-        employeeCountRange = companyInfo.employeeCountRange;
-      }
-
-      // Parse revenue from revenueRange array [min, max]
-      let revenue: number | undefined;
-      let revenueRange: string | undefined;
-      if (Array.isArray(companyInfo.revenueRange) && companyInfo.revenueRange.length >= 2) {
-        const [min, max] = companyInfo.revenueRange;
-        revenue = min; // Use min as primary revenue
-        revenueRange = `$${(min / 1000000).toFixed(0)}M-$${(max / 1000000).toFixed(0)}M`;
-      } else if (companyInfo.revenue) {
-        revenue = companyInfo.revenue;
-        revenueRange = companyInfo.revenueRange;
-      }
-
-      // Parse founded year (may be string like "1995")
-      let foundedYear: number | undefined;
-      if (companyInfo.founded) {
-        const parsed = parseInt(String(companyInfo.founded), 10);
-        if (!isNaN(parsed)) foundedYear = parsed;
-      } else if (companyInfo.foundedYear) {
-        foundedYear = companyInfo.foundedYear;
-      }
-
-      // Get domain from fqdn (may include www.)
-      const domainValue = companyInfo.fqdn?.replace(/^www\./, '') || companyInfo.domain || domain;
-
-      const companyData: LushaCompanyData = {
-        companyId: String(companyInfo.lushaCompanyId || companyInfo.companyId || companyInfo.id || ''),
-        companyName: String(companyInfo.name || companyInfo.companyName || ''),
-        domain: domainValue,
-        description: companyInfo.description as string | undefined,
-        employeeCount,
-        employeeCountRange,
-        revenue,
-        revenueRange,
-        mainIndustry: companyInfo.mainIndustry as string | undefined,
-        subIndustry: companyInfo.subIndustry as string | undefined,
-        foundedYear,
-        country: companyInfo.country as string | undefined,
-        countryIso2: companyInfo.countryIso2 as string | undefined,
-        city: companyInfo.city as string | undefined,
-        state: companyInfo.state as string | undefined,
-        fullAddress: companyInfo.rawLocation as string | undefined,
-        continent: companyInfo.continent as string | undefined,
-        linkedinUrl: companyInfo.linkedin as string | undefined,
-        specialties: (companyInfo.specialities || companyInfo.specialties) as string[] | undefined,
-        sicsCode: companyInfo.industryPrimaryGroupDetails?.sics?.[0]?.sic?.toString() as string | undefined,
-        sicsDescription: companyInfo.industryPrimaryGroupDetails?.sics?.[0]?.description as string | undefined,
-        naicsCode: companyInfo.industryPrimaryGroupDetails?.naics?.[0]?.naics?.toString() as string | undefined,
-        naicsDescription: companyInfo.industryPrimaryGroupDetails?.naics?.[0]?.description as string | undefined,
-      };
+      const companyData = mapLushaCompanyData(data, domain);
 
       logger.info(
         { domain, companyName: companyData.companyName, industry: companyData.mainIndustry },
@@ -437,7 +574,7 @@ export class LushaClient {
       return {
         success: true,
         data: companyData,
-        creditsUsed: responseData.creditsUsed || 1,
+        creditsUsed: getBillingCredits(responseData),
       };
     } catch (error) {
       logger.error({ err: error, domain }, 'Lusha API request failed');
@@ -456,7 +593,7 @@ export class LushaClient {
 
     // Lusha supports up to 100 in bulk, but we'll do sequential for simplicity
     // and to avoid burning credits on errors
-    for (const domain of domains.slice(0, 100)) {
+    for (const domain of domains.slice(0, LUSHA_MAX_BATCH_SIZE)) {
       const result = await this.enrichCompanyByDomain(domain);
       results.set(domain, result);
 
@@ -469,7 +606,7 @@ export class LushaClient {
 
   /**
    * Search for companies using the prospecting API
-   * https://docs.lusha.com/apis/openapi/company-search-and-enrich
+   * https://docs.lusha.com/apis/openapi/prospecting/prospectingcompanies
    */
   async searchCompanies(
     filters: CompanySearchFilters,
@@ -477,53 +614,64 @@ export class LushaClient {
     pageSize = 25
   ): Promise<CompanySearchResult> {
     try {
-      // Build the search request body
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const searchBody: Record<string, any> = {
-        page,
-        pageSize: Math.min(pageSize, 100), // Max 100 per request
-      };
+      const include: UnknownRecord = {};
 
-      // Add filters
-      if (filters.industryIds?.length) {
-        searchBody.industries = filters.industryIds;
+      const numericIndustryIds = filters.industryIds?.filter((id): id is number => typeof id === 'number');
+      const stringIndustryLabels = filters.industryIds?.filter((id): id is string => typeof id === 'string');
+      if (numericIndustryIds?.length) {
+        include.mainIndustriesIds = numericIndustryIds;
       }
-      if (filters.minEmployees !== undefined || filters.maxEmployees !== undefined) {
-        searchBody.employeeCount = {};
-        if (filters.minEmployees !== undefined) {
-          searchBody.employeeCount.min = filters.minEmployees;
-        }
-        if (filters.maxEmployees !== undefined) {
-          searchBody.employeeCount.max = filters.maxEmployees;
-        }
+      if (stringIndustryLabels?.length || filters.industryLabels?.length) {
+        include.industriesLabels = [...(filters.industryLabels ?? []), ...(stringIndustryLabels ?? [])];
       }
-      if (filters.companySizeIds?.length) {
-        searchBody.companySizes = filters.companySizeIds;
+
+      const explicitEmployeeRange =
+        filters.minEmployees !== undefined || filters.maxEmployees !== undefined
+          ? [{ min: filters.minEmployees, max: filters.maxEmployees }]
+          : [];
+      const sizeRanges = rangesFromIds(filters.companySizeIds) ?? [];
+      if (explicitEmployeeRange.length || sizeRanges.length) {
+        include.sizes = [...explicitEmployeeRange, ...sizeRanges];
       }
-      if (filters.revenueIds?.length) {
-        searchBody.revenues = filters.revenueIds;
+
+      const revenueRanges = rangesFromIds(filters.revenueIds);
+      if (revenueRanges?.length) {
+        include.revenues = revenueRanges;
       }
-      if (filters.countries?.length) {
-        searchBody.countries = filters.countries;
+
+      const locations = buildLocations(filters);
+      if (locations?.length) {
+        include.locations = locations;
       }
-      if (filters.states?.length) {
-        searchBody.states = filters.states;
-      }
-      if (filters.cities?.length) {
-        searchBody.cities = filters.cities;
-      }
+
       if (filters.keywords?.length) {
-        searchBody.keywords = filters.keywords;
+        include.searchText = filters.keywords.join(' ');
       }
+
+      const requestedPageSize = Number.isFinite(pageSize) ? Math.floor(pageSize) : 25;
+      const responsePageSize = Math.min(Math.max(requestedPageSize, 1), 100);
+      const apiPageSize = Math.max(responsePageSize, 10);
+      const requestedPage = Number.isFinite(page) ? Math.floor(page) : 1;
+      const searchBody = {
+        pagination: {
+          page: Math.max(requestedPage - 1, 0),
+          size: apiPageSize,
+        },
+        filters: {
+          companies: {
+            include,
+          },
+        },
+        options: {
+          includePartialProfiles: true,
+        },
+      };
 
       logger.debug({ filters, searchBody }, 'Lusha company search request');
 
-      const response = await fetch(`${LUSHA_API_BASE}/prospecting/company/search`, {
+      const response = await fetch(`${LUSHA_API_BASE}/v3/companies/prospecting`, {
         method: 'POST',
-        headers: {
-          'api_key': this.apiKey,
-          'Content-Type': 'application/json',
-        },
+        headers: this.headers(),
         body: JSON.stringify(searchBody),
       });
 
@@ -534,61 +682,38 @@ export class LushaClient {
         if (response.status === 401) {
           return { success: false, companies: [], total: 0, page, pageSize, error: 'Invalid API key' };
         }
+        if (response.status === 402) {
+          return { success: false, companies: [], total: 0, page, pageSize, error: 'Insufficient Lusha credits' };
+        }
+        if (response.status === 403) {
+          return { success: false, companies: [], total: 0, page, pageSize, error: 'Lusha API access forbidden or V3 access not enabled' };
+        }
         if (response.status === 429) {
           return { success: false, companies: [], total: 0, page, pageSize, error: 'Rate limit exceeded' };
         }
 
-        return { success: false, companies: [], total: 0, page, pageSize, error: `API error: ${response.status}` };
+        return { success: false, companies: [], total: 0, page, pageSize, error: getErrorMessage(response, errorText) };
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const responseData = await response.json() as any;
+      const responseData = await response.json() as UnknownRecord;
 
       logger.debug({ responseKeys: Object.keys(responseData) }, 'Lusha company search response');
 
-      // Parse the response - may be in different formats
-      const companiesData = responseData.data?.companies || responseData.companies || responseData.data || [];
-      const companiesArray = Array.isArray(companiesData) ? companiesData : Object.values(companiesData);
-
-      // Map each company to our interface
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const companies: LushaCompanyData[] = companiesArray.map((c: any) => ({
-        companyId: String(c.companyId || c.id || ''),
-        companyName: String(c.companyName || c.name || ''),
-        domain: String(c.domain || ''),
-        description: c.description as string | undefined,
-        employeeCount: (c.employeeCount || c.employees || c.numberOfEmployees) as number | undefined,
-        employeeCountRange: (c.employeeCountRange || c.employeesRange || c.employeeRange) as string | undefined,
-        revenue: c.revenue as number | undefined,
-        revenueRange: (c.revenueRange || c.estimatedRevenue) as string | undefined,
-        mainIndustry: (c.mainIndustry || c.industry) as string | undefined,
-        subIndustry: c.subIndustry as string | undefined,
-        foundedYear: (c.foundedYear || c.founded || c.yearFounded) as number | undefined,
-        country: (c.country || c.location?.country) as string | undefined,
-        countryIso2: c.countryIso2 as string | undefined,
-        city: (c.city || c.location?.city) as string | undefined,
-        state: (c.state || c.location?.state) as string | undefined,
-        fullAddress: (c.fullAddress || c.address || c.location?.address) as string | undefined,
-        continent: c.continent as string | undefined,
-        linkedinUrl: (c.linkedinUrl || c.linkedin || c.socialLinks?.linkedin) as string | undefined,
-        specialties: c.specialties as string[] | undefined,
-        sicsCode: c.sicsCode as string | undefined,
-        sicsDescription: c.sicsDescription as string | undefined,
-        naicsCode: c.naicsCode as string | undefined,
-        naicsDescription: c.naicsDescription as string | undefined,
-      }));
+      const companiesData = Array.isArray(responseData.results) ? responseData.results : [];
+      const companies = companiesData.filter(isRecord).map((company) => mapLushaCompanyData(company)).slice(0, responsePageSize);
+      const pagination = nestedRecord(responseData, 'pagination');
 
       logger.info(
-        { total: responseData.total || companies.length, returned: companies.length },
+        { total: asNumber(pagination?.total) ?? companies.length, returned: companies.length },
         'Lusha company search successful'
       );
 
       return {
         success: true,
         companies,
-        total: responseData.total || responseData.totalResults || companies.length,
-        page: responseData.page || page,
-        pageSize: responseData.pageSize || pageSize,
+        total: asNumber(pagination?.total) ?? companies.length,
+        page: (asNumber(pagination?.page) ?? Math.max(requestedPage - 1, 0)) + 1,
+        pageSize: responsePageSize,
       };
     } catch (error) {
       logger.error({ err: error }, 'Lusha company search failed');
@@ -608,12 +733,9 @@ export class LushaClient {
    */
   async getIndustryFilters(): Promise<FilterOption[]> {
     try {
-      const response = await fetch(`${LUSHA_API_BASE}/prospecting/filters/companies/industries_labels`, {
+      const response = await fetch(`${LUSHA_API_BASE}/v3/companies/prospecting/filters/industriesLabels`, {
         method: 'GET',
-        headers: {
-          'api_key': this.apiKey,
-          'Content-Type': 'application/json',
-        },
+        headers: this.headers(),
       });
 
       if (!response.ok) {
@@ -621,16 +743,10 @@ export class LushaClient {
         return [];
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const data = await response.json() as any;
-      const industries = data.industries || data.data || data || [];
+      const data = await response.json() as UnknownRecord;
+      const industries = Array.isArray(data.values) ? data.values : [];
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return industries.map((i: any) => ({
-        id: i.id || i.industryId,
-        label: i.label || i.name || i.industryName,
-        count: i.count,
-      }));
+      return industries.map(normalizeFilterOption).filter((option): option is FilterOption => !!option);
     } catch (error) {
       logger.error({ err: error }, 'Failed to fetch industry filters');
       return [];
@@ -642,12 +758,9 @@ export class LushaClient {
    */
   async getCompanySizeFilters(): Promise<FilterOption[]> {
     try {
-      const response = await fetch(`${LUSHA_API_BASE}/prospecting/filters/companies/sizes`, {
+      const response = await fetch(`${LUSHA_API_BASE}/v3/companies/prospecting/filters/sizes`, {
         method: 'GET',
-        headers: {
-          'api_key': this.apiKey,
-          'Content-Type': 'application/json',
-        },
+        headers: this.headers(),
       });
 
       if (!response.ok) {
@@ -655,16 +768,10 @@ export class LushaClient {
         return [];
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const data = await response.json() as any;
-      const sizes = data.sizes || data.data || data || [];
+      const data = await response.json() as UnknownRecord;
+      const sizes = Array.isArray(data.values) ? data.values : [];
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return sizes.map((s: any) => ({
-        id: s.id || s.sizeId,
-        label: s.label || s.name || s.range,
-        count: s.count,
-      }));
+      return sizes.map(normalizeFilterOption).filter((option): option is FilterOption => !!option);
     } catch (error) {
       logger.error({ err: error }, 'Failed to fetch size filters');
       return [];
@@ -676,12 +783,9 @@ export class LushaClient {
    */
   async getRevenueFilters(): Promise<FilterOption[]> {
     try {
-      const response = await fetch(`${LUSHA_API_BASE}/prospecting/filters/companies/revenues`, {
+      const response = await fetch(`${LUSHA_API_BASE}/v3/companies/prospecting/filters/revenues`, {
         method: 'GET',
-        headers: {
-          'api_key': this.apiKey,
-          'Content-Type': 'application/json',
-        },
+        headers: this.headers(),
       });
 
       if (!response.ok) {
@@ -689,16 +793,10 @@ export class LushaClient {
         return [];
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const data = await response.json() as any;
-      const revenues = data.revenues || data.data || data || [];
+      const data = await response.json() as UnknownRecord;
+      const revenues = Array.isArray(data.values) ? data.values : [];
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return revenues.map((r: any) => ({
-        id: r.id || r.revenueId,
-        label: r.label || r.name || r.range,
-        count: r.count,
-      }));
+      return revenues.map(normalizeFilterOption).filter((option): option is FilterOption => !!option);
     } catch (error) {
       logger.error({ err: error }, 'Failed to fetch revenue filters');
       return [];

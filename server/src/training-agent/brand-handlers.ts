@@ -188,7 +188,7 @@ const TALENT: TalentEntry[] = [
         right_type: 'talent',
         available_uses: ['likeness', 'voice', 'name', 'endorsement', 'commercial', 'ai_generated_image'],
         countries: ['NL', 'BE', 'DE'],
-        exclusivity_status: { available: true, existing_exclusives: ['sportswear (NL) — through 2026-12-31'] },
+        exclusivity_status: { available: true, existing_exclusives: ['sportswear (NL) — through 2099-12-31'] },
         pricing_options: [
           {
             pricing_option_id: 'cpm_endorsement',
@@ -221,8 +221,8 @@ const TALENT: TalentEntry[] = [
       pending_approval: ['alcohol', 'gambling', 'pharmaceutical'],
       rejected: {
         sportswear: {
-          reason: 'Active exclusivity with another brand for sportswear in NL through 2026-12-31',
-          suggestions: ['Available for sportswear in BE and DE markets', 'Available in NL after 2027-01-01'],
+          reason: 'Active exclusivity with another brand for sportswear in NL through 2099-12-31',
+          suggestions: ['Available for sportswear in BE and DE markets', 'Available in NL after 2100-01-01'],
         },
       },
     },
@@ -319,7 +319,7 @@ const TALENT: TalentEntry[] = [
         right_type: 'talent',
         available_uses: ['likeness', 'name', 'endorsement', 'commercial', 'ai_generated_image'],
         countries: ['NL', 'BE', 'DE', 'FR'],
-        exclusivity_status: { available: true, existing_exclusives: ['cycling equipment (EU) — through 2027-03-31'] },
+        exclusivity_status: { available: true, existing_exclusives: ['cycling equipment (EU) — through 2099-03-31'] },
         pricing_options: [
           {
             pricing_option_id: 'cpm_likeness',
@@ -355,8 +355,8 @@ const TALENT: TalentEntry[] = [
         dairy: 'This conflicts with our talent lifestyle guidelines',
         fast_food: 'This conflicts with our talent lifestyle guidelines',
         cycling_equipment: {
-          reason: 'Active exclusivity with another brand for cycling equipment in EU through 2027-03-31',
-          suggestions: ['Available for cycling equipment outside EU', 'Available in EU after 2027-04-01'],
+          reason: 'Active exclusivity with another brand for cycling equipment in EU through 2099-03-31',
+          suggestions: ['Available for cycling equipment outside EU', 'Available in EU after 2099-04-01'],
         },
       },
     },
@@ -404,7 +404,7 @@ const TALENT: TalentEntry[] = [
         countries: ['JP', 'KR', 'US'],
         exclusivity_status: {
           available: false,
-          existing_exclusives: ['cosmetics (JP) — through 2027-06-30'],
+          existing_exclusives: ['cosmetics (JP) — through 2099-06-30'],
         },
         pricing_options: [
           {
@@ -438,8 +438,8 @@ const TALENT: TalentEntry[] = [
       pending_approval: ['fashion', 'technology', 'entertainment'],
       rejected: {
         cosmetics: {
-          reason: 'Active exclusivity with another brand for cosmetics in JP through 2027-06-30',
-          suggestions: ['Available for cosmetics outside JP', 'Available in JP after 2027-07-01'],
+          reason: 'Active exclusivity with another brand for cosmetics in JP through 2099-06-30',
+          suggestions: ['Available for cosmetics outside JP', 'Available in JP after 2099-07-01'],
         },
       },
     },
@@ -661,7 +661,7 @@ function buildBrandJsonEntry(
 
 export function handleGetBrandIdentity(
   args: ToolArgs,
-  _ctx: TrainingContext,
+  ctx: TrainingContext,
 ) {
   const req = args as { brand_id: string; fields?: string[]; authorized?: boolean };
   const brandId = req.brand_id;
@@ -670,7 +670,10 @@ export function handleGetBrandIdentity(
 
   const talent = BRAND_MAP.get(brandId);
   if (!talent) {
-    return { errors: [{ code: 'brand_not_found', message: `No brand with id '${brandId}'` }] };
+    const code = ctx.storyboardCompat?.version === '3.0'
+      ? 'BRAND_NOT_FOUND'
+      : 'REFERENCE_NOT_FOUND';
+    return { errors: [{ code, message: `No brand with id '${brandId}'`, field: 'brand_id' }] };
   }
 
   const requested = fields ?? [...ALL_FIELDS];
@@ -896,6 +899,14 @@ interface AcquireRightsArgs {
   };
 }
 
+function defaultRightsWindow() {
+  const year = new Date(Date.now()).getUTCFullYear() + 1;
+  return {
+    startDate: `${year}-04-01`,
+    endDate: `${year}-06-30`,
+  };
+}
+
 export async function handleAcquireRights(
   args: ToolArgs,
   ctx: TrainingContext,
@@ -907,7 +918,7 @@ export async function handleAcquireRights(
   const campaign = req.campaign;
 
   if (!buyer) {
-    return { errors: [{ code: 'invalid_request', message: 'buyer is required' }] };
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'buyer is required' }] };
   }
 
   let talent: TalentEntry | undefined;
@@ -922,21 +933,28 @@ export async function handleAcquireRights(
   }
 
   if (!talent || !offering) {
-    return { errors: [{ code: 'rights_not_found', message: `No rights offering with id '${rightsId}'` }] };
+    return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: `No rights offering with id '${rightsId}'` }] };
   }
 
   const pricingOption = offering.pricing_options.find(p => p.pricing_option_id === pricingOptionId);
   if (!pricingOption) {
-    return { errors: [{ code: 'invalid_pricing_option', message: `No pricing option '${pricingOptionId}' in offering '${rightsId}'` }] };
+    return { errors: [{ code: 'INVALID_REQUEST', message: `No pricing option '${pricingOptionId}' in offering '${rightsId}'` }] };
   }
 
   if (!campaign?.description) {
-    return { errors: [{ code: 'invalid_request', message: 'campaign.description is required' }] };
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'campaign.description is required' }] };
   }
 
   if (campaign.end_date) {
+    // end_date is inclusive through the end of that UTC day — the success path
+    // sets valid_until to 23:59:59Z. Reject only once that whole day is past, so
+    // a campaign ending today (new Date('YYYY-MM-DD') parses to 00:00:00Z) stays
+    // licensable rather than going spuriously "expired" the instant midnight UTC
+    // ticks over.
     const endMs = new Date(campaign.end_date).getTime();
-    if (!Number.isNaN(endMs) && endMs < Date.now()) {
+    const now = new Date(Date.now());
+    const startOfTodayMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    if (!Number.isNaN(endMs) && endMs < startOfTodayMs) {
       return {
         errors: [{
           code: 'INVALID_REQUEST',
@@ -987,19 +1005,15 @@ export async function handleAcquireRights(
         const msg = typeRemaining !== undefined && estimatedCommitment > typeRemaining
           ? `Estimated rights commitment $${estimatedCommitment.toFixed(0)} (${priceModel} @ ${basePrice} × ${estimatedImpressions.toLocaleString()} impressions) exceeds remaining rights_license allocation $${typeRemaining} on plan "${plan.planId}".`
           : `Estimated rights commitment $${estimatedCommitment.toFixed(0)} (${priceModel} @ ${basePrice} × ${estimatedImpressions.toLocaleString()} impressions) exceeds remaining budget $${remaining} on plan "${plan.planId}".`;
+        // acquire_rights governance denial is an application-level rejection,
+        // not a protocol error. The schema defines AcquireRightsRejected as the
+        // discriminated-union arm for this case (status: rejected + reason).
         return {
-          errors: [{
-            code: 'GOVERNANCE_DENIED',
-            message: msg,
-            details: {
-              findings: [{
-                category_id: 'budget_authority',
-                severity: 'critical',
-                explanation: msg,
-              }],
-              plan_id: plan.planId,
-            },
-          }],
+          rights_id: rightsId,
+          status: 'rejected',
+          rights_status: 'rejected',
+          brand_id: talent.brand_id,
+          reason: msg,
         };
       }
     }
@@ -1014,6 +1028,7 @@ export async function handleAcquireRights(
       return {
         rights_id: rightsId,
         status: 'rejected',
+        rights_status: 'rejected',
         brand_id: talent.brand_id,
         reason: isStructured ? rule.reason : rule,
         ...(isStructured && rule.suggestions ? { suggestions: rule.suggestions } : {}),
@@ -1028,6 +1043,7 @@ export async function handleAcquireRights(
       return {
         rights_id: rightsId,
         status: 'pending_approval',
+        rights_status: 'pending_approval',
         brand_id: talent.brand_id,
         detail: `${talentName}'s management requires review for ${keyword} category campaigns. Request submitted for talent approval.`,
         estimated_response_time: '48h',
@@ -1037,8 +1053,9 @@ export async function handleAcquireRights(
   }
 
   const talentName = getTalentName(talent);
-  const startDate = campaign.start_date || '2026-04-01';
-  const endDate = campaign.end_date || '2026-06-30';
+  const defaultWindow = defaultRightsWindow();
+  const startDate = campaign.start_date || defaultWindow.startDate;
+  const endDate = campaign.end_date || defaultWindow.endDate;
 
   const generationCredentials: GenerationCredential[] = [];
   const campaignUses = campaign.uses || pricingOption.uses;
@@ -1064,6 +1081,7 @@ export async function handleAcquireRights(
   return {
     rights_id: rightsId,
     status: 'acquired',
+    rights_status: 'acquired',
     brand_id: talent.brand_id,
     terms: {
       pricing_option_id: pricingOptionId,
@@ -1134,18 +1152,19 @@ export function handleUpdateRights(
   }
 
   if (!talent || !offering) {
-    return { errors: [{ code: 'rights_not_found', message: `No active grant with id '${rightsId}'` }] };
+    return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: `No active grant with id '${rightsId}'` }] };
   }
 
-  const currentEndDate = '2026-06-30';
-  const currentStartDate = '2026-04-01';
+  const defaultWindow = defaultRightsWindow();
+  const currentEndDate = defaultWindow.endDate;
+  const currentStartDate = defaultWindow.startDate;
   if (endDate && endDate < currentEndDate) {
-    return { errors: [{ code: 'invalid_update', message: 'New end_date must be >= current end_date' }] };
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'New end_date must be >= current end_date' }] };
   }
 
   const deliveredImpressions = 50000;
   if (impressionCap !== undefined && impressionCap < deliveredImpressions) {
-    return { errors: [{ code: 'invalid_update', message: `New impression_cap (${impressionCap}) must be >= impressions already delivered (${deliveredImpressions})` }] };
+    return { errors: [{ code: 'INVALID_REQUEST', message: `New impression_cap (${impressionCap}) must be >= impressions already delivered (${deliveredImpressions})` }] };
   }
 
   const pricingOption = offering.pricing_options[0];
@@ -1226,19 +1245,19 @@ export function handleCreativeApproval(
 
   const rightsId = req.rights_id || req.rights_grant_id;
   if (!rightsId) {
-    return { errors: [{ code: 'invalid_request', message: 'rights_id or rights_grant_id is required' }] };
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'rights_id or rights_grant_id is required' }] };
   }
 
   const isKnownOffering = TALENT.some(t =>
     t.rights_offerings.some(r => r.rights_id === rightsId)
   );
   if (!isKnownOffering) {
-    return { errors: [{ code: 'rights_not_found', message: `No rights offering with id '${rightsId}'. Acquire rights first using acquire_rights.` }] };
+    return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: `No rights offering with id '${rightsId}'. Acquire rights first using acquire_rights.` }] };
   }
 
   const creativeUrl = req.creative_url || req.creative?.assets?.[0]?.url;
   if (!creativeUrl) {
-    return { errors: [{ code: 'invalid_request', message: 'creative_url or creative.assets[].url is required' }] };
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'creative_url or creative.assets[].url is required' }] };
   }
 
   const creativeId = req.creative_id || req.creative?.creative_id || 'sandbox_creative';

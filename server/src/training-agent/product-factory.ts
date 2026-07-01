@@ -24,11 +24,26 @@ type DeliveryType = Product['delivery_type'];
 type PublisherPropertySelector = Product['publisher_properties'][number];
 type FlatRatePricingOption = Extract<PricingOption, { pricing_model: 'flat_rate' }>;
 type TimeBasedPricingOption = Extract<PricingOption, { pricing_model: 'time' }>;
+type ProductFormatDeclaration = NonNullable<Product['format_options']>[number];
+type ProductCardImage = NonNullable<NonNullable<Product['product_card']>['image']>;
 type CollectionSelector = {
   publisher_domain: string;
   collection_ids: string[];
 };
-type TrainingProduct = Product & {
+type ProductCardManifest = {
+  format_id: FormatID;
+  manifest: {
+    format_id: FormatID;
+    assets: Record<string, unknown>;
+  };
+};
+type CanonicalFormatProjection = {
+  format_kind: ProductFormatDeclaration['format_kind'];
+  params: ProductFormatDeclaration['params'];
+};
+type TrainingProduct = Omit<Product, 'product_card' | 'product_card_detailed'> & {
+  product_card?: Product['product_card'] | ProductCardManifest;
+  product_card_detailed?: Product['product_card_detailed'] | ProductCardManifest;
   collections?: CollectionSelector[];
   installments?: Installment[];
   exclusivity?: 'exclusive' | 'category';
@@ -58,6 +73,29 @@ function inferPrimaryAssetType(channels: string[]): string {
   if (channels.some(c => ['radio', 'streaming_audio', 'podcast'].includes(c))) return 'audio';
   if (channels.some(c => ['social', 'influencer'].includes(c))) return 'social';
   return 'display';
+}
+
+function truncateLabel(value: string, maxLength: number): string {
+  return value.length <= maxLength ? value : value.slice(0, maxLength - 3).trimEnd() + '...';
+}
+
+function productCardImage(pub: PublisherProfile): ProductCardImage | undefined {
+  if (!pub.heroImageUrl) return undefined;
+  return {
+    asset_type: 'image',
+    url: pub.heroImageUrl,
+    width: 600,
+    height: 300,
+    alt_text: `${pub.name} product preview`,
+  };
+}
+
+function productCardPriceLabel(pricing: PricingTemplate | undefined): string | undefined {
+  if (!pricing) return undefined;
+  const price = pricing.fixedPrice ?? pricing.floorPrice;
+  if (price === undefined) return pricing.model.toUpperCase();
+  const amount = pricing.currency === 'USD' ? `$${price}` : `${pricing.currency} ${price}`;
+  return truncateLabel(`${pricing.fixedPrice === undefined ? 'From ' : ''}${amount} ${pricing.model.toUpperCase()}`, 30);
 }
 
 function normalizeInstallmentStatus(status: string): InstallmentStatus {
@@ -210,6 +248,27 @@ function formatIdsForChannels(channels: string[], agentUrl: string): FormatID[] 
     }
   }
   return ids;
+}
+
+const CANONICAL_FORMAT_PROJECTION_BY_LEGACY_ID: Partial<Record<string, CanonicalFormatProjection>> = {
+  display_300x250: {
+    format_kind: 'image',
+    params: { width: 300, height: 250 },
+  },
+};
+
+function formatOptionsForFormatIds(formatIds: FormatID[]): ProductFormatDeclaration[] {
+  return formatIds.flatMap(formatId => {
+    // Omitted ids stay legacy-only until they have a clean canonical projection.
+    const projection = CANONICAL_FORMAT_PROJECTION_BY_LEGACY_ID[formatId.id];
+    if (!projection) return [];
+    return {
+      format_kind: projection.format_kind,
+      format_option_id: `${formatId.id}_${projection.format_kind}`,
+      params: projection.params,
+      v1_format_ref: [formatId],
+    } as ProductFormatDeclaration;
+  });
 }
 
 function publisherPropertySelectors(pub: PublisherProfile, channels?: string[]): PublisherPropertySelector[] {
@@ -412,8 +471,21 @@ function buildProduct(
       metrics.push('engagements', 'reach');
     }
     if (metrics.length > 0) {
+      // Sibling unit declarations to supported_metrics: completed_views
+      // requires durations and reach requires units. Industry-default values
+      // (TikTok/Meta/Snap durations; CTV/social reach units) so buyers can
+      // bind reach_unit / view_duration_seconds without re-discovery.
+      // create_media_buy's metric-kind validation reads these to reject
+      // unsupported values (reach_buy_flow / completed_views_buy_flow).
+      type MetricOpt = NonNullable<Product['metric_optimization']>;
+      const supportedViewDurations: MetricOpt['supported_view_durations'] = metrics.includes('completed_views') ? [2, 6, 15, 30] : undefined;
+      const supportedReachUnits: MetricOpt['supported_reach_units'] = metrics.includes('reach')
+        ? ['individuals', 'households', 'devices', 'accounts']
+        : undefined;
       metricOptimization = {
         supported_metrics: metrics,
+        ...(supportedReachUnits && { supported_reach_units: supportedReachUnits }),
+        ...(supportedViewDurations && { supported_view_durations: supportedViewDurations }),
         supported_targets: ['cost_per'],
       };
     }
@@ -519,13 +591,16 @@ function buildProduct(
     }
   }
 
+  const formatIds = formatIdsForChannels(template.channels, agentUrl);
+  const formatOptions = formatOptionsForFormatIds(formatIds);
   const product: TrainingProduct = {
     product_id: productId,
     name: template.name,
     description: template.description,
     publisher_properties: publisherPropertySelectors(pub, template.channels),
     channels: template.channels as MediaChannel[],
-    format_ids: formatIdsForChannels(template.channels, agentUrl),
+    format_ids: formatIds,
+    ...(formatOptions.length > 0 ? { format_options: formatOptions } : {}),
     delivery_type: template.deliveryType as DeliveryType,
     delivery_measurement: {
       provider: pub.measurementProvider,
@@ -549,6 +624,10 @@ function buildProduct(
     } as NonNullable<Product['reporting_capabilities']>,
     ...(pub.catalogTypes?.length && { catalog_types: pub.catalogTypes as CatalogType[] }),
     ...(metricOptimization && { metric_optimization: metricOptimization }),
+    // Vendor-metric optimization is a publisher/inventory capability, not
+    // auction-only. Guaranteed products can still steer allocation/pacing
+    // toward the vendor signal, so do not gate this on delivery_type.
+    ...(pub.vendorMetricOptimization && { vendor_metric_optimization: pub.vendorMetricOptimization }),
     ...(forecast && { forecast }),
     ...(conversionTracking && { conversion_tracking: conversionTracking }),
     ...(collectionSelectors && { collections: collectionSelectors }),
@@ -557,47 +636,38 @@ function buildProduct(
     ...(collectionTargetingAllowed && { collection_targeting_allowed: collectionTargetingAllowed }),
   };
 
-  // Populate product card manifests from the product's own data
+  // Populate inline product cards from the product's own data.
   const primaryPricing = effectivePricing[0];
   const primaryAssetType = inferPrimaryAssetType(template.channels);
-  const cardAssets: Record<string, { content?: string; url?: string }> = {
-    product_name: { content: template.name },
-    product_description: { content: template.description },
-    delivery_type: { content: template.deliveryType },
-    primary_asset_type: { content: primaryAssetType },
-  };
-  if (pub.heroImageUrl) {
-    cardAssets.product_image = { url: pub.heroImageUrl };
-  }
-  cardAssets.publisher_name = { content: pub.name };
-  if (pub.audienceSummary) {
-    cardAssets.audience_summary = { content: pub.audienceSummary };
-  }
-  if (pub.estimatedVolume) {
-    cardAssets.estimated_volume = { content: pub.estimatedVolume };
-  }
-  if (primaryPricing) {
-    cardAssets.pricing_model = { content: primaryPricing.model.toUpperCase() };
-    const priceValue = primaryPricing.fixedPrice ?? primaryPricing.floorPrice;
-    if (priceValue !== undefined) {
-      cardAssets.pricing_amount = { content: String(priceValue) };
-    }
-    cardAssets.pricing_currency = { content: primaryPricing.currency };
-  }
-  // Click-through links to the publisher's product page
-  cardAssets.click_url = { url: `https://${pub.domain}/products/${productId}` };
+  const image = productCardImage(pub);
+  const priceLabel = productCardPriceLabel(primaryPricing);
+  const specifications = [
+    { label: 'Publisher', value: pub.name },
+    { label: 'Delivery type', value: template.deliveryType === 'guaranteed' ? 'Guaranteed' : 'Non-guaranteed' },
+    { label: 'Channels', value: template.channels.join(', ') },
+    { label: 'Primary asset', value: primaryAssetType },
+    ...(pub.audienceSummary ? [{ label: 'Audience', value: pub.audienceSummary }] : []),
+    ...(pub.estimatedVolume ? [{ label: 'Estimated volume', value: pub.estimatedVolume }] : []),
+  ].map(spec => ({ label: truncateLabel(spec.label, 60), value: truncateLabel(spec.value, 200) }));
 
   product.product_card = {
-    format_id: { agent_url: agentUrl, id: 'product_card_standard' },
-    manifest: { format_id: { agent_url: agentUrl, id: 'product_card_standard' }, assets: cardAssets },
+    ...(image && { image }),
+    title: truncateLabel(template.name, 60),
+    description: truncateLabel(template.description, 200),
+    ...(priceLabel && { price_label: priceLabel }),
+    cta_label: 'View details',
   };
   product.product_card_detailed = {
-    format_id: { agent_url: agentUrl, id: 'product_card_detailed' },
-    manifest: { format_id: { agent_url: agentUrl, id: 'product_card_detailed' }, assets: cardAssets },
+    ...(image && { hero_image: image }),
+    title: template.name,
+    description: template.description,
+    specifications,
+    ...(priceLabel && { price_label: priceLabel }),
+    cta_label: 'View details',
   };
 
   return {
-    product: product as Product,
+    product: product as unknown as Product,
     publisherId: pub.id,
     trainingTier: tierForProduct(pub, template.deliveryType, template.channels),
     scenarioTags: scenarioTagsForProduct(pub, template.deliveryType, template.channels),
@@ -865,8 +935,21 @@ export function buildCatalog(): CatalogProduct[] {
   // `pricing_option_id: "test-pricing"` / `"default"`, so the aliases
   // also publish those pricing options (shallow-cloned from the source
   // product's first pricing option with the expected id).
+  //
+  // Specialism storyboards (sales_guaranteed, sales_broadcast_tv) list
+  // products in their `fixtures.products` block with `controller_seeding:
+  // true`. On @adcp/sdk v6+, the storyboard runner fires seed_product
+  // before create_media_buy; on @adcp/client v5 (pinned on 3.0.x) that
+  // seeding pathway is absent. These aliases are the 3.0.x workaround —
+  // the static catalog stands in for what the runner would have seeded.
   const firstPublisher = PUBLISHERS[0];
   const ctvPublisher = PUBLISHERS.find(p => p.channels.includes('ctv')) ?? firstPublisher;
+  // Publisher with guaranteed-only delivery and CTV: viewpoint_sports.
+  const guaranteedCtvPublisher = PUBLISHERS.find(
+    p => p.channels.includes('ctv') && p.deliveryTypes.length === 1 && p.deliveryTypes[0] === 'guaranteed',
+  ) ?? ctvPublisher;
+  // Publisher with linear_tv channel: also viewpoint_sports.
+  const linearTvPublisher = PUBLISHERS.find(p => p.channels.includes('linear_tv')) ?? guaranteedCtvPublisher;
   const aliases: Array<{
     id: string;
     name: string;
@@ -900,6 +983,32 @@ export function buildCatalog(): CatalogProduct[] {
       source: catalog.find(cp => cp.publisherId === firstPublisher.id),
       pricingAliases: ['cpm_standard'],
     },
+    // sales_guaranteed specialism: guaranteed video products (3.0.x static workaround)
+    {
+      id: 'sports_preroll_q2_guaranteed',
+      name: 'Sports Preroll Q2 Guaranteed (storyboard fixture)',
+      source: catalog.find(cp => cp.publisherId === guaranteedCtvPublisher.id && (cp.product.channels ?? []).includes('ctv')),
+      pricingAliases: ['cpm_guaranteed_fixed'],
+    },
+    {
+      id: 'outdoor_ctv_q2_guaranteed',
+      name: 'Outdoor CTV Q2 Guaranteed (storyboard fixture)',
+      source: catalog.find(cp => cp.publisherId === guaranteedCtvPublisher.id && (cp.product.channels ?? []).includes('ctv')),
+      pricingAliases: ['cpm_guaranteed_fixed'],
+    },
+    // sales_broadcast_tv specialism: guaranteed linear TV products (3.0.x static workaround)
+    {
+      id: 'primetime_30s_mf',
+      name: 'Primetime 30s Multi-Flight (storyboard fixture)',
+      source: catalog.find(cp => cp.publisherId === linearTvPublisher.id && (cp.product.channels ?? []).includes('linear_tv')),
+      pricingAliases: ['unit_primetime_30'],
+    },
+    {
+      id: 'late_fringe_15s_mf',
+      name: 'Late Fringe 15s Multi-Flight (storyboard fixture)',
+      source: catalog.find(cp => cp.publisherId === linearTvPublisher.id && (cp.product.channels ?? []).includes('linear_tv')),
+      pricingAliases: ['unit_fringe_15'],
+    },
   ];
   for (const alias of aliases) {
     if (!alias.source) continue;
@@ -917,20 +1026,6 @@ export function buildCatalog(): CatalogProduct[] {
           }),
         ]
       : alias.source.product.pricing_options;
-    // Product cards embed `click_url` pointing at the source product's id;
-    // rebuild with the alias id so the URL matches the new product_id.
-    // The catalog shape contract (buildCatalog unit tests) asserts that
-    // every product's click_url contains its product_id.
-    const rebuildCard = <T extends { manifest?: { assets?: Record<string, unknown> } } | undefined>(card: T): T => {
-      if (!card?.manifest?.assets) return card;
-      const assets = { ...card.manifest.assets };
-      const clickAsset = assets.click_url as { url?: string } | undefined;
-      if (clickAsset?.url) {
-        const sourceId = alias.source!.product.product_id;
-        assets.click_url = { ...clickAsset, url: clickAsset.url.replace(sourceId, alias.id) };
-      }
-      return { ...card, manifest: { ...card.manifest, assets } } as T;
-    };
     catalog.push({
       ...alias.source,
       product: {
@@ -939,10 +1034,10 @@ export function buildCatalog(): CatalogProduct[] {
         name: alias.name,
         ...(aliasedPricing && { pricing_options: aliasedPricing }),
         ...('product_card' in alias.source.product && alias.source.product.product_card
-          ? { product_card: rebuildCard(alias.source.product.product_card) }
+          ? { product_card: { ...alias.source.product.product_card, title: truncateLabel(alias.name, 60) } }
           : {}),
         ...('product_card_detailed' in alias.source.product && alias.source.product.product_card_detailed
-          ? { product_card_detailed: rebuildCard(alias.source.product.product_card_detailed) }
+          ? { product_card_detailed: { ...alias.source.product.product_card_detailed, title: alias.name } }
           : {}),
       },
     });

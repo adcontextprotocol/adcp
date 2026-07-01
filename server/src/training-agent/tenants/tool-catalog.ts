@@ -1,0 +1,131 @@
+/**
+ * Static catalog mapping each canonical AdCP tool name to the tenants that
+ * serve it. Surfaces in the `_training_agent_tenants` discovery extension
+ * on `/.well-known/adagents.json` so a developer can pick the right URL
+ * without trial-and-error.
+ *
+ * NOT used for request-path interception. The storyboard runner's
+ * missing-tool detection (`/Unknown tool[:\s]/i` + `!taskResult`) doesn't
+ * classify any of `result.isError`, JSON-RPC error, or `adcp_error`-wrapped
+ * responses as graceful skips — so any custom error format breaks the
+ * runner. Keep the catalog as a discovery hint only until upstream SDK
+ * adds a wrong-tenant classifier.
+ *
+ * Multi-tenant tools (e.g., `sync_creatives` served by sales / creative /
+ * creative-builder) appear in multiple tenants' lists.
+ *
+ * Drift detection: `tests/integration/training-agent-tool-catalog-drift.test.ts`
+ * boots each tenant and asserts this catalog matches the live `tools/list`
+ * response. Universal tools (`get_adcp_capabilities`, `comply_test_controller`,
+ * `tasks_get`) are excluded from the catalog by convention — they're on
+ * every tenant and never form a "wrong tenant" hint.
+ */
+
+export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
+  // accounts — sync_accounts is auto-registered by the framework on every
+  // tenant whose `accounts.upsert` is wired (see v6-account-helpers.ts).
+  // list_accounts rides a custom read-tool wrapper so it preserves the v5
+  // training-agent pagination envelope. Do not also wire `accounts.list`;
+  // the SDK treats list_accounts as first-class and rejects duplicate
+  // customTools registration.
+  sync_accounts: ['sales', 'signals', 'governance', 'creative', 'creative-builder', 'brand'],
+  list_accounts: ['sales', 'signals', 'governance', 'creative', 'creative-builder', 'brand'],
+
+  // sales
+  get_products: ['sales'],
+  create_media_buy: ['sales'],
+  update_media_buy: ['sales'],
+  get_media_buys: ['sales'],
+  get_media_buy_delivery: ['sales'],
+  provide_performance_feedback: ['sales'],
+  sync_audiences: ['sales'],
+  sync_event_sources: ['sales'],
+  log_event: ['sales'],
+  report_usage: ['sales', 'creative'],
+  // list_creative_formats is framework-registered for any tenant claiming
+  // creative (sales, creative, creative-builder) — the SDK auto-advertises
+  // it. Catalog mirrors that advertisement so the drift test stays green.
+  list_creative_formats: ['sales', 'creative', 'creative-builder'],
+
+  // creative — exposed on multiple tenants
+  // list_creatives / get_creative_delivery are sales-side / ad-server-side
+  // operations. SDK 7.0's `CreativeBuilderPlatform` interface dropped them
+  // (they live on `CreativeAdServerPlatform`); the /creative-builder tenant
+  // no longer advertises them in tools/list.
+  validate_input: ['sales', 'creative', 'creative-builder'],
+  // list_transformers (account-scoped transformer discovery) rides customTools
+  // on the creative tenants, gated off 3.0-compat like validate_input.
+  list_transformers: ['creative', 'creative-builder'],
+  list_creatives: ['sales', 'creative'],
+  sync_creatives: ['sales', 'creative', 'creative-builder'],
+  build_creative: ['sales', 'creative', 'creative-builder'],
+  preview_creative: ['sales', 'creative', 'creative-builder'],
+  get_creative_delivery: ['creative'],
+
+  // sync_governance rides customTools on both /sales (every media_buy_seller
+  // specialism registers a buyer governance agent before spend moves) and
+  // /signals (signal-marketplace governance-denial pattern).
+  sync_governance: ['sales', 'signals'],
+  get_signals: ['signals'],
+  activate_signal: ['signals'],
+
+  // governance — campaign
+  sync_plans: ['governance'],
+  check_governance: ['governance'],
+  report_plan_outcome: ['governance'],
+  get_plan_audit_logs: ['governance'],
+
+  // governance — property lists
+  create_property_list: ['governance'],
+  update_property_list: ['governance'],
+  list_property_lists: ['governance'],
+  get_property_list: ['governance'],
+  delete_property_list: ['governance'],
+  validate_content_delivery: ['governance'],
+
+  // governance — collection lists
+  create_collection_list: ['governance'],
+  update_collection_list: ['governance'],
+  list_collection_lists: ['governance'],
+  get_collection_list: ['governance'],
+  delete_collection_list: ['governance'],
+
+  // governance — content standards
+  create_content_standards: ['governance'],
+  update_content_standards: ['governance'],
+  list_content_standards: ['governance'],
+  get_content_standards: ['governance'],
+  calibrate_content: ['governance'],
+
+  // brand
+  get_brand_identity: ['brand'],
+  verify_brand_claim: ['brand'],
+  verify_brand_claims: ['brand'],
+  get_rights: ['brand'],
+  acquire_rights: ['brand'],
+  update_rights: ['brand'],
+  creative_approval: ['brand'],
+};
+
+/** Build the tool list a given tenant serves — inverse view of TOOL_CATALOG. */
+export function toolsForTenant(
+  tenantId: string,
+  options: { storyboardCompat?: { version?: string }; adcpVersion?: string } = {},
+): string[] {
+  return Object.entries(TOOL_CATALOG)
+    .filter(([, tenants]) => tenants.includes(tenantId))
+    .map(([tool]) => tool)
+    .filter(tool => {
+      const is30 = options.storyboardCompat?.version === '3.0'
+        || options.adcpVersion?.startsWith('3.0');
+      if (!is30) return true;
+      // 3.0-compat exclusions. validate_input / list_transformers are gated off
+      // on every tenant that serves them. sync_governance is a 3.1+ account task
+      // gated off /sales under 3.0 (the released 3.0.x sales scenarios skip it),
+      // but /signals keeps it across versions.
+      if (tool === 'validate_input' || tool === 'list_transformers') return false;
+      if (tool === 'sync_governance' && tenantId === 'sales') return false;
+      return true;
+    })
+    .sort();
+}

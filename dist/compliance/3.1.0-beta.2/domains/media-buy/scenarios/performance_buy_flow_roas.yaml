@@ -1,0 +1,470 @@
+id: media_buy_seller/performance_buy_flow_roas
+version: "1.0.0"
+title: "Seller fulfills a performance (event-kind goal) media buy with a ROAS target"
+category: media_buy_seller
+summary: "Verifies that a seller advertising conversion_tracking with per_ad_spend in supported_targets can accept a media buy whose event-kind optimization_goal carries a ROAS (per_ad_spend) target bound to an event source with value_field, reject ROAS goals that omit value_field on every event-source entry, ingest valued purchase events, and report conversion_value + roas alongside conversions and cost_per_acquisition. Sibling to media_buy_seller/performance_buy_flow gated on the supported_targets sub-capability: sellers that don't advertise per_ad_spend (most broadcast TV, upper-funnel video, signal-only) grade not_applicable."
+track: media_buy
+
+# Gate: scenario runs only when the seller declares per_ad_spend in
+# conversion_tracking.supported_targets. Sellers that compute conversions
+# but not return-on-ad-spend (broadcast TV, upper-funnel video, signal-only,
+# many MMP-mediated mobile pipelines) grade `not_applicable`, not failing.
+# supported_targets is a per-target-kind enumeration of the target kinds the
+# seller can actually optimize toward (proposed in #4639). Gating on the
+# explicit kind rather than on conversion_tracking presence is what keeps
+# honest CPA-only implementations from failing. Requires runner support for
+# the `contains:` matcher (adcp-client >= 7.70).
+requires_capability:
+  path: media_buy.conversion_tracking.supported_targets
+  contains: "per_ad_spend"
+
+required_tools:
+  - get_products
+  - sync_event_sources
+  - create_media_buy
+  - log_event
+  - get_media_buy_delivery
+  - comply_test_controller
+
+invariants:
+  - status.monotonic
+
+narrative: |
+  A "ROAS buy" is a performance media buy whose optimization_goal targets
+  return-on-ad-spend rather than cost-per-acquisition. The buyer commits to
+  a target_roas (per_ad_spend) and binds the buy to one or more conversion
+  event sources whose events carry monetary value. value_field on the
+  event-source entry tells the seller which custom_data field carries the
+  per-event value to aggregate; without value_field there is nothing to
+  divide by spend, so the seller MUST reject the goal.
+
+  This scenario is a sibling to media_buy_seller/performance_buy_flow, gated
+  on a separate sub-capability bit (conversion_tracking.supported_targets
+  contains per_ad_spend). The CPA scenario is gated on conversion_tracking
+  presence — every seller that tracks conversions can compute CPA. ROAS is
+  narrower: many performance sellers honestly track conversions but don't
+  compute return-on-ad-spend because their attribution doesn't carry value.
+  Gating ROAS on the explicit per_ad_spend kind in supported_targets is what
+  prevents that population from being marked failing instead of
+  not_applicable.
+
+  Discriminating behaviors this scenario verifies:
+  1. sync_event_sources returns an event_source_id that is valid as the
+     binding target on a per_ad_spend optimization_goal.
+  2. create_media_buy with an event-kind goal whose target.kind is
+     per_ad_spend AND whose event_sources[k].value_field is populated is
+     accepted.
+  3. create_media_buy with target.kind = per_ad_spend AND NO value_field on
+     any event_sources[] entry is rejected with INVALID_REQUEST. The seller
+     cannot compute ROAS without a value field; silent acceptance would mean
+     reporting roas: 0 for the life of the buy. error.field points at the
+     offending value_field absence at packages[0].optimization_goals[0].event_sources[0].value_field.
+  4. log_event flows valued conversions back, scoped to the registered
+     event_source_id with order_total in custom_data.
+  5. get_media_buy_delivery returns first-class ROAS metrics — conversion_value
+     and roas — alongside conversions and cost_per_acquisition. CPA is still
+     computed (spend / conversions is well-defined for any conversion source);
+     roas is the field this scenario exists to assert.
+
+  Per-creative ROAS breakdown is deliberately NOT asserted here for the
+  same reason per-creative attribution is deferred in performance_buy_flow:
+  honest adopters report at differing granularities (social per-ad, retail-
+  media per-line, MMP-mediated per-campaign, broadcast/CTV per-placement).
+  A follow-up scenario gated on a sub-capability bit will land per-creative
+  value attribution once the breakdown shape is settled.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - supports_non_guaranteed
+    - conversion_tracking
+  examples:
+    - "Performance-mode DSPs with value-aware bidding"
+    - "Retail-media networks (Amazon Ads, Criteo, Walmart Connect)"
+    - "Social platforms with value optimization (Meta VBO, TikTok VBO)"
+    - "Agentic optimizers that pass value into upstream attribution"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller must implement comply_test_controller with simulate_delivery
+    (already required for delivery_reporting). simulate_delivery's
+    `conversions` param injects attributed conversion counts and the seller
+    is expected to compute conversion_value from logged events with
+    order_total. Sellers whose attribution pipeline cannot ingest a value
+    field do not advertise per_ad_spend in supported_targets and grade
+    not_applicable.
+
+    The buyer fixture supplies a brand, an operator, a conversion event
+    source definition, and a valued purchase event sufficient to exercise
+    the ROAS reporting contract.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "performance_roas_native_q2"
+      delivery_type: "non_guaranteed"
+      channels: ["display", "native"]
+      format_ids:
+        - id: "native_feed_1x1"
+        - id: "display_300x250"
+  pricing_options:
+    - product_id: "performance_roas_native_q2"
+      pricing_option_id: "auction_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 1.50
+
+phases:
+
+  - id: setup
+    title: "Establish account and discover products"
+    steps:
+      - id: sync_accounts
+        title: "Establish account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the account with account_id and status active.
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+          idempotency_key: "$generate:uuid_v4#performance_buy_flow_roas_setup_sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+
+      - id: get_products_for_roas
+        title: "Discover products that support ROAS optimization"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        expected: |
+          Return at least one product whose conversion_tracking capabilities
+          accept per_ad_spend event-kind targets.
+        sample_request:
+          buying_mode: "brief"
+          brief: "Performance native + display, US, adults 25-54. Target ROAS 4.0 on purchase events with order_total from acmeoutdoor.example."
+          required_capabilities:
+            - "conversion_tracking"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products"
+            description: "Response contains products"
+
+  - id: event_source_binding
+    title: "Register the conversion event source"
+    narrative: |
+      The ROAS buy cannot be created without a registered event source whose
+      entry carries value_field. This phase exercises the binding —
+      sync_event_sources returns an event_source_id that the next phase
+      references on a per_ad_spend optimization_goal.
+
+    steps:
+      - id: sync_event_sources
+        title: "Register a website conversion source"
+        task: sync_event_sources
+        schema_ref: "media-buy/sync-event-sources-request.json"
+        response_schema_ref: "media-buy/sync-event-sources-response.json"
+        doc_ref: "/media-buy/task-reference/sync_event_sources"
+        stateful: true
+        expected: |
+          Return event_sources with event_source_id, setup.snippet, and
+          action: created. The id is captured for the ROAS create_media_buy
+          phase.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          event_sources:
+            - event_source_id: "acmeoutdoor_website"
+              name: "Acme Outdoor Website"
+              event_types: ["purchase"]
+              allowed_domains: ["acmeoutdoor.example"]
+          idempotency_key: "$generate:uuid_v4#performance_buy_flow_roas_event_source_binding_sync_event_sources"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-event-sources-response.json schema"
+          - check: field_present
+            path: "event_sources[0].event_source_id"
+            description: "Event source has a platform-assigned ID"
+          - check: field_present
+            path: "event_sources[0].setup.snippet"
+            description: "Event source returns integration code"
+          # Anti-façade: an adapter that returns a shape-valid
+          # sync_event_sources response without forwarding the source
+          # definition upstream fails this check. Adopters who don't
+          # advertise query_upstream_traffic grade not_applicable.
+          - check: upstream_traffic
+            description: "sync_event_sources caused upstream traffic registering the event source"
+            min_count: 1
+            endpoint_pattern: "POST *"
+
+  - id: create_performance_buy_roas
+    title: "Create a performance buy with a ROAS goal"
+    narrative: |
+      The buyer creates a media buy whose package carries an event-kind
+      optimization_goal binding to the registered event source. The target
+      is per_ad_spend (ROAS) 4.0 on purchase events, with value_field
+      "order_total" telling the seller which custom_data field to aggregate.
+
+    steps:
+      - id: create_media_buy_roas
+        title: "Create media buy with event-kind goal (per_ad_spend target)"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        expected: |
+          Create the media buy. Response carries a media_buy_id used for
+          subsequent log_event and get_media_buy_delivery calls.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "2026-06-01T00:00:00Z"
+          end_time: "2026-06-30T23:59:59Z"
+          packages:
+            - product_id: "performance_roas_native_q2"
+              budget: 25000
+              pricing_option_id: "auction_cpm"
+              optimization_goals:
+                - kind: "event"
+                  event_sources:
+                    - event_source_id: "acmeoutdoor_website"
+                      event_type: "purchase"
+                      value_field: "order_total"
+                  target:
+                    kind: "per_ad_spend"
+                    value: 4.0
+                  priority: 1
+          idempotency_key: "$generate:uuid_v4#performance_buy_flow_roas_create_performance_buy_roas_create_media_buy"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Media buy has a platform-assigned ID"
+
+  - id: rejection_per_ad_spend_no_value_field
+    title: "Reject a per_ad_spend goal that omits value_field"
+    narrative: |
+      Silent acceptance of a per_ad_spend target with no value_field on any
+      event_sources[] entry is a façade — the seller cannot compute ROAS
+      without a value to divide by spend, so the buy would silently report
+      roas: 0 (or absent) for the life of the flight. The seller MUST reject
+      with INVALID_REQUEST and set error.field to the offending value_field
+      absence on the first event_sources entry. This mirrors the unbound
+      event_source_id rejection in performance_buy_flow on the value side.
+
+      optimization-goal.json:148-156 makes the requirement explicit: target
+      kinds per_ad_spend and maximize_value require value_field on at least
+      one entry. Sellers MUST reject when the requirement is unmet.
+
+    steps:
+      - id: create_media_buy_per_ad_spend_no_value_field
+        title: "Submit a per_ad_spend goal with no value_field on any source"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        expected: |
+          Reject with INVALID_REQUEST. error.field points at the missing
+          value_field on the event_sources entry. media_buy_id is not
+          allocated.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "2026-06-01T00:00:00Z"
+          end_time: "2026-06-30T23:59:59Z"
+          packages:
+            - product_id: "performance_roas_native_q2"
+              budget: 5000
+              pricing_option_id: "auction_cpm"
+              optimization_goals:
+                - kind: "event"
+                  event_sources:
+                    - event_source_id: "acmeoutdoor_website"
+                      event_type: "purchase"
+                  target:
+                    kind: "per_ad_spend"
+                    value: 4.0
+          idempotency_key: "$generate:uuid_v4#performance_buy_flow_roas_rejection_per_ad_spend_no_value_field"
+        validations:
+          - check: error_code
+            allowed_values: ["INVALID_REQUEST"]
+            description: "Seller rejects the per_ad_spend goal with no value_field with INVALID_REQUEST"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].optimization_goals[0].event_sources[0].value_field"
+            description: "Error.field points at the missing value_field on the first event_sources entry (core/error.json defines field as deterministic JSONPath-lite — literal equality; the value_field path is more buyer-actionable than pointing at target.kind because it tells the buyer what to add, not what to remove)"
+
+  - id: log_purchase_event
+    title: "Log a valued purchase event against the bound source"
+    narrative: |
+      The buyer logs a purchase event with order_total in custom_data tied
+      to the registered event_source_id. The seller's attribution pipeline
+      ingests order_total via the value_field declared on the goal and
+      aggregates it into conversion_value, surfaced in delivery in the next
+      phase.
+
+    steps:
+      - id: log_purchase_event
+        title: "Log a purchase event with order_total"
+        task: log_event
+        schema_ref: "media-buy/log-event-request.json"
+        response_schema_ref: "media-buy/log-event-response.json"
+        doc_ref: "/media-buy/task-reference/log_event"
+        stateful: true
+        expected: |
+          Acknowledge the event with accepted status.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          event_source_id: "acmeoutdoor_website"
+          events:
+            - event_type: "purchase"
+              event_id: "evt_perf_buy_flow_roas_001"
+              event_time: "2026-06-05T14:30:00Z"
+              user_match:
+                hashed_email: "a000000000000000000000000000000000000000000000000000000000000020"
+              custom_data:
+                order_total: 149.99
+                currency: "USD"
+          idempotency_key: "$generate:uuid_v4#performance_buy_flow_roas_log_purchase_event_log_event"
+        validations:
+          - check: response_schema
+            description: "Response matches log-event-response.json schema"
+          - check: upstream_traffic
+            description: "log_event forwards the event to the seller's upstream conversion endpoint with the order_total value"
+            min_count: 1
+            endpoint_pattern: "POST *"
+            identifier_paths:
+              - "events[*].user_match.hashed_email"
+
+  - id: attributed_roas_delivery
+    title: "Delivery reporting carries ROAS, conversion_value, conversions, and CPA"
+    narrative: |
+      The discriminating assertion of the ROAS buy mode: delivery reporting
+      MUST surface conversion_value and roas — not just conversions and CPA.
+      The runner injects simulated impressions, conversions, and spend via
+      the test controller, then verifies get_media_buy_delivery returns all
+      four first-class metrics at the buy level.
+
+      CPA is still computed (spend / conversions is well-defined whenever
+      the seller tracks conversions); ROAS is the addition this scenario
+      exists to certify. Sellers that advertise per_ad_spend in
+      supported_targets are committing to populate conversion_value and roas
+      on delivery responses.
+
+      Per-creative ROAS breakdown is deliberately NOT asserted here for the
+      same reason performance_buy_flow defers per-creative attribution:
+      honest adopters report at differing granularities and gating
+      per-creative value attribution on a sub-capability bit lands as a
+      follow-up scenario.
+
+    steps:
+      - id: simulate_roas_delivery
+        title: "Inject impressions + conversions + spend"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        expected: |
+          The test controller acknowledges the simulated delivery.
+        sample_request:
+          account:
+            sandbox: true
+          scenario: "simulate_delivery"
+          params:
+            media_buy_id: "$context.media_buy_id"
+            impressions: 200000
+            clicks: 4500
+            conversions: 90
+            reported_spend:
+              amount: 3000.00
+              currency: "USD"
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Delivery simulation succeeds"
+
+      - id: get_attributed_roas_delivery
+        title: "Get delivery and verify ROAS-attributed metrics"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        stateful: true
+        expected: |
+          Delivery response includes:
+          - conversions (the count of attributed conversions)
+          - conversion_value (the sum of order_total across attributed conversions)
+          - roas (conversion_value / spend — the discriminating assertion for this scenario)
+          - cost_per_acquisition (still computed; ROAS is in addition, not instead)
+
+          Per-creative value attribution is intentionally NOT asserted here
+          (see phase narrative). A follow-up scenario gated on a sub-capability
+          bit will land per-creative ROAS once the breakdown shape is settled.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+          include_package_daily_breakdown: true
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_present
+            path: "media_buy_deliveries[0].totals.conversions"
+            description: "Conversion count surfaced at the buy level"
+          - check: field_present
+            path: "media_buy_deliveries[0].totals.conversion_value"
+            description: "Aggregated conversion_value surfaced at the buy level (sum of order_total across attributed conversions)"
+          - check: field_present
+            path: "media_buy_deliveries[0].totals.roas"
+            description: "ROAS surfaced at the buy level — the discriminating assertion of per_ad_spend optimization (conversion_value / spend)"
+          - check: field_present
+            path: "media_buy_deliveries[0].totals.cost_per_acquisition"
+            description: "CPA still computed alongside ROAS (spend / conversions)"

@@ -12,7 +12,7 @@
 
 import { Router } from 'express';
 import { createLogger } from '../../logger.js';
-import { requireAuth, requireAdmin } from '../../middleware/auth.js';
+import { requireGlobalAdmin } from '../../middleware/auth.js';
 import { decodeHtmlEntities } from '../../utils/html-entities.js';
 import {
   getAllFeedsWithStats,
@@ -151,7 +151,7 @@ export function createAdminFeedsRouter(): Router {
   const router = Router();
 
   // GET /api/admin/feeds - List all feeds with stats
-  router.get('/', requireAuth, requireAdmin, async (_req, res) => {
+  router.get('/', ...requireGlobalAdmin, async (_req, res) => {
     try {
       const feeds = await getAllFeedsWithStats();
       const stats = await getFeedStats();
@@ -165,7 +165,7 @@ export function createAdminFeedsRouter(): Router {
   });
 
   // GET /api/admin/feeds/:id - Get single feed with recent articles
-  router.get('/:id', requireAuth, requireAdmin, async (req, res) => {
+  router.get('/:id', ...requireGlobalAdmin, async (req, res) => {
     try {
       const feedId = parseInt(req.params.id, 10);
       if (isNaN(feedId)) {
@@ -194,7 +194,7 @@ export function createAdminFeedsRouter(): Router {
   });
 
   // POST /api/admin/feeds - Create new feed
-  router.post('/', requireAuth, requireAdmin, async (req, res) => {
+  router.post('/', ...requireGlobalAdmin, async (req, res) => {
     try {
       const { name, feed_url, category, enable_email } = req.body;
 
@@ -241,7 +241,7 @@ export function createAdminFeedsRouter(): Router {
   });
 
   // POST /api/admin/feeds/discover - Auto-discover RSS feed from a URL
-  router.post('/discover', requireAuth, requireAdmin, async (req, res) => {
+  router.post('/discover', ...requireGlobalAdmin, async (req, res) => {
     try {
       const { url } = req.body;
 
@@ -267,7 +267,7 @@ export function createAdminFeedsRouter(): Router {
   });
 
   // PUT /api/admin/feeds/:id - Update feed
-  router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
+  router.put('/:id', ...requireGlobalAdmin, async (req, res) => {
     try {
       const feedId = parseInt(req.params.id, 10);
       if (isNaN(feedId)) {
@@ -298,7 +298,7 @@ export function createAdminFeedsRouter(): Router {
   });
 
   // POST /api/admin/feeds/:id/toggle - Enable/disable feed
-  router.post('/:id/toggle', requireAuth, requireAdmin, async (req, res) => {
+  router.post('/:id/toggle', ...requireGlobalAdmin, async (req, res) => {
     try {
       const feedId = parseInt(req.params.id, 10);
       if (isNaN(feedId)) {
@@ -319,7 +319,7 @@ export function createAdminFeedsRouter(): Router {
   });
 
   // POST /api/admin/feeds/:id/fetch - Manually trigger feed fetch
-  router.post('/:id/fetch', requireAuth, requireAdmin, async (req, res) => {
+  router.post('/:id/fetch', ...requireGlobalAdmin, async (req, res) => {
     try {
       const feedId = parseInt(req.params.id, 10);
       if (isNaN(feedId)) {
@@ -350,7 +350,7 @@ export function createAdminFeedsRouter(): Router {
   });
 
   // DELETE /api/admin/feeds/:id - Delete feed
-  router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
+  router.delete('/:id', ...requireGlobalAdmin, async (req, res) => {
     try {
       const feedId = parseInt(req.params.id, 10);
       if (isNaN(feedId)) {
@@ -373,7 +373,7 @@ export function createAdminFeedsRouter(): Router {
   });
 
   // POST /api/admin/feeds/:id/email - Enable/disable email subscription for a feed
-  router.post('/:id/email', requireAuth, requireAdmin, async (req, res) => {
+  router.post('/:id/email', ...requireGlobalAdmin, async (req, res) => {
     try {
       const feedId = parseInt(req.params.id, 10);
       if (isNaN(feedId)) {

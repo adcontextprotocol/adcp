@@ -10,8 +10,6 @@
 
 import { getPool } from './client.js';
 import { createLogger } from '../logger.js';
-import type { WorkOS } from '@workos-inc/node';
-
 const logger = createLogger('user-merge-db');
 
 export interface UserMergeSummary {
@@ -24,8 +22,6 @@ export interface UserMergeSummary {
     rows_moved: number;
     rows_skipped_duplicate: number;
   }[];
-  workos_user_deleted: boolean;
-  warnings: string[];
 }
 
 export interface UserMergePreview {
@@ -90,6 +86,9 @@ export async function previewUserMerge(
       { name: 'seat_upgrade_requests', col: 'workos_user_id' },
       { name: 'user_email_aliases', col: 'workos_user_id' },
       { name: 'email_link_tokens', col: 'primary_workos_user_id' },
+      { name: 'agent_test_runs', col: 'workos_user_id' },
+      { name: 'certification_expectations', col: 'workos_user_id' },
+      { name: 'addie_prompt_telemetry', col: 'workos_user_id' },
     ];
 
     for (const table of tables) {
@@ -109,19 +108,38 @@ export async function previewUserMerge(
   }
 }
 
+export interface MergeUsersOptions {
+  /**
+   * If true, also flip `is_primary = TRUE` on the primaryUserId binding
+   * inside the same transaction as the data move and the secondary
+   * rebind. Use this from the admin "promote credential to primary" flow
+   * where the primaryUserId arg is the credential being promoted (and
+   * may currently be is_primary=FALSE). Default false — the primary is
+   * already is_primary=TRUE in normal mergeUsers callers.
+   */
+  ensurePrimaryFlag?: boolean;
+}
+
 /**
- * Merge two user accounts, moving all data from secondary to primary.
+ * Merge two user accounts. Moves all of the secondary user's app-state rows
+ * to the primary, then binds the secondary's WorkOS user to the primary's
+ * identity as a non-primary sign-in credential. The secondary WorkOS user
+ * stays alive — sign-in via either email resolves to the same identity, and
+ * the auth middleware swaps `req.user.id` to the primary's workos_user_id
+ * when a non-primary binding signs in so app-state reads land on the right
+ * person.
  *
- * @param primaryUserId - The WorkOS user ID to keep (merge into)
- * @param secondaryUserId - The WorkOS user ID to remove (merge from)
- * @param mergedBy - WorkOS user ID of person initiating the merge
- * @param workos - WorkOS client instance for deleting the secondary user
+ * @param primaryUserId - The WorkOS user ID to keep as the canonical
+ *   credential (and target for app-state rows)
+ * @param secondaryUserId - The WorkOS user ID to bind as a secondary sign-in
+ * @param mergedBy - WorkOS user ID of the person initiating the merge
+ * @param options - See {@link MergeUsersOptions}
  */
 export async function mergeUsers(
   primaryUserId: string,
   secondaryUserId: string,
   mergedBy: string,
-  workos: WorkOS
+  options: MergeUsersOptions = {}
 ): Promise<UserMergeSummary> {
   const pool = getPool();
   const client = await pool.connect();
@@ -132,8 +150,6 @@ export async function mergeUsers(
     merged_by: mergedBy,
     merged_at: new Date(),
     tables_merged: [],
-    workos_user_deleted: false,
-    warnings: [],
   };
 
   try {
@@ -250,12 +266,42 @@ export async function mergeUsers(
       rows_skipped_duplicate: secondaryPrefs.rows.length,
     });
 
-    // person_relationships: UNIQUE(workos_user_id) — keep primary's, delete secondary's
-    const primaryRelExists = await client.query(
-      `SELECT 1 FROM person_relationships WHERE workos_user_id = $1`,
+    // person_relationships: UNIQUE(workos_user_id) — keep primary's, delete
+    // secondary's. addie_threads.person_id and person_events.person_id are
+    // FKs to person_relationships.id; repoint them to the primary's row before
+    // the DELETE so addie_threads doesn't block with a 23503 (no CASCADE) and
+    // person_events doesn't silently CASCADE-delete the secondary's history.
+    const primaryRel = await client.query<{ id: string }>(
+      `SELECT id FROM person_relationships WHERE workos_user_id = $1`,
       [primaryUserId]
     );
-    if (primaryRelExists.rows.length > 0) {
+    if (primaryRel.rows.length > 0) {
+      const primaryRelId = primaryRel.rows[0].id;
+      const secondaryRel = await client.query<{ id: string }>(
+        `SELECT id FROM person_relationships WHERE workos_user_id = $1`,
+        [secondaryUserId]
+      );
+      const secondaryRelId = secondaryRel.rows[0]?.id;
+      if (secondaryRelId) {
+        const threadsMoved = await client.query(
+          `UPDATE addie_threads SET person_id = $1 WHERE person_id = $2 RETURNING 1`,
+          [primaryRelId, secondaryRelId]
+        );
+        const eventsMoved = await client.query(
+          `UPDATE person_events SET person_id = $1 WHERE person_id = $2 RETURNING 1`,
+          [primaryRelId, secondaryRelId]
+        );
+        summary.tables_merged.push({
+          table_name: 'addie_threads',
+          rows_moved: threadsMoved.rows.length,
+          rows_skipped_duplicate: 0,
+        });
+        summary.tables_merged.push({
+          table_name: 'person_events',
+          rows_moved: eventsMoved.rows.length,
+          rows_skipped_duplicate: 0,
+        });
+      }
       const deleted = await client.query(
         `DELETE FROM person_relationships WHERE workos_user_id = $1 RETURNING 1`,
         [secondaryUserId]
@@ -266,6 +312,8 @@ export async function mergeUsers(
         rows_skipped_duplicate: deleted.rows.length,
       });
     } else {
+      // Primary has no person_relationships row — UPDATE keeps the same .id,
+      // so addie_threads / person_events pointers stay valid automatically.
       await mergeWithUpdate('person_relationships');
     }
 
@@ -342,6 +390,12 @@ export async function mergeUsers(
     await mergeWithUpdate('certification_attempts');
     await mergeWithUpdate('teaching_checkpoints');
     await mergeWithUpdate('certification_learner_feedback');
+    await mergeWithUpdate('agent_test_runs');
+    await mergeWithUpdate('certification_expectations');
+
+    // addie_prompt_telemetry: PK(workos_user_id, rule_id) — keep primary's
+    // counters where both have a row for the same rule, otherwise move.
+    await mergeWithConflict('addie_prompt_telemetry', 'rule_id');
     await mergeWithUpdate('flagged_conversations', 'reviewed_by');
     await mergeWithUpdate('email_contacts');
     await mergeWithUpdate('email_events');
@@ -542,11 +596,92 @@ export async function mergeUsers(
     );
 
     // =====================================================
-    // 4. Delete secondary user from local DB
+    // 4. Bind both WorkOS users to one identity
+    //
+    // The primary kept its singleton identity (created by the AFTER INSERT
+    // trigger when the user row was first inserted). The secondary's
+    // singleton identity is now orphaned — its workos_user_id still has a
+    // binding row pointing at the secondary's identity. Re-point the
+    // secondary's binding at the primary's identity so a sign-in via the
+    // secondary's WorkOS user resolves to the same person.
+    //
+    // We do NOT delete the secondary WorkOS user. Each linked email stays a
+    // real, working sign-in credential. The secondary's data has already
+    // been moved to the primary above, so reads via the secondary's
+    // workos_user_id correctly return nothing — the auth middleware swaps
+    // req.user.id to the primary's workos_user_id when a non-primary
+    // binding signs in.
     // =====================================================
-    await client.query(
-      `DELETE FROM users WHERE workos_user_id = $1`,
+    const primaryIdentityResult = await client.query<{ identity_id: string }>(
+      `SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1`,
+      [primaryUserId]
+    );
+    const primaryIdentityId = primaryIdentityResult.rows[0]?.identity_id;
+
+    if (!primaryIdentityId) {
+      // Trigger should have created this. If not, fail loud — silent skip
+      // would leave the system in a partially-merged state.
+      throw new Error(
+        `Primary user ${primaryUserId} has no identity binding; merge cannot proceed`
+      );
+    }
+
+    // Drop the secondary's singleton identity (orphan after the rebind) and
+    // re-point its binding to the primary's identity as a non-primary
+    // sign-in credential.
+    const secondaryBindingResult = await client.query<{ identity_id: string }>(
+      `SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1`,
       [secondaryUserId]
+    );
+    const secondaryOldIdentityId = secondaryBindingResult.rows[0]?.identity_id;
+
+    await client.query(
+      `UPDATE identity_workos_users
+         SET identity_id = $1, is_primary = FALSE, bound_at = NOW()
+       WHERE workos_user_id = $2`,
+      [primaryIdentityId, secondaryUserId]
+    );
+
+    if (secondaryOldIdentityId && secondaryOldIdentityId !== primaryIdentityId) {
+      await client.query(
+        `DELETE FROM identities WHERE id = $1`,
+        [secondaryOldIdentityId]
+      );
+    }
+
+    // Promote-credential flow: primaryUserId is the credential being made
+    // primary (was non-primary before this call). Swap is_primary in the
+    // same transaction so the identity never has zero primaries — closes
+    // the gap that would let attachIdentityId fall open mid-promote.
+    if (options.ensurePrimaryFlag) {
+      await client.query(
+        `UPDATE identity_workos_users
+           SET is_primary = TRUE
+         WHERE workos_user_id = $1 AND identity_id = $2`,
+        [primaryUserId, primaryIdentityId]
+      );
+    }
+
+    // Refresh denormalized email on rows now keyed to the primary credential.
+    // person_relationships and organization_memberships each carry their own
+    // copy of users.email; without this re-derive, a promote (or any merge
+    // that swings workos_user_id onto a different credential) leaves the
+    // admin UI and member list showing the old email.
+    await client.query(
+      `UPDATE person_relationships pr SET email = u.email, updated_at = NOW()
+         FROM users u
+        WHERE pr.workos_user_id = $1
+          AND u.workos_user_id = $1
+          AND pr.email IS DISTINCT FROM u.email`,
+      [primaryUserId]
+    );
+    await client.query(
+      `UPDATE organization_memberships om SET email = u.email, updated_at = NOW()
+         FROM users u
+        WHERE om.workos_user_id = $1
+          AND u.workos_user_id = $1
+          AND om.email IS DISTINCT FROM u.email`,
+      [primaryUserId]
     );
 
     // =====================================================
@@ -575,27 +710,28 @@ export async function mergeUsers(
           tables_affected: summary.tables_merged
             .filter(t => t.rows_moved > 0 || t.rows_skipped_duplicate > 0)
             .map(t => t.table_name),
+          tables_merged: summary.tables_merged.filter(
+            t => t.rows_moved > 0 || t.rows_skipped_duplicate > 0
+          ),
         }),
       ]
     );
 
     await client.query('COMMIT');
 
-    // =====================================================
-    // 6. Delete secondary user from WorkOS (after commit)
-    // =====================================================
+    // The secondary WorkOS user stays alive — each linked email is a real
+    // sign-in credential. Identity routing in the auth middleware unifies
+    // them server-side.
+
+    // Invalidate any cached sessions for either user — the binding shape
+    // changed and a stale cached id-swap would route the wrong way until
+    // the cache TTL elapsed. Lazy-imported to avoid a circular dep with
+    // the auth middleware.
     try {
-      await workos.userManagement.deleteUser(secondaryUserId);
-      summary.workos_user_deleted = true;
-      logger.info({ secondaryUserId }, 'Deleted secondary user from WorkOS');
-    } catch (workosError) {
-      logger.error(
-        { error: workosError, secondaryUserId },
-        'Failed to delete secondary user from WorkOS - manual cleanup may be required'
-      );
-      summary.warnings.push(
-        'Failed to delete secondary user from WorkOS. The user may need to be manually deleted in the WorkOS Dashboard.'
-      );
+      const { invalidateSessionsForUsers } = await import('../middleware/auth.js');
+      invalidateSessionsForUsers([primaryUserId, secondaryUserId]);
+    } catch (err) {
+      logger.warn({ err }, 'Failed to invalidate session caches after merge — sessions will refresh on TTL expiry');
     }
 
     logger.info(
@@ -603,7 +739,6 @@ export async function mergeUsers(
         primaryUserId,
         secondaryUserId,
         totalMoved: summary.tables_merged.reduce((sum, t) => sum + t.rows_moved, 0),
-        workosDeleted: summary.workos_user_deleted,
       },
       'User merge completed successfully'
     );

@@ -1,0 +1,114 @@
+/**
+ * Unit test: trainingBuyerAgentRegistry resolves the right BuyerAgent
+ * for each demo-bearer prefix family. Companion to the
+ * sync-accounts-gates integration test, which exercises the framework's
+ * end-to-end path; this test pins the resolver's prefix → billing_capabilities
+ * mapping in isolation so a regression on the data shape surfaces here
+ * before it surfaces against the framework.
+ */
+
+import { describe, it, expect } from 'vitest';
+import type { AdcpCredential } from '@adcp/sdk/server';
+import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
+
+// Synthesize a BuyerAgentResolveInput as the framework would construct it
+// from a `verifyApiKey({ verify })` callback that stamped extra:
+// { demo_token: <token> } on its returned AuthPrincipal.
+function input(
+  token: string | undefined,
+  kind: AdcpCredential['kind'] = 'api_key',
+): { credential: AdcpCredential; extra?: Record<string, unknown> } {
+  const credential: AdcpCredential =
+    kind === 'api_key'
+      ? { kind: 'api_key', key_id: `sha256:hash-of-${token}` }
+      : kind === 'oauth'
+        ? { kind: 'oauth', client_id: 'unused', scopes: [] }
+        : { kind: 'http_sig', keyid: 'unused', agent_url: 'unused', verified_at: 0 };
+  return token === undefined
+    ? { credential }
+    : { credential, extra: { demo_token: token } };
+}
+
+describe('trainingBuyerAgentRegistry', () => {
+  it('passthrough-only token → BuyerAgent with billing_capabilities {operator}', async () => {
+    const agent = await trainingBuyerAgentRegistry.resolve(
+      input('demo-billing-passthrough-v1'),
+    );
+    expect(agent).not.toBeNull();
+    expect(agent?.status).toBe('active');
+    expect([...(agent?.billing_capabilities ?? [])].sort()).toEqual(['operator']);
+    expect(agent?.agent_url).toContain('demo/demo-billing-passthrough-v1');
+  });
+
+  it('agent-billable token → BuyerAgent with billing_capabilities {operator, agent, advertiser}', async () => {
+    const agent = await trainingBuyerAgentRegistry.resolve(
+      input('demo-billing-agent-billable-v1'),
+    );
+    expect(agent).not.toBeNull();
+    expect(agent?.status).toBe('active');
+    expect([...(agent?.billing_capabilities ?? [])].sort()).toEqual([
+      'advertiser',
+      'agent',
+      'operator',
+    ]);
+  });
+
+  it('unrecognized demo prefix → neutral broad-capability agent (uniform-response rule)', async () => {
+    // demo-* token that doesn't match any known commercial-relationship
+    // prefix family. Resolve to a neutral broad-capability agent so the
+    // framework dispatches to the seller-wide capability path instead of
+    // preempting sync_accounts with a framework-generated failed row.
+    const agent = await trainingBuyerAgentRegistry.resolve(
+      input('demo-unrecognized-v1'),
+    );
+    expect(agent).not.toBeNull();
+    expect([...(agent?.billing_capabilities ?? [])].sort()).toEqual([
+      'advertiser',
+      'agent',
+      'operator',
+    ]);
+  });
+
+  it('missing extra.demo_token → neutral broad-capability agent', async () => {
+    // Static-key authenticators (TRAINING_AGENT_TOKEN /
+    // PUBLIC_TEST_AGENT_TOKEN) don't stamp demo_token. Beta 14's
+    // framework-level billing policy rejects billable sync_accounts rows
+    // when an agentRegistry is present but no agent resolves, so return a
+    // neutral broad-capability sandbox agent to preserve the legacy
+    // uniform-response behavior for authenticated public sandbox callers.
+    const agent = await trainingBuyerAgentRegistry.resolve(input(undefined));
+    expect(agent).not.toBeNull();
+    expect(agent?.agent_url).toContain('/authenticated/');
+    expect([...(agent?.billing_capabilities ?? [])].sort()).toEqual([
+      'advertiser',
+      'agent',
+      'operator',
+    ]);
+  });
+
+  it('non-string extra.demo_token → neutral broad-capability agent', async () => {
+    // Adopter-supplied extra is Record<string, unknown> — the resolver
+    // shape-checks before using and falls back to the authenticated
+    // sandbox caller behavior.
+    const agent = await trainingBuyerAgentRegistry.resolve({
+      credential: { kind: 'api_key', key_id: 'sha256:x' },
+      extra: { demo_token: 12345 as unknown as string },
+    });
+    expect(agent).not.toBeNull();
+    expect([...(agent?.billing_capabilities ?? [])].sort()).toEqual([
+      'advertiser',
+      'agent',
+      'operator',
+    ]);
+  });
+
+  it('http_sig credential → null (bearerOnly factory rejects signed traffic)', async () => {
+    // The training-agent uses bearerOnly; signed traffic is refused at
+    // the registry layer regardless of extra. Documented behavior of
+    // BuyerAgentRegistry.bearerOnly per the SDK factory's posture.
+    const agent = await trainingBuyerAgentRegistry.resolve(
+      input('demo-billing-passthrough-v1', 'http_sig'),
+    );
+    expect(agent).toBeNull();
+  });
+});

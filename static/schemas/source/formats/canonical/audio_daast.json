@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/formats/canonical/audio_daast.json",
+  "title": "Canonical Format: DAAST Audio",
+  "description": "DAAST-tag-delivered audio creative (audio analog of VAST). Slot: `daast_tag` (daast asset, URL or inline XML). Tracking model: DAAST events inherent to the spec — `impression`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`, `start`, `pause`, `resume`, `mute`, `unmute`, `clickTracking`, `error`. Distinct from `audio_hosted` (direct file with external tracking).",
+  "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
+  "properties": {
+    "slots": {
+      "default": [
+        { "asset_group_id": "daast_tag", "asset_type": "daast", "required": true },
+        { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
+      ],
+      "description": "Default slots for audio_daast canonical. Buyer ships a DAAST tag (URL or inline XML, 1.0 or 1.1) plus an optional clickthrough URL. Tracking events are inherent to DAAST and don't require explicit slots."
+    },
+    "daast_version": {
+      "type": "string",
+      "enum": ["1.0", "1.1"]
+    },
+    "duration_ms_range": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 0 },
+      "minItems": 2,
+      "maxItems": 2,
+      "description": "[min, max] duration in milliseconds. **Precedence**: `duration_ms_exact` takes precedence when both ship. SDKs SHOULD lint a warning when both fields ship."
+    },
+    "duration_ms_exact": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "When set, duration must equal exactly this value. Takes precedence over `duration_ms_range` when both ship."
+    },
+    "linear_required": {
+      "type": "boolean"
+    },
+    "max_wrapper_depth": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "ssl_required": {
+      "type": "boolean"
+    },
+    "companion_image_required": {
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": true
+}

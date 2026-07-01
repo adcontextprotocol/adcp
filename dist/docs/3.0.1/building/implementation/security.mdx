@@ -537,7 +537,7 @@ This profile applies to `governance_context` (#2306) and to any future AdCP arti
 The brand.json cross-check (step 13 of the verification checklist) is the anti-spoofing control. It requires sellers to know *which buyer's brand.json to consult* — the authenticated agent proves who is calling, and the resolution chain maps that agent to the buyer domain whose brand.json the seller should fetch. In 3.0 sellers MUST establish the buyer domain via one of:
 
 1. **mTLS**: buyer presents a client certificate; the certificate Subject/SAN resolves to the buyer's registered domain; the seller fetches `https://{domain}/.well-known/brand.json`.
-2. **Pre-provisioned buyer identity**: an API key or OAuth client identifier issued by the seller at onboarding, mapped to the buyer's domain in the seller's records.
+2. **Pre-provisioned buyer identity**: a static credential (Bearer API key or HTTP Basic credential) or OAuth client identifier issued by the seller at onboarding, mapped to the buyer's domain in the seller's records.
 3. **Signed requests per #2307** (3.1 normative): RFC 9421 HTTP Signatures with `keyid` resolving to a buyer-declared public key in the buyer's adagents-style agent registry.
 
 Sellers MUST NOT derive the buyer identity from an unauthenticated field in the request (including the token's `iss`, `caller`, or any client-supplied header). Doing so creates a circular trust chain: the attacker proves "I am the buyer" by presenting a token signed by an attacker-controlled governance agent declared in an attacker-controlled brand.json. In particular, **the token's `iss` is untrusted input until step 13 of the verification checklist confirms it appears as a governance-typed entry in the *authenticated* buyer's brand.json** — the authentication mechanism (mTLS, API key, or signed request) establishes the buyer domain first, and only the brand.json fetched from *that* domain is trusted to attest which governance agent (`iss`) may sign for this buyer.
@@ -1663,7 +1663,7 @@ function logSecurityEvent(eventType, details) {
 
 ### For Publishers (AdCP Servers)
 
-- [ ] Implement strong authentication (OAuth 2.0, API keys, or mTLS)
+- [ ] Implement strong authentication (OAuth 2.0, static credentials, or mTLS)
 - [ ] Enforce agent and account isolation in all database queries
 - [ ] Implement idempotency for financial operations
 - [ ] Validate all input with strict schema validation

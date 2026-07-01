@@ -39,6 +39,7 @@ import { setupIllustrationRoutes } from "./admin/illustrations.js";
 import { setupAddieCostRoutes } from "./admin/addie-costs.js";
 import { setupPromptMetricsRoutes } from "./admin/prompt-metrics.js";
 import { setupIntegrityRoutes } from "./admin/integrity.js";
+import { setupAdminAgentsRoutes } from "./admin/agents.js";
 import { getAllNewsletters } from "../newsletters/registry.js";
 import { createNewsletterAdminRoutes } from "../newsletters/admin-routes.js";
 // Ensure newsletters register themselves before routes mount
@@ -185,6 +186,9 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
   // Cross-system integrity invariants (WorkOS ↔ Stripe ↔ AAO Postgres)
   setupIntegrityRoutes(apiRouter, { workos });
 
+  // Cross-org agent removal (rogue / disputed registrations)
+  setupAdminAgentsRoutes(apiRouter);
+
   // Unified newsletter admin routes
   for (const nlConfig of getAllNewsletters()) {
     apiRouter.use(`/newsletters/${nlConfig.id}`, createNewsletterAdminRoutes(nlConfig));
@@ -204,24 +208,25 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
       try {
         const { userId } = req.params;
         const { type } = req.query;
+        const selectedOrgId = typeof req.query.org === 'string' ? req.query.org : null;
         const pool = getPool();
 
         let context;
 
         // Auto-detect or use specified type
         if (type === "slack" || (!type && userId.startsWith("U"))) {
-          context = await getMemberContext(userId);
+          context = await getMemberContext(userId, selectedOrgId);
         } else if (type === "workos" || (!type && userId.startsWith("user_"))) {
-          context = await getWebMemberContext(userId);
+          context = await getWebMemberContext(userId, selectedOrgId);
         } else {
           // Try both - first check if it's a WorkOS ID
           try {
-            context = await getWebMemberContext(userId);
+            context = await getWebMemberContext(userId, selectedOrgId);
             if (!context.workos_user && !context.organization) {
-              context = await getMemberContext(userId);
+              context = await getMemberContext(userId, selectedOrgId);
             }
           } catch {
-            context = await getMemberContext(userId);
+            context = await getMemberContext(userId, selectedOrgId);
           }
         }
 
@@ -240,6 +245,21 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
         const extendedContext: typeof context & {
           addie_goal?: { goal_key: string; goal_name: string; reasoning: string };
           insights?: Array<{ type_key: string; type_name: string; value: string }>;
+          relationship_engagement?: {
+            opportunities: Array<{
+              id: string;
+              description: string;
+              dimension: string;
+              relevance: number;
+            }>;
+            contact_eligibility: {
+              can_contact: boolean;
+              reason?: string;
+              channel?: string;
+            };
+            relationship_stage: string;
+            unreplied_count: number;
+          };
         } = { ...context };
 
         if (workosUserId) {
@@ -357,7 +377,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
                   certification: relCtx.certification,
                 });
 
-                (extendedContext as unknown as Record<string, unknown>).engagement = {
+                extendedContext.relationship_engagement = {
                   opportunities: opportunities.map(o => ({
                     id: o.id,
                     description: o.description,
@@ -441,7 +461,9 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
 
         const token = await workos.widgets.createToken({
           organizationId,
-          userId: req.user.id,
+          // Widgets are bound to a specific WorkOS user as auth credential —
+          // use the actual auth user, not the post-swap canonical id.
+          userId: req.user.authWorkosUserId ?? req.user.id,
           scopes: [requestedScope],
         });
 

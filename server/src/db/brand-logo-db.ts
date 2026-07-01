@@ -11,9 +11,12 @@ export interface InsertBrandLogoInput {
   source: 'brandfetch' | 'community' | 'brand_owner' | 'brand_json';
   review_status?: 'pending' | 'approved' | 'rejected' | 'deleted';
   uploaded_by_user_id?: string;
+  uploaded_by_org_id?: string;
   uploaded_by_email?: string;
   upload_note?: string;
   original_filename?: string;
+  source_flow?: string;
+  provenance?: Record<string, unknown>;
 }
 
 export interface BrandLogoRow {
@@ -30,13 +33,17 @@ export interface BrandLogoRow {
   source: string;
   review_status: string;
   uploaded_by_user_id: string | null;
+  uploaded_by_org_id: string | null;
   uploaded_by_email: string | null;
   upload_note: string | null;
   original_filename: string | null;
+  source_flow: string | null;
+  provenance: Record<string, unknown> | null;
   review_note: string | null;
   reviewed_by_user_id: string | null;
   reviewed_at: Date | null;
   deleted_at: Date | null;
+  slack_thread_ts: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -44,9 +51,10 @@ export interface BrandLogoRow {
 export type BrandLogoSummary = Omit<BrandLogoRow, 'data'>;
 
 const SUMMARY_COLUMNS = `id, domain, content_type, storage_type, storage_key, sha256,
-  tags, width, height, source, review_status, uploaded_by_user_id, uploaded_by_email,
-  upload_note, original_filename, review_note, reviewed_by_user_id, reviewed_at,
-  deleted_at, created_at, updated_at`;
+  tags, width, height, source, review_status, uploaded_by_user_id, uploaded_by_org_id,
+  uploaded_by_email, upload_note, original_filename, source_flow, provenance,
+  review_note, reviewed_by_user_id, reviewed_at, deleted_at, slack_thread_ts,
+  created_at, updated_at`;
 
 export interface ListBrandLogosOptions {
   tags?: string[];
@@ -59,9 +67,9 @@ export class BrandLogoDatabase {
     const result = await query<BrandLogoRow>(
       `INSERT INTO brand_logos (
         domain, content_type, data, sha256, tags, width, height,
-        source, review_status, uploaded_by_user_id, uploaded_by_email,
-        upload_note, original_filename
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        source, review_status, uploaded_by_user_id, uploaded_by_org_id,
+        uploaded_by_email, upload_note, original_filename, source_flow, provenance
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
       ON CONFLICT (domain, sha256) WHERE review_status IN ('pending', 'approved')
       DO NOTHING
       RETURNING *`,
@@ -76,10 +84,31 @@ export class BrandLogoDatabase {
         input.source,
         input.review_status ?? 'approved',
         input.uploaded_by_user_id ?? null,
+        input.uploaded_by_org_id ?? null,
         input.uploaded_by_email ?? null,
         input.upload_note ?? null,
         input.original_filename ?? null,
+        input.source_flow ?? null,
+        JSON.stringify(input.provenance ?? {}),
       ]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  /**
+   * Load a logo by id alone, regardless of review_status. Used by the
+   * moderator-preview endpoint where the caller doesn't know the domain
+   * up-front — they're walking the cross-brand pending queue.
+   *
+   * IMPORTANT: callers gating on brand ownership MUST gate on the
+   * returned row's `domain` field, never on a caller-supplied domain
+   * string. Mixing the two would let a verified owner of brand A read
+   * pending logo bytes for brand B by guessing UUIDs.
+   */
+  async getBrandLogoById(id: string): Promise<BrandLogoRow | null> {
+    const result = await query<BrandLogoRow>(
+      `SELECT * FROM brand_logos WHERE id = $1`,
+      [id]
     );
     return result.rows[0] ?? null;
   }
@@ -189,6 +218,62 @@ export class BrandLogoDatabase {
       [domain]
     );
     return parseInt(result.rows[0].count, 10);
+  }
+
+  /**
+   * Count distinct brand domains a user has pending uploads against in the
+   * given window. Used to defend against enumeration / queue-saturation
+   * abuse — a member who fans out pending uploads across every unowned
+   * domain they know either learns the ownership-state oracle or fills
+   * the moderator queue with noise.
+   *
+   * Counts distinct domains (not raw rows) so a user uploading multiple
+   * variants of the same brand's logo legitimately is not punished.
+   */
+  async countPendingDomainsForUser(
+    userId: string,
+    windowMs: number
+  ): Promise<number> {
+    const result = await query<{ count: string }>(
+      `SELECT count(DISTINCT domain) AS count
+         FROM brand_logos
+        WHERE uploaded_by_user_id = $1
+          AND review_status = 'pending'
+          AND created_at >= NOW() - ($2::int * INTERVAL '1 millisecond')`,
+      [userId, windowMs]
+    );
+    return parseInt(result.rows[0].count, 10);
+  }
+
+  /**
+   * Count logos for a brand filtered by source. Used to reserve cap slots
+   * for verified owners — community uploads shouldn't be able to saturate
+   * MAX_LOGOS_PER_BRAND with pending entries and lock a verified owner
+   * out of their own brand.
+   */
+  async countLogosBySource(
+    domain: string,
+    sources: string[]
+  ): Promise<number> {
+    const result = await query<{ count: string }>(
+      `SELECT count(*) AS count FROM brand_logos
+        WHERE domain = $1
+          AND source = ANY($2::text[])
+          AND review_status IN ('pending', 'approved')`,
+      [domain, sources]
+    );
+    return parseInt(result.rows[0].count, 10);
+  }
+
+  /**
+   * Persist the Slack message ts that announced a pending logo so the
+   * approve/reject path can thread the resolution under it.
+   */
+  async setSlackThreadTs(id: string, threadTs: string): Promise<void> {
+    await query(
+      `UPDATE brand_logos SET slack_thread_ts = $2 WHERE id = $1`,
+      [id, threadTs]
+    );
   }
 
   async getPendingLogos(

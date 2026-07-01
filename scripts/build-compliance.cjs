@@ -83,6 +83,44 @@ function readYamlFrontmatter(filePath) {
     }
     out.required_tools = doc.required_tools.map(t => String(t).trim()).filter(Boolean);
   }
+  if (doc.required_any_of_tools != null) {
+    if (!Array.isArray(doc.required_any_of_tools) || doc.required_any_of_tools.length === 0) {
+      throw new Error(
+        `required_any_of_tools in ${filePath} must be a non-empty YAML list of OR-family objects`
+      );
+    }
+    out.required_any_of_tools = doc.required_any_of_tools.map((entry, i) => {
+      if (entry == null || typeof entry !== 'object' || Array.isArray(entry)) {
+        throw new Error(
+          `required_any_of_tools[${i}] in ${filePath} must be an object with a 'tools' list`
+        );
+      }
+      if (!Array.isArray(entry.tools)) {
+        throw new Error(
+          `required_any_of_tools[${i}].tools in ${filePath} must be a YAML list`
+        );
+      }
+      const tools = entry.tools.map(t => String(t).trim()).filter(Boolean);
+      if (tools.length < 2) {
+        throw new Error(
+          `required_any_of_tools[${i}].tools in ${filePath} must contain at least 2 non-empty tool names ` +
+          `after trimming (single-tool families collapse to required_tools)`
+        );
+      }
+      const outEntry = { tools };
+      if (entry.rationale != null) {
+        if (typeof entry.rationale !== 'string') {
+          throw new Error(
+            `required_any_of_tools[${i}].rationale in ${filePath} must be a string, ` +
+            `got ${typeof entry.rationale}`
+          );
+        }
+        const rationale = entry.rationale.trim();
+        if (rationale) outEntry.rationale = rationale;
+      }
+      return outEntry;
+    });
+  }
   return out;
 }
 
@@ -126,6 +164,7 @@ function discoverSpecialisms(sourceDir) {
       title: fm.title || null,
       status,
       required_tools,
+      ...(fm.required_any_of_tools ? { required_any_of_tools: fm.required_any_of_tools } : {}),
       path: `specialisms/${entry.name}/`
     });
   }
@@ -211,7 +250,29 @@ function loadMutatingSchemaRefs(schemasDir) {
 function lintStoryboardIdempotency(sourceDir, schemasDir) {
   const { refs: mutatingRefs, tools: mutatingTools } = loadMutatingSchemaRefs(schemasDir);
   const violations = [];
+  const stableKeyViolations = [];
+  const duplicateGeneratedKeyViolations = [];
   const missingSchemaRefs = [];
+  const generatedKeyUses = new Map();
+  const duplicateGeneratedKeyAllowedFiles = new Set([
+    'universal/idempotency.yaml',
+    'universal/webhook-emission.yaml',
+  ]);
+
+  function isGeneratedIdempotencyKey(value, generatedContextNames) {
+    if (typeof value !== 'string') return false;
+    if (value.startsWith('$generate:uuid_v4')) return true;
+    const contextMatch = value.match(/^\$context\.([A-Za-z0-9_]+)$/);
+    return Boolean(contextMatch && generatedContextNames.has(contextMatch[1]));
+  }
+
+  function rememberGeneratedUuidContextOutputs(step, generatedContextNames) {
+    for (const output of step?.context_outputs ?? []) {
+      if (output?.generate === 'uuid_v4' && typeof output.name === 'string') {
+        generatedContextNames.add(output.name);
+      }
+    }
+  }
 
   function lintFile(p) {
     const rel = path.relative(sourceDir, p);
@@ -223,14 +284,12 @@ function lintStoryboardIdempotency(sourceDir, schemasDir) {
     try { doc = yaml.load(fs.readFileSync(p, 'utf8')); }
     catch { return; }
     if (!doc || typeof doc !== 'object' || !Array.isArray(doc.phases)) return;
+    const generatedContextNames = new Set();
 
     for (const phase of doc.phases) {
       if (!phase || !Array.isArray(phase.steps)) continue;
       for (const step of phase.steps) {
         if (!step || typeof step !== 'object' || !step.task) continue;
-        // expect_error steps intentionally exercise invalid-request paths,
-        // including the "missing idempotency_key" test in universal/idempotency.yaml.
-        if (step.expect_error === true) continue;
         // Steps without schema_ref are HTTP probes, controller calls, or
         // synthetic invocations (e.g., comply_test_controller's
         // simulate_budget scenarios, universal/security.yaml's probe steps)
@@ -247,19 +306,55 @@ function lintStoryboardIdempotency(sourceDir, schemasDir) {
           });
         }
         const schemaRef = step.schema_ref;
-        if (!schemaRef || !mutatingRefs.has(schemaRef)) continue;
+        if (!schemaRef || !mutatingRefs.has(schemaRef)) {
+          rememberGeneratedUuidContextOutputs(step, generatedContextNames);
+          continue;
+        }
+        // The missing-key negative vector explicitly suppresses both runner
+        // auto-injection and this authored-sample lint.
+        if (step.omit_idempotency_key === true) {
+          rememberGeneratedUuidContextOutputs(step, generatedContextNames);
+          continue;
+        }
         const hasKey =
           step.sample_request &&
           typeof step.sample_request === 'object' &&
           step.sample_request.idempotency_key !== undefined;
-        if (hasKey) continue;
-        violations.push({
-          file: rel,
-          phase: phase.id,
-          step: step.id,
-          task: step.task,
-          schema: schemaRef,
-        });
+        if (hasKey) {
+          const key = step.sample_request.idempotency_key;
+          if (!isGeneratedIdempotencyKey(key, generatedContextNames)) {
+            stableKeyViolations.push({
+              file: rel,
+              phase: phase.id,
+              step: step.id,
+              task: step.task,
+              key,
+            });
+          } else if (!duplicateGeneratedKeyAllowedFiles.has(rel)) {
+            const existing = generatedKeyUses.get(key);
+            const current = {
+              file: rel,
+              phase: phase.id,
+              step: step.id,
+              task: step.task,
+              key,
+            };
+            if (existing) {
+              duplicateGeneratedKeyViolations.push({ first: existing, second: current });
+            } else {
+              generatedKeyUses.set(key, current);
+            }
+          }
+        } else {
+          violations.push({
+            file: rel,
+            phase: phase.id,
+            step: step.id,
+            task: step.task,
+            schema: schemaRef,
+          });
+        }
+        rememberGeneratedUuidContextOutputs(step, generatedContextNames);
       }
     }
   }
@@ -286,6 +381,33 @@ function lintStoryboardIdempotency(sourceDir, schemasDir) {
       `static/compliance/source/universal/idempotency.yaml for the convention, ` +
       `and note the deliberate alias-reuse pattern there when two steps must ` +
       `share a key (replay tests).`
+    );
+  }
+
+  if (stableKeyViolations.length > 0) {
+    const lines = stableKeyViolations.map(v =>
+      `  ${v.file} phase=${v.phase} step=${v.step}: task "${v.task}" uses stable idempotency_key ${JSON.stringify(v.key)}.`
+    );
+    throw new Error(
+      `Storyboard idempotency_key freshness lint: ${stableKeyViolations.length} step(s) use stable authored idempotency_key values.\n\n` +
+      lines.join('\n') +
+      `\n\nUse \`idempotency_key: "$generate:uuid_v4#<storyboard>_<phase>_<step>"\` ` +
+      `so each storyboard run mints fresh keys. Literal keys can replay stale ` +
+      `successful responses from a prior run and leak terminal state into later phases.`
+    );
+  }
+
+  if (duplicateGeneratedKeyViolations.length > 0) {
+    const lines = duplicateGeneratedKeyViolations.map(v =>
+      `  ${v.second.file} phase=${v.second.phase} step=${v.second.step}: ` +
+      `idempotency_key ${JSON.stringify(v.second.key)} was already used by ` +
+      `${v.first.file} phase=${v.first.phase} step=${v.first.step}.`
+    );
+    throw new Error(
+      `Storyboard idempotency_key freshness lint: ${duplicateGeneratedKeyViolations.length} duplicate generated alias use(s).\n\n` +
+      lines.join('\n') +
+      `\n\nUse a unique \`$generate:uuid_v4#...\` alias for each mutating storyboard step. ` +
+      `Only universal/idempotency.yaml and universal/webhook-emission.yaml may intentionally reuse aliases for replay vectors.`
     );
   }
 
@@ -346,6 +468,29 @@ function verifyEnumParity(specialisms, protocols) {
 }
 
 const { lint: lintUniversalDocParity } = require('./lint-universal-storyboard-doc-parity.cjs');
+const {
+  formatViolation: formatComplianceSourceAuthorityViolation,
+  lintBuiltMirror: lintComplianceBuiltMirror,
+  lintSourceAuthority: lintComplianceSourceAuthority,
+} = require('./lint-compliance-source-authority.cjs');
+
+function assertComplianceSourceAuthority(sourceDir) {
+  const violations = lintComplianceSourceAuthority({ sourceDir });
+  if (violations.length === 0) return;
+  throw new Error(
+    'Compliance source authority drift:\n  - ' +
+    violations.map(formatComplianceSourceAuthorityViolation).join('\n  - ')
+  );
+}
+
+function assertComplianceBuiltMirror(sourceDir, targetDir) {
+  const violations = lintComplianceBuiltMirror({ sourceDir, targetDir });
+  if (violations.length === 0) return;
+  throw new Error(
+    `Compliance build mirror drift in ${targetDir}:\n  - ` +
+    violations.map(formatComplianceSourceAuthorityViolation).join('\n  - ')
+  );
+}
 
 function generateIndex(version, sourceDir) {
   const specialisms = discoverSpecialisms(sourceDir);
@@ -397,6 +542,7 @@ function generateIndex(version, sourceDir) {
       title: s.title,
       status: s.status,
       required_tools: s.required_tools,
+      ...(s.required_any_of_tools ? { required_any_of_tools: s.required_any_of_tools } : {}),
       path: s.path
     }))
   };
@@ -421,6 +567,7 @@ function buildTo(targetDir, version, sourceDir) {
     path.join(targetDir, 'index.json'),
     JSON.stringify(index, null, 2) + '\n'
   );
+  assertComplianceBuiltMirror(sourceDir, targetDir);
   return index;
 }
 
@@ -429,6 +576,13 @@ function main() {
 
   if (!fs.existsSync(SOURCE_DIR)) {
     console.error(`❌ Source directory not found: ${SOURCE_DIR}`);
+    process.exit(1);
+  }
+
+  try {
+    assertComplianceSourceAuthority(SOURCE_DIR);
+  } catch (err) {
+    console.error(err.message || err);
     process.exit(1);
   }
 
@@ -447,6 +601,18 @@ function main() {
   // and grade-connected to an assert_contribution step.
   try {
     execSync('node scripts/lint-storyboard-branch-sets.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
+  // provides_state_for lint: same-phase substitution declarations on stateful
+  // steps must reference real, stateful, same-phase peers and the per-phase
+  // peer-graph must be acyclic. See adcontextprotocol/adcp#3734.
+  try {
+    execSync('node scripts/lint-storyboard-provides-state-for.cjs', {
       cwd: path.join(__dirname, '..'),
       stdio: 'inherit',
     });
@@ -504,6 +670,18 @@ function main() {
     process.exit(1);
   }
 
+  // Packaged-reference lint: authored storyboards may only point at files that
+  // ship in the versioned compliance tree. This catches source-tree-only
+  // references before they produce protocol tarballs that SDKs cannot load.
+  try {
+    execSync('node scripts/lint-compliance-packaged-refs.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
   // Pagination invariant: schema examples and storyboard fixtures MUST NOT
   // teach the cursor↔has_more contradiction. has_more=true requires cursor;
   // has_more=false MUST omit cursor. See pagination-response.json.
@@ -532,6 +710,76 @@ function main() {
     process.exit(1);
   }
 
+  // Check-enum lint: storyboards may only declare validations[].check values
+  // listed in runner-output-contract.yaml's `authored_check_kinds` enum.
+  // Synthesized codes (capture_path_not_resolvable, unresolved_substitution)
+  // are runner-emitted, not authored. The runtime forward-compat default
+  // (unknown kinds → not_applicable) handles cross-version skew; this lint
+  // catches typos at publish time. adcontextprotocol/adcp#3830 item 1.
+  try {
+    execSync('node scripts/lint-storyboard-check-enum.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
+  // update_media_buy affected_packages lint: package-mutating update
+  // storyboards must assert full affected package state, not just package IDs.
+  try {
+    execSync('node scripts/lint-update-media-buy-affected-packages.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
+  // Raw-mode-required lint: storyboards setting attestation_mode_required:
+  // "raw" on an upstream_traffic check MUST declare at least one
+  // payload_must_contain clause. Otherwise the raw flag has no operational
+  // value and just excludes digest-mode adopters from the conformance
+  // signal. adcontextprotocol/adcp#3847 item 2.
+  try {
+    execSync('node scripts/lint-storyboard-raw-mode-required.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
+  // Upstream-traffic path lint: identifier_paths use a small portable
+  // request-payload-relative grammar so runners don't diverge on JSONPath
+  // variants, numeric indexes, or explicit roots. adcontextprotocol/adcp#5073.
+  try {
+    execSync('node scripts/lint-storyboard-upstream-traffic-paths.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
+  // Advisory-expiry lint (warnings only): surface storyboards declaring
+  // severity: advisory without expires_after_version (or permanent_advisory),
+  // so authors can confirm at PR review whether the drift is on purpose.
+  // adcontextprotocol/adcp#3847 item 1. The script exits 0 on rule
+  // violations (warnings, not errors); a non-zero exit here means the
+  // script itself crashed and SHOULD surface — don't silently swallow
+  // implementation bugs that mask the lint forever.
+  try {
+    execSync('node scripts/lint-storyboard-advisory-expiry.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch (err) {
+    console.error(`⚠ advisory-expiry lint crashed (not a rule violation — script bug):`);
+    console.error(`  ${err.message || err}`);
+    console.error(`  Continuing build, but the lint will be silent until this is fixed.`);
+  }
+
   console.log(isRelease
     ? `🚀 RELEASE BUILD: Creating compliance artifacts for AdCP v${version}`
     : `📦 Development build: Updating latest/ compliance`);
@@ -548,7 +796,7 @@ function main() {
     console.log(`   ✓ ${index.universal.length} universal, ${index.protocols.length} protocols, ${index.specialisms.length} specialisms`);
 
     console.log(`📋 Updating latest/ to match release`);
-    buildTo(path.join(DIST_DIR, 'latest'), 'latest', SOURCE_DIR);
+    buildTo(path.join(DIST_DIR, 'latest'), version, SOURCE_DIR);
 
     console.log(`📝 Staging dist/compliance/${version}/ for git commit`);
     try {
@@ -565,7 +813,7 @@ function main() {
   } else {
     const latestDir = path.join(DIST_DIR, 'latest');
     console.log(`📋 Building compliance to dist/compliance/latest/`);
-    const index = buildTo(latestDir, 'latest', SOURCE_DIR);
+    const index = buildTo(latestDir, version, SOURCE_DIR);
     console.log(`   ✓ ${index.universal.length} universal, ${index.protocols.length} protocols, ${index.specialisms.length} specialisms`);
 
     console.log('');
@@ -573,4 +821,12 @@ function main() {
   }
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = {
+  buildTo,
+  generateIndex,
+  lintStoryboardIdempotency,
+};

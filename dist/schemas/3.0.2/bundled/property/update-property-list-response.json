@@ -1,0 +1,923 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.2/bundled/property/update-property-list-response.json",
+  "title": "Update Property List Response",
+  "description": "Response payload for update_property_list task",
+  "type": "object",
+  "properties": {
+    "list": {
+      "title": "Property List",
+      "description": "The updated property list",
+      "type": "object",
+      "properties": {
+        "list_id": {
+          "type": "string",
+          "description": "Unique identifier for this property list",
+          "x-entity": "property_list"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable name for the list"
+        },
+        "description": {
+          "type": "string",
+          "description": "Description of the list's purpose"
+        },
+        "account": {
+          "title": "Account Reference",
+          "description": "Account that owns this list. Returned as account_id form (seller-assigned identifier).",
+          "type": "object",
+          "oneOf": [
+            {
+              "properties": {
+                "account_id": {
+                  "type": "string",
+                  "description": "Seller-assigned account identifier (from sync_accounts or list_accounts)",
+                  "x-entity": "account"
+                }
+              },
+              "required": [
+                "account_id"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "properties": {
+                "brand": {
+                  "title": "Brand Reference",
+                  "description": "Brand reference identifying the advertiser",
+                  "type": "object",
+                  "properties": {
+                    "domain": {
+                      "type": "string",
+                      "description": "Domain where /.well-known/brand.json is hosted, or the brand's operating domain",
+                      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                    },
+                    "brand_id": {
+                      "title": "Brand ID",
+                      "description": "Brand identifier within the house portfolio. Optional for single-brand domains.",
+                      "type": "string",
+                      "pattern": "^[a-z0-9_]+$",
+                      "x-entity": "advertiser_brand",
+                      "examples": [
+                        "tide",
+                        "cheerios",
+                        "air_jordan",
+                        "nike",
+                        "pampers"
+                      ]
+                    },
+                    "industries": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Inline override for the brand's industries. Useful when the caller cannot modify the brand's canonical brand.json but needs to declare industries for governance (e.g., Annex III vertical detection). brand.json remains the canonical source; when omitted here, governance agents SHOULD resolve from brand.json."
+                    },
+                    "data_subject_contestation": {
+                      "type": "object",
+                      "description": "Inline override for the brand's contestation contact point. Useful when the operator does not control brand.json but needs to discharge Art 22(3) for this plan. brand.json is canonical; when omitted, governance agents resolve brand → house → missing.",
+                      "properties": {
+                        "url": {
+                          "type": "string",
+                          "format": "uri",
+                          "pattern": "^https://"
+                        },
+                        "email": {
+                          "type": "string",
+                          "format": "email"
+                        },
+                        "languages": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "anyOf": [
+                        {
+                          "required": [
+                            "url"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "email"
+                          ]
+                        }
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "domain"
+                  ],
+                  "additionalProperties": false,
+                  "examples": [
+                    {
+                      "domain": "nova-brands.com",
+                      "brand_id": "spark"
+                    },
+                    {
+                      "domain": "nova-brands.com",
+                      "brand_id": "glow"
+                    },
+                    {
+                      "domain": "acme-corp.com"
+                    }
+                  ]
+                },
+                "operator": {
+                  "type": "string",
+                  "description": "Domain of the entity operating on the brand's behalf. When the brand operates directly, this is the brand's domain.",
+                  "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+                  "x-entity": "operator"
+                },
+                "sandbox": {
+                  "type": "boolean",
+                  "description": "When true, references the sandbox account for this brand/operator pair. Defaults to false (production account).",
+                  "default": false
+                }
+              },
+              "required": [
+                "brand",
+                "operator"
+              ],
+              "additionalProperties": false
+            }
+          ],
+          "examples": [
+            {
+              "account_id": "acc_acme_001"
+            },
+            {
+              "brand": {
+                "domain": "acme-corp.com"
+              },
+              "operator": "acme-corp.com"
+            },
+            {
+              "brand": {
+                "domain": "nova-brands.com",
+                "brand_id": "spark"
+              },
+              "operator": "pinnacle-media.com"
+            },
+            {
+              "brand": {
+                "domain": "acme-corp.com"
+              },
+              "operator": "acme-corp.com",
+              "sandbox": true
+            }
+          ]
+        },
+        "base_properties": {
+          "type": "array",
+          "description": "Array of property sources to evaluate. Each entry is a discriminated union: publisher_tags (publisher_domain + tags), publisher_ids (publisher_domain + property_ids), or identifiers (direct identifiers). If omitted, queries the agent's entire property database.",
+          "items": {
+            "title": "Base Property Source",
+            "description": "A source of properties for a property list. Supports three selection patterns: publisher with tags, publisher with property IDs, or direct identifiers.",
+            "discriminator": {
+              "propertyName": "selection_type"
+            },
+            "oneOf": [
+              {
+                "type": "object",
+                "title": "Publisher Tags Source",
+                "description": "Select properties from a publisher by tag membership",
+                "properties": {
+                  "selection_type": {
+                    "type": "string",
+                    "const": "publisher_tags",
+                    "description": "Discriminator indicating selection by property tags within a publisher"
+                  },
+                  "publisher_domain": {
+                    "type": "string",
+                    "description": "Domain where publisher's adagents.json is hosted (e.g., 'raptive.com')",
+                    "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                  },
+                  "tags": {
+                    "type": "array",
+                    "description": "Property tags from the publisher's adagents.json. Selects all properties with these tags.",
+                    "items": {
+                      "title": "Property Tag",
+                      "description": "Tag for categorizing publisher properties. Must be lowercase alphanumeric with underscores only.",
+                      "type": "string",
+                      "pattern": "^[a-z0-9_]+$",
+                      "examples": [
+                        "ctv",
+                        "premium",
+                        "news",
+                        "sports",
+                        "meta_network",
+                        "social_media"
+                      ]
+                    },
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "selection_type",
+                  "publisher_domain",
+                  "tags"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "title": "Publisher Property IDs Source",
+                "description": "Select specific properties from a publisher by ID",
+                "properties": {
+                  "selection_type": {
+                    "type": "string",
+                    "const": "publisher_ids",
+                    "description": "Discriminator indicating selection by specific property IDs within a publisher"
+                  },
+                  "publisher_domain": {
+                    "type": "string",
+                    "description": "Domain where publisher's adagents.json is hosted (e.g., 'raptive.com')",
+                    "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                  },
+                  "property_ids": {
+                    "type": "array",
+                    "description": "Specific property IDs from the publisher's adagents.json",
+                    "items": {
+                      "title": "Property ID",
+                      "description": "Identifier for a publisher property. Must be lowercase alphanumeric with underscores only.",
+                      "type": "string",
+                      "pattern": "^[a-z0-9_]+$",
+                      "x-entity": "property",
+                      "examples": [
+                        "cnn_ctv_app",
+                        "homepage",
+                        "mobile_ios",
+                        "instagram"
+                      ]
+                    },
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "selection_type",
+                  "publisher_domain",
+                  "property_ids"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "title": "Direct Identifiers Source",
+                "description": "Select properties by direct identifiers (domains, app IDs, etc.) without publisher context",
+                "properties": {
+                  "selection_type": {
+                    "type": "string",
+                    "const": "identifiers",
+                    "description": "Discriminator indicating selection by direct identifiers"
+                  },
+                  "identifiers": {
+                    "type": "array",
+                    "description": "Direct property identifiers (domains, app IDs, etc.)",
+                    "items": {
+                      "title": "Identifier",
+                      "description": "A property identifier with type and value. Used to identify properties across platforms (domains, app store IDs, etc.).",
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "$ref": "#/$defs/PropertyIdentifierTypes"
+                        },
+                        "value": {
+                          "type": "string",
+                          "description": "The identifier value. For domain type: 'example.com' matches base domain plus www and m subdomains; 'edition.example.com' matches that specific subdomain; '*.example.com' matches ALL subdomains but NOT base domain"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "value"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "selection_type",
+                  "identifiers"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "filters": {
+          "title": "Property List Filters",
+          "description": "Dynamic filters applied when resolving the list",
+          "type": "object",
+          "properties": {
+            "countries_all": {
+              "type": "array",
+              "description": "Property must have feature data for ALL listed countries (ISO codes). When omitted, no country restriction is applied.",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Z]{2}$"
+              },
+              "minItems": 1
+            },
+            "channels_any": {
+              "type": "array",
+              "description": "Property must support ANY of the listed channels. When omitted, no channel restriction is applied.",
+              "items": {
+                "title": "Media Channel",
+                "description": "Standardized advertising media channels describing how buyers allocate budget. Channels are planning abstractions, not technical substrates. See the Media Channel Taxonomy specification for detailed definitions.",
+                "type": "string",
+                "enum": [
+                  "display",
+                  "olv",
+                  "social",
+                  "search",
+                  "ctv",
+                  "linear_tv",
+                  "radio",
+                  "streaming_audio",
+                  "podcast",
+                  "dooh",
+                  "ooh",
+                  "print",
+                  "cinema",
+                  "email",
+                  "gaming",
+                  "retail_media",
+                  "influencer",
+                  "affiliate",
+                  "product_placement",
+                  "sponsored_intelligence"
+                ],
+                "enumDescriptions": {
+                  "display": "Digital display advertising (banners, native, rich media) across web and app",
+                  "olv": "Online video advertising outside CTV (pre-roll, outstream, in-app video)",
+                  "social": "Social media platforms (Facebook, Instagram, TikTok, LinkedIn, etc.)",
+                  "search": "Search engine advertising and search networks",
+                  "ctv": "Connected TV and streaming on television screens",
+                  "linear_tv": "Traditional broadcast and cable television",
+                  "radio": "Traditional AM/FM radio broadcast",
+                  "streaming_audio": "Digital audio streaming services (Spotify, Pandora, etc.)",
+                  "podcast": "Podcast advertising (host-read or dynamically inserted)",
+                  "dooh": "Digital out-of-home screens in public spaces",
+                  "ooh": "Classic out-of-home (physical billboards, transit, etc.)",
+                  "print": "Newspapers, magazines, and other print publications",
+                  "cinema": "Movie theater advertising",
+                  "email": "Email advertising and sponsored newsletter content",
+                  "gaming": "In-game advertising across platforms",
+                  "retail_media": "Retail media networks and commerce marketplaces (Amazon, Walmart, Instacart)",
+                  "influencer": "Creator and influencer marketing partnerships",
+                  "affiliate": "Affiliate networks, comparison sites, and performance-based partnerships",
+                  "product_placement": "Product placement, branded content, and sponsorship integrations",
+                  "sponsored_intelligence": "Sponsored Intelligence — advertising within AI assistants, AI search, and generative AI experiences via the reversed data flow"
+                }
+              },
+              "minItems": 1
+            },
+            "property_types": {
+              "type": "array",
+              "description": "Filter to these property types",
+              "items": {
+                "title": "Property Type",
+                "description": "Types of addressable advertising properties with verifiable ownership. Property types are a subset of media channels - they represent inventory surfaces that can be validated via adagents.json.",
+                "type": "string",
+                "enum": [
+                  "website",
+                  "mobile_app",
+                  "ctv_app",
+                  "desktop_app",
+                  "dooh",
+                  "podcast",
+                  "radio",
+                  "linear_tv",
+                  "streaming_audio",
+                  "ai_assistant"
+                ],
+                "enumDescriptions": {
+                  "website": "Web properties accessible via browser, identified by domain",
+                  "mobile_app": "Native mobile applications, identified by app store IDs or bundle identifiers",
+                  "ctv_app": "Connected TV applications, identified by platform-specific store IDs",
+                  "desktop_app": "Desktop applications (Electron, native, Chromium wrappers), identified by application bundle IDs",
+                  "dooh": "Digital out-of-home screen networks, identified by network/venue IDs",
+                  "podcast": "Podcast feeds and episodes, identified by RSS feed URLs or podcast IDs",
+                  "radio": "Radio station properties, identified by station ID or facility ID",
+                  "linear_tv": "Linear television stations and networks, identified by station ID or facility ID",
+                  "streaming_audio": "Digital audio streaming properties, identified by platform-specific IDs",
+                  "ai_assistant": "AI-powered conversational interfaces including chatbots, AI assistants, and conversational AI platforms, identified by platform-specific IDs"
+                }
+              },
+              "minItems": 1
+            },
+            "feature_requirements": {
+              "type": "array",
+              "description": "Feature-based requirements. Property must pass ALL requirements (AND logic).",
+              "items": {
+                "title": "Feature Requirement",
+                "description": "A feature-based requirement — a reusable predicate over a feature value. Used by property list filters today; designed for reuse in other surfaces (audience filters, creative gates) in future versions. Use min_value/max_value for quantitative features, allowed_values for binary/categorical features.",
+                "type": "object",
+                "properties": {
+                  "feature_id": {
+                    "type": "string",
+                    "description": "Feature to evaluate (discovered via get_adcp_capabilities)"
+                  },
+                  "min_value": {
+                    "type": "number",
+                    "description": "Minimum numeric value required (for quantitative features)"
+                  },
+                  "max_value": {
+                    "type": "number",
+                    "description": "Maximum numeric value allowed (for quantitative features)"
+                  },
+                  "allowed_values": {
+                    "type": "array",
+                    "description": "Values that pass the requirement (for binary/categorical features)",
+                    "items": {},
+                    "minItems": 1
+                  },
+                  "if_not_covered": {
+                    "type": "string",
+                    "enum": [
+                      "exclude",
+                      "include"
+                    ],
+                    "default": "exclude",
+                    "description": "How to handle properties where this feature is not covered. 'exclude' (default): property is removed from the list. 'include': property passes this requirement (fail-open)."
+                  },
+                  "policy_id": {
+                    "type": "string",
+                    "description": "Optional attribution — when this requirement exists to satisfy a specific policy, policy_id references the authorizing PolicyEntry. Reserved field; populated by producers in 3.1 and later (see issue #2303). Governance agents MAY ignore in 3.0.",
+                    "$comment": "x-entity deliberately omitted — a PolicyEntry reference can resolve to either a governance_registry_policy or a governance_inline_policy depending on the authorizing entry's source. See issue #2685."
+                  }
+                },
+                "required": [
+                  "feature_id"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 1
+            },
+            "exclude_identifiers": {
+              "type": "array",
+              "description": "Identifiers to always exclude from results",
+              "items": {
+                "title": "Identifier",
+                "description": "A property identifier with type and value. Used to identify properties across platforms (domains, app store IDs, etc.).",
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "$ref": "#/$defs/PropertyIdentifierTypes"
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "The identifier value. For domain type: 'example.com' matches base domain plus www and m subdomains; 'edition.example.com' matches that specific subdomain; '*.example.com' matches ALL subdomains but NOT base domain"
+                  }
+                },
+                "required": [
+                  "type",
+                  "value"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "brand": {
+          "title": "Brand Reference",
+          "description": "Brand reference used to automatically apply appropriate rules. Resolved to full brand identity at execution time.",
+          "type": "object",
+          "properties": {
+            "domain": {
+              "type": "string",
+              "description": "Domain where /.well-known/brand.json is hosted, or the brand's operating domain",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+            },
+            "brand_id": {
+              "title": "Brand ID",
+              "description": "Brand identifier within the house portfolio. Optional for single-brand domains.",
+              "type": "string",
+              "pattern": "^[a-z0-9_]+$",
+              "x-entity": "advertiser_brand",
+              "examples": [
+                "tide",
+                "cheerios",
+                "air_jordan",
+                "nike",
+                "pampers"
+              ]
+            },
+            "industries": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Inline override for the brand's industries. Useful when the caller cannot modify the brand's canonical brand.json but needs to declare industries for governance (e.g., Annex III vertical detection). brand.json remains the canonical source; when omitted here, governance agents SHOULD resolve from brand.json."
+            },
+            "data_subject_contestation": {
+              "type": "object",
+              "description": "Inline override for the brand's contestation contact point. Useful when the operator does not control brand.json but needs to discharge Art 22(3) for this plan. brand.json is canonical; when omitted, governance agents resolve brand → house → missing.",
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "format": "uri",
+                  "pattern": "^https://"
+                },
+                "email": {
+                  "type": "string",
+                  "format": "email"
+                },
+                "languages": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "anyOf": [
+                {
+                  "required": [
+                    "url"
+                  ]
+                },
+                {
+                  "required": [
+                    "email"
+                  ]
+                }
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "domain"
+          ],
+          "additionalProperties": false,
+          "examples": [
+            {
+              "domain": "nova-brands.com",
+              "brand_id": "spark"
+            },
+            {
+              "domain": "nova-brands.com",
+              "brand_id": "glow"
+            },
+            {
+              "domain": "acme-corp.com"
+            }
+          ]
+        },
+        "webhook_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to receive notifications when the resolved list changes"
+        },
+        "cache_duration_hours": {
+          "type": "integer",
+          "description": "Recommended cache duration for resolved list. Consumers should re-fetch after this period.",
+          "minimum": 1,
+          "default": 24
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the list was created"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the list was last modified"
+        },
+        "property_count": {
+          "type": "integer",
+          "description": "Number of properties in the resolved list (at time of last resolution)"
+        },
+        "pricing_options": {
+          "type": "array",
+          "description": "Pricing options for this property list. Present when the requesting account has a billing relationship with the list provider. The buyer passes the selected pricing_option_id in report_usage.",
+          "items": {
+            "title": "Vendor Pricing Option",
+            "description": "A pricing option offered by a vendor agent (signals, creative, governance). Combines pricing_option_id with the pricing model fields. Pass pricing_option_id in report_usage for billing verification. All vendor discovery responses return pricing_options as an array — vendors may offer multiple options (volume tiers, context-specific rates, different models per product line).",
+            "allOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "pricing_option_id": {
+                    "type": "string",
+                    "description": "Opaque identifier for this pricing option, unique within the vendor agent. Pass this in report_usage to identify which pricing option was applied.",
+                    "x-entity": "vendor_pricing_option"
+                  }
+                },
+                "required": [
+                  "pricing_option_id"
+                ]
+              },
+              {
+                "title": "Vendor Pricing",
+                "description": "Pricing model for a vendor service. Discriminated by model: 'cpm' (fixed CPM), 'percent_of_media' (percentage of spend with optional CPM cap), 'flat_fee' (fixed charge per reporting period), 'per_unit' (fixed price per unit of work), or 'custom' (escape hatch for models not covered by the enumerated forms — requires a description and structured metadata).",
+                "type": "object",
+                "oneOf": [
+                  {
+                    "title": "CpmPricing",
+                    "description": "Fixed cost per thousand impressions",
+                    "type": "object",
+                    "properties": {
+                      "model": {
+                        "type": "string",
+                        "const": "cpm"
+                      },
+                      "cpm": {
+                        "type": "number",
+                        "description": "Cost per thousand impressions",
+                        "minimum": 0
+                      },
+                      "currency": {
+                        "type": "string",
+                        "description": "ISO 4217 currency code",
+                        "pattern": "^[A-Z]{3}$"
+                      },
+                      "ext": {
+                        "title": "Extension Object",
+                        "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+                        "type": "object",
+                        "additionalProperties": true
+                      }
+                    },
+                    "required": [
+                      "model",
+                      "cpm",
+                      "currency"
+                    ],
+                    "additionalProperties": true
+                  },
+                  {
+                    "title": "PercentOfMediaPricing",
+                    "description": "Percentage of media spend charged for this signal. When max_cpm is set, the effective rate is capped at that CPM — useful for platforms like The Trade Desk that use percent-of-media pricing with a CPM ceiling.",
+                    "type": "object",
+                    "properties": {
+                      "model": {
+                        "type": "string",
+                        "const": "percent_of_media"
+                      },
+                      "percent": {
+                        "type": "number",
+                        "description": "Percentage of media spend, e.g. 15 = 15%",
+                        "minimum": 0,
+                        "maximum": 100
+                      },
+                      "max_cpm": {
+                        "type": "number",
+                        "description": "Optional CPM cap. When set, the effective charge is min(percent × media_spend_per_mille, max_cpm).",
+                        "minimum": 0
+                      },
+                      "currency": {
+                        "type": "string",
+                        "description": "ISO 4217 currency code for the resulting charge",
+                        "pattern": "^[A-Z]{3}$"
+                      },
+                      "ext": {
+                        "title": "Extension Object",
+                        "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+                        "type": "object",
+                        "additionalProperties": true
+                      }
+                    },
+                    "required": [
+                      "model",
+                      "percent",
+                      "currency"
+                    ],
+                    "additionalProperties": true
+                  },
+                  {
+                    "title": "FlatFeePricing",
+                    "description": "Fixed charge per billing period, regardless of impressions or spend. Used for licensed data bundles and audience subscriptions.",
+                    "type": "object",
+                    "properties": {
+                      "model": {
+                        "type": "string",
+                        "const": "flat_fee"
+                      },
+                      "amount": {
+                        "type": "number",
+                        "description": "Fixed charge for the billing period",
+                        "minimum": 0
+                      },
+                      "period": {
+                        "type": "string",
+                        "enum": [
+                          "monthly",
+                          "quarterly",
+                          "annual",
+                          "campaign"
+                        ],
+                        "description": "Billing period for the flat fee."
+                      },
+                      "currency": {
+                        "type": "string",
+                        "description": "ISO 4217 currency code",
+                        "pattern": "^[A-Z]{3}$"
+                      },
+                      "ext": {
+                        "title": "Extension Object",
+                        "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+                        "type": "object",
+                        "additionalProperties": true
+                      }
+                    },
+                    "required": [
+                      "model",
+                      "amount",
+                      "period",
+                      "currency"
+                    ],
+                    "additionalProperties": true
+                  },
+                  {
+                    "title": "PerUnitPricing",
+                    "description": "Fixed price per unit of work. Used for creative transformation (per format), AI generation (per image, per token), and rendering (per variant). The unit field describes what is counted; unit_price is the cost per one unit.",
+                    "type": "object",
+                    "properties": {
+                      "model": {
+                        "type": "string",
+                        "const": "per_unit"
+                      },
+                      "unit": {
+                        "type": "string",
+                        "description": "What is counted — e.g. 'format', 'image', 'token', 'variant', 'render', 'evaluation'."
+                      },
+                      "unit_price": {
+                        "type": "number",
+                        "description": "Cost per one unit",
+                        "minimum": 0
+                      },
+                      "currency": {
+                        "type": "string",
+                        "description": "ISO 4217 currency code",
+                        "pattern": "^[A-Z]{3}$"
+                      },
+                      "ext": {
+                        "title": "Extension Object",
+                        "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+                        "type": "object",
+                        "additionalProperties": true
+                      }
+                    },
+                    "required": [
+                      "model",
+                      "unit",
+                      "unit_price",
+                      "currency"
+                    ],
+                    "additionalProperties": true
+                  },
+                  {
+                    "title": "CustomPricing",
+                    "description": "Escape hatch for pricing constructs that do not fit cpm, percent_of_media, flat_fee, or per_unit. Use when a vendor prices via performance kickers, tiered volume, hybrid formulas, outcome-sharing, or any other model the standard forms cannot express. Requires a human-readable description and a structured metadata object that captures the parameters a buyer needs to reason about the charge. Buyers SHOULD route custom pricing through operator review before commitment — automatic selection is not recommended.",
+                    "type": "object",
+                    "properties": {
+                      "model": {
+                        "type": "string",
+                        "const": "custom"
+                      },
+                      "description": {
+                        "type": "string",
+                        "description": "Human-readable description of the custom pricing model. Buyers display this to the operator when requesting approval.",
+                        "minLength": 1
+                      },
+                      "metadata": {
+                        "type": "object",
+                        "description": "Structured parameters for the custom model. Keys follow lowercase_snake_case. Values may be primitives, arrays, or nested objects. Must be sufficient for a human to understand the pricing basis and for a downstream system to reconstruct the charge. Vendors SHOULD include a `summary_for_operator` string (one or two sentences, suitable for display in a buyer's operator-review UI) so reviewers across vendors see a consistent prompt. Required operator-review fields (approver role, dollar threshold for automatic approval, escalation contact) MAY be surfaced via additional keys the buyer's review surface recognizes.",
+                        "additionalProperties": true,
+                        "minProperties": 1,
+                        "properties": {
+                          "summary_for_operator": {
+                            "type": "string",
+                            "description": "One or two sentences describing the pricing construct in plain language, displayed to the buyer's operator when requesting approval. Should not repeat the top-level `description` verbatim — summarize the charge mechanic instead (e.g., 'Base $12 CPM plus $0.50 per qualifying post-view conversion, capped at $45 CPM').",
+                            "minLength": 1
+                          }
+                        }
+                      },
+                      "currency": {
+                        "type": "string",
+                        "description": "ISO 4217 currency code. Present when the pricing resolves to a monetary charge in a specific currency.",
+                        "pattern": "^[A-Z]{3}$"
+                      },
+                      "ext": {
+                        "title": "Extension Object",
+                        "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+                        "type": "object",
+                        "additionalProperties": true
+                      }
+                    },
+                    "required": [
+                      "model",
+                      "description",
+                      "metadata"
+                    ],
+                    "additionalProperties": true
+                  }
+                ]
+              }
+            ]
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "list_id",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "replayed": {
+      "type": "boolean",
+      "description": "Set to true when this response is a cached replay returned for an idempotency_key that was already processed. Set to false (or omitted) when the request was executed fresh. Buyers use this to distinguish cached replays from new executions — matters for billing reconciliation, audit logs, and any downstream system that assumes exactly-once event semantics. Only present on responses to mutating requests that carry idempotency_key.",
+      "default": false
+    },
+    "context": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "list"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "PropertyIdentifierTypes": {
+      "title": "Property Identifier Types",
+      "description": "Type of identifier",
+      "type": "string",
+      "enum": [
+        "domain",
+        "subdomain",
+        "network_id",
+        "ios_bundle",
+        "android_package",
+        "apple_app_store_id",
+        "google_play_id",
+        "roku_store_id",
+        "fire_tv_asin",
+        "samsung_app_id",
+        "apple_tv_bundle",
+        "bundle_id",
+        "venue_id",
+        "screen_id",
+        "openooh_venue_type",
+        "rss_url",
+        "apple_podcast_id",
+        "spotify_collection_id",
+        "podcast_guid",
+        "station_id",
+        "facility_id"
+      ],
+      "enumDescriptions": {
+        "domain": "Web domain (e.g., example.com)",
+        "subdomain": "Specific subdomain (e.g., news.example.com)",
+        "network_id": "Network or platform-specific identifier",
+        "ios_bundle": "iOS app bundle identifier (e.g., com.example.app)",
+        "android_package": "Android package name (e.g., com.example.app)",
+        "apple_app_store_id": "Apple App Store numeric ID",
+        "google_play_id": "Google Play Store package ID",
+        "roku_store_id": "Roku Channel Store identifier",
+        "fire_tv_asin": "Amazon Fire TV ASIN",
+        "samsung_app_id": "Samsung TV app identifier",
+        "apple_tv_bundle": "Apple TV app bundle identifier",
+        "bundle_id": "Generic app bundle identifier",
+        "venue_id": "DOOH venue identifier",
+        "screen_id": "DOOH screen identifier within a venue",
+        "openooh_venue_type": "OpenOOH venue taxonomy classification",
+        "rss_url": "RSS feed URL for podcast or content feed",
+        "apple_podcast_id": "Apple Podcasts numeric ID",
+        "spotify_collection_id": "Spotify show or collection URI",
+        "podcast_guid": "Podcast GUID (podcasting 2.0 namespace)",
+        "station_id": "Broadcast station identifier — call sign, station name, or other locally recognized identifier (e.g., WCBS-FM, BBC Radio 4, France Inter, 2GB)",
+        "facility_id": "Broadcast facility or license ID from a national regulator, prefixed with authority slug (e.g., fcc:73953, ofcom:AL000001). Known prefixes: fcc (US), crtc (Canada), ift (Mexico), ofcom (UK), arcom (France), bnetza/medienanstalt (Germany), acma (Australia), mic (Japan), kcc (South Korea), anatel (Brazil), enacom (Argentina), trai (India)"
+      },
+      "examples": [
+        "domain",
+        "ios_bundle",
+        "venue_id",
+        "apple_podcast_id",
+        "station_id",
+        "facility_id"
+      ]
+    }
+  },
+  "_bundled": {
+    "generatedAt": "2026-04-30T02:22:54.603Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}

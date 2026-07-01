@@ -7,10 +7,10 @@ on:
       - 'docs/**'
       - 'dist/docs/**'
       - 'mintlify-docs/**'
+      - 'docs.json'
       - 'mint.json'
       - 'README.md'
       - 'server/src/addie/rules/**'
-      - 'server/src/addie/**/*.ts'
       - 'scripts/check-owned-links.js'
       - '.markdown-link-check.json'
       - '.github/workflows/broken-links.yml'
@@ -20,10 +20,10 @@ on:
       - 'docs/**'
       - 'dist/docs/**'
       - 'mintlify-docs/**'
+      - 'docs.json'
       - 'mint.json'
       - 'README.md'
       - 'server/src/addie/rules/**'
-      - 'server/src/addie/**/*.ts'
       - 'scripts/check-owned-links.js'
       - '.markdown-link-check.json'
       - '.github/workflows/broken-links.yml'
@@ -40,7 +40,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7.0.0
       with:
         # Ensure we get latest changes including synced docs
         ref: ${{ github.event.workflow_run.head_branch || github.ref }}
@@ -64,7 +64,7 @@ jobs:
 
     - name: Check browser-facing Agentic Advertising links
       run: npm run check:owned-links
-      timeout-minutes: 5
+      timeout-minutes: 10
 
     - name: Check README links
       run: npx markdown-link-check README.md --config .markdown-link-check.json

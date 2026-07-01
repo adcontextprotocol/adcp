@@ -30,8 +30,9 @@ vi.mock('../../src/middleware/auth.js', () => {
     };
   };
   const passthrough = (_req: any, _res: any, next: any) => next();
+  const requireAuthMock = (req: any, _res: any, next: any) => { setTestUser(req); next(); };
   return {
-    requireAuth: (req: any, _res: any, next: any) => { setTestUser(req); next(); },
+    requireAuth: requireAuthMock,
     requireAdmin: passthrough,
     optionalAuth: (req: any, _res: any, next: any) => { setTestUser(req); next(); },
     requireCompanyAccess: passthrough,
@@ -40,8 +41,12 @@ vi.mock('../../src/middleware/auth.js', () => {
     requireRole: () => passthrough,
     createRequireWorkingGroupLeader: () => passthrough,
     createRequireWorkingGroupMember: () => passthrough,
+    refuseCrossTenantAdminApiKey: () => false,
+    refuseAnyApiKeyOnGlobalAdmin: () => false,
+    requireGlobalAdmin: [requireAuthMock, passthrough, passthrough],
     invalidateSessionCache: vi.fn(),
     invalidateBanCache: vi.fn(),
+    invalidateSessionsForUsers: vi.fn(),
     isDevModeEnabled: () => false,
     getDevUser: () => null,
     getAvailableDevUsers: () => ({}),
@@ -329,6 +334,45 @@ describe('Perspective Assets Integration Tests', () => {
       expect(testItem).toBeDefined();
       expect(testItem.content_origin).toBe('member');
       expect(testItem.title).toBe('Test Asset Perspective');
+    });
+
+    it('should include moderation notes needed by the admin table', async () => {
+      await pool.query(
+        `UPDATE perspectives
+         SET status = 'needs_revisions',
+             revision_notes = 'Please tighten the intro.',
+             rejection_reason = 'Off-topic for the current queue.'
+         WHERE id = $1`,
+        [testPerspectiveId]
+      );
+
+      const listResponse = await request(app)
+        .get('/api/admin/content')
+        .expect(200);
+
+      const listItem = listResponse.body.items.find((i: any) => i.slug === TEST_SLUG);
+      expect(listItem).toMatchObject({
+        revision_notes: 'Please tighten the intro.',
+        rejection_reason: 'Off-topic for the current queue.',
+      });
+
+      const detailResponse = await request(app)
+        .get(`/api/admin/content/${testPerspectiveId}`)
+        .expect(200);
+
+      expect(detailResponse.body).toMatchObject({
+        revision_notes: 'Please tighten the intro.',
+        rejection_reason: 'Off-topic for the current queue.',
+      });
+
+      await pool.query(
+        `UPDATE perspectives
+         SET status = 'published',
+             revision_notes = NULL,
+             rejection_reason = NULL
+         WHERE id = $1`,
+        [testPerspectiveId]
+      );
     });
   });
 

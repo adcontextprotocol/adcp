@@ -98,9 +98,12 @@ agent's products and pricing.
 A buyer agent that has not established an account with a creative agent cannot see pricing.
 This is by design — pricing is contractual, and there is no contract without an account.
 
-Creative agents that charge SHOULD indicate this in their agent description (MCP tool
-annotations or A2A Agent Card) so buyer agents can know an account is required before
-calling `list_creatives`. The protocol does not define a standard field for this in v1.
+Creative agents that charge SHOULD set `capabilities.creative.bills_through_adcp = true`
+in their `get_adcp_capabilities` response so buyer agents can pre-filter before establishing
+an account. Agents that bill out of band (flat license, SaaS contract, bundled enterprise
+agreement) leave the flag absent or set it to `false`; buyer agents then know to skip
+`include_pricing` on `list_creatives` and tolerate `report_usage` returning
+`accepted: 0` with `BILLING_OUT_OF_BAND` errors.
 
 ### Consumption details
 
@@ -348,9 +351,15 @@ Structured consumption details for `build_creative` responses:
 
 ## Capabilities change
 
-No new capability flag needed. An agent that charges has pricing on its creatives. An
-agent that doesn't, doesn't. The buyer discovers pricing by its presence in
-`list_creatives` responses and `build_creative` responses.
+Add `bills_through_adcp` (boolean, default false/absent) to the `creative` block in
+`get-adcp-capabilities-response.json`. When `true`, the buyer can expect `pricing_options`
+on `list_creatives` (with `include_pricing=true` and an authenticated account),
+`pricing_option_id` and `vendor_cost` on `build_creative`, and `report_usage` that
+accepts records against the rate card. When `false` or absent, the agent bills out
+of band: `pricing_options` is omitted, build responses carry no pricing fields, and
+`report_usage` returns `accepted: 0` with `BILLING_OUT_OF_BAND` errors per-record. The
+flag is a pre-call discriminator for routing — buyers can pre-filter creative agents
+before establishing an account.
 
 The spec language around Accounts needs updating as described above.
 

@@ -10,10 +10,16 @@ import { createLogger } from '../logger.js';
 import { WorkOS, DomainDataState } from '@workos-inc/node';
 import { resolveOrgByDomain } from '../db/domain-resolution-db.js';
 import { researchDomain, trackBackground } from './brand-enrichment.js';
+import { linkDomain, unlinkDomainAndReselectPrimary } from '../db/organization-domains-db.js';
 import { enrichOrganization } from './enrichment.js';
 import { isLushaConfigured } from './lusha.js';
 import { COMPANY_TYPE_VALUES } from '../config/company-types.js';
 import { VALID_REVENUE_TIERS } from '../db/organization-db.js';
+import { getCompanyDomain, isFreeEmailDomain } from '../utils/email-domain.js';
+import {
+  assertClaimableBrandDomain,
+  canonicalizeBrandDomain,
+} from './identifier-normalization.js';
 
 // Initialize WorkOS client if configured
 const workos =
@@ -29,6 +35,50 @@ const VALID_PROSPECT_STATUSES = [
   'prospect', 'contacted', 'responded', 'interested',
   'negotiating', 'joined', 'converted', 'declined', 'disqualified'
 ] as const;
+
+function normalizeExplicitDomain(domain: string): string {
+  const normalized = canonicalizeBrandDomain(domain);
+  assertClaimableBrandDomain(normalized);
+  if (isFreeEmailDomain(normalized)) {
+    throw new Error(`"${normalized}" is a free email provider domain and can't be claimed as a prospect domain.`);
+  }
+  return normalized;
+}
+
+function inferBusinessDomainFromContactEmail(email: string | undefined): string | null {
+  if (!email) return null;
+  const companyDomain = getCompanyDomain(email);
+  if (!companyDomain) return null;
+
+  const normalized = canonicalizeBrandDomain(companyDomain);
+  try {
+    assertClaimableBrandDomain(normalized);
+  } catch {
+    return null;
+  }
+  return normalized;
+}
+
+function normalizeProspectDomain(input: CreateProspectInput): string | null {
+  const explicit = input.domain?.trim();
+  if (explicit) return normalizeExplicitDomain(explicit);
+  return inferBusinessDomainFromContactEmail(input.prospect_contact_email);
+}
+
+function prospectDomainTrust(input: CreateProspectInput): {
+  source: 'import' | 'backfill_prospect_contact';
+  verified: boolean;
+  workosState: DomainDataState;
+} {
+  if (input.domain?.trim()) {
+    return { source: 'import', verified: true, workosState: DomainDataState.Verified };
+  }
+  return {
+    source: 'backfill_prospect_contact',
+    verified: false,
+    workosState: DomainDataState.Pending,
+  };
+}
 
 export interface CreateProspectInput {
   name: string;
@@ -86,8 +136,22 @@ export async function createProspect(
     };
   }
 
-  // Normalize domain to lowercase
-  const normalizedDomain = input.domain?.trim().toLowerCase() || null;
+  let normalizedDomain: string | null;
+  try {
+    normalizedDomain = normalizeProspectDomain(input);
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Invalid domain',
+    };
+  }
+
+  if (!normalizedDomain) {
+    return {
+      success: false,
+      error: 'A valid business domain or business contact email is required to create a prospect',
+    };
+  }
 
   // Check if domain resolves to an existing organization (exact, alias, sub-brand, or redirect)
   if (normalizedDomain) {
@@ -133,12 +197,11 @@ export async function createProspect(
   }
 
   try {
+    const domainTrust = prospectDomainTrust(input);
     // Create organization in WorkOS
     const workosOrg = await workos.organizations.createOrganization({
       name,
-      domainData: normalizedDomain
-        ? [{ domain: normalizedDomain, state: DomainDataState.Verified }]
-        : undefined,
+      domainData: [{ domain: normalizedDomain, state: domainTrust.workosState }],
     });
 
     logger.info(
@@ -171,7 +234,7 @@ export async function createProspect(
         workosOrg.id,
         name,
         input.company_type || null,
-        normalizedDomain,
+        null,
         input.prospect_status || 'prospect',
         input.prospect_source || 'manual',
         input.prospect_notes || null,
@@ -186,30 +249,33 @@ export async function createProspect(
 
     const org = result.rows[0];
 
-    // Also insert into organization_domains if domain provided
-    if (normalizedDomain) {
-      await pool.query(
-        `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
-         VALUES ($1, $2, true, true, 'import')
-         ON CONFLICT (domain) DO UPDATE SET
-           workos_organization_id = EXCLUDED.workos_organization_id,
-           is_primary = true,
-           updated_at = NOW()`,
-        [workosOrg.id, normalizedDomain]
-      );
-
-      const bgPromise = researchDomain(normalizedDomain, { org_id: workosOrg.id }).catch((err) => {
-        logger.warn(
-          { err, domain: normalizedDomain, orgId: workosOrg.id },
-          'Background research failed for new prospect'
-        );
-      });
-      trackBackground(bgPromise);
+    const linkResult = await linkDomain({
+      orgId: workosOrg.id,
+      domain: normalizedDomain,
+      source: domainTrust.source,
+      verified: domainTrust.verified,
+      isPrimary: true,
+    });
+    if (linkResult.conflictOrgId) {
+      await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [workosOrg.id]);
+      return {
+        success: false,
+        alreadyExists: true,
+        error: `Domain ${normalizedDomain} is already linked to another organization (${linkResult.conflictOrgId})`,
+      };
     }
+
+    const bgPromise = researchDomain(normalizedDomain, { org_id: workosOrg.id }).catch((err) => {
+      logger.warn(
+        { err, domain: normalizedDomain, orgId: workosOrg.id },
+        'Background research failed for new prospect'
+      );
+    });
+    trackBackground(bgPromise);
 
     return {
       success: true,
-      organization: org,
+      organization: { ...org, email_domain: normalizedDomain },
     };
   } catch (error) {
     logger.error({ err: error, name }, 'Error creating prospect');
@@ -301,8 +367,8 @@ export async function updateProspect(
   const pool = getPool();
 
   // Verify org exists (and get existing notes for append mode)
-  const existing = await pool.query(
-    `SELECT name, prospect_notes FROM organizations WHERE workos_organization_id = $1`,
+  const existing = await pool.query<{ name: string; prospect_notes: string | null; email_domain: string | null }>(
+    `SELECT name, prospect_notes, email_domain FROM organizations WHERE workos_organization_id = $1`,
     [orgId]
   );
 
@@ -314,6 +380,8 @@ export async function updateProspect(
   const values: unknown[] = [];
   const fieldsChanged: string[] = [];
   let paramIndex = 1;
+  let domainToLink: string | null | undefined;
+  const previousDomain = existing.rows[0].email_domain?.trim().toLowerCase() || null;
 
   const updatableSet = new Set<string>(UPDATABLE_PROSPECT_FIELDS);
   const VALID_INTEREST_LEVELS = ['low', 'medium', 'high', 'very_high'];
@@ -386,23 +454,72 @@ export async function updateProspect(
       continue;
     }
 
+    if (key === 'email_domain') {
+      if (value === null || value === '') {
+        setClauses.push(`email_domain = $${paramIndex}`);
+        values.push(null);
+        paramIndex++;
+        fieldsChanged.push('email_domain');
+        domainToLink = null;
+        continue;
+      }
+
+      if (typeof value !== 'string') {
+        return { success: false, error: 'Invalid email_domain' };
+      }
+
+      try {
+        domainToLink = normalizeExplicitDomain(value);
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Invalid email_domain',
+        };
+      }
+      fieldsChanged.push('email_domain');
+      continue;
+    }
+
     setClauses.push(`${key} = $${paramIndex}`);
     values.push(value === '' ? null : value);
     paramIndex++;
     fieldsChanged.push(key);
   }
 
-  if (setClauses.length === 0) {
+  if (setClauses.length === 0 && domainToLink === undefined) {
     return { success: false, error: 'No valid fields to update' };
   }
 
-  setClauses.push('updated_at = NOW()');
-  values.push(orgId);
+  if (domainToLink) {
+    const linkResult = await linkDomain({
+      orgId,
+      domain: domainToLink,
+      source: 'admin_discovery',
+      verified: true,
+      isPrimary: true,
+    });
+    if (linkResult.conflictOrgId) {
+      return {
+        success: false,
+        error: `Domain ${domainToLink} is already linked to another organization (${linkResult.conflictOrgId})`,
+      };
+    }
+    if (previousDomain && previousDomain !== domainToLink) {
+      await unlinkDomainAndReselectPrimary({ orgId, domain: previousDomain });
+    }
+  } else if (domainToLink === null && previousDomain) {
+    await unlinkDomainAndReselectPrimary({ orgId, domain: previousDomain });
+  }
 
-  const result = await pool.query(
-    `UPDATE organizations SET ${setClauses.join(', ')} WHERE workos_organization_id = $${paramIndex} RETURNING *`,
-    values
-  );
+  const result = setClauses.length > 0
+    ? await pool.query(
+        `UPDATE organizations SET ${[...setClauses, 'updated_at = NOW()'].join(', ')} WHERE workos_organization_id = $${paramIndex} RETURNING *`,
+        [...values, orgId]
+      )
+    : await pool.query(
+        `SELECT * FROM organizations WHERE workos_organization_id = $1`,
+        [orgId]
+      );
 
   if (result.rows.length === 0) {
     return { success: false, error: 'Account not found' };

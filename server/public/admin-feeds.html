@@ -72,7 +72,7 @@
     }
     .feed-item.inactive {
       opacity: 0.6;
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
     }
     .feed-header {
       display: flex;
@@ -116,7 +116,7 @@
       font-weight: var(--font-medium);
     }
     .badge-active { background: var(--color-success-100); color: var(--color-success-700); }
-    .badge-inactive { background: var(--color-gray-200); color: var(--color-gray-700); }
+    .badge-inactive { background: var(--color-bg-button-secondary); color: var(--color-text); }
     .badge-error { background: var(--color-error-100); color: var(--color-error-700); }
     .badge-category { background: var(--color-info-100); color: var(--color-info-700); }
     .btn {
@@ -131,8 +131,8 @@
     .btn-primary { background: var(--color-brand); color: white; }
     .btn-primary:hover { background: var(--color-primary-700); }
     .btn-primary:disabled { background: var(--color-gray-400); cursor: not-allowed; }
-    .btn-secondary { background: var(--color-gray-200); color: var(--color-text-heading); }
-    .btn-secondary:hover { background: var(--color-gray-300); }
+    .btn-secondary { background: var(--color-bg-button-secondary); color: var(--color-text-heading); }
+    .btn-secondary:hover { background: var(--color-bg-button-secondary-hover); }
     .btn-danger { background: var(--color-error-500); color: white; }
     .btn-danger:hover { background: var(--color-error-600); }
     .modal-overlay {
@@ -365,7 +365,7 @@
       gap: var(--space-4);
       margin-bottom: var(--space-5);
       padding: var(--space-4);
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       border-radius: var(--radius-md);
     }
     .filter-group label {
@@ -405,11 +405,11 @@
       transition: var(--transition-all);
     }
     .feed-type-option:hover {
-      border-color: var(--color-gray-300);
+      border-color: var(--color-border-strong);
     }
     .feed-type-option:has(input:checked) {
       border-color: var(--color-brand);
-      background: var(--color-primary-50);
+      background: var(--color-brand-bg);
     }
     .feed-type-option input {
       margin-top: 2px;
@@ -477,13 +477,13 @@
     .btn-copy {
       padding: var(--space-1) var(--space-2);
       font-size: var(--text-xs);
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
       border: var(--border-1) solid var(--color-gray-300);
       border-radius: var(--radius-sm);
       cursor: pointer;
     }
     .btn-copy:hover {
-      background: var(--color-gray-200);
+      background: var(--color-bg-button-secondary);
     }
   </style>
 </head>

@@ -33,12 +33,7 @@ describe('adcp-taxonomy enum sync', () => {
 });
 
 describe('specialism status', () => {
-  // No specialisms are currently marked `status: preview` in the compliance catalog —
-  // earlier preview specialisms (sales-exchange, sales-retail-media, sales-streaming-tv,
-  // measurement-verification) were removed from the enum entirely rather than retained
-  // behind a status flag. The preview mechanism remains in place for future use.
-
-  it('treats all current specialisms as stable', () => {
+  it('treats stable specialisms as stable', () => {
     expect(isStableSpecialism('sales-broadcast-tv')).toBe(true);
     expect(isStableSpecialism('creative-template')).toBe(true);
     expect(isStableSpecialism('property-lists')).toBe(true);
@@ -47,12 +42,21 @@ describe('specialism status', () => {
     expect(isStableSpecialism('governance-aware-seller')).toBe(true);
   });
 
+  it('respects preview status from the compliance catalog', () => {
+    expect(getSpecialismStatus('sponsored-intelligence')).toBe('preview');
+    expect(isStableSpecialism('sponsored-intelligence')).toBe(false);
+  });
+
   it('treats unknown specialisms as stable (safe default)', () => {
     expect(getSpecialismStatus('not-a-real-specialism')).toBe('stable');
   });
 });
 
 describe('SUPPORTED_BADGE_VERSIONS', () => {
+  it('enables public badge issuance on 3.1 before 3.0', () => {
+    expect(SUPPORTED_BADGE_VERSIONS).toEqual(['3.1', '3.0']);
+  });
+
   it('is a non-empty array of MAJOR.MINOR strings', () => {
     expect(SUPPORTED_BADGE_VERSIONS.length).toBeGreaterThan(0);
     for (const v of SUPPORTED_BADGE_VERSIONS) {

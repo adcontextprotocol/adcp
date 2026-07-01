@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.12/signals/get-signals-async-response-working.json",
+  "title": "Get Signals - Working",
+  "description": "Progress payload for an active get_signals task after a submitted semantic discovery request has started processing. Valid only for `discovery_mode: \"brief\"`; wholesale signals feed reads report partial completion via `incomplete[]`, not async task progress.",
+  "type": "object",
+  "properties": {
+    "percentage": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Progress percentage of the signal discovery operation."
+    },
+    "current_step": {
+      "type": "string",
+      "description": "Current step in the signal discovery process, such as `querying_providers`, `ranking_signals`, or `checking_deployments`."
+    },
+    "total_steps": {
+      "type": "integer",
+      "description": "Total number of steps in the signal discovery process."
+    },
+    "step_number": {
+      "type": "integer",
+      "description": "Current step number (1-indexed)."
+    },
+    "context": {
+      "$ref": "/schemas/3.1.0-rc.12/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-rc.12/core/ext.json"
+    }
+  },
+  "additionalProperties": true
+}

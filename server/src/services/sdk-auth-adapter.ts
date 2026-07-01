@@ -67,3 +67,39 @@ export async function adaptAuthForSdk(
     }
   }
 }
+
+/**
+ * Subset of `AgentConfig` (from `@adcp/sdk`) populated from saved auth.
+ * Spread into the config literal passed to `new AdCPClient(...)` to make
+ * authenticated probe / discovery / health calls. Bearer maps to
+ * `auth_token`; basic maps to a pre-encoded `Authorization: Basic …`
+ * header; oauth maps to the `oauth_tokens` + `oauth_client` shape the
+ * SDK refreshes on 401.
+ */
+export type AgentConfigAuthFields = {
+  auth_token?: string;
+  headers?: Record<string, string>;
+  oauth_tokens?: {
+    access_token: string;
+    refresh_token: string;
+    expires_at?: string;
+  };
+  oauth_client?: { client_id: string; client_secret?: string };
+};
+
+export function agentConfigAuthFields(auth: SdkAuth | undefined): AgentConfigAuthFields {
+  if (!auth) return {};
+  switch (auth.type) {
+    case 'bearer':
+      return { auth_token: auth.token };
+    case 'basic': {
+      const encoded = Buffer.from(`${auth.username}:${auth.password}`).toString('base64');
+      return { headers: { Authorization: `Basic ${encoded}` } };
+    }
+    case 'oauth': {
+      const fields: AgentConfigAuthFields = { oauth_tokens: auth.tokens };
+      if (auth.client) fields.oauth_client = auth.client;
+      return fields;
+    }
+  }
+}

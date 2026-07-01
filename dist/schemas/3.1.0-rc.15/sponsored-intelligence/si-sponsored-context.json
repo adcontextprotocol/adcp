@@ -1,0 +1,166 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.15/sponsored-intelligence/si-sponsored-context.json",
+  "title": "SI Sponsored Context",
+  "description": "Declaration attached to sponsored context delivered into an SI host boundary. Separates the economic accountability fact (`paying_principal`) from the host's receipt/acceptance record, which is carried separately by si-sponsored-context-receipt.json.",
+  "x-status": "experimental",
+  "type": "object",
+  "properties": {
+    "paying_principal": {
+      "type": "object",
+      "description": "Economic accountability fact: the brand that funded or sponsored this context, with optional account/operator context. This identifies who paid for the sponsored context; it is distinct from the host's later receipt and use commitment.",
+      "properties": {
+        "brand": {
+          "$ref": "/schemas/3.1.0-rc.15/core/brand-ref.json",
+          "description": "Brand economically accountable for the sponsored context."
+        },
+        "account": {
+          "type": "object",
+          "description": "Optional seller-assigned account context for the paying principal. This intentionally carries only an account_id so the canonical economic principal remains paying_principal.brand.",
+          "properties": {
+            "account_id": {
+              "type": "string",
+              "description": "Seller-assigned account identifier for the paying principal.",
+              "x-entity": "account"
+            }
+          },
+          "required": [
+            "account_id"
+          ],
+          "additionalProperties": false
+        },
+        "operator": {
+          "type": "string",
+          "description": "Domain of the operator acting for the paying principal, when different from the brand domain.",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+          "x-entity": "operator"
+        },
+        "display_name": {
+          "type": "string",
+          "description": "Human-readable label for disclosure rendering. The canonical identity remains the brand/account reference."
+        }
+      },
+      "required": [
+        "brand"
+      ],
+      "additionalProperties": true
+    },
+    "context_use": {
+      "$ref": "/schemas/3.1.0-rc.15/sponsored-intelligence/si-context-use.json",
+      "description": "Declared host-side use mode for this sponsored context."
+    },
+    "disclosure_obligation": {
+      "type": "object",
+      "description": "Disclosure obligation the receiving host must either accept and satisfy or reject before using this sponsored context. This is a declared obligation and audit input, not a protocol-level legal determination.",
+      "properties": {
+        "required": {
+          "type": "boolean",
+          "description": "Whether the declaring party requires disclosure for this sponsored context."
+        },
+        "label_text": {
+          "type": "string",
+          "description": "Disclosure label text the host should render when disclosure is required."
+        },
+        "timing": {
+          "type": "string",
+          "description": "When the disclosure must be presented relative to the sponsored context's influence.",
+          "enum": [
+            "before_use",
+            "at_first_influenced_output",
+            "near_each_influenced_output"
+          ],
+          "enumDescriptions": {
+            "before_use": "Disclose before the host uses the sponsored context.",
+            "at_first_influenced_output": "Disclose at the first host output influenced by the sponsored context.",
+            "near_each_influenced_output": "Disclose near each output that presents, compares, or is materially influenced by the sponsored context."
+          }
+        },
+        "proximity": {
+          "type": "string",
+          "description": "Where the disclosure should appear relative to the affected output.",
+          "enum": [
+            "session_level",
+            "near_rendered_unit",
+            "near_influenced_output"
+          ],
+          "enumDescriptions": {
+            "session_level": "A session-level disclosure is sufficient.",
+            "near_rendered_unit": "Disclosure should appear near the sponsored card, answer block, handoff, or other rendered unit.",
+            "near_influenced_output": "Disclosure should appear near the host output that was shaped by the sponsored context, even if no single rendered unit is the ad."
+          }
+        },
+        "jurisdictions": {
+          "type": "array",
+          "description": "Jurisdictions where this declared disclosure obligation applies.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "country": {
+                "type": "string",
+                "description": "ISO 3166-1 alpha-2 country code."
+              },
+              "region": {
+                "type": "string",
+                "description": "Optional sub-national region code."
+              },
+              "regulation": {
+                "type": "string",
+                "description": "Regulation or policy identifier."
+              }
+            },
+            "required": [
+              "country",
+              "regulation"
+            ],
+            "additionalProperties": true
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "required"
+      ],
+      "additionalProperties": true
+    },
+    "declared_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this sponsored-context declaration was made."
+    },
+    "declared_by": {
+      "type": "object",
+      "description": "Agent or service that attached the declaration.",
+      "properties": {
+        "agent_url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "description": "HTTPS URL of the declaring agent or service."
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "brand_agent",
+            "seller",
+            "network",
+            "platform"
+          ],
+          "description": "Role of the declaring party."
+        }
+      },
+      "required": [
+        "role"
+      ],
+      "additionalProperties": true
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-rc.15/core/ext.json"
+    }
+  },
+  "required": [
+    "paying_principal",
+    "context_use",
+    "disclosure_obligation"
+  ],
+  "additionalProperties": true
+}

@@ -1,5 +1,5 @@
 import { query, getClient } from './client.js';
-import { canonicalizeBrandDomain } from '../services/identifier-normalization.js';
+import { canonicalizeBrandDomain, assertValidBrandDomain } from '../services/identifier-normalization.js';
 import type {
   HostedBrand,
   DiscoveredBrand,
@@ -9,6 +9,102 @@ import type {
   MemberBrandInfo,
   BrandLogo,
 } from '../types.js';
+
+/**
+ * Brand-manifest keys that must not be accepted from caller-supplied
+ * manifests or historical snapshots restored through rollback.
+ *
+ * `classification` is a trust signal that the auth path reads
+ * (`brand_manifest->'classification'->>'confidence' = 'high'` in
+ * `org-filters.ts` gates membership inheritance via `house_domain`).
+ *
+ * Any caller-supplied manifest must have these stripped at the DB layer so
+ * a community editor cannot self-elevate their classification — the only
+ * trusted writer of `classification` is the brand-classifier service, which
+ * goes through `assignBrandClassification` below.
+ *
+ * Pre-fix vector: a community user submits a brand row with
+ *   `house_domain = 'paying-target.example'`,
+ *   `brand_manifest = { classification: { confidence: 'high' } }`
+ * then signs in from an email at the spoofed brand's domain. The recursive
+ * org-chain join in `org-filters.ts` walks `house_domain` up to the paying
+ * target and (if the target opted into hierarchy auto-provisioning) the
+ * `autoLinkByVerifiedDomain` path issues them a WorkOS membership.
+ *
+ * See issue #3467 and the architecture follow-up there.
+ */
+const DISALLOWED_MANIFEST_KEYS: ReadonlySet<string> = new Set(['classification', 'brand_context']);
+
+/**
+ * Strip auth-relevant keys from a caller-supplied brand_manifest. Returns
+ * undefined when the input is undefined so caller checks for "provided"
+ * still work. Mutates a shallow copy — does not touch the caller's object.
+ */
+export function sanitizeBrandManifest(
+  manifest: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!manifest) return manifest;
+  let stripped: Record<string, unknown> | null = null;
+  for (const key of DISALLOWED_MANIFEST_KEYS) {
+    if (key in manifest) {
+      stripped ??= { ...manifest };
+      delete stripped[key];
+    }
+  }
+  return stripped ?? manifest;
+}
+
+export function sanitizeBrandSnapshot<T extends Record<string, unknown>>(snapshot: T): T {
+  const rawManifest = snapshot.brand_manifest;
+  let manifest: Record<string, unknown> | undefined;
+
+  if (typeof rawManifest === 'string') {
+    try {
+      const parsed = JSON.parse(rawManifest);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        manifest = parsed as Record<string, unknown>;
+      }
+    } catch {
+      return snapshot;
+    }
+  } else if (rawManifest && typeof rawManifest === 'object' && !Array.isArray(rawManifest)) {
+    manifest = rawManifest as Record<string, unknown>;
+  }
+
+  if (!manifest) return snapshot;
+  const sanitized = sanitizeBrandManifest(manifest);
+  if (sanitized === rawManifest) return snapshot;
+  return { ...snapshot, brand_manifest: sanitized } as T;
+}
+
+/**
+ * Validate a caller-supplied `house_domain` argument. Throws on:
+ *  - control characters (NUL/CR/LF — would corrupt audit-log JSON / log lines)
+ *  - non-domain-shaped strings (would never match anything in
+ *    `organization_domains.domain` but pollutes the registry)
+ *  - self-reference (a brand cannot be its own house)
+ *
+ * Empty / null / undefined are passed through — callers use those to clear
+ * the field.
+ */
+function validateHouseDomainArg(
+  houseDomain: string | undefined | null,
+  brandDomain: string,
+): string | undefined {
+  if (houseDomain == null || houseDomain === '') return undefined;
+  if (typeof houseDomain !== 'string') {
+    throw new Error('house_domain must be a string');
+  }
+  if (/[\x00\r\n]/.test(houseDomain)) {
+    throw new Error('house_domain contains control characters');
+  }
+  const canonical = canonicalizeBrandDomain(houseDomain);
+  assertValidBrandDomain(canonical);
+  if (canonical === brandDomain.toLowerCase()) {
+    throw new Error('house_domain cannot equal the brand domain (self-reference)');
+  }
+  return canonical;
+}
 
 /**
  * Extract logos and colors from a brand JSON structure, resolving both
@@ -130,6 +226,22 @@ export interface UpdateHostedBrandInput {
 }
 
 /**
+ * Trusted classification metadata written by the brand-classifier service.
+ * Separate from caller-supplied `brand_manifest` so community/MCP write
+ * paths cannot inject `confidence='high'` directly (issue #3467).
+ *
+ * Persisted into `brand_manifest.classification` at the DB layer; the auth
+ * gate in `org-filters.ts` reads
+ * `brand_manifest->'classification'->>'confidence'` to decide membership
+ * inheritance.
+ */
+export interface TrustedBrandClassification {
+  confidence: 'high' | 'medium' | 'low';
+  reasoning?: string;
+  related_domains?: string[];
+}
+
+/**
  * Input for creating/updating a discovered brand
  */
 export interface UpsertDiscoveredBrandInput {
@@ -145,6 +257,12 @@ export interface UpsertDiscoveredBrandInput {
   brand_agent_capabilities?: string[];
   has_brand_manifest?: boolean;
   brand_manifest?: Record<string, unknown>;
+  /**
+   * Trusted classification metadata. Only the brand-classifier service
+   * should set this. If present, it's merged into `brand_manifest.classification`
+   * after the caller-supplied manifest is sanitized.
+   */
+  classification?: TrustedBrandClassification;
   source_type: 'brand_json' | 'community' | 'enriched' | 'stub';
   expires_at?: Date;
 }
@@ -539,9 +657,24 @@ export class BrandDatabase {
   // ========== Discovered Brands ==========
 
   /**
-   * Upsert a discovered brand (insert or update on conflict)
+   * Upsert a discovered brand (insert or update on conflict).
+   *
+   * Sanitizes caller-supplied `brand_manifest` to strip the
+   * `classification` key (auth-relevant — see TRUSTED_MANIFEST_KEYS). The
+   * brand-classifier service should pass its output via `input.classification`,
+   * which is merged into the persisted manifest after sanitization.
+   *
+   * Also validates `house_domain` shape (canonicalized, no control chars,
+   * not a self-reference). See issue #3467.
    */
   async upsertDiscoveredBrand(input: UpsertDiscoveredBrandInput): Promise<DiscoveredBrand> {
+    const canonicalDomain = input.domain.toLowerCase();
+    const canonicalHouseDomain = validateHouseDomainArg(input.house_domain, canonicalDomain);
+    const sanitized = sanitizeBrandManifest(input.brand_manifest);
+    const persistedManifest = input.classification
+      ? { ...(sanitized ?? {}), classification: { ...input.classification } }
+      : sanitized;
+
     const result = await query<DiscoveredBrand>(
       `INSERT INTO brands (
         domain, brand_id, canonical_domain, house_domain, brand_name, brand_names,
@@ -565,10 +698,10 @@ export class BrandDatabase {
         expires_at = EXCLUDED.expires_at
       RETURNING *`,
       [
-        input.domain.toLowerCase(),
+        canonicalDomain,
         input.brand_id || null,
         input.canonical_domain || null,
-        input.house_domain || null,
+        canonicalHouseDomain ?? null,
         input.brand_name || null,
         input.brand_names ? JSON.stringify(input.brand_names) : '[]',
         input.keller_type || null,
@@ -576,7 +709,7 @@ export class BrandDatabase {
         input.brand_agent_url || null,
         input.brand_agent_capabilities || null,
         input.has_brand_manifest != null ? input.has_brand_manifest : null,
-        input.brand_manifest ? JSON.stringify(input.brand_manifest) : null,
+        persistedManifest ? JSON.stringify(persistedManifest) : null,
         input.source_type,
         input.expires_at || null,
       ]
@@ -944,11 +1077,20 @@ export class BrandDatabase {
 
   /**
    * Create a new community brand with pending review status and initial revision.
+   *
+   * Sanitizes caller-supplied `brand_manifest` to strip auth-relevant keys
+   * (issue #3467). `input.classification` is ignored on community write
+   * paths — only the brand-classifier service path through
+   * `upsertDiscoveredBrand` should populate trusted classification.
    */
   async createDiscoveredBrand(
     input: UpsertDiscoveredBrandInput,
     editor: { user_id: string; email?: string; name?: string }
   ): Promise<DiscoveredBrand> {
+    const canonicalDomain = input.domain.toLowerCase();
+    const canonicalHouseDomain = validateHouseDomainArg(input.house_domain, canonicalDomain);
+    const sanitizedManifest = sanitizeBrandManifest(input.brand_manifest);
+
     const client = await getClient();
     try {
       await client.query('BEGIN');
@@ -961,9 +1103,9 @@ export class BrandDatabase {
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending', NOW(), $13)
         RETURNING *`,
         [
-          input.domain.toLowerCase(),
+          canonicalDomain,
           input.canonical_domain || null,
-          input.house_domain || null,
+          canonicalHouseDomain ?? null,
           input.brand_name || null,
           input.brand_names ? JSON.stringify(input.brand_names) : '[]',
           input.keller_type || null,
@@ -971,7 +1113,7 @@ export class BrandDatabase {
           input.brand_agent_url || null,
           input.brand_agent_capabilities || null,
           input.has_brand_manifest ?? false,
-          input.brand_manifest ? JSON.stringify(input.brand_manifest) : null,
+          sanitizedManifest ? JSON.stringify(sanitizedManifest) : null,
           input.source_type,
           input.expires_at || null,
         ]
@@ -987,7 +1129,7 @@ export class BrandDatabase {
         ) VALUES ($1, 1, $2, $3, $4, $5, 'Initial record')`,
         [
           brand.domain,
-          JSON.stringify(brand),
+          JSON.stringify(sanitizeBrandSnapshot(brand as unknown as Record<string, unknown>)),
           editor.user_id,
           editor.email || null,
           editor.name || null,
@@ -1044,7 +1186,10 @@ export class BrandDatabase {
         if (current.source_type === 'brand_json') {
           throw new Error('Cannot modify agents on authoritative brand (managed via brand.json)');
         }
-        const manifest = (current.brand_manifest as Record<string, unknown>) || {};
+        const currentManifest = typeof current.brand_manifest === 'string'
+          ? JSON.parse(current.brand_manifest)
+          : current.brand_manifest;
+        const manifest = sanitizeBrandManifest((currentManifest as Record<string, unknown>) || {}) || {};
         manifest.agents = agents;
 
         // Create revision snapshot (brand_revisions uses brand_domain, not domain)
@@ -1057,7 +1202,15 @@ export class BrandDatabase {
         await client.query(
           `INSERT INTO brand_revisions (brand_domain, revision_number, snapshot, editor_user_id, editor_email, editor_name, edit_summary)
            VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7)`,
-          [domain.toLowerCase(), revisionNumber, JSON.stringify(current), editor.user_id, editor.email || null, editor.name || null, editor.summary]
+          [
+            domain.toLowerCase(),
+            revisionNumber,
+            JSON.stringify(sanitizeBrandSnapshot(current as unknown as Record<string, unknown>)),
+            editor.user_id,
+            editor.email || null,
+            editor.name || null,
+            editor.summary,
+          ]
         );
 
         await client.query(
@@ -1078,6 +1231,11 @@ export class BrandDatabase {
   /**
    * Edit a discovered brand with revision tracking.
    * Rejects edits to authoritative (brand_json) or pending records.
+   *
+   * Sanitizes caller-supplied `brand_manifest` to strip auth-relevant keys
+   * and validates `house_domain` shape. Preserves the existing trusted
+   * `classification` block (if any) so edits don't drop the classifier's
+   * verdict by accident. See issue #3467.
    */
   async editDiscoveredBrand(
     domain: string,
@@ -1098,6 +1256,11 @@ export class BrandDatabase {
       editor_name?: string;
     }
   ): Promise<{ brand: DiscoveredBrand; revision_number: number }> {
+    const canonicalDomain = domain.toLowerCase();
+    const canonicalHouseDomain = input.house_domain === undefined
+      ? undefined
+      : validateHouseDomainArg(input.house_domain, canonicalDomain);
+    const sanitizedManifest = sanitizeBrandManifest(input.brand_manifest);
     const client = await getClient();
     try {
       await client.query('BEGIN');
@@ -1136,7 +1299,7 @@ export class BrandDatabase {
         [
           domain.toLowerCase(),
           revisionNumber,
-          JSON.stringify(current),
+          JSON.stringify(sanitizeBrandSnapshot(current as unknown as Record<string, unknown>)),
           input.editor_user_id,
           input.editor_email || null,
           input.editor_name || null,
@@ -1167,7 +1330,7 @@ export class BrandDatabase {
       }
       if (input.house_domain !== undefined) {
         updates.push(`house_domain = $${paramIndex++}`);
-        values.push(input.house_domain);
+        values.push(canonicalHouseDomain ?? null);
       }
       if (input.canonical_domain !== undefined) {
         updates.push(`canonical_domain = $${paramIndex++}`);
@@ -1182,12 +1345,61 @@ export class BrandDatabase {
         values.push(input.brand_agent_capabilities);
       }
       if (input.brand_manifest !== undefined) {
+        // Preserve the trusted `classification` block from the prior
+        // manifest if the caller didn't supply one. Without this, an edit
+        // that just refreshes logos would silently drop the classifier's
+        // confidence verdict and demote the row out of the high-confidence
+        // membership-inheritance gate.
+        const priorManifest = (typeof current.brand_manifest === 'string'
+          ? JSON.parse(current.brand_manifest)
+          : current.brand_manifest) as Record<string, unknown> | null;
+        const priorClassification = priorManifest && 'classification' in priorManifest
+          ? priorManifest.classification
+          : undefined;
+        const finalManifest = priorClassification !== undefined
+          ? { ...(sanitizedManifest ?? {}), classification: priorClassification }
+          : sanitizedManifest;
         updates.push(`brand_manifest = $${paramIndex++}`);
-        values.push(JSON.stringify(input.brand_manifest));
+        values.push(finalManifest ? JSON.stringify(finalManifest) : null);
       }
       if (input.has_brand_manifest !== undefined) {
         updates.push(`has_brand_manifest = $${paramIndex++}`);
         values.push(input.has_brand_manifest);
+      }
+
+      // Promote enriched→community when a human edits brand content. A
+      // Brandfetch-seeded row that's been hand-curated is community-attested.
+      // Without this, /brands/:domain/brand.json keeps 404ing the row because
+      // the source_type gate excludes enriched (#3529).
+      //
+      // Two guards keep this from over-firing into stealth promotion:
+      //
+      //   - System callers don't promote. `system:logo-service` rebuilds the
+      //     manifest's logos array whenever a logo is approved; that's not
+      //     curation of brand content, just provenance bookkeeping. Same for
+      //     `system:addie` and any future internal worker. Without this
+      //     check, a community logo upload to an enriched brand would
+      //     silently flip its source_type and start serving raw Brandfetch
+      //     fields under the community label.
+      //
+      //   - Only promote when the edit changes a brand-content field
+      //     (manifest, name, keller_type, names, parent/canonical/agent).
+      //     A pure edit_summary-only audit revision is not curation.
+      const isSystemEditor = typeof input.editor_user_id === 'string'
+        && input.editor_user_id.startsWith('system:');
+      const promotesContent =
+        input.brand_manifest !== undefined ||
+        input.brand_name !== undefined ||
+        input.brand_names !== undefined ||
+        input.keller_type !== undefined ||
+        input.parent_brand !== undefined ||
+        input.house_domain !== undefined ||
+        input.canonical_domain !== undefined ||
+        input.brand_agent_url !== undefined ||
+        input.brand_agent_capabilities !== undefined;
+      if (current.source_type === 'enriched' && promotesContent && !isSystemEditor) {
+        updates.push(`source_type = $${paramIndex++}`);
+        values.push('community');
       }
 
       if (updates.length === 0) {
@@ -1235,9 +1447,9 @@ export class BrandDatabase {
         throw new Error(`Revision ${toRevisionNumber} not found for ${domain}`);
       }
 
-      const snapshot = typeof targetResult.rows[0].snapshot === 'string'
+      const snapshot = sanitizeBrandSnapshot((typeof targetResult.rows[0].snapshot === 'string'
         ? JSON.parse(targetResult.rows[0].snapshot)
-        : targetResult.rows[0].snapshot;
+        : targetResult.rows[0].snapshot) as Record<string, unknown>);
 
       // Lock current row and get current state for the new revision snapshot
       const currentResult = await client.query<DiscoveredBrand>(
@@ -1265,7 +1477,7 @@ export class BrandDatabase {
         [
           domain.toLowerCase(),
           revisionNumber,
-          JSON.stringify(currentResult.rows[0]),
+          JSON.stringify(sanitizeBrandSnapshot(currentResult.rows[0] as unknown as Record<string, unknown>)),
           editor.user_id,
           editor.email || null,
           editor.name || null,
@@ -1414,7 +1626,7 @@ export class BrandDatabase {
         [
           canonicalDomain,
           revisionNumber,
-          JSON.stringify(current),
+          JSON.stringify(sanitizeBrandSnapshot(current as unknown as Record<string, unknown>)),
           editor.userId,
           editor.email ?? null,
           editor.name ?? null,
@@ -1452,7 +1664,7 @@ export class BrandDatabase {
     return {
       ...row,
       domain: row.brand_domain || row.domain,
-      snapshot: typeof row.snapshot === 'string' ? JSON.parse(row.snapshot) : row.snapshot,
+      snapshot: sanitizeBrandSnapshot((typeof row.snapshot === 'string' ? JSON.parse(row.snapshot) : row.snapshot) as Record<string, unknown>),
       created_at: new Date(row.created_at),
     };
   }

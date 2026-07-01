@@ -11,6 +11,9 @@
  * AAO membership-pricing taxonomy (project_membership_pricing_v2).
  */
 
+import { resolvePrimaryOrganization } from '../db/users-db.js';
+import { resolveEffectiveMembership } from '../db/org-filters.js';
+
 export const API_ACCESS_TIERS = [
   'individual_professional',
   'company_standard',
@@ -55,7 +58,7 @@ const TIER_LABELS: Record<string, string> = {
   explorer: 'Explorer',
   individual_professional: 'Professional',
   company_standard: 'Builder',
-  company_icl: 'Member',
+  company_icl: 'Partner',
   company_leader: 'Leader',
 };
 
@@ -65,6 +68,15 @@ export function tierLabel(tier: string | null | undefined): string | null {
 }
 
 export interface OwnerMembership {
+  /**
+   * True only when the caller actually owns the agent (the resolver found
+   * a matching member_profiles row + organization_memberships row for them).
+   * Use this for owner-only feature gates that don't need a specific tier —
+   * `is_api_access_tier` is narrower (only premium tiers + active subs).
+   * Not surfaced in API responses; internal struct only. Response shape
+   * stays owner-detect-resistant via constant keys + null values.
+   */
+  is_owner: boolean;
   membership_tier: string | null;
   membership_tier_label: string | null;
   subscription_status: string | null;
@@ -72,6 +84,7 @@ export interface OwnerMembership {
 }
 
 const EMPTY_OWNER_MEMBERSHIP: OwnerMembership = {
+  is_owner: false,
   membership_tier: null,
   membership_tier_label: null,
   subscription_status: null,
@@ -114,9 +127,41 @@ export async function resolveOwnerMembership(
   const tier = orgRow.membership_tier ?? null;
   const subStatus = orgRow.subscription_status ?? null;
   return {
+    is_owner: true,
     membership_tier: tier,
     membership_tier_label: tierLabel(tier),
     subscription_status: subStatus,
     is_api_access_tier: isApiAccessTier(tier) && isActiveSubscriptionStatus(subStatus),
   };
+}
+
+/**
+ * Returns true if the given user is eligible to submit content via
+ * `propose_content` (Professional+ tier required).
+ *
+ * System users (`system:*` prefix) are always allowed — they are automated
+ * pipelines that legitimately submit content on a cadence and bypass the
+ * human-facing membership gate the same way they bypass the rate limiter.
+ *
+ * For all other users, resolves their primary organization and checks that:
+ *   1. The organization's effective membership tier is in API_ACCESS_TIERS.
+ *   2. The subscription status is in ACTIVE_SUBSCRIPTION_STATUSES.
+ *
+ * Returns false when the user has no primary organization or when either
+ * condition is not met.
+ */
+export async function checkContentSubmissionTier(userId: string): Promise<boolean> {
+  if (userId.startsWith('system:')) return true;
+
+  const orgId = await resolvePrimaryOrganization(userId);
+  if (!orgId) return false;
+
+  const membership = await resolveEffectiveMembership(orgId);
+
+  // resolveEffectiveMembership walks the brand hierarchy and sets is_member
+  // only when the org (or a consenting ancestor) has an entitlement-preserving,
+  // non-canceled subscription — so is_member already encodes subscription-status
+  // validity. We additionally require the tier to be in API_ACCESS_TIERS
+  // (Professional+).
+  return membership.is_member && isApiAccessTier(membership.membership_tier);
 }

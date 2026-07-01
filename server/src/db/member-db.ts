@@ -41,6 +41,9 @@ function normalizeAgentConfig(raw: unknown): AgentConfig {
     // dev seeds) instead of leaking them through the AgentConfig['type']
     // cast. Callers can repopulate via the route-layer inference path.
     ...(isValidAgentType(obj.type) ? { type: obj.type } : {}),
+    ...(typeof obj.health_check_url === 'string' && obj.health_check_url.length > 0
+      ? { health_check_url: obj.health_check_url }
+      : {}),
   };
 }
 
@@ -59,12 +62,11 @@ export class MemberDatabase {
     const result = await query<MemberProfile>(
       `INSERT INTO member_profiles (
         workos_organization_id, display_name, slug, tagline, description,
-        primary_brand_domain,
         contact_email, contact_website, contact_phone,
         linkedin_url, twitter_url,
         offerings, agents, publishers, data_providers, headquarters, markets, metadata, tags,
         is_public, show_in_carousel
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
       RETURNING *`,
       [
         input.workos_organization_id,
@@ -72,7 +74,6 @@ export class MemberDatabase {
         input.slug,
         input.tagline || null,
         input.description || null,
-        input.primary_brand_domain || null,
         input.contact_email || null,
         input.contact_website || null,
         input.contact_phone || null,
@@ -119,11 +120,37 @@ export class MemberDatabase {
   }
 
   /**
-   * Get profile by primary brand domain
+   * Resolve a member profile by any linked domain on the owning org.
+   * Matches the other domain→org lookups in the codebase
+   * (`organization-domains-db.ts`, `me-organization-domains.ts`,
+   * `domain-resolution-db.ts`) — `organization_domains.UNIQUE(domain)`
+   * guarantees the join is unambiguous. We previously filtered on
+   * `is_primary = true`, which silently dropped orgs whose linked domain
+   * was registered as secondary and made `/api/registry/operator?domain=…`
+   * return `member: null` for legitimate members.
    */
   async getProfileByDomain(domain: string): Promise<MemberProfile | null> {
+    const exactDomain = await query<{ workos_organization_id: string }>(
+      `SELECT workos_organization_id
+         FROM organization_domains
+        WHERE LOWER(domain) = LOWER($1)
+          AND verified = true
+        LIMIT 1`,
+      [domain],
+    );
+    if (exactDomain.rows[0]) {
+      return this.getProfileByOrgId(exactDomain.rows[0].workos_organization_id);
+    }
+
     const result = await query<MemberProfile>(
-      'SELECT * FROM member_profiles WHERE primary_brand_domain = $1',
+      `SELECT mp.*
+         FROM member_profiles mp
+         JOIN organization_domains od
+           ON od.workos_organization_id = mp.workos_organization_id
+        WHERE od.verified = true
+          AND LOWER($1) LIKE '%.' || LOWER(od.domain)
+        ORDER BY LENGTH(od.domain) DESC
+        LIMIT 1`,
       [domain]
     );
 
@@ -154,7 +181,6 @@ export class MemberDatabase {
       display_name: 'display_name',
       tagline: 'tagline',
       description: 'description',
-      primary_brand_domain: 'primary_brand_domain',
       contact_email: 'contact_email',
       contact_website: 'contact_website',
       contact_phone: 'contact_phone',
@@ -172,6 +198,9 @@ export class MemberDatabase {
       is_public: 'is_public',
       show_in_carousel: 'show_in_carousel',
       is_founding_member: 'is_founding_member',
+      founding_member_source: 'founding_member_source',
+      founding_member_granted_at: 'founding_member_granted_at',
+      founding_member_granted_reason: 'founding_member_granted_reason',
     };
 
     const setClauses: string[] = [];
@@ -335,6 +364,16 @@ export class MemberDatabase {
 
     const result = await query<MemberProfile>(sql, params);
     return result.rows.map(row => this.deserializeProfile(row));
+  }
+
+  /**
+   * Count public profiles shown in the member directory.
+   */
+  async countPublicProfiles(): Promise<number> {
+    const result = await query<{ count: string }>(
+      'SELECT COUNT(*)::text as count FROM member_profiles WHERE is_public = true'
+    );
+    return Number.parseInt(result.rows[0]?.count ?? '0', 10);
   }
 
   /**

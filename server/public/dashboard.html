@@ -138,7 +138,7 @@
       left: 50%;
       transform: translateX(-50%);
       background: var(--color-success-600);
-      color: white;
+      color: var(--color-text-on-dark);
       padding: var(--space-3) var(--space-6);
       border-radius: var(--radius-lg);
       box-shadow: var(--shadow-lg);
@@ -233,12 +233,12 @@
     }
     .profile-radio-option:hover {
       border-color: var(--color-brand);
-      background: var(--color-primary-50);
+      background: var(--color-brand-bg);
     }
     .profile-radio-option.selected,
     .profile-radio-option:has(input[type="radio"]:checked) {
       border-color: var(--color-brand);
-      background: var(--color-primary-100);
+      background: var(--color-brand-bg);
     }
     .profile-radio-option input[type="radio"] {
       margin-top: 2px;
@@ -496,6 +496,49 @@
 
     <div id="content" style="display:none;">
 
+      <!-- Brand-claim suggestion banner (#4744) — fired when the user's
+           verified email domain matches a brand in the registry that they
+           haven't claimed yet. Soft, dismissible (30-day cooldown). -->
+      <div id="brand-claim-banner" class="hidden" style="
+          background: linear-gradient(135deg, var(--color-info-50, #eff6ff), var(--color-bg-card));
+          border: var(--border-1) solid var(--color-info-200, #bfdbfe);
+          border-left: var(--border-4) solid var(--color-info-500, #3b82f6);
+          border-radius: var(--radius-md);
+          padding: var(--space-4) var(--space-5);
+          margin-bottom: var(--space-6);
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: var(--space-4);
+          flex-wrap: wrap;
+        ">
+        <div style="flex: 1; min-width: 280px;">
+          <strong id="brand-claim-banner-title" style="display: block; color: var(--color-text-heading); margin-bottom: 4px;"></strong>
+          <span id="brand-claim-banner-body" style="color: var(--color-text-secondary); font-size: var(--text-sm);"></span>
+        </div>
+        <div style="display: flex; gap: var(--space-2); align-items: center;">
+          <a id="brand-claim-banner-cta" class="btn btn-primary" href="#" style="
+              padding: 6px 14px;
+              font-size: var(--text-sm);
+              font-weight: var(--font-semibold);
+              background: var(--color-brand);
+              color: white;
+              border: none;
+              border-radius: var(--radius-md);
+              text-decoration: none;
+              white-space: nowrap;
+            ">Claim this brand</a>
+          <button id="brand-claim-banner-dismiss" type="button" style="
+              padding: 6px 12px;
+              font-size: var(--text-sm);
+              background: transparent;
+              color: var(--color-text-muted);
+              border: none;
+              cursor: pointer;
+            " title="Dismiss for 30 days">Dismiss</button>
+        </div>
+      </div>
+
       <!-- Dashboard section styles -->
       <style>
         .dashboard-section {
@@ -574,7 +617,7 @@
           align-items: center;
           justify-content: center;
           font-size: var(--text-2xl);
-          color: white;
+          color: var(--color-text-on-dark);
           flex-shrink: 0;
         }
         .cert-badges {
@@ -621,7 +664,7 @@
           display: inline-block;
           padding: var(--space-2) var(--space-4);
           background: var(--color-brand);
-          color: white;
+          color: var(--color-text-on-dark);
           border-radius: var(--radius-md);
           text-decoration: none;
           font-size: var(--text-sm);
@@ -686,7 +729,7 @@
         .cert-team-bar-track {
           flex: 1;
           height: 8px;
-          background: var(--color-gray-100);
+          background: var(--color-bg-subtle);
           border-radius: var(--radius-full);
           overflow: hidden;
         }
@@ -759,8 +802,8 @@
           display: inline-block;
         }
         .cert-team-status--not-started {
-          background: var(--color-gray-100);
-          color: var(--color-gray-500);
+          background: var(--color-bg-subtle);
+          color: var(--color-text-secondary);
         }
         .cert-team-status--active {
           background: var(--color-brand-light, #e8f4fd);
@@ -801,7 +844,7 @@
           padding: var(--space-3);
           border: 1px solid var(--color-border);
           border-radius: var(--radius-md);
-          background: var(--color-gray-50, #f9fafb);
+          background: var(--color-bg-subtle);
         }
         .cert-team-invite-form textarea {
           width: 100%;
@@ -831,7 +874,7 @@
           gap: var(--space-1);
           padding: var(--space-1) var(--space-3);
           background: var(--color-brand);
-          color: white;
+          color: var(--color-text-on-dark);
           border: none;
           border-radius: var(--radius-md);
           font-size: var(--text-sm);
@@ -902,7 +945,7 @@
           border-radius: var(--card-radius);
           padding: var(--space-6);
           margin-bottom: var(--space-8);
-          color: white;
+          color: var(--color-text-on-dark);
           position: relative;
           overflow: hidden;
         }
@@ -966,12 +1009,12 @@
           gap: var(--space-6);
         }
         .promo-banner .btn {
-          background: white;
+          background: var(--color-bg-card);
           color: var(--color-brand);
           font-weight: 600;
         }
         .promo-banner .btn:hover {
-          background: var(--color-gray-100);
+          background: var(--color-bg-subtle);
         }
 
         /* Setup alerts banner styles */
@@ -1027,6 +1070,150 @@
           opacity: 1;
         }
 
+        .support-alert {
+          background: var(--color-warning-50);
+          border: 1px solid var(--color-warning-200);
+          border-left: 4px solid var(--color-warning-500);
+          border-radius: var(--radius-md);
+          padding: var(--space-4);
+          margin-bottom: var(--space-4);
+          display: flex;
+          align-items: flex-start;
+          gap: var(--space-3);
+        }
+        .support-alert--urgent {
+          background: var(--color-error-50);
+          border-color: var(--color-error-200);
+          border-left-color: var(--color-error-500);
+        }
+        .support-alert-content {
+          flex: 1;
+          min-width: 0;
+        }
+        .support-alert-title {
+          margin: 0 0 var(--space-1) 0;
+          color: var(--color-text-heading);
+          font-size: var(--text-sm);
+          font-weight: var(--font-semibold);
+        }
+        .support-alert-message {
+          margin: 0;
+          color: var(--color-text-secondary);
+          font-size: var(--text-sm);
+        }
+        .support-alert-actions {
+          display: flex;
+          gap: var(--space-2);
+          flex-wrap: wrap;
+          flex-shrink: 0;
+        }
+
+        .escalation-group-title {
+          margin: var(--space-4) var(--space-4) var(--space-2);
+          color: var(--color-text-secondary);
+          font-size: var(--text-xs);
+          font-weight: var(--font-semibold);
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+        .escalation-row {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: var(--space-4);
+          padding: var(--space-4);
+          border-bottom: 1px solid var(--color-border);
+        }
+        .escalation-row:last-child {
+          border-bottom: none;
+        }
+        .escalation-main {
+          flex: 1;
+          min-width: 0;
+        }
+        .escalation-title-row {
+          display: flex;
+          align-items: center;
+          gap: var(--space-2);
+          flex-wrap: wrap;
+          margin-bottom: var(--space-1);
+        }
+        .escalation-title {
+          font-size: var(--text-sm);
+          font-weight: var(--font-medium);
+          color: var(--color-text-heading);
+        }
+        .escalation-meta {
+          margin: 0;
+          font-size: var(--text-xs);
+          color: var(--color-text-secondary);
+        }
+        .escalation-note {
+          margin: var(--space-2) 0 0 0;
+          font-size: var(--text-sm);
+          color: var(--color-text-secondary);
+        }
+        .escalation-badge {
+          padding: 2px var(--space-2);
+          border-radius: var(--radius-sm);
+          font-size: var(--text-xs);
+          font-weight: var(--font-medium);
+          white-space: nowrap;
+        }
+        .escalation-badge--follow-up {
+          background: var(--color-warning-50);
+          color: var(--color-warning-700);
+        }
+        .escalation-actions {
+          flex-shrink: 0;
+          display: flex;
+          align-items: center;
+          gap: var(--space-2);
+          flex-wrap: wrap;
+          justify-content: flex-end;
+        }
+        .escalation-updates {
+          margin: var(--space-3) 0 0 0;
+          display: flex;
+          flex-direction: column;
+          gap: var(--space-2);
+        }
+        .escalation-update {
+          padding: var(--space-2) var(--space-3);
+          background: var(--color-bg-subtle);
+          border-radius: var(--radius-md);
+          font-size: var(--text-sm);
+          color: var(--color-text-secondary);
+        }
+        .escalation-update-meta {
+          display: block;
+          margin-bottom: 2px;
+          color: var(--color-text-tertiary);
+          font-size: var(--text-xs);
+        }
+        @media (max-width: 640px) {
+          .support-alert {
+            flex-direction: column;
+          }
+          .support-alert-actions {
+            width: 100%;
+          }
+          .support-alert-actions .btn {
+            flex: 1;
+            justify-content: center;
+          }
+          .escalation-row {
+            flex-direction: column;
+          }
+          .escalation-actions {
+            width: 100%;
+          }
+          .escalation-actions .btn {
+            width: 100%;
+            justify-content: center;
+          }
+        }
+
       </style>
 
       <!-- ========== SLACK BANNER ========== -->
@@ -1056,7 +1243,7 @@
                gap: var(--space-2);
                padding: var(--space-2) var(--space-4);
                background: var(--color-brand);
-               color: white;
+               color: var(--color-text-on-dark);
                border-radius: var(--radius-md);
                text-decoration: none;
                font-weight: var(--font-semibold);
@@ -1077,6 +1264,9 @@
 
       <!-- ========== SETUP ALERTS ========== -->
       <div id="setupAlerts" style="display: none;"></div>
+
+      <!-- ========== SUPPORT ALERTS ========== -->
+      <div id="supportAlerts" style="display: none;"></div>
 
       <!-- ========== PROMO BANNER ========== -->
       <div id="promoBanner" style="display: none;"></div>
@@ -1152,7 +1342,7 @@
         <!-- Membership Card (for subscribers) -->
         <div class="section-card" id="membershipCard" style="display: none;">
           <div style="display: flex; align-items: start; gap: 16px; padding: 20px;">
-            <div id="membershipIcon" style="width: 64px; height: 64px; border-radius: 12px; background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-primary-400) 100%); display: flex; align-items: center; justify-content: center; font-size: 28px; flex-shrink: 0; color: white;">
+            <div id="membershipIcon" style="width: 64px; height: 64px; border-radius: 12px; background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-primary-400) 100%); display: flex; align-items: center; justify-content: center; font-size: 28px; flex-shrink: 0; color: var(--color-text-on-dark);">
               ⭐
             </div>
             <div style="flex: 1; min-width: 0;">
@@ -1169,7 +1359,7 @@
         <!-- Pending Invoice Card (shown when there's an open invoice) -->
         <div class="section-card" id="pendingInvoiceCard" style="display: none;">
           <div style="display: flex; align-items: start; gap: 16px; padding: 20px; background: var(--color-warning-50); border-radius: 8px;">
-            <div style="width: 64px; height: 64px; border-radius: 12px; background: linear-gradient(135deg, var(--color-warning-600) 0%, var(--color-warning-500) 100%); display: flex; align-items: center; justify-content: center; font-size: 28px; flex-shrink: 0; color: white;">
+            <div style="width: 64px; height: 64px; border-radius: 12px; background: linear-gradient(135deg, var(--color-warning-600) 0%, var(--color-warning-500) 100%); display: flex; align-items: center; justify-content: center; font-size: 28px; flex-shrink: 0; color: var(--color-text-on-dark);">
               📄
             </div>
             <div style="flex: 1; min-width: 0;">
@@ -1186,7 +1376,7 @@
         <!-- Membership CTA Section (for non-subscribers) -->
         <div id="inlinePricingSection" class="section-card" style="display: none;">
           <div style="display: flex; align-items: center; gap: 12px; padding: 20px; border-bottom: 1px solid var(--color-border);">
-            <div style="width: 48px; height: 48px; border-radius: 10px; background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-primary-400) 100%); display: flex; align-items: center; justify-content: center; font-size: 24px; color: white;">
+            <div style="width: 48px; height: 48px; border-radius: 10px; background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-primary-400) 100%); display: flex; align-items: center; justify-content: center; font-size: 24px; color: var(--color-text-on-dark);">
               ⭐
             </div>
             <div>
@@ -1236,7 +1426,7 @@
       <div id="membershipSection" style="display:none;">
         <div style="border: 1px solid var(--color-border); border-radius: 8px; padding: 20px; background: var(--color-bg-subtle); margin-bottom: 20px;">
           <h4 style="margin: 0 0 10px 0; font-size: 16px;">Membership Agreement</h4>
-          <div id="membershipAgreementContent" style="max-height: 200px; overflow-y: auto; padding: 15px; background: white; border: 1px solid var(--color-border); border-radius: 4px; margin-bottom: 15px; font-size: 14px; line-height: 1.6;">
+          <div id="membershipAgreementContent" style="max-height: 200px; overflow-y: auto; padding: 15px; background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 4px; margin-bottom: 15px; font-size: 14px; line-height: 1.6;">
             Loading agreement...
           </div>
           <label style="display: flex; align-items: start; gap: 10px; cursor: pointer;">
@@ -1637,7 +1827,7 @@
           statusText.textContent = 'Your profile is visible in the member directory';
         } else {
           statusBadge.textContent = 'Draft';
-          statusBadge.style.background = 'var(--color-gray-100)';
+          statusBadge.style.background = 'var(--color-bg-subtle)';
           statusBadge.style.color = 'var(--color-text-muted)';
           statusText.textContent = 'Your profile is not yet published';
         }
@@ -1865,7 +2055,7 @@
             <!-- Agreement section -->
             <div style="border: 1px solid var(--color-border); border-radius: 8px; padding: 16px; background: var(--color-bg-subtle);">
               <div style="font-size: 14px; font-weight: 600; color: var(--color-text-heading); margin-bottom: 12px;">Membership Agreement</div>
-              <div id="inlineAgreementContent" style="max-height: 150px; overflow-y: auto; padding: 12px; background: white; border: 1px solid var(--color-border); border-radius: 6px; margin-bottom: 16px; font-size: 13px; line-height: 1.6;">
+              <div id="inlineAgreementContent" style="max-height: 150px; overflow-y: auto; padding: 12px; background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: 6px; margin-bottom: 16px; font-size: 13px; line-height: 1.6;">
                 ${agreementHtml}
               </div>
               <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer;">
@@ -1944,6 +2134,11 @@
 
         if (!response.ok) {
           const error = await response.json();
+          if (response.status === 409 && error.customer_portal_url) {
+            btn.textContent = 'Opening billing portal...';
+            window.location.href = error.customer_portal_url;
+            return;
+          }
           throw new Error(error.message || 'Failed to create checkout session');
         }
 
@@ -2414,6 +2609,10 @@
 
         if (!response.ok) {
           const error = await response.json();
+          if (response.status === 409 && error.customer_portal_url) {
+            window.location.href = error.customer_portal_url;
+            return;
+          }
           throw new Error(error.message || 'Failed to create checkout session');
         }
 
@@ -2482,7 +2681,7 @@
 
           return `
             <div style="display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--color-border);">
-              <div style="width: 40px; height: 40px; border-radius: 50%; background: ${bgColor}; display: flex; align-items: center; justify-content: center; color: white; font-size: 14px; font-weight: 600; flex-shrink: 0;">
+              <div style="width: 40px; height: 40px; border-radius: 50%; background: ${bgColor}; display: flex; align-items: center; justify-content: center; color: var(--color-text-on-dark); font-size: 14px; font-weight: 600; flex-shrink: 0;">
                 ${escapeHtml(initials.toUpperCase())}
               </div>
               <div style="flex: 1; min-width: 0;">
@@ -2508,7 +2707,7 @@
         // Ensure pendingCount is a safe integer to prevent XSS
         const safePendingCount = parseInt(pendingCount, 10) || 0;
         const pendingBadge = safePendingCount > 0
-          ? `<span style="display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; background: var(--color-error-500); color: white; border-radius: 10px; font-size: 11px; font-weight: 600; margin-left: 8px;">${safePendingCount}</span>`
+          ? `<span style="display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; background: var(--color-error-500); color: var(--color-text-on-dark); border-radius: 10px; font-size: 11px; font-weight: 600; margin-left: 8px;">${safePendingCount}</span>`
           : '';
 
         container.innerHTML = `
@@ -2572,14 +2771,14 @@
             const colors = ['var(--color-brand)', 'var(--color-primary-500)', 'var(--color-warning-500)', 'var(--color-error-500)', 'var(--color-primary-400)'];
             const bgColor = colors[i % colors.length];
             return `
-              <div style="width: 32px; height: 32px; border-radius: 50%; background: ${bgColor}; display: flex; align-items: center; justify-content: center; color: white; font-size: 11px; font-weight: 600; border: 2px solid white; margin-left: ${i === 0 ? '0' : '-8px'};" title="${escapeHtml(m.email || 'Member')}">
+              <div style="width: 32px; height: 32px; border-radius: 50%; background: ${bgColor}; display: flex; align-items: center; justify-content: center; color: var(--color-text-on-dark); font-size: 11px; font-weight: 600; border: 2px solid var(--color-bg-card); margin-left: ${i === 0 ? '0' : '-8px'};" title="${escapeHtml(m.email || 'Member')}">
                 ${escapeHtml(initials.toUpperCase())}
               </div>
             `;
           }).join('');
 
           const overflowBadge = overflow > 0
-            ? `<div style="width: 32px; height: 32px; border-radius: 50%; background: var(--color-gray-200); display: flex; align-items: center; justify-content: center; color: var(--color-text-muted); font-size: 10px; font-weight: 600; border: 2px solid white; margin-left: -8px;">+${overflow}</div>`
+            ? `<div style="width: 32px; height: 32px; border-radius: 50%; background: var(--color-bg-button-secondary); display: flex; align-items: center; justify-content: center; color: var(--color-text-muted); font-size: 10px; font-weight: 600; border: 2px solid var(--color-bg-card); margin-left: -8px;">+${overflow}</div>`
             : '';
 
           const memberText = members.length === 1 ? '1 member' : `${members.length} members`;
@@ -2658,13 +2857,13 @@
             bgColor = 'var(--color-warning-100)';
           } else if (committee.committee_type === 'council') {
             icon = '🏢';
-            bgColor = isLaunching ? 'var(--color-gray-100)' : 'var(--color-success-100)';
+            bgColor = isLaunching ? 'var(--color-bg-subtle)' : 'var(--color-success-100)';
           } else if (committee.committee_type === 'chapter') {
             icon = '📍';
             bgColor = 'var(--color-info-100)';
           } else if (committee.committee_type === 'industry_gathering') {
             icon = '✈️';
-            bgColor = 'var(--color-primary-50)';
+            bgColor = 'var(--color-brand-bg)';
           }
 
           return { icon, bgColor, isJoined, isLaunching };
@@ -2681,7 +2880,7 @@
           } else if (isLaunching) {
             actionBtn = `<button onclick="event.preventDefault(); event.stopPropagation(); handleCommitteeInterest('${escapeHtml(c.slug)}', '${escapeHtml(c.name)}', this);" style="font-size: 11px; padding: 4px 10px; background: var(--color-primary-100); color: var(--color-brand); border: 1px solid var(--color-primary-200); border-radius: 4px; font-weight: 500; cursor: pointer; transition: background 0.15s;" onmouseover="this.style.background='var(--color-primary-200)'" onmouseout="this.style.background='var(--color-primary-100)'">I'm Interested</button>`;
           } else {
-            actionBtn = `<a href="/working-groups/${escapeHtml(c.slug)}" onclick="event.stopPropagation();" style="font-size: 11px; padding: 4px 10px; background: var(--color-brand); color: white; border-radius: 4px; font-weight: 500; text-decoration: none; transition: background 0.15s;" onmouseover="this.style.background='var(--color-brand-hover)'" onmouseout="this.style.background='var(--color-brand)'">View</a>`;
+            actionBtn = `<a href="/working-groups/${escapeHtml(c.slug)}" onclick="event.stopPropagation();" style="font-size: 11px; padding: 4px 10px; background: var(--color-brand); color: var(--color-text-on-dark); border-radius: 4px; font-weight: 500; text-decoration: none; transition: background 0.15s;" onmouseover="this.style.background='var(--color-brand-hover)'" onmouseout="this.style.background='var(--color-brand)'">View</a>`;
           }
 
           // Badge for launching councils
@@ -2841,7 +3040,7 @@
                 <div style="flex: 1; min-width: 0;">
                   <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;">
                     <h3 style="margin: 0; font-size: 16px; color: var(--color-text-heading);">${escapeHtml(c.name)}</h3>
-                    <span style="padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; background: var(--color-gray-100); color: var(--color-text-secondary);">${typeLabel}</span>
+                    <span style="padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; background: var(--color-bg-subtle); color: var(--color-text-secondary);">${typeLabel}</span>
                   </div>
                   <p style="margin: 0 0 12px 0; color: var(--color-text-secondary); font-size: 13px;">
                     ${c.member_count || 0} member${c.member_count === 1 ? '' : 's'}${c.region ? ' &bull; ' + escapeHtml(c.region) : ''}
@@ -2871,12 +3070,14 @@
     async function loadEscalations() {
       const section = document.getElementById('escalations');
       const content = document.getElementById('escalationsContent');
+      const supportAlerts = document.getElementById('supportAlerts');
       if (!section || !content) return;
 
       try {
-        const response = await fetch('/api/user/escalations', { credentials: 'include' });
+        const response = await fetch(apiUrl('/api/user/escalations'), { credentials: 'include' });
         if (!response.ok) {
           section.style.display = '';
+          if (supportAlerts) supportAlerts.style.display = 'none';
           content.innerHTML = '<p style="padding: 16px; color: var(--color-text-secondary); font-size: 14px;">Unable to load your support requests.</p>';
           return;
         }
@@ -2886,48 +3087,183 @@
 
         if (escalations.length === 0) {
           section.style.display = 'none';
+          if (supportAlerts) supportAlerts.style.display = 'none';
+          if (window.DashboardNav?.showSupportRequestsNav) {
+            DashboardNav.showSupportRequestsNav(false);
+          }
           return;
         }
 
+        const activeEscalations = escalations.filter(e => e.can_add_details || e.can_resolve);
+        const closedEscalations = escalations.filter(e => !e.can_add_details && !e.can_resolve);
+
+        renderSupportEscalationAlert(activeEscalations);
+        if (window.DashboardNav?.showSupportRequestsNav) {
+          DashboardNav.showSupportRequestsNav(true);
+        }
         section.style.display = '';
 
-        const statusConfig = {
-          open:         { label: 'Open',          bg: 'var(--color-primary-50)',   color: 'var(--color-primary-700)' },
-          acknowledged: { label: 'Acknowledged',  bg: 'var(--color-primary-50)',   color: 'var(--color-primary-700)' },
-          in_progress:  { label: 'In progress',   bg: 'var(--color-warning-50)',   color: 'var(--color-warning-700)' },
-          resolved:     { label: 'Resolved',      bg: 'var(--color-success-50)',   color: 'var(--color-success-700)' },
-          wont_do:      { label: 'Closed',        bg: 'var(--color-gray-100)',     color: 'var(--color-text-secondary)' },
-          expired:      { label: 'Expired',       bg: 'var(--color-gray-100)',     color: 'var(--color-text-secondary)' },
-        };
+        const groups = [];
+        if (activeEscalations.length > 0) {
+          groups.push(`<div class="escalation-group-title">Active</div>${activeEscalations.map(renderEscalationRow).join('')}`);
+        }
+        if (closedEscalations.length > 0) {
+          groups.push(`<div class="escalation-group-title">Closed</div>${closedEscalations.map(renderEscalationRow).join('')}`);
+        }
 
-        content.innerHTML = escalations.map(e => {
-          const cfg = statusConfig[e.status] || statusConfig.open;
-          const date = new Date(e.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-          const notes = e.resolution_notes
-            ? `<p style="margin: 8px 0 0 0; font-size: 13px; color: var(--color-text-secondary);">${escapeHtml(e.resolution_notes)}</p>`
-            : '';
-          return `
-            <div style="display: flex; align-items: start; gap: 12px; padding: 16px; border-bottom: 1px solid var(--color-border);">
-              <div style="flex: 1; min-width: 0;">
-                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;">
-                  <span style="font-size: 14px; font-weight: 500; color: var(--color-text-heading);">${escapeHtml(e.summary)}</span>
-                  <span style="padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; background: ${cfg.bg}; color: ${cfg.color}; white-space: nowrap;">${cfg.label}</span>
-                </div>
-                <p style="margin: 0; font-size: 12px; color: var(--color-text-secondary);">Submitted ${date}</p>
-                ${notes}
-              </div>
-            </div>
-          `;
-        }).join('');
-
-        // Remove border from last item
-        const items = content.querySelectorAll('[style*="border-bottom"]');
-        if (items.length > 0) items[items.length - 1].style.borderBottom = 'none';
+        content.innerHTML = groups.join('');
 
       } catch (error) {
         console.error('Error loading escalations:', error);
         section.style.display = '';
+        if (supportAlerts) supportAlerts.style.display = 'none';
         content.innerHTML = '<p style="padding: 16px; color: var(--color-text-secondary); font-size: 14px;">Unable to load your support requests.</p>';
+      }
+    }
+
+    function renderSupportEscalationAlert(activeEscalations) {
+      const supportAlerts = document.getElementById('supportAlerts');
+      if (!supportAlerts) return;
+
+      if (!activeEscalations.length) {
+        supportAlerts.style.display = 'none';
+        supportAlerts.innerHTML = '';
+        return;
+      }
+
+      const followUp = activeEscalations.find(e => e.sla?.needs_follow_up);
+      const current = followUp || activeEscalations[0];
+      const status = getEscalationStatusConfig(current.status);
+      const countLabel = activeEscalations.length === 1
+        ? 'You have an open support request'
+        : `You have ${activeEscalations.length} open support requests`;
+      const ageLabel = formatEscalationAge(current.sla?.age_hours);
+
+      supportAlerts.innerHTML = `
+        <div class="support-alert ${followUp ? 'support-alert--urgent' : ''}">
+          <div class="support-alert-content">
+            <h4 class="support-alert-title">${countLabel}</h4>
+            <p class="support-alert-message">
+              "${escapeHtml(current.summary)}" is ${escapeHtml(status.next)}${ageLabel ? ` · ${escapeHtml(ageLabel)}` : ''}.
+            </p>
+          </div>
+          <div class="support-alert-actions">
+            <a href="#escalations" class="btn btn-primary btn-sm">View request</a>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="addEscalationDetails(${Number(current.id)}, this)">Add details</button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="resolveUserEscalation(${Number(current.id)}, this)">Close request</button>
+          </div>
+        </div>
+      `;
+      supportAlerts.style.display = 'block';
+    }
+
+    function getEscalationStatusConfig(status) {
+      const statusConfig = {
+        open:         { label: 'Waiting for team pickup', bg: 'var(--color-brand-bg)',  color: 'var(--color-primary-700)', next: 'waiting for team pickup' },
+        acknowledged: { label: 'Seen by the team',        bg: 'var(--color-info-50)',   color: 'var(--color-info-700)', next: 'seen by the team' },
+        in_progress:  { label: 'Being worked on',         bg: 'var(--color-warning-50)', color: 'var(--color-warning-700)', next: 'being worked on' },
+        resolved:     { label: 'Resolved',                bg: 'var(--color-success-50)', color: 'var(--color-success-700)', next: 'resolved' },
+        wont_do:      { label: 'Closed',                  bg: 'var(--color-bg-subtle)', color: 'var(--color-text-secondary)', next: 'closed' },
+        expired:      { label: 'Expired',                 bg: 'var(--color-bg-subtle)', color: 'var(--color-text-secondary)', next: 'expired' },
+      };
+      return statusConfig[status] || statusConfig.open;
+    }
+
+    function renderEscalationRow(e) {
+      const cfg = getEscalationStatusConfig(e.status);
+      const created = new Date(e.created_at);
+      const date = created.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+      const ageLabel = formatEscalationAge(e.sla?.age_hours);
+      const followUp = e.sla?.needs_follow_up
+        ? `<span class="escalation-badge escalation-badge--follow-up">${escapeHtml(e.sla.label || 'Needs follow-up')}</span>`
+        : '';
+      const updates = Array.isArray(e.updates) && e.updates.length > 0
+        ? `<div class="escalation-updates">${e.updates.map(update => `
+            <div class="escalation-update">
+              <span class="escalation-update-meta">${update.author_type === 'requester' ? 'You added' : 'Update'} · ${new Date(update.created_at).toLocaleString()}</span>
+              ${escapeHtml(update.body)}
+            </div>
+          `).join('')}</div>`
+        : '';
+      const actions = [
+        e.can_add_details ? `<button type="button" class="btn btn-secondary btn-sm" onclick="addEscalationDetails(${Number(e.id)}, this)">Add details</button>` : '',
+        e.can_resolve ? `<button type="button" class="btn btn-secondary btn-sm" onclick="resolveUserEscalation(${Number(e.id)}, this)">Close request</button>` : '',
+      ].filter(Boolean).join('');
+
+      return `
+        <div class="escalation-row">
+          <div class="escalation-main">
+            <div class="escalation-title-row">
+              <span class="escalation-title">${escapeHtml(e.summary)}</span>
+              <span class="escalation-badge" style="background: ${cfg.bg}; color: ${cfg.color};">${cfg.label}</span>
+              ${followUp}
+            </div>
+            <p class="escalation-meta">Submitted ${date}${ageLabel ? ` · ${ageLabel}` : ''}</p>
+            ${updates}
+          </div>
+          ${actions ? `<div class="escalation-actions">${actions}</div>` : ''}
+        </div>
+      `;
+    }
+
+    function formatEscalationAge(ageHours) {
+      if (typeof ageHours !== 'number' || !Number.isFinite(ageHours)) return '';
+      if (ageHours < 1) return 'less than an hour old';
+      if (ageHours < 24) return `${Math.round(ageHours)}h old`;
+      const days = Math.floor(ageHours / 24);
+      return `${days} day${days === 1 ? '' : 's'} old`;
+    }
+
+    async function resolveUserEscalation(id, buttonEl) {
+      const originalText = buttonEl.textContent;
+      buttonEl.disabled = true;
+      buttonEl.textContent = 'Closing...';
+      try {
+        const response = await fetch(apiUrl(`/api/user/escalations/${id}`), {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ action: 'resolve' })
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.message || data.error || 'Unable to close support request');
+        }
+        showToast('Support request marked resolved');
+        loadEscalations();
+      } catch (error) {
+        console.error('Error resolving escalation:', error);
+        showToast(error.message || 'Unable to close support request');
+        buttonEl.disabled = false;
+        buttonEl.textContent = originalText;
+      }
+    }
+
+    async function addEscalationDetails(id, buttonEl) {
+      const notes = window.prompt('Add details for the team');
+      if (!notes || !notes.trim()) return;
+
+      const originalText = buttonEl.textContent;
+      buttonEl.disabled = true;
+      buttonEl.textContent = 'Saving...';
+      try {
+        const response = await fetch(apiUrl(`/api/user/escalations/${id}`), {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ action: 'add_note', notes: notes.trim() })
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.message || data.error || 'Unable to add details');
+        }
+        showToast('Details added to support request');
+        loadEscalations();
+      } catch (error) {
+        console.error('Error adding escalation details:', error);
+        showToast(error.message || 'Unable to add details');
+        buttonEl.disabled = false;
+        buttonEl.textContent = originalText;
       }
     }
 
@@ -2980,7 +3316,7 @@
         transform: translateX(-50%);
         padding: 12px 24px;
         background: ${type === 'error' ? 'var(--color-error-600)' : 'var(--color-success-600)'};
-        color: white;
+        color: var(--color-text-on-dark);
         border-radius: 8px;
         font-size: 14px;
         font-weight: 500;
@@ -3558,7 +3894,7 @@
                   <div style="display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2);">
                     <div style="flex: 1;">
                       <div style="font-size: var(--text-sm); font-weight: var(--font-medium);">${escapeHtml(g.credential_name || g.credential_id)}${deadlineStr}</div>
-                      <div style="height: 6px; background: var(--color-gray-100); border-radius: 3px; margin-top: 4px; overflow: hidden;">
+                      <div style="height: 6px; background: var(--color-bg-subtle); border-radius: 3px; margin-top: 4px; overflow: hidden;">
                         <div style="height: 100%; width: ${pct}%; background: ${isOverdue ? 'var(--color-warning-500)' : 'var(--color-brand)'}; border-radius: 3px; transition: width 0.3s;"></div>
                       </div>
                     </div>
@@ -3639,7 +3975,7 @@
             <label style="font-size: var(--text-xs); display: block; margin-bottom: 2px;">Deadline (optional)</label>
             <input id="goalDeadline" type="date" style="padding: var(--space-1); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-sm); font-size: var(--text-sm);">
           </div>
-          <button onclick="saveCertGoal()" style="padding: var(--space-1) var(--space-3); background: var(--color-brand); color: white; border: none; border-radius: var(--radius-sm); font-size: var(--text-sm); cursor: pointer;">Save</button>
+          <button onclick="saveCertGoal()" style="padding: var(--space-1) var(--space-3); background: var(--color-brand); color: var(--color-text-on-dark); border: none; border-radius: var(--radius-sm); font-size: var(--text-sm); cursor: pointer;">Save</button>
         </div>`;
       form.style.display = 'block';
     }
@@ -3779,7 +4115,7 @@
 
           const statusBadge = profile.is_public
             ? '<span style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; background: var(--color-success-100); color: var(--color-success-700); border-radius: 4px; font-size: 11px; font-weight: 500;">✓ Public</span>'
-            : '<span style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; background: var(--color-gray-100); color: var(--color-text-muted); border-radius: 4px; font-size: 11px; font-weight: 500;">Draft</span>';
+            : '<span style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; background: var(--color-bg-subtle); color: var(--color-text-muted); border-radius: 4px; font-size: 11px; font-weight: 500;">Draft</span>';
 
           const tagline = profile.tagline
             ? `<p style="margin: 4px 0 0 0; color: var(--color-text-secondary); font-size: 12px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${escapeHtml(profile.tagline)}</p>`
@@ -3838,7 +4174,7 @@
             actionsContainer.innerHTML = `
               <a
                 href="/member-profile?org=${orgId}"
-                style="display: block; text-align: center; padding: 12px 24px; background: var(--color-brand); color: white; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;"
+                style="display: block; text-align: center; padding: 12px 24px; background: var(--color-brand); color: var(--color-text-on-dark); border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;"
               >
                 Create listing
               </a>
@@ -3862,7 +4198,7 @@
           actionsContainer.innerHTML = `
             <a
               href="/member-profile?org=${orgId}"
-              style="display: block; text-align: center; padding: 12px 24px; background: var(--color-brand); color: white; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;"
+              style="display: block; text-align: center; padding: 12px 24px; background: var(--color-brand); color: var(--color-text-on-dark); border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;"
             >
               Create listing
             </a>
@@ -4176,11 +4512,51 @@
         document.getElementById('loading').style.display = 'none';
         document.getElementById('content').style.display = 'block';
 
+        // Fire-and-forget: brand-claim suggestion banner (#4744).
+        loadBrandClaimSuggestion();
+
       } catch (error) {
         console.error('Error loading user data:', error);
         document.getElementById('loading').innerHTML = `
           <p style="color: var(--color-error-600);">Failed to load dashboard. <a href="/auth/login">Try logging in again</a></p>
         `;
+      }
+    }
+
+    // ─── Brand-claim suggestion banner (#4744) ────────────────────────
+    async function loadBrandClaimSuggestion() {
+      const banner = document.getElementById('brand-claim-banner');
+      if (!banner) return;
+      try {
+        const resp = await fetch('/api/me/brand-claim-suggestion', { credentials: 'include' });
+        if (!resp.ok) return;
+        const { suggestion } = await resp.json();
+        if (!suggestion || !suggestion.active) return;
+
+        const brand = suggestion.brand_name || suggestion.domain;
+        document.getElementById('brand-claim-banner-title').textContent =
+          `Claim ${brand}?`;
+        document.getElementById('brand-claim-banner-body').textContent =
+          `You signed up from this domain. Verify ownership to manage the brand on AAO.`;
+        const cta = document.getElementById('brand-claim-banner-cta');
+        cta.setAttribute('href', suggestion.claim_url);
+        const dismiss = document.getElementById('brand-claim-banner-dismiss');
+        dismiss.onclick = async () => {
+          banner.classList.add('hidden');
+          try {
+            await fetch('/api/me/brand-claim-suggestion/dismiss', {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ domain: suggestion.domain }),
+            });
+          } catch (err) {
+            // Non-critical — the banner is already hidden client-side.
+          }
+        };
+        banner.classList.remove('hidden');
+      } catch (err) {
+        // Non-fatal — leave the banner hidden.
       }
     }
 
@@ -4642,7 +5018,7 @@
               </thead>
               <tbody>
                 ${data.agreements.map(acceptance => `
-                  <tr style="border-bottom: 1px solid var(--color-gray-100);">
+                  <tr style="border-bottom: 1px solid var(--color-border);">
                     <td style="padding: 10px;">${formatAgreementType(acceptance.type)}</td>
                     <td style="padding: 10px;">
                       ${acceptance.version
@@ -5078,7 +5454,7 @@
 
           <div style="margin-bottom: 16px;">
             <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Product *</label>
-            <select id="invoice-product" name="lookupKey" required style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px; background: white;">
+            <select id="invoice-product" name="lookupKey" required style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px; background: var(--color-bg-card);">
               <option value="">Select a product...</option>
             </select>
           </div>

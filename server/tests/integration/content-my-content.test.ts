@@ -29,8 +29,9 @@ vi.mock('../../src/middleware/auth.js', () => {
     };
   };
   const passthrough = (_req: any, _res: any, next: any) => next();
+  const requireAuthMock = (req: any, _res: any, next: any) => { setTestUser(req); next(); };
   return {
-    requireAuth: (req: any, _res: any, next: any) => { setTestUser(req); next(); },
+    requireAuth: requireAuthMock,
     requireAdmin: passthrough,
     optionalAuth: (req: any, _res: any, next: any) => { setTestUser(req); next(); },
     requireCompanyAccess: passthrough,
@@ -39,8 +40,15 @@ vi.mock('../../src/middleware/auth.js', () => {
     requireRole: () => passthrough,
     createRequireWorkingGroupLeader: () => passthrough,
     createRequireWorkingGroupMember: () => passthrough,
+    refuseCrossTenantAdminApiKey: () => false,
+    refuseAnyApiKeyOnGlobalAdmin: () => false,
+    // Composite chain for /api/admin/users routes — see auth.ts.
+    // Captured-at-load-time references mean the per-export mocks above
+    // can't propagate into the production array, so re-build it here.
+    requireGlobalAdmin: [requireAuthMock, passthrough, passthrough],
     invalidateSessionCache: vi.fn(),
     invalidateBanCache: vi.fn(),
+    invalidateSessionsForUsers: vi.fn(),
     isDevModeEnabled: () => false,
     getDevUser: () => null,
     getAvailableDevUsers: () => ({}),
@@ -58,6 +66,16 @@ vi.mock('../../src/middleware/csrf.js', () => ({
 }));
 
 const adminState = { isAdmin: false };
+// Mock the lookup module directly. `my-content-service.ts` imports
+// `isWebUserAAOAdmin` from `addie/admin-status-lookup.js` (the thin
+// module created in PR #3758), so the test must intercept there.
+// `addie/mcp/admin-tools.js` re-exports for legacy callers, but ESM
+// re-exports are not call-routed through the original module — once
+// the consumer points at `admin-status-lookup`, that's what gets
+// resolved.
+vi.mock('../../src/addie/admin-status-lookup.js', () => ({
+  isWebUserAAOAdmin: vi.fn(async () => adminState.isAdmin),
+}));
 vi.mock('../../src/addie/mcp/admin-tools.js', async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>;
   return {
@@ -100,6 +118,32 @@ describe('My Content — body, admin scope, status, delete', () => {
   const WG_SLUG = 'mc-test-wg';
   const USER_ID = 'user_my_content';
   const OTHER_USER_ID = 'user_my_content_other';
+  const ELIGIBLE_ORG_ID = 'org_my_content_professional';
+  const INELIGIBLE_USER_ID = 'user_my_content_ineligible';
+  const RATE_LIMIT_USER_ID = 'user_mc_ratelimit_test';
+
+  async function ensureContentSubmissionEligibleUser(userId: string, email: string) {
+    await pool.query(
+      `INSERT INTO users (workos_user_id, email, first_name, last_name, primary_organization_id)
+       VALUES ($1, $2, 'Mary', 'Content', $3)
+       ON CONFLICT (workos_user_id) DO UPDATE SET
+         email = EXCLUDED.email,
+         primary_organization_id = EXCLUDED.primary_organization_id,
+         updated_at = NOW()`,
+      [userId, email, ELIGIBLE_ORG_ID]
+    );
+
+    await pool.query(
+      `INSERT INTO organization_memberships
+         (workos_user_id, workos_organization_id, workos_membership_id, email, role, created_at, updated_at, synced_at)
+       VALUES ($1, $2, $3, $4, 'member', NOW(), NOW(), NOW())
+       ON CONFLICT (workos_user_id, workos_organization_id) DO UPDATE SET
+         email = EXCLUDED.email,
+         updated_at = NOW(),
+         synced_at = NOW()`,
+      [userId, ELIGIBLE_ORG_ID, `om_${userId}`, email]
+    );
+  }
 
   beforeAll(async () => {
     pool = initializeDatabase({
@@ -107,19 +151,21 @@ describe('My Content — body, admin scope, status, delete', () => {
     });
     await runMigrations();
 
+    await pool.query(
+      `INSERT INTO organizations
+         (workos_organization_id, name, membership_tier, subscription_status, created_at, updated_at)
+       VALUES ($1, 'My Content Professional Org', 'individual_professional', 'active', NOW(), NOW())
+       ON CONFLICT (workos_organization_id) DO UPDATE SET
+         membership_tier = EXCLUDED.membership_tier,
+         subscription_status = EXCLUDED.subscription_status,
+         subscription_canceled_at = NULL,
+         updated_at = NOW()`,
+      [ELIGIBLE_ORG_ID]
+    );
+
     // Ensure users exist
-    await pool.query(
-      `INSERT INTO users (workos_user_id, email, first_name, last_name)
-       VALUES ($1, 'mc@example.com', 'Mary', 'Content')
-       ON CONFLICT (workos_user_id) DO NOTHING`,
-      [USER_ID]
-    );
-    await pool.query(
-      `INSERT INTO users (workos_user_id, email, first_name, last_name)
-       VALUES ($1, 'mc-other@example.com', 'Other', 'User')
-       ON CONFLICT (workos_user_id) DO NOTHING`,
-      [OTHER_USER_ID]
-    );
+    await ensureContentSubmissionEligibleUser(USER_ID, 'mc@example.com');
+    await ensureContentSubmissionEligibleUser(OTHER_USER_ID, 'mc-other@example.com');
 
     const wgResult = await pool.query(
       `INSERT INTO working_groups (name, slug, description, accepts_public_submissions)
@@ -149,9 +195,12 @@ describe('My Content — body, admin scope, status, delete', () => {
     await pool.query(`DELETE FROM working_groups WHERE slug = $1`, [WG_SLUG]);
     // Side tables the propose flow writes into. Clear everything referencing
     // the test users before deleting them so FKs don't block cleanup.
-    const testUsers = [USER_ID, OTHER_USER_ID];
+    const testUsers = [USER_ID, OTHER_USER_ID, INELIGIBLE_USER_ID, RATE_LIMIT_USER_ID];
     await pool.query(`DELETE FROM community_points WHERE workos_user_id = ANY($1)`, [testUsers]);
     await pool.query(`DELETE FROM user_badges WHERE workos_user_id = ANY($1)`, [testUsers]);
+    await pool.query(`DELETE FROM organization_memberships WHERE workos_user_id = ANY($1)`, [testUsers]);
+    await pool.query(`UPDATE users SET primary_organization_id = NULL WHERE workos_user_id = ANY($1)`, [testUsers]);
+    await pool.query(`DELETE FROM organizations WHERE workos_organization_id = $1`, [ELIGIBLE_ORG_ID]);
     await pool.query(`DELETE FROM users WHERE workos_user_id = ANY($1)`, [testUsers]);
     await server?.stop();
     await closeDatabase();
@@ -342,6 +391,30 @@ describe('My Content — body, admin scope, status, delete', () => {
       expect(response.body.status).toBe('pending_review');
     });
 
+    it('blocks users without a Professional+ membership tier', async () => {
+      authState.userId = INELIGIBLE_USER_ID;
+      authState.email = 'mc-ineligible@example.com';
+      await pool.query(
+        `INSERT INTO users (workos_user_id, email, first_name, last_name)
+         VALUES ($1, $2, 'Ineligible', 'User')
+         ON CONFLICT (workos_user_id) DO UPDATE SET email = EXCLUDED.email`,
+        [INELIGIBLE_USER_ID, authState.email]
+      );
+
+      const response = await request(app)
+        .post('/api/content/propose')
+        .send({
+          title: 'mc-test-ineligible',
+          content: 'body',
+          content_type: 'article',
+          collection: { slug: WG_SLUG },
+        })
+        .expect(403);
+
+      expect(response.body.error).toBe('Membership required');
+      expect(response.body.message).toContain('/dashboard/membership');
+    });
+
     it('returns 400 with field-specific message when title is too long (#2734)', async () => {
       const response = await request(app)
         .post('/api/content/propose')
@@ -391,13 +464,8 @@ describe('My Content — body, admin scope, status, delete', () => {
       // directly, bypassing HTTP middleware. Fresh user id so we start
       // with an empty window.
       const { proposeContentForUser } = await import('../../src/routes/content.js');
-      const testUser = { id: 'user_mc_ratelimit_test', email: 'ratelimit@test.local' };
-      await pool.query(
-        `INSERT INTO users (workos_user_id, email, first_name, last_name)
-         VALUES ($1, $2, 'Rate', 'Limit')
-         ON CONFLICT (workos_user_id) DO NOTHING`,
-        [testUser.id, testUser.email]
-      );
+      const testUser = { id: RATE_LIMIT_USER_ID, email: 'ratelimit@test.local' };
+      await ensureContentSubmissionEligibleUser(testUser.id, testUser.email);
 
       const results: Array<{ success: boolean; error?: string }> = [];
       for (let i = 0; i < 21; i++) {

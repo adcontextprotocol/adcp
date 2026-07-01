@@ -501,6 +501,16 @@ export function createEventsRouter(): {
         if (err) return res.status(400).json(err);
       }
 
+      if (updates.slug && updates.slug !== currentEvent.slug) {
+        const slugAvailable = await eventsDb.isSlugAvailable(updates.slug, currentEvent.id);
+        if (!slugAvailable) {
+          return res.status(400).json({
+            error: "Slug already in use",
+            message: "Please choose a different slug",
+          });
+        }
+      }
+
       // Auto-create Stripe product if sponsorship is being enabled with tiers
       // and no product exists yet
       const sponsorshipEnabled = updates.sponsorship_enabled ?? currentEvent.sponsorship_enabled;
@@ -515,7 +525,7 @@ export function createEventsRouter(): {
           , sponsorshipTiers[0]);
 
           const eventTitle = updates.title ?? currentEvent.title;
-          const eventSlug = currentEvent.slug; // slug is not updatable
+          const eventSlug = updates.slug ?? currentEvent.slug;
 
           const stripeProductId = await createEventSponsorshipProduct({
             eventId: id,
@@ -540,6 +550,11 @@ export function createEventsRouter(): {
           error: "Event not found",
           message: "No event found with that ID",
         });
+      }
+
+      if (updates.slug && updates.slug !== currentEvent.slug) {
+        await eventsDb.removeSlugRedirect(updates.slug);
+        await eventsDb.createSlugRedirect(currentEvent.id, currentEvent.slug);
       }
 
       let speakers = undefined;
@@ -1709,7 +1724,8 @@ export function createEventsRouter(): {
     try {
       const { slug } = req.params;
 
-      const event = await eventsDb.getEventBySlug(slug);
+      const directEvent = await eventsDb.getEventBySlug(slug);
+      const event = directEvent ?? await eventsDb.getEventByRedirectSlug(slug);
       if (!event) {
         return res.status(404).json({
           error: "Event not found",
@@ -1754,6 +1770,10 @@ export function createEventsRouter(): {
             message: "No published event found with that slug",
           });
         }
+      }
+
+      if (!directEvent && event.slug !== slug && event.visibility === "public" && ["published", "completed"].includes(event.status)) {
+        return res.redirect(301, `/api/events/${event.slug}`);
       }
 
       // Get sponsors + speakers for display

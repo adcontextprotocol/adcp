@@ -12,7 +12,10 @@
  */
 
 import type { AgentContextDatabase } from '../../db/agent-context-db.js';
-import { decodeBasicCredentials, type ResolvedOwnerAuth } from '../../db/compliance-db.js';
+import {
+  decodeBasicCredentials,
+  type ResolvedOwnerAuth,
+} from '../../db/compliance-db.js';
 
 interface WarnLogger {
   warn(obj: Record<string, unknown>, msg: string): void;
@@ -32,8 +35,13 @@ export async function resolveUserAgentAuth(
       if (staticAuth.authType === 'basic') {
         const basic = decodeBasicCredentials(staticAuth.token);
         if (basic) return basic;
+        logger.warn(
+          { agentUrl, orgId },
+          'resolveUserAgentAuth: ignoring malformed saved Basic auth credentials',
+        );
+      } else {
+        return { type: 'bearer', token: staticAuth.token };
       }
-      return { type: 'bearer', token: staticAuth.token };
     }
   } catch (err) {
     logger.warn({ err, agentUrl, orgId }, 'resolveUserAgentAuth: static token lookup failed');

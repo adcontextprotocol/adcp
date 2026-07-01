@@ -1,5 +1,16 @@
 import { query, getClient } from './client.js';
 import { createLogger } from '../logger.js';
+import {
+  computeProtocolDeltaStatus,
+  S2_CANONICAL_FORMATS_CREDENTIAL_ID,
+  S2_CANONICAL_FORMATS_CRITERION_IDS,
+  S2_CANONICAL_FORMATS_DELTA_UPDATE_ID,
+  S2_CANONICAL_FORMATS_MODULE_ID,
+  type ProtocolDeltaStatus,
+  type S2CanonicalFormatsDeltaStatus,
+} from '../certification/s2-canonical-formats-delta.js';
+import { S2_DELTA_DEFINITION, type DeltaDefinition } from '../config/recertification-deltas.js';
+import { getDeltaRelease } from './system-settings-db.js';
 
 const logger = createLogger('certification-db');
 
@@ -29,6 +40,13 @@ export interface CertificationModule {
   lesson_plan: LessonPlan | null;
   exercise_definitions: ExerciseDefinition[] | null;
   assessment_criteria: AssessmentCriteria | null;
+  /**
+   * Ordered list of training-agent tenant ids this module exercises (primary
+   * first; later entries are "also in scope"). NULL means no pinning — Sage
+   * falls back to PUBLIC_TEST_AGENT.url + the discovery extension. Resolved
+   * to URLs via PUBLIC_TEST_AGENT_URLS at the prompt boundary.
+   */
+  tenant_ids: string[] | null;
 }
 
 export interface LessonPlan {
@@ -73,6 +91,20 @@ export interface LearnerProgress {
   attempts: number;
 }
 
+export interface AdminModuleCompletion {
+  id: string;
+  workos_user_id: string;
+  module_id: string;
+  admin_user_id: string;
+  completed_by: 'admin';
+  addie_thread_id: string;
+  score: Record<string, number>;
+  note: string | null;
+  teaching_checkpoint_id: string | null;
+  learner_progress_id: string | null;
+  created_at: string;
+}
+
 export interface CertificationAttempt {
   id: string;
   workos_user_id: string;
@@ -112,6 +144,14 @@ export interface UserCredential {
   certifier_public_id: string | null;
   certifier_badge_url: string | null;
 }
+
+export type { S2CanonicalFormatsDeltaStatus };
+export {
+  S2_CANONICAL_FORMATS_CREDENTIAL_ID,
+  S2_CANONICAL_FORMATS_CRITERION_IDS,
+  S2_CANONICAL_FORMATS_DELTA_UPDATE_ID,
+  S2_CANONICAL_FORMATS_MODULE_ID,
+};
 
 // =====================================================
 // TRACKS
@@ -247,6 +287,100 @@ export async function completeModule(
   return result.rows[0];
 }
 
+export async function adminCompleteModule(input: {
+  userId: string;
+  moduleId: string;
+  adminUserId: string;
+  addieThreadId: string;
+  score: Record<string, number>;
+  note?: string | null;
+  teachingCheckpointId?: string | null;
+}): Promise<{ progress: LearnerProgress; audit: AdminModuleCompletion }> {
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+
+    const progressResult = await client.query<LearnerProgress>(
+      `INSERT INTO learner_progress
+         (workos_user_id, module_id, status, started_at, completed_at, score, addie_thread_id)
+       VALUES ($1, $2, 'completed', NOW(), NOW(), $3, $4)
+       ON CONFLICT (workos_user_id, module_id) DO UPDATE
+         SET status = 'completed',
+             started_at = COALESCE(learner_progress.started_at, EXCLUDED.started_at),
+             completed_at = NOW(),
+             score = EXCLUDED.score,
+             addie_thread_id = EXCLUDED.addie_thread_id,
+             updated_at = NOW()
+       RETURNING *`,
+      [input.userId, input.moduleId, JSON.stringify(input.score), input.addieThreadId]
+    );
+    const progress = progressResult.rows[0];
+    if (!progress) {
+      throw new Error(`Failed to upsert admin completion for user ${input.userId}, module ${input.moduleId}`);
+    }
+
+    const auditResult = await client.query<AdminModuleCompletion>(
+      `INSERT INTO admin_module_completions
+         (workos_user_id, module_id, admin_user_id, completed_by, addie_thread_id, score, note,
+          teaching_checkpoint_id, learner_progress_id)
+       VALUES ($1, $2, $3, 'admin', $4, $5, $6, $7, $8)
+       RETURNING *`,
+      [
+        input.userId,
+        input.moduleId,
+        input.adminUserId,
+        input.addieThreadId,
+        JSON.stringify(input.score),
+        input.note || null,
+        input.teachingCheckpointId || null,
+        progress.id,
+      ]
+    );
+    const audit = auditResult.rows[0];
+    if (!audit) {
+      throw new Error(`Failed to audit admin completion for user ${input.userId}, module ${input.moduleId}`);
+    }
+
+    await client.query('COMMIT');
+    void refreshEngagementTime();
+    return { progress, audit };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function reconcilePassedAttemptModule(
+  attempt: CertificationAttempt,
+  moduleId: string,
+  score: Record<string, number>,
+): Promise<LearnerProgress> {
+  const result = await query<LearnerProgress>(
+    `INSERT INTO learner_progress (workos_user_id, module_id, status, started_at, completed_at, score)
+     VALUES ($1, $2, 'completed', COALESCE($4, NOW()), COALESCE($5, NOW()), $3)
+     ON CONFLICT (workos_user_id, module_id) DO UPDATE
+       SET status = 'completed',
+           completed_at = COALESCE(learner_progress.completed_at, EXCLUDED.completed_at),
+           score = COALESCE(learner_progress.score, EXCLUDED.score),
+           updated_at = NOW()
+     RETURNING *`,
+    [
+      attempt.workos_user_id,
+      moduleId,
+      JSON.stringify(score),
+      attempt.started_at || null,
+      attempt.completed_at || null,
+    ],
+  );
+  if (!result.rows[0]) {
+    throw new Error(`Failed to reconcile progress for attempt ${attempt.id}, module ${moduleId}`);
+  }
+  void refreshEngagementTime();
+  return result.rows[0];
+}
+
 /**
  * Mark a module as tested out (user demonstrated knowledge without formal coursework).
  */
@@ -271,20 +405,46 @@ export async function testOutModule(
 }
 
 /**
- * Check if a user has completed all prerequisites for a module.
+ * Status of a missing prerequisite module from the learner's perspective.
+ * `not_started` covers both "no learner_progress row" and any non-terminal
+ * status the learner could resume from.
  */
-export async function checkPrerequisites(userId: string, moduleId: string): Promise<{ met: boolean; missing: string[] }> {
+export type MissingPrereqStatus = 'not_started' | 'in_progress' | 'failed' | 'expired';
+
+export interface MissingPrereq {
+  moduleId: string;
+  status: MissingPrereqStatus;
+}
+
+/**
+ * Check if a user has completed all prerequisites for a module.
+ * `missing` entries carry the learner's current status on that prereq so
+ * callers can distinguish "never started — offer placement assessment" from
+ * "already in progress — finish it first."
+ */
+export async function checkPrerequisites(userId: string, moduleId: string): Promise<{ met: boolean; missing: MissingPrereq[] }> {
   const mod = await getModule(moduleId);
   if (!mod) throw new Error(`Module ${moduleId} not found`);
   if (!mod.prerequisites || mod.prerequisites.length === 0) return { met: true, missing: [] };
 
-  const result = await query<{ module_id: string }>(
-    `SELECT module_id FROM learner_progress
-     WHERE workos_user_id = $1 AND module_id = ANY($2) AND status IN ('completed', 'tested_out')`,
+  const result = await query<{ module_id: string; status: string }>(
+    `SELECT module_id, status FROM learner_progress
+     WHERE workos_user_id = $1 AND module_id = ANY($2)`,
     [userId, mod.prerequisites]
   );
-  const completed = new Set(result.rows.map(r => r.module_id));
-  const missing = mod.prerequisites.filter(p => !completed.has(p));
+  const statusByModule = new Map(result.rows.map(r => [r.module_id, r.status]));
+
+  const missing: MissingPrereq[] = [];
+  for (const prereqId of mod.prerequisites) {
+    const status = statusByModule.get(prereqId);
+    if (status === 'completed' || status === 'tested_out') continue;
+    const normalized: MissingPrereqStatus =
+      status === 'in_progress' ? 'in_progress'
+      : status === 'failed' ? 'failed'
+      : status === 'expired' ? 'expired'
+      : 'not_started';
+    missing.push({ moduleId: prereqId, status: normalized });
+  }
   return { met: missing.length === 0, missing };
 }
 
@@ -444,6 +604,8 @@ export async function getStuckAttempts(staleDays: number = 7): Promise<Array<{
   email: string;
   track_id: string;
   module_id: string | null;
+  status: 'in_progress' | 'passed' | 'failed';
+  credential_name: string | null;
   started_at: string;
   days_stuck: number;
 }>> {
@@ -454,18 +616,44 @@ export async function getStuckAttempts(staleDays: number = 7): Promise<Array<{
     email: string;
     track_id: string;
     module_id: string | null;
+    status: 'in_progress' | 'passed' | 'failed';
+    credential_name: string | null;
     started_at: string;
     days_stuck: number;
   }>(
     `SELECT ca.id, ca.workos_user_id,
             COALESCE(u.first_name || ' ' || u.last_name, u.email) AS name,
-            u.email, ca.track_id, ca.module_id, ca.started_at,
+            u.email, ca.track_id, COALESCE(ca.module_id, fallback_module.id) AS module_id,
+            ca.status, cc.name AS credential_name, ca.started_at,
             EXTRACT(DAY FROM NOW() - ca.started_at)::int AS days_stuck
      FROM certification_attempts ca
      JOIN users u ON u.workos_user_id = ca.workos_user_id
-     WHERE ca.status = 'in_progress'
-       AND ca.started_at < NOW() - make_interval(days => $1)
-     ORDER BY ca.started_at ASC`,
+     LEFT JOIN LATERAL (
+       SELECT cm.id
+       FROM certification_modules cm
+       WHERE cm.track_id = ca.track_id AND cm.format = 'capstone'
+       ORDER BY cm.sort_order
+       LIMIT 1
+     ) fallback_module ON ca.module_id IS NULL
+     LEFT JOIN certification_credentials cc ON COALESCE(ca.module_id, fallback_module.id) = ANY(cc.required_modules)
+     WHERE (
+         ca.status = 'in_progress'
+         AND ca.started_at < NOW() - make_interval(days => $1)
+       )
+       OR (
+         ca.status = 'passed'
+         AND ca.passing = true
+         AND COALESCE(ca.module_id, fallback_module.id) IS NOT NULL
+         AND cc.id IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM user_credentials uc
+           WHERE uc.workos_user_id = ca.workos_user_id
+             AND uc.credential_id = cc.id
+         )
+       )
+     ORDER BY
+       CASE WHEN ca.status = 'passed' THEN 0 ELSE 1 END,
+       ca.started_at ASC`,
     [staleDays]
   );
   return result.rows;
@@ -547,6 +735,253 @@ export async function getUserCredentials(userId: string): Promise<UserCredential
     [userId]
   );
   return result.rows;
+}
+
+export interface ProtocolDeltaEvidence {
+  verifiedCriterionIds: string[];
+  evidenceByCriterionId: Record<string, string>;
+}
+
+export type S2CanonicalFormatsDeltaEvidence = ProtocolDeltaEvidence;
+
+export async function getDeltaEvidence(
+  def: DeltaDefinition,
+  userId: string,
+): Promise<ProtocolDeltaEvidence> {
+  const result = await query<{ criterion_id: string; evidence: string | null }>(
+    `SELECT v.criterion_id,
+            NULLIF(BTRIM(tc.demonstration_evidence ->> v.criterion_id), '') AS evidence
+     FROM teaching_checkpoints tc
+     CROSS JOIN LATERAL unnest(tc.demonstrations_verified) AS v(criterion_id)
+     WHERE tc.workos_user_id = $1
+       AND tc.module_id = $2
+       AND v.criterion_id = ANY($3::text[])
+     ORDER BY tc.created_at DESC`,
+    [userId, def.module_id, [...def.criterion_ids]]
+  );
+
+  const evidenceByCriterionId: Record<string, string> = {};
+  for (const row of result.rows) {
+    if (row.evidence && !evidenceByCriterionId[row.criterion_id]) {
+      evidenceByCriterionId[row.criterion_id] = row.evidence;
+    }
+  }
+
+  return {
+    verifiedCriterionIds: Object.keys(evidenceByCriterionId),
+    evidenceByCriterionId,
+  };
+}
+
+export async function getDeltaCompletedAt(def: DeltaDefinition, userId: string): Promise<string | null> {
+  const result = await query<{ completed_at: string }>(
+    `SELECT completed_at
+     FROM learner_protocol_updates
+     WHERE workos_user_id = $1 AND update_id = $2
+     LIMIT 1`,
+    [userId, def.update_id]
+  );
+  return result.rows[0]?.completed_at ?? null;
+}
+
+export async function recordDeltaCompletion(
+  def: DeltaDefinition,
+  userId: string,
+  attemptId: string,
+  evidenceByCriterionId: Record<string, string>,
+): Promise<void> {
+  await query(
+    `INSERT INTO learner_protocol_updates
+       (workos_user_id, update_id, module_id, credential_id, attempt_id, criterion_ids, evidence)
+     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+     ON CONFLICT (workos_user_id, update_id) DO UPDATE
+       SET attempt_id = EXCLUDED.attempt_id,
+           completed_at = NOW(),
+           criterion_ids = EXCLUDED.criterion_ids,
+           evidence = EXCLUDED.evidence`,
+    [
+      userId,
+      def.update_id,
+      def.module_id,
+      def.credential_id,
+      attemptId,
+      [...def.criterion_ids],
+      JSON.stringify(evidenceByCriterionId),
+    ]
+  );
+}
+
+export async function hasCriteriaPresent(def: DeltaDefinition): Promise<boolean> {
+  const mod = await getModule(def.module_id);
+  const exerciseDefs = mod?.exercise_definitions ?? [];
+  const ids = new Set(
+    exerciseDefs.flatMap(ex =>
+      ex.success_criteria.map(sc => typeof sc === 'string' ? sc : sc.id)
+    )
+  );
+  return def.criterion_ids.every(id => ids.has(id));
+}
+
+export async function hasPriorAuditableRecord(
+  def: DeltaDefinition,
+  userId: string,
+  moduleCompletedAt: string | null | undefined,
+): Promise<boolean> {
+  if (!moduleCompletedAt) return false;
+
+  const mod = await getModule(def.module_id);
+  const deltaCriterionIds = new Set<string>(def.criterion_ids);
+  const priorCriterionIds = (mod?.exercise_definitions ?? [])
+    .flatMap(ex => ex.success_criteria.map(sc => typeof sc === 'string' ? sc : sc.id))
+    .filter(id => !deltaCriterionIds.has(id));
+  if (priorCriterionIds.length === 0) return false;
+
+  const result = await query<{ criterion_id: string }>(
+    `SELECT DISTINCT v.criterion_id
+     FROM teaching_checkpoints tc
+     CROSS JOIN LATERAL unnest(tc.demonstrations_verified) AS v(criterion_id)
+     WHERE tc.workos_user_id = $1
+       AND tc.module_id = $2
+       AND tc.created_at <= $3::timestamptz + INTERVAL '1 hour'
+       AND v.criterion_id = ANY($4::text[])
+       AND NULLIF(BTRIM(tc.demonstration_evidence ->> v.criterion_id), '') IS NOT NULL`,
+    [userId, def.module_id, moduleCompletedAt, priorCriterionIds]
+  );
+  const evidenced = new Set(result.rows.map(row => row.criterion_id));
+  return priorCriterionIds.every(id => evidenced.has(id));
+}
+
+export async function completeDeltaAttempt(
+  def: DeltaDefinition,
+  attemptId: string,
+  userId: string,
+  scores: Record<string, number>,
+  overallScore: number,
+  evidenceByCriterionId: Record<string, string>,
+): Promise<CertificationAttempt> {
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+
+    const attemptResult = await client.query<CertificationAttempt>(
+      `UPDATE certification_attempts
+       SET status = 'passed',
+           completed_at = NOW(),
+           scores = $2,
+           overall_score = $3,
+           passing = true
+       WHERE id = $1
+         AND workos_user_id = $4
+         AND module_id = $5
+         AND status = 'in_progress'
+       RETURNING *`,
+      [
+        attemptId,
+        JSON.stringify(scores),
+        overallScore,
+        userId,
+        def.module_id,
+      ]
+    );
+    const attempt = attemptResult.rows[0];
+    if (!attempt) {
+      throw new Error(`Active ${def.label} delta attempt ${attemptId} not found`);
+    }
+
+    await client.query(
+      `INSERT INTO learner_protocol_updates
+         (workos_user_id, update_id, module_id, credential_id, attempt_id, criterion_ids, evidence)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+       ON CONFLICT (workos_user_id, update_id) DO UPDATE
+         SET attempt_id = EXCLUDED.attempt_id,
+             completed_at = NOW(),
+             criterion_ids = EXCLUDED.criterion_ids,
+             evidence = EXCLUDED.evidence`,
+      [
+        userId,
+        def.update_id,
+        def.module_id,
+        def.credential_id,
+        attemptId,
+        [...def.criterion_ids],
+        JSON.stringify(evidenceByCriterionId),
+      ]
+    );
+
+    await client.query('COMMIT');
+    return attempt;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function getDeltaStatus(
+  def: DeltaDefinition,
+  userId: string,
+  now: Date = new Date(),
+): Promise<ProtocolDeltaStatus> {
+  const [release, credentials, moduleProgress, evidence, deltaCompletedAt, criteriaPresent] = await Promise.all([
+    getDeltaRelease(def.release_setting_key),
+    getUserCredentials(userId),
+    getModuleProgress(userId, def.module_id),
+    getDeltaEvidence(def, userId),
+    getDeltaCompletedAt(def, userId),
+    hasCriteriaPresent(def),
+  ]);
+
+  const credential = credentials.find(c => c.credential_id === def.credential_id);
+
+  return computeProtocolDeltaStatus(def, {
+    release,
+    hasCredential: !!credential,
+    credentialAwardedAt: credential?.awarded_at ?? null,
+    moduleCompletedAt: moduleProgress?.completed_at ?? null,
+    deltaCompletedAt,
+    criteriaPresent,
+    hasPriorAuditableRecord: await hasPriorAuditableRecord(def, userId, moduleProgress?.completed_at),
+    verifiedCriterionIds: evidence.verifiedCriterionIds,
+    now,
+  });
+}
+
+// ----- S2 canonical-formats delta — back-compat wrappers binding the S2 definition -----
+
+export async function getS2CanonicalFormatsDeltaEvidence(
+  userId: string,
+): Promise<S2CanonicalFormatsDeltaEvidence> {
+  return getDeltaEvidence(S2_DELTA_DEFINITION, userId);
+}
+
+export async function getS2CanonicalFormatsDeltaCompletedAt(userId: string): Promise<string | null> {
+  return getDeltaCompletedAt(S2_DELTA_DEFINITION, userId);
+}
+
+export async function recordS2CanonicalFormatsDeltaCompletion(
+  userId: string,
+  attemptId: string,
+  evidenceByCriterionId: Record<string, string>,
+): Promise<void> {
+  return recordDeltaCompletion(S2_DELTA_DEFINITION, userId, attemptId, evidenceByCriterionId);
+}
+
+export async function completeS2CanonicalFormatsDeltaAttempt(
+  attemptId: string,
+  userId: string,
+  scores: Record<string, number>,
+  overallScore: number,
+  evidenceByCriterionId: Record<string, string>,
+): Promise<CertificationAttempt> {
+  return completeDeltaAttempt(S2_DELTA_DEFINITION, attemptId, userId, scores, overallScore, evidenceByCriterionId);
+}
+
+export async function getS2CanonicalFormatsDeltaStatus(
+  userId: string,
+  now: Date = new Date(),
+): Promise<S2CanonicalFormatsDeltaStatus> {
+  return getDeltaStatus(S2_DELTA_DEFINITION, userId, now) as Promise<S2CanonicalFormatsDeltaStatus>;
 }
 
 /**
@@ -661,6 +1096,36 @@ export async function checkAndAwardCredentials(userId: string): Promise<string[]
   }
 
   return awarded;
+}
+
+/**
+ * True when a missing credential that requires this module is currently
+ * eligible for the user. Used by recovery jobs to distinguish an award
+ * failure from a valid "module passed, other requirements still missing"
+ * state.
+ */
+export async function hasEligibleMissingCredentialForModule(
+  userId: string,
+  moduleId: string,
+): Promise<boolean> {
+  const result = await query<{ id: string }>(
+    `SELECT cc.id
+     FROM certification_credentials cc
+     WHERE $2 = ANY(cc.required_modules)
+       AND NOT EXISTS (
+         SELECT 1 FROM user_credentials uc
+         WHERE uc.workos_user_id = $1
+           AND uc.credential_id = cc.id
+       )
+     ORDER BY cc.tier, cc.sort_order`,
+    [userId, moduleId],
+  );
+
+  for (const row of result.rows) {
+    const { eligible } = await checkCredentialEligibility(userId, row.id);
+    if (eligible) return true;
+  }
+  return false;
 }
 
 // =====================================================
@@ -1178,6 +1643,20 @@ export async function getLatestCheckpoint(
   return result.rows[0] || null;
 }
 
+export async function getLatestCheckpointForThread(
+  userId: string,
+  moduleId: string,
+  threadId: string
+): Promise<TeachingCheckpoint | null> {
+  const result = await query<TeachingCheckpoint>(
+    `SELECT * FROM teaching_checkpoints
+     WHERE workos_user_id = $1 AND module_id = $2 AND thread_id = $3
+     ORDER BY created_at DESC LIMIT 1`,
+    [userId, moduleId, threadId]
+  );
+  return result.rows[0] || null;
+}
+
 // =====================================================
 // ADMIN ANALYTICS
 // =====================================================
@@ -1364,7 +1843,7 @@ export async function getAdminLearnerList(options: {
   const limit = Math.min(options.limit || 20, 100);
   const offset = (page - 1) * limit;
 
-  let whereClause = 'WHERE lp.id IS NOT NULL'; // has any progress
+  let whereClause = 'WHERE (lp.id IS NOT NULL OR tc.id IS NOT NULL)'; // has progress or teaching evidence
   const params: (string | number)[] = [];
   let paramIdx = 1;
 
@@ -1386,7 +1865,8 @@ export async function getAdminLearnerList(options: {
   const countResult = await query<{ count: string }>(
     `SELECT COUNT(DISTINCT u.workos_user_id)::text AS count
      FROM users u
-     JOIN learner_progress lp ON lp.workos_user_id = u.workos_user_id
+     LEFT JOIN learner_progress lp ON lp.workos_user_id = u.workos_user_id
+     LEFT JOIN teaching_checkpoints tc ON tc.workos_user_id = u.workos_user_id
      ${whereClause}`,
     params
   );
@@ -1402,14 +1882,21 @@ export async function getAdminLearnerList(options: {
        u.first_name,
        u.last_name,
        u.email,
-       COUNT(CASE WHEN lp.status IN ('completed', 'tested_out') THEN 1 END)::text AS modules_completed,
-       COUNT(CASE WHEN lp.status = 'in_progress' THEN 1 END)::text AS modules_in_progress,
-       MAX(COALESCE(lp.completed_at, lp.started_at))::text AS last_active
+       COUNT(DISTINCT CASE WHEN lp.status IN ('completed', 'tested_out') THEN lp.id END)::text AS modules_completed,
+       COUNT(DISTINCT CASE WHEN lp.status = 'in_progress' THEN lp.id END)::text AS modules_in_progress,
+       MAX(GREATEST(
+         COALESCE(lp.completed_at, lp.started_at, 'epoch'::timestamptz),
+         COALESCE(tc.created_at, 'epoch'::timestamptz)
+       ))::text AS last_active
      FROM users u
-     JOIN learner_progress lp ON lp.workos_user_id = u.workos_user_id
+     LEFT JOIN learner_progress lp ON lp.workos_user_id = u.workos_user_id
+     LEFT JOIN teaching_checkpoints tc ON tc.workos_user_id = u.workos_user_id
      ${whereClause}
      GROUP BY u.workos_user_id, u.first_name, u.last_name, u.email
-     ORDER BY MAX(COALESCE(lp.completed_at, lp.started_at)) DESC NULLS LAST
+     ORDER BY MAX(GREATEST(
+       COALESCE(lp.completed_at, lp.started_at, 'epoch'::timestamptz),
+       COALESCE(tc.created_at, 'epoch'::timestamptz)
+     )) DESC NULLS LAST
      LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`,
     [...params, limit, offset]
   );
@@ -1462,10 +1949,14 @@ export interface AdminLearnerDetail {
   }>;
   credentials: Array<{ name: string; tier: number; awarded_at: string; certifier_credential_id: string | null }>;
   checkpoints: Array<{
+    id: string;
     module_id: string;
+    thread_id: string | null;
     current_phase: string;
     concepts_covered: string[];
     concepts_remaining: string[];
+    preliminary_scores: Record<string, number> | null;
+    demonstrations_verified: string[];
     notes: string | null;
     created_at: string;
   }>;
@@ -1501,11 +1992,14 @@ export async function getAdminLearnerDetail(userId: string): Promise<AdminLearne
       [userId]
     ),
     query<{
-      module_id: string; current_phase: string;
+      id: string; module_id: string; thread_id: string | null; current_phase: string;
       concepts_covered: string[]; concepts_remaining: string[];
+      preliminary_scores: Record<string, number> | null; demonstrations_verified: string[];
       notes: string | null; created_at: string;
     }>(
-      `SELECT DISTINCT ON (module_id) module_id, current_phase, concepts_covered, concepts_remaining, notes, created_at
+      `SELECT DISTINCT ON (module_id)
+          id, module_id, thread_id, current_phase, concepts_covered, concepts_remaining,
+          preliminary_scores, demonstrations_verified, notes, created_at
        FROM teaching_checkpoints
        WHERE workos_user_id = $1
        ORDER BY module_id, created_at DESC`,

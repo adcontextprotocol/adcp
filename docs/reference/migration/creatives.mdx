@@ -14,7 +14,7 @@ AdCP 3.0 makes three breaking changes to creative handling: the `FormatCategory`
 ### What changed
 
 | v2 field | v3 field | Change type |
-|----------|----------|-------------|
+|----------|----------|-----------|
 | `type` on format objects (FormatCategory enum) | Removed | Deleted |
 | `format_types` filter on `list_creative_formats` / `get_products` | Removed | Deleted |
 
@@ -58,7 +58,7 @@ Replace `format_types` filters with `asset_types` (what the format needs) or `fo
 ### What changed
 
 | v2 field | v3 field | Change type |
-|----------|----------|-------------|
+|----------|----------|-----------|
 | `creative_ids` (string array) | `creative_assignments` (object array) | Replaced |
 
 ### Simple migration (equal weights)
@@ -163,7 +163,7 @@ Each assignment object:
 ### What changed
 
 | v2 field | v3 field | Change type |
-|----------|----------|-------------|
+|----------|----------|-----------|
 | `assets_required` (string array) | `assets` (object array) | Replaced |
 | `preview_image` | `format_card` | Replaced |
 
@@ -210,7 +210,7 @@ Each assignment object:
       "asset_type": "url",
       "required": false,
       "requirements": {
-        "url_type": "tracking_pixel"
+        "role": "impression_tracker"
       }
     }
   ]

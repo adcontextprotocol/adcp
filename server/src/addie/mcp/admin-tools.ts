@@ -13,24 +13,37 @@
  * own company's organization but do not have AAO platform-wide admin access.
  */
 
-import { createLogger } from '../../logger.js';
-import { ToolError } from '../tool-error.js';
-import type { AddieTool } from '../types.js';
-import { COMMITTEE_TYPE_LABELS, VALID_MEMBER_OFFERINGS } from '../../types.js';
-import type { MemberContext } from '../member-context.js';
+import { createLogger } from "../../logger.js";
+import { ToolError } from "../tool-error.js";
+import type { AddieTool } from "../types.js";
+import { randomUUID } from "node:crypto";
+import type Stripe from "stripe";
+import { COMMITTEE_TYPE_LABELS, VALID_MEMBER_OFFERINGS } from "../../types.js";
+import type { MemberContext } from "../member-context.js";
+import { FREE_EMAIL_PROVIDER_DOMAINS } from "../../services/identifier-normalization.js";
 // invalidateMemberContextCache is imported lazily in the two handlers that
 // call it (see below). Top-level import would pull member-context.ts, which
 // imports middleware/auth.ts, which constructs a WorkOS client at module load
 // time — blowing up any test that imports admin-tools.ts without WORKOS_API_KEY.
 // Matches the pattern from PR #3258 (member-tools.ts).
-import { OrganizationDatabase, resolveMembershipTier } from '../../db/organization-db.js';
-import type { MembershipTier } from '../../db/organization-db.js';
-import { SlackDatabase } from '../../db/slack-db.js';
-import { WorkingGroupDatabase } from '../../db/working-group-db.js';
-import { getPool, escapeLikePattern } from '../../db/client.js';
-import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-db.js';
-import { MemberDatabase } from '../../db/member-db.js';
-import { BrandDatabase } from '../../db/brand-db.js';
+import {
+  OrganizationDatabase,
+  resolveMembershipTier,
+  TIER_PRESERVING_STATUSES,
+  buildSubscriptionUpdate,
+} from "../../db/organization-db.js";
+import type { MembershipTier } from "../../db/organization-db.js";
+import { SlackDatabase } from "../../db/slack-db.js";
+import { WorkingGroupDatabase } from "../../db/working-group-db.js";
+import { getPool, escapeLikePattern } from "../../db/client.js";
+import { MemberSearchAnalyticsDatabase } from "../../db/member-search-analytics-db.js";
+import { MemberDatabase } from "../../db/member-db.js";
+import {
+  normalizeFoundingMemberGrant,
+  foundingMemberFieldsTouched,
+} from "../../services/founding-member-grant.js";
+import { BrandDatabase } from "../../db/brand-db.js";
+import { coerceStringArray } from "./input-coercion.js";
 import {
   getPendingInvoices,
   getAllOpenInvoices,
@@ -39,21 +52,30 @@ import {
   createPromotionCode,
   resendInvoice,
   updateCustomerEmail,
+  stripe,
   type PendingInvoice,
   type OpenInvoiceWithCustomer,
-} from '../../billing/stripe-client.js';
+} from "../../billing/stripe-client.js";
 import {
-  enrichOrganization,
-  enrichDomain,
-} from '../../services/enrichment.js';
-import { researchDomain } from '../../services/brand-enrichment.js';
+  ENGAGED_FILTER_ALIASED,
+  MEMBER_FILTER_ALIASED,
+  REGISTERED_FILTER_ALIASED,
+  invalidateMembershipCache,
+} from "../../db/org-filters.js";
+import {
+  pickMembershipSubWithProductFetch,
+  type PickedMembershipSub,
+} from "../../billing/membership-prices.js";
+import { wrapUntrustedInput } from "./untrusted-input.js";
+import { enrichOrganization, enrichDomain } from "../../services/enrichment.js";
+import { researchDomain } from "../../services/brand-enrichment.js";
 import {
   getLushaClient,
   isLushaConfigured,
   mapIndustryToCompanyType,
-} from '../../services/lusha.js';
-import { COMPANY_TYPE_VALUES } from '../../config/company-types.js';
-import { createProspect, updateProspect } from '../../services/prospect.js';
+} from "../../services/lusha.js";
+import { COMPANY_TYPE_VALUES } from "../../config/company-types.js";
+import { createProspect, updateProspect } from "../../services/prospect.js";
 import {
   getAllFeedsWithStats,
   addFeed,
@@ -65,19 +87,19 @@ import {
   getProposalStats,
   type FeedWithStats,
   type FeedProposal,
-} from '../../db/industry-feeds-db.js';
-import { InsightsDatabase } from '../../db/insights-db.js';
-import { resolveUserRole } from '../../utils/resolve-user-role.js';
+} from "../../db/industry-feeds-db.js";
+import { InsightsDatabase } from "../../db/insights-db.js";
+import { resolveUserRole } from "../../utils/resolve-user-role.js";
 import {
   createChannel,
   getSlackChannels,
   setChannelPurpose,
   inviteToChannel,
-} from '../../slack/client.js';
+} from "../../slack/client.js";
 import {
   getProductsForCustomer,
   type BillingProduct,
-} from '../../billing/stripe-client.js';
+} from "../../billing/stripe-client.js";
 import {
   createMembershipInvite,
   getMembershipInviteByToken,
@@ -85,50 +107,73 @@ import {
   listMembershipInvitesForOrg,
   revokeMembershipInvite,
   type MembershipInvite,
-} from '../../db/membership-invites-db.js';
-import { sendMembershipInviteEmail } from '../../notifications/email.js';
-import { mergeOrganizations, previewMerge, type StripeCustomerResolution } from '../../db/org-merge-db.js';
-import { getWorkos } from '../../auth/workos-client.js';
-import { DomainDataState } from '@workos-inc/node';
-import { processInteraction, type InteractionContext } from '../services/interaction-analyzer.js';
+} from "../../db/membership-invites-db.js";
+import { sendMembershipInviteEmail } from "../../notifications/email.js";
+import {
+  mergeOrganizations,
+  previewMerge,
+  type StripeCustomerResolution,
+} from "../../db/org-merge-db.js";
+import { getWorkos } from "../../auth/workos-client.js";
+import {
+  getSlackAdminStatusCache,
+  getWebAdminStatusCache,
+  invalidateSlackAdminStatusCache,
+  invalidateWebAdminStatusCache,
+} from "../admin-status-cache.js";
+import { DomainDataState } from "@workos-inc/node";
+import {
+  processInteraction,
+  type InteractionContext,
+} from "../services/interaction-analyzer.js";
 import {
   listEscalations,
   getEscalation,
   updateEscalationStatus,
   buildResolutionNotificationMessage,
   type EscalationStatus,
-} from '../../db/escalation-db.js';
-import { sendDirectMessage } from '../../slack/client.js';
-import { sendEscalationResolutionEmail } from '../../notifications/email.js';
+} from "../../db/escalation-db.js";
+import { guardEscalationResolution } from "../../services/escalation-resolution-guard.js";
+import { sendDirectMessage } from "../../slack/client.js";
+import { sendEscalationResolutionEmail } from "../../notifications/email.js";
 import {
   computePipelineStage,
   PIPELINE_STAGE_EMOJI,
   computeEngagementLevel,
   ENGAGEMENT_LABELS,
   type PipelineStage,
-} from '../../services/account-lifecycle.js';
+} from "../../services/account-lifecycle.js";
 import {
   sendRelationshipMessage,
   canEngageSlackUser,
-} from '../services/relationship-orchestrator.js';
+} from "../services/relationship-orchestrator.js";
 import {
   shouldContact as shouldContactCheck,
   computeEngagementOpportunities,
   buildComposePrompt,
   MAX_TOTAL_UNREPLIED,
-} from '../services/engagement-planner.js';
-import { loadRelationshipContext } from '../services/relationship-context.js';
-import * as relationshipDb from '../../db/relationship-db.js';
-import { assessHistoricalBehavior } from '../services/outreach-simulator.js';
-import { getMemberCapabilities } from '../../db/outbound-db.js';
-import { getActionItems as getActionItemsDb, type ActionStatus, type ActionType, type ActionPriority } from '../../db/account-management-db.js';
-import { captureEvent } from '../../utils/posthog.js';
-import { BrandLogoDatabase } from '../../db/brand-logo-db.js';
-import { rebuildManifestLogos } from '../../services/brand-logo-service.js';
-import { updateBrandIdentity, BrandIdentityError } from '../../services/brand-identity.js';
-import { canonicalizeBrandDomain } from '../../services/identifier-normalization.js';
+} from "../services/engagement-planner.js";
+import { loadRelationshipContext } from "../services/relationship-context.js";
+import * as relationshipDb from "../../db/relationship-db.js";
+import { assessHistoricalBehavior } from "../services/outreach-simulator.js";
+import { getMemberCapabilities } from "../../db/outbound-db.js";
+import {
+  getActionItems as getActionItemsDb,
+  type ActionStatus,
+  type ActionType,
+  type ActionPriority,
+} from "../../db/account-management-db.js";
+import { captureEvent } from "../../utils/posthog.js";
+import { BrandLogoDatabase } from "../../db/brand-logo-db.js";
+import { rebuildManifestLogos } from "../../services/brand-logo-service.js";
+import {
+  updateBrandIdentity,
+  BrandIdentityError,
+} from "../../services/brand-identity.js";
+import { canonicalizeBrandDomain } from "../../services/identifier-normalization.js";
+import { upsertEmailContact } from "../../db/contacts-db.js";
 
-const logger = createLogger('addie-admin-tools');
+const logger = createLogger("addie-admin-tools");
 const orgDb = new OrganizationDatabase();
 const slackDb = new SlackDatabase();
 const brandLogoDb = new BrandLogoDatabase();
@@ -136,21 +181,26 @@ const brandDbForLogos = new BrandDatabase();
 const wgDb = new WorkingGroupDatabase();
 
 // The slug for the AAO admin working group
-const AAO_ADMIN_WORKING_GROUP_SLUG = 'aao-admin';
+const AAO_ADMIN_WORKING_GROUP_SLUG = "aao-admin";
 
 // The slug for the kitchen cabinet management group
-const KITCHEN_CABINET_SLUG = 'kitchen-cabinet';
+const KITCHEN_CABINET_SLUG = "kitchen-cabinet";
 
 // Cache for admin status checks - admin status rarely changes
 const ADMIN_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
-const adminStatusCache = new Map<string, { isAdmin: boolean; expiresAt: number }>();
+// Shared cache module — invalidators can be called without dragging the
+// rest of admin-tools (and its Anthropic-instantiating dependencies)
+// into unrelated import graphs.
+const adminStatusCache = getSlackAdminStatusCache();
 
 /**
  * Check if a Slack user is an admin
  * Looks up their WorkOS user ID via Slack mapping and checks membership in aao-admin working group
  * Results are cached for 30 minutes to reduce DB load
  */
-export async function isSlackUserAAOAdmin(slackUserId: string): Promise<boolean> {
+export async function isSlackUserAAOAdmin(
+  slackUserId: string,
+): Promise<boolean> {
   // Check cache first
   const cached = adminStatusCache.get(slackUserId);
   if (cached && cached.expiresAt > Date.now()) {
@@ -162,18 +212,29 @@ export async function isSlackUserAAOAdmin(slackUserId: string): Promise<boolean>
     const mapping = await slackDb.getBySlackUserId(slackUserId);
 
     if (!mapping?.workos_user_id) {
-      logger.debug({ slackUserId }, 'Admin check: no WorkOS mapping for Slack user');
-      adminStatusCache.set(slackUserId, { isAdmin: false, expiresAt: Date.now() + ADMIN_CACHE_TTL_MS });
+      logger.debug(
+        { slackUserId },
+        "Admin check: no WorkOS mapping for Slack user",
+      );
+      adminStatusCache.set(slackUserId, {
+        isAdmin: false,
+        expiresAt: Date.now() + ADMIN_CACHE_TTL_MS,
+      });
       return false;
     }
 
     // Get the aao-admin working group
-    const adminGroup = await wgDb.getWorkingGroupBySlug(AAO_ADMIN_WORKING_GROUP_SLUG);
+    const adminGroup = await wgDb.getWorkingGroupBySlug(
+      AAO_ADMIN_WORKING_GROUP_SLUG,
+    );
 
     if (!adminGroup) {
-      logger.warn('Admin check: aao-admin working group not found in DB');
+      logger.warn("Admin check: aao-admin working group not found in DB");
       // Cache the negative result for a shorter time to avoid repeated DB lookups
-      adminStatusCache.set(slackUserId, { isAdmin: false, expiresAt: Date.now() + 5 * 60 * 1000 });
+      adminStatusCache.set(slackUserId, {
+        isAdmin: false,
+        expiresAt: Date.now() + 5 * 60 * 1000,
+      });
       return false;
     }
 
@@ -181,40 +242,41 @@ export async function isSlackUserAAOAdmin(slackUserId: string): Promise<boolean>
     const isAdmin = await wgDb.isMember(adminGroup.id, mapping.workos_user_id);
 
     // Cache the result
-    adminStatusCache.set(slackUserId, { isAdmin, expiresAt: Date.now() + ADMIN_CACHE_TTL_MS });
+    adminStatusCache.set(slackUserId, {
+      isAdmin,
+      expiresAt: Date.now() + ADMIN_CACHE_TTL_MS,
+    });
 
-    logger.info({ slackUserId, workosUserId: mapping.workos_user_id, isAdmin, adminGroupId: adminGroup.id }, 'Admin status check result');
+    logger.info(
+      {
+        slackUserId,
+        workosUserId: mapping.workos_user_id,
+        isAdmin,
+        adminGroupId: adminGroup.id,
+      },
+      "Admin status check result",
+    );
     return isAdmin;
   } catch (error) {
-    logger.error({ error, slackUserId }, 'Error checking if Slack user is admin');
+    logger.error(
+      { error, slackUserId },
+      "Error checking if Slack user is admin",
+    );
     return false;
   }
 }
 
-/**
- * Invalidate admin status cache for a Slack user (call when admin membership changes)
- */
-export function invalidateAdminStatusCache(slackUserId?: string): void {
-  if (slackUserId) {
-    adminStatusCache.delete(slackUserId);
-  } else {
-    adminStatusCache.clear();
-  }
-}
+// Re-export Slack/web admin invalidators from the shared cache module so
+// existing imports of `admin-tools` keep working while new callers can
+// import directly from `admin-status-cache` to avoid this file's heavy
+// transitive dependencies. (Single import block at top — see line ~91.)
+export {
+  invalidateSlackAdminStatusCache as invalidateAdminStatusCache,
+  invalidateWebAdminStatusCache,
+};
 
 // Cache for web user admin status (keyed by WorkOS user ID)
-const webAdminStatusCache = new Map<string, { isAdmin: boolean; expiresAt: number }>();
-
-/**
- * Invalidate web admin status cache for a user (call when admin membership changes)
- */
-export function invalidateWebAdminStatusCache(workosUserId?: string): void {
-  if (workosUserId) {
-    webAdminStatusCache.delete(workosUserId);
-  } else {
-    webAdminStatusCache.clear();
-  }
-}
+const webAdminStatusCache = getWebAdminStatusCache();
 
 /**
  * Invalidate all admin caches (both Slack and web)
@@ -226,13 +288,18 @@ export function invalidateAllAdminCaches(): void {
 }
 
 // Cache for web user kitchen-cabinet council status (keyed by WorkOS user ID)
-const webCouncilStatusCache = new Map<string, { isCouncil: boolean; expiresAt: number }>();
+const webCouncilStatusCache = new Map<
+  string,
+  { isCouncil: boolean; expiresAt: number }
+>();
 
 /**
  * Check if a web user is a kitchen cabinet council member.
  * Results are cached for 30 minutes to reduce DB load.
  */
-export async function isWebUserAAOCouncil(workosUserId: string): Promise<boolean> {
+export async function isWebUserAAOCouncil(
+  workosUserId: string,
+): Promise<boolean> {
   const cached = webCouncilStatusCache.get(workosUserId);
   if (cached && cached.expiresAt > Date.now()) {
     return cached.isCouncil;
@@ -242,59 +309,40 @@ export async function isWebUserAAOCouncil(workosUserId: string): Promise<boolean
     const group = await wgDb.getWorkingGroupBySlug(KITCHEN_CABINET_SLUG);
 
     if (!group) {
-      logger.warn('Kitchen Cabinet working group not found');
-      webCouncilStatusCache.set(workosUserId, { isCouncil: false, expiresAt: Date.now() + 5 * 60 * 1000 });
+      logger.warn("Kitchen Cabinet working group not found");
+      webCouncilStatusCache.set(workosUserId, {
+        isCouncil: false,
+        expiresAt: Date.now() + 5 * 60 * 1000,
+      });
       return false;
     }
 
     const isCouncil = await wgDb.isMember(group.id, workosUserId);
-    webCouncilStatusCache.set(workosUserId, { isCouncil, expiresAt: Date.now() + ADMIN_CACHE_TTL_MS });
+    webCouncilStatusCache.set(workosUserId, {
+      isCouncil,
+      expiresAt: Date.now() + ADMIN_CACHE_TTL_MS,
+    });
 
-    logger.debug({ workosUserId, isCouncil }, 'Checked web user council status');
+    logger.debug(
+      { workosUserId, isCouncil },
+      "Checked web user council status",
+    );
     return isCouncil;
   } catch (error) {
-    logger.error({ error, workosUserId }, 'Error checking if web user is council member');
+    logger.error(
+      { error, workosUserId },
+      "Error checking if web user is council member",
+    );
     return false;
   }
 }
 
-/**
- * Check if a web user is an AAO admin
- * Checks membership in aao-admin working group by WorkOS user ID
- * Results are cached for 30 minutes to reduce DB load
- */
-export async function isWebUserAAOAdmin(workosUserId: string): Promise<boolean> {
-  // Check cache first
-  const cached = webAdminStatusCache.get(workosUserId);
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.isAdmin;
-  }
-
-  try {
-    // Get the aao-admin working group
-    const adminGroup = await wgDb.getWorkingGroupBySlug(AAO_ADMIN_WORKING_GROUP_SLUG);
-
-    if (!adminGroup) {
-      logger.warn('AAO Admin working group not found');
-      // Cache the negative result for a shorter time to avoid repeated DB lookups
-      webAdminStatusCache.set(workosUserId, { isAdmin: false, expiresAt: Date.now() + 5 * 60 * 1000 });
-      return false;
-    }
-
-    // Check if the user is a member of the admin working group
-    const isAdmin = await wgDb.isMember(adminGroup.id, workosUserId);
-
-    // Cache the result
-    webAdminStatusCache.set(workosUserId, { isAdmin, expiresAt: Date.now() + ADMIN_CACHE_TTL_MS });
-
-    logger.debug({ workosUserId, isAdmin }, 'Checked web user admin status');
-    return isAdmin;
-  } catch (error) {
-    logger.error({ error, workosUserId }, 'Error checking if web user is admin');
-    return false;
-  }
-}
-
+// `isWebUserAAOAdmin` lives in `../admin-status-lookup.ts` so callers
+// that only need the admin check don't have to pull in this file's
+// heavy transitive dependencies (relationship-orchestrator →
+// engagement-planner → Anthropic). Re-exported here to keep existing
+// imports working.
+export { isWebUserAAOAdmin } from "../admin-status-lookup.js";
 
 /**
  * Admin tool definitions - includes both billing/invoice tools and prospect management tools
@@ -304,74 +352,131 @@ export const ADMIN_TOOLS: AddieTool[] = [
   // BILLING & INVOICE TOOLS
   // ============================================
   {
-    name: 'list_pending_invoices',
+    name: "list_pending_invoices",
     description: `List all organizations with pending (unpaid) invoices.
 Use this when an admin asks about outstanding invoices or payment status across organizations.
 Returns a list of organizations with open or draft invoices.`,
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
         limit: {
-          type: 'number',
-          description: 'Maximum number of results to return (default: 10)',
+          type: "number",
+          description: "Maximum number of results to return (default: 10)",
         },
       },
     },
   },
   {
-    name: 'get_account',
-    description: 'Get complete account view for any organization: lifecycle stage, membership status, engagement metrics, pipeline info, and enrichment data. Use for any company lookup. If no org matches, falls back to the users table — surfaces people who signed up with a matching email domain but have not yet created/joined an org (typical for inbound website signups).',
+    name: "get_account",
+    description:
+      "Get complete account view for any organization: lifecycle stage, membership status, engagement metrics, pipeline info, and enrichment data. Use for any company lookup. If no org matches, falls back to the users table — surfaces people who signed up with a matching email domain but have not yet created/joined an org (typical for inbound website signups).",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
         query: {
-          type: 'string',
-          description: 'Company name or domain to look up (e.g., "Mediaocean" or "mediaocean.com")',
+          type: "string",
+          description:
+            'Company name or domain to look up (e.g., "Mediaocean" or "mediaocean.com")',
         },
       },
-      required: ['query'],
+      required: ["query"],
     },
   },
 
   {
-    name: 'resend_invoice',
+    name: "resend_invoice",
     description: `Resend an open invoice. Provide EITHER an invoice_id (if known) OR a company_name to look up their pending invoices. If the company has exactly one open invoice, it will be resent automatically. If the invoice needs to go to a different email, use update_billing_email first.`,
-    usage_hints: 'Pass company_name to look up and resend in one step. Use update_billing_email first if the email needs to change.',
+    usage_hints:
+      "Pass company_name to look up and resend in one step. Use update_billing_email first if the email needs to change.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
         invoice_id: {
-          type: 'string',
-          description: 'Stripe invoice ID (starts with in_) — if you already have it',
+          type: "string",
+          description:
+            "Stripe invoice ID (starts with in_) — if you already have it",
         },
         company_name: {
-          type: 'string',
-          description: 'Company name to look up (will find their open invoices)',
+          type: "string",
+          description:
+            "Company name to look up (will find their open invoices)",
         },
       },
     },
   },
   {
-    name: 'update_billing_email',
+    name: "update_billing_email",
     description: `Update the billing email on a Stripe customer. Use this when invoices need to go to a different email address (e.g., accounts payable). Can look up by org_id or direct customer_id.`,
-    usage_hints: 'Use before resend_invoice if the email needs to change. Get org_id from get_account.',
+    usage_hints:
+      "Use before resend_invoice if the email needs to change. Get org_id from get_account.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
         org_id: {
-          type: 'string',
-          description: 'WorkOS organization ID (org_...) — will look up Stripe customer',
+          type: "string",
+          description:
+            "WorkOS organization ID (org_...) — will look up Stripe customer",
         },
         customer_id: {
-          type: 'string',
-          description: 'Direct Stripe customer ID (cus_...) — use if org_id is not available',
+          type: "string",
+          description:
+            "Direct Stripe customer ID (cus_...) — use if org_id is not available",
         },
         email: {
-          type: 'string',
-          description: 'New billing email address',
+          type: "string",
+          description: "New billing email address",
         },
       },
-      required: ['email'],
+      required: ["email"],
+    },
+  },
+  {
+    name: "preview_org_stripe_customer_update",
+    description: `Preview relinking an organization to a different Stripe customer. This validates the org and Stripe customer, shows the current and proposed customer IDs, and returns a preview_token. It does not write any changes. Always show the preview to the admin before confirming.`,
+    usage_hints:
+      "Use get_account first to identify org_id. After the admin explicitly approves the preview, call confirm_org_stripe_customer_update with the preview_token, confirm: true, and an audit reason.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        org_id: {
+          type: "string",
+          description: "WorkOS organization ID (org_...) to relink",
+        },
+        new_customer_id: {
+          type: "string",
+          pattern: "^cus_",
+          description: "Proposed Stripe customer ID (cus_...) to validate",
+        },
+      },
+      required: ["org_id", "new_customer_id"],
+    },
+  },
+  {
+    name: "confirm_org_stripe_customer_update",
+    description: `Confirm a previously previewed organization Stripe customer relink. This tool does not accept a raw Stripe customer ID; it only commits the validated preview_token after explicit admin approval.`,
+    usage_hints:
+      "Only call after preview_org_stripe_customer_update has shown the current vs proposed customer diff and the admin has explicitly approved it.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        preview_token: {
+          type: "string",
+          description:
+            "Opaque token returned by preview_org_stripe_customer_update",
+        },
+        confirm: {
+          type: "boolean",
+          const: true,
+          description: "Must be true to commit the relink",
+        },
+        reason: {
+          type: "string",
+          minLength: 10,
+          description:
+            "Audit reason for relinking this organization to the validated Stripe customer",
+        },
+      },
+      required: ["preview_token", "confirm", "reason"],
     },
   },
 
@@ -379,94 +484,185 @@ Returns a list of organizations with open or draft invoices.`,
   // PROSPECT MANAGEMENT TOOLS
   // ============================================
   {
-    name: 'add_prospect',
+    name: "add_prospect",
     description:
-      'Add a new prospect organization to track. Use get_account first to confirm the company does not exist. Capture as much info as possible: name, domain, contact details, and notes about their interest.',
-    usage_hints: 'Always use get_account first to check if company exists. Include champion info in notes (e.g., "Champion: Jane Doe, VP Sales").',
+      "Add a new prospect organization to track. Use get_account first to confirm the company does not exist. Capture as much info as possible: name, domain, contact details, and notes about their interest.",
+    usage_hints:
+      'Always use get_account first to check if company exists. Include champion info in notes (e.g., "Champion: Jane Doe, VP Sales").',
     input_schema: {
-      type: 'object',
+      type: "object",
       properties: {
-        name: { type: 'string', description: 'Company name' },
-        company_type: { type: 'string', enum: COMPANY_TYPE_VALUES, description: 'Type of company' },
-        domain: { type: 'string', description: 'Company domain (for enrichment/dedup)' },
-        contact_name: { type: 'string', description: 'Primary contact name' },
-        contact_email: { type: 'string', description: 'Primary contact email' },
-        contact_title: { type: 'string', description: 'Primary contact job title' },
-        notes: { type: 'string', description: 'Notes about the prospect' },
-        source: { type: 'string', description: 'How we found this prospect' },
+        name: { type: "string", description: "Company name" },
+        company_type: {
+          type: "string",
+          enum: COMPANY_TYPE_VALUES,
+          description: "Type of company",
+        },
+        domain: {
+          type: "string",
+          description: "Company domain (for enrichment/dedup)",
+        },
+        contact_name: { type: "string", description: "Primary contact name" },
+        contact_email: { type: "string", description: "Primary contact email" },
+        contact_title: {
+          type: "string",
+          description: "Primary contact job title",
+        },
+        notes: { type: "string", description: "Notes about the prospect" },
+        source: { type: "string", description: "How we found this prospect" },
       },
-      required: ['name'],
+      required: ["name"],
     },
   },
   {
-    name: 'update_prospect',
+    name: "update_prospect",
     description:
-      'Update information about an existing prospect. Use this to add notes, change status, update contact info, or set interest level. IMPORTANT: When adding notes that indicate excitement, resource commitment, or intent to join, also set interest_level accordingly.',
+      "Update information about an existing prospect. Use this to add notes, change status, update contact info, or set interest level. IMPORTANT: When adding notes that indicate excitement, resource commitment, or intent to join, also set interest_level accordingly.",
     input_schema: {
-      type: 'object',
+      type: "object",
       properties: {
-        org_id: { type: 'string', description: 'Organization ID' },
-        company_type: { type: 'string', enum: COMPANY_TYPE_VALUES, description: 'Type of company' },
-        status: { type: 'string', enum: ['prospect', 'contacted', 'responded', 'interested', 'negotiating', 'converted', 'declined', 'inactive'], description: 'Prospect status' },
-        interest_level: { type: 'string', enum: ['low', 'medium', 'high', 'very_high'], description: 'Interest level (low/medium/high/very_high)' },
-        contact_name: { type: 'string', description: 'Primary contact name' },
-        contact_email: { type: 'string', description: 'Primary contact email' },
-        notes: { type: 'string', description: 'Notes to append' },
-        domain: { type: 'string', description: 'Company domain' },
+        org_id: { type: "string", description: "Organization ID" },
+        company_type: {
+          type: "string",
+          enum: COMPANY_TYPE_VALUES,
+          description: "Type of company",
+        },
+        status: {
+          type: "string",
+          enum: [
+            "prospect",
+            "contacted",
+            "responded",
+            "interested",
+            "negotiating",
+            "converted",
+            "declined",
+            "inactive",
+          ],
+          description: "Prospect status",
+        },
+        interest_level: {
+          type: "string",
+          enum: ["low", "medium", "high", "very_high"],
+          description: "Interest level (low/medium/high/very_high)",
+        },
+        contact_name: { type: "string", description: "Primary contact name" },
+        contact_email: { type: "string", description: "Primary contact email" },
+        notes: { type: "string", description: "Notes to append" },
+        domain: { type: "string", description: "Company domain" },
       },
-      required: ['org_id'],
+      required: ["org_id"],
     },
   },
   {
-    name: 'enrich_company',
+    name: "enrich_company",
     description:
-      'Research a company using Lusha to get firmographic data (revenue, employee count, industry, etc.). Can be used with a domain or company name.',
+      "Research a company using Lusha to get firmographic data (revenue, employee count, industry, etc.). Can be used with a domain or company name.",
     input_schema: {
-      type: 'object',
+      type: "object",
       properties: {
-        domain: { type: 'string', description: 'Company domain to research' },
-        company_name: { type: 'string', description: 'Company name (if domain not provided)' },
-        org_id: { type: 'string', description: 'Organization ID to save enrichment to' },
+        domain: { type: "string", description: "Company domain to research" },
+        company_name: {
+          type: "string",
+          description: "Company name (if domain not provided)",
+        },
+        org_id: {
+          type: "string",
+          description: "Organization ID to save enrichment to",
+        },
       },
       required: [],
     },
   },
   {
-    name: 'research_domain',
+    name: "research_domain",
     description:
-      'Comprehensive domain research: checks brand registry, enriches via Brandfetch + Sonnet classification + Lusha firmographics. Skips sources that already have fresh data (< 30 days). Returns brand identity, corporate hierarchy (house_domain/parent_brand), and firmographics in one call.',
+      "Comprehensive domain research: checks brand registry, enriches via Brandfetch + Sonnet classification + Lusha firmographics. Skips sources that already have fresh data (< 30 days). Returns brand identity, corporate hierarchy (house_domain/parent_brand), and firmographics in one call.",
     input_schema: {
-      type: 'object',
+      type: "object",
       properties: {
-        domain: { type: 'string', description: 'Domain to research (e.g., mindshare.com)' },
-        org_id: { type: 'string', description: 'Organization ID to attach Lusha data to (auto-detected from domain if not provided)' },
-        skip_brandfetch: { type: 'boolean', description: 'Skip Brandfetch/Sonnet enrichment' },
-        skip_lusha: { type: 'boolean', description: 'Skip Lusha firmographic enrichment' },
+        domain: {
+          type: "string",
+          description: "Domain to research (e.g., mindshare.com)",
+        },
+        org_id: {
+          type: "string",
+          description:
+            "Organization ID to attach Lusha data to (auto-detected from domain if not provided)",
+        },
+        skip_brandfetch: {
+          type: "boolean",
+          description: "Skip Brandfetch/Sonnet enrichment",
+        },
+        skip_lusha: {
+          type: "boolean",
+          description: "Skip Lusha firmographic enrichment",
+        },
       },
-      required: ['domain'],
+      required: ["domain"],
     },
   },
   {
-    name: 'query_prospects',
+    name: "query_prospects",
     description:
       'Query prospects across different views. Use `view` to switch perspective: "all" (default), "my_engaged", "my_followups", "unassigned", or "addie_pipeline".',
     input_schema: {
-      type: 'object',
+      type: "object",
       properties: {
-        view: { type: 'string', enum: ['all', 'my_engaged', 'my_followups', 'unassigned', 'addie_pipeline'], description: 'Which view (default: all)' },
-        status: { type: 'string', enum: ['prospect', 'contacted', 'responded', 'interested', 'negotiating', 'converted', 'declined', 'inactive'], description: 'Filter by status (all/addie_pipeline views)' },
-        company_type: { type: 'string', enum: COMPANY_TYPE_VALUES, description: 'Filter by company type (all view)' },
-        limit: { type: 'number', description: 'Max results (default 10)' },
-        sort: { type: 'string', enum: ['recent', 'name', 'activity'], description: 'Sort order (all view)' },
-        hot_only: { type: 'boolean', description: 'Only hot prospects with score >= 30 (my_engaged view)' },
-        days_stale: { type: 'number', description: 'Days stale threshold, default 14 (my_followups view)' },
-        min_engagement: { type: 'number', description: 'Min engagement score, default 10 (unassigned view)' },
+        view: {
+          type: "string",
+          enum: [
+            "all",
+            "my_engaged",
+            "my_followups",
+            "unassigned",
+            "addie_pipeline",
+          ],
+          description: "Which view (default: all)",
+        },
+        status: {
+          type: "string",
+          enum: [
+            "prospect",
+            "contacted",
+            "responded",
+            "interested",
+            "negotiating",
+            "converted",
+            "declined",
+            "inactive",
+          ],
+          description: "Filter by status (all/addie_pipeline views)",
+        },
+        company_type: {
+          type: "string",
+          enum: COMPANY_TYPE_VALUES,
+          description: "Filter by company type (all view)",
+        },
+        limit: { type: "number", description: "Max results (default 10)" },
+        sort: {
+          type: "string",
+          enum: ["recent", "name", "activity"],
+          description: "Sort order (all view)",
+        },
+        hot_only: {
+          type: "boolean",
+          description: "Only hot prospects with score >= 30 (my_engaged view)",
+        },
+        days_stale: {
+          type: "number",
+          description: "Days stale threshold, default 14 (my_followups view)",
+        },
+        min_engagement: {
+          type: "number",
+          description: "Min engagement score, default 10 (unassigned view)",
+        },
       },
       required: [],
     },
   },
   {
-    name: 'send_payment_request',
+    name: "send_payment_request",
     description: `Find or create a prospect organization and either look up its products, draft an invoice for review, or send a membership invite. Admins cannot directly mint payment links or send invoices from this tool — those operations are only valid in the recipient's own authenticated session, after they accept the invite.
 
 Actions:
@@ -474,36 +670,71 @@ Actions:
 - "draft_invoice": preview what the invoice would look like (amount, discount). No Stripe write.
 - "send_invite": create a membership invite token and email it to the contact. This is NOT a direct invoice send — there is no admin path to issue invoices or payment links to non-signed-in recipients. The recipient signs in, accepts the agreement, and the invoice or checkout is then issued in their authenticated session — never under the admin's or a hallucinated email.`,
     input_schema: {
-      type: 'object',
+      type: "object",
       properties: {
-        company_name: { type: 'string', description: 'Company name' },
-        domain: { type: 'string', description: 'Company domain' },
-        contact_name: { type: 'string', description: 'Contact person name' },
-        contact_email: { type: 'string', description: 'Email of the human who will sign in to complete billing in their own session. Used only to deliver the invite — never used as a Stripe customer email or invoice recipient directly. Required for send_invite.' },
-        contact_title: { type: 'string', description: 'Contact job title' },
-        action: { type: 'string', enum: ['lookup_only', 'draft_invoice', 'send_invite'], description: 'Action type (default: lookup_only)' },
-        lookup_key: { type: 'string', description: 'Product lookup_key from find_membership_products' },
-        discount_percent: { type: 'number', description: 'Percentage discount (preview only in draft_invoice)' },
-        discount_amount_dollars: { type: 'number', description: 'Fixed dollar discount (preview only in draft_invoice)' },
-        discount_reason: { type: 'string', description: 'Reason for discount (required when applying one)' },
-        use_existing_discount: { type: 'boolean', description: 'Use existing org discount (default: true)' },
+        company_name: { type: "string", description: "Company name" },
+        domain: { type: "string", description: "Company domain" },
+        contact_name: { type: "string", description: "Contact person name" },
+        contact_email: {
+          type: "string",
+          description:
+            "Email of the human who will sign in to complete billing in their own session. Used only to deliver the invite — never used as a Stripe customer email or invoice recipient directly. Required for send_invite.",
+        },
+        contact_title: { type: "string", description: "Contact job title" },
+        action: {
+          type: "string",
+          enum: ["lookup_only", "draft_invoice", "send_invite"],
+          description: "Action type (default: lookup_only)",
+        },
+        lookup_key: {
+          type: "string",
+          description: "Product lookup_key from find_membership_products",
+        },
+        discount_percent: {
+          type: "number",
+          description: "Percentage discount (preview only in draft_invoice)",
+        },
+        discount_amount_dollars: {
+          type: "number",
+          description: "Fixed dollar discount (preview only in draft_invoice)",
+        },
+        discount_reason: {
+          type: "string",
+          description: "Reason for discount (required when applying one)",
+        },
+        use_existing_discount: {
+          type: "boolean",
+          description: "Use existing org discount (default: true)",
+        },
       },
-      required: ['company_name'],
+      required: ["company_name"],
     },
   },
   {
-    name: 'prospect_search_lusha',
+    name: "prospect_search_lusha",
     description:
-      'Search Lusha\'s database for potential prospects matching criteria. Use this to find new companies to reach out to based on industry, size, or location.',
+      "Search Lusha's database for potential prospects matching criteria. Use this to find new companies to reach out to based on industry, size, or location.",
     input_schema: {
-      type: 'object',
+      type: "object",
       properties: {
-        keywords: { type: 'array', items: { type: 'string' }, description: 'Keywords to search for' },
-        industries: { type: 'array', items: { type: 'string' }, description: 'Industry categories' },
-        min_employees: { type: 'number', description: 'Min employee count' },
-        max_employees: { type: 'number', description: 'Max employee count' },
-        countries: { type: 'array', items: { type: 'string' }, description: 'Countries to include' },
-        limit: { type: 'number', description: 'Max results (default 10)' },
+        keywords: {
+          type: "array",
+          items: { type: "string" },
+          description: "Keywords to search for",
+        },
+        industries: {
+          type: "array",
+          items: { type: "string" },
+          description: "Industry categories",
+        },
+        min_employees: { type: "number", description: "Min employee count" },
+        max_employees: { type: "number", description: "Max employee count" },
+        countries: {
+          type: "array",
+          items: { type: "string" },
+          description: "Countries to include",
+        },
+        limit: { type: "number", description: "Max results (default 10)" },
       },
       required: [],
     },
@@ -513,112 +744,118 @@ Actions:
   // MEMBERSHIP INVITE TOOLS
   // ============================================
   {
-    name: 'diagnose_signin_block',
+    name: "diagnose_signin_block",
     description:
-      'Use when a user reports they cannot sign in to AgenticAdvertising.org. Combines person, invite, and org-membership state into a single verdict — needs_signin (account exists, just sign in), needs_resend (invite expired or stale, send a fresh one), needs_invite (no invite on file, send one), or needs_human (state is unclear). Do NOT use for general account questions — use lookup_person or get_account for those. Returns the verdict plus a one-line reason and any pending invite token to act on.',
+      "Use when a user reports they cannot sign in to AgenticAdvertising.org. Combines person, invite, and org-membership state into a single verdict — needs_signin (account exists, just sign in), needs_resend (invite expired or stale, send a fresh one), needs_invite (no invite on file, send one), or needs_human (state is unclear). Do NOT use for general account questions — use lookup_person or get_account for those. Returns the verdict plus a one-line reason and any pending invite token to act on.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
         email: {
-          type: 'string',
-          description: 'Email address of the person who cannot sign in',
+          type: "string",
+          description: "Email address of the person who cannot sign in",
         },
         org_id: {
-          type: 'string',
-          description: 'WorkOS organization ID (org_…) the user is trying to access',
+          type: "string",
+          description:
+            "WorkOS organization ID (org_…) the user is trying to access",
         },
       },
-      required: ['email', 'org_id'],
+      required: ["email", "org_id"],
     },
   },
   {
-    name: 'list_invites_for_org',
+    name: "list_invites_for_org",
     description:
       'Use when an admin asks "what invites do we have for X" or you need to reference an invite token before resending or revoking. Defaults to pending only; pass include_accepted or include_revoked to widen. Capped at 20, sorted by expiry (soonest first). Returns one invite per line with its token suffix so you can quote a token back into resend_invite or revoke_invite.',
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
         org_id: {
-          type: 'string',
-          description: 'WorkOS organization ID (org_…)',
+          type: "string",
+          description: "WorkOS organization ID (org_…)",
         },
         include_accepted: {
-          type: 'boolean',
-          description: 'Include invites that have been accepted. Default false.',
+          type: "boolean",
+          description:
+            "Include invites that have been accepted. Default false.",
         },
         include_revoked: {
-          type: 'boolean',
-          description: 'Include invites that have been revoked. Default false.',
+          type: "boolean",
+          description: "Include invites that have been revoked. Default false.",
         },
       },
-      required: ['org_id'],
+      required: ["org_id"],
     },
   },
   {
-    name: 'resend_invite',
+    name: "resend_invite",
     description:
-      'Use to refresh a pending or expired membership invite — atomically revokes the original and emails a fresh one. Do NOT use to invite a brand-new contact (use send_payment_request for that). Do NOT use on an accepted invite. Returns the new expiry and whether the email was delivered.',
+      "Use to refresh a pending or expired membership invite — atomically revokes the original and emails a fresh one. Do NOT use to invite a brand-new contact (use send_payment_request for that). Do NOT use on an accepted invite. Returns the new expiry and whether the email was delivered.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
         token: {
-          type: 'string',
-          description: 'Token of the invite to resend (from list_invites_for_org or diagnose_signin_block)',
+          type: "string",
+          description:
+            "Token of the invite to resend (from list_invites_for_org or diagnose_signin_block)",
         },
         org_id: {
-          type: 'string',
-          description: 'WorkOS organization ID (org_…) the invite belongs to',
+          type: "string",
+          description: "WorkOS organization ID (org_…) the invite belongs to",
         },
       },
-      required: ['token', 'org_id'],
+      required: ["token", "org_id"],
     },
   },
   {
-    name: 'revoke_invite',
+    name: "revoke_invite",
     description:
-      'Use to cancel a pending or expired invite (e.g. wrong email, person no longer joining). Does NOT send any notification to the recipient — their existing invite link will simply stop working. Cannot revoke an already-accepted or already-revoked invite. Returns confirmation including the previous status.',
+      "Use to cancel a pending or expired invite (e.g. wrong email, person no longer joining). Does NOT send any notification to the recipient — their existing invite link will simply stop working. Cannot revoke an already-accepted or already-revoked invite. Returns confirmation including the previous status.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
         token: {
-          type: 'string',
-          description: 'Token of the invite to revoke (from list_invites_for_org)',
+          type: "string",
+          description:
+            "Token of the invite to revoke (from list_invites_for_org)",
         },
         org_id: {
-          type: 'string',
-          description: 'WorkOS organization ID (org_…) the invite belongs to',
+          type: "string",
+          description: "WorkOS organization ID (org_…) the invite belongs to",
         },
       },
-      required: ['token', 'org_id'],
+      required: ["token", "org_id"],
     },
   },
   {
-    name: 'add_member_to_org',
+    name: "add_member_to_org",
     description:
-      'Use when an admin or owner asks to add, invite, or promote a colleague on a paying org. Also the action to take when diagnose_signin_block returns needs_invite for an authorized requester. Handles four states automatically: invites new users (no WorkOS account yet), adds existing users to the org, updates roles, or no-ops if already correct. Do NOT use to remove members (no removal path), to change your own role, or for personal workspaces. Returns one of: invited, member_added, role_updated, no_change.',
+      "Use when an admin or owner asks to add, invite, or promote a colleague on a paying org. Also the action to take when diagnose_signin_block returns needs_invite for an authorized requester. Handles four states automatically: invites new users (no WorkOS account yet), adds existing users to the org, updates roles, or no-ops if already correct. Do NOT use to remove members (no removal path), to change your own role, or for personal workspaces. Returns one of: invited, member_added, role_updated, no_change.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
         email: {
-          type: 'string',
-          description: 'Email of the colleague to add or promote',
+          type: "string",
+          description: "Email of the colleague to add or promote",
         },
         org_id: {
-          type: 'string',
-          description: 'WorkOS organization ID (org_…) to add them to',
+          type: "string",
+          description: "WorkOS organization ID (org_…) to add them to",
         },
         role: {
-          type: 'string',
-          enum: ['member', 'admin', 'owner'],
-          description: 'Role to assign. Default: member. Note: owner can only be assigned by another owner or AAO super-admin; new invites always go out as member regardless and must be promoted after acceptance.',
+          type: "string",
+          enum: ["member", "admin", "owner"],
+          description:
+            "Role to assign. Default: member. Note: owner can only be assigned by another owner or AAO super-admin; new invites always go out as member regardless and must be promoted after acceptance.",
         },
         seat_type: {
-          type: 'string',
-          enum: ['contributor', 'community_only'],
-          description: 'Seat type. Default: community_only. Contributors get Slack/working-groups/councils; community-only get Addie/certification/training.',
+          type: "string",
+          enum: ["contributor", "community_only"],
+          description:
+            "Seat type. Default: community_only. Contributors get Slack/working-groups/councils; community-only get Addie/certification/training.",
         },
       },
-      required: ['email', 'org_id'],
+      required: ["email", "org_id"],
     },
   },
 
@@ -626,81 +863,116 @@ Actions:
   // INDUSTRY FEED MANAGEMENT TOOLS
   // ============================================
   {
-    name: 'search_industry_feeds',
+    name: "search_industry_feeds",
     description:
-      'Search and list RSS industry feeds. Use this to find feeds by name, URL, or category, or to see feeds with errors that need attention.',
+      "Search and list RSS industry feeds. Use this to find feeds by name, URL, or category, or to see feeds with errors that need attention.",
     input_schema: {
-      type: 'object',
+      type: "object",
       properties: {
-        query: { type: 'string', description: 'Search query' },
-        status: { type: 'string', enum: ['all', 'active', 'inactive', 'errors'], description: 'Filter by status' },
-        limit: { type: 'number', description: 'Max results (default 10)' },
+        query: { type: "string", description: "Search query" },
+        status: {
+          type: "string",
+          enum: ["all", "active", "inactive", "errors"],
+          description: "Filter by status",
+        },
+        limit: { type: "number", description: "Max results (default 10)" },
       },
       required: [],
     },
   },
   {
-    name: 'add_industry_feed',
+    name: "add_industry_feed",
     description:
-      'Add a new RSS feed to monitor for industry news. Provide the feed URL and a name.',
+      "Add a new RSS feed to monitor for industry news. Provide the feed URL and a name.",
     input_schema: {
-      type: 'object',
+      type: "object",
       properties: {
-        name: { type: 'string', description: 'Feed name' },
-        feed_url: { type: 'string', description: 'RSS feed URL' },
-        category: { type: 'string', enum: ['ad-tech', 'advertising', 'marketing', 'media', 'tech'], description: 'Feed category' },
+        name: { type: "string", description: "Feed name" },
+        feed_url: { type: "string", description: "RSS feed URL" },
+        category: {
+          type: "string",
+          enum: ["ad-tech", "advertising", "marketing", "media", "tech"],
+          description: "Feed category",
+        },
       },
-      required: ['name', 'feed_url'],
+      required: ["name", "feed_url"],
     },
   },
   {
-    name: 'get_feed_stats',
+    name: "get_feed_stats",
     description:
-      'Get statistics about industry feeds - total feeds, active feeds, articles collected, processing status, etc.',
+      "Get statistics about industry feeds - total feeds, active feeds, articles collected, processing status, etc.",
     input_schema: {
-      type: 'object',
+      type: "object",
       properties: {},
       required: [],
     },
   },
   {
-    name: 'list_feed_proposals',
+    name: "get_platform_stats",
     description:
-      'List pending feed proposals submitted by community members. Use this to review what news sources have been proposed.',
+      "Get admin platform stats: deduplicated people totals plus organization counts by lifecycle tier, membership tier, and subscription status. Use for platform-level member, user, or organization counts.",
     input_schema: {
-      type: 'object',
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "list_feed_proposals",
+    description:
+      "List pending feed proposals submitted by community members. Use this to review what news sources have been proposed.",
+    input_schema: {
+      type: "object",
       properties: {
-        limit: { type: 'number', description: 'Max results (default 20)' },
+        limit: { type: "number", description: "Max results (default 20)" },
       },
       required: [],
     },
   },
   {
-    name: 'approve_feed_proposal',
+    name: "approve_feed_proposal",
     description:
-      'Approve a feed proposal and create the feed. You must provide the final feed name and URL (which may differ from the proposed URL if you find the actual RSS feed).',
+      "Approve a feed proposal and create the feed. You must provide the final feed name and URL (which may differ from the proposed URL if you find the actual RSS feed).",
     input_schema: {
-      type: 'object',
+      type: "object",
       properties: {
-        proposal_id: { type: 'number', description: 'Proposal ID' },
-        feed_name: { type: 'string', description: 'Feed name' },
-        feed_url: { type: 'string', description: 'RSS feed URL' },
-        category: { type: 'string', enum: ['ad-tech', 'advertising', 'marketing', 'media', 'martech', 'ctv', 'dooh', 'creator', 'ai', 'sports', 'industry', 'research'], description: 'Feed category' },
+        proposal_id: { type: "number", description: "Proposal ID" },
+        feed_name: { type: "string", description: "Feed name" },
+        feed_url: { type: "string", description: "RSS feed URL" },
+        category: {
+          type: "string",
+          enum: [
+            "ad-tech",
+            "advertising",
+            "marketing",
+            "media",
+            "martech",
+            "ctv",
+            "dooh",
+            "creator",
+            "ai",
+            "sports",
+            "industry",
+            "research",
+          ],
+          description: "Feed category",
+        },
       },
-      required: ['proposal_id', 'feed_name', 'feed_url'],
+      required: ["proposal_id", "feed_name", "feed_url"],
     },
   },
   {
-    name: 'reject_feed_proposal',
+    name: "reject_feed_proposal",
     description:
-      'Reject a feed proposal. Optionally provide a reason that could be shared with the proposer.',
+      "Reject a feed proposal. Optionally provide a reason that could be shared with the proposer.",
     input_schema: {
-      type: 'object',
+      type: "object",
       properties: {
-        proposal_id: { type: 'number', description: 'Proposal ID' },
-        reason: { type: 'string', description: 'Rejection reason' },
+        proposal_id: { type: "number", description: "Proposal ID" },
+        reason: { type: "string", description: "Rejection reason" },
       },
-      required: ['proposal_id'],
+      required: ["proposal_id"],
     },
   },
 
@@ -708,48 +980,59 @@ Actions:
   // SENSITIVE TOPICS & MEDIA CONTACT TOOLS
   // ============================================
   {
-    name: 'add_media_contact',
+    name: "add_media_contact",
     description:
-      'Flag a Slack user as a known media contact (journalist, reporter, editor). Messages from this user will be handled with extra care and sensitive topics will be deflected.',
+      "Flag a Slack user as a known media contact (journalist, reporter, editor). Messages from this user will be handled with extra care and sensitive topics will be deflected.",
     input_schema: {
-      type: 'object',
+      type: "object",
       properties: {
-        slack_user_id: { type: 'string', description: 'Slack user ID' },
-        email: { type: 'string', description: 'Email address' },
-        name: { type: 'string', description: 'Full name' },
-        organization: { type: 'string', description: 'Media organization' },
-        role: { type: 'string', description: 'Role (Reporter/Editor/etc)' },
-        notes: { type: 'string', description: 'Additional notes' },
-        handling_level: { type: 'string', enum: ['standard', 'careful', 'executive_only'], description: 'Handling level' },
+        slack_user_id: { type: "string", description: "Slack user ID" },
+        email: { type: "string", description: "Email address" },
+        name: { type: "string", description: "Full name" },
+        organization: { type: "string", description: "Media organization" },
+        role: { type: "string", description: "Role (Reporter/Editor/etc)" },
+        notes: { type: "string", description: "Additional notes" },
+        handling_level: {
+          type: "string",
+          enum: ["standard", "careful", "executive_only"],
+          description: "Handling level",
+        },
       },
       required: [],
     },
   },
   {
-    name: 'list_flagged_conversations',
+    name: "list_flagged_conversations",
     description:
-      'List conversations that have been flagged for sensitive topic detection. These need human review to ensure appropriate handling.',
+      "List conversations that have been flagged for sensitive topic detection. These need human review to ensure appropriate handling.",
     input_schema: {
-      type: 'object',
+      type: "object",
       properties: {
-        unreviewed_only: { type: 'boolean', description: 'Only unreviewed (default: true)' },
-        severity: { type: 'string', enum: ['high', 'medium', 'low'], description: 'Filter by severity' },
-        limit: { type: 'number', description: 'Max results (default: 20)' },
+        unreviewed_only: {
+          type: "boolean",
+          description: "Only unreviewed (default: true)",
+        },
+        severity: {
+          type: "string",
+          enum: ["high", "medium", "low"],
+          description: "Filter by severity",
+        },
+        limit: { type: "number", description: "Max results (default: 20)" },
       },
       required: [],
     },
   },
   {
-    name: 'review_flagged_conversation',
+    name: "review_flagged_conversation",
     description:
-      'Mark a flagged conversation as reviewed. Use this after you\'ve looked at a flagged message and determined if any follow-up action is needed.',
+      "Mark a flagged conversation as reviewed. Use this after you've looked at a flagged message and determined if any follow-up action is needed.",
     input_schema: {
-      type: 'object',
+      type: "object",
       properties: {
-        flagged_id: { type: 'number', description: 'Flagged conversation ID' },
-        notes: { type: 'string', description: 'Review notes' },
+        flagged_id: { type: "number", description: "Flagged conversation ID" },
+        notes: { type: "string", description: "Review notes" },
       },
-      required: ['flagged_id'],
+      required: ["flagged_id"],
     },
   },
 
@@ -757,58 +1040,83 @@ Actions:
   // DISCOUNT MANAGEMENT TOOLS
   // ============================================
   {
-    name: 'grant_discount',
-    description: 'Grant a discount to an organization. Creates Stripe coupon/promo code.',
+    name: "grant_discount",
+    description:
+      "Grant a discount to an organization. Creates Stripe coupon/promo code.",
     input_schema: {
-      type: 'object',
+      type: "object",
       properties: {
-        org_id: { type: 'string', description: 'Organization ID' },
-        org_name: { type: 'string', description: 'Company name (if no org_id)' },
-        discount_percent: { type: 'number', description: 'Percentage off' },
-        discount_amount_dollars: { type: 'number', description: 'Fixed dollar amount off' },
-        reason: { type: 'string', description: 'Discount reason' },
-        create_promotion_code: { type: 'boolean', description: 'Create Stripe promo code (default: true)' },
+        org_id: { type: "string", description: "Organization ID" },
+        org_name: {
+          type: "string",
+          description: "Company name (if no org_id)",
+        },
+        discount_percent: { type: "number", description: "Percentage off" },
+        discount_amount_dollars: {
+          type: "number",
+          description: "Fixed dollar amount off",
+        },
+        reason: { type: "string", description: "Discount reason" },
+        create_promotion_code: {
+          type: "boolean",
+          description: "Create Stripe promo code (default: true)",
+        },
       },
-      required: ['reason'],
+      required: ["reason"],
     },
   },
   {
-    name: 'remove_discount',
-    description: 'Remove a discount from an organization. Note: This does not delete any Stripe coupons that were created.',
+    name: "remove_discount",
+    description:
+      "Remove a discount from an organization. Note: This does not delete any Stripe coupons that were created.",
     input_schema: {
-      type: 'object',
+      type: "object",
       properties: {
-        org_id: { type: 'string', description: 'Organization ID' },
-        org_name: { type: 'string', description: 'Company name (if no org_id)' },
+        org_id: { type: "string", description: "Organization ID" },
+        org_name: {
+          type: "string",
+          description: "Company name (if no org_id)",
+        },
       },
       required: [],
     },
   },
   {
-    name: 'list_discounts',
-    description: 'List organizations with active discounts.',
+    name: "list_discounts",
+    description: "List organizations with active discounts.",
     input_schema: {
-      type: 'object',
+      type: "object",
       properties: {
-        limit: { type: 'number', description: 'Max results (default: 20)' },
+        limit: { type: "number", description: "Max results (default: 20)" },
       },
       required: [],
     },
   },
   {
-    name: 'create_promotion_code',
-    description: 'Create a standalone Stripe promo code for marketing campaigns.',
+    name: "create_promotion_code",
+    description:
+      "Create a standalone Stripe promo code for marketing campaigns.",
     input_schema: {
-      type: 'object',
+      type: "object",
       properties: {
-        code: { type: 'string', description: 'Checkout code (e.g., "LAUNCH2025")' },
-        name: { type: 'string', description: 'Internal coupon name' },
-        percent_off: { type: 'number', description: 'Percentage off' },
-        amount_off_dollars: { type: 'number', description: 'Fixed dollar amount off' },
-        duration: { type: 'string', enum: ['once', 'repeating', 'forever'], description: 'Duration (default: once)' },
-        max_redemptions: { type: 'number', description: 'Max uses' },
+        code: {
+          type: "string",
+          description: 'Checkout code (e.g., "LAUNCH2025")',
+        },
+        name: { type: "string", description: "Internal coupon name" },
+        percent_off: { type: "number", description: "Percentage off" },
+        amount_off_dollars: {
+          type: "number",
+          description: "Fixed dollar amount off",
+        },
+        duration: {
+          type: "string",
+          enum: ["once", "repeating", "forever"],
+          description: "Duration (default: once)",
+        },
+        max_redemptions: { type: "number", description: "Max uses" },
       },
-      required: ['code'],
+      required: ["code"],
     },
   },
 
@@ -816,25 +1124,30 @@ Actions:
   // CHAPTER MANAGEMENT TOOLS
   // ============================================
   {
-    name: 'create_chapter',
-    description: 'Create a regional chapter with Slack channel. Sets founding member as chapter leader.',
-    usage_hints: 'Use when a member wants to start a chapter.',
+    name: "create_chapter",
+    description:
+      "Create a regional chapter with Slack channel. Sets founding member as chapter leader.",
+    usage_hints: "Use when a member wants to start a chapter.",
     input_schema: {
-      type: 'object',
+      type: "object",
       properties: {
-        name: { type: 'string', description: 'Chapter name' },
-        region: { type: 'string', description: 'Geographic region' },
-        founding_member_id: { type: 'string', description: 'Founding member WorkOS user ID' },
-        description: { type: 'string', description: 'Chapter description' },
+        name: { type: "string", description: "Chapter name" },
+        region: { type: "string", description: "Geographic region" },
+        founding_member_id: {
+          type: "string",
+          description: "Founding member WorkOS user ID",
+        },
+        description: { type: "string", description: "Chapter description" },
       },
-      required: ['name', 'region'],
+      required: ["name", "region"],
     },
   },
   {
-    name: 'list_chapters',
-    description: 'List all regional chapters with their member counts and Slack channels.',
+    name: "list_chapters",
+    description:
+      "List all regional chapters with their member counts and Slack channels.",
     input_schema: {
-      type: 'object',
+      type: "object",
       properties: {},
       required: [],
     },
@@ -844,28 +1157,33 @@ Actions:
   // INDUSTRY GATHERING TOOLS
   // ============================================
   {
-    name: 'create_industry_gathering',
-    description: 'Create an industry gathering for conferences/trade shows. Auto-archives after event ends.',
-    usage_hints: 'Use for coordinating around major industry events.',
+    name: "create_industry_gathering",
+    description:
+      "Create an industry gathering for conferences/trade shows. Auto-archives after event ends.",
+    usage_hints: "Use for coordinating around major industry events.",
     input_schema: {
-      type: 'object',
+      type: "object",
       properties: {
-        name: { type: 'string', description: 'Event name' },
-        start_date: { type: 'string', description: 'Start date (YYYY-MM-DD)' },
-        end_date: { type: 'string', description: 'End date (YYYY-MM-DD)' },
-        location: { type: 'string', description: 'Event location' },
-        website_url: { type: 'string', description: 'Event website URL' },
-        description: { type: 'string', description: 'Event description' },
-        founding_member_id: { type: 'string', description: 'Founding member WorkOS user ID' },
+        name: { type: "string", description: "Event name" },
+        start_date: { type: "string", description: "Start date (YYYY-MM-DD)" },
+        end_date: { type: "string", description: "End date (YYYY-MM-DD)" },
+        location: { type: "string", description: "Event location" },
+        website_url: { type: "string", description: "Event website URL" },
+        description: { type: "string", description: "Event description" },
+        founding_member_id: {
+          type: "string",
+          description: "Founding member WorkOS user ID",
+        },
       },
-      required: ['name', 'start_date', 'location'],
+      required: ["name", "start_date", "location"],
     },
   },
   {
-    name: 'list_industry_gatherings',
-    description: 'List all industry gatherings with their dates, locations, and member counts.',
+    name: "list_industry_gatherings",
+    description:
+      "List all industry gatherings with their dates, locations, and member counts.",
     input_schema: {
-      type: 'object',
+      type: "object",
       properties: {},
       required: [],
     },
@@ -875,23 +1193,36 @@ Actions:
   // COMMITTEE TOOLS
   // ============================================
   {
-    name: 'create_committee',
-    description: 'Create a committee (working group, council, or governance body). For chapters use create_chapter; for conferences use create_industry_gathering. Can link an existing Slack channel by name.',
-    usage_hints: 'Use when an admin wants to create a new working group, council, or governance body.',
+    name: "create_committee",
+    description:
+      "Create a committee (working group, council, or governance body). For chapters use create_chapter; for conferences use create_industry_gathering. Can link an existing Slack channel by name.",
+    usage_hints:
+      "Use when an admin wants to create a new working group, council, or governance body.",
     input_schema: {
-      type: 'object',
+      type: "object",
       properties: {
-        name: { type: 'string', description: 'Committee name' },
+        name: { type: "string", description: "Committee name" },
         committee_type: {
-          type: 'string',
-          enum: ['working_group', 'council', 'governance'],
-          description: 'Type of committee. Default: working_group',
+          type: "string",
+          enum: ["working_group", "council", "governance"],
+          description: "Type of committee. Default: working_group",
         },
-        description: { type: 'string', description: 'What the committee is for' },
-        is_private: { type: 'boolean', description: 'Whether the group is private (invite-only). Default: false' },
-        slack_channel_name: { type: 'string', description: 'Existing Slack channel name (without #) to link. Leave blank to skip.' },
+        description: {
+          type: "string",
+          description: "What the committee is for",
+        },
+        is_private: {
+          type: "boolean",
+          description:
+            "Whether the group is private (invite-only). Default: false",
+        },
+        slack_channel_name: {
+          type: "string",
+          description:
+            "Existing Slack channel name (without #) to link. Leave blank to skip.",
+        },
       },
-      required: ['name'],
+      required: ["name"],
     },
   },
 
@@ -899,41 +1230,55 @@ Actions:
   // COMMITTEE LEADERSHIP TOOLS
   // ============================================
   {
-    name: 'add_committee_leader',
-    description: 'Add a user as leader of a committee. Leaders can manage posts, events, and members.',
-    usage_hints: 'Accepts Slack user IDs (e.g. U12345ABC from <@U12345ABC>) — they are automatically resolved to WorkOS user IDs. Use list_working_groups to find the committee slug.',
+    name: "add_committee_leader",
+    description:
+      "Add a user as leader of a committee. Leaders can manage posts, events, and members.",
+    usage_hints:
+      "Accepts Slack user IDs (e.g. U12345ABC from <@U12345ABC>) — they are automatically resolved to WorkOS user IDs. Use list_working_groups to find the committee slug.",
     input_schema: {
-      type: 'object',
+      type: "object",
       properties: {
-        committee_slug: { type: 'string', description: 'Committee slug (e.g. "media-buy-wg"). Use list_working_groups to find it.' },
-        user_id: { type: 'string', description: 'Slack user ID (e.g. U12345ABC) or WorkOS user ID' },
-        user_email: { type: 'string', description: 'User email (optional)' },
+        committee_slug: {
+          type: "string",
+          description:
+            'Committee slug (e.g. "media-buy-wg"). Use list_working_groups to find it.',
+        },
+        user_id: {
+          type: "string",
+          description: "Slack user ID (e.g. U12345ABC) or WorkOS user ID",
+        },
+        user_email: { type: "string", description: "User email (optional)" },
       },
-      required: ['committee_slug', 'user_id'],
+      required: ["committee_slug", "user_id"],
     },
   },
   {
-    name: 'remove_committee_leader',
-    description: 'Remove a user from committee leadership. User remains a regular member.',
-    usage_hints: 'Accepts Slack user IDs (e.g. U12345ABC from <@U12345ABC>) — they are automatically resolved to WorkOS user IDs. Use list_working_groups to find the committee slug.',
+    name: "remove_committee_leader",
+    description:
+      "Remove a user from committee leadership. User remains a regular member.",
+    usage_hints:
+      "Accepts Slack user IDs (e.g. U12345ABC from <@U12345ABC>) — they are automatically resolved to WorkOS user IDs. Use list_working_groups to find the committee slug.",
     input_schema: {
-      type: 'object',
+      type: "object",
       properties: {
-        committee_slug: { type: 'string', description: 'Committee slug' },
-        user_id: { type: 'string', description: 'Slack user ID (e.g. U12345ABC) or WorkOS user ID' },
+        committee_slug: { type: "string", description: "Committee slug" },
+        user_id: {
+          type: "string",
+          description: "Slack user ID (e.g. U12345ABC) or WorkOS user ID",
+        },
       },
-      required: ['committee_slug', 'user_id'],
+      required: ["committee_slug", "user_id"],
     },
   },
   {
-    name: 'list_committee_leaders',
-    description: 'List all leaders of a committee.',
+    name: "list_committee_leaders",
+    description: "List all leaders of a committee.",
     input_schema: {
-      type: 'object',
+      type: "object",
       properties: {
-        committee_slug: { type: 'string', description: 'Committee slug' },
+        committee_slug: { type: "string", description: "Committee slug" },
       },
-      required: ['committee_slug'],
+      required: ["committee_slug"],
     },
   },
 
@@ -941,30 +1286,51 @@ Actions:
   // WORKING GROUP MEMBERSHIP (admin)
   // ============================================
   {
-    name: 'add_working_group_member',
-    description: 'Add a user as a member of a working group, council, chapter, or industry gathering.',
-    usage_hints: 'Use for adding regular members — use add_committee_leader to add leaders instead. Accepts Slack user IDs (e.g. U12345ABC from <@U12345ABC>) — they are automatically resolved to WorkOS user IDs. Use list_working_groups to find the committee slug.',
+    name: "add_working_group_member",
+    description:
+      "Add a user as a member of a working group, council, chapter, or industry gathering.",
+    usage_hints:
+      "Use for adding regular members — use add_committee_leader to add leaders instead. Accepts Slack user IDs (e.g. U12345ABC from <@U12345ABC>) — they are automatically resolved to WorkOS user IDs. Use list_working_groups to find the committee slug.",
     input_schema: {
-      type: 'object',
+      type: "object",
       properties: {
-        committee_slug: { type: 'string', description: 'Committee slug (e.g. "media-buy-wg"). Use list_working_groups to find it.' },
-        user_id: { type: 'string', description: 'Slack user ID (e.g. U12345ABC) or WorkOS user ID' },
-        user_email: { type: 'string', description: 'User email (optional, helps identify them)' },
+        committee_slug: {
+          type: "string",
+          description:
+            'Committee slug (e.g. "media-buy-wg"). Use list_working_groups to find it.',
+        },
+        user_id: {
+          type: "string",
+          description: "Slack user ID (e.g. U12345ABC) or WorkOS user ID",
+        },
+        user_email: {
+          type: "string",
+          description: "User email (optional, helps identify them)",
+        },
       },
-      required: ['committee_slug', 'user_id'],
+      required: ["committee_slug", "user_id"],
     },
   },
   {
-    name: 'remove_working_group_member',
-    description: 'Remove a user from a working group, council, chapter, or industry gathering. The user is deactivated, not deleted.',
-    usage_hints: 'Accepts Slack user IDs (e.g. U12345ABC from <@U12345ABC>) — they are automatically resolved to WorkOS user IDs. Use list_working_groups to find the committee slug.',
+    name: "remove_working_group_member",
+    description:
+      "Remove a user from a working group, council, chapter, or industry gathering. The user is deactivated, not deleted.",
+    usage_hints:
+      "Accepts Slack user IDs (e.g. U12345ABC from <@U12345ABC>) — they are automatically resolved to WorkOS user IDs. Use list_working_groups to find the committee slug.",
     input_schema: {
-      type: 'object',
+      type: "object",
       properties: {
-        committee_slug: { type: 'string', description: 'Committee slug (e.g. "media-buy-wg"). Use list_working_groups to find it.' },
-        user_id: { type: 'string', description: 'Slack user ID (e.g. U12345ABC) or WorkOS user ID' },
+        committee_slug: {
+          type: "string",
+          description:
+            'Committee slug (e.g. "media-buy-wg"). Use list_working_groups to find it.',
+        },
+        user_id: {
+          type: "string",
+          description: "Slack user ID (e.g. U12345ABC) or WorkOS user ID",
+        },
       },
-      required: ['committee_slug', 'user_id'],
+      required: ["committee_slug", "user_id"],
     },
   },
 
@@ -972,65 +1338,103 @@ Actions:
   // ORGANIZATION MANAGEMENT TOOLS
   // ============================================
   {
-    name: 'merge_organizations',
-    description: 'Merge duplicate organization records. Destructive, cannot be undone. Preview first with preview=true. If both orgs have Stripe customers, you must specify stripe_customer_resolution.',
-    usage_hints: 'Preview first, then execute with preview=false. Check preview for Stripe customer conflicts.',
+    name: "merge_organizations",
+    description:
+      "Merge duplicate organization records. Destructive, cannot be undone. Preview first with preview=true. If both orgs have Stripe customers, you must specify stripe_customer_resolution.",
+    usage_hints:
+      "Preview first, then execute with preview=false. Check preview for Stripe customer conflicts.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
-        primary_org_id: { type: 'string', description: 'Org ID to keep (data merged into)' },
-        secondary_org_id: { type: 'string', description: 'Org ID to remove (data moved from)' },
-        preview: { type: 'boolean', description: 'Show preview only (default: true)' },
+        primary_org_id: {
+          type: "string",
+          description: "Org ID to keep (data merged into)",
+        },
+        secondary_org_id: {
+          type: "string",
+          description: "Org ID to remove (data moved from)",
+        },
+        preview: {
+          type: "boolean",
+          description: "Show preview only (default: true)",
+        },
         stripe_customer_resolution: {
-          type: 'string',
-          enum: ['keep_primary', 'use_secondary', 'keep_both_unlinked'],
-          description: 'Required if both orgs have Stripe customers. keep_primary=keep primary Stripe customer, use_secondary=replace with secondary Stripe customer, keep_both_unlinked=unlink both for manual resolution',
+          type: "string",
+          enum: ["keep_primary", "use_secondary", "keep_both_unlinked"],
+          description:
+            "Required if both orgs have Stripe customers. keep_primary=keep primary Stripe customer, use_secondary=replace with secondary Stripe customer, keep_both_unlinked=unlink both for manual resolution",
         },
       },
-      required: ['primary_org_id', 'secondary_org_id'],
+      required: ["primary_org_id", "secondary_org_id"],
     },
   },
   {
-    name: 'find_duplicate_orgs',
-    description: 'Search for duplicate organizations by name or domain.',
+    name: "find_duplicate_orgs",
+    description: "Search for duplicate organizations by name or domain.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
-        search_type: { type: 'string', enum: ['name', 'domain', 'all'], description: 'Search type' },
+        search_type: {
+          type: "string",
+          enum: ["name", "domain", "all"],
+          description: "Search type",
+        },
       },
       required: [],
     },
   },
   {
-    name: 'check_domain_health',
-    description: 'Check domain health for data quality issues: orphan domains, conflicts, misaligned users.',
-    usage_hints: 'Use for data quality audits.',
+    name: "check_domain_health",
+    description:
+      "Check domain health for data quality issues: orphan domains, conflicts, misaligned users.",
+    usage_hints: "Use for data quality audits.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
-        check_type: { type: 'string', enum: ['orphan_domains', 'unverified_domains', 'domain_conflicts', 'misaligned_users', 'all'], description: 'Check type' },
-        limit: { type: 'number', description: 'Max results (default: 20)' },
+        check_type: {
+          type: "string",
+          enum: [
+            "orphan_domains",
+            "unverified_domains",
+            "domain_conflicts",
+            "misaligned_users",
+            "all",
+          ],
+          description: "Check type",
+        },
+        limit: { type: "number", description: "Max results (default: 20)" },
       },
       required: [],
     },
   },
   {
-    name: 'manage_organization_domains',
-    description: 'Add, remove, or list verified domains for an organization. Syncs to WorkOS.',
-    usage_hints: 'Use "list" first. Add/remove sync to WorkOS.',
+    name: "manage_organization_domains",
+    description:
+      "Add, remove, list, set primary, or reconcile verified domains for an organization. Syncs to WorkOS.",
+    usage_hints: 'Use "list" first. Use "reconcile_workos" when WorkOS and local organization_domains are out of sync.',
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
-        action: { type: 'string', enum: ['list', 'add', 'remove', 'set_primary'], description: 'Action' },
-        organization_id: { type: 'string', description: 'WorkOS organization ID' },
-        domain: { type: 'string', description: 'Domain name' },
-        set_as_primary: { type: 'boolean', description: 'Set as primary (default: false)' },
+        action: {
+          type: "string",
+          enum: ["list", "add", "remove", "set_primary", "reconcile_workos"],
+          description: "Action",
+        },
+        organization_id: {
+          type: "string",
+          description: "WorkOS organization ID",
+        },
+        domain: { type: "string", description: "Domain name" },
+        set_as_primary: {
+          type: "boolean",
+          description: "Set as primary (default: false)",
+        },
       },
-      required: ['action', 'organization_id'],
+      required: ["action", "organization_id"],
     },
   },
   {
-    name: 'update_org_member_role',
+    name: "update_org_member_role",
     description: `Update a user's role within their organization. Use this to change a member's permissions.
 
 Common scenarios:
@@ -1039,55 +1443,69 @@ Common scenarios:
 - User should have full control of their org → promote to owner
 
 Roles: member (default), admin (can manage team), owner (full control)`,
-    usage_hints: 'Get user_id from get_account tool or escalation context. Use when members need elevated permissions.',
+    usage_hints:
+      "Get user_id from get_account tool or escalation context. Use when members need elevated permissions.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
-        org_id: { type: 'string', description: 'WorkOS organization ID (org_...)' },
-        user_id: { type: 'string', description: 'WorkOS user ID (user_...)' },
-        role: { type: 'string', enum: ['member', 'admin', 'owner'], description: 'New role' },
+        org_id: {
+          type: "string",
+          description: "WorkOS organization ID (org_...)",
+        },
+        user_id: { type: "string", description: "WorkOS user ID (user_...)" },
+        role: {
+          type: "string",
+          enum: ["member", "admin", "owner"],
+          description: "New role",
+        },
       },
-      required: ['org_id', 'user_id', 'role'],
+      required: ["org_id", "user_id", "role"],
     },
   },
 
   {
-    name: 'update_user_name',
+    name: "update_user_name",
     description: `Update a user's display name (first and last name). Use this when a user's name is showing incorrectly (e.g., as their email prefix) and needs manual correction.`,
-    usage_hints: 'Get user_id from get_account or escalation context. Provide the correct first_name and optionally last_name.',
+    usage_hints:
+      "Get user_id from get_account or escalation context. Provide the correct first_name and optionally last_name.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
-        user_id: { type: 'string', description: 'WorkOS user ID (user_...)' },
-        email: { type: 'string', description: 'User email (alternative to user_id for lookup)' },
-        first_name: { type: 'string', description: 'First name' },
-        last_name: { type: 'string', description: 'Last name' },
+        user_id: { type: "string", description: "WorkOS user ID (user_...)" },
+        email: {
+          type: "string",
+          description: "User email (alternative to user_id for lookup)",
+        },
+        first_name: { type: "string", description: "First name" },
+        last_name: { type: "string", description: "Last name" },
       },
-      required: ['first_name'],
+      required: ["first_name"],
     },
   },
 
   {
-    name: 'rename_working_group',
+    name: "rename_working_group",
     description: `Rename a working group, chapter, or committee. Updates the display name and optionally the slug. Use this when a chapter or WG needs to be renamed (e.g., "Germany Chapter" → "DACH Chapter").`,
-    usage_hints: 'Look up current slug first with list_working_groups or list_chapters.',
+    usage_hints:
+      "Look up current slug first with list_working_groups or list_chapters.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
         working_group_slug: {
-          type: 'string',
-          description: 'Current slug of the working group/chapter',
+          type: "string",
+          description: "Current slug of the working group/chapter",
         },
         new_name: {
-          type: 'string',
-          description: 'New display name',
+          type: "string",
+          description: "New display name",
         },
         new_slug: {
-          type: 'string',
-          description: 'New slug (optional — auto-generated from name if not provided)',
+          type: "string",
+          description:
+            "New slug (optional — auto-generated from name if not provided)",
         },
       },
-      required: ['working_group_slug', 'new_name'],
+      required: ["working_group_slug", "new_name"],
     },
   },
 
@@ -1095,91 +1513,130 @@ Roles: member (default), admin (can manage team), owner (full control)`,
   // PROSPECT OWNERSHIP TOOLS
   // ============================================
   {
-    name: 'claim_prospect',
-    description: 'Claim ownership of a prospect. Use owner_type "self" (default) to assign the current human user, or "addie" to assign Addie as SDR owner.',
-    usage_hints: 'Use after finding unassigned prospects.',
+    name: "claim_prospect",
+    description:
+      'Claim ownership of a prospect. Use owner_type "self" (default) to assign the current human user, or "addie" to assign Addie as SDR owner.',
+    usage_hints: "Use after finding unassigned prospects.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
-        org_id: { type: 'string', description: 'Organization ID' },
-        company_name: { type: 'string', description: 'Company name (if no org_id)' },
-        owner_type: { type: 'string', enum: ['self', 'addie'], description: 'Who to assign: "self" (human user) or "addie" (AI SDR). Default: self' },
-        replace_existing: { type: 'boolean', description: 'Replace existing owner (default: false)' },
-        notes: { type: 'string', description: 'Notes' },
+        org_id: { type: "string", description: "Organization ID" },
+        company_name: {
+          type: "string",
+          description: "Company name (if no org_id)",
+        },
+        owner_type: {
+          type: "string",
+          enum: ["self", "addie"],
+          description:
+            'Who to assign: "self" (human user) or "addie" (AI SDR). Default: self',
+        },
+        replace_existing: {
+          type: "boolean",
+          description: "Replace existing owner (default: false)",
+        },
+        notes: { type: "string", description: "Notes" },
       },
       required: [],
     },
   },
   {
-    name: 'suggest_prospects',
-    description: 'Suggest companies to add to prospect list. Finds unmapped domains and Lusha matches.',
-    usage_hints: 'Expand prospect pipeline.',
+    name: "suggest_prospects",
+    description:
+      "Suggest companies to add to prospect list. Finds unmapped domains and Lusha matches.",
+    usage_hints: "Expand prospect pipeline.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
-        include_lusha: { type: 'boolean', description: 'Include Lusha results (default: true)' },
-        lusha_keywords: { type: 'array', items: { type: 'string' }, description: 'Lusha search keywords' },
-        limit: { type: 'number', description: 'Max results per source (default: 10)' },
+        include_lusha: {
+          type: "boolean",
+          description: "Include Lusha results (default: true)",
+        },
+        lusha_keywords: {
+          type: "array",
+          items: { type: "string" },
+          description: "Lusha search keywords",
+        },
+        limit: {
+          type: "number",
+          description: "Max results per source (default: 10)",
+        },
       },
       required: [],
     },
   },
   {
-    name: 'set_reminder',
-    description: 'Set a reminder/next step for a prospect.',
-    usage_hints: 'Schedule a future follow-up.',
+    name: "set_reminder",
+    description: "Set a reminder/next step for a prospect.",
+    usage_hints: "Schedule a future follow-up.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
-        company_name: { type: 'string', description: 'Company name' },
-        org_id: { type: 'string', description: 'Organization ID' },
-        reminder: { type: 'string', description: 'What needs to be done' },
-        due_date: { type: 'string', description: 'Due date' },
+        company_name: { type: "string", description: "Company name" },
+        org_id: { type: "string", description: "Organization ID" },
+        reminder: { type: "string", description: "What needs to be done" },
+        due_date: { type: "string", description: "Due date" },
       },
-      required: ['reminder', 'due_date'],
+      required: ["reminder", "due_date"],
     },
   },
   {
-    name: 'my_upcoming_tasks',
-    description: 'List upcoming tasks and reminders.',
-    usage_hints: 'Planning and scheduling.',
+    name: "my_upcoming_tasks",
+    description: "List upcoming tasks and reminders.",
+    usage_hints: "Planning and scheduling.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
-        days_ahead: { type: 'number', description: 'Days ahead (default: 7)' },
-        limit: { type: 'number', description: 'Max results (default: 20)' },
+        days_ahead: { type: "number", description: "Days ahead (default: 7)" },
+        limit: { type: "number", description: "Max results (default: 20)" },
       },
       required: [],
     },
   },
   {
-    name: 'complete_task',
-    description: 'Mark a task/reminder as done. Can complete by company name, org ID, or all overdue tasks at once.',
-    usage_hints: 'Use when admin says a task is done, completed, or finished.',
+    name: "complete_task",
+    description:
+      "Mark a task/reminder as done. Can complete by company name, org ID, or all overdue tasks at once.",
+    usage_hints: "Use when admin says a task is done, completed, or finished.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
-        company_name: { type: 'string', description: 'Company name to complete task for' },
-        org_id: { type: 'string', description: 'Organization ID to complete task for' },
-        all_overdue: { type: 'boolean', description: 'Complete all overdue tasks for this user' },
+        company_name: {
+          type: "string",
+          description: "Company name to complete task for",
+        },
+        org_id: {
+          type: "string",
+          description: "Organization ID to complete task for",
+        },
+        all_overdue: {
+          type: "boolean",
+          description: "Complete all overdue tasks for this user",
+        },
       },
       required: [],
     },
   },
   {
-    name: 'log_conversation',
-    description: 'Log a conversation or interaction with a prospect/member. Analyzes and extracts learnings.',
-    usage_hints: 'Use when admin reports an interaction.',
+    name: "log_conversation",
+    description:
+      "Log a conversation or interaction with a prospect/member. Analyzes and extracts learnings.",
+    usage_hints:
+      'Use when admin reports a conversation, email, call, or any outreach. Only summary is required — infer company_name, contact_name, and channel from context (e.g. "emailed" → channel=email, "called" → channel=call).',
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
-        company_name: { type: 'string', description: 'Company name' },
-        org_id: { type: 'string', description: 'Organization ID' },
-        contact_name: { type: 'string', description: 'Contact name' },
-        channel: { type: 'string', enum: ['call', 'video', 'slack_dm', 'email', 'in_person', 'other'], description: 'Channel' },
-        summary: { type: 'string', description: 'Summary of discussion' },
+        company_name: { type: "string", description: "Company name" },
+        org_id: { type: "string", description: "Organization ID" },
+        contact_name: { type: "string", description: "Contact name" },
+        channel: {
+          type: "string",
+          enum: ["call", "video", "slack_dm", "email", "in_person", "other"],
+          description: "Channel",
+        },
+        summary: { type: "string", description: "Summary of discussion" },
       },
-      required: ['summary'],
+      required: ["summary"],
     },
   },
 
@@ -1189,13 +1646,16 @@ Roles: member (default), admin (can manage team), owner (full control)`,
   // MEMBER SEARCH & INTRODUCTION ANALYTICS TOOLS
   // ============================================
   {
-    name: 'get_member_search_analytics',
-    description: 'Get analytics about member searches and introductions.',
-    usage_hints: 'Monitor directory and introduction performance.',
+    name: "get_member_search_analytics",
+    description: "Get analytics about member searches and introductions.",
+    usage_hints: "Monitor directory and introduction performance.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
-        days: { type: 'number', description: 'Days to look back (default: 30)' },
+        days: {
+          type: "number",
+          description: "Days to look back (default: 30)",
+        },
       },
     },
   },
@@ -1204,106 +1664,154 @@ Roles: member (default), admin (can manage team), owner (full control)`,
   // ORGANIZATION ANALYTICS TOOLS
   // ============================================
   {
-    name: 'list_organizations_by_users',
-    description: 'List organizations ranked by user count (website + Slack-only).',
-    usage_hints: 'Rank orgs by engagement.',
+    name: "list_organizations_by_users",
+    description:
+      "List organizations ranked by user count (website + Slack-only).",
+    usage_hints: "Rank orgs by engagement.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
-        limit: { type: 'number', description: 'Max results (default: 20)' },
-        member_status: { type: 'string', enum: ['member', 'prospect', 'churned', 'all'], description: 'Filter status' },
-        min_users: { type: 'number', description: 'Min users (default: 1)' },
+        limit: { type: "number", description: "Max results (default: 20)" },
+        member_status: {
+          type: "string",
+          enum: ["member", "prospect", "churned", "all"],
+          description: "Filter status",
+        },
+        min_users: { type: "number", description: "Min users (default: 1)" },
       },
     },
   },
   {
-    name: 'list_slack_users_by_org',
-    description: 'List Slack users from a specific organization.',
-    usage_hints: 'See specific people from a company.',
+    name: "list_slack_users_by_org",
+    description: "List Slack users from a specific organization.",
+    usage_hints: "See specific people from a company.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
-        query: { type: 'string', description: 'Company name or domain' },
+        query: { type: "string", description: "Company name or domain" },
       },
-      required: ['query'],
+      required: ["query"],
     },
   },
   {
-    name: 'list_users_by_engagement',
-    description: 'List community members ranked by community points (earned from events, working groups, content, connections, GitHub). Shows relationship stage, organization, and points breakdown by action type.',
-    usage_hints: 'Use when asked about most active people, top contributors, highly engaged individuals, who to invite to events, or Tier 3 / most engaged members. Use membership_tier to filter by individual vs company members. For org-level ranking use list_organizations_by_users instead.',
+    name: "list_users_by_engagement",
+    description:
+      "List community members ranked by community points (earned from events, working groups, content, connections, GitHub). Shows relationship stage, organization, and points breakdown by action type.",
+    usage_hints:
+      "Use when asked about most active people, top contributors, highly engaged individuals, who to invite to events, or Tier 3 / most engaged members. Use membership_tier to filter by individual vs company members. For org-level ranking use list_organizations_by_users instead.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
-        limit: { type: 'number', description: 'Max results (default: 25)' },
+        limit: { type: "number", description: "Max results (default: 25)" },
         stage: {
-          type: 'string',
-          enum: ['prospect', 'welcomed', 'exploring', 'participating', 'contributing', 'leading', 'all'],
-          description: 'Filter by relationship stage (default: all)',
+          type: "string",
+          enum: [
+            "prospect",
+            "welcomed",
+            "exploring",
+            "participating",
+            "contributing",
+            "leading",
+            "all",
+          ],
+          description: "Filter by relationship stage (default: all)",
         },
         member_only: {
-          type: 'boolean',
-          description: 'Only include users from paying member organizations (default: false)',
+          type: "boolean",
+          description:
+            "Only include users from paying member organizations (default: false)",
         },
         membership_tier: {
-          type: 'string',
-          enum: ['individual', 'company', 'all'],
-          description: 'Filter by membership tier: "individual" (personal workspaces), "company" (company orgs), or "all" (default: all)',
+          type: "string",
+          enum: ["individual", "company", "all"],
+          description:
+            'Filter by membership tier: "individual" (personal workspaces), "company" (company orgs), or "all" (default: all)',
         },
         include_breakdown: {
-          type: 'boolean',
-          description: 'Include points breakdown by action type (default: false)',
+          type: "boolean",
+          description:
+            "Include points breakdown by action type (default: false)",
         },
       },
     },
   },
   {
-    name: 'list_paying_members',
-    description: 'List all paying members grouped by subscription level ($50K ICL, $10K corporate, $2.5K SMB, individual). Includes individual members by default. Pass include_individual: false for corporate-only. Each entry includes the primary contact name and email.',
-    usage_hints: 'Use when asked about paying members, subscription breakdown, who pays what, membership revenue by tier, listing members for events/outreach, getting member contact lists, or checking for payment issues.',
+    name: "list_paying_members",
+    description:
+      "List all paying members grouped by subscription level ($50K ICL, $10K corporate, $2.5K SMB, individual). Includes individual members by default. Pass include_individual: false for corporate-only. Each entry includes the primary contact name and email.",
+    usage_hints:
+      "Use when asked about paying members, subscription breakdown, who pays what, membership revenue by tier, listing members for events/outreach, getting member contact lists, or checking for payment issues.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
         include_individual: {
-          type: 'boolean',
-          description: 'Include individual (personal) memberships (default: true)',
+          type: "boolean",
+          description:
+            "Include individual (personal) memberships (default: true)",
         },
         include_payment_issues: {
-          type: 'boolean',
-          description: 'Also include members with past_due or unpaid subscriptions, flagged in output (default: false)',
+          type: "boolean",
+          description:
+            "Also include members with past_due or unpaid subscriptions, flagged in output (default: false)",
         },
         limit: {
-          type: 'number',
-          description: 'Maximum results (default: 200, max: 500)',
+          type: "number",
+          description: "Maximum results (default: 200, max: 500)",
         },
       },
     },
   },
-
 
   // ============================================
   // ESCALATION MANAGEMENT TOOLS
   // ============================================
   {
-    name: 'list_escalations',
+    name: "list_escalations",
     description: `List escalations that need admin attention, or look up a specific escalation by ID.
 
 Use escalation_id to get details on a specific escalation (any status).
 Use status filter to browse escalations (defaults to open).`,
-    usage_hints: 'Use escalation_id for a specific lookup. Use status=open to browse unresolved escalations.',
+    usage_hints:
+      "Use escalation_id for a specific lookup. Use status=open to browse unresolved escalations.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
-        escalation_id: { type: 'number', description: 'Look up a specific escalation by ID (ignores status filter)' },
-        status: { type: 'string', enum: ['open', 'acknowledged', 'in_progress', 'resolved', 'wont_do', 'expired'], description: 'Filter by status (default: open). Ignored when escalation_id is provided.' },
-        category: { type: 'string', enum: ['capability_gap', 'needs_human_action', 'complex_request', 'sensitive_topic', 'other'], description: 'Filter by category' },
-        limit: { type: 'number', description: 'Max results (default: 10)' },
+        escalation_id: {
+          type: "number",
+          description:
+            "Look up a specific escalation by ID (ignores status filter)",
+        },
+        status: {
+          type: "string",
+          enum: [
+            "open",
+            "acknowledged",
+            "in_progress",
+            "resolved",
+            "wont_do",
+            "expired",
+          ],
+          description:
+            "Filter by status (default: open). Ignored when escalation_id is provided.",
+        },
+        category: {
+          type: "string",
+          enum: [
+            "capability_gap",
+            "needs_human_action",
+            "complex_request",
+            "sensitive_topic",
+            "other",
+          ],
+          description: "Filter by category",
+        },
+        limit: { type: "number", description: "Max results (default: 10)" },
       },
       required: [],
     },
   },
   {
-    name: 'resolve_escalation',
+    name: "resolve_escalation",
     description: `Mark an escalation as resolved and notify the user via Slack DM or email. Use this after you've handled a request that was previously escalated.
 
 IMPORTANT: Always notify the user unless there's a reason not to (e.g., test escalation, duplicate).
@@ -1315,24 +1823,42 @@ Examples:
 - User needed co-leader added → used add_committee_co_leader → resolve and notify
 - Admin says "this is fixed, let them know" → resolve and notify
 - Duplicate request → resolve with wont_do, no notification needed`,
-    usage_hints: 'After handling an escalated request, resolve it and notify the user. Also use when asked to let someone know about a resolved escalation.',
+    usage_hints:
+      "After handling an escalated request, resolve it and notify the user. Also use when asked to let someone know about a resolved escalation.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
-        escalation_id: { type: 'number', description: 'Escalation ID to resolve' },
-        status: { type: 'string', enum: ['resolved', 'wont_do'], description: 'Resolution status (default: resolved)' },
-        resolution_notes: { type: 'string', description: 'Notes about what was done to resolve' },
-        notify_user: { type: 'boolean', description: 'Notify user about resolution via Slack DM or email (default: true)' },
-        notification_message: { type: 'string', description: 'Custom message to include in notification' },
+        escalation_id: {
+          type: "number",
+          description: "Escalation ID to resolve",
+        },
+        status: {
+          type: "string",
+          enum: ["resolved", "wont_do"],
+          description: "Resolution status (default: resolved)",
+        },
+        resolution_notes: {
+          type: "string",
+          description: "Notes about what was done to resolve",
+        },
+        notify_user: {
+          type: "boolean",
+          description:
+            "Notify user about resolution via Slack DM or email (default: true)",
+        },
+        notification_message: {
+          type: "string",
+          description: "Custom message to include in notification",
+        },
       },
-      required: ['escalation_id'],
+      required: ["escalation_id"],
     },
   },
   // ============================================
   // BAN MANAGEMENT TOOLS
   // ============================================
   {
-    name: 'ban_entity',
+    name: "ban_entity",
     description: `Ban a user, organization, or API key. Scope can be platform-wide (blocks all access) or registry-specific (blocks brand/property edits only).
 
 Examples:
@@ -1340,84 +1866,88 @@ Examples:
 - Ban org from brand edits: ban_type=organization, entity_id=org_01HW..., scope=registry_brand
 - Revoke API key: ban_type=api_key, entity_id=wkapikey_..., scope=platform`,
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
         ban_type: {
-          type: 'string',
-          enum: ['user', 'organization', 'api_key'],
-          description: 'What kind of entity to ban',
+          type: "string",
+          enum: ["user", "organization", "api_key"],
+          description: "What kind of entity to ban",
         },
         entity_id: {
-          type: 'string',
-          description: 'The entity ID (WorkOS user ID, org ID, or API key ID)',
+          type: "string",
+          description: "The entity ID (WorkOS user ID, org ID, or API key ID)",
         },
         scope: {
-          type: 'string',
-          enum: ['platform', 'registry_brand', 'registry_property'],
-          description: 'What to ban from: platform (all access) or registry editing',
+          type: "string",
+          enum: ["platform", "registry_brand", "registry_property"],
+          description:
+            "What to ban from: platform (all access) or registry editing",
         },
         scope_target: {
-          type: 'string',
-          description: 'For registry bans: specific domain to ban from (omit for global)',
+          type: "string",
+          description:
+            "For registry bans: specific domain to ban from (omit for global)",
         },
         reason: {
-          type: 'string',
-          description: 'Why this entity is being banned',
+          type: "string",
+          description: "Why this entity is being banned",
         },
         expires_in_days: {
-          type: 'number',
-          description: 'Ban duration in days (omit for permanent)',
+          type: "number",
+          description: "Ban duration in days (omit for permanent)",
         },
       },
-      required: ['ban_type', 'entity_id', 'scope', 'reason'],
+      required: ["ban_type", "entity_id", "scope", "reason"],
     },
   },
   {
-    name: 'unban_entity',
-    description: 'Remove a ban. Provide either the ban ID directly, or the ban_type + entity_id + scope to look it up.',
+    name: "unban_entity",
+    description:
+      "Remove a ban. Provide either the ban ID directly, or the ban_type + entity_id + scope to look it up.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
         ban_id: {
-          type: 'string',
-          description: 'The ban UUID to remove (if known)',
+          type: "string",
+          description: "The ban UUID to remove (if known)",
         },
         ban_type: {
-          type: 'string',
-          enum: ['user', 'organization', 'api_key'],
-          description: 'Entity type (used with entity_id to find the ban)',
+          type: "string",
+          enum: ["user", "organization", "api_key"],
+          description: "Entity type (used with entity_id to find the ban)",
         },
         entity_id: {
-          type: 'string',
-          description: 'Entity ID to look up (used with ban_type)',
+          type: "string",
+          description: "Entity ID to look up (used with ban_type)",
         },
         scope: {
-          type: 'string',
-          enum: ['platform', 'registry_brand', 'registry_property'],
-          description: 'Scope to match (used with ban_type + entity_id)',
+          type: "string",
+          enum: ["platform", "registry_brand", "registry_property"],
+          description: "Scope to match (used with ban_type + entity_id)",
         },
       },
     },
   },
   {
-    name: 'list_bans',
-    description: 'List active bans. Optionally filter by ban_type, scope, or entity_id.',
+    name: "list_bans",
+    description:
+      "List active bans. Optionally filter by ban_type, scope, or entity_id.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
         ban_type: {
-          type: 'string',
-          enum: ['user', 'organization', 'api_key'],
-          description: 'Filter by entity type',
+          type: "string",
+          enum: ["user", "organization", "api_key"],
+          description: "Filter by entity type",
         },
         scope: {
-          type: 'string',
-          enum: ['platform', 'registry_brand', 'registry_property'],
-          description: 'Filter by scope',
+          type: "string",
+          enum: ["platform", "registry_brand", "registry_property"],
+          description: "Filter by scope",
         },
         entity_id: {
-          type: 'string',
-          description: 'Filter by entity ID',
+          type: "string",
+          description: "Filter by entity ID",
         },
       },
     },
@@ -1427,72 +1957,115 @@ Examples:
   // MEMBER PROFILE TOOLS
   // ============================================
   {
-    name: 'update_member_logo',
+    name: "update_member_logo",
     description: `Set or update the logo URL on a member's directory profile. Requires a publicly hosted HTTPS logo URL plus either the member's org_name or profile slug to identify them. Creates a brand entry if none exists, or updates the existing one.
 
 Do not use this to upload or host logo files — the URL must already be publicly accessible. After updating, use resolve_escalation to close the related support ticket.`,
-    usage_hints: 'Call get_account first to confirm the member exists. After updating, call resolve_escalation to close the escalation and notify the user.',
+    usage_hints:
+      "Call get_account first to confirm the member exists. After updating, call resolve_escalation to close the escalation and notify the user.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
         org_name: {
-          type: 'string',
-          description: 'Organization display name. Provide this or slug (one is required).',
+          type: "string",
+          description:
+            "Organization display name. Provide this or slug (one is required).",
         },
         slug: {
-          type: 'string',
-          description: 'Member profile slug. Provide this or org_name (one is required).',
+          type: "string",
+          description:
+            "Member profile slug. Provide this or org_name (one is required).",
         },
         logo_url: {
-          type: 'string',
-          description: 'Publicly hosted HTTPS URL of the logo (PNG, SVG, etc.)',
+          type: "string",
+          description: "Publicly hosted HTTPS URL of the logo (PNG, SVG, etc.)",
         },
       },
-      required: ['logo_url'],
+      required: ["logo_url"],
     },
   },
 
   {
-    name: 'update_member_profile',
+    name: "update_member_profile",
     description: `Update fields on a member's directory profile. Identify the member by org_name or slug (exact match required). Accepts any combination of: description, tagline, contact info, social links, headquarters, markets, offerings, and visibility settings.
 
 For logo changes, use update_member_logo instead.`,
-    usage_hints: 'Call get_account first to confirm the member exists. Useful for fixing profile data or toggling visibility.',
+    usage_hints:
+      "Call get_account first to confirm the member exists. Useful for fixing profile data or toggling visibility.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
         org_name: {
-          type: 'string',
-          description: 'Organization display name. Provide this or slug (one is required).',
+          type: "string",
+          description:
+            "Organization display name. Provide this or slug (one is required).",
         },
         slug: {
-          type: 'string',
-          description: 'Member profile slug. Provide this or org_name (one is required).',
+          type: "string",
+          description:
+            "Member profile slug. Provide this or org_name (one is required).",
         },
-        description: { type: 'string', description: 'Company description.' },
-        tagline: { type: 'string', description: 'Short tagline. Set to empty string to clear.' },
-        contact_email: { type: 'string', description: 'Contact email address.' },
-        contact_website: { type: 'string', description: 'Company website URL.' },
-        contact_phone: { type: 'string', description: 'Contact phone number.' },
-        linkedin_url: { type: 'string', description: 'LinkedIn profile or company page URL.' },
-        twitter_url: { type: 'string', description: 'Twitter/X profile URL.' },
-        headquarters: { type: 'string', description: 'Headquarters location (e.g., "New York, NY").' },
+        description: { type: "string", description: "Company description." },
+        tagline: {
+          type: "string",
+          description: "Short tagline. Set to empty string to clear.",
+        },
+        contact_email: {
+          type: "string",
+          description: "Contact email address.",
+        },
+        contact_website: {
+          type: "string",
+          description: "Company website URL.",
+        },
+        contact_phone: { type: "string", description: "Contact phone number." },
+        linkedin_url: {
+          type: "string",
+          description: "LinkedIn profile or company page URL.",
+        },
+        twitter_url: { type: "string", description: "Twitter/X profile URL." },
+        headquarters: {
+          type: "string",
+          description: 'Headquarters location (e.g., "New York, NY").',
+        },
         markets: {
-          type: 'array',
-          items: { type: 'string' },
+          type: "array",
+          items: { type: "string" },
           description: 'Target markets (e.g., ["North America", "EMEA"]).',
         },
         offerings: {
-          type: 'array',
+          type: "array",
           items: {
-            type: 'string',
+            type: "string",
             enum: [...VALID_MEMBER_OFFERINGS],
           },
-          description: 'Member offering types.',
+          description: "Member offering types.",
         },
-        is_public: { type: 'boolean', description: 'Whether profile is visible in the public member directory.' },
-        show_in_carousel: { type: 'boolean', description: 'Whether profile appears in the homepage carousel.' },
-        is_founding_member: { type: 'boolean', description: 'Whether this member has founding member status. Admin-only. Use to grant founding status to members who joined late due to billing or other issues.' },
+        is_public: {
+          type: "boolean",
+          description:
+            "Whether profile is visible in the public member directory.",
+        },
+        show_in_carousel: {
+          type: "boolean",
+          description: "Whether profile appears in the homepage carousel.",
+        },
+        is_founding_member: {
+          type: "boolean",
+          description:
+            "Whether this member has founding member status. Admin-only. Setting true requires founding_member_source.",
+        },
+        founding_member_source: {
+          type: "string",
+          enum: ["auto_pre_cutoff", "manual_grandfather"],
+          description:
+            'Provenance for the founding member flag. Use "manual_grandfather" for admin overrides outside the auto-cutoff window.',
+        },
+        founding_member_granted_reason: {
+          type: "string",
+          description:
+            'Free-text reason for a manual grandfather grant (e.g., "site issues blocked pre-deadline enrollment"). Recorded for audit.',
+        },
       },
     },
   },
@@ -1501,25 +2074,26 @@ For logo changes, use update_member_logo instead.`,
   // ADDIE SDR TOOLS
   // ============================================
   {
-    name: 'triage_prospect_domain',
+    name: "triage_prospect_domain",
     description: `Assess an email domain as a potential prospect. Addie will research the company, determine fit, and optionally create a prospect record. Use this when someone mentions a company that isn't in the system yet.`,
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
         domain: {
-          type: 'string',
+          type: "string",
           description: 'Email domain to assess (e.g., "thetradedesk.com")',
         },
         company_name: {
-          type: 'string',
-          description: 'Company name, if known',
+          type: "string",
+          description: "Company name, if known",
         },
         create_if_relevant: {
-          type: 'boolean',
-          description: 'If true, create a prospect record automatically when the company is relevant (default: true)',
+          type: "boolean",
+          description:
+            "If true, create a prospect record automatically when the company is relevant (default: true)",
         },
       },
-      required: ['domain'],
+      required: ["domain"],
     },
   },
 
@@ -1527,123 +2101,163 @@ For logo changes, use update_member_logo instead.`,
   // OUTREACH TOOLS
   // ============================================
   {
-    name: 'get_outreach_stats',
-    description: 'Get outreach performance metrics: messages sent, response rates. Use this when asked "how is outreach going?" or about engagement performance.',
+    name: "get_outreach_stats",
+    description:
+      'Get outreach performance metrics: messages sent, response rates. Use this when asked "how is outreach going?" or about engagement performance.',
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {},
     },
   },
   {
-    name: 'get_outreach_history',
-    description: 'Get outreach message history. With a slack_user_id, returns that person\'s full outreach timeline with goals and responses. Without, returns recent system-wide outreach.',
+    name: "get_outreach_history",
+    description:
+      "Get outreach message history. With a slack_user_id, returns that person's full outreach timeline with goals and responses. Without, returns recent system-wide outreach.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
         slack_user_id: {
-          type: 'string',
-          description: 'Slack user ID to get history for (optional — omit for recent system-wide)',
+          type: "string",
+          description:
+            "Slack user ID to get history for (optional — omit for recent system-wide)",
         },
         limit: {
-          type: 'number',
-          description: 'Maximum results (default: 20)',
+          type: "number",
+          description: "Maximum results (default: 20)",
         },
       },
     },
   },
   {
-    name: 'send_outreach',
-    description: 'Trigger outreach to a Slack user. Checks eligibility first. Set dry_run=true to check eligibility without sending. Use lookup_person for full person context.',
+    name: "send_outreach",
+    description:
+      "Trigger outreach to a Slack user. Checks eligibility first. Set dry_run=true to check eligibility without sending. Use lookup_person for full person context.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
         slack_user_id: {
-          type: 'string',
-          description: 'Slack user ID to contact',
+          type: "string",
+          description: "Slack user ID to contact",
         },
         dry_run: {
-          type: 'boolean',
-          description: 'If true, check eligibility without sending. Returns whether the user can be contacted and their capabilities.',
+          type: "boolean",
+          description:
+            "If true, check eligibility without sending. Returns whether the user can be contacted and their capabilities.",
         },
       },
-      required: ['slack_user_id'],
+      required: ["slack_user_id"],
     },
   },
   {
-    name: 'lookup_person',
-    description: 'Look up a person by Slack user ID, email, or name. Returns their relationship stage, sentiment, contact eligibility, recent activity, and org. Use for person-level context (vs get_account for org-level).',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        query: {
-          type: 'string',
-          description: 'Slack user ID (U...), email address, or name to search',
-        },
-      },
-      required: ['query'],
-    },
-  },
-  {
-    name: 'get_person_memory',
+    name: "lookup_person",
     description:
-      'Use when you need the full picture of what we know about a person — identity, membership, engagement, preferences, pending invites, recent threads — gathered into one view before reasoning. Prefer this over chaining lookup_person + get_account + list_invites_for_org. Do NOT use for org-level questions. Returns a structured summary with sources so you can cite where each fact came from.',
+      "Look up a person by Slack user ID, email, or name. Returns their relationship stage, sentiment, contact eligibility, recent activity, and org. Use for person-level context (vs get_account for org-level).",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
         query: {
-          type: 'string',
-          description: 'Slack user ID (U...), email, or display name',
+          type: "string",
+          description: "Slack user ID (U...), email address, or name to search",
         },
       },
-      required: ['query'],
+      required: ["query"],
     },
   },
   {
-    name: 'get_engagement_plan',
-    description: 'Preview the engagement plan for a person — shows contact eligibility, scored opportunities, and what Addie would say. Use this to understand or debug engagement decisions.',
+    name: "create_contact",
+    description:
+      "Create or find a contact record for a person by email. Writes to email_contacts (CRM) and person_relationships (engagement tracking). Returns whether the contact was new and whether they were auto-matched to an organization.",
+    usage_hints:
+      "Use when admin wants to add a new outreach contact or ensure a person exists in the CRM. Only email is required.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
-        query: {
-          type: 'string',
-          description: 'Slack user ID (U...), email address, or name',
+        email: {
+          type: "string",
+          description: "Email address of the contact",
+        },
+        display_name: {
+          type: "string",
+          description: "Full name of the contact (optional but recommended)",
         },
       },
-      required: ['query'],
+      required: ["email"],
     },
   },
   {
-    name: 'get_outreach_health',
-    description: 'Get a health report on the outreach system: stage breakdown, over-contacted people approaching circuit breaker, outreach volume, and email stats. Use to assess system health or when asked "how is outreach doing?"',
+    name: "get_person_memory",
+    description:
+      "Use when you need the full picture of what we know about a person — identity, membership, engagement, preferences, pending invites, recent threads — gathered into one view before reasoning. Prefer this over chaining lookup_person + get_account + list_invites_for_org. Do NOT use for org-level questions. Returns a structured summary with sources so you can cite where each fact came from.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
+      properties: {
+        query: {
+          type: "string",
+          description: "Slack user ID (U...), email, or display name",
+        },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "get_engagement_plan",
+    description:
+      "Preview the engagement plan for a person — shows contact eligibility, scored opportunities, and what Addie would say. Use this to understand or debug engagement decisions.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        query: {
+          type: "string",
+          description: "Slack user ID (U...), email address, or name",
+        },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "get_outreach_health",
+    description:
+      'Get a health report on the outreach system: stage breakdown, over-contacted people approaching circuit breaker, outreach volume, and email stats. Use to assess system health or when asked "how is outreach doing?"',
+    input_schema: {
+      type: "object" as const,
       properties: {},
     },
   },
   {
-    name: 'get_action_items',
-    description: 'Get open action items from the outreach pipeline — nudges, warm leads, momentum signals, follow-ups. Shows what needs attention today. Use to answer "who needs follow-up?" or "what\'s in my pipeline?"',
+    name: "get_action_items",
+    description:
+      'Get open action items from the outreach pipeline — nudges, warm leads, momentum signals, follow-ups. Shows what needs attention today. Use to answer "who needs follow-up?" or "what\'s in my pipeline?"',
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
         status: {
-          type: 'string',
-          description: 'Filter by status: open, snoozed, completed, dismissed. Default: open',
-          enum: ['open', 'snoozed', 'completed', 'dismissed'],
+          type: "string",
+          description:
+            "Filter by status: open, snoozed, completed, dismissed. Default: open",
+          enum: ["open", "snoozed", "completed", "dismissed"],
         },
         action_type: {
-          type: 'string',
-          description: 'Filter by type: nudge, warm_lead, momentum, feedback, alert, follow_up, celebration',
-          enum: ['nudge', 'warm_lead', 'momentum', 'feedback', 'alert', 'follow_up', 'celebration'],
+          type: "string",
+          description:
+            "Filter by type: nudge, warm_lead, momentum, feedback, alert, follow_up, celebration",
+          enum: [
+            "nudge",
+            "warm_lead",
+            "momentum",
+            "feedback",
+            "alert",
+            "follow_up",
+            "celebration",
+          ],
         },
         priority: {
-          type: 'string',
-          description: 'Filter by priority: high, medium, low',
-          enum: ['high', 'medium', 'low'],
+          type: "string",
+          description: "Filter by priority: high, medium, low",
+          enum: ["high", "medium", "low"],
         },
         limit: {
-          type: 'number',
-          description: 'Max items to return. Default 20.',
+          type: "number",
+          description: "Max items to return. Default 20.",
         },
       },
       required: [],
@@ -1654,64 +2268,72 @@ For logo changes, use update_member_logo instead.`,
   // BRAND LOGO REVIEW TOOLS
   // ============================================
   {
-    name: 'list_pending_brand_logos',
-    description: 'List brand logos awaiting moderator review across the registry. Returns logo IDs, domains, uploader email, tags, and how long they have been pending. Use this to triage the registry approval queue or answer "what logos need approval?"',
-    usage_hints: 'Pair with review_brand_logo to approve or reject from the queue. Pending logos block the company-listing display until reviewed.',
+    name: "list_pending_brand_logos",
+    description:
+      'List brand logos awaiting moderator review across the registry. Returns logo IDs, domains, uploader email, tags, and how long they have been pending. Use this to triage the registry approval queue or answer "what logos need approval?"',
+    usage_hints:
+      "Pair with review_brand_logo to approve or reject from the queue. Pending logos block the company-listing display until reviewed.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
         limit: {
-          type: 'number',
-          description: 'Maximum logos to return (default 25, max 100)',
+          type: "number",
+          description: "Maximum logos to return (default 25, max 100)",
         },
         offset: {
-          type: 'number',
-          description: 'Pagination offset (default 0)',
+          type: "number",
+          description: "Pagination offset (default 0)",
         },
       },
     },
   },
   {
-    name: 'list_brand_logos',
-    description: 'List every logo for ONE specific brand domain — pending, approved, rejected, deleted — to investigate why a brand\'s logo is or is not displaying. Use this when you have a domain in hand. For the global moderation queue across all domains, use list_pending_brand_logos instead.',
-    usage_hints: 'Use when a member reports their logo is "disappearing" or stuck on a known domain. Pending status means an admin must approve via review_brand_logo.',
+    name: "list_brand_logos",
+    description:
+      "List every logo for ONE specific brand domain — pending, approved, rejected, deleted — to investigate why a brand's logo is or is not displaying. Use this when you have a domain in hand. For the global moderation queue across all domains, use list_pending_brand_logos instead.",
+    usage_hints:
+      'Use when a member reports their logo is "disappearing" or stuck on a known domain. Pending status means an admin must approve via review_brand_logo.',
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
         domain: {
-          type: 'string',
+          type: "string",
           description: 'Brand domain (e.g., "thehook.es")',
         },
       },
-      required: ['domain'],
+      required: ["domain"],
     },
   },
   {
-    name: 'review_brand_logo',
-    description: 'Approve, reject, or delete a pending brand logo. Approving makes it visible on the brand\'s company listing; rejecting hides it; deleting tombstones it. Triggers manifest rebuild on approve for unverified brands.',
-    usage_hints: 'Get the logo_id from list_pending_brand_logos or list_brand_logos. Always include a short note explaining the decision so the uploader gets useful feedback.',
+    name: "review_brand_logo",
+    description:
+      "Approve, reject, or delete a pending brand logo. Approving makes it visible on the brand's company listing; rejecting hides it; deleting tombstones it. Triggers manifest rebuild on approve for unverified brands.",
+    usage_hints:
+      "Get the logo_id from list_pending_brand_logos or list_brand_logos. Always include a short note explaining the decision so the uploader gets useful feedback.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
         domain: {
-          type: 'string',
-          description: 'Brand domain the logo belongs to',
+          type: "string",
+          description: "Brand domain the logo belongs to",
         },
         logo_id: {
-          type: 'string',
-          description: 'Logo UUID (from list_pending_brand_logos)',
+          type: "string",
+          description: "Logo UUID (from list_pending_brand_logos)",
         },
         action: {
-          type: 'string',
-          enum: ['approve', 'reject', 'delete'],
-          description: 'approve = publish, reject = hide with reason, delete = tombstone',
+          type: "string",
+          enum: ["approve", "reject", "delete"],
+          description:
+            "approve = publish, reject = hide with reason, delete = tombstone",
         },
         note: {
-          type: 'string',
-          description: 'Reviewer note (max 500 chars). Required for reject/delete; helpful on approve.',
+          type: "string",
+          description:
+            "Reviewer note (max 500 chars). Required for reject/delete; helpful on approve.",
         },
       },
-      required: ['domain', 'logo_id', 'action'],
+      required: ["domain", "logo_id", "action"],
     },
   },
 
@@ -1719,44 +2341,48 @@ For logo changes, use update_member_logo instead.`,
   // BRAND REGISTRY TOOLS
   // ============================================
   {
-    name: 'transfer_brand_ownership',
+    name: "transfer_brand_ownership",
     description: `Transfer ownership of a brand domain from one organization to another. Records a revision for audit. Use after out-of-band verification (acquisition docs, support ticket, legal correspondence) confirms the new org should own the domain.
 
 Do not use to resolve unverified disputes — use the escalation queue for those. This is for confirmed transfers only.`,
-    usage_hints: 'Get new_org_id from get_account. Pair with resolve_escalation to close the related support ticket after transfer.',
+    usage_hints:
+      "Get new_org_id from get_account. Pair with resolve_escalation to close the related support ticket after transfer.",
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
         domain: {
-          type: 'string',
+          type: "string",
           description: 'Brand domain to transfer (e.g., "nova-brands.com")',
         },
         new_org_id: {
-          type: 'string',
-          description: 'WorkOS organization ID of the new owner (e.g., "org_01HW...")',
+          type: "string",
+          description:
+            'WorkOS organization ID of the new owner (e.g., "org_01HW...")',
         },
         reason: {
-          type: 'string',
-          description: 'Reason for the transfer, recorded in the audit trail (e.g., "Acquisition by Pinnacle Agency — see ticket #4821")',
+          type: "string",
+          description:
+            'Reason for the transfer, recorded in the audit trail (e.g., "Acquisition by Pinnacle Agency — see ticket #4821")',
         },
       },
-      required: ['domain', 'new_org_id', 'reason'],
+      required: ["domain", "new_org_id", "reason"],
     },
   },
   {
-    name: 'list_orphaned_brands',
+    name: "list_orphaned_brands",
     description: `List brand domains in the orphaned state — a prior owner relinquished and the manifest is preserved for adoption. Use this to audit relinquished brands, see which ones have stale data, and trigger admin cleanup or reach out to potential adopters. Returns prior owner org name + id, when relinquished, and a manifest preview so admins can decide at a glance.`,
-    usage_hints: 'Use to answer "what brands are awaiting adoption?" or to find a specific orphaned domain. Pair with transfer_brand_ownership when an admin has confirmed the right next owner out of band.',
+    usage_hints:
+      'Use to answer "what brands are awaiting adoption?" or to find a specific orphaned domain. Pair with transfer_brand_ownership when an admin has confirmed the right next owner out of band.',
     input_schema: {
-      type: 'object' as const,
+      type: "object" as const,
       properties: {
         limit: {
-          type: 'number',
-          description: 'Maximum brands to return (default 50, max 200)',
+          type: "number",
+          description: "Maximum brands to return (default 50, max 200)",
         },
         offset: {
-          type: 'number',
-          description: 'Pagination offset (default 0)',
+          type: "number",
+          description: "Pagination offset (default 0)",
         },
       },
     },
@@ -1768,11 +2394,11 @@ Do not use to resolve unverified disputes — use the escalation queue for those
  */
 function formatMembershipTier(tier: string): string {
   const labels: Record<string, string> = {
-    individual_academic: 'Explorer ($50/yr)',
-    individual_professional: 'Professional ($250/yr)',
-    company_standard: 'Builder ($3K/yr)',
-    company_icl: 'Partner ($15K/yr)',
-    company_leader: 'Leader ($50K/yr)',
+    individual_academic: "Explorer ($50/yr)",
+    individual_professional: "Professional ($250/yr)",
+    company_standard: "Builder ($3K/yr)",
+    company_icl: "Partner ($15K/yr)",
+    company_leader: "Leader ($50K/yr)",
   };
   return labels[tier] || tier;
 }
@@ -1782,12 +2408,12 @@ function formatMembershipTier(tier: string): string {
  */
 function formatRevenueTier(tier: string): string {
   const labels: Record<string, string> = {
-    under_1m: 'Under $1M',
-    '1m_5m': '$1M - $5M',
-    '5m_50m': '$5M - $50M',
-    '50m_250m': '$50M - $250M',
-    '250m_1b': '$250M - $1B',
-    '1b_plus': 'Over $1B',
+    under_1m: "Under $1M",
+    "1m_5m": "$1M - $5M",
+    "5m_50m": "$5M - $50M",
+    "50m_250m": "$50M - $250M",
+    "250m_1b": "$250M - $1B",
+    "1b_plus": "Over $1B",
   };
   return labels[tier] || tier;
 }
@@ -1795,9 +2421,9 @@ function formatRevenueTier(tier: string): string {
 /**
  * Format currency for display
  */
-function formatCurrency(cents: number, currency = 'usd'): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
+function formatCurrency(cents: number, currency = "usd"): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
     currency: currency.toUpperCase(),
   }).format(cents / 100);
 }
@@ -1806,10 +2432,10 @@ function formatCurrency(cents: number, currency = 'usd'): string {
  * Format date for display
  */
 function formatDate(date: Date): string {
-  return date.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
+  return date.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
   });
 }
 
@@ -1829,31 +2455,37 @@ function formatPendingInvoice(invoice: PendingInvoice): FormattedInvoice {
     id: invoice.id,
     status: invoice.status,
     amount: formatCurrency(invoice.amount_due, invoice.currency),
-    product: invoice.product_name || 'Unknown product',
-    sent_to: invoice.customer_email || 'Unknown',
+    product: invoice.product_name || "Unknown product",
+    sent_to: invoice.customer_email || "Unknown",
     created: formatDate(invoice.created),
-    due_date: invoice.due_date ? formatDate(invoice.due_date) : 'Not set',
+    due_date: invoice.due_date ? formatDate(invoice.due_date) : "Not set",
     payment_url: invoice.hosted_invoice_url || null,
   };
 }
 
-function renderPendingInvoiceSection(pendingInvoices: PendingInvoice[]): string {
-  if (pendingInvoices.length === 0) return '';
-  const pastDueCount = pendingInvoices.filter(inv => inv.is_past_due).length;
-  const header = pastDueCount > 0
-    ? `⚠️ **Unpaid invoices (${pastDueCount} past due):** ${pendingInvoices.length}\n`
-    : `**Pending invoices:** ${pendingInvoices.length}\n`;
+function renderPendingInvoiceSection(
+  pendingInvoices: PendingInvoice[],
+): string {
+  if (pendingInvoices.length === 0) return "";
+  const pastDueCount = pendingInvoices.filter((inv) => inv.is_past_due).length;
+  const header =
+    pastDueCount > 0
+      ? `⚠️ **Unpaid invoices (${pastDueCount} past due):** ${pendingInvoices.length}\n`
+      : `**Pending invoices:** ${pendingInvoices.length}\n`;
   let result = header;
   for (const inv of pendingInvoices.slice(0, 3)) {
     const formatted = formatPendingInvoice(inv);
-    const statusLabel = inv.is_past_due ? 'past due' : formatted.status;
+    const statusLabel = inv.is_past_due ? "past due" : formatted.status;
     result += `  - \`${formatted.id}\` — ${formatted.amount} (${statusLabel})`;
-    if (formatted.due_date !== 'Not set') result += ` due ${formatted.due_date}`;
-    if (formatted.sent_to !== 'Unknown') result += ` → ${formatted.sent_to}`;
-    result += '\n';
+    if (formatted.due_date !== "Not set")
+      result += ` due ${formatted.due_date}`;
+    if (formatted.sent_to !== "Unknown") result += ` → ${formatted.sent_to}`;
+    result += "\n";
   }
   if (pendingInvoices.length > 3) {
-    result += `  _... and ${pendingInvoices.length - 3} more (use list_pending_invoices for all)_\n`;
+    result += `  _... and ${
+      pendingInvoices.length - 3
+    } more (use list_pending_invoices for all)_\n`;
   }
   return result;
 }
@@ -1861,17 +2493,19 @@ function renderPendingInvoiceSection(pendingInvoices: PendingInvoice[]): string 
 /**
  * Format open invoice with customer info for response
  */
-function formatOpenInvoice(invoice: OpenInvoiceWithCustomer): Record<string, unknown> {
+function formatOpenInvoice(
+  invoice: OpenInvoiceWithCustomer,
+): Record<string, unknown> {
   return {
     id: invoice.id,
     status: invoice.status,
     is_past_due: invoice.is_past_due,
     amount: formatCurrency(invoice.amount_due, invoice.currency),
-    product: invoice.product_name || 'Unknown product',
-    customer_name: invoice.customer_name || 'Unknown',
-    customer_email: invoice.customer_email || 'Unknown',
+    product: invoice.product_name || "Unknown product",
+    customer_name: invoice.customer_name || "Unknown",
+    customer_email: invoice.customer_email || "Unknown",
     created: formatDate(invoice.created),
-    due_date: invoice.due_date ? formatDate(invoice.due_date) : 'Not set',
+    due_date: invoice.due_date ? formatDate(invoice.due_date) : "Not set",
     payment_url: invoice.hosted_invoice_url || null,
   };
 }
@@ -1882,8 +2516,646 @@ function formatOpenInvoice(invoice: OpenInvoiceWithCustomer): Record<string, unk
 // signup forms shouldn't be able to break out of code spans or inject new
 // instructions.
 function sanitizeForMarkdown(value: string | null | undefined): string {
-  if (!value) return '';
-  return value.replace(/[`\r\n]/g, ' ').slice(0, 200).trim();
+  if (!value) return "";
+  return value
+    .replace(/[`\r\n]/g, " ")
+    .slice(0, 200)
+    .trim();
+}
+
+const STRIPE_CUSTOMER_UPDATE_PREVIEW_TTL_MS = 10 * 60 * 1000;
+
+interface PendingStripeCustomerUpdate {
+  token: string;
+  orgId: string;
+  newCustomerId: string;
+  currentCustomerId: string | null;
+  actorWorkosUserId: string;
+  actorEmail: string | null;
+  expiresAt: Date;
+}
+
+type OrganizationRecord = NonNullable<
+  Awaited<ReturnType<OrganizationDatabase["getOrganization"]>>
+>;
+
+interface StripeCustomerUpdatePreview {
+  org: OrganizationRecord;
+  customer: Stripe.Customer;
+  subscriptions: Stripe.Subscription[];
+  membershipPick: PickedMembershipSub | null;
+}
+
+function normalizeStripeCustomerId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.startsWith("cus_") ? trimmed : null;
+}
+
+function safeToolText(
+  value: string | null | undefined,
+  maxLength = 160,
+): string | null {
+  return value ? wrapUntrustedInput(value, maxLength) : null;
+}
+
+function formatStripeCustomerForTool(
+  customer: Stripe.Customer,
+): Record<string, unknown> {
+  return {
+    id: customer.id,
+    name: safeToolText(customer.name),
+    email: safeToolText(customer.email),
+    metadata_org_id: safeToolText(customer.metadata?.workos_organization_id),
+  };
+}
+
+function formatStripeSubscriptionForTool(
+  subscription: Stripe.Subscription | null,
+): Record<string, unknown> | null {
+  if (!subscription) return null;
+  const item = subscription.items?.data?.[0];
+  const price = item?.price;
+  return {
+    id: subscription.id,
+    status: subscription.status,
+    product_name:
+      typeof price?.product === "object" &&
+      price.product &&
+      "name" in price.product
+        ? safeToolText(price.product.name)
+        : null,
+    lookup_key: price?.lookup_key ?? null,
+    amount: price?.unit_amount ?? null,
+    currency: price?.currency ?? null,
+    interval: price?.recurring?.interval ?? null,
+  };
+}
+
+function rowToPendingStripeCustomerUpdate(
+  row: Record<string, unknown>,
+): PendingStripeCustomerUpdate {
+  return {
+    token: row.token as string,
+    orgId: row.workos_organization_id as string,
+    newCustomerId: row.new_customer_id as string,
+    currentCustomerId: (row.current_customer_id as string | null) ?? null,
+    actorWorkosUserId: row.actor_workos_user_id as string,
+    actorEmail: (row.actor_email as string | null) ?? null,
+    expiresAt: new Date(row.expires_at as string | Date),
+  };
+}
+
+async function saveStripeCustomerUpdatePreview(
+  pending: PendingStripeCustomerUpdate,
+): Promise<void> {
+  const pool = getPool();
+  await pool.query(
+    `INSERT INTO admin_stripe_customer_update_previews
+       (token, workos_organization_id, new_customer_id, current_customer_id,
+        actor_workos_user_id, actor_email, expires_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [
+      pending.token,
+      pending.orgId,
+      pending.newCustomerId,
+      pending.currentCustomerId,
+      pending.actorWorkosUserId,
+      pending.actorEmail,
+      pending.expiresAt,
+    ],
+  );
+}
+
+async function getStripeCustomerUpdatePreview(
+  token: string,
+): Promise<PendingStripeCustomerUpdate | null> {
+  const pool = getPool();
+  const result = await pool.query(
+    `SELECT token, workos_organization_id, new_customer_id, current_customer_id,
+            actor_workos_user_id, actor_email, expires_at
+       FROM admin_stripe_customer_update_previews
+      WHERE token = $1 AND expires_at > NOW()`,
+    [token],
+  );
+  return result.rows[0] ? rowToPendingStripeCustomerUpdate(result.rows[0]) : null;
+}
+
+async function loadStripeCustomerUpdatePreview(
+  orgId: string,
+  customerId: string,
+): Promise<StripeCustomerUpdatePreview> {
+  if (!stripe) {
+    throw new ToolError("Stripe is not configured; cannot validate the customer before relinking.");
+  }
+
+  const org = await orgDb.getOrganization(orgId);
+  if (!org) {
+    throw new ToolError(`Organization ${orgId} not found.`);
+  }
+
+  if (org.stripe_customer_id === customerId) {
+    throw new ToolError(`Organization ${orgId} is already linked to ${customerId}.`);
+  }
+
+  const pool = getPool();
+  const existingLink = await pool.query(
+    "SELECT workos_organization_id FROM organizations WHERE stripe_customer_id = $1",
+    [customerId],
+  );
+  if (
+    existingLink.rows.length > 0 &&
+    existingLink.rows[0].workos_organization_id !== orgId
+  ) {
+    throw new ToolError(
+      `Stripe customer ${customerId} is already linked to another organization (${existingLink.rows[0].workos_organization_id}).`,
+    );
+  }
+
+  let customer: Stripe.Customer | Stripe.DeletedCustomer;
+  try {
+    customer = await stripe.customers.retrieve(customerId);
+  } catch (err) {
+    const stripeError = err as { code?: string; statusCode?: number; message?: string };
+    const notFound =
+      stripeError.code === "resource_missing" || stripeError.statusCode === 404;
+    throw new ToolError(
+      notFound
+        ? `Stripe customer ${customerId} was not found.`
+        : `Could not validate Stripe customer ${customerId}: ${stripeError.message ?? "unknown error"}`,
+    );
+  }
+
+  if ("deleted" in customer && customer.deleted) {
+    throw new ToolError(`Stripe customer ${customerId} is deleted and cannot be linked.`);
+  }
+
+  let subscriptions: Stripe.Subscription[];
+  try {
+    const subscriptionsResp = await stripe.subscriptions.list({
+      customer: customerId,
+      status: "all",
+      limit: 100,
+    });
+    subscriptions = subscriptionsResp.data;
+  } catch (err) {
+    const stripeError = err as { message?: string };
+    throw new ToolError(
+      `Could not validate Stripe subscriptions for ${customerId}: ${stripeError.message ?? "unknown error"}`,
+    );
+  }
+
+  const liveSubscriptions = subscriptions.filter((sub) =>
+    (TIER_PRESERVING_STATUSES as readonly string[]).includes(sub.status),
+  );
+  const conflictingStripeOrgIds = new Set(
+    liveSubscriptions
+      .map((sub) => sub.metadata?.workos_organization_id)
+      .filter((stripeOrgId): stripeOrgId is string =>
+        Boolean(stripeOrgId && stripeOrgId !== orgId),
+      ),
+  );
+  if (conflictingStripeOrgIds.size > 0) {
+    throw new ToolError(
+      `Stripe customer ${customerId} has a live subscription associated with another organization: ${[
+        ...conflictingStripeOrgIds,
+      ].join(", ")}.`,
+    );
+  }
+
+  const stripeClient = stripe;
+  const membershipPick = await pickMembershipSubWithProductFetch(
+    subscriptions,
+    (productId) => stripeClient.products.retrieve(productId),
+  );
+
+  return {
+    org,
+    customer,
+    subscriptions,
+    membershipPick,
+  };
+}
+
+async function syncInvoicesForRelinkedCustomer(
+  customerId: string,
+  workosOrgId: string,
+): Promise<number> {
+  if (!stripe) return 0;
+
+  const pool = getPool();
+  let syncedCount = 0;
+  try {
+    const invoices = await stripe.invoices.list({ customer: customerId, limit: 100 });
+    for (const invoice of invoices.data) {
+      let productName: string | null = null;
+      if (invoice.lines?.data && invoice.lines.data.length > 0) {
+        const primaryLine = invoice.lines.data[0] as any;
+        const productRef = primaryLine.price?.product;
+        if (productRef && typeof productRef === "object" && "name" in productRef) {
+          productName = productRef.name ?? null;
+        } else if (typeof productRef === "string") {
+          try {
+            const product = await stripe.products.retrieve(productRef);
+            productName = "deleted" in product ? null : product.name;
+          } catch {
+            productName = primaryLine.description || null;
+          }
+        }
+      }
+
+      await pool.query(
+        `INSERT INTO org_invoices (
+          stripe_invoice_id, stripe_customer_id, workos_organization_id, status,
+          amount_due, amount_paid, currency, invoice_number, hosted_invoice_url,
+          invoice_pdf, product_name, customer_email, created_at, due_date,
+          paid_at, voided_at, stripe_updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW())
+        ON CONFLICT (stripe_invoice_id) DO UPDATE SET
+          workos_organization_id = EXCLUDED.workos_organization_id,
+          status = EXCLUDED.status,
+          amount_due = EXCLUDED.amount_due,
+          amount_paid = EXCLUDED.amount_paid,
+          invoice_number = EXCLUDED.invoice_number,
+          hosted_invoice_url = EXCLUDED.hosted_invoice_url,
+          invoice_pdf = EXCLUDED.invoice_pdf,
+          product_name = COALESCE(EXCLUDED.product_name, org_invoices.product_name),
+          customer_email = EXCLUDED.customer_email,
+          paid_at = EXCLUDED.paid_at,
+          voided_at = EXCLUDED.voided_at,
+          stripe_updated_at = NOW()`,
+        [
+          invoice.id,
+          customerId,
+          workosOrgId,
+          invoice.status,
+          invoice.amount_due,
+          invoice.amount_paid,
+          invoice.currency,
+          invoice.number || null,
+          invoice.hosted_invoice_url || null,
+          invoice.invoice_pdf || null,
+          productName,
+          typeof invoice.customer_email === "string" ? invoice.customer_email : null,
+          new Date(invoice.created * 1000),
+          invoice.due_date ? new Date(invoice.due_date * 1000) : null,
+          invoice.status === "paid" && invoice.status_transitions?.paid_at
+            ? new Date(invoice.status_transitions.paid_at * 1000)
+            : null,
+          invoice.status === "void" ? new Date() : null,
+        ],
+      );
+      syncedCount++;
+    }
+  } catch (err) {
+    logger.warn({ err, customerId, workosOrgId }, "Addie: Failed to sync invoices after customer relink");
+  }
+  return syncedCount;
+}
+
+async function commitStripeCustomerUpdatePreview(
+  pending: PendingStripeCustomerUpdate,
+  reason: string,
+): Promise<Record<string, unknown>> {
+  const preview = await loadStripeCustomerUpdatePreview(
+    pending.orgId,
+    pending.newCustomerId,
+  );
+  if (!stripe) {
+    throw new ToolError("Stripe is not configured; cannot relink the customer.");
+  }
+  const stripeClient = stripe;
+  const { subscriptions, membershipPick } = preview;
+
+  const actorPersonId = pending.actorWorkosUserId
+    ? await relationshipDb.resolvePersonId({
+        workos_user_id: pending.actorWorkosUserId,
+        email: pending.actorEmail ?? undefined,
+      })
+    : null;
+
+  const pool = getPool();
+  const txClient = await pool.connect();
+  let subscriptionSynced = false;
+  let previousCustomerId: string | null = null;
+  let orgName: string | null = null;
+  const originalTargetMetadataOrgId =
+    preview.customer.metadata?.workos_organization_id ?? "";
+  let stampedTargetCustomer = false;
+  try {
+    await txClient.query("BEGIN");
+
+    const consumedPreview = await txClient.query(
+      `DELETE FROM admin_stripe_customer_update_previews
+        WHERE token = $1 AND expires_at > NOW()
+        RETURNING token, workos_organization_id, new_customer_id, current_customer_id,
+                  actor_workos_user_id, actor_email, expires_at`,
+      [pending.token],
+    );
+    if (consumedPreview.rows.length === 0) {
+      throw new ToolError(
+        "Preview token was not found or has expired. Run preview_org_stripe_customer_update again.",
+      );
+    }
+    const consumed = rowToPendingStripeCustomerUpdate(consumedPreview.rows[0]);
+    if (
+      consumed.orgId !== pending.orgId ||
+      consumed.newCustomerId !== pending.newCustomerId ||
+      consumed.currentCustomerId !== pending.currentCustomerId ||
+      consumed.actorWorkosUserId !== pending.actorWorkosUserId
+    ) {
+      throw new ToolError("Preview token contents changed unexpectedly. Run the preview again.");
+    }
+
+    const lockedOrgResult = await txClient.query(
+      `SELECT * FROM organizations WHERE workos_organization_id = $1 FOR UPDATE`,
+      [pending.orgId],
+    );
+    if (lockedOrgResult.rows.length === 0) {
+      throw new ToolError(`Organization ${pending.orgId} not found.`);
+    }
+    const org = lockedOrgResult.rows[0] as OrganizationRecord;
+    orgName = org.name;
+    previousCustomerId = org.stripe_customer_id;
+
+    if (previousCustomerId !== pending.currentCustomerId) {
+      throw new ToolError(
+        "Organization changed after the preview. Run preview_org_stripe_customer_update again before relinking.",
+      );
+    }
+
+    const existingLink = await txClient.query(
+      `SELECT workos_organization_id
+         FROM organizations
+        WHERE stripe_customer_id = $1 AND workos_organization_id <> $2
+        FOR UPDATE`,
+      [pending.newCustomerId, pending.orgId],
+    );
+    if (existingLink.rows.length > 0) {
+      throw new ToolError(
+        `Stripe customer ${pending.newCustomerId} is already linked to another organization (${existingLink.rows[0].workos_organization_id}).`,
+      );
+    }
+
+    const subUpdate = membershipPick
+      ? buildSubscriptionUpdate(
+          membershipPick.sub as any,
+          org.is_personal ?? false,
+          membershipPick.product?.metadata ?? null,
+        )
+      : null;
+
+    const beforeState = {
+      stripe_customer_id: org.stripe_customer_id,
+      subscription_status: org.subscription_status,
+      stripe_subscription_id: org.stripe_subscription_id,
+      subscription_amount: org.subscription_amount,
+      subscription_currency: org.subscription_currency,
+      subscription_interval: org.subscription_interval,
+      subscription_current_period_end: org.subscription_current_period_end,
+      subscription_canceled_at: org.subscription_canceled_at,
+      subscription_product_id: org.subscription_product_id,
+      subscription_product_name: org.subscription_product_name,
+      subscription_price_id: org.subscription_price_id,
+      subscription_price_lookup_key: org.subscription_price_lookup_key,
+      membership_tier: org.membership_tier,
+    };
+    const afterState = subUpdate
+      ? { stripe_customer_id: pending.newCustomerId, ...subUpdate }
+      : previousCustomerId
+        ? {
+            stripe_customer_id: pending.newCustomerId,
+            subscription_status: null,
+            stripe_subscription_id: null,
+            subscription_amount: null,
+            subscription_currency: null,
+            subscription_interval: null,
+            subscription_current_period_end: null,
+            subscription_canceled_at: null,
+            subscription_product_id: null,
+            subscription_product_name: null,
+            subscription_price_id: null,
+            subscription_price_lookup_key: null,
+            membership_tier: null,
+          }
+        : { ...beforeState, stripe_customer_id: pending.newCustomerId };
+
+    try {
+      await stripeClient.customers.update(pending.newCustomerId, {
+        metadata: { workos_organization_id: pending.orgId },
+      });
+      stampedTargetCustomer = true;
+    } catch (err) {
+      logger.warn(
+        { err, customerId: pending.newCustomerId, orgId: pending.orgId },
+        "Addie: Failed to stamp metadata on new Stripe customer before relink",
+      );
+      throw new ToolError(
+        `Could not stamp Stripe customer ${pending.newCustomerId} with org ${pending.orgId}; relink was not committed.`,
+      );
+    }
+
+    await txClient.query(
+      `UPDATE organizations
+          SET stripe_customer_id = $1, updated_at = NOW()
+        WHERE workos_organization_id = $2
+          AND stripe_customer_id IS NOT DISTINCT FROM $3`,
+      [pending.newCustomerId, pending.orgId, pending.currentCustomerId],
+    );
+
+    if (subUpdate) {
+      await txClient.query(
+        `UPDATE organizations
+         SET subscription_status = $1,
+             subscription_amount = $2,
+             subscription_interval = $3,
+             subscription_currency = $4,
+             subscription_current_period_end = $5,
+             subscription_canceled_at = $6,
+             stripe_subscription_id = $7,
+             subscription_product_id = $8,
+             subscription_product_name = COALESCE($9, subscription_product_name),
+             subscription_price_id = $10,
+             subscription_price_lookup_key = $11,
+             membership_tier = $12,
+             updated_at = NOW()
+         WHERE workos_organization_id = $13`,
+        [
+          subUpdate.subscription_status,
+          subUpdate.subscription_amount,
+          subUpdate.subscription_interval,
+          subUpdate.subscription_currency,
+          subUpdate.subscription_current_period_end,
+          subUpdate.subscription_canceled_at,
+          subUpdate.stripe_subscription_id,
+          subUpdate.subscription_product_id,
+          subUpdate.subscription_product_name,
+          subUpdate.subscription_price_id,
+          subUpdate.subscription_price_lookup_key,
+          subUpdate.membership_tier,
+          pending.orgId,
+        ],
+      );
+      subscriptionSynced = true;
+    } else if (previousCustomerId) {
+      await txClient.query(
+        `UPDATE organizations SET
+            stripe_subscription_id = NULL,
+            subscription_status = NULL,
+            subscription_amount = NULL,
+            subscription_currency = NULL,
+            subscription_interval = NULL,
+            subscription_current_period_end = NULL,
+            subscription_canceled_at = NULL,
+            subscription_product_id = NULL,
+            subscription_product_name = NULL,
+            subscription_price_id = NULL,
+            subscription_price_lookup_key = NULL,
+            membership_tier = NULL,
+            updated_at = NOW()
+         WHERE workos_organization_id = $1`,
+        [pending.orgId],
+      );
+    }
+
+    await txClient.query(
+      `INSERT INTO registry_audit_log
+       (workos_organization_id, workos_user_id, action, resource_type, resource_id, details)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        pending.orgId,
+        pending.actorWorkosUserId ?? "addie_admin_tool",
+        previousCustomerId ? "admin_stripe_link_replace" : "admin_stripe_link",
+        "subscription",
+        pending.newCustomerId,
+        JSON.stringify({
+          stripe_customer_id: pending.newCustomerId,
+          ...(previousCustomerId && { previous_customer_id: previousCustomerId }),
+          subscription_synced: subscriptionSynced,
+          admin_email: pending.actorEmail,
+          reason,
+          source: "addie",
+          before_state: beforeState,
+          after_state: afterState,
+        }),
+      ],
+    );
+
+    if (actorPersonId) {
+      await txClient.query(
+        `INSERT INTO person_events (person_id, event_type, channel, data, occurred_at)
+         VALUES ($1, $2, $3, $4, NOW())`,
+        [
+          actorPersonId,
+          "billing_customer_relinked",
+          "addie",
+          JSON.stringify({
+            org_id: pending.orgId,
+            org_name: orgName,
+            old_customer_id: previousCustomerId,
+            new_customer_id: pending.newCustomerId,
+            actor_user_id: pending.actorWorkosUserId,
+            actor_email: pending.actorEmail,
+            reason,
+            subscription_synced: subscriptionSynced,
+          }),
+        ],
+      );
+    }
+
+    await txClient.query("COMMIT");
+  } catch (txErr) {
+    try {
+      await txClient.query("ROLLBACK");
+    } catch {
+      // ignore rollback errors
+    }
+    if (stampedTargetCustomer) {
+      try {
+        await stripeClient.customers.update(pending.newCustomerId, {
+          metadata: { workos_organization_id: originalTargetMetadataOrgId },
+        });
+      } catch (restoreErr) {
+        logger.error(
+          {
+            err: restoreErr,
+            customerId: pending.newCustomerId,
+            orgId: pending.orgId,
+            originalTargetMetadataOrgId,
+          },
+          "Addie: Failed to restore Stripe customer metadata after relink failure",
+        );
+      }
+    }
+    throw txErr;
+  } finally {
+    txClient.release();
+  }
+
+  if (subscriptionSynced || previousCustomerId) {
+    invalidateMembershipCache(pending.orgId);
+  }
+
+  if (previousCustomerId) {
+    try {
+      await stripeClient.customers.update(previousCustomerId, {
+        metadata: { workos_organization_id: "" },
+      });
+    } catch (err) {
+      logger.warn(
+        { err, previousCustomerId },
+        "Addie: Failed to clear metadata on old Stripe customer",
+      );
+    }
+
+    try {
+      const oldSubs = await stripeClient.subscriptions.list({
+        customer: previousCustomerId,
+        status: "all",
+        limit: 100,
+      });
+      for (const sub of oldSubs?.data ?? []) {
+        if (sub.metadata?.workos_organization_id) {
+          try {
+            await stripeClient.subscriptions.update(sub.id, {
+              metadata: { workos_organization_id: "" },
+            });
+          } catch (subErr) {
+            logger.warn(
+              { err: subErr, previousCustomerId, subscriptionId: sub.id },
+              "Addie: Failed to clear old Stripe subscription metadata",
+            );
+          }
+        }
+      }
+    } catch (listErr) {
+      logger.warn(
+        { err: listErr, previousCustomerId },
+        "Addie: Failed to list old Stripe subscriptions for metadata cleanup",
+      );
+    }
+  }
+
+  const invoicesSynced = await syncInvoicesForRelinkedCustomer(
+    pending.newCustomerId,
+    pending.orgId,
+  );
+
+  const safeOrgName = safeToolText(orgName) ?? pending.orgId;
+  return {
+    success: true,
+    message: previousCustomerId
+      ? `Replaced Stripe customer link for ${safeOrgName}: ${previousCustomerId} -> ${pending.newCustomerId}`
+      : `Linked Stripe customer ${pending.newCustomerId} to ${safeOrgName}`,
+    org_id: pending.orgId,
+    org_name: safeOrgName,
+    previous_customer_id: previousCustomerId,
+    new_customer_id: pending.newCustomerId,
+    subscription_synced: subscriptionSynced,
+    invoices_synced: invoicesSynced,
+    subscription: formatStripeSubscriptionForTool(membershipPick?.sub ?? null),
+    validated_subscription_count: subscriptions.length,
+  };
 }
 
 /**
@@ -1891,21 +3163,22 @@ function sanitizeForMarkdown(value: string | null | undefined): string {
  * Callers must gate access via isSlackUserAAOAdmin/isWebUserAAOAdmin before registering these handlers.
  */
 export function createAdminToolHandlers(
-  memberContext?: MemberContext | null
+  memberContext?: MemberContext | null,
 ): Map<string, (input: Record<string, unknown>) => Promise<string>> {
-  const handlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
-
+  const handlers = new Map<
+    string,
+    (input: Record<string, unknown>) => Promise<string>
+  >();
 
   // ============================================
   // BILLING & INVOICE HANDLERS
   // ============================================
 
   // List pending invoices across all customers (queries Stripe directly)
-  handlers.set('list_pending_invoices', async (input) => {
-
+  handlers.set("list_pending_invoices", async (input) => {
     const limit = (input.limit as number) || 20;
 
-    logger.info({ limit }, 'Addie: Admin listing pending invoices');
+    logger.info({ limit }, "Addie: Admin listing pending invoices");
 
     try {
       // Query Stripe directly for all open invoices
@@ -1915,19 +3188,23 @@ export function createAdminToolHandlers(
       if (openInvoices.length === 0) {
         return JSON.stringify({
           success: true,
-          message: 'No pending invoices found.',
+          message: "No pending invoices found.",
           invoices: [],
         });
       }
 
       // Try to match invoices to organizations by workos_organization_id or stripe_customer_id
       const allOrgs = await orgDb.listOrganizations();
-      const orgByWorkosId = new Map(allOrgs.map(org => [org.workos_organization_id, org]));
+      const orgByWorkosId = new Map(
+        allOrgs.map((org) => [org.workos_organization_id, org]),
+      );
       const orgByStripeId = new Map(
-        allOrgs.filter(org => org.stripe_customer_id).map(org => [org.stripe_customer_id, org])
+        allOrgs
+          .filter((org) => org.stripe_customer_id)
+          .map((org) => [org.stripe_customer_id, org]),
       );
 
-      const invoicesWithOrgs = openInvoices.map(invoice => {
+      const invoicesWithOrgs = openInvoices.map((invoice) => {
         // Try to find matching org
         let orgName: string | null = null;
         if (invoice.workos_organization_id) {
@@ -1941,12 +3218,19 @@ export function createAdminToolHandlers(
 
         return {
           ...formatOpenInvoice(invoice),
-          organization: orgName || invoice.customer_name || 'Unknown organization',
+          organization:
+            orgName || invoice.customer_name || "Unknown organization",
         };
       });
 
-      const totalAmount = openInvoices.reduce((sum, inv) => sum + inv.amount_due, 0);
-      const formattedTotal = formatCurrency(totalAmount, openInvoices[0]?.currency || 'usd');
+      const totalAmount = openInvoices.reduce(
+        (sum, inv) => sum + inv.amount_due,
+        0,
+      );
+      const formattedTotal = formatCurrency(
+        totalAmount,
+        openInvoices[0]?.currency || "usd",
+      );
 
       return JSON.stringify({
         success: true,
@@ -1954,26 +3238,26 @@ export function createAdminToolHandlers(
         invoices: invoicesWithOrgs,
       });
     } catch (error) {
-      logger.error({ error }, 'Addie: Error listing pending invoices');
+      logger.error({ error }, "Addie: Error listing pending invoices");
       return JSON.stringify({
         success: false,
-        error: 'Failed to list pending invoices. Please try again.',
+        error: "Failed to list pending invoices. Please try again.",
       });
     }
   });
 
   // Resend an open invoice — by invoice_id or company_name lookup
-  handlers.set('resend_invoice', async (input) => {
+  handlers.set("resend_invoice", async (input) => {
     const invoiceId = input.invoice_id as string | undefined;
     const companyName = input.company_name as string | undefined;
 
     // Direct resend by invoice ID
     if (invoiceId) {
-      if (!invoiceId.startsWith('in_')) {
-        return '❌ Invoice ID must start with in_ (e.g., in_1234567890).';
+      if (!invoiceId.startsWith("in_")) {
+        return "❌ Invoice ID must start with in_ (e.g., in_1234567890).";
       }
 
-      logger.info({ invoiceId }, 'Addie: Admin resending invoice');
+      logger.info({ invoiceId }, "Addie: Admin resending invoice");
 
       const result = await resendInvoice(invoiceId);
       if (!result.success) {
@@ -1990,7 +3274,7 @@ export function createAdminToolHandlers(
     // Lookup by company name
     if (companyName) {
       const pool = getPool();
-      const escaped = companyName.replace(/[%_\\]/g, '\\$&');
+      const escaped = companyName.replace(/[%_\\]/g, "\\$&");
       const searchPattern = `%${escaped}%`;
       const orgResult = await pool.query(
         `SELECT workos_organization_id, name, stripe_customer_id
@@ -1998,7 +3282,7 @@ export function createAdminToolHandlers(
          WHERE is_personal = false
            AND (LOWER(name) LIKE LOWER($1) ESCAPE '\\' OR LOWER(email_domain) LIKE LOWER($1) ESCAPE '\\')
          LIMIT 5`,
-        [searchPattern]
+        [searchPattern],
       );
 
       if (orgResult.rows.length === 0) {
@@ -2009,14 +3293,20 @@ export function createAdminToolHandlers(
       const invoicesByOrg = new Map<string, PendingInvoice[]>();
       for (const org of orgResult.rows) {
         if (!org.stripe_customer_id) continue;
-        invoicesByOrg.set(org.workos_organization_id, await getPendingInvoices(org.stripe_customer_id));
+        invoicesByOrg.set(
+          org.workos_organization_id,
+          await getPendingInvoices(org.stripe_customer_id),
+        );
       }
 
       // Find orgs with open invoices
-      const orgsWithOpen: { org: typeof orgResult.rows[0]; invoices: PendingInvoice[] }[] = [];
+      const orgsWithOpen: {
+        org: (typeof orgResult.rows)[0];
+        invoices: PendingInvoice[];
+      }[] = [];
       for (const org of orgResult.rows) {
         const invoices = invoicesByOrg.get(org.workos_organization_id) || [];
-        const openInvoices = invoices.filter(inv => inv.status === 'open');
+        const openInvoices = invoices.filter((inv) => inv.status === "open");
         if (openInvoices.length > 0) {
           orgsWithOpen.push({ org, invoices: openInvoices });
         }
@@ -2026,7 +3316,10 @@ export function createAdminToolHandlers(
       if (orgsWithOpen.length === 1 && orgsWithOpen[0].invoices.length === 1) {
         const { org, invoices: openInvoices } = orgsWithOpen[0];
         const inv = openInvoices[0];
-        logger.info({ invoiceId: inv.id, orgName: org.name }, 'Addie: Admin resending invoice by company lookup');
+        logger.info(
+          { invoiceId: inv.id, orgName: org.name },
+          "Addie: Admin resending invoice by company lookup",
+        );
 
         const result = await resendInvoice(inv.id);
         if (!result.success) {
@@ -2036,7 +3329,8 @@ export function createAdminToolHandlers(
         let msg = `✅ Invoice \`${inv.id}\` for **${org.name}** has been resent.`;
         msg += `\n**Amount:** ${formatCurrency(inv.amount_due, inv.currency)}`;
         if (inv.customer_email) msg += `\n**Sent to:** ${inv.customer_email}`;
-        if (result.hosted_invoice_url) msg += `\n**Payment link:** ${result.hosted_invoice_url}`;
+        if (result.hosted_invoice_url)
+          msg += `\n**Payment link:** ${result.hosted_invoice_url}`;
         return msg;
       }
 
@@ -2048,8 +3342,9 @@ export function createAdminToolHandlers(
           for (const inv of openInvoices) {
             const formatted = formatPendingInvoice(inv);
             msg += `  - \`${formatted.id}\` — ${formatted.amount} (${formatted.status})`;
-            if (formatted.sent_to !== 'Unknown') msg += ` → ${formatted.sent_to}`;
-            msg += '\n';
+            if (formatted.sent_to !== "Unknown")
+              msg += ` → ${formatted.sent_to}`;
+            msg += "\n";
           }
         }
         msg += `\nCall resend_invoice with the specific invoice_id.`;
@@ -2057,8 +3352,12 @@ export function createAdminToolHandlers(
       }
 
       // No open invoices found — check for drafts and explain
-      const orgNames = orgResult.rows.map((r: { name: string }) => r.name).join(', ');
-      const noStripe = orgResult.rows.filter((r: { stripe_customer_id: string | null }) => !r.stripe_customer_id);
+      const orgNames = orgResult.rows
+        .map((r: { name: string }) => r.name)
+        .join(", ");
+      const noStripe = orgResult.rows.filter(
+        (r: { stripe_customer_id: string | null }) => !r.stripe_customer_id,
+      );
       let msg = `❌ No open invoices found for "${companyName}".`;
       if (noStripe.length === orgResult.rows.length) {
         msg += `\n\nNote: None of the matching organizations (${orgNames}) have a Stripe customer linked.`;
@@ -2069,11 +3368,14 @@ export function createAdminToolHandlers(
       // Report any draft invoices from the cached results
       for (const org of orgResult.rows) {
         const invoices = invoicesByOrg.get(org.workos_organization_id) || [];
-        const draftInvoices = invoices.filter(inv => inv.status === 'draft');
+        const draftInvoices = invoices.filter((inv) => inv.status === "draft");
         if (draftInvoices.length > 0) {
           msg += `\n\n**${org.name}** has ${draftInvoices.length} draft invoice(s) that haven't been sent yet:`;
           for (const inv of draftInvoices) {
-            msg += `\n- \`${inv.id}\` — ${formatCurrency(inv.amount_due, inv.currency)} (draft)`;
+            msg += `\n- \`${inv.id}\` — ${formatCurrency(
+              inv.amount_due,
+              inv.currency,
+            )} (draft)`;
           }
           msg += `\n\nDraft invoices need to be finalized in Stripe before they can be resent.`;
         }
@@ -2082,23 +3384,23 @@ export function createAdminToolHandlers(
       return msg;
     }
 
-    return '❌ Please provide either an invoice_id (e.g., in_...) or a company_name to look up.';
+    return "❌ Please provide either an invoice_id (e.g., in_...) or a company_name to look up.";
   });
 
   // Update billing email on a Stripe customer
-  handlers.set('update_billing_email', async (input) => {
+  handlers.set("update_billing_email", async (input) => {
     const orgId = input.org_id as string | undefined;
     const directCustomerId = input.customer_id as string | undefined;
     const email = input.email as string;
 
     if (!email) {
-      return '❌ Email is required.';
+      return "❌ Email is required.";
     }
 
     let customerId = directCustomerId;
 
-    if (customerId && !customerId.startsWith('cus_')) {
-      return '❌ A valid Stripe customer ID (starting with cus_) is required.';
+    if (customerId && !customerId.startsWith("cus_")) {
+      return "❌ A valid Stripe customer ID (starting with cus_) is required.";
     }
 
     // Look up Stripe customer from org if needed
@@ -2114,10 +3416,10 @@ export function createAdminToolHandlers(
     }
 
     if (!customerId) {
-      return '❌ Either org_id or customer_id is required.';
+      return "❌ Either org_id or customer_id is required.";
     }
 
-    logger.info({ customerId, email }, 'Addie: Admin updating billing email');
+    logger.info({ customerId, email }, "Addie: Admin updating billing email");
 
     const result = await updateCustomerEmail(customerId, email);
     if (!result.success) {
@@ -2127,15 +3429,158 @@ export function createAdminToolHandlers(
     return `✅ Billing email for customer ${customerId} updated to ${email}. Future invoices will be sent to this address.`;
   });
 
+  handlers.set("preview_org_stripe_customer_update", async (input) => {
+    const orgId = typeof input.org_id === "string" ? input.org_id.trim() : "";
+    const newCustomerId = normalizeStripeCustomerId(input.new_customer_id);
+
+    if (!orgId) {
+      return JSON.stringify({ success: false, error: "org_id is required." });
+    }
+    if (!newCustomerId) {
+      return JSON.stringify({
+        success: false,
+        error: "A valid Stripe customer ID starting with cus_ is required.",
+      });
+    }
+
+    try {
+      const actorWorkosUserId =
+        memberContext?.workos_user?.workos_user_id ?? null;
+      if (!actorWorkosUserId) {
+        return JSON.stringify({
+          success: false,
+          error:
+            "Cannot preview a Stripe customer relink without a signed-in admin identity for the audit trail.",
+        });
+      }
+
+      const preview = await loadStripeCustomerUpdatePreview(orgId, newCustomerId);
+      const token = randomUUID();
+      const actorEmail = memberContext?.workos_user?.email ?? null;
+      await saveStripeCustomerUpdatePreview({
+        token,
+        orgId,
+        newCustomerId,
+        currentCustomerId: preview.org.stripe_customer_id,
+        actorWorkosUserId,
+        actorEmail,
+        expiresAt: new Date(Date.now() + STRIPE_CUSTOMER_UPDATE_PREVIEW_TTL_MS),
+      });
+
+      return JSON.stringify({
+        success: true,
+        preview_token: token,
+        expires_in_minutes: STRIPE_CUSTOMER_UPDATE_PREVIEW_TTL_MS / 60_000,
+        org: {
+          id: preview.org.workos_organization_id,
+          name: safeToolText(preview.org.name),
+        },
+        current_customer_id: preview.org.stripe_customer_id,
+        new_customer: formatStripeCustomerForTool(preview.customer),
+        will_replace_existing_customer: Boolean(preview.org.stripe_customer_id),
+        validated_subscription_count: preview.subscriptions.length,
+        membership_subscription: formatStripeSubscriptionForTool(
+          preview.membershipPick?.sub ?? null,
+        ),
+        next_step:
+          "Show this diff to the admin. If they explicitly approve, call confirm_org_stripe_customer_update with preview_token, confirm: true, and a reason of at least 10 characters.",
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to preview relink.";
+      logger.warn(
+        { error, orgId, newCustomerId },
+        "Addie: Failed to preview org Stripe customer update",
+      );
+      return JSON.stringify({ success: false, error: message });
+    }
+  });
+
+  handlers.set("confirm_org_stripe_customer_update", async (input) => {
+    const previewToken =
+      typeof input.preview_token === "string" ? input.preview_token.trim() : "";
+    const confirm = input.confirm === true;
+    const reason = typeof input.reason === "string" ? input.reason.trim() : "";
+
+    if (!previewToken) {
+      return JSON.stringify({ success: false, error: "preview_token is required." });
+    }
+    if (!confirm) {
+      return JSON.stringify({
+        success: false,
+        error: "confirm must be true after the admin explicitly approves the preview.",
+      });
+    }
+    if (reason.length < 10) {
+      return JSON.stringify({
+        success: false,
+        error: "reason must be at least 10 characters for the audit trail.",
+      });
+    }
+
+    try {
+      const pending = await getStripeCustomerUpdatePreview(previewToken);
+      if (!pending) {
+        return JSON.stringify({
+          success: false,
+          error:
+            "Preview token was not found or has expired. Run preview_org_stripe_customer_update again.",
+        });
+      }
+
+      const actorWorkosUserId =
+        memberContext?.workos_user?.workos_user_id ?? null;
+      if (!actorWorkosUserId) {
+        return JSON.stringify({
+          success: false,
+          error:
+            "Cannot relink a Stripe customer without a signed-in admin identity for the audit trail.",
+        });
+      }
+      if (
+        pending.actorWorkosUserId &&
+        pending.actorWorkosUserId !== actorWorkosUserId
+      ) {
+        return JSON.stringify({
+          success: false,
+          error: "Preview token was created by a different admin.",
+        });
+      }
+
+      logger.info(
+        {
+          orgId: pending.orgId,
+          oldCustomerId: pending.currentCustomerId,
+          newCustomerId: pending.newCustomerId,
+          actorWorkosUserId,
+        },
+        "Addie: Admin confirming org Stripe customer update",
+      );
+
+      const result = await commitStripeCustomerUpdatePreview(
+        pending,
+        reason,
+      );
+      return JSON.stringify(result);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to relink Stripe customer.";
+      logger.error(
+        { error, previewToken },
+        "Addie: Failed to confirm org Stripe customer update",
+      );
+      return JSON.stringify({ success: false, error: message });
+    }
+  });
+
   // Shared handler for get_account and get_organization_details
   const getAccountHandler = async (input: Record<string, unknown>) => {
-
     const pool = getPool();
     const query = input.query as string;
     // Escape LIKE wildcards in the user-supplied query so a literal `%` or `_`
     // doesn't fan out to every org or signup. Equality comparison ($2) doesn't
     // need it; prefix and substring comparisons do.
-    const escapedQuery = query.replace(/[\\%_]/g, '\\$&');
+    const escapedQuery = query.replace(/[\\%_]/g, "\\$&");
     const searchPattern = `%${escapedQuery}%`;
 
     try {
@@ -2154,7 +3599,7 @@ export function createAdminToolHandlers(
                 ELSE 2 END,
            o.updated_at DESC
          LIMIT 5`,
-        [searchPattern, query, `${escapedQuery}%`]
+        [searchPattern, query, `${escapedQuery}%`],
       );
 
       if (result.rows.length === 0) {
@@ -2173,35 +3618,54 @@ export function createAdminToolHandlers(
            WHERE LOWER(u.email) LIKE LOWER($1) ESCAPE '\\'
            ORDER BY u.created_at DESC
            LIMIT 10`,
-          [`%@${escapedQuery}%`]
+          [`%@${escapedQuery}%`],
         );
 
         if (usersResult.rows.length === 0) {
           return `No organization found matching "${query}". Try searching by company name or domain.`;
         }
 
-        const orphans = usersResult.rows.filter(u => !u.primary_organization_id);
-        const linked = usersResult.rows.filter(u => u.primary_organization_id);
+        const orphans = usersResult.rows.filter(
+          (u) => !u.primary_organization_id,
+        );
+        const linked = usersResult.rows.filter(
+          (u) => u.primary_organization_id,
+        );
 
-        let response = `No organization found matching "${query}", but ${usersResult.rows.length} user${usersResult.rows.length === 1 ? '' : 's'} signed up with a matching email domain.\n\n`;
+        let response = `No organization found matching "${query}", but ${
+          usersResult.rows.length
+        } user${
+          usersResult.rows.length === 1 ? "" : "s"
+        } signed up with a matching email domain.\n\n`;
 
         if (orphans.length > 0) {
           response += `### Signed up but not yet in an org (likely website signup pre-onboarding)\n`;
           for (const user of orphans) {
-            const name = sanitizeForMarkdown([user.first_name, user.last_name].filter(Boolean).join(' ')) || '(no name)';
+            const name =
+              sanitizeForMarkdown(
+                [user.first_name, user.last_name].filter(Boolean).join(" "),
+              ) || "(no name)";
             const email = sanitizeForMarkdown(user.email);
-            const date = new Date(user.created_at).toISOString().split('T')[0];
+            const date = new Date(user.created_at).toISOString().split("T")[0];
             response += `- **${name}** — \`${email}\` (signed up ${date})\n`;
           }
           response += `\n_To track these as a prospect, use \`add_prospect\` with the company name and domain._\n`;
         }
 
         if (linked.length > 0) {
-          response += orphans.length > 0 ? `\n### Already in another org\n` : `### Users with matching email, in other orgs\n`;
+          response +=
+            orphans.length > 0
+              ? `\n### Already in another org\n`
+              : `### Users with matching email, in other orgs\n`;
           for (const user of linked) {
-            const name = sanitizeForMarkdown([user.first_name, user.last_name].filter(Boolean).join(' ')) || '(no name)';
+            const name =
+              sanitizeForMarkdown(
+                [user.first_name, user.last_name].filter(Boolean).join(" "),
+              ) || "(no name)";
             const email = sanitizeForMarkdown(user.email);
-            const orgName = sanitizeForMarkdown(user.primary_org_name ?? user.primary_organization_id);
+            const orgName = sanitizeForMarkdown(
+              user.primary_org_name ?? user.primary_organization_id,
+            );
             response += `- **${name}** — \`${email}\` → ${orgName}\n`;
           }
         }
@@ -2255,7 +3719,7 @@ export function createAdminToolHandlers(
            JOIN organization_memberships om ON om.workos_user_id = sm.workos_user_id
            WHERE om.workos_organization_id = $1
              AND sm.mapping_status = 'mapped'`,
-          [orgId]
+          [orgId],
         ),
         // Slack-only users (discovered via domain but not signed up)
         pool.query(
@@ -2266,7 +3730,7 @@ export function createAdminToolHandlers(
              AND workos_user_id IS NULL
              AND slack_is_bot = false
              AND slack_is_deleted = false`,
-          [orgId]
+          [orgId],
         ),
         // Slack activity (last 30 days)
         pool.query(
@@ -2278,7 +3742,7 @@ export function createAdminToolHandlers(
            FROM slack_activity_daily sad
            WHERE sad.organization_id = $1
              AND sad.activity_date >= CURRENT_DATE - INTERVAL '30 days'`,
-          [orgId]
+          [orgId],
         ),
         // Working groups
         pool.query(
@@ -2286,21 +3750,23 @@ export function createAdminToolHandlers(
            FROM working_group_memberships wgm
            JOIN working_groups wg ON wgm.working_group_id = wg.id
            WHERE wgm.workos_organization_id = $1 AND wgm.status = 'active'`,
-          [orgId]
+          [orgId],
         ),
         // Recent activities
         pool.query(
-          `SELECT activity_type, description, activity_date, logged_by_name
+          `SELECT activity_type, description, activity_date, logged_by_name, metadata
            FROM org_activities
            WHERE organization_id = $1
            ORDER BY activity_date DESC
            LIMIT 5`,
-          [orgId]
+          [orgId],
         ),
         // Engagement signals
         orgDb.getEngagementSignals(orgId),
         // Get pending invoices if they have a Stripe customer
-        org.stripe_customer_id ? getPendingInvoices(org.stripe_customer_id) : Promise.resolve([]),
+        org.stripe_customer_id
+          ? getPendingInvoices(org.stripe_customer_id)
+          : Promise.resolve([]),
         // Subscription history (cancellations, renewals, signups)
         pool.query(
           `SELECT activity_type, description, activity_date, logged_by_name
@@ -2309,7 +3775,7 @@ export function createAdminToolHandlers(
              AND activity_type IN ('subscription', 'subscription_cancelled', 'payment')
            ORDER BY activity_date DESC
            LIMIT 10`,
-          [orgId]
+          [orgId],
         ),
         // Stakeholders (owner, lead, etc.)
         pool.query(
@@ -2317,19 +3783,31 @@ export function createAdminToolHandlers(
            FROM org_stakeholders
            WHERE organization_id = $1
            ORDER BY CASE role WHEN 'owner' THEN 0 ELSE 1 END, created_at`,
-          [orgId]
+          [orgId],
         ),
         // Member directory profile
-        memberDb.getProfileByOrgId(orgId).catch(error => {
-          logger.warn({ error, orgId }, 'Failed to get member profile for account lookup');
+        memberDb.getProfileByOrgId(orgId).catch((error) => {
+          logger.warn(
+            { error, orgId },
+            "Failed to get member profile for account lookup",
+          );
           return null;
         }),
       ]);
 
-      const slackUserCount = parseInt(slackUsersResult.rows[0]?.slack_user_count || '0');
-      const slackOnlyCount = parseInt(slackOnlyUsersResult.rows[0]?.count || '0');
+      const slackUserCount = parseInt(
+        slackUsersResult.rows[0]?.slack_user_count || "0",
+      );
+      const slackOnlyCount = parseInt(
+        slackOnlyUsersResult.rows[0]?.count || "0",
+      );
       const totalSlackUsers = slackUserCount + slackOnlyCount;
-      const slackActivity = slackActivityResult.rows[0] || { active_users: 0, messages: 0, reactions: 0, thread_replies: 0 };
+      const slackActivity = slackActivityResult.rows[0] || {
+        active_users: 0,
+        messages: 0,
+        reactions: 0,
+        thread_replies: 0,
+      };
       const workingGroups = workingGroupsResult.rows;
       const recentActivities = activitiesResult.rows;
       const pendingInvoices = pendingInvoicesResult;
@@ -2340,7 +3818,11 @@ export function createAdminToolHandlers(
       let response = `## ${org.name}\n\n`;
 
       // Lifecycle stage - the unified view (prominently displayed at top)
-      response += `**Lifecycle Stage:** ${PIPELINE_STAGE_EMOJI[lifecycleStage]} **${lifecycleStage.charAt(0).toUpperCase() + lifecycleStage.slice(1)}**\n`;
+      response += `**Lifecycle Stage:** ${
+        PIPELINE_STAGE_EMOJI[lifecycleStage]
+      } **${
+        lifecycleStage.charAt(0).toUpperCase() + lifecycleStage.slice(1)
+      }**\n`;
 
       // Basic info
       if (org.company_type) response += `**Type:** ${org.company_type}\n`;
@@ -2348,57 +3830,94 @@ export function createAdminToolHandlers(
       if (org.parent_name) response += `**Parent:** ${org.parent_name}\n`;
       const displayTier = resolveMembershipTier(org);
       if (displayTier) {
-        let tierSource = '';
-        if (!org.membership_tier && org.subscription_price_lookup_key) tierSource = ' _(from lookup key)_';
-        else if (!org.membership_tier) tierSource = ' _(inferred from amount)_';
-        response += `**Membership Tier:** ${formatMembershipTier(displayTier)}${tierSource}\n`;
+        let tierSource = "";
+        if (!org.membership_tier && org.subscription_price_lookup_key)
+          tierSource = " _(from lookup key)_";
+        else if (!org.membership_tier) tierSource = " _(inferred from amount)_";
+        response += `**Membership Tier:** ${formatMembershipTier(
+          displayTier,
+        )}${tierSource}\n`;
       }
-      if (org.revenue_tier) response += `**Revenue Tier:** ${formatRevenueTier(org.revenue_tier)}\n`;
+      if (org.revenue_tier)
+        response += `**Revenue Tier:** ${formatRevenueTier(
+          org.revenue_tier,
+        )}\n`;
       response += `**ID:** ${orgId}\n`;
-      if (org.stripe_customer_id) response += `**Stripe Customer:** \`${org.stripe_customer_id}\`\n`;
+      if (org.stripe_customer_id)
+        response += `**Stripe Customer:** \`${org.stripe_customer_id}\`\n`;
       if (stakeholders.length > 0) {
-        const owner = stakeholders.find((s: { role: string }) => s.role === 'owner');
+        const owner = stakeholders.find(
+          (s: { role: string }) => s.role === "owner",
+        );
         if (owner) {
           response += `**Account Lead:** ${owner.user_name}`;
           if (owner.user_email) response += ` (${owner.user_email})`;
-          response += '\n';
+          response += "\n";
         }
-        const others = stakeholders.filter((s: { role: string }) => s.role !== 'owner');
+        const others = stakeholders.filter(
+          (s: { role: string }) => s.role !== "owner",
+        );
         if (others.length > 0) {
-          response += `**Stakeholders:** ${others.map((s: { user_name: string; role: string }) => `${s.user_name} (${s.role})`).join(', ')}\n`;
+          response += `**Stakeholders:** ${others
+            .map(
+              (s: { user_name: string; role: string }) =>
+                `${s.user_name} (${s.role})`,
+            )
+            .join(", ")}\n`;
         }
       }
-      response += '\n';
+      response += "\n";
 
       // Membership details (if member or has subscription history)
-      if (lifecycleStage === 'member' || lifecycleStage === 'churned' || org.subscription_status) {
+      if (
+        lifecycleStage === "member" ||
+        lifecycleStage === "churned" ||
+        org.subscription_status
+      ) {
         response += `### Membership\n`;
-        if (org.subscription_status === 'active') {
-          const hasPastDueInvoice = pendingInvoices.some(inv => inv.is_past_due);
+        if (org.subscription_status === "active") {
+          const hasPastDueInvoice = pendingInvoices.some(
+            (inv) => inv.is_past_due,
+          );
           const statusLabel = hasPastDueInvoice
-            ? `Active (⚠️ unpaid invoice overdue) - ${org.subscription_product_name || 'Subscription'}`
-            : `Active - ${org.subscription_product_name || 'Subscription'}`;
+            ? `Active (⚠️ unpaid invoice overdue) - ${
+                org.subscription_product_name || "Subscription"
+              }`
+            : `Active - ${org.subscription_product_name || "Subscription"}`;
           response += `**Status:** ${statusLabel}\n`;
           if (org.subscription_amount) {
             const amount = formatCurrency(org.subscription_amount);
-            const interval = org.subscription_interval === 'month' ? '/mo' : org.subscription_interval === 'year' ? '/yr' : '';
+            const interval =
+              org.subscription_interval === "month"
+                ? "/mo"
+                : org.subscription_interval === "year"
+                ? "/yr"
+                : "";
             response += `**Amount:** ${amount}${interval}\n`;
           }
           if (org.subscription_current_period_end) {
-            response += `**Renews:** ${formatDate(new Date(org.subscription_current_period_end))}\n`;
+            response += `**Renews:** ${formatDate(
+              new Date(org.subscription_current_period_end),
+            )}\n`;
           }
           if (org.subscription_canceled_at) {
-            response += `**Cancels at period end:** Yes (canceled ${formatDate(new Date(org.subscription_canceled_at))})\n`;
+            response += `**Cancels at period end:** Yes (canceled ${formatDate(
+              new Date(org.subscription_canceled_at),
+            )})\n`;
           }
-        } else if (org.subscription_status === 'canceled') {
+        } else if (org.subscription_status === "canceled") {
           response += `**Status:** Canceled\n`;
           if (org.subscription_canceled_at) {
-            response += `**Canceled:** ${formatDate(new Date(org.subscription_canceled_at))}\n`;
+            response += `**Canceled:** ${formatDate(
+              new Date(org.subscription_canceled_at),
+            )}\n`;
           }
           if (org.subscription_current_period_end) {
-            response += `**Access until:** ${formatDate(new Date(org.subscription_current_period_end))}\n`;
+            response += `**Access until:** ${formatDate(
+              new Date(org.subscription_current_period_end),
+            )}\n`;
           }
-        } else if (org.subscription_status === 'past_due') {
+        } else if (org.subscription_status === "past_due") {
           response += `**Status:** Past due - payment needed\n`;
         }
 
@@ -2407,9 +3926,11 @@ export function createAdminToolHandlers(
           response += `**Subscription history:**\n`;
           for (const event of subscriptionHistory) {
             const date = formatDate(new Date(event.activity_date));
-            response += `  - ${date}: ${event.description || event.activity_type}`;
+            response += `  - ${date}: ${
+              event.description || event.activity_type
+            }`;
             if (event.logged_by_name) response += ` (${event.logged_by_name})`;
-            response += '\n';
+            response += "\n";
           }
         }
 
@@ -2421,52 +3942,64 @@ export function createAdminToolHandlers(
             ? `${org.discount_percent}% off`
             : `${formatCurrency(org.discount_amount_cents!)} off`;
           response += `**Discount:** ${discount}`;
-          if (org.stripe_promotion_code) response += ` (code: ${org.stripe_promotion_code})`;
-          response += '\n';
+          if (org.stripe_promotion_code)
+            response += ` (code: ${org.stripe_promotion_code})`;
+          response += "\n";
         }
 
-        response += '\n';
+        response += "\n";
       }
 
       // Pipeline info (for prospects/negotiating)
-      if (lifecycleStage !== 'member' && lifecycleStage !== 'churned') {
+      if (lifecycleStage !== "member" && lifecycleStage !== "churned") {
         response += `### Pipeline\n`;
         if (org.prospect_contact_name) {
           response += `**Contact:** ${org.prospect_contact_name}`;
-          if (org.prospect_contact_title) response += ` (${org.prospect_contact_title})`;
-          response += '\n';
+          if (org.prospect_contact_title)
+            response += ` (${org.prospect_contact_title})`;
+          response += "\n";
         }
-        if (org.prospect_contact_email) response += `**Email:** ${org.prospect_contact_email}\n`;
+        if (org.prospect_contact_email)
+          response += `**Email:** ${org.prospect_contact_email}\n`;
         if (org.invoice_requested_at) {
-          response += `**Invoice requested:** ${formatDate(new Date(org.invoice_requested_at))}\n`;
+          response += `**Invoice requested:** ${formatDate(
+            new Date(org.invoice_requested_at),
+          )}\n`;
         }
         if (engagementSignals.interest_level) {
           response += `**Interest:** ${engagementSignals.interest_level}`;
-          if (engagementSignals.interest_level_set_by) response += ` (set by ${engagementSignals.interest_level_set_by})`;
-          response += '\n';
+          if (engagementSignals.interest_level_set_by)
+            response += ` (set by ${engagementSignals.interest_level_set_by})`;
+          response += "\n";
         }
         // Show pending invoices for prospects in negotiating stage too
         response += renderPendingInvoiceSection(pendingInvoices);
-        response += '\n';
+        response += "\n";
       }
 
       // Directory listing
       if (memberProfile) {
         response += `### Directory Listing\n`;
-        response += `**Status:** ${memberProfile.is_public ? 'Published' : 'Draft (not published)'}\n`;
-        if (memberProfile.display_name) response += `**Display Name:** ${memberProfile.display_name}\n`;
+        response += `**Status:** ${
+          memberProfile.is_public ? "Published" : "Draft (not published)"
+        }\n`;
+        if (memberProfile.display_name)
+          response += `**Display Name:** ${memberProfile.display_name}\n`;
         if (memberProfile.slug) {
           response += memberProfile.is_public
             ? `**Live URL:** https://agenticadvertising.org/members/${memberProfile.slug}\n`
             : `**Slug:** ${memberProfile.slug} (will be at /members/${memberProfile.slug} once published)\n`;
         }
-        if (!memberProfile.is_public && org.subscription_status === 'active') {
+        if (!memberProfile.is_public && org.subscription_status === "active") {
           response += `_Profile is ready to publish — member has an active subscription but hasn't clicked Publish on the dashboard._\n`;
-        } else if (!memberProfile.is_public && org.subscription_status !== 'active') {
+        } else if (
+          !memberProfile.is_public &&
+          org.subscription_status !== "active"
+        ) {
           response += `_Profile cannot be published without an active subscription._\n`;
         }
-        response += '\n';
-      } else if (lifecycleStage === 'member') {
+        response += "\n";
+      } else if (lifecycleStage === "member") {
         response += `### Directory Listing\n`;
         response += `_No directory profile created yet._\n\n`;
       }
@@ -2489,45 +4022,63 @@ export function createAdminToolHandlers(
       } else if (totalSlackUsers > 0) {
         response += `_No Slack activity in the last 30 days_\n`;
       }
-      response += '\n';
+      response += "\n";
 
       // Working groups
       response += `### Working Groups\n`;
       if (workingGroups.length > 0) {
         for (const wg of workingGroups) {
-          response += `- ${wg.name} (joined ${formatDate(new Date(wg.joined_at))})\n`;
+          response += `- ${wg.name} (joined ${formatDate(
+            new Date(wg.joined_at),
+          )})\n`;
         }
       } else {
         response += `_Not participating in any working groups_\n`;
       }
-      response += '\n';
+      response += "\n";
 
       // Engagement
       response += `### Engagement\n`;
-      const engagementLevel = computeEngagementLevel(engagementSignals, slackUserCount);
+      const engagementLevel = computeEngagementLevel(
+        engagementSignals,
+        slackUserCount,
+      );
 
       response += `**Level:** ${ENGAGEMENT_LABELS[engagementLevel]} (${engagementLevel}/5)\n`;
       if (engagementSignals.login_count_30d > 0) {
         response += `**Dashboard logins (30d):** ${engagementSignals.login_count_30d}\n`;
       }
-      response += '\n';
+      response += "\n";
 
       // Enrichment data
       if (org.enrichment_at) {
         response += `### Company Info (Enriched)\n`;
-        if (org.enrichment_industry) response += `**Industry:** ${org.enrichment_industry}\n`;
-        if (org.enrichment_sub_industry) response += `**Sub-industry:** ${org.enrichment_sub_industry}\n`;
-        if (org.enrichment_employee_count) response += `**Employees:** ${org.enrichment_employee_count.toLocaleString()}\n`;
-        if (org.enrichment_revenue_range) response += `**Revenue:** ${org.enrichment_revenue_range}\n`;
-        if (org.enrichment_country) response += `**Location:** ${org.enrichment_city ? org.enrichment_city + ', ' : ''}${org.enrichment_country}\n`;
-        if (org.enrichment_description) response += `**About:** ${org.enrichment_description}\n`;
-        response += '\n';
+        if (org.enrichment_industry)
+          response += `**Industry:** ${org.enrichment_industry}\n`;
+        if (org.enrichment_sub_industry)
+          response += `**Sub-industry:** ${org.enrichment_sub_industry}\n`;
+        if (org.enrichment_employee_count)
+          response += `**Employees:** ${org.enrichment_employee_count.toLocaleString()}\n`;
+        if (org.enrichment_revenue_range)
+          response += `**Revenue:** ${org.enrichment_revenue_range}\n`;
+        if (org.enrichment_country)
+          response += `**Location:** ${
+            org.enrichment_city ? org.enrichment_city + ", " : ""
+          }${org.enrichment_country}\n`;
+        if (org.enrichment_description)
+          response += `**About:** ${org.enrichment_description}\n`;
+        response += "\n";
       }
 
       // Recent activities (excluding subscription events shown in Membership section)
-      const SUBSCRIPTION_ACTIVITY_TYPES = new Set(['subscription', 'subscription_cancelled', 'payment']);
+      const SUBSCRIPTION_ACTIVITY_TYPES = new Set([
+        "subscription",
+        "subscription_cancelled",
+        "payment",
+      ]);
       const nonSubscriptionActivities = recentActivities.filter(
-        (a: { activity_type: string }) => !SUBSCRIPTION_ACTIVITY_TYPES.has(a.activity_type)
+        (a: { activity_type: string }) =>
+          !SUBSCRIPTION_ACTIVITY_TYPES.has(a.activity_type),
       );
       if (nonSubscriptionActivities.length > 0) {
         response += `### Recent Activity\n`;
@@ -2535,10 +4086,22 @@ export function createAdminToolHandlers(
           const date = formatDate(new Date(activity.activity_date));
           response += `- ${date}: ${activity.activity_type}`;
           if (activity.description) response += ` - ${activity.description}`;
-          if (activity.logged_by_name) response += ` (${activity.logged_by_name})`;
-          response += '\n';
+          if (activity.logged_by_name)
+            response += ` (${activity.logged_by_name})`;
+          const meta = activity.metadata as {
+            learnings?: { interests?: string[]; concerns?: string[] };
+          } | null;
+          if (meta?.learnings) {
+            const parts: string[] = [];
+            if (meta.learnings.interests?.length)
+              parts.push(`interests: ${meta.learnings.interests.join(", ")}`);
+            if (meta.learnings.concerns?.length)
+              parts.push(`concerns: ${meta.learnings.concerns.join(", ")}`);
+            if (parts.length) response += ` [${parts.join("; ")}]`;
+          }
+          response += "\n";
         }
-        response += '\n';
+        response += "\n";
       }
 
       // Prospect notes
@@ -2548,21 +4111,20 @@ export function createAdminToolHandlers(
 
       return response;
     } catch (error) {
-      logger.error({ error, query }, 'Addie: Error getting account details');
+      logger.error({ error, query }, "Addie: Error getting account details");
       return `❌ Failed to get account details. Please try again or contact support.`;
     }
   };
 
   // Register get_account as the primary tool
-  handlers.set('get_account', getAccountHandler);
+  handlers.set("get_account", getAccountHandler);
 
   // ============================================
   // PROSPECT MANAGEMENT HANDLERS
   // ============================================
 
   // Add prospect
-  handlers.set('add_prospect', async (input) => {
-
+  handlers.set("add_prospect", async (input) => {
     const name = input.name as string;
     const companyType = (input.company_type as string) || undefined;
     const domain = input.domain as string | undefined;
@@ -2570,7 +4132,7 @@ export function createAdminToolHandlers(
     const contactEmail = input.contact_email as string | undefined;
     const contactTitle = input.contact_title as string | undefined;
     const notes = input.notes as string | undefined;
-    const source = (input.source as string) || 'addie_conversation';
+    const source = (input.source as string) || "addie_conversation";
 
     // Use the centralized prospect service (creates real WorkOS org)
     const result = await createProspect({
@@ -2606,21 +4168,35 @@ export function createAdminToolHandlers(
 
     // Auto-claim ownership for the user who added the prospect
     const userId = memberContext?.workos_user?.workos_user_id;
-    const userName = memberContext?.workos_user?.first_name || 'Unknown';
+    const userName = memberContext?.workos_user?.first_name || "Unknown";
     const userEmail = memberContext?.workos_user?.email;
 
     if (userId && userEmail) {
       try {
         const pool = getPool();
-        await pool.query(`
+        await pool.query(
+          `
           INSERT INTO org_stakeholders (organization_id, user_id, user_name, user_email, role, notes)
           VALUES ($1, $2, $3, $4, 'owner', $5)
           ON CONFLICT (organization_id, user_id)
           DO UPDATE SET role = 'owner', updated_at = NOW()
-        `, [org.workos_organization_id, userId, userName, userEmail, `Auto-assigned when created via Addie on ${new Date().toISOString().split('T')[0]}`]);
+        `,
+          [
+            org.workos_organization_id,
+            userId,
+            userName,
+            userEmail,
+            `Auto-assigned when created via Addie on ${
+              new Date().toISOString().split("T")[0]
+            }`,
+          ],
+        );
         response += `**Owner:** ${userName} (you)\n`;
       } catch (error) {
-        logger.warn({ error, orgId: org.workos_organization_id, userId }, 'Failed to auto-claim prospect ownership');
+        logger.warn(
+          { error, orgId: org.workos_organization_id, userId },
+          "Failed to auto-claim prospect ownership",
+        );
       }
     }
 
@@ -2632,24 +4208,27 @@ export function createAdminToolHandlers(
   });
 
   // Update prospect
-  handlers.set('update_prospect', async (input) => {
-
+  handlers.set("update_prospect", async (input) => {
     const orgId = input.org_id as string;
 
     // Map Addie's input field names to DB column names
     const fields: Record<string, unknown> = {};
-    if (input.company_type !== undefined) fields.company_type = input.company_type;
+    if (input.company_type !== undefined)
+      fields.company_type = input.company_type;
     if (input.status !== undefined) fields.prospect_status = input.status;
-    if (input.interest_level !== undefined) fields.interest_level = input.interest_level;
-    if (input.contact_name !== undefined) fields.prospect_contact_name = input.contact_name;
-    if (input.contact_email !== undefined) fields.prospect_contact_email = input.contact_email;
+    if (input.interest_level !== undefined)
+      fields.interest_level = input.interest_level;
+    if (input.contact_name !== undefined)
+      fields.prospect_contact_name = input.contact_name;
+    if (input.contact_email !== undefined)
+      fields.prospect_contact_email = input.contact_email;
     if (input.domain !== undefined) fields.email_domain = input.domain;
     if (input.notes !== undefined) fields.prospect_notes = input.notes;
 
     const result = await updateProspect(orgId, {
       fields,
-      notesMode: 'append',
-      interestLevelSetBy: 'Addie',
+      notesMode: "append",
+      interestLevelSetBy: "Addie",
       triggerEnrichment: true,
     });
 
@@ -2659,9 +4238,11 @@ export function createAdminToolHandlers(
 
     const updated = result.updated as Record<string, unknown>;
     let response = `✅ Updated **${updated.name}**\n\n`;
-    if (input.company_type) response += `• Company type → ${input.company_type}\n`;
+    if (input.company_type)
+      response += `• Company type → ${input.company_type}\n`;
     if (input.status) response += `• Status → ${input.status}\n`;
-    if (input.interest_level) response += `• Interest level → ${input.interest_level}\n`;
+    if (input.interest_level)
+      response += `• Interest level → ${input.interest_level}\n`;
     if (input.contact_name) response += `• Contact → ${input.contact_name}\n`;
     if (input.contact_email) response += `• Email → ${input.contact_email}\n`;
     if (input.domain) response += `• Domain → ${input.domain}\n`;
@@ -2675,10 +4256,9 @@ export function createAdminToolHandlers(
   });
 
   // Enrich company
-  handlers.set('enrich_company', async (input) => {
-
+  handlers.set("enrich_company", async (input) => {
     if (!isLushaConfigured()) {
-      return '❌ Enrichment is not configured (LUSHA_API_KEY not set).';
+      return "❌ Enrichment is not configured (LUSHA_API_KEY not set).";
     }
 
     const domain = input.domain as string | undefined;
@@ -2686,59 +4266,77 @@ export function createAdminToolHandlers(
     const orgId = input.org_id as string | undefined;
 
     if (!domain && !companyName) {
-      return 'Please provide either a domain or company_name to research.';
+      return "Please provide either a domain or company_name to research.";
     }
 
-    let response = '';
+    let response = "";
 
     // If we have an org_id, enrich and save
     if (orgId && domain) {
       const result = await enrichOrganization(orgId, domain);
       if (result.success && result.data) {
         response = `## Enrichment Results for ${domain}\n\n`;
-        response += `**Company:** ${result.data.companyName || 'Unknown'}\n`;
-        if (result.data.industry) response += `**Industry:** ${result.data.industry}\n`;
-        if (result.data.employeeCount) response += `**Employees:** ${result.data.employeeCount.toLocaleString()}\n`;
-        if (result.data.revenueRange) response += `**Revenue:** ${result.data.revenueRange}\n`;
-        if (result.data.suggestedCompanyType) response += `**Suggested Type:** ${result.data.suggestedCompanyType}\n`;
+        response += `**Company:** ${result.data.companyName || "Unknown"}\n`;
+        if (result.data.industry)
+          response += `**Industry:** ${result.data.industry}\n`;
+        if (result.data.employeeCount)
+          response += `**Employees:** ${result.data.employeeCount.toLocaleString()}\n`;
+        if (result.data.revenueRange)
+          response += `**Revenue:** ${result.data.revenueRange}\n`;
+        if (result.data.suggestedCompanyType)
+          response += `**Suggested Type:** ${result.data.suggestedCompanyType}\n`;
         response += `\n✅ Data saved to organization ${orgId}`;
       } else {
-        response = `❌ Could not enrich ${domain}: ${result.error || 'Unknown error'}`;
+        response = `❌ Could not enrich ${domain}: ${
+          result.error || "Unknown error"
+        }`;
       }
     } else if (domain) {
       // Just research without saving
       const result = await enrichDomain(domain);
       if (result.success && result.data) {
         response = `## Research Results for ${domain}\n\n`;
-        response += `**Company:** ${result.data.companyName || 'Unknown'}\n`;
-        if (result.data.industry) response += `**Industry:** ${result.data.industry}\n`;
-        if (result.data.employeeCount) response += `**Employees:** ${result.data.employeeCount.toLocaleString()}\n`;
-        if (result.data.revenueRange) response += `**Revenue:** ${result.data.revenueRange}\n`;
-        if (result.data.suggestedCompanyType) response += `**Suggested Type:** ${result.data.suggestedCompanyType}\n`;
+        response += `**Company:** ${result.data.companyName || "Unknown"}\n`;
+        if (result.data.industry)
+          response += `**Industry:** ${result.data.industry}\n`;
+        if (result.data.employeeCount)
+          response += `**Employees:** ${result.data.employeeCount.toLocaleString()}\n`;
+        if (result.data.revenueRange)
+          response += `**Revenue:** ${result.data.revenueRange}\n`;
+        if (result.data.suggestedCompanyType)
+          response += `**Suggested Type:** ${result.data.suggestedCompanyType}\n`;
         response += `\n_To save this data, provide an org_id or add as new prospect._`;
       } else {
-        response = `❌ Could not find information for ${domain}: ${result.error || 'Unknown error'}`;
+        response = `❌ Could not find information for ${domain}: ${
+          result.error || "Unknown error"
+        }`;
       }
     } else if (companyName) {
       // Search by company name using Lusha
       const lusha = getLushaClient();
       if (!lusha) {
-        return '❌ Lusha client not available.';
+        return "❌ Lusha client not available.";
       }
 
       const searchResult = await lusha.searchCompanies(
         { keywords: [companyName] },
         1,
-        5
+        5,
       );
 
-      if (searchResult.success && searchResult.companies && searchResult.companies.length > 0) {
+      if (
+        searchResult.success &&
+        searchResult.companies &&
+        searchResult.companies.length > 0
+      ) {
         response = `## Search Results for "${companyName}"\n\n`;
         for (const company of searchResult.companies) {
           response += `### ${company.companyName}\n`;
           if (company.domain) response += `**Domain:** ${company.domain}\n`;
-          if (company.mainIndustry) response += `**Industry:** ${company.mainIndustry}\n`;
-          if (company.employeeCount) response += `**Employees:** ${company.employeeCount.toLocaleString()}\n`;
+          if (company.mainIndustry)
+            response += `**Industry:** ${company.mainIndustry}\n`;
+          if (company.employeeCount)
+            response += `**Employees:** ${company.employeeCount.toLocaleString()}\n`;
           if (company.country) response += `**Country:** ${company.country}\n`;
           response += `\n`;
         }
@@ -2752,9 +4350,9 @@ export function createAdminToolHandlers(
   });
 
   // Research domain (unified enrichment)
-  handlers.set('research_domain', async (input) => {
+  handlers.set("research_domain", async (input) => {
     const domain = (input.domain as string)?.toLowerCase().trim();
-    if (!domain) return 'Please provide a domain to research.';
+    if (!domain) return "Please provide a domain to research.";
 
     const result = await researchDomain(domain, {
       org_id: input.org_id as string | undefined,
@@ -2768,11 +4366,15 @@ export function createAdminToolHandlers(
     if (result.brand) {
       response += `### Brand identity\n`;
       response += `**Name:** ${result.brand.brand_name}\n`;
-      if (result.brand.keller_type) response += `**Type:** ${result.brand.keller_type}\n`;
-      if (result.brand.house_domain) response += `**House:** ${result.brand.house_domain}\n`;
-      if (result.brand.parent_brand) response += `**Parent:** ${result.brand.parent_brand}\n`;
+      if (result.brand.keller_type)
+        response += `**Type:** ${result.brand.keller_type}\n`;
+      if (result.brand.house_domain)
+        response += `**House:** ${result.brand.house_domain}\n`;
+      if (result.brand.parent_brand)
+        response += `**Parent:** ${result.brand.parent_brand}\n`;
       response += `**Source:** ${result.brand.source_type}`;
-      if (result.brand.classification_confidence) response += ` (${result.brand.classification_confidence} confidence)`;
+      if (result.brand.classification_confidence)
+        response += ` (${result.brand.classification_confidence} confidence)`;
       response += `\n\n`;
     } else {
       response += `_No brand data found._\n\n`;
@@ -2781,11 +4383,16 @@ export function createAdminToolHandlers(
     // Firmographics
     if (result.firmographics) {
       response += `### Firmographics\n`;
-      if (result.firmographics.company_name) response += `**Company:** ${result.firmographics.company_name}\n`;
-      if (result.firmographics.industry) response += `**Industry:** ${result.firmographics.industry}\n`;
-      if (result.firmographics.employee_count) response += `**Employees:** ${result.firmographics.employee_count.toLocaleString()}\n`;
-      if (result.firmographics.revenue_range) response += `**Revenue:** ${result.firmographics.revenue_range}\n`;
-      if (result.firmographics.country) response += `**Country:** ${result.firmographics.country}\n`;
+      if (result.firmographics.company_name)
+        response += `**Company:** ${result.firmographics.company_name}\n`;
+      if (result.firmographics.industry)
+        response += `**Industry:** ${result.firmographics.industry}\n`;
+      if (result.firmographics.employee_count)
+        response += `**Employees:** ${result.firmographics.employee_count.toLocaleString()}\n`;
+      if (result.firmographics.revenue_range)
+        response += `**Revenue:** ${result.firmographics.revenue_range}\n`;
+      if (result.firmographics.country)
+        response += `**Country:** ${result.firmographics.country}\n`;
       response += `\n`;
     }
 
@@ -2793,16 +4400,21 @@ export function createAdminToolHandlers(
     if (result.org) {
       response += `### Organization\n`;
       response += `**Name:** ${result.org.name}\n`;
-      response += `**Status:** ${result.org.subscription_status || 'none'}\n`;
+      response += `**Status:** ${result.org.subscription_status || "none"}\n`;
       response += `**ID:** ${result.org.workos_organization_id}\n\n`;
     }
 
     // Actions log
     response += `### Actions\n`;
     for (const action of result.actions) {
-      const icon = action.action === 'fetched' ? '✅' :
-                   action.action.startsWith('skipped') ? '⏭️' :
-                   action.action === 'failed' ? '❌' : '🔍';
+      const icon =
+        action.action === "fetched"
+          ? "✅"
+          : action.action.startsWith("skipped")
+          ? "⏭️"
+          : action.action === "failed"
+          ? "❌"
+          : "🔍";
       response += `${icon} **${action.source}**: ${action.action}`;
       if (action.detail) response += ` — ${action.detail}`;
       response += `\n`;
@@ -2812,13 +4424,13 @@ export function createAdminToolHandlers(
   });
 
   // Unified prospect query handler
-  handlers.set('query_prospects', async (input) => {
+  handlers.set("query_prospects", async (input) => {
     const pool = getPool();
-    const view = (input.view as string) || 'all';
+    const view = (input.view as string) || "all";
     const limit = Math.min(Math.max((input.limit as number) || 10, 1), 50);
 
     // --- View: addie_pipeline ---
-    if (view === 'addie_pipeline') {
+    if (view === "addie_pipeline") {
       const statusFilter = input.status as string | undefined;
       const result = await pool.query(
         `SELECT workos_organization_id, name, email_domain, company_type,
@@ -2828,14 +4440,18 @@ export function createAdminToolHandlers(
          WHERE prospect_owner = 'addie'
            AND subscription_status IS NULL
            AND prospect_status NOT IN ('converted', 'declined', 'disqualified')
-           ${statusFilter ? 'AND prospect_status = $1' : ''}
+           ${statusFilter ? "AND prospect_status = $1" : ""}
          ORDER BY created_at DESC
-         LIMIT ${statusFilter ? '$2' : '$1'}`,
-        statusFilter ? [statusFilter, limit] : [limit]
+         LIMIT ${statusFilter ? "$2" : "$1"}`,
+        statusFilter ? [statusFilter, limit] : [limit],
       );
 
       if (result.rows.length === 0) {
-        return 'No prospects in Addie pipeline' + (statusFilter ? ` with status "${statusFilter}"` : '') + '.';
+        return (
+          "No prospects in Addie pipeline" +
+          (statusFilter ? ` with status "${statusFilter}"` : "") +
+          "."
+        );
       }
 
       const byStatus = new Map<string, typeof result.rows>();
@@ -2847,24 +4463,28 @@ export function createAdminToolHandlers(
 
       let response = `**Addie's prospect pipeline** (${result.rows.length} total):\n\n`;
       for (const [status, orgs] of byStatus) {
-        response += `### ${status.charAt(0).toUpperCase() + status.slice(1)} (${orgs.length})\n`;
+        response += `### ${status.charAt(0).toUpperCase() + status.slice(1)} (${
+          orgs.length
+        })\n`;
         for (const org of orgs) {
           response += `- **${org.name}**`;
           if (org.email_domain) response += ` (${org.email_domain})`;
-          if (org.prospect_contact_name) response += ` — Contact: ${org.prospect_contact_name}`;
-          if (org.prospect_next_action) response += `\n  Next action: ${org.prospect_next_action}`;
-          response += '\n';
+          if (org.prospect_contact_name)
+            response += ` — Contact: ${org.prospect_contact_name}`;
+          if (org.prospect_next_action)
+            response += `\n  Next action: ${org.prospect_next_action}`;
+          response += "\n";
         }
-        response += '\n';
+        response += "\n";
       }
       return response;
     }
 
     // --- View: my_engaged ---
-    if (view === 'my_engaged') {
+    if (view === "my_engaged") {
       const hotOnly = input.hot_only as boolean;
       const userId = memberContext?.workos_user?.workos_user_id;
-      if (!userId) return '❌ Could not determine your user ID.';
+      if (!userId) return "❌ Could not determine your user ID.";
 
       let query = `
         WITH org_points AS (
@@ -2890,32 +4510,38 @@ export function createAdminToolHandlers(
       const result = await pool.query(query, [userId, limit]);
       if (result.rows.length === 0) {
         return hotOnly
-          ? 'No hot prospects found. Try removing hot_only to see all.'
+          ? "No hot prospects found. Try removing hot_only to see all."
           : "You don't own any prospects yet. Use `query_prospects` with view `unassigned` to find some.";
       }
 
-      let response = `## Your ${hotOnly ? 'Hot ' : ''}Engaged Prospects\n\n`;
+      let response = `## Your ${hotOnly ? "Hot " : ""}Engaged Prospects\n\n`;
       for (const row of result.rows) {
-        const emoji = (row.community_points || 0) >= 100 ? '🔥' : '📊';
+        const emoji = (row.community_points || 0) >= 100 ? "🔥" : "📊";
         response += `${emoji} **${row.name}**`;
         if (row.email_domain) response += ` (${row.email_domain})`;
         response += `\n   Points: ${row.community_points || 0}`;
-        if (row.prospect_status) response += ` | Status: ${row.prospect_status}`;
-        if (row.interest_level) response += ` | Interest: ${row.interest_level}`;
-        response += '\n';
-        if (row.last_activity) response += `   Last activity: ${new Date(row.last_activity).toLocaleDateString()}\n`;
-        response += '\n';
+        if (row.prospect_status)
+          response += ` | Status: ${row.prospect_status}`;
+        if (row.interest_level)
+          response += ` | Interest: ${row.interest_level}`;
+        response += "\n";
+        if (row.last_activity)
+          response += `   Last activity: ${new Date(
+            row.last_activity,
+          ).toLocaleDateString()}\n`;
+        response += "\n";
       }
       return response;
     }
 
     // --- View: my_followups ---
-    if (view === 'my_followups') {
+    if (view === "my_followups") {
       const daysStale = (input.days_stale as number) || 14;
       const userId = memberContext?.workos_user?.workos_user_id;
-      if (!userId) return '❌ Could not determine your user ID.';
+      if (!userId) return "❌ Could not determine your user ID.";
 
-      const result = await pool.query(`
+      const result = await pool.query(
+        `
         WITH org_points AS (
           SELECT om.workos_organization_id, SUM(cp.points) as total_points
           FROM community_points cp
@@ -2949,33 +4575,50 @@ export function createAdminToolHandlers(
            OR days_since_activity >= $2
         ORDER BY urgency, days_since_activity DESC NULLS LAST
         LIMIT $3
-      `, [userId, daysStale, limit]);
+      `,
+        [userId, daysStale, limit],
+      );
 
       if (result.rows.length === 0) {
-        return '✅ None of your prospects need immediate follow-up.';
+        return "✅ None of your prospects need immediate follow-up.";
       }
 
       let response = `## Prospects Needing Follow-Up\n\n`;
       for (const row of result.rows) {
-        const isOverdue = row.prospect_next_action_date && new Date(row.prospect_next_action_date) < new Date();
+        const isOverdue =
+          row.prospect_next_action_date &&
+          new Date(row.prospect_next_action_date) < new Date();
         if (isOverdue) {
           response += `⚠️ **${row.name}** - OVERDUE\n`;
-          response += `   Next step: ${row.prospect_next_action || 'Not set'}\n`;
-          response += `   Due: ${new Date(row.prospect_next_action_date).toLocaleDateString()}\n`;
+          response += `   Next step: ${
+            row.prospect_next_action || "Not set"
+          }\n`;
+          response += `   Due: ${new Date(
+            row.prospect_next_action_date,
+          ).toLocaleDateString()}\n`;
         } else {
-          response += `⏰ **${row.name}** - ${Math.round(row.days_since_activity)} days since activity\n`;
+          response += `⏰ **${row.name}** - ${Math.round(
+            row.days_since_activity,
+          )} days since activity\n`;
         }
-        if (row.last_activity) response += `   Last activity: ${new Date(row.last_activity).toLocaleDateString()}\n`;
-        if (row.community_points) response += `   Points: ${row.community_points}${row.community_points >= 100 ? ' 🔥' : ''}\n`;
-        response += '\n';
+        if (row.last_activity)
+          response += `   Last activity: ${new Date(
+            row.last_activity,
+          ).toLocaleDateString()}\n`;
+        if (row.community_points)
+          response += `   Points: ${row.community_points}${
+            row.community_points >= 100 ? " 🔥" : ""
+          }\n`;
+        response += "\n";
       }
       return response;
     }
 
     // --- View: unassigned ---
-    if (view === 'unassigned') {
+    if (view === "unassigned") {
       const minPoints = (input.min_engagement as number) || 10;
-      const result = await pool.query(`
+      const result = await pool.query(
+        `
         WITH org_points AS (
           SELECT om.workos_organization_id, SUM(cp.points) as total_points
           FROM community_points cp
@@ -2995,17 +4638,19 @@ export function createAdminToolHandlers(
           )
         ORDER BY COALESCE(op.total_points, 0) DESC NULLS LAST
         LIMIT $2
-      `, [minPoints, limit]);
+      `,
+        [minPoints, limit],
+      );
 
       if (result.rows.length === 0) {
         return minPoints > 10
           ? `No unassigned prospects with points >= ${minPoints}. Try lowering min_engagement.`
-          : 'All engaged prospects have owners.';
+          : "All engaged prospects have owners.";
       }
 
       let response = `## Unassigned Prospects (points >= ${minPoints})\n\n`;
       for (const row of result.rows) {
-        const emoji = (row.community_points || 0) >= 100 ? '🔥' : '📊';
+        const emoji = (row.community_points || 0) >= 100 ? "🔥" : "📊";
         response += `${emoji} **${row.name}**`;
         if (row.email_domain) response += ` (${row.email_domain})`;
         response += `\n   Points: ${row.community_points || 0}`;
@@ -3019,9 +4664,12 @@ export function createAdminToolHandlers(
     // --- View: all (default) ---
     const status = input.status as string | undefined;
     const companyType = input.company_type as string | undefined;
-    const sort = (input.sort as string) || 'recent';
+    const sort = (input.sort as string) || "recent";
 
-    const conditions: string[] = ['is_personal = false', "prospect_status IS NOT NULL"];
+    const conditions: string[] = [
+      "is_personal = false",
+      "prospect_status IS NOT NULL",
+    ];
     const values: unknown[] = [];
     let paramIndex = 1;
 
@@ -3034,9 +4682,10 @@ export function createAdminToolHandlers(
       values.push(companyType);
     }
 
-    let orderBy = 'created_at DESC';
-    if (sort === 'name') orderBy = 'name ASC';
-    if (sort === 'activity') orderBy = 'COALESCE(last_activity_at, created_at) DESC';
+    let orderBy = "created_at DESC";
+    if (sort === "name") orderBy = "name ASC";
+    if (sort === "activity")
+      orderBy = "COALESCE(last_activity_at, created_at) DESC";
 
     values.push(limit);
 
@@ -3045,14 +4694,16 @@ export function createAdminToolHandlers(
               prospect_status, prospect_contact_name, enrichment_industry, enrichment_employee_count,
               created_at, updated_at
        FROM organizations
-       WHERE ${conditions.join(' AND ')}
+       WHERE ${conditions.join(" AND ")}
        ORDER BY ${orderBy}
        LIMIT $${paramIndex}`,
-      values
+      values,
     );
 
     if (result.rows.length === 0) {
-      return `No prospects found${status ? ` with status "${status}"` : ''}${companyType ? ` of type "${companyType}"` : ''}.`;
+      return `No prospects found${status ? ` with status "${status}"` : ""}${
+        companyType ? ` of type "${companyType}"` : ""
+      }.`;
     }
 
     let response = `## Prospects`;
@@ -3061,16 +4712,17 @@ export function createAdminToolHandlers(
     response += `\n\n`;
 
     for (const org of result.rows) {
-      const typeEmoji = {
-        adtech: '🔧',
-        agency: '🏢',
-        brand: '🏷️',
-        publisher: '📰',
-        other: '📋',
-      }[org.company_type as string] || '📋';
+      const typeEmoji =
+        {
+          adtech: "🔧",
+          agency: "🏢",
+          brand: "🏷️",
+          publisher: "📰",
+          other: "📋",
+        }[org.company_type as string] || "📋";
 
       response += `${typeEmoji} **${org.name}**`;
-      if (org.prospect_status !== 'prospect') {
+      if (org.prospect_status !== "prospect") {
         response += ` (${org.prospect_status})`;
       }
       response += `\n`;
@@ -3092,18 +4744,19 @@ export function createAdminToolHandlers(
   // invite. The invite recipient signs in and accepts in their own session,
   // and only then is an invoice or checkout issued — under their authenticated
   // identity, never under the admin's email or a hallucinated address.
-  handlers.set('send_payment_request', async (input) => {
-
+  handlers.set("send_payment_request", async (input) => {
     const companyName = input.company_name as string;
     const domain = input.domain as string | undefined;
     const contactName = input.contact_name as string | undefined;
     const contactEmail = input.contact_email as string | undefined;
     const contactTitle = input.contact_title as string | undefined;
-    const action = (input.action as string) || 'lookup_only';
+    const action = (input.action as string) || "lookup_only";
     const lookupKey = input.lookup_key as string | undefined;
     // Discount parameters (preview-only — applied during draft_invoice)
     const discountPercent = input.discount_percent as number | undefined;
-    const discountAmountDollars = input.discount_amount_dollars as number | undefined;
+    const discountAmountDollars = input.discount_amount_dollars as
+      | number
+      | undefined;
     const discountReason = input.discount_reason as string | undefined;
     const useExistingDiscount = input.use_existing_discount !== false; // default true
 
@@ -3139,7 +4792,9 @@ export function createAdminToolHandlers(
     const searchPattern = `%${companyName}%`;
     const searchParams: string[] = [searchPattern];
     let paramIdx = 2;
-    const domainClause = domain ? `OR LOWER(email_domain) LIKE LOWER($${paramIdx++})` : '';
+    const domainClause = domain
+      ? `OR LOWER(email_domain) LIKE LOWER($${paramIdx++})`
+      : "";
     if (domain) searchParams.push(`%${domain}%`);
     const exactIdx = paramIdx++;
     const prefixIdx = paramIdx++;
@@ -3157,7 +4812,7 @@ export function createAdminToolHandlers(
               WHEN LOWER(name) LIKE LOWER($${prefixIdx}) THEN 1
               ELSE 2 END
        LIMIT 5`,
-      searchParams
+      searchParams,
     );
 
     if (searchResult.rows.length === 0) {
@@ -3165,7 +4820,7 @@ export function createAdminToolHandlers(
       const createResult = await createProspect({
         name: companyName,
         domain,
-        prospect_source: 'addie_payment_request',
+        prospect_source: "addie_payment_request",
         prospect_contact_name: contactName,
         prospect_contact_email: contactEmail,
         prospect_contact_title: contactTitle,
@@ -3182,7 +4837,7 @@ export function createAdminToolHandlers(
                 enrichment_employee_count, enrichment_revenue, stripe_customer_id,
                 discount_percent, discount_amount_cents, stripe_coupon_id, stripe_promotion_code
          FROM organizations WHERE workos_organization_id = $1`,
-        [createResult.organization.workos_organization_id]
+        [createResult.organization.workos_organization_id],
       );
       org = newOrgResult.rows[0];
       created = true;
@@ -3196,7 +4851,8 @@ export function createAdminToolHandlers(
       for (let i = 0; i < searchResult.rows.length; i++) {
         const o = searchResult.rows[i];
         response += `**${i + 1}. ${o.name}**\n`;
-        if (o.prospect_contact_name) response += `   Contact: ${o.prospect_contact_name}\n`;
+        if (o.prospect_contact_name)
+          response += `   Contact: ${o.prospect_contact_name}\n`;
         if (o.company_type) response += `   Type: ${o.company_type}\n`;
         response += `\n`;
       }
@@ -3232,8 +4888,10 @@ export function createAdminToolHandlers(
         updates.push(`updated_at = NOW()`);
         values.push(org.workos_organization_id);
         await pool.query(
-          `UPDATE organizations SET ${updates.join(', ')} WHERE workos_organization_id = $${paramIndex}`,
-          values
+          `UPDATE organizations SET ${updates.join(
+            ", ",
+          )} WHERE workos_organization_id = $${paramIndex}`,
+          values,
         );
         if (contactName) org.prospect_contact_name = contactName;
       }
@@ -3246,20 +4904,20 @@ export function createAdminToolHandlers(
        LEFT JOIN users u ON u.workos_user_id = om.workos_user_id
        WHERE om.workos_organization_id = $1
        LIMIT 10`,
-      [org.workos_organization_id]
+      [org.workos_organization_id],
     );
     const members = membersResult.rows;
 
     // Get available products
-    const customerType = org.is_personal ? 'individual' : 'company';
+    const customerType = org.is_personal ? "individual" : "company";
     let products: BillingProduct[] = [];
     try {
       products = await getProductsForCustomer({
         customerType,
-        category: 'membership',
+        category: "membership",
       });
     } catch (err) {
-      logger.error({ err }, 'Failed to fetch products');
+      logger.error({ err }, "Failed to fetch products");
     }
 
     // Select product by lookup_key if provided, otherwise suggest based on company size
@@ -3268,16 +4926,18 @@ export function createAdminToolHandlers(
 
     if (lookupKey) {
       // Exact match on lookup_key
-      selectedProduct = products.find(p => p.lookup_key === lookupKey);
+      selectedProduct = products.find((p) => p.lookup_key === lookupKey);
       if (!selectedProduct) {
         // Try partial match as fallback
-        selectedProduct = products.find(p =>
-          p.lookup_key?.toLowerCase().includes(lookupKey.toLowerCase())
+        selectedProduct = products.find((p) =>
+          p.lookup_key?.toLowerCase().includes(lookupKey.toLowerCase()),
         );
       }
       if (!selectedProduct) {
-        const validKeys = products.map(p => p.lookup_key).filter(Boolean);
-        return `❌ Product not found for lookup_key: "${lookupKey}". Valid keys: ${validKeys.join(', ')}`;
+        const validKeys = products.map((p) => p.lookup_key).filter(Boolean);
+        return `❌ Product not found for lookup_key: "${lookupKey}". Valid keys: ${validKeys.join(
+          ", ",
+        )}`;
       }
     }
 
@@ -3288,11 +4948,17 @@ export function createAdminToolHandlers(
 
       // Match to actual product lookup_keys
       if (revenue > 250000000 || employeeCount > 500) {
-        suggestedProduct = products.find(p => p.lookup_key?.includes('industry_council'));
+        suggestedProduct = products.find((p) =>
+          p.lookup_key?.includes("industry_council"),
+        );
       } else if (revenue > 5000000 || employeeCount > 20) {
-        suggestedProduct = products.find(p => p.lookup_key?.includes('corporate_5m'));
+        suggestedProduct = products.find((p) =>
+          p.lookup_key?.includes("corporate_5m"),
+        );
       } else {
-        suggestedProduct = products.find(p => p.lookup_key?.includes('under5m'));
+        suggestedProduct = products.find((p) =>
+          p.lookup_key?.includes("under5m"),
+        );
       }
       suggestedProduct = suggestedProduct || products[0];
     }
@@ -3300,19 +4966,23 @@ export function createAdminToolHandlers(
     const finalProduct = selectedProduct || suggestedProduct;
 
     // Build response
-    let response = `## ${created ? '✅ Created' : '📋'} ${org.name}\n\n`;
+    let response = `## ${created ? "✅ Created" : "📋"} ${org.name}\n\n`;
 
     // Show contacts/users (read-only inspection)
     response += `### Contacts\n`;
     if (org.prospect_contact_name || org.prospect_contact_email) {
-      response += `**Last known contact on file:** ${org.prospect_contact_name || 'Unknown'}`;
-      if (org.prospect_contact_email) response += ` (${org.prospect_contact_email})`;
+      response += `**Last known contact on file:** ${
+        org.prospect_contact_name || "Unknown"
+      }`;
+      if (org.prospect_contact_email)
+        response += ` (${org.prospect_contact_email})`;
       response += `\n`;
     }
     if (members.length > 0) {
       response += `**Registered Users:** ${members.length}\n`;
       for (const m of members.slice(0, 3)) {
-        const name = [m.first_name, m.last_name].filter(Boolean).join(' ') || 'Unknown';
+        const name =
+          [m.first_name, m.last_name].filter(Boolean).join(" ") || "Unknown";
         response += `  • ${name} (${m.email})\n`;
       }
       if (members.length > 3) {
@@ -3322,11 +4992,13 @@ export function createAdminToolHandlers(
     response += `\n`;
 
     // Lookup-only stops here
-    if (action === 'lookup_only') {
+    if (action === "lookup_only") {
       response += `### Available Products\n`;
       for (const p of products.slice(0, 5)) {
-        const amount = p.amount_cents ? `$${(p.amount_cents / 100).toLocaleString()}/yr` : 'Custom';
-        const suggested = p === suggestedProduct ? ' ⭐ Suggested' : '';
+        const amount = p.amount_cents
+          ? `$${(p.amount_cents / 100).toLocaleString()}/yr`
+          : "Custom";
+        const suggested = p === suggestedProduct ? " ⭐ Suggested" : "";
         response += `• **${p.display_name}** - ${amount}${suggested}\n`;
         response += `  lookup_key: \`${p.lookup_key}\`\n`;
       }
@@ -3338,18 +5010,33 @@ export function createAdminToolHandlers(
     // The recipient must click the invite link, sign in, accept the agreement,
     // and only then is an invoice/subscription issued under their authenticated
     // identity. The admin's email never becomes the Stripe customer.
-    if (action === 'send_invite') {
+    if (action === "send_invite") {
       if (!finalProduct || !finalProduct.lookup_key) {
-        return response + `\n❌ Pick a product first (call again with action="lookup_only" or pass a lookup_key).`;
+        return (
+          response +
+          `\n❌ Pick a product first (call again with action="lookup_only" or pass a lookup_key).`
+        );
       }
       if (!contactEmail) {
-        return response + `\n❌ contact_email is required for action="send_invite". The invite link will be emailed to this address.`;
+        return (
+          response +
+          `\n❌ contact_email is required for action="send_invite". The invite link will be emailed to this address.`
+        );
       }
       if (!adminUserId) {
-        return response + `\n❌ Cannot send invite — no signed-in admin context. Sign in to agenticadvertising.org and try again.`;
+        return (
+          response +
+          `\n❌ Cannot send invite — no signed-in admin context. Sign in to agenticadvertising.org and try again.`
+        );
       }
-      if (discountPercent !== undefined || discountAmountDollars !== undefined) {
-        return response + `\n⚠️ Discount parameters are preview-only on send_invite. To attach a discount, set the org's stored discount first (separate tool), then send the invite.`;
+      if (
+        discountPercent !== undefined ||
+        discountAmountDollars !== undefined
+      ) {
+        return (
+          response +
+          `\n⚠️ Discount parameters are preview-only on send_invite. To attach a discount, set the org's stored discount first (separate tool), then send the invite.`
+        );
       }
 
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -3367,15 +5054,17 @@ export function createAdminToolHandlers(
           invited_by_user_id: adminUserId,
         });
 
-        const baseUrl = process.env.BASE_URL || 'https://agenticadvertising.org';
+        const baseUrl =
+          process.env.BASE_URL || "https://agenticadvertising.org";
         const inviteUrl = `${baseUrl}/invite/${invite.token}`;
         const priceDisplay = finalProduct.amount_cents
           ? `$${(finalProduct.amount_cents / 100).toLocaleString()}`
-          : 'Custom';
+          : "Custom";
 
         const invitedByName =
-          [adminFirstName, adminLastName].filter(Boolean).join(' ') ||
-          adminEmail || 'AAO Admin';
+          [adminFirstName, adminLastName].filter(Boolean).join(" ") ||
+          adminEmail ||
+          "AAO Admin";
 
         const emailSent = await sendMembershipInviteEmail({
           to: normalizedEmail,
@@ -3385,7 +5074,7 @@ export function createAdminToolHandlers(
           priceDisplay,
           inviteUrl,
           invitedByName,
-          invitedByEmail: adminEmail || 'admin@agenticadvertising.org',
+          invitedByEmail: adminEmail || "admin@agenticadvertising.org",
           expiresAt: invite.expires_at,
         });
 
@@ -3401,15 +5090,19 @@ export function createAdminToolHandlers(
              prospect_contact_name = COALESCE($1, prospect_contact_name),
              updated_at = NOW()
            WHERE workos_organization_id = $2`,
-          [contactName?.trim() || null, org.workos_organization_id]
+          [contactName?.trim() || null, org.workos_organization_id],
         );
 
         response += `### ✉️ Membership Invite Sent\n\n`;
         response += `**Tier:** ${finalProduct.display_name}\n`;
         response += `**Price:** ${priceDisplay}/year\n`;
         response += `**Sent to:** ${normalizedEmail}\n`;
-        response += `**Invite expires:** ${invite.expires_at.toISOString().slice(0, 10)}\n`;
-        response += `**Email delivered:** ${emailSent ? 'yes' : 'no (Resend not configured)'}\n`;
+        response += `**Invite expires:** ${invite.expires_at
+          .toISOString()
+          .slice(0, 10)}\n`;
+        response += `**Email delivered:** ${
+          emailSent ? "yes" : "no (Resend not configured)"
+        }\n`;
         response += `\n**Invite URL:**\n${inviteUrl}\n`;
         response += `\n_The recipient signs in, accepts the membership agreement, and the invoice/checkout is issued under their authenticated identity — never under your email._`;
 
@@ -3417,19 +5110,27 @@ export function createAdminToolHandlers(
           {
             orgId: org.workos_organization_id,
             orgName: org.name,
-            inviteToken: invite.token.slice(0, 8) + '...',
+            inviteToken: invite.token.slice(0, 8) + "...",
             contactEmail: normalizedEmail,
             lookupKey: finalProduct.lookup_key,
             invitedBy: adminUserId,
             emailSent,
           },
-          'Addie sent membership invite (admin tool)',
+          "Addie sent membership invite (admin tool)",
         );
 
         return response;
       } catch (err) {
-        logger.error({ err, orgId: org.workos_organization_id }, 'Failed to send membership invite');
-        return response + `\n❌ Failed to send membership invite: ${err instanceof Error ? err.message : 'Unknown error'}`;
+        logger.error(
+          { err, orgId: org.workos_organization_id },
+          "Failed to send membership invite",
+        );
+        return (
+          response +
+          `\n❌ Failed to send membership invite: ${
+            err instanceof Error ? err.message : "Unknown error"
+          }`
+        );
       }
     }
 
@@ -3438,30 +5139,46 @@ export function createAdminToolHandlers(
     // email and billing address at invite-acceptance time, so we don't quote
     // either of those here. Discount parameters are previewed but only become
     // attached to the org via a separate explicit call.
-    if (action === 'draft_invoice') {
+    if (action === "draft_invoice") {
       if (!finalProduct) {
-        return response + `\n❌ No membership products available. Please check Stripe configuration.`;
+        return (
+          response +
+          `\n❌ No membership products available. Please check Stripe configuration.`
+        );
       }
 
       let appliedDiscount: string | undefined;
       let finalAmount = finalProduct.amount_cents || 0;
 
-      if (discountPercent !== undefined || discountAmountDollars !== undefined) {
+      if (
+        discountPercent !== undefined ||
+        discountAmountDollars !== undefined
+      ) {
         if (!discountReason) {
-          return response + `\n❌ Please provide a discount_reason when previewing a discount.`;
+          return (
+            response +
+            `\n❌ Please provide a discount_reason when previewing a discount.`
+          );
         }
-        appliedDiscount = discountPercent ? `${discountPercent}% off` : `$${discountAmountDollars} off`;
+        appliedDiscount = discountPercent
+          ? `${discountPercent}% off`
+          : `$${discountAmountDollars} off`;
         if (discountPercent) {
           finalAmount = Math.round(finalAmount * (1 - discountPercent / 100));
         } else if (discountAmountDollars) {
-          finalAmount = Math.max(0, finalAmount - (discountAmountDollars * 100));
+          finalAmount = Math.max(0, finalAmount - discountAmountDollars * 100);
         }
-      } else if (useExistingDiscount && (org.discount_percent || org.discount_amount_cents)) {
+      } else if (
+        useExistingDiscount &&
+        (org.discount_percent || org.discount_amount_cents)
+      ) {
         appliedDiscount = org.discount_percent
           ? `${org.discount_percent}% off`
           : `$${(org.discount_amount_cents || 0) / 100} off`;
         if (org.discount_percent) {
-          finalAmount = Math.round(finalAmount * (1 - org.discount_percent / 100));
+          finalAmount = Math.round(
+            finalAmount * (1 - org.discount_percent / 100),
+          );
         } else if (org.discount_amount_cents) {
           finalAmount = Math.max(0, finalAmount - org.discount_amount_cents);
         }
@@ -3472,14 +5189,16 @@ export function createAdminToolHandlers(
       response += `**Company:** ${org.name}\n`;
       if (org.revenue_tier) {
         const tierLabels: Record<string, string> = {
-          'under_1m': 'Under $1M',
-          '1m_5m': '$1M-$5M',
-          '5m_50m': '$5M-$50M',
-          '50m_250m': '$50M-$250M',
-          '250m_1b': '$250M-$1B',
-          '1b_plus': 'Over $1B',
+          under_1m: "Under $1M",
+          "1m_5m": "$1M-$5M",
+          "5m_50m": "$5M-$50M",
+          "50m_250m": "$50M-$250M",
+          "250m_1b": "$250M-$1B",
+          "1b_plus": "Over $1B",
         };
-        response += `**Revenue Tier:** ${tierLabels[org.revenue_tier] || org.revenue_tier}\n`;
+        response += `**Revenue Tier:** ${
+          tierLabels[org.revenue_tier] || org.revenue_tier
+        }\n`;
       }
 
       response += `\n**Product:** ${finalProduct.display_name}\n`;
@@ -3507,26 +5226,33 @@ export function createAdminToolHandlers(
       response += `- Same lookup_key\n`;
 
       logger.info(
-        { orgId: org.workos_organization_id, orgName: org.name, product: finalProduct.lookup_key, discount: appliedDiscount },
-        'Addie prepared draft invoice (preview only)',
+        {
+          orgId: org.workos_organization_id,
+          orgName: org.name,
+          product: finalProduct.lookup_key,
+          discount: appliedDiscount,
+        },
+        "Addie prepared draft invoice (preview only)",
       );
 
       return response;
     }
 
-    return response + `\n❌ Unknown action: ${action}. Use "lookup_only", "draft_invoice", or "send_invite".`;
+    return (
+      response +
+      `\n❌ Unknown action: ${action}. Use "lookup_only", "draft_invoice", or "send_invite".`
+    );
   });
 
   // Search Lusha for prospects
-  handlers.set('prospect_search_lusha', async (input) => {
-
+  handlers.set("prospect_search_lusha", async (input) => {
     if (!isLushaConfigured()) {
-      return '❌ Lusha is not configured (LUSHA_API_KEY not set).';
+      return "❌ Lusha is not configured (LUSHA_API_KEY not set).";
     }
 
     const lusha = getLushaClient();
     if (!lusha) {
-      return '❌ Lusha client not available.';
+      return "❌ Lusha client not available.";
     }
 
     const keywords = input.keywords as string[] | undefined;
@@ -3545,16 +5271,23 @@ export function createAdminToolHandlers(
     }
 
     let response = `## Lusha Search Results\n\n`;
-    response += `Found ${result.total || result.companies.length} companies:\n\n`;
+    response += `Found ${
+      result.total || result.companies.length
+    } companies:\n\n`;
 
     for (const company of result.companies) {
       response += `### ${company.companyName}\n`;
       if (company.domain) response += `**Domain:** ${company.domain}\n`;
-      if (company.mainIndustry) response += `**Industry:** ${company.mainIndustry}\n`;
-      if (company.employeeCount) response += `**Employees:** ${company.employeeCount.toLocaleString()}\n`;
+      if (company.mainIndustry)
+        response += `**Industry:** ${company.mainIndustry}\n`;
+      if (company.employeeCount)
+        response += `**Employees:** ${company.employeeCount.toLocaleString()}\n`;
       if (company.country) response += `**Location:** ${company.country}\n`;
 
-      const suggestedType = mapIndustryToCompanyType(company.mainIndustry || '', company.subIndustry || '');
+      const suggestedType = mapIndustryToCompanyType(
+        company.mainIndustry || "",
+        company.subIndustry || "",
+      );
       if (suggestedType) response += `**Suggested Type:** ${suggestedType}\n`;
 
       response += `\n`;
@@ -3570,10 +5303,9 @@ export function createAdminToolHandlers(
   // ============================================
 
   // Search industry feeds
-  handlers.set('search_industry_feeds', async (input) => {
-
-    const query = (input.query as string)?.toLowerCase().trim() || '';
-    const status = (input.status as string) || 'all';
+  handlers.set("search_industry_feeds", async (input) => {
+    const query = (input.query as string)?.toLowerCase().trim() || "";
+    const status = (input.status as string) || "all";
     const limit = Math.min(Math.max((input.limit as number) || 10, 1), 50);
 
     try {
@@ -3583,20 +5315,21 @@ export function createAdminToolHandlers(
       let filtered = allFeeds;
 
       // Apply status filter
-      if (status === 'active') {
-        filtered = filtered.filter(f => f.is_active);
-      } else if (status === 'inactive') {
-        filtered = filtered.filter(f => !f.is_active);
-      } else if (status === 'errors') {
-        filtered = filtered.filter(f => f.error_count > 0);
+      if (status === "active") {
+        filtered = filtered.filter((f) => f.is_active);
+      } else if (status === "inactive") {
+        filtered = filtered.filter((f) => !f.is_active);
+      } else if (status === "errors") {
+        filtered = filtered.filter((f) => f.error_count > 0);
       }
 
       // Apply search query
       if (query) {
-        filtered = filtered.filter(f =>
-          f.name.toLowerCase().includes(query) ||
-          (f.feed_url || '').toLowerCase().includes(query) ||
-          (f.category || '').toLowerCase().includes(query)
+        filtered = filtered.filter(
+          (f) =>
+            f.name.toLowerCase().includes(query) ||
+            (f.feed_url || "").toLowerCase().includes(query) ||
+            (f.category || "").toLowerCase().includes(query),
         );
       }
 
@@ -3604,20 +5337,20 @@ export function createAdminToolHandlers(
       const results = filtered.slice(0, limit);
 
       if (results.length === 0) {
-        let msg = 'No feeds found';
+        let msg = "No feeds found";
         if (query) msg += ` matching "${query}"`;
-        if (status !== 'all') msg += ` with status "${status}"`;
-        return msg + '.';
+        if (status !== "all") msg += ` with status "${status}"`;
+        return msg + ".";
       }
 
       let response = `## Industry Feeds`;
-      if (status !== 'all') response += ` (${status})`;
+      if (status !== "all") response += ` (${status})`;
       if (query) response += ` matching "${query}"`;
       response += `\n\n`;
 
       for (const feed of results) {
-        const statusIcon = feed.is_active ? '✅' : '⏸️';
-        const errorIcon = feed.error_count > 0 ? ' ⚠️' : '';
+        const statusIcon = feed.is_active ? "✅" : "⏸️";
+        const errorIcon = feed.error_count > 0 ? " ⚠️" : "";
 
         response += `${statusIcon}${errorIcon} **${feed.name}**\n`;
         response += `   URL: ${feed.feed_url}\n`;
@@ -3629,7 +5362,9 @@ export function createAdminToolHandlers(
           response += `\n`;
         }
         if (feed.last_fetched_at) {
-          response += `   Last fetched: ${formatDate(new Date(feed.last_fetched_at))}\n`;
+          response += `   Last fetched: ${formatDate(
+            new Date(feed.last_fetched_at),
+          )}\n`;
         }
         response += `\n`;
       }
@@ -3640,29 +5375,28 @@ export function createAdminToolHandlers(
 
       return response;
     } catch (error) {
-      logger.error({ error }, 'Error searching feeds');
-      return '❌ Failed to search feeds. Please try again.';
+      logger.error({ error }, "Error searching feeds");
+      return "❌ Failed to search feeds. Please try again.";
     }
   });
 
   // Add industry feed
-  handlers.set('add_industry_feed', async (input) => {
-
+  handlers.set("add_industry_feed", async (input) => {
     const name = (input.name as string)?.trim();
     const feedUrl = (input.feed_url as string)?.trim();
     const category = input.category as string | undefined;
 
     if (!name || name.length < 1) {
-      return '❌ Feed name is required.';
+      return "❌ Feed name is required.";
     }
     if (name.length > 200) {
-      return '❌ Feed name must be 200 characters or less.';
+      return "❌ Feed name must be 200 characters or less.";
     }
     if (!feedUrl) {
-      return '❌ Feed URL is required.';
+      return "❌ Feed URL is required.";
     }
     if (feedUrl.length > 2000) {
-      return '❌ Feed URL must be 2000 characters or less.';
+      return "❌ Feed URL must be 2000 characters or less.";
     }
 
     // Validate URL
@@ -3678,10 +5412,11 @@ export function createAdminToolHandlers(
       if (similarFeeds.length > 0) {
         let response = `⚠️ Found similar feed(s) that may be duplicates:\n\n`;
         for (const existing of similarFeeds) {
-          const status = existing.is_active ? '✅' : '⏸️';
+          const status = existing.is_active ? "✅" : "⏸️";
           response += `${status} **${existing.name}** (ID: ${existing.id})\n`;
           response += `   URL: ${existing.feed_url}\n`;
-          if (existing.category) response += `   Category: ${existing.category}\n`;
+          if (existing.category)
+            response += `   Category: ${existing.category}\n`;
           response += `\n`;
         }
         response += `If you still want to add "${name}", the feed URL needs to be different from existing feeds. `;
@@ -3689,12 +5424,15 @@ export function createAdminToolHandlers(
         return response;
       }
     } catch (error) {
-      logger.warn({ error, feedUrl }, 'Error checking for similar feeds, proceeding with add');
+      logger.warn(
+        { error, feedUrl },
+        "Error checking for similar feeds, proceeding with add",
+      );
     }
 
     try {
       const feed = await addFeed(name, feedUrl, category);
-      logger.info({ feedId: feed.id, name, feedUrl }, 'Feed created via Addie');
+      logger.info({ feedId: feed.id, name, feedUrl }, "Feed created via Addie");
 
       let response = `✅ Added feed **${name}**\n\n`;
       response += `**URL:** ${feedUrl}\n`;
@@ -3704,17 +5442,16 @@ export function createAdminToolHandlers(
 
       return response;
     } catch (error) {
-      logger.error({ error, name, feedUrl }, 'Error adding feed');
-      if (error instanceof Error && error.message.includes('duplicate')) {
+      logger.error({ error, name, feedUrl }, "Error adding feed");
+      if (error instanceof Error && error.message.includes("duplicate")) {
         return `❌ A feed with this URL already exists.`;
       }
-      return '❌ Failed to add feed. Please try again.';
+      return "❌ Failed to add feed. Please try again.";
     }
   });
 
   // Get feed stats
-  handlers.set('get_feed_stats', async () => {
-
+  handlers.set("get_feed_stats", async () => {
     try {
       const stats = await getFeedStats();
 
@@ -3736,8 +5473,216 @@ export function createAdminToolHandlers(
 
       return response;
     } catch (error) {
-      logger.error({ error }, 'Error getting feed stats');
-      return '❌ Failed to get feed statistics. Please try again.';
+      logger.error({ error }, "Error getting feed stats");
+      return "❌ Failed to get feed statistics. Please try again.";
+    }
+  });
+
+  handlers.set("get_platform_stats", async () => {
+    const pool = getPool();
+
+    try {
+      const stats = await pool.query<{
+        snapshot_at: Date;
+        users_total: string;
+        users_with_attributed_org: string;
+        users_without_attributed_org: string;
+        users_member: string;
+        users_engaged: string;
+        users_registered: string;
+        users_prospect: string;
+        orgs_total: string;
+        orgs_corporate: string;
+        orgs_individual: string;
+        orgs_member: string;
+        orgs_engaged: string;
+        orgs_registered: string;
+        orgs_prospect: string;
+        subscription_active: string;
+        subscription_trialing: string;
+        subscription_past_due: string;
+        subscription_canceled: string;
+        subscription_none: string;
+        membership_tiers: Record<string, number> | null;
+      }>(`
+        WITH person_sources AS (
+          SELECT
+            COALESCE(iwu.identity_id::text, u.workos_user_id) AS person_id,
+            u.workos_user_id,
+            u.primary_organization_id
+          FROM users u
+          LEFT JOIN identity_workos_users iwu
+            ON iwu.workos_user_id = u.workos_user_id
+          UNION ALL
+          SELECT
+            'slack:' || sm.slack_user_id AS person_id,
+            NULL::text AS workos_user_id,
+            sm.pending_organization_id AS primary_organization_id
+          FROM slack_user_mappings sm
+          WHERE sm.pending_organization_id IS NOT NULL
+            AND sm.mapping_status = 'unmapped'
+            AND sm.workos_user_id IS NULL
+            AND sm.slack_is_bot = false
+            AND sm.slack_is_deleted = false
+        ),
+        person_org_candidates AS (
+          SELECT
+            ps.person_id,
+            o.workos_organization_id,
+            o.subscription_status,
+            o.subscription_canceled_at,
+            o.is_personal,
+            EXISTS (
+              SELECT 1 FROM organization_memberships om_user
+              WHERE om_user.workos_organization_id = o.workos_organization_id
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM slack_user_mappings sm
+              JOIN organization_domains od
+                ON LOWER(SPLIT_PART(sm.slack_email, '@', 2)) = LOWER(od.domain)
+              WHERE od.workos_organization_id = o.workos_organization_id
+                AND sm.slack_is_bot = false
+                AND sm.slack_is_deleted = false
+            ) AS has_users,
+            EXISTS (
+              SELECT 1
+              FROM organization_memberships om_engaged
+              JOIN community_points cp ON cp.workos_user_id = om_engaged.workos_user_id
+              WHERE om_engaged.workos_organization_id = o.workos_organization_id
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM slack_user_mappings sm
+              JOIN organization_domains od
+                ON LOWER(SPLIT_PART(sm.slack_email, '@', 2)) = LOWER(od.domain)
+              WHERE od.workos_organization_id = o.workos_organization_id
+                AND sm.slack_is_bot = false
+                AND sm.slack_is_deleted = false
+                AND sm.last_slack_activity_at >= CURRENT_DATE - INTERVAL '30 days'
+            ) AS has_engaged_users,
+            CASE
+              WHEN o.workos_organization_id IS NULL THEN 9
+              WHEN o.is_personal = false AND (${MEMBER_FILTER_ALIASED}) THEN 0
+              WHEN o.is_personal = false AND o.workos_organization_id = ps.primary_organization_id THEN 1
+              WHEN o.is_personal = false THEN 2
+              WHEN (${MEMBER_FILTER_ALIASED}) THEN 3
+              WHEN o.workos_organization_id = ps.primary_organization_id THEN 4
+              ELSE 5
+            END AS attribution_rank
+          FROM person_sources ps
+          LEFT JOIN organization_memberships om
+            ON om.workos_user_id = ps.workos_user_id
+          LEFT JOIN organizations o
+            ON o.workos_organization_id = ps.primary_organization_id
+            OR o.workos_organization_id = om.workos_organization_id
+        ),
+        attributed_people AS (
+          SELECT DISTINCT ON (person_id)
+            person_id,
+            workos_organization_id,
+            subscription_status,
+            subscription_canceled_at,
+            has_users,
+            has_engaged_users,
+            CASE
+              WHEN workos_organization_id IS NULL THEN 'no_attributed_org'
+              WHEN subscription_status = 'active' AND subscription_canceled_at IS NULL THEN 'member'
+              WHEN has_engaged_users THEN 'engaged'
+              WHEN has_users THEN 'registered'
+              ELSE 'prospect'
+            END AS platform_tier
+          FROM person_org_candidates
+          ORDER BY person_id, attribution_rank
+        ),
+        org_rows AS (
+          SELECT
+            o.*,
+            CASE
+              WHEN ${MEMBER_FILTER_ALIASED} THEN 'member'
+              WHEN ${ENGAGED_FILTER_ALIASED} THEN 'engaged'
+              WHEN ${REGISTERED_FILTER_ALIASED} THEN 'registered'
+              ELSE 'prospect'
+            END AS platform_tier
+          FROM organizations o
+        ),
+        membership_tiers AS (
+          SELECT COALESCE(jsonb_object_agg(tier, count ORDER BY tier), '{}'::jsonb) AS by_tier
+          FROM (
+            SELECT COALESCE(membership_tier, 'none') AS tier, COUNT(*)::int AS count
+            FROM org_rows
+            GROUP BY COALESCE(membership_tier, 'none')
+          ) tiers
+        )
+        SELECT
+          NOW() AS snapshot_at,
+          (SELECT COUNT(*) FROM attributed_people)::text AS users_total,
+          (SELECT COUNT(*) FROM attributed_people WHERE workos_organization_id IS NOT NULL)::text AS users_with_attributed_org,
+          (SELECT COUNT(*) FROM attributed_people WHERE workos_organization_id IS NULL)::text AS users_without_attributed_org,
+          (SELECT COUNT(*) FROM attributed_people WHERE platform_tier = 'member')::text AS users_member,
+          (SELECT COUNT(*) FROM attributed_people WHERE platform_tier = 'engaged')::text AS users_engaged,
+          (SELECT COUNT(*) FROM attributed_people WHERE platform_tier = 'registered')::text AS users_registered,
+          (SELECT COUNT(*) FROM attributed_people WHERE platform_tier IN ('prospect', 'no_attributed_org'))::text AS users_prospect,
+          (SELECT COUNT(*) FROM org_rows)::text AS orgs_total,
+          (SELECT COUNT(*) FROM org_rows WHERE is_personal IS NOT TRUE)::text AS orgs_corporate,
+          (SELECT COUNT(*) FROM org_rows WHERE is_personal IS TRUE)::text AS orgs_individual,
+          (SELECT COUNT(*) FROM org_rows WHERE platform_tier = 'member')::text AS orgs_member,
+          (SELECT COUNT(*) FROM org_rows WHERE platform_tier = 'engaged')::text AS orgs_engaged,
+          (SELECT COUNT(*) FROM org_rows WHERE platform_tier = 'registered')::text AS orgs_registered,
+          (SELECT COUNT(*) FROM org_rows WHERE platform_tier = 'prospect')::text AS orgs_prospect,
+          (SELECT COUNT(*) FROM org_rows WHERE subscription_status = 'active' AND subscription_canceled_at IS NULL)::text AS subscription_active,
+          (SELECT COUNT(*) FROM org_rows WHERE subscription_status = 'trialing' AND subscription_canceled_at IS NULL)::text AS subscription_trialing,
+          (SELECT COUNT(*) FROM org_rows WHERE subscription_status = 'past_due' AND subscription_canceled_at IS NULL)::text AS subscription_past_due,
+          (SELECT COUNT(*) FROM org_rows WHERE subscription_status = 'canceled' OR subscription_canceled_at IS NOT NULL)::text AS subscription_canceled,
+          (SELECT COUNT(*) FROM org_rows WHERE subscription_status IS NULL AND subscription_canceled_at IS NULL)::text AS subscription_none,
+          (SELECT by_tier FROM membership_tiers) AS membership_tiers
+      `);
+
+      const row = stats.rows[0];
+      const toInt = (value: string | number | null | undefined): number =>
+        Number.parseInt(String(value ?? "0"), 10);
+      const snapshot = {
+        users: {
+          total: toInt(row.users_total),
+          deduplicated: true,
+          deduplication_key: "identity_id_fallback_workos_user_id_or_slack_user_id",
+          attributed_to_org: toInt(row.users_with_attributed_org),
+          without_attributed_org: toInt(row.users_without_attributed_org),
+          by_platform_tier: {
+            member: toInt(row.users_member),
+            engaged: toInt(row.users_engaged),
+            registered: toInt(row.users_registered),
+            prospect: toInt(row.users_prospect),
+          },
+        },
+        organizations: {
+          total: toInt(row.orgs_total),
+          by_type: {
+            corporate: toInt(row.orgs_corporate),
+            individual: toInt(row.orgs_individual),
+          },
+          by_platform_tier: {
+            member: toInt(row.orgs_member),
+            engaged: toInt(row.orgs_engaged),
+            registered: toInt(row.orgs_registered),
+            prospect: toInt(row.orgs_prospect),
+          },
+          by_membership_tier: row.membership_tiers ?? {},
+        },
+        memberships: {
+          active: toInt(row.subscription_active),
+          trialing: toInt(row.subscription_trialing),
+          past_due: toInt(row.subscription_past_due),
+          canceled: toInt(row.subscription_canceled),
+          none: toInt(row.subscription_none),
+        },
+        snapshot_at: row.snapshot_at.toISOString(),
+      };
+
+      return `## Platform Stats\n\n\`\`\`json\n${JSON.stringify(snapshot, null, 2)}\n\`\`\``;
+    } catch (error) {
+      logger.error({ error }, "Error getting platform stats");
+      return "❌ Failed to get platform statistics. Please try again.";
     }
   });
 
@@ -3746,8 +5691,7 @@ export function createAdminToolHandlers(
   // ============================================
 
   // List pending proposals
-  handlers.set('list_feed_proposals', async (input) => {
-
+  handlers.set("list_feed_proposals", async (input) => {
     const limit = Math.min(Math.max((input.limit as number) || 20, 1), 50);
 
     try {
@@ -3765,7 +5709,8 @@ export function createAdminToolHandlers(
         response += `### Proposal #${proposal.id}\n`;
         response += `**URL:** ${proposal.url}\n`;
         if (proposal.name) response += `**Suggested name:** ${proposal.name}\n`;
-        if (proposal.category) response += `**Category:** ${proposal.category}\n`;
+        if (proposal.category)
+          response += `**Category:** ${proposal.category}\n`;
         if (proposal.reason) response += `**Reason:** ${proposal.reason}\n`;
         response += `**Proposed:** ${proposal.proposed_at.toLocaleDateString()}`;
         if (proposal.proposed_by_slack_user_id) {
@@ -3777,27 +5722,26 @@ export function createAdminToolHandlers(
       response += `_Use \`approve_feed_proposal\` or \`reject_feed_proposal\` to review._`;
       return response;
     } catch (error) {
-      logger.error({ error }, 'Error listing feed proposals');
-      return '❌ Failed to list proposals. Please try again.';
+      logger.error({ error }, "Error listing feed proposals");
+      return "❌ Failed to list proposals. Please try again.";
     }
   });
 
   // Approve a proposal
-  handlers.set('approve_feed_proposal', async (input) => {
-
+  handlers.set("approve_feed_proposal", async (input) => {
     const proposalId = Number(input.proposal_id);
     const feedName = (input.feed_name as string)?.trim();
     const feedUrl = (input.feed_url as string)?.trim();
     const category = input.category as string | undefined;
 
     if (!Number.isInteger(proposalId) || proposalId <= 0) {
-      return '❌ Proposal ID must be a positive integer.';
+      return "❌ Proposal ID must be a positive integer.";
     }
     if (!feedName) {
-      return '❌ Feed name is required.';
+      return "❌ Feed name is required.";
     }
     if (!feedUrl) {
-      return '❌ Feed URL is required.';
+      return "❌ Feed URL is required.";
     }
 
     // Validate URL
@@ -3820,17 +5764,21 @@ export function createAdminToolHandlers(
         return response;
       }
     } catch (error) {
-      logger.warn({ error }, 'Error checking for duplicates during proposal approval');
+      logger.warn(
+        { error },
+        "Error checking for duplicates during proposal approval",
+      );
     }
 
     try {
-      const workosUserId = memberContext?.workos_user?.workos_user_id || 'unknown';
+      const workosUserId =
+        memberContext?.workos_user?.workos_user_id || "unknown";
       const { proposal, feed } = await approveProposal(
         proposalId,
         workosUserId,
         feedName,
         feedUrl,
-        category
+        category,
       );
 
       let response = `✅ **Proposal #${proposalId} approved!**\n\n`;
@@ -3839,39 +5787,42 @@ export function createAdminToolHandlers(
       if (category) response += `**Category:** ${category}\n`;
       response += `\n_The feed will be fetched on the next scheduled run._`;
 
-      logger.info({ proposalId, feedId: feed.id, feedName }, 'Feed proposal approved');
+      logger.info(
+        { proposalId, feedId: feed.id, feedName },
+        "Feed proposal approved",
+      );
       return response;
     } catch (error) {
-      logger.error({ error, proposalId }, 'Error approving proposal');
-      if (error instanceof Error && error.message.includes('duplicate')) {
+      logger.error({ error, proposalId }, "Error approving proposal");
+      if (error instanceof Error && error.message.includes("duplicate")) {
         return `❌ A feed with this URL already exists.`;
       }
-      return '❌ Failed to approve proposal. Please try again.';
+      return "❌ Failed to approve proposal. Please try again.";
     }
   });
 
   // Reject a proposal
-  handlers.set('reject_feed_proposal', async (input) => {
-
+  handlers.set("reject_feed_proposal", async (input) => {
     const proposalId = Number(input.proposal_id);
     const reason = input.reason as string | undefined;
 
     if (!Number.isInteger(proposalId) || proposalId <= 0) {
-      return '❌ Proposal ID must be a positive integer.';
+      return "❌ Proposal ID must be a positive integer.";
     }
 
     try {
-      const workosUserId = memberContext?.workos_user?.workos_user_id || 'unknown';
+      const workosUserId =
+        memberContext?.workos_user?.workos_user_id || "unknown";
       const proposal = await rejectProposal(proposalId, workosUserId, reason);
 
       let response = `✅ **Proposal #${proposalId} rejected.**\n`;
       if (reason) response += `**Reason:** ${reason}\n`;
 
-      logger.info({ proposalId, reason }, 'Feed proposal rejected');
+      logger.info({ proposalId, reason }, "Feed proposal rejected");
       return response;
     } catch (error) {
-      logger.error({ error, proposalId }, 'Error rejecting proposal');
-      return '❌ Failed to reject proposal. Please try again.';
+      logger.error({ error, proposalId }, "Error rejecting proposal");
+      return "❌ Failed to reject proposal. Please try again.";
     }
   });
 
@@ -3882,18 +5833,19 @@ export function createAdminToolHandlers(
   const insightsDb = new InsightsDatabase();
 
   // Add media contact
-  handlers.set('add_media_contact', async (input) => {
-
+  handlers.set("add_media_contact", async (input) => {
     const slackUserId = input.slack_user_id as string | undefined;
     const email = input.email as string | undefined;
     const name = input.name as string | undefined;
     const organization = input.organization as string | undefined;
     const role = input.role as string | undefined;
     const notes = input.notes as string | undefined;
-    const handlingLevel = (input.handling_level as 'standard' | 'careful' | 'executive_only') || 'standard';
+    const handlingLevel =
+      (input.handling_level as "standard" | "careful" | "executive_only") ||
+      "standard";
 
     if (!slackUserId && !email) {
-      return '❌ Please provide either a slack_user_id or email to identify the media contact.';
+      return "❌ Please provide either a slack_user_id or email to identify the media contact.";
     }
 
     try {
@@ -3909,31 +5861,32 @@ export function createAdminToolHandlers(
 
       let response = `✅ Added media contact\n\n`;
       if (contact.name) response += `**Name:** ${contact.name}\n`;
-      if (contact.organization) response += `**Organization:** ${contact.organization}\n`;
+      if (contact.organization)
+        response += `**Organization:** ${contact.organization}\n`;
       if (contact.role) response += `**Role:** ${contact.role}\n`;
-      if (contact.slackUserId) response += `**Slack ID:** ${contact.slackUserId}\n`;
+      if (contact.slackUserId)
+        response += `**Slack ID:** ${contact.slackUserId}\n`;
       if (contact.email) response += `**Email:** ${contact.email}\n`;
       response += `**Handling Level:** ${contact.handlingLevel}\n`;
 
       const levelExplanation = {
-        standard: 'Sensitive topics will be deflected to human contacts.',
-        careful: 'More topics will be deflected, extra caution applied.',
-        executive_only: 'All questions will be escalated for executive review.',
+        standard: "Sensitive topics will be deflected to human contacts.",
+        careful: "More topics will be deflected, extra caution applied.",
+        executive_only: "All questions will be escalated for executive review.",
       };
       response += `\n_${levelExplanation[contact.handlingLevel]}_`;
 
       return response;
     } catch (error) {
-      logger.error({ error }, 'Error adding media contact');
-      return '❌ Failed to add media contact. Please try again.';
+      logger.error({ error }, "Error adding media contact");
+      return "❌ Failed to add media contact. Please try again.";
     }
   });
 
   // List flagged conversations
-  handlers.set('list_flagged_conversations', async (input) => {
-
+  handlers.set("list_flagged_conversations", async (input) => {
     const unreviewedOnly = input.unreviewed_only !== false; // Default to true
-    const severity = input.severity as 'high' | 'medium' | 'low' | undefined;
+    const severity = input.severity as "high" | "medium" | "low" | undefined;
     const limit = Math.min(Math.max((input.limit as number) || 20, 1), 100);
 
     try {
@@ -3944,10 +5897,10 @@ export function createAdminToolHandlers(
       });
 
       if (flagged.length === 0) {
-        let msg = 'No flagged conversations found';
-        if (unreviewedOnly) msg += ' pending review';
+        let msg = "No flagged conversations found";
+        if (unreviewedOnly) msg += " pending review";
         if (severity) msg += ` with severity "${severity}"`;
-        return msg + '. 🎉';
+        return msg + ". 🎉";
       }
 
       let response = `## Flagged Conversations`;
@@ -3955,23 +5908,28 @@ export function createAdminToolHandlers(
       response += `\n\n`;
 
       const severityIcon = {
-        high: '🔴',
-        medium: '🟡',
-        low: '🟢',
+        high: "🔴",
+        medium: "🟡",
+        low: "🟢",
       };
 
       for (const conv of flagged) {
-        const icon = severityIcon[conv.severity || 'low'];
+        const icon = severityIcon[conv.severity || "low"];
         response += `### ${icon} ID: ${conv.id}\n`;
         if (conv.userName) response += `**From:** ${conv.userName}`;
         if (conv.userEmail) response += ` (${conv.userEmail})`;
         response += `\n`;
-        response += `**Category:** ${conv.matchedCategory || 'unknown'}\n`;
-        response += `**Message:** "${conv.messageText.substring(0, 150)}${conv.messageText.length > 150 ? '...' : ''}"\n`;
+        response += `**Category:** ${conv.matchedCategory || "unknown"}\n`;
+        response += `**Message:** "${conv.messageText.substring(0, 150)}${
+          conv.messageText.length > 150 ? "..." : ""
+        }"\n`;
         if (conv.wasDeflected) {
           response += `**Deflected:** Yes\n`;
           if (conv.responseGiven) {
-            response += `**Response:** "${conv.responseGiven.substring(0, 100)}..."\n`;
+            response += `**Response:** "${conv.responseGiven.substring(
+              0,
+              100,
+            )}..."\n`;
           }
         }
         response += `**When:** ${formatDate(conv.createdAt)}\n`;
@@ -3982,19 +5940,18 @@ export function createAdminToolHandlers(
 
       return response;
     } catch (error) {
-      logger.error({ error }, 'Error listing flagged conversations');
-      return '❌ Failed to list flagged conversations. Please try again.';
+      logger.error({ error }, "Error listing flagged conversations");
+      return "❌ Failed to list flagged conversations. Please try again.";
     }
   });
 
   // Review flagged conversation
-  handlers.set('review_flagged_conversation', async (input) => {
-
+  handlers.set("review_flagged_conversation", async (input) => {
     const flaggedId = input.flagged_id as number;
     const notes = input.notes as string | undefined;
 
     if (!flaggedId) {
-      return '❌ Please provide the flagged_id to review.';
+      return "❌ Please provide the flagged_id to review.";
     }
 
     try {
@@ -4012,8 +5969,11 @@ export function createAdminToolHandlers(
 
       return response;
     } catch (error) {
-      logger.error({ error, flaggedId }, 'Error reviewing flagged conversation');
-      return '❌ Failed to mark conversation as reviewed. Please check the ID and try again.';
+      logger.error(
+        { error, flaggedId },
+        "Error reviewing flagged conversation",
+      );
+      return "❌ Failed to mark conversation as reviewed. Please check the ID and try again.";
     }
   });
 
@@ -4022,34 +5982,38 @@ export function createAdminToolHandlers(
   // ============================================
 
   // Grant discount to an organization
-  handlers.set('grant_discount', async (input) => {
-
+  handlers.set("grant_discount", async (input) => {
     const orgId = input.org_id as string | undefined;
     const orgName = input.org_name as string | undefined;
     const discountPercent = input.discount_percent as number | undefined;
-    const discountAmountDollars = input.discount_amount_dollars as number | undefined;
+    const discountAmountDollars = input.discount_amount_dollars as
+      | number
+      | undefined;
     const reason = input.reason as string;
     const createPromoCode = input.create_promotion_code !== false; // default true
 
     // Validate inputs
     if (!reason) {
-      return '❌ Please provide a reason for the discount.';
+      return "❌ Please provide a reason for the discount.";
     }
 
     if (discountPercent === undefined && discountAmountDollars === undefined) {
-      return '❌ Please provide either discount_percent or discount_amount_dollars.';
+      return "❌ Please provide either discount_percent or discount_amount_dollars.";
     }
 
     if (discountPercent !== undefined && discountAmountDollars !== undefined) {
-      return '❌ Please provide either discount_percent OR discount_amount_dollars, not both.';
+      return "❌ Please provide either discount_percent OR discount_amount_dollars, not both.";
     }
 
-    if (discountPercent !== undefined && (discountPercent < 1 || discountPercent > 100)) {
-      return '❌ Discount percent must be between 1 and 100.';
+    if (
+      discountPercent !== undefined &&
+      (discountPercent < 1 || discountPercent > 100)
+    ) {
+      return "❌ Discount percent must be between 1 and 100.";
     }
 
     if (discountAmountDollars !== undefined && discountAmountDollars < 1) {
-      return '❌ Discount amount must be a positive number.';
+      return "❌ Discount amount must be a positive number.";
     }
 
     try {
@@ -4058,32 +6022,43 @@ export function createAdminToolHandlers(
       if (orgId) {
         org = await orgDb.getOrganization(orgId);
       } else if (orgName) {
-        const orgs = await orgDb.searchOrganizations({ query: orgName, limit: 1 });
+        const orgs = await orgDb.searchOrganizations({
+          query: orgName,
+          limit: 1,
+        });
         if (orgs.length > 0) {
           org = await orgDb.getOrganization(orgs[0].workos_organization_id);
         }
       } else {
-        return '❌ Please provide either org_id or org_name to identify the organization.';
+        return "❌ Please provide either org_id or org_name to identify the organization.";
       }
 
       if (!org) {
-        return `❌ Organization not found${orgName ? ` matching "${orgName}"` : ''}.`;
+        return `❌ Organization not found${
+          orgName ? ` matching "${orgName}"` : ""
+        }.`;
       }
 
       // Get the admin's name for attribution
-      const grantedBy = memberContext?.workos_user?.email || 'Unknown admin';
+      const grantedBy = memberContext?.workos_user?.email || "Unknown admin";
 
       let stripeCouponId: string | null = null;
       let stripePromoCode: string | null = null;
 
       // Create Stripe coupon if requested
       if (createPromoCode) {
-        const stripeDiscount = await createOrgDiscount(org.workos_organization_id, org.name, {
-          percent_off: discountPercent,
-          amount_off_cents: discountAmountDollars ? discountAmountDollars * 100 : undefined,
-          duration: 'forever',
-          reason,
-        });
+        const stripeDiscount = await createOrgDiscount(
+          org.workos_organization_id,
+          org.name,
+          {
+            percent_off: discountPercent,
+            amount_off_cents: discountAmountDollars
+              ? discountAmountDollars * 100
+              : undefined,
+            duration: "forever",
+            reason,
+          },
+        );
 
         if (stripeDiscount) {
           stripeCouponId = stripeDiscount.coupon_id;
@@ -4094,21 +6069,26 @@ export function createAdminToolHandlers(
       // Update the organization
       await orgDb.setDiscount(org.workos_organization_id, {
         discount_percent: discountPercent ?? null,
-        discount_amount_cents: discountAmountDollars ? discountAmountDollars * 100 : null,
+        discount_amount_cents: discountAmountDollars
+          ? discountAmountDollars * 100
+          : null,
         reason,
         granted_by: grantedBy,
         stripe_coupon_id: stripeCouponId,
         stripe_promotion_code: stripePromoCode,
       });
 
-      logger.info({
-        orgId: org.workos_organization_id,
-        orgName: org.name,
-        discountPercent,
-        discountAmountDollars,
-        grantedBy,
-        stripePromoCode,
-      }, 'Addie: Granted discount to organization');
+      logger.info(
+        {
+          orgId: org.workos_organization_id,
+          orgName: org.name,
+          discountPercent,
+          discountAmountDollars,
+          grantedBy,
+          stripePromoCode,
+        },
+        "Addie: Granted discount to organization",
+      );
 
       // Build response
       const discountDescription = discountPercent
@@ -4128,14 +6108,13 @@ export function createAdminToolHandlers(
 
       return response;
     } catch (error) {
-      logger.error({ error, orgId, orgName }, 'Error granting discount');
-      return '❌ Failed to grant discount. Please try again.';
+      logger.error({ error, orgId, orgName }, "Error granting discount");
+      return "❌ Failed to grant discount. Please try again.";
     }
   });
 
   // Remove discount from an organization
-  handlers.set('remove_discount', async (input) => {
-
+  handlers.set("remove_discount", async (input) => {
     const orgId = input.org_id as string | undefined;
     const orgName = input.org_name as string | undefined;
 
@@ -4145,16 +6124,21 @@ export function createAdminToolHandlers(
       if (orgId) {
         org = await orgDb.getOrganization(orgId);
       } else if (orgName) {
-        const orgs = await orgDb.searchOrganizations({ query: orgName, limit: 1 });
+        const orgs = await orgDb.searchOrganizations({
+          query: orgName,
+          limit: 1,
+        });
         if (orgs.length > 0) {
           org = await orgDb.getOrganization(orgs[0].workos_organization_id);
         }
       } else {
-        return '❌ Please provide either org_id or org_name to identify the organization.';
+        return "❌ Please provide either org_id or org_name to identify the organization.";
       }
 
       if (!org) {
-        return `❌ Organization not found${orgName ? ` matching "${orgName}"` : ''}.`;
+        return `❌ Organization not found${
+          orgName ? ` matching "${orgName}"` : ""
+        }.`;
       }
 
       if (!org.discount_percent && !org.discount_amount_cents) {
@@ -4167,12 +6151,15 @@ export function createAdminToolHandlers(
 
       await orgDb.removeDiscount(org.workos_organization_id);
 
-      logger.info({
-        orgId: org.workos_organization_id,
-        orgName: org.name,
-        previousDiscount,
-        removedBy: memberContext?.workos_user?.email,
-      }, 'Addie: Removed discount from organization');
+      logger.info(
+        {
+          orgId: org.workos_organization_id,
+          orgName: org.name,
+          previousDiscount,
+          removedBy: memberContext?.workos_user?.email,
+        },
+        "Addie: Removed discount from organization",
+      );
 
       let response = `✅ Removed discount from **${org.name}**\n\n`;
       response += `**Previous discount:** ${previousDiscount}\n`;
@@ -4183,21 +6170,20 @@ export function createAdminToolHandlers(
 
       return response;
     } catch (error) {
-      logger.error({ error, orgId, orgName }, 'Error removing discount');
-      return '❌ Failed to remove discount. Please try again.';
+      logger.error({ error, orgId, orgName }, "Error removing discount");
+      return "❌ Failed to remove discount. Please try again.";
     }
   });
 
   // List organizations with active discounts
-  handlers.set('list_discounts', async (input) => {
-
+  handlers.set("list_discounts", async (input) => {
     const limit = (input.limit as number) || 20;
 
     try {
       const orgsWithDiscounts = await orgDb.listOrganizationsWithDiscounts();
 
       if (orgsWithDiscounts.length === 0) {
-        return 'ℹ️ No organizations currently have active discounts.';
+        return "ℹ️ No organizations currently have active discounts.";
       }
 
       const limited = orgsWithDiscounts.slice(0, limit);
@@ -4212,18 +6198,20 @@ export function createAdminToolHandlers(
 
         response += `### ${org.name}\n`;
         response += `**Discount:** ${discountDescription}\n`;
-        response += `**Reason:** ${org.discount_reason || 'Not specified'}\n`;
-        response += `**Granted by:** ${org.discount_granted_by || 'Unknown'}\n`;
+        response += `**Reason:** ${org.discount_reason || "Not specified"}\n`;
+        response += `**Granted by:** ${org.discount_granted_by || "Unknown"}\n`;
 
         if (org.discount_granted_at) {
-          response += `**When:** ${formatDate(new Date(org.discount_granted_at))}\n`;
+          response += `**When:** ${formatDate(
+            new Date(org.discount_granted_at),
+          )}\n`;
         }
 
         if (org.stripe_promotion_code) {
           response += `**Promo Code:** \`${org.stripe_promotion_code}\`\n`;
         }
 
-        response += '\n';
+        response += "\n";
       }
 
       if (orgsWithDiscounts.length > limit) {
@@ -4232,44 +6220,44 @@ export function createAdminToolHandlers(
 
       return response;
     } catch (error) {
-      logger.error({ error }, 'Error listing discounts');
-      return '❌ Failed to list discounts. Please try again.';
+      logger.error({ error }, "Error listing discounts");
+      return "❌ Failed to list discounts. Please try again.";
     }
   });
 
   // Create standalone promotion code
-  handlers.set('create_promotion_code', async (input) => {
-
+  handlers.set("create_promotion_code", async (input) => {
     const code = input.code as string;
     const name = input.name as string | undefined;
     const percentOff = input.percent_off as number | undefined;
     const amountOffDollars = input.amount_off_dollars as number | undefined;
-    const duration = (input.duration as 'once' | 'repeating' | 'forever') || 'once';
+    const duration =
+      (input.duration as "once" | "repeating" | "forever") || "once";
     const maxRedemptions = input.max_redemptions as number | undefined;
 
     // Validate inputs
     if (!code) {
-      return '❌ Please provide a promotion code.';
+      return "❌ Please provide a promotion code.";
     }
 
     if (percentOff === undefined && amountOffDollars === undefined) {
-      return '❌ Please provide either percent_off or amount_off_dollars.';
+      return "❌ Please provide either percent_off or amount_off_dollars.";
     }
 
     if (percentOff !== undefined && amountOffDollars !== undefined) {
-      return '❌ Please provide either percent_off OR amount_off_dollars, not both.';
+      return "❌ Please provide either percent_off OR amount_off_dollars, not both.";
     }
 
     if (percentOff !== undefined && (percentOff < 1 || percentOff > 100)) {
-      return '❌ Percent off must be between 1 and 100.';
+      return "❌ Percent off must be between 1 and 100.";
     }
 
     if (amountOffDollars !== undefined && amountOffDollars < 1) {
-      return '❌ Amount off must be a positive number.';
+      return "❌ Amount off must be a positive number.";
     }
 
     try {
-      const createdBy = memberContext?.workos_user?.email || 'Unknown admin';
+      const createdBy = memberContext?.workos_user?.email || "Unknown admin";
 
       // Create the coupon
       const coupon = await createCoupon({
@@ -4284,7 +6272,7 @@ export function createAdminToolHandlers(
       });
 
       if (!coupon) {
-        return '❌ Failed to create coupon in Stripe. Please try again.';
+        return "❌ Failed to create coupon in Stripe. Please try again.";
       }
 
       // Create the promotion code
@@ -4301,11 +6289,14 @@ export function createAdminToolHandlers(
         return `⚠️ Coupon created but failed to create promotion code. Coupon ID: ${coupon.coupon_id}`;
       }
 
-      logger.info({
-        couponId: coupon.coupon_id,
-        code: promoCode.code,
-        createdBy,
-      }, 'Addie: Created standalone promotion code');
+      logger.info(
+        {
+          couponId: coupon.coupon_id,
+          code: promoCode.code,
+          createdBy,
+        },
+        "Addie: Created standalone promotion code",
+      );
 
       const discountDescription = percentOff
         ? `${percentOff}% off`
@@ -4324,8 +6315,8 @@ export function createAdminToolHandlers(
 
       return response;
     } catch (error) {
-      logger.error({ error, code }, 'Error creating promotion code');
-      return '❌ Failed to create promotion code. Please try again.';
+      logger.error({ error, code }, "Error creating promotion code");
+      return "❌ Failed to create promotion code. Please try again.";
     }
   });
 
@@ -4334,8 +6325,7 @@ export function createAdminToolHandlers(
   // ============================================
 
   // Create chapter
-  handlers.set('create_chapter', async (input) => {
-
+  handlers.set("create_chapter", async (input) => {
     const name = (input.name as string)?.trim();
     const region = (input.region as string)?.trim();
     const foundingMemberId = input.founding_member_id as string | undefined;
@@ -4352,15 +6342,19 @@ export function createAdminToolHandlers(
     // Generate slug from name
     const slug = name
       .toLowerCase()
-      .replace(/\s+/g, '-')
-      .replace(/[^a-z0-9-]/g, '')
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9-]/g, "")
       .slice(0, 50);
 
     try {
       // Check if chapter with this slug already exists
       const existingChapter = await wgDb.getWorkingGroupBySlug(slug);
       if (existingChapter) {
-        return `⚠️ A chapter with slug "${slug}" already exists: **${existingChapter.name}**\n\nJoin their Slack channel: ${existingChapter.slack_channel_url || 'Not set'}`;
+        return `⚠️ A chapter with slug "${slug}" already exists: **${
+          existingChapter.name
+        }**\n\nJoin their Slack channel: ${
+          existingChapter.slack_channel_url || "Not set"
+        }`;
       }
 
       // Create Slack channel first
@@ -4370,7 +6364,9 @@ export function createAdminToolHandlers(
       }
 
       // Set channel purpose
-      const purpose = description || `Connect with AgenticAdvertising.org members in the ${region} area.`;
+      const purpose =
+        description ||
+        `Connect with AgenticAdvertising.org members in the ${region} area.`;
       await setChannelPurpose(channelResult.channel.id, purpose);
 
       // Create the chapter working group
@@ -4384,13 +6380,16 @@ export function createAdminToolHandlers(
         founding_member_id: foundingMemberId,
       });
 
-      logger.info({
-        chapterId: chapter.id,
-        name: chapter.name,
-        region,
-        slackChannelId: channelResult.channel.id,
-        foundingMemberId,
-      }, 'Addie: Created new regional chapter');
+      logger.info(
+        {
+          chapterId: chapter.id,
+          name: chapter.name,
+          region,
+          slackChannelId: channelResult.channel.id,
+          foundingMemberId,
+        },
+        "Addie: Created new regional chapter",
+      );
 
       let response = `✅ Created **${name}**!\n\n`;
       response += `**Region:** ${region}\n`;
@@ -4405,19 +6404,18 @@ export function createAdminToolHandlers(
 
       return response;
     } catch (error) {
-      logger.error({ error, name, region }, 'Error creating chapter');
-      return '❌ Failed to create chapter. Please try again.';
+      logger.error({ error, name, region }, "Error creating chapter");
+      return "❌ Failed to create chapter. Please try again.";
     }
   });
 
   // List chapters
-  handlers.set('list_chapters', async () => {
-
+  handlers.set("list_chapters", async () => {
     try {
       const chapters = await wgDb.getChapters();
 
       if (chapters.length === 0) {
-        return 'ℹ️ No regional chapters exist yet. Use create_chapter to start one!';
+        return "ℹ️ No regional chapters exist yet. Use create_chapter to start one!";
       }
 
       let response = `## Regional Chapters\n\n`;
@@ -4425,7 +6423,7 @@ export function createAdminToolHandlers(
 
       for (const chapter of chapters) {
         response += `### ${chapter.name}\n`;
-        response += `**Region:** ${chapter.region || 'Not set'}\n`;
+        response += `**Region:** ${chapter.region || "Not set"}\n`;
         response += `**Members:** ${chapter.member_count}\n`;
 
         if (chapter.slack_channel_id) {
@@ -4435,17 +6433,19 @@ export function createAdminToolHandlers(
         }
 
         if (chapter.leaders && chapter.leaders.length > 0) {
-          const leaderNames = chapter.leaders.map(l => l.name || 'Unknown').join(', ');
+          const leaderNames = chapter.leaders
+            .map((l) => l.name || "Unknown")
+            .join(", ");
           response += `**Leaders:** ${leaderNames}\n`;
         }
 
-        response += '\n';
+        response += "\n";
       }
 
       return response;
     } catch (error) {
-      logger.error({ error }, 'Error listing chapters');
-      return '❌ Failed to list chapters. Please try again.';
+      logger.error({ error }, "Error listing chapters");
+      return "❌ Failed to list chapters. Please try again.";
     }
   });
 
@@ -4454,8 +6454,7 @@ export function createAdminToolHandlers(
   // ============================================
 
   // Create industry gathering
-  handlers.set('create_industry_gathering', async (input) => {
-
+  handlers.set("create_industry_gathering", async (input) => {
     const name = (input.name as string)?.trim();
     const startDateStr = input.start_date as string;
     const endDateStr = input.end_date as string | undefined;
@@ -4469,7 +6468,7 @@ export function createAdminToolHandlers(
     }
 
     if (!startDateStr) {
-      return '❌ Please provide a start date in YYYY-MM-DD format.';
+      return "❌ Please provide a start date in YYYY-MM-DD format.";
     }
 
     if (!location) {
@@ -4479,24 +6478,24 @@ export function createAdminToolHandlers(
     // Parse dates
     const startDate = new Date(startDateStr);
     if (isNaN(startDate.getTime())) {
-      return '❌ Invalid start date format. Please use YYYY-MM-DD.';
+      return "❌ Invalid start date format. Please use YYYY-MM-DD.";
     }
 
     let endDate: Date | undefined;
     if (endDateStr) {
       endDate = new Date(endDateStr);
       if (isNaN(endDate.getTime())) {
-        return '❌ Invalid end date format. Please use YYYY-MM-DD.';
+        return "❌ Invalid end date format. Please use YYYY-MM-DD.";
       }
     }
 
     // Generate slug from name
     const nameSlug = name
       .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, '')
-      .replace(/\s+/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '')
+      .replace(/[^a-z0-9\s-]/g, "")
+      .replace(/\s+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "")
       .slice(0, 50);
 
     try {
@@ -4505,7 +6504,11 @@ export function createAdminToolHandlers(
       const fullSlug = `industry-gatherings/${year}/${nameSlug}`;
       const existingGathering = await wgDb.getWorkingGroupBySlug(fullSlug);
       if (existingGathering) {
-        return `⚠️ An industry gathering with slug "${fullSlug}" already exists: **${existingGathering.name}**\n\nJoin their Slack channel: ${existingGathering.slack_channel_url || 'Not set'}`;
+        return `⚠️ An industry gathering with slug "${fullSlug}" already exists: **${
+          existingGathering.name
+        }**\n\nJoin their Slack channel: ${
+          existingGathering.slack_channel_url || "Not set"
+        }`;
       }
 
       // Create Slack channel (use shortened slug for channel name)
@@ -4516,7 +6519,9 @@ export function createAdminToolHandlers(
       }
 
       // Set channel purpose
-      const purpose = description || `Coordinate AgenticAdvertising.org attendance at ${name} (${location}).`;
+      const purpose =
+        description ||
+        `Coordinate AgenticAdvertising.org attendance at ${name} (${location}).`;
       await setChannelPurpose(channelResult.channel.id, purpose);
 
       // Create the industry gathering
@@ -4533,19 +6538,24 @@ export function createAdminToolHandlers(
         founding_member_id: foundingMemberId,
       });
 
-      logger.info({
-        gatheringId: gathering.id,
-        name: gathering.name,
-        location,
-        startDate: startDateStr,
-        endDate: endDateStr,
-        slackChannelId: channelResult.channel.id,
-        foundingMemberId,
-      }, 'Addie: Created new industry gathering');
+      logger.info(
+        {
+          gatheringId: gathering.id,
+          name: gathering.name,
+          location,
+          startDate: startDateStr,
+          endDate: endDateStr,
+          slackChannelId: channelResult.channel.id,
+          foundingMemberId,
+        },
+        "Addie: Created new industry gathering",
+      );
 
       let response = `✅ Created **${name}** industry gathering!\n\n`;
       response += `**Location:** ${location}\n`;
-      response += `**Dates:** ${startDateStr}${endDateStr ? ` to ${endDateStr}` : ''}\n`;
+      response += `**Dates:** ${startDateStr}${
+        endDateStr ? ` to ${endDateStr}` : ""
+      }\n`;
       response += `**Slack Channel:** <#${channelResult.channel.id}>\n`;
       response += `**Channel URL:** ${channelResult.url}\n`;
       if (websiteUrl) {
@@ -4560,19 +6570,21 @@ export function createAdminToolHandlers(
 
       return response;
     } catch (error) {
-      logger.error({ error, name, location }, 'Error creating industry gathering');
-      return '❌ Failed to create industry gathering. Please try again.';
+      logger.error(
+        { error, name, location },
+        "Error creating industry gathering",
+      );
+      return "❌ Failed to create industry gathering. Please try again.";
     }
   });
 
   // List industry gatherings
-  handlers.set('list_industry_gatherings', async () => {
-
+  handlers.set("list_industry_gatherings", async () => {
     try {
       const gatherings = await wgDb.getIndustryGatherings();
 
       if (gatherings.length === 0) {
-        return 'ℹ️ No industry gatherings exist yet. Use create_industry_gathering to start one!';
+        return "ℹ️ No industry gatherings exist yet. Use create_industry_gathering to start one!";
       }
 
       let response = `## Industry Gatherings\n\n`;
@@ -4580,14 +6592,18 @@ export function createAdminToolHandlers(
 
       for (const gathering of gatherings) {
         response += `### ${gathering.name}\n`;
-        response += `**Location:** ${gathering.event_location || 'Not set'}\n`;
+        response += `**Location:** ${gathering.event_location || "Not set"}\n`;
 
         if (gathering.event_start_date) {
-          const startStr = new Date(gathering.event_start_date).toISOString().split('T')[0];
+          const startStr = new Date(gathering.event_start_date)
+            .toISOString()
+            .split("T")[0];
           const endStr = gathering.event_end_date
-            ? new Date(gathering.event_end_date).toISOString().split('T')[0]
+            ? new Date(gathering.event_end_date).toISOString().split("T")[0]
             : null;
-          response += `**Dates:** ${startStr}${endStr ? ` to ${endStr}` : ''}\n`;
+          response += `**Dates:** ${startStr}${
+            endStr ? ` to ${endStr}` : ""
+          }\n`;
         }
 
         response += `**Members:** ${gathering.member_count}\n`;
@@ -4602,13 +6618,13 @@ export function createAdminToolHandlers(
           response += `**Website:** ${gathering.website_url}\n`;
         }
 
-        response += '\n';
+        response += "\n";
       }
 
       return response;
     } catch (error) {
-      logger.error({ error }, 'Error listing industry gatherings');
-      return '❌ Failed to list industry gatherings. Please try again.';
+      logger.error({ error }, "Error listing industry gatherings");
+      return "❌ Failed to list industry gatherings. Please try again.";
     }
   });
 
@@ -4616,28 +6632,28 @@ export function createAdminToolHandlers(
   // WORKING GROUP HANDLERS
   // ============================================
 
-  handlers.set('create_committee', async (input) => {
-
+  handlers.set("create_committee", async (input) => {
     const name = (input.name as string)?.trim();
-    const committeeType = ((input.committee_type as string) || 'working_group') as 'working_group' | 'council' | 'governance';
+    const committeeType = ((input.committee_type as string) ||
+      "working_group") as "working_group" | "council" | "governance";
     const description = input.description as string | undefined;
     const isPrivate = (input.is_private as boolean) ?? false;
     const slackChannelName = (input.slack_channel_name as string)?.trim();
     const typeLabel = COMMITTEE_TYPE_LABELS[committeeType];
 
     if (!name) {
-      return '❌ Please provide a committee name.';
+      return "❌ Please provide a committee name.";
     }
 
     // Generate slug from name
     const slug = name
       .toLowerCase()
-      .replace(/\s+/g, '-')
-      .replace(/[^a-z0-9-]/g, '')
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9-]/g, "")
       .slice(0, 50);
 
     if (!slug) {
-      return '❌ Committee name must contain at least one letter or number.';
+      return "❌ Committee name must contain at least one letter or number.";
     }
 
     try {
@@ -4649,12 +6665,17 @@ export function createAdminToolHandlers(
 
       let channelId: string | undefined;
       let channelUrl: string | undefined;
-      let channelMention = '';
+      let channelMention = "";
 
       if (slackChannelName) {
-        const allChannels = await getSlackChannels({ types: 'public_channel,private_channel', exclude_archived: true });
-        const normalized = slackChannelName.toLowerCase().replace(/^#/, '');
-        const found = allChannels.find((c) => c.name.toLowerCase() === normalized);
+        const allChannels = await getSlackChannels({
+          types: "public_channel,private_channel",
+          exclude_archived: true,
+        });
+        const normalized = slackChannelName.toLowerCase().replace(/^#/, "");
+        const found = allChannels.find(
+          (c) => c.name.toLowerCase() === normalized,
+        );
         if (!found) {
           return `❌ Could not find a Slack channel named "#${normalized}". Check the channel name and try again.`;
         }
@@ -4673,18 +6694,23 @@ export function createAdminToolHandlers(
         slack_channel_url: channelUrl,
       });
 
-      logger.info({ wgId: wg.id, name: wg.name, committeeType, isPrivate, channelId }, 'Addie: Created committee');
+      logger.info(
+        { wgId: wg.id, name: wg.name, committeeType, isPrivate, channelId },
+        "Addie: Created committee",
+      );
 
       let response = `✅ Created **${name}** (${typeLabel})!\n\n`;
       response += `**Slug:** ${slug}\n`;
-      response += `**Privacy:** ${isPrivate ? 'Private (invite-only)' : 'Public'}\n`;
+      response += `**Privacy:** ${
+        isPrivate ? "Private (invite-only)" : "Public"
+      }\n`;
       if (channelMention) {
         response += `**Slack Channel:** ${channelMention}\n`;
       }
 
       return response;
     } catch (error) {
-      logger.error({ error, name, committeeType }, 'Error creating committee');
+      logger.error({ error, name, committeeType }, "Error creating committee");
       return `❌ Failed to create ${typeLabel}. Please try again.`;
     }
   });
@@ -4694,8 +6720,7 @@ export function createAdminToolHandlers(
   // ============================================
 
   // Add committee leader
-  handlers.set('add_committee_leader', async (input) => {
-
+  handlers.set("add_committee_leader", async (input) => {
     const committeeSlug = (input.committee_slug as string)?.trim();
     let userId = (input.user_id as string)?.trim();
     const userEmail = input.user_email as string | undefined;
@@ -4705,7 +6730,7 @@ export function createAdminToolHandlers(
     }
 
     if (!userId) {
-      return '❌ Please provide a user_id (Slack user ID like U12345ABC, or WorkOS user ID).';
+      return "❌ Please provide a user_id (Slack user ID like U12345ABC, or WorkOS user ID).";
     }
 
     try {
@@ -4714,11 +6739,17 @@ export function createAdminToolHandlers(
       if (slackUserIdPattern.test(userId)) {
         const slackMapping = await slackDb.getBySlackUserId(userId);
         if (slackMapping?.workos_user_id) {
-          logger.info({ slackUserId: userId, workosUserId: slackMapping.workos_user_id }, 'Resolved Slack user ID to WorkOS user ID');
+          logger.info(
+            { slackUserId: userId, workosUserId: slackMapping.workos_user_id },
+            "Resolved Slack user ID to WorkOS user ID",
+          );
           userId = slackMapping.workos_user_id;
         } else {
           // Keep the Slack ID - the display query will look up the name from slack_user_mappings
-          logger.warn({ slackUserId: userId }, 'Slack user ID not mapped to WorkOS user - using Slack ID directly');
+          logger.warn(
+            { slackUserId: userId },
+            "Slack user ID not mapped to WorkOS user - using Slack ID directly",
+          );
         }
       }
 
@@ -4739,7 +6770,7 @@ export function createAdminToolHandlers(
 
       // Also ensure they're a member
       const memberships = await wgDb.getMembershipsByWorkingGroup(committee.id);
-      if (!memberships.some(m => m.workos_user_id === userId)) {
+      if (!memberships.some((m) => m.workos_user_id === userId)) {
         await wgDb.addMembership({
           working_group_id: committee.id,
           workos_user_id: userId,
@@ -4751,18 +6782,29 @@ export function createAdminToolHandlers(
       // Auto-invite to the group's Slack channel (fire-and-forget)
       if (committee.slack_channel_id) {
         const slackDb = new SlackDatabase();
-        slackDb.getByWorkosUserId(userId).then(mapping => {
-          if (mapping?.slack_user_id) {
-            return inviteToChannel(committee.slack_channel_id!, [mapping.slack_user_id]);
-          }
-        }).catch(err => {
-          logger.error({ err, userId, channelId: committee.slack_channel_id }, 'Failed to auto-invite leader to Slack channel');
-        });
+        slackDb
+          .getByWorkosUserId(userId)
+          .then((mapping) => {
+            if (mapping?.slack_user_id) {
+              return inviteToChannel(committee.slack_channel_id!, [
+                mapping.slack_user_id,
+              ]);
+            }
+          })
+          .catch((err) => {
+            logger.error(
+              { err, userId, channelId: committee.slack_channel_id },
+              "Failed to auto-invite leader to Slack channel",
+            );
+          });
       }
 
-      logger.info({ committeeSlug, committeeName: committee.name, userId, userEmail }, 'Added committee leader via Addie');
+      logger.info(
+        { committeeSlug, committeeName: committee.name, userId, userEmail },
+        "Added committee leader via Addie",
+      );
 
-      const emailInfo = userEmail ? ` (${userEmail})` : '';
+      const emailInfo = userEmail ? ` (${userEmail})` : "";
       return `✅ Successfully added user ${userId}${emailInfo} as a leader of **${committee.name}**.
 
 They now have management access to:
@@ -4772,23 +6814,25 @@ They now have management access to:
 
 Committee management page: https://agenticadvertising.org/working-groups/${committeeSlug}/manage`;
     } catch (error) {
-      logger.error({ error, committeeSlug, userId }, 'Error adding committee leader');
-      return '❌ Failed to add committee leader. Please try again.';
+      logger.error(
+        { error, committeeSlug, userId },
+        "Error adding committee leader",
+      );
+      return "❌ Failed to add committee leader. Please try again.";
     }
   });
 
   // Remove committee leader
-  handlers.set('remove_committee_leader', async (input) => {
-
+  handlers.set("remove_committee_leader", async (input) => {
     const committeeSlug = (input.committee_slug as string)?.trim();
     let userId = (input.user_id as string)?.trim();
 
     if (!committeeSlug) {
-      return '❌ Please provide a committee_slug.';
+      return "❌ Please provide a committee_slug.";
     }
 
     if (!userId) {
-      return '❌ Please provide a user_id.';
+      return "❌ Please provide a user_id.";
     }
 
     try {
@@ -4797,10 +6841,17 @@ Committee management page: https://agenticadvertising.org/working-groups/${commi
       if (slackUserIdPattern.test(userId)) {
         const slackMapping = await slackDb.getBySlackUserId(userId);
         if (slackMapping?.workos_user_id) {
-          logger.info({ slackUserId: userId, workosUserId: slackMapping.workos_user_id }, 'Resolved Slack user ID to WorkOS user ID');
+          logger.info(
+            { slackUserId: userId, workosUserId: slackMapping.workos_user_id },
+            "Resolved Slack user ID to WorkOS user ID",
+          );
           userId = slackMapping.workos_user_id;
         } else {
-          return '❌ Could not resolve Slack user <@' + userId + '> to a linked account. They may not have linked their Slack to AgenticAdvertising.org.';
+          return (
+            "❌ Could not resolve Slack user <@" +
+            userId +
+            "> to a linked account. They may not have linked their Slack to AgenticAdvertising.org."
+          );
         }
       }
 
@@ -4818,24 +6869,29 @@ Committee management page: https://agenticadvertising.org/working-groups/${commi
       await wgDb.removeLeader(committee.id, userId);
       invalidateWebAdminStatusCache(userId);
 
-      logger.info({ committeeSlug, committeeName: committee.name, userId }, 'Removed committee leader via Addie');
+      logger.info(
+        { committeeSlug, committeeName: committee.name, userId },
+        "Removed committee leader via Addie",
+      );
 
       return `✅ Successfully removed user ${userId} as a leader of **${committee.name}**.
 
 They are still a member but no longer have management access.`;
     } catch (error) {
-      logger.error({ error, committeeSlug, userId }, 'Error removing committee leader');
-      return '❌ Failed to remove committee leader. Please try again.';
+      logger.error(
+        { error, committeeSlug, userId },
+        "Error removing committee leader",
+      );
+      return "❌ Failed to remove committee leader. Please try again.";
     }
   });
 
   // List committee leaders
-  handlers.set('list_committee_leaders', async (input) => {
-
+  handlers.set("list_committee_leaders", async (input) => {
     const committeeSlug = (input.committee_slug as string)?.trim();
 
     if (!committeeSlug) {
-      return '❌ Please provide a committee_slug.';
+      return "❌ Please provide a committee_slug.";
     }
 
     try {
@@ -4865,14 +6921,16 @@ Use add_committee_leader to assign a leader.`;
           response += `  **Org:** ${leader.org_name}\n`;
         }
         if (leader.created_at) {
-          response += `  Added: ${new Date(leader.created_at).toLocaleDateString()}\n`;
+          response += `  Added: ${new Date(
+            leader.created_at,
+          ).toLocaleDateString()}\n`;
         }
       }
 
       return response;
     } catch (error) {
-      logger.error({ error, committeeSlug }, 'Error listing committee leaders');
-      return '❌ Failed to list committee leaders. Please try again.';
+      logger.error({ error, committeeSlug }, "Error listing committee leaders");
+      return "❌ Failed to list committee leaders. Please try again.";
     }
   });
 
@@ -4880,7 +6938,7 @@ Use add_committee_leader to assign a leader.`;
   // WORKING GROUP MEMBERSHIP HANDLERS
   // ============================================
 
-  handlers.set('add_working_group_member', async (input) => {
+  handlers.set("add_working_group_member", async (input) => {
     const committeeSlug = (input.committee_slug as string)?.trim();
     let userId = (input.user_id as string)?.trim();
     const userEmail = input.user_email as string | undefined;
@@ -4889,20 +6947,27 @@ Use add_committee_leader to assign a leader.`;
       return '❌ Please provide a committee_slug (e.g., "media-buy-wg", "india-chapter").';
     }
     if (!userId) {
-      return '❌ Please provide a user_id (Slack user ID like U12345ABC, or WorkOS user ID).';
+      return "❌ Please provide a user_id (Slack user ID like U12345ABC, or WorkOS user ID).";
     }
 
     try {
       // Resolve Slack user IDs to WorkOS user IDs
       const slackUserIdPattern = /^U[A-Z0-9]{8,}$/;
-      let slackMapping: Awaited<ReturnType<SlackDatabase['getBySlackUserId']>> = null;
+      let slackMapping: Awaited<ReturnType<SlackDatabase["getBySlackUserId"]>> =
+        null;
       if (slackUserIdPattern.test(userId)) {
         slackMapping = await slackDb.getBySlackUserId(userId);
         if (slackMapping?.workos_user_id) {
-          logger.info({ slackUserId: userId, workosUserId: slackMapping.workos_user_id }, 'Resolved Slack user ID to WorkOS user ID');
+          logger.info(
+            { slackUserId: userId, workosUserId: slackMapping.workos_user_id },
+            "Resolved Slack user ID to WorkOS user ID",
+          );
           userId = slackMapping.workos_user_id;
         } else {
-          logger.warn({ slackUserId: userId }, 'Slack user ID not mapped to WorkOS user - using Slack ID directly');
+          logger.warn(
+            { slackUserId: userId },
+            "Slack user ID not mapped to WorkOS user - using Slack ID directly",
+          );
         }
       }
 
@@ -4913,7 +6978,7 @@ Use add_committee_leader to assign a leader.`;
 
       // Check if already a member
       const existing = await wgDb.getMembership(group.id, userId);
-      if (existing && existing.status === 'active') {
+      if (existing && existing.status === "active") {
         return `ℹ️ User is already a member of **${group.name}**.`;
       }
 
@@ -4921,33 +6986,51 @@ Use add_committee_leader to assign a leader.`;
         working_group_id: group.id,
         workos_user_id: userId,
         user_email: userEmail,
-        user_name: slackMapping?.slack_real_name || slackMapping?.slack_display_name || undefined,
+        user_name:
+          slackMapping?.slack_real_name ||
+          slackMapping?.slack_display_name ||
+          undefined,
       });
       invalidateWebAdminStatusCache(userId);
 
       // Auto-invite to the group's Slack channel
       if (group.slack_channel_id) {
-        const slackUserMapping = slackMapping ?? await slackDb.getByWorkosUserId(userId);
+        const slackUserMapping =
+          slackMapping ?? (await slackDb.getByWorkosUserId(userId));
         if (slackUserMapping?.slack_user_id) {
-          inviteToChannel(group.slack_channel_id, [slackUserMapping.slack_user_id]).catch(err => {
-            logger.error({ err, userId, channelId: group.slack_channel_id }, 'Failed to auto-invite member to Slack channel');
+          inviteToChannel(group.slack_channel_id, [
+            slackUserMapping.slack_user_id,
+          ]).catch((err) => {
+            logger.error(
+              { err, userId, channelId: group.slack_channel_id },
+              "Failed to auto-invite member to Slack channel",
+            );
           });
         }
       }
 
-      const displayName = slackMapping?.slack_real_name || slackMapping?.slack_display_name || userId;
-      const emailInfo = userEmail ? ` (${userEmail})` : '';
-      const privacyNote = group.is_private ? ' (private group)' : '';
-      logger.info({ committeeSlug, groupName: group.name, userId, userEmail }, 'Added working group member via Addie');
+      const displayName =
+        slackMapping?.slack_real_name ||
+        slackMapping?.slack_display_name ||
+        userId;
+      const emailInfo = userEmail ? ` (${userEmail})` : "";
+      const privacyNote = group.is_private ? " (private group)" : "";
+      logger.info(
+        { committeeSlug, groupName: group.name, userId, userEmail },
+        "Added working group member via Addie",
+      );
 
       return `✅ Added **${displayName}**${emailInfo} as a member of **${group.name}**${privacyNote}.`;
     } catch (error) {
-      logger.error({ error, committeeSlug, userId }, 'Error adding working group member');
-      return '❌ Failed to add working group member. Please try again.';
+      logger.error(
+        { error, committeeSlug, userId },
+        "Error adding working group member",
+      );
+      return "❌ Failed to add working group member. Please try again.";
     }
   });
 
-  handlers.set('remove_working_group_member', async (input) => {
+  handlers.set("remove_working_group_member", async (input) => {
     const committeeSlug = (input.committee_slug as string)?.trim();
     let userId = (input.user_id as string)?.trim();
 
@@ -4955,7 +7038,7 @@ Use add_committee_leader to assign a leader.`;
       return '❌ Please provide a committee_slug (e.g., "media-buy-wg", "india-chapter").';
     }
     if (!userId) {
-      return '❌ Please provide a user_id (Slack user ID like U12345ABC, or WorkOS user ID).';
+      return "❌ Please provide a user_id (Slack user ID like U12345ABC, or WorkOS user ID).";
     }
 
     try {
@@ -4964,10 +7047,16 @@ Use add_committee_leader to assign a leader.`;
       if (slackUserIdPattern.test(userId)) {
         const slackMapping = await slackDb.getBySlackUserId(userId);
         if (slackMapping?.workos_user_id) {
-          logger.info({ slackUserId: userId, workosUserId: slackMapping.workos_user_id }, 'Resolved Slack user ID to WorkOS user ID');
+          logger.info(
+            { slackUserId: userId, workosUserId: slackMapping.workos_user_id },
+            "Resolved Slack user ID to WorkOS user ID",
+          );
           userId = slackMapping.workos_user_id;
         } else {
-          logger.warn({ slackUserId: userId }, 'Slack user ID not mapped to WorkOS user - using Slack ID directly');
+          logger.warn(
+            { slackUserId: userId },
+            "Slack user ID not mapped to WorkOS user - using Slack ID directly",
+          );
         }
       }
 
@@ -4977,19 +7066,25 @@ Use add_committee_leader to assign a leader.`;
       }
 
       const existing = await wgDb.getMembership(group.id, userId);
-      if (!existing || existing.status !== 'active') {
+      if (!existing || existing.status !== "active") {
         return `ℹ️ User is not an active member of **${group.name}**.`;
       }
 
       await wgDb.removeMembership(group.id, userId);
       invalidateWebAdminStatusCache(userId);
 
-      logger.info({ committeeSlug, groupName: group.name, userId }, 'Removed working group member via Addie');
+      logger.info(
+        { committeeSlug, groupName: group.name, userId },
+        "Removed working group member via Addie",
+      );
 
       return `✅ Removed user from **${group.name}**. They can rejoin if the group is public.`;
     } catch (error) {
-      logger.error({ error, committeeSlug, userId }, 'Error removing working group member');
-      return '❌ Failed to remove working group member. Please try again.';
+      logger.error(
+        { error, committeeSlug, userId },
+        "Error removing working group member",
+      );
+      return "❌ Failed to remove working group member. Please try again.";
     }
   });
 
@@ -4998,13 +7093,13 @@ Use add_committee_leader to assign a leader.`;
   // ============================================
 
   // Rename a working group / chapter / committee
-  handlers.set('rename_working_group', async (input) => {
+  handlers.set("rename_working_group", async (input) => {
     const slug = input.working_group_slug as string;
     const newName = input.new_name as string;
     const newSlug = input.new_slug as string | undefined;
 
     if (!slug || !newName) {
-      return '❌ Both working_group_slug and new_name are required.';
+      return "❌ Both working_group_slug and new_name are required.";
     }
 
     try {
@@ -5013,10 +7108,15 @@ Use add_committee_leader to assign a leader.`;
         return `❌ Working group with slug "${slug}" not found.`;
       }
 
-      const generatedSlug = newSlug || newName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      const generatedSlug =
+        newSlug ||
+        newName
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "");
 
       if (!generatedSlug) {
-        return '❌ Could not generate a valid slug from that name. Please provide a new_slug explicitly.';
+        return "❌ Could not generate a valid slug from that name. Please provide a new_slug explicitly.";
       }
 
       await wgDb.updateWorkingGroup(wg.id, {
@@ -5024,30 +7124,38 @@ Use add_committee_leader to assign a leader.`;
         slug: generatedSlug,
       });
 
-      logger.info({ oldSlug: slug, newSlug: generatedSlug, newName }, 'Addie: Admin renamed working group');
+      logger.info(
+        { oldSlug: slug, newSlug: generatedSlug, newName },
+        "Addie: Admin renamed working group",
+      );
 
       return `✅ Renamed "${wg.name}" → "${newName}"\n\nSlug: ${slug} → ${generatedSlug}\nType: ${wg.committee_type}`;
     } catch (error) {
-      logger.error({ error, slug, newName }, 'Addie: Error renaming working group');
-      return '❌ Failed to rename working group. Please try again.';
+      logger.error(
+        { error, slug, newName },
+        "Addie: Error renaming working group",
+      );
+      return "❌ Failed to rename working group. Please try again.";
     }
   });
 
   // Merge organizations
-  handlers.set('merge_organizations', async (input) => {
+  handlers.set("merge_organizations", async (input) => {
     const workos = getWorkos();
 
     const primaryOrgId = input.primary_org_id as string;
     const secondaryOrgId = input.secondary_org_id as string;
     const preview = input.preview !== false; // Default to preview mode for safety
-    const stripeCustomerResolution = input.stripe_customer_resolution as StripeCustomerResolution | undefined;
+    const stripeCustomerResolution = input.stripe_customer_resolution as
+      | StripeCustomerResolution
+      | undefined;
 
     if (!primaryOrgId || !secondaryOrgId) {
-      return '❌ Both primary_org_id and secondary_org_id are required.';
+      return "❌ Both primary_org_id and secondary_org_id are required.";
     }
 
     if (primaryOrgId === secondaryOrgId) {
-      return '❌ Primary and secondary organization IDs must be different.';
+      return "❌ Primary and secondary organization IDs must be different.";
     }
 
     try {
@@ -5059,19 +7167,23 @@ Use add_committee_leader to assign a leader.`;
         let workosUserCount = 0;
         let workosCheckFailed = false;
         try {
-          const secondaryMemberships = await workos.userManagement.listOrganizationMemberships({
-            organizationId: secondaryOrgId,
-            limit: 100,
-          });
-          const primaryMemberships = await workos.userManagement.listOrganizationMemberships({
-            organizationId: primaryOrgId,
-            limit: 100,
-          });
-          const primaryUserIds = new Set(primaryMemberships.data.map(m => m.userId));
+          const secondaryMemberships =
+            await workos.userManagement.listOrganizationMemberships({
+              organizationId: secondaryOrgId,
+              limit: 100,
+            });
+          const primaryMemberships =
+            await workos.userManagement.listOrganizationMemberships({
+              organizationId: primaryOrgId,
+              limit: 100,
+            });
+          const primaryUserIds = new Set(
+            primaryMemberships.data.map((m) => m.userId),
+          );
 
-          workosUserCount = secondaryMemberships.data
-            .filter(m => m.status === 'active' && !primaryUserIds.has(m.userId))
-            .length;
+          workosUserCount = secondaryMemberships.data.filter(
+            (m) => m.status === "active" && !primaryUserIds.has(m.userId),
+          ).length;
         } catch {
           workosCheckFailed = true;
         }
@@ -5112,7 +7224,10 @@ Use add_committee_leader to assign a leader.`;
           response += `- \`keep_primary\`: Keep primary's Stripe customer, orphan secondary's\n`;
           response += `- \`use_secondary\`: Replace primary's customer with secondary's\n`;
           response += `- \`keep_both_unlinked\`: Unlink both for manual resolution\n`;
-        } else if (stripeConflict.secondary_customer_id && !stripeConflict.primary_customer_id) {
+        } else if (
+          stripeConflict.secondary_customer_id &&
+          !stripeConflict.primary_customer_id
+        ) {
           response += `\n### Stripe\n`;
           response += `Secondary org's Stripe customer (${stripeConflict.secondary_customer_id}) will be moved to primary org.\n`;
         } else if (stripeConflict.primary_customer_id) {
@@ -5137,7 +7252,14 @@ Use add_committee_leader to assign a leader.`;
         return response;
       } else {
         // Execute the merge
-        logger.info({ primaryOrgId, secondaryOrgId, mergedBy: memberContext?.workos_user?.workos_user_id }, 'Admin executing org merge via Addie');
+        logger.info(
+          {
+            primaryOrgId,
+            secondaryOrgId,
+            mergedBy: memberContext?.workos_user?.workos_user_id,
+          },
+          "Admin executing org merge via Addie",
+        );
 
         // Step 1: Get users from secondary org in WorkOS before merge
         let workosUsersToMigrate: string[] = [];
@@ -5146,43 +7268,61 @@ Use add_committee_leader to assign a leader.`;
 
         try {
           // Get all memberships from the secondary org in WorkOS
-          const memberships = await workos.userManagement.listOrganizationMemberships({
-            organizationId: secondaryOrgId,
-            limit: 100,
-          });
+          const memberships =
+            await workos.userManagement.listOrganizationMemberships({
+              organizationId: secondaryOrgId,
+              limit: 100,
+            });
 
           // Warn if there are more than 100 members (pagination not implemented)
           if (memberships.listMetadata?.after) {
-            workosErrors.push('Secondary org has more than 100 members - only first 100 will be migrated. Manual WorkOS cleanup may be needed.');
+            workosErrors.push(
+              "Secondary org has more than 100 members - only first 100 will be migrated. Manual WorkOS cleanup may be needed.",
+            );
           }
 
           // Check which users are NOT already in the primary org
-          const primaryMemberships = await workos.userManagement.listOrganizationMemberships({
-            organizationId: primaryOrgId,
-            limit: 100,
-          });
-          const primaryUserIds = new Set(primaryMemberships.data.map(m => m.userId));
+          const primaryMemberships =
+            await workos.userManagement.listOrganizationMemberships({
+              organizationId: primaryOrgId,
+              limit: 100,
+            });
+          const primaryUserIds = new Set(
+            primaryMemberships.data.map((m) => m.userId),
+          );
 
-          const usersToMigrate = memberships.data
-            .filter(m => m.status === 'active' && !primaryUserIds.has(m.userId));
-          workosUsersToMigrate = usersToMigrate.map(m => m.userId);
+          const usersToMigrate = memberships.data.filter(
+            (m) => m.status === "active" && !primaryUserIds.has(m.userId),
+          );
+          workosUsersToMigrate = usersToMigrate.map((m) => m.userId);
           // Preserve roles from secondary org so owners/admins keep their role
-          secondaryRoles = new Map(usersToMigrate.map(m => [m.userId, m.role?.slug || 'member']));
+          secondaryRoles = new Map(
+            usersToMigrate.map((m) => [m.userId, m.role?.slug || "member"]),
+          );
 
-          logger.info({ count: workosUsersToMigrate.length, secondaryOrgId }, 'Found WorkOS users to migrate');
+          logger.info(
+            { count: workosUsersToMigrate.length, secondaryOrgId },
+            "Found WorkOS users to migrate",
+          );
         } catch (err) {
-          logger.warn({ error: err, secondaryOrgId }, 'Failed to fetch WorkOS memberships (will continue with DB merge)');
-          workosErrors.push('Could not fetch WorkOS memberships - manual WorkOS cleanup may be needed');
+          logger.warn(
+            { error: err, secondaryOrgId },
+            "Failed to fetch WorkOS memberships (will continue with DB merge)",
+          );
+          workosErrors.push(
+            "Could not fetch WorkOS memberships - manual WorkOS cleanup may be needed",
+          );
         }
 
         // Step 2: Execute the database merge
-        const mergedBy = memberContext?.workos_user?.workos_user_id || 'addie-admin';
+        const mergedBy =
+          memberContext?.workos_user?.workos_user_id || "addie-admin";
         const result = await mergeOrganizations(
           primaryOrgId,
           secondaryOrgId,
           mergedBy,
           workos,
-          stripeCustomerResolution ? { stripeCustomerResolution } : undefined
+          stripeCustomerResolution ? { stripeCustomerResolution } : undefined,
         );
 
         // Step 3: Add users to primary org in WorkOS
@@ -5191,20 +7331,26 @@ Use add_committee_leader to assign a leader.`;
 
         for (const userId of workosUsersToMigrate) {
           try {
-            const roleSlug = secondaryRoles.get(userId) || 'member';
+            const roleSlug = secondaryRoles.get(userId) || "member";
             await workos.userManagement.createOrganizationMembership({
               userId,
               organizationId: primaryOrgId,
               roleSlug,
             });
             workosAdded++;
-            logger.debug({ userId, primaryOrgId }, 'Added user to primary org in WorkOS');
+            logger.debug(
+              { userId, primaryOrgId },
+              "Added user to primary org in WorkOS",
+            );
           } catch (err: any) {
             // User might already be in org (race condition) or other error
-            if (err?.code === 'organization_membership_already_exists') {
+            if (err?.code === "organization_membership_already_exists") {
               workosSkipped++;
             } else {
-              logger.warn({ error: err, userId }, 'Failed to add user to primary org in WorkOS');
+              logger.warn(
+                { error: err, userId },
+                "Failed to add user to primary org in WorkOS",
+              );
               workosErrors.push(`Failed to add user ${userId} to WorkOS org`);
             }
           }
@@ -5215,24 +7361,36 @@ Use add_committee_leader to assign a leader.`;
         try {
           await workos.organizations.deleteOrganization(secondaryOrgId);
           workosOrgDeleted = true;
-          logger.info({ secondaryOrgId }, 'Deleted secondary org from WorkOS');
+          logger.info({ secondaryOrgId }, "Deleted secondary org from WorkOS");
         } catch (err) {
-          logger.warn({ error: err, secondaryOrgId }, 'Failed to delete secondary org from WorkOS');
-          workosErrors.push(`Failed to delete secondary org from WorkOS (ID: ${secondaryOrgId}) - manual cleanup required`);
+          logger.warn(
+            { error: err, secondaryOrgId },
+            "Failed to delete secondary org from WorkOS",
+          );
+          workosErrors.push(
+            `Failed to delete secondary org from WorkOS (ID: ${secondaryOrgId}) - manual cleanup required`,
+          );
         }
 
         let response = `## Merge Complete ✅\n\n`;
         response += `Successfully merged **${result.secondary_org_id}** into **${result.primary_org_id}**.\n\n`;
 
         response += `### Data Moved\n`;
-        const totalMoved = result.tables_merged.reduce((sum, t) => sum + t.rows_moved, 0);
-        const totalSkipped = result.tables_merged.reduce((sum, t) => sum + t.rows_skipped_duplicate, 0);
+        const totalMoved = result.tables_merged.reduce(
+          (sum, t) => sum + t.rows_moved,
+          0,
+        );
+        const totalSkipped = result.tables_merged.reduce(
+          (sum, t) => sum + (t.rows_skipped_duplicate ?? 0),
+          0,
+        );
 
         for (const table of result.tables_merged) {
-          if (table.rows_moved > 0 || table.rows_skipped_duplicate > 0) {
+          const skipped = table.rows_skipped_duplicate ?? 0;
+          if (table.rows_moved > 0 || skipped > 0) {
             response += `- **${table.table_name}**: ${table.rows_moved} moved`;
-            if (table.rows_skipped_duplicate > 0) {
-              response += ` (${table.rows_skipped_duplicate} skipped as duplicates)`;
+            if (skipped > 0) {
+              response += ` (${skipped} skipped as duplicates)`;
             }
             response += `\n`;
           }
@@ -5241,7 +7399,11 @@ Use add_committee_leader to assign a leader.`;
         response += `\n**Total:** ${totalMoved} rows moved, ${totalSkipped} duplicates skipped\n`;
 
         // WorkOS sync results
-        if (workosUsersToMigrate.length > 0 || workosOrgDeleted || workosErrors.length > 0) {
+        if (
+          workosUsersToMigrate.length > 0 ||
+          workosOrgDeleted ||
+          workosErrors.length > 0
+        ) {
           response += `\n### WorkOS Sync\n`;
           if (workosAdded > 0) {
             response += `- ✅ Added ${workosAdded} user(s) to primary org in WorkOS\n`;
@@ -5255,16 +7417,19 @@ Use add_committee_leader to assign a leader.`;
         }
 
         // Stripe customer action
-        if (result.stripe_customer_action && result.stripe_customer_action !== 'none') {
+        if (
+          result.stripe_customer_action &&
+          result.stripe_customer_action !== "none"
+        ) {
           response += `\n### Stripe\n`;
           switch (result.stripe_customer_action) {
-            case 'kept_primary':
+            case "kept_primary":
               response += `- ✅ Kept primary org's Stripe customer\n`;
               break;
-            case 'moved_from_secondary':
+            case "moved_from_secondary":
               response += `- 🔄 Moved Stripe customer from secondary to primary org\n`;
               break;
-            case 'conflict_unresolved':
+            case "conflict_unresolved":
               response += `- ⚠️ Both Stripe customers were unlinked - manual linking required\n`;
               break;
           }
@@ -5292,23 +7457,26 @@ Use add_committee_leader to assign a leader.`;
         return response;
       }
     } catch (error) {
-      logger.error({ error, primaryOrgId, secondaryOrgId }, 'Error merging organizations');
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error(
+        { error, primaryOrgId, secondaryOrgId },
+        "Error merging organizations",
+      );
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
       return `❌ Failed to merge organizations: ${errorMessage}`;
     }
   });
 
   // Find duplicate organizations
-  handlers.set('find_duplicate_orgs', async (input) => {
-
-    const searchType = (input.search_type as string) || 'all';
+  handlers.set("find_duplicate_orgs", async (input) => {
+    const searchType = (input.search_type as string) || "all";
     const pool = getPool();
 
     let response = `## Duplicate Organization Search\n\n`;
 
     try {
       // Find duplicates by name
-      if (searchType === 'name' || searchType === 'all') {
+      if (searchType === "name" || searchType === "all") {
         const nameResult = await pool.query(`
           SELECT
             LOWER(name) as normalized_name,
@@ -5336,7 +7504,7 @@ Use add_committee_leader to assign a leader.`;
       }
 
       // Find duplicates by domain
-      if (searchType === 'domain' || searchType === 'all') {
+      if (searchType === "domain" || searchType === "all") {
         const domainResult = await pool.query(`
           SELECT
             email_domain,
@@ -5367,28 +7535,27 @@ Use add_committee_leader to assign a leader.`;
 
       return response;
     } catch (error) {
-      logger.error({ error }, 'Error finding duplicate organizations');
-      return '❌ Failed to search for duplicates. Please try again.';
+      logger.error({ error }, "Error finding duplicate organizations");
+      return "❌ Failed to search for duplicates. Please try again.";
     }
   });
 
   // Manage organization domains
-  handlers.set('manage_organization_domains', async (input) => {
-
+  handlers.set("manage_organization_domains", async (input) => {
     const action = input.action as string;
     const organizationId = input.organization_id as string;
     const domain = input.domain as string | undefined;
     const setAsPrimary = input.set_as_primary as boolean | undefined;
 
     if (!organizationId) {
-      return '❌ organization_id is required. Use lookup_organization to find the org ID first.';
+      return "❌ organization_id is required. Use lookup_organization to find the org ID first.";
     }
 
     let workos: ReturnType<typeof getWorkos>;
     try {
       workos = getWorkos();
     } catch {
-      return '❌ WorkOS is not configured. Domain management requires WorkOS to be set up.';
+      return "❌ WorkOS is not configured. Domain management requires WorkOS to be set up.";
     }
 
     const pool = getPool();
@@ -5397,7 +7564,7 @@ Use add_committee_leader to assign a leader.`;
       // Verify org exists
       const orgResult = await pool.query(
         `SELECT name, email_domain, is_personal FROM organizations WHERE workos_organization_id = $1`,
-        [organizationId]
+        [organizationId],
       );
 
       if (orgResult.rows.length === 0) {
@@ -5408,13 +7575,13 @@ Use add_committee_leader to assign a leader.`;
       const isPersonal = orgResult.rows[0].is_personal;
 
       switch (action) {
-        case 'list': {
+        case "list": {
           const domainsResult = await pool.query(
             `SELECT domain, is_primary, verified, source, created_at
              FROM organization_domains
              WHERE workos_organization_id = $1
              ORDER BY is_primary DESC, created_at ASC`,
-            [organizationId]
+            [organizationId],
           );
 
           if (domainsResult.rows.length === 0) {
@@ -5424,17 +7591,39 @@ Use add_committee_leader to assign a leader.`;
           let response = `## Domains for ${orgName}\n\n`;
           for (const row of domainsResult.rows) {
             const badges: string[] = [];
-            if (row.is_primary) badges.push('⭐ Primary');
-            if (row.verified) badges.push('✅ Verified');
+            if (row.is_primary) badges.push("⭐ Primary");
+            if (row.verified) badges.push("✅ Verified");
             badges.push(`Source: ${row.source}`);
 
-            response += `**${row.domain}** ${badges.join(' | ')}\n`;
+            response += `**${row.domain}** ${badges.join(" | ")}\n`;
           }
           response += `\n_Use action "add" to add a new domain, "remove" to delete one, or "set_primary" to change the primary domain._`;
           return response;
         }
 
-        case 'add': {
+        case "reconcile_workos": {
+          const { reconcileWorkosOrganizationDomains } = await import("../../services/workos-domain-reconciliation.js");
+          const result = await reconcileWorkosOrganizationDomains({ workos, orgId: organizationId });
+          const invalidate = await import("../member-context.js").then((m) => m.invalidateMemberContextCache).catch(() => null);
+          invalidate?.();
+
+          let response = `## WorkOS domain reconciliation for ${orgName}\n\n`;
+          response += `WorkOS domains: ${result.workos_domains.length}\n`;
+          response += `Before mismatches: ${result.before_mismatches.length}\n`;
+          response += `After mismatches: ${result.after_mismatches.length}\n`;
+          response += `Changed local state: ${result.changed ? "yes" : "no"}\n`;
+          if (result.after_mismatches.length > 0) {
+            response += `\nRemaining blockers:\n`;
+            for (const mismatch of result.after_mismatches) {
+              response += `- ${mismatch.domain}: ${mismatch.reason} (WorkOS: ${mismatch.workos_state})\n`;
+            }
+          } else {
+            response += `\nLocal organization_domains now mirrors WorkOS for this org's domains.`;
+          }
+          return response;
+        }
+
+        case "add": {
           if (!domain) {
             return '❌ domain is required for the "add" action. Example: "acme.com"';
           }
@@ -5446,7 +7635,8 @@ Use add_committee_leader to assign a leader.`;
           const normalizedDomain = domain.toLowerCase().trim();
 
           // Validate domain format
-          const domainRegex = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z]{2,})+$/;
+          const domainRegex =
+            /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z]{2,})+$/;
           if (!domainRegex.test(normalizedDomain)) {
             return `❌ Invalid domain format: "${normalizedDomain}". Expected format: "example.com" or "sub.example.com"`;
           }
@@ -5457,7 +7647,7 @@ Use add_committee_leader to assign a leader.`;
              FROM organization_domains od
              JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
              WHERE od.domain = $1`,
-            [normalizedDomain]
+            [normalizedDomain],
           );
 
           if (existingResult.rows.length > 0) {
@@ -5471,20 +7661,33 @@ Use add_committee_leader to assign a leader.`;
           // First, sync to WorkOS - this is required for user auto-association
           try {
             // Get existing domains from WorkOS to append the new one
-            const workosOrg = await workos.organizations.getOrganization(organizationId);
-            const existingDomains = workosOrg.domains.map(d => ({
+            const workosOrg = await workos.organizations.getOrganization(
+              organizationId,
+            );
+            const existingDomains = workosOrg.domains.map((d) => ({
               domain: d.domain,
-              state: d.state === 'verified' ? DomainDataState.Verified : DomainDataState.Pending
+              state:
+                d.state === "verified"
+                  ? DomainDataState.Verified
+                  : DomainDataState.Pending,
             }));
 
             // Add the new domain
             await workos.organizations.updateOrganization({
               organization: organizationId,
-              domainData: [...existingDomains, { domain: normalizedDomain, state: DomainDataState.Verified }],
+              domainData: [
+                ...existingDomains,
+                { domain: normalizedDomain, state: DomainDataState.Verified },
+              ],
             });
           } catch (workosErr) {
-            logger.error({ err: workosErr, domain: normalizedDomain, organizationId }, 'Failed to add domain to WorkOS');
-            return `❌ Failed to add domain **${normalizedDomain}** to WorkOS. Error: ${workosErr instanceof Error ? workosErr.message : 'Unknown error'}`;
+            logger.error(
+              { err: workosErr, domain: normalizedDomain, organizationId },
+              "Failed to add domain to WorkOS",
+            );
+            return `❌ Failed to add domain **${normalizedDomain}** to WorkOS. Error: ${
+              workosErr instanceof Error ? workosErr.message : "Unknown error"
+            }`;
           }
 
           // If setting as primary, clear existing primary first
@@ -5492,7 +7695,7 @@ Use add_committee_leader to assign a leader.`;
             await pool.query(
               `UPDATE organization_domains SET is_primary = false, updated_at = NOW()
                WHERE workos_organization_id = $1 AND is_primary = true`,
-              [organizationId]
+              [organizationId],
             );
           }
 
@@ -5506,7 +7709,7 @@ Use add_committee_leader to assign a leader.`;
                verified = true,
                source = 'workos',
                updated_at = NOW()`,
-            [organizationId, normalizedDomain, setAsPrimary || false]
+            [organizationId, normalizedDomain, setAsPrimary || false],
           );
 
           // If primary, also update the email_domain column
@@ -5514,19 +7717,25 @@ Use add_committee_leader to assign a leader.`;
             await pool.query(
               `UPDATE organizations SET email_domain = $1, updated_at = NOW()
                WHERE workos_organization_id = $2`,
-              [normalizedDomain, organizationId]
+              [normalizedDomain, organizationId],
             );
           }
 
-          logger.info({ organizationId, domain: normalizedDomain, setAsPrimary }, 'Addie: Added domain to organization via WorkOS');
+          logger.info(
+            { organizationId, domain: normalizedDomain, setAsPrimary },
+            "Addie: Added domain to organization via WorkOS",
+          );
 
           let response = `✅ Added domain **${normalizedDomain}** to ${orgName} and synced to WorkOS`;
-          if (setAsPrimary) response += ' (set as primary)';
-          response += '.\n\nUsers signing up with @' + normalizedDomain + ' emails will now be auto-associated with this organization.';
+          if (setAsPrimary) response += " (set as primary)";
+          response +=
+            ".\n\nUsers signing up with @" +
+            normalizedDomain +
+            " emails will now be auto-associated with this organization.";
           return response;
         }
 
-        case 'remove': {
+        case "remove": {
           if (!domain) {
             return '❌ domain is required for the "remove" action.';
           }
@@ -5537,7 +7746,7 @@ Use add_committee_leader to assign a leader.`;
           const domainResult = await pool.query(
             `SELECT is_primary, source FROM organization_domains
              WHERE workos_organization_id = $1 AND domain = $2`,
-            [organizationId, normalizedDomain]
+            [organizationId, normalizedDomain],
           );
 
           if (domainResult.rows.length === 0) {
@@ -5548,12 +7757,17 @@ Use add_committee_leader to assign a leader.`;
 
           // First, remove from WorkOS
           try {
-            const workosOrg = await workos.organizations.getOrganization(organizationId);
+            const workosOrg = await workos.organizations.getOrganization(
+              organizationId,
+            );
             const remainingDomains = workosOrg.domains
-              .filter(d => d.domain.toLowerCase() !== normalizedDomain)
-              .map(d => ({
+              .filter((d) => d.domain.toLowerCase() !== normalizedDomain)
+              .map((d) => ({
                 domain: d.domain,
-                state: d.state === 'verified' ? DomainDataState.Verified : DomainDataState.Pending
+                state:
+                  d.state === "verified"
+                    ? DomainDataState.Verified
+                    : DomainDataState.Pending,
               }));
 
             await workos.organizations.updateOrganization({
@@ -5561,14 +7775,19 @@ Use add_committee_leader to assign a leader.`;
               domainData: remainingDomains,
             });
           } catch (workosErr) {
-            logger.error({ err: workosErr, domain: normalizedDomain, organizationId }, 'Failed to remove domain from WorkOS');
-            return `❌ Failed to remove domain **${normalizedDomain}** from WorkOS. Error: ${workosErr instanceof Error ? workosErr.message : 'Unknown error'}`;
+            logger.error(
+              { err: workosErr, domain: normalizedDomain, organizationId },
+              "Failed to remove domain from WorkOS",
+            );
+            return `❌ Failed to remove domain **${normalizedDomain}** from WorkOS. Error: ${
+              workosErr instanceof Error ? workosErr.message : "Unknown error"
+            }`;
           }
 
           // Delete the domain from local DB
           await pool.query(
             `DELETE FROM organization_domains WHERE workos_organization_id = $1 AND domain = $2`,
-            [organizationId, normalizedDomain]
+            [organizationId, normalizedDomain],
           );
 
           // If we deleted the primary domain, pick a new one
@@ -5579,39 +7798,51 @@ Use add_committee_leader to assign a leader.`;
                WHERE workos_organization_id = $1
                ORDER BY verified DESC, created_at ASC
                LIMIT 1`,
-              [organizationId]
+              [organizationId],
             );
 
-            newPrimary = remaining.rows.length > 0 ? remaining.rows[0].domain : null;
+            newPrimary =
+              remaining.rows.length > 0 ? remaining.rows[0].domain : null;
 
             if (newPrimary) {
               await pool.query(
                 `UPDATE organization_domains SET is_primary = true, updated_at = NOW()
                  WHERE workos_organization_id = $1 AND domain = $2`,
-                [organizationId, newPrimary]
+                [organizationId, newPrimary],
               );
             }
 
             await pool.query(
               `UPDATE organizations SET email_domain = $1, updated_at = NOW()
                WHERE workos_organization_id = $2`,
-              [newPrimary, organizationId]
+              [newPrimary, organizationId],
             );
           }
 
-          logger.info({ organizationId, domain: normalizedDomain, wasPrimary, newPrimary }, 'Addie: Removed domain from organization via WorkOS');
+          logger.info(
+            {
+              organizationId,
+              domain: normalizedDomain,
+              wasPrimary,
+              newPrimary,
+            },
+            "Addie: Removed domain from organization via WorkOS",
+          );
 
           let response = `✅ Removed domain **${normalizedDomain}** from ${orgName} and WorkOS`;
           if (wasPrimary && newPrimary) {
             response += `. New primary domain: **${newPrimary}**`;
           } else if (wasPrimary) {
-            response += '. No domains remaining.';
+            response += ". No domains remaining.";
           }
-          response += '\n\nUsers signing up with @' + normalizedDomain + ' emails will no longer be auto-associated with this organization.';
+          response +=
+            "\n\nUsers signing up with @" +
+            normalizedDomain +
+            " emails will no longer be auto-associated with this organization.";
           return response;
         }
 
-        case 'set_primary': {
+        case "set_primary": {
           if (!domain) {
             return '❌ domain is required for the "set_primary" action.';
           }
@@ -5622,7 +7853,7 @@ Use add_committee_leader to assign a leader.`;
           const domainResult = await pool.query(
             `SELECT domain FROM organization_domains
              WHERE workos_organization_id = $1 AND domain = $2`,
-            [organizationId, normalizedDomain]
+            [organizationId, normalizedDomain],
           );
 
           if (domainResult.rows.length === 0) {
@@ -5633,24 +7864,27 @@ Use add_committee_leader to assign a leader.`;
           await pool.query(
             `UPDATE organization_domains SET is_primary = false, updated_at = NOW()
              WHERE workos_organization_id = $1 AND is_primary = true`,
-            [organizationId]
+            [organizationId],
           );
 
           // Set new primary
           await pool.query(
             `UPDATE organization_domains SET is_primary = true, updated_at = NOW()
              WHERE workos_organization_id = $1 AND domain = $2`,
-            [organizationId, normalizedDomain]
+            [organizationId, normalizedDomain],
           );
 
           // Update organizations.email_domain
           await pool.query(
             `UPDATE organizations SET email_domain = $1, updated_at = NOW()
              WHERE workos_organization_id = $2`,
-            [normalizedDomain, organizationId]
+            [normalizedDomain, organizationId],
           );
 
-          logger.info({ organizationId, domain: normalizedDomain }, 'Addie: Set primary domain for organization');
+          logger.info(
+            { organizationId, domain: normalizedDomain },
+            "Addie: Set primary domain for organization",
+          );
 
           return `✅ Set **${normalizedDomain}** as the primary domain for ${orgName}.`;
         }
@@ -5659,26 +7893,29 @@ Use add_committee_leader to assign a leader.`;
           return `❌ Unknown action: ${action}. Valid actions are: list, add, remove, set_primary`;
       }
     } catch (error) {
-      logger.error({ error, organizationId, action }, 'Error managing organization domains');
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error(
+        { error, organizationId, action },
+        "Error managing organization domains",
+      );
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
       return `❌ Failed to ${action} domain: ${errorMessage}`;
     }
   });
 
   // Update organization member role
-  handlers.set('update_org_member_role', async (input) => {
-
+  handlers.set("update_org_member_role", async (input) => {
     const orgId = (input.org_id as string)?.trim();
     const userId = (input.user_id as string)?.trim();
     const role = (input.role as string)?.trim().toLowerCase();
 
     if (!orgId) {
-      return '❌ org_id is required. Use get_account to find the organization ID (starts with org_).';
+      return "❌ org_id is required. Use get_account to find the organization ID (starts with org_).";
     }
     if (!userId) {
-      return '❌ user_id is required. This is the WorkOS user ID (starts with user_).';
+      return "❌ user_id is required. This is the WorkOS user ID (starts with user_).";
     }
-    if (!role || !['member', 'admin', 'owner'].includes(role)) {
+    if (!role || !["member", "admin", "owner"].includes(role)) {
       return '❌ role must be "member", "admin", or "owner".';
     }
 
@@ -5686,7 +7923,7 @@ Use add_committee_leader to assign a leader.`;
     try {
       workos = getWorkos();
     } catch {
-      return '❌ WorkOS is not configured.';
+      return "❌ WorkOS is not configured.";
     }
 
     const pool = getPool();
@@ -5695,14 +7932,14 @@ Use add_committee_leader to assign a leader.`;
       // Get org name for response
       const orgResult = await pool.query(
         `SELECT name FROM organizations WHERE workos_organization_id = $1`,
-        [orgId]
+        [orgId],
       );
       const orgName = orgResult.rows[0]?.name || orgId;
 
       // Get user info for response
       const userResult = await pool.query(
         `SELECT email, first_name, last_name FROM organization_memberships WHERE workos_user_id = $1 AND workos_organization_id = $2`,
-        [userId, orgId]
+        [userId, orgId],
       );
 
       if (userResult.rows.length === 0) {
@@ -5710,69 +7947,84 @@ Use add_committee_leader to assign a leader.`;
       }
 
       const user = userResult.rows[0];
-      const userName = user.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : user.email;
+      const userName = user.first_name
+        ? `${user.first_name} ${user.last_name || ""}`.trim()
+        : user.email;
 
       // Get the membership ID from WorkOS
-      const memberships = await workos.userManagement.listOrganizationMemberships({
-        organizationId: orgId,
-        userId: userId,
-      });
+      const memberships =
+        await workos.userManagement.listOrganizationMemberships({
+          organizationId: orgId,
+          userId: userId,
+        });
 
       if (memberships.data.length === 0) {
         return `❌ No WorkOS membership found for user ${userId} in organization ${orgId}.`;
       }
 
-      const activeMembership = memberships.data.find(m => m.status === 'active');
+      const activeMembership = memberships.data.find(
+        (m) => m.status === "active",
+      );
       if (!activeMembership) {
         return `❌ No active membership found for user ${userId} in organization ${orgId}.`;
       }
 
-      const currentRole = resolveUserRole(memberships.data) || 'member';
+      const currentRole = resolveUserRole(memberships.data) || "member";
 
       if (currentRole === role) {
         return `ℹ️ ${userName} already has the ${role} role in ${orgName}. No change needed.`;
       }
 
       // Update the role in WorkOS
-      await workos.userManagement.updateOrganizationMembership(activeMembership.id, {
-        roleSlug: role,
-      });
+      await workos.userManagement.updateOrganizationMembership(
+        activeMembership.id,
+        {
+          roleSlug: role,
+        },
+      );
 
       // Update local cache
       await pool.query(
         `UPDATE organization_memberships
          SET role = $1, updated_at = NOW()
          WHERE workos_organization_id = $2 AND workos_user_id = $3`,
-        [role, orgId, userId]
+        [role, orgId, userId],
       );
 
-      logger.info({ orgId, userId, oldRole: currentRole, newRole: role }, 'Addie: Updated org member role');
+      logger.info(
+        { orgId, userId, oldRole: currentRole, newRole: role },
+        "Addie: Updated org member role",
+      );
 
       let response = `✅ Updated ${userName}'s role from **${currentRole}** to **${role}** in ${orgName}.\n\n`;
-      if (role === 'owner') {
+      if (role === "owner") {
         response += `They now have full ownership of the organization, including:\n- Invite and manage team members\n- View and manage organization billing\n- Update organization profile`;
-      } else if (role === 'admin') {
+      } else if (role === "admin") {
         response += `They can now:\n- Invite and manage team members\n- View organization billing\n- Update organization profile`;
       }
       return response;
     } catch (error) {
-      logger.error({ error, orgId, userId, role }, 'Error updating org member role');
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error(
+        { error, orgId, userId, role },
+        "Error updating org member role",
+      );
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
       return `❌ Failed to update role: ${errorMessage}`;
     }
   });
 
-  handlers.set('update_user_name', async (input) => {
+  handlers.set("update_user_name", async (input) => {
     const userId = (input.user_id as string)?.trim();
     const email = (input.email as string)?.trim().toLowerCase();
     const firstName = (input.first_name as string)?.trim();
     const lastName = (input.last_name as string)?.trim() || null;
 
     if (!userId && !email) {
-      return '❌ Provide either user_id or email to identify the user.';
+      return "❌ Provide either user_id or email to identify the user.";
     }
     if (!firstName) {
-      return '❌ first_name is required.';
+      return "❌ first_name is required.";
     }
 
     const pool = getPool();
@@ -5788,7 +8040,7 @@ Use add_committee_leader to assign a leader.`;
         userId
           ? `SELECT workos_user_id, email, first_name, last_name FROM users WHERE workos_user_id = $1`
           : `SELECT workos_user_id, email, first_name, last_name FROM users WHERE LOWER(email) = $1`,
-        [userId || email]
+        [userId || email],
       );
 
       if (userResult.rows.length === 0) {
@@ -5796,52 +8048,53 @@ Use add_committee_leader to assign a leader.`;
       }
 
       const user = userResult.rows[0];
-      const oldName = [user.first_name, user.last_name].filter(Boolean).join(' ') || '(empty)';
-      const newName = [firstName, lastName].filter(Boolean).join(' ');
+      const oldName =
+        [user.first_name, user.last_name].filter(Boolean).join(" ") ||
+        "(empty)";
+      const newName = [firstName, lastName].filter(Boolean).join(" ");
 
       // Update users table
       await pool.query(
         `UPDATE users SET first_name = $1, last_name = $2, updated_at = NOW() WHERE workos_user_id = $3`,
-        [firstName, lastName, user.workos_user_id]
+        [firstName, lastName, user.workos_user_id],
       );
 
       // Update across all memberships
       await pool.query(
         `UPDATE organization_memberships SET first_name = $1, last_name = $2, updated_at = NOW() WHERE workos_user_id = $3`,
-        [firstName, lastName, user.workos_user_id]
+        [firstName, lastName, user.workos_user_id],
       );
 
-      logger.info({ userId: user.workos_user_id, oldName, newName }, 'Addie: Updated user display name');
+      logger.info(
+        { userId: user.workos_user_id, oldName, newName },
+        "Addie: Updated user display name",
+      );
 
       return `✅ Updated display name for ${user.email}: "${oldName}" → "${newName}"`;
     } catch (error) {
-      logger.error({ error, userId, email }, 'Error updating user name');
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error({ error, userId, email }, "Error updating user name");
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
       return `❌ Failed to update name: ${errorMessage}`;
     }
   });
 
   // Check domain health
-  handlers.set('check_domain_health', async (input) => {
-
-    const checkType = (input.check_type as string) || 'all';
+  handlers.set("check_domain_health", async (input) => {
+    const checkType = (input.check_type as string) || "all";
     const limit = Math.min(Math.max((input.limit as number) || 20, 1), 100);
     const pool = getPool();
 
-    // Common free email providers to exclude
-    const freeEmailDomains = [
-      'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.co.uk', 'hotmail.com',
-      'outlook.com', 'live.com', 'msn.com', 'aol.com', 'icloud.com', 'me.com',
-      'mac.com', 'protonmail.com', 'proton.me', 'mail.com', 'zoho.com',
-    ];
+    const freeEmailDomains = FREE_EMAIL_PROVIDER_DOMAINS;
 
     let response = `## Domain Health Check\n\n`;
     let issueCount = 0;
 
     try {
       // 1. Orphan corporate domains - users with corporate emails but no org with that domain
-      if (checkType === 'orphan_domains' || checkType === 'all') {
-        const orphanResult = await pool.query(`
+      if (checkType === "orphan_domains" || checkType === "all") {
+        const orphanResult = await pool.query(
+          `
           WITH user_domains AS (
             SELECT
               LOWER(SPLIT_PART(om.email, '@', 2)) as domain,
@@ -5849,7 +8102,9 @@ Use add_committee_leader to assign a leader.`;
               STRING_AGG(DISTINCT om.email, ', ' ORDER BY om.email) as sample_emails
             FROM organization_memberships om
             WHERE om.email IS NOT NULL
-              AND LOWER(SPLIT_PART(om.email, '@', 2)) NOT IN (${freeEmailDomains.map((_, i) => `$${i + 1}`).join(', ')})
+              AND LOWER(SPLIT_PART(om.email, '@', 2)) NOT IN (${freeEmailDomains
+                .map((_, i) => `$${i + 1}`)
+                .join(", ")})
             GROUP BY LOWER(SPLIT_PART(om.email, '@', 2))
           ),
           claimed_domains AS (
@@ -5863,7 +8118,9 @@ Use add_committee_leader to assign a leader.`;
           WHERE cd.domain IS NULL
           ORDER BY ud.user_count DESC
           LIMIT $${freeEmailDomains.length + 1}
-        `, [...freeEmailDomains, limit]);
+        `,
+          [...freeEmailDomains, limit],
+        );
 
         response += `### Orphan Corporate Domains\n`;
         response += `_Corporate email domains with users but no matching organization_\n\n`;
@@ -5874,16 +8131,19 @@ Use add_committee_leader to assign a leader.`;
           issueCount += orphanResult.rows.length;
           for (const row of orphanResult.rows) {
             response += `**${row.domain}** - ${row.user_count} user(s)\n`;
-            const emails = row.sample_emails.split(', ').slice(0, 3).join(', ');
-            response += `  Users: ${emails}${row.user_count > 3 ? '...' : ''}\n`;
+            const emails = row.sample_emails.split(", ").slice(0, 3).join(", ");
+            response += `  Users: ${emails}${
+              row.user_count > 3 ? "..." : ""
+            }\n`;
           }
           response += `\n_Action: Create prospects for these domains or map users to existing orgs._\n\n`;
         }
       }
 
       // 2. Users in personal workspaces with corporate emails
-      if (checkType === 'misaligned_users' || checkType === 'all') {
-        const misalignedResult = await pool.query(`
+      if (checkType === "misaligned_users" || checkType === "all") {
+        const misalignedResult = await pool.query(
+          `
           SELECT
             om.email,
             om.first_name,
@@ -5895,10 +8155,14 @@ Use add_committee_leader to assign a leader.`;
           JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
           WHERE o.is_personal = true
             AND om.email IS NOT NULL
-            AND LOWER(SPLIT_PART(om.email, '@', 2)) NOT IN (${freeEmailDomains.map((_, i) => `$${i + 1}`).join(', ')})
+            AND LOWER(SPLIT_PART(om.email, '@', 2)) NOT IN (${freeEmailDomains
+              .map((_, i) => `$${i + 1}`)
+              .join(", ")})
           ORDER BY LOWER(SPLIT_PART(om.email, '@', 2)), om.email
           LIMIT $${freeEmailDomains.length + 1}
-        `, [...freeEmailDomains, limit]);
+        `,
+          [...freeEmailDomains, limit],
+        );
 
         response += `### Corporate Users in Personal Workspaces\n`;
         response += `_Users with company emails who are in personal workspaces instead of company orgs_\n\n`;
@@ -5918,7 +8182,9 @@ Use add_committee_leader to assign a leader.`;
           for (const [domain, users] of byDomain) {
             response += `**${domain}** (${users.length} user(s))\n`;
             for (const user of users.slice(0, 3)) {
-              response += `  - ${user.email} (${user.first_name || ''} ${user.last_name || ''})\n`;
+              response += `  - ${user.email} (${user.first_name || ""} ${
+                user.last_name || ""
+              })\n`;
             }
             if (users.length > 3) {
               response += `  - ... and ${users.length - 3} more\n`;
@@ -5929,8 +8195,9 @@ Use add_committee_leader to assign a leader.`;
       }
 
       // 3. Orgs with users but no verified domain
-      if (checkType === 'unverified_domains' || checkType === 'all') {
-        const unverifiedResult = await pool.query(`
+      if (checkType === "unverified_domains" || checkType === "all") {
+        const unverifiedResult = await pool.query(
+          `
           SELECT
             o.workos_organization_id,
             o.name,
@@ -5946,7 +8213,9 @@ Use add_committee_leader to assign a leader.`;
           HAVING COUNT(DISTINCT om.workos_user_id) > 0
           ORDER BY COUNT(DISTINCT om.workos_user_id) DESC
           LIMIT $1
-        `, [limit]);
+        `,
+          [limit],
+        );
 
         response += `### Organizations Without Verified Domains\n`;
         response += `_Organizations with members but no verified domain mapping_\n\n`;
@@ -5967,8 +8236,9 @@ Use add_committee_leader to assign a leader.`;
       }
 
       // 4. Domain conflicts (multiple orgs claiming same domain)
-      if (checkType === 'domain_conflicts' || checkType === 'all') {
-        const conflictResult = await pool.query(`
+      if (checkType === "domain_conflicts" || checkType === "all") {
+        const conflictResult = await pool.query(
+          `
           SELECT
             email_domain,
             COUNT(*) as org_count,
@@ -5980,7 +8250,9 @@ Use add_committee_leader to assign a leader.`;
           HAVING COUNT(*) > 1
           ORDER BY COUNT(*) DESC
           LIMIT $1
-        `, [limit]);
+        `,
+          [limit],
+        );
 
         response += `### Domain Conflicts\n`;
         response += `_Multiple organizations claiming the same email domain_\n\n`;
@@ -6008,8 +8280,8 @@ Use add_committee_leader to assign a leader.`;
 
       return response;
     } catch (error) {
-      logger.error({ error }, 'Error checking domain health');
-      return '❌ Failed to check domain health. Please try again.';
+      logger.error({ error }, "Error checking domain health");
+      return "❌ Failed to check domain health. Please try again.";
     }
   });
 
@@ -6018,32 +8290,32 @@ Use add_committee_leader to assign a leader.`;
   // ============================================
 
   // Claim prospect - assign self or Addie as owner
-  handlers.set('claim_prospect', async (input) => {
-
+  handlers.set("claim_prospect", async (input) => {
     const pool = getPool();
     let orgId = input.org_id as string;
     const companyName = input.company_name as string;
-    const ownerType = (input.owner_type as string) || 'self';
+    const ownerType = (input.owner_type as string) || "self";
     const replaceExisting = input.replace_existing as boolean;
     const notes = input.notes as string;
 
     const userId = memberContext?.workos_user?.workos_user_id;
-    const userName = memberContext?.workos_user?.first_name || 'Unknown';
+    const userName = memberContext?.workos_user?.first_name || "Unknown";
     const userEmail = memberContext?.workos_user?.email;
 
-    if (ownerType === 'self' && (!userId || !userEmail)) {
-      return '❌ Could not determine your user ID. Please try again.';
+    if (ownerType === "self" && (!userId || !userEmail)) {
+      return "❌ Could not determine your user ID. Please try again.";
     }
 
     if (!orgId && !companyName) {
-      return '❌ Please provide either org_id or company_name.';
+      return "❌ Please provide either org_id or company_name.";
     }
 
     try {
       // Look up org by name if no ID provided
       if (!orgId && companyName) {
-        const escapedName = companyName.replace(/[%_\\]/g, '\\$&');
-        const searchResult = await pool.query(`
+        const escapedName = companyName.replace(/[%_\\]/g, "\\$&");
+        const searchResult = await pool.query(
+          `
           SELECT workos_organization_id, name
           FROM organizations
           WHERE LOWER(name) LIKE LOWER($1) ESCAPE '\\'
@@ -6052,7 +8324,9 @@ Use add_committee_leader to assign a leader.`;
             CASE WHEN LOWER(name) = LOWER($2) THEN 0 ELSE 1 END,
             name ASC
           LIMIT 1
-        `, [`%${escapedName}%`, companyName]);
+        `,
+          [`%${escapedName}%`, companyName],
+        );
 
         if (searchResult.rows.length === 0) {
           return `❌ No organization found matching "${companyName}". Try using the exact org_id instead.`;
@@ -6062,11 +8336,15 @@ Use add_committee_leader to assign a leader.`;
       }
 
       // Verify org exists and is a prospect
-      const orgCheck = await pool.query<{ name: string; prospect_notes: string | null; subscription_status: string | null }>(
+      const orgCheck = await pool.query<{
+        name: string;
+        prospect_notes: string | null;
+        subscription_status: string | null;
+      }>(
         `SELECT name, prospect_notes, subscription_status
          FROM organizations
          WHERE workos_organization_id = $1 AND is_personal = false`,
-        [orgId]
+        [orgId],
       );
 
       if (orgCheck.rows.length === 0) {
@@ -6080,10 +8358,10 @@ Use add_committee_leader to assign a leader.`;
       }
 
       // --- Addie ownership path ---
-      if (ownerType === 'addie') {
-        const existingNotes = org.prospect_notes ?? '';
-        const dateStr = new Date().toISOString().split('T')[0];
-        const reason = notes || 'Assigned to Addie as SDR';
+      if (ownerType === "addie") {
+        const existingNotes = org.prospect_notes ?? "";
+        const dateStr = new Date().toISOString().split("T")[0];
+        const reason = notes || "Assigned to Addie as SDR";
         const updatedNotes = existingNotes
           ? `${existingNotes}\n\n${dateStr}: ${reason}`
           : `${dateStr}: ${reason}`;
@@ -6092,18 +8370,21 @@ Use add_committee_leader to assign a leader.`;
           `UPDATE organizations
            SET prospect_owner = 'addie', prospect_notes = $1, updated_at = NOW()
            WHERE workos_organization_id = $2`,
-          [updatedNotes, orgId]
+          [updatedNotes, orgId],
         );
 
         return `✅ Assigned **${org.name}** to Addie's pipeline. Addie will handle outreach.`;
       }
 
       // --- Human ownership path ---
-      const existingOwner = await pool.query(`
+      const existingOwner = await pool.query(
+        `
         SELECT user_id, user_name, user_email
         FROM org_stakeholders
         WHERE organization_id = $1 AND role = 'owner'
-      `, [orgId]);
+      `,
+        [orgId],
+      );
 
       if (existingOwner.rows.length > 0) {
         const owner = existingOwner.rows[0];
@@ -6114,18 +8395,31 @@ Use add_committee_leader to assign a leader.`;
           return `❌ This prospect already has an owner: ${owner.user_name} (${owner.user_email}).\n\nUse \`replace_existing: true\` to take over ownership.`;
         }
 
-        await pool.query(`
+        await pool.query(
+          `
           DELETE FROM org_stakeholders
           WHERE organization_id = $1 AND role = 'owner'
-        `, [orgId]);
+        `,
+          [orgId],
+        );
       }
 
-      await pool.query(`
+      await pool.query(
+        `
         INSERT INTO org_stakeholders (organization_id, user_id, user_name, user_email, role, notes)
         VALUES ($1, $2, $3, $4, 'owner', $5)
         ON CONFLICT (organization_id, user_id)
         DO UPDATE SET role = 'owner', notes = $5, updated_at = NOW()
-      `, [orgId, userId, userName, userEmail, notes || `Claimed via Addie on ${new Date().toISOString().split('T')[0]}`]);
+      `,
+        [
+          orgId,
+          userId,
+          userName,
+          userEmail,
+          notes ||
+            `Claimed via Addie on ${new Date().toISOString().split("T")[0]}`,
+        ],
+      );
 
       let response = `✅ You are now the owner of **${org.name}**!`;
       if (existingOwner.rows.length > 0) {
@@ -6133,24 +8427,30 @@ Use add_committee_leader to assign a leader.`;
       }
       return response;
     } catch (error) {
-      logger.error({ error, orgId, userId }, 'Error claiming prospect');
-      return '❌ Failed to claim prospect. Please try again.';
+      logger.error({ error, orgId, userId }, "Error claiming prospect");
+      return "❌ Failed to claim prospect. Please try again.";
     }
   });
 
   // Suggest prospects - find unmapped domains and Lusha results
-  handlers.set('suggest_prospects', async (input) => {
-
+  handlers.set("suggest_prospects", async (input) => {
     const pool = getPool();
     const limit = Math.min((input.limit as number) || 10, 20);
     const includeLusha = input.include_lusha !== false;
-    const lushaKeywords = (input.lusha_keywords as string[]) || ['programmatic', 'DSP', 'ad tech'];
+    const lushaKeywords =
+      input.lusha_keywords === undefined
+        ? ["programmatic", "DSP", "ad tech"]
+        : coerceStringArray(input.lusha_keywords);
 
     let response = `## Suggested Prospects\n\n`;
 
     // 1. Find unmapped corporate domains (already engaged, high value)
     try {
-      const unmappedResult = await pool.query(`
+      const freePlaceholders = FREE_EMAIL_PROVIDER_DOMAINS.map(
+        (_, i) => `$${i + 1}`,
+      ).join(", ");
+      const unmappedResult = await pool.query(
+        `
         WITH corporate_domains AS (
           -- Extract domains from Slack users not in personal orgs
           SELECT DISTINCT
@@ -6159,13 +8459,7 @@ Use add_committee_leader to assign a leader.`;
           FROM slack_user_mappings sm
           WHERE sm.slack_email IS NOT NULL
             AND sm.slack_is_bot IS NOT TRUE
-            -- Exclude common personal email domains
-            AND LOWER(sm.slack_email) NOT LIKE '%@gmail.com'
-            AND LOWER(sm.slack_email) NOT LIKE '%@yahoo.com'
-            AND LOWER(sm.slack_email) NOT LIKE '%@hotmail.com'
-            AND LOWER(sm.slack_email) NOT LIKE '%@outlook.com'
-            AND LOWER(sm.slack_email) NOT LIKE '%@icloud.com'
-            AND LOWER(sm.slack_email) NOT LIKE '%@aol.com'
+            AND LOWER(SUBSTRING(sm.slack_email FROM POSITION('@' IN sm.slack_email) + 1)) NOT IN (${freePlaceholders})
           GROUP BY domain
         )
         SELECT
@@ -6183,8 +8477,10 @@ Use add_committee_leader to assign a leader.`;
           WHERE o.email_domain = cd.domain
         )
         ORDER BY cd.user_count DESC
-        LIMIT $1
-      `, [limit]);
+        LIMIT $${FREE_EMAIL_PROVIDER_DOMAINS.length + 1}
+      `,
+        [...FREE_EMAIL_PROVIDER_DOMAINS, limit],
+      );
 
       if (unmappedResult.rows.length > 0) {
         response += `### 🎯 Unmapped Domains (Already in Slack!)\n\n`;
@@ -6199,7 +8495,7 @@ Use add_committee_leader to assign a leader.`;
         response += `✅ All active Slack domains are mapped to organizations!\n\n`;
       }
     } catch (error) {
-      logger.error({ error }, 'Error finding unmapped domains');
+      logger.error({ error }, "Error finding unmapped domains");
       response += `### 🎯 Unmapped Domains\n\n`;
       response += `⚠️ Could not check unmapped domains.\n\n`;
     }
@@ -6210,14 +8506,16 @@ Use add_committee_leader to assign a leader.`;
         const lushaClient = getLushaClient();
         if (lushaClient) {
           response += `### 🔍 Lusha Search Results\n\n`;
-          response += `_External companies matching: ${lushaKeywords.join(', ')}_\n\n`;
+          response += `_External companies matching: ${lushaKeywords.join(
+            ", ",
+          )}_\n\n`;
 
           // Note: This would use the actual Lusha search API
           // For now, we'll indicate it's available
           response += `Use \`prospect_search_lusha\` with specific criteria to find external companies.\n\n`;
         }
       } catch (error) {
-        logger.error({ error }, 'Error searching Lusha');
+        logger.error({ error }, "Error searching Lusha");
         response += `### 🔍 Lusha Search\n\n`;
         response += `⚠️ Lusha search failed. Try \`prospect_search_lusha\` directly.\n\n`;
       }
@@ -6233,8 +8531,7 @@ Use add_committee_leader to assign a leader.`;
   });
 
   // Set reminder - create a next step/reminder for a prospect
-  handlers.set('set_reminder', async (input) => {
-
+  handlers.set("set_reminder", async (input) => {
     const pool = getPool();
     let orgId = input.org_id as string;
     const companyName = input.company_name as string;
@@ -6242,22 +8539,22 @@ Use add_committee_leader to assign a leader.`;
     const dueDateInput = input.due_date as string;
 
     const userId = memberContext?.workos_user?.workos_user_id;
-    const userName = memberContext?.workos_user?.first_name || 'Unknown';
+    const userName = memberContext?.workos_user?.first_name || "Unknown";
 
     if (!userId) {
-      return '❌ Could not determine your user ID. Please try again.';
+      return "❌ Could not determine your user ID. Please try again.";
     }
 
     if (!orgId && !companyName) {
-      return '❌ Please provide either org_id or company_name.';
+      return "❌ Please provide either org_id or company_name.";
     }
 
     if (!reminder) {
-      return '❌ Please provide a reminder description.';
+      return "❌ Please provide a reminder description.";
     }
 
     if (!dueDateInput) {
-      return '❌ Please provide a due date.';
+      return "❌ Please provide a due date.";
     }
 
     // Parse the due date
@@ -6267,14 +8564,22 @@ Use add_committee_leader to assign a leader.`;
 
     const lowerInput = dueDateInput.toLowerCase().trim();
 
-    if (lowerInput === 'today') {
+    if (lowerInput === "today") {
       dueDate = today;
-    } else if (lowerInput === 'tomorrow') {
+    } else if (lowerInput === "tomorrow") {
       dueDate = new Date(today);
       dueDate.setDate(dueDate.getDate() + 1);
-    } else if (lowerInput.startsWith('next ')) {
-      const dayName = lowerInput.replace(/next /g, '');
-      const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    } else if (lowerInput.startsWith("next ")) {
+      const dayName = lowerInput.replace(/next /g, "");
+      const days = [
+        "sunday",
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+      ];
       const targetDay = days.indexOf(dayName);
       if (targetDay === -1) {
         return `❌ Could not parse day name: "${dayName}". Try "next monday", "next tuesday", etc.`;
@@ -6306,7 +8611,8 @@ Use add_committee_leader to assign a leader.`;
       // Look up org by name if no ID provided
       if (!orgId && companyName) {
         const escapedName = escapeLikePattern(companyName);
-        const searchResult = await pool.query(`
+        const searchResult = await pool.query(
+          `
           SELECT workos_organization_id, name
           FROM organizations
           WHERE LOWER(name) LIKE LOWER($1) ESCAPE '\\'
@@ -6315,7 +8621,9 @@ Use add_committee_leader to assign a leader.`;
             CASE WHEN LOWER(name) = LOWER($2) THEN 0 ELSE 1 END,
             name ASC
           LIMIT 1
-        `, [`%${escapedName}%`, companyName]);
+        `,
+          [`%${escapedName}%`, companyName],
+        );
 
         if (searchResult.rows.length === 0) {
           return `❌ No organization found matching "${companyName}". Try adding them as a prospect first.`;
@@ -6325,9 +8633,12 @@ Use add_committee_leader to assign a leader.`;
       }
 
       // Get org name for confirmation
-      const orgResult = await pool.query(`
+      const orgResult = await pool.query(
+        `
         SELECT name FROM organizations WHERE workos_organization_id = $1
-      `, [orgId]);
+      `,
+        [orgId],
+      );
 
       if (orgResult.rows.length === 0) {
         return `❌ Organization not found.`;
@@ -6336,7 +8647,8 @@ Use add_committee_leader to assign a leader.`;
       const orgName = orgResult.rows[0].name;
 
       // Create the activity with next step
-      await pool.query(`
+      await pool.query(
+        `
         INSERT INTO org_activities (
           organization_id,
           activity_type,
@@ -6349,25 +8661,40 @@ Use add_committee_leader to assign a leader.`;
           next_step_owner_user_id,
           next_step_owner_name
         ) VALUES ($1, 'reminder', $2, $3, $4, NOW(), true, $5, $3, $4)
-      `, [orgId, reminder, userId, userName, dueDate.toISOString().split('T')[0]]);
+      `,
+        [
+          orgId,
+          reminder,
+          userId,
+          userName,
+          dueDate.toISOString().split("T")[0],
+        ],
+      );
 
       // Also update the org's prospect_next_action fields for quick lookup
-      await pool.query(`
+      await pool.query(
+        `
         UPDATE organizations
         SET prospect_next_action = $2, prospect_next_action_date = $3, updated_at = NOW()
         WHERE workos_organization_id = $1
-      `, [orgId, reminder, dueDate.toISOString().split('T')[0]]);
+      `,
+        [orgId, reminder, dueDate.toISOString().split("T")[0]],
+      );
 
-      const formattedDate = dueDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+      const formattedDate = dueDate.toLocaleDateString("en-US", {
+        weekday: "long",
+        month: "short",
+        day: "numeric",
+      });
       return `✅ Reminder set for **${orgName}**!\n\n📝 ${reminder}\n📅 Due: ${formattedDate}`;
     } catch (error) {
-      logger.error({ error, orgId, userId }, 'Error setting reminder');
-      return '❌ Failed to set reminder. Please try again.';
+      logger.error({ error, orgId, userId }, "Error setting reminder");
+      return "❌ Failed to set reminder. Please try again.";
     }
   });
 
   // Complete task - mark a task/reminder as done
-  handlers.set('complete_task', async (input) => {
+  handlers.set("complete_task", async (input) => {
     const pool = getPool();
     const orgId = input.org_id as string | undefined;
     const companyName = input.company_name as string | undefined;
@@ -6375,13 +8702,14 @@ Use add_committee_leader to assign a leader.`;
 
     const userId = memberContext?.workos_user?.workos_user_id;
     if (!userId) {
-      return '❌ Could not determine your user ID. Please try again.';
+      return "❌ Could not determine your user ID. Please try again.";
     }
 
     try {
       if (allOverdue) {
         // Complete all overdue tasks for this user
-        const result = await pool.query(`
+        const result = await pool.query(
+          `
           UPDATE org_activities
           SET next_step_completed_at = NOW(),
               next_step_completed_reason = 'Marked done by user'
@@ -6390,48 +8718,66 @@ Use add_committee_leader to assign a leader.`;
             AND next_step_owner_user_id = $1
             AND next_step_due_date < CURRENT_DATE
           RETURNING id, organization_id, description, next_step_due_date
-        `, [userId]);
+        `,
+          [userId],
+        );
 
         if (result.rows.length === 0) {
-          return '✅ No overdue tasks found — you\'re all caught up!';
+          return "✅ No overdue tasks found — you're all caught up!";
         }
 
         // Clear matching prospect_next_action fields
         for (const row of result.rows) {
           if (row.next_step_due_date) {
-            await pool.query(`
+            await pool.query(
+              `
               UPDATE organizations
               SET prospect_next_action = NULL, prospect_next_action_date = NULL, updated_at = NOW()
               WHERE workos_organization_id = $1
                 AND prospect_next_action_date = $2
-            `, [row.organization_id, row.next_step_due_date]);
+            `,
+              [row.organization_id, row.next_step_due_date],
+            );
           }
         }
 
         // Get org names for confirmation
-        const orgIds = [...new Set(result.rows.map(r => r.organization_id))];
-        const orgsResult = await pool.query(`
+        const orgIds = [...new Set(result.rows.map((r) => r.organization_id))];
+        const orgsResult = await pool.query(
+          `
           SELECT workos_organization_id, name FROM organizations
           WHERE workos_organization_id = ANY($1)
-        `, [orgIds]);
-        const orgNames = new Map(orgsResult.rows.map(r => [r.workos_organization_id, r.name]));
+        `,
+          [orgIds],
+        );
+        const orgNames = new Map(
+          orgsResult.rows.map((r) => [r.workos_organization_id, r.name]),
+        );
 
-        const completedList = result.rows.map(r =>
-          `• **${orgNames.get(r.organization_id) || 'Unknown'}**: ${r.description}`
-        ).join('\n');
+        const completedList = result.rows
+          .map(
+            (r) =>
+              `• **${orgNames.get(r.organization_id) || "Unknown"}**: ${
+                r.description
+              }`,
+          )
+          .join("\n");
 
-        return `✅ Completed ${result.rows.length} overdue task${result.rows.length === 1 ? '' : 's'}:\n\n${completedList}`;
+        return `✅ Completed ${result.rows.length} overdue task${
+          result.rows.length === 1 ? "" : "s"
+        }:\n\n${completedList}`;
       }
 
       // Complete task for a specific org
       if (!orgId && !companyName) {
-        return '❌ Please provide company_name, org_id, or set all_overdue to true.';
+        return "❌ Please provide company_name, org_id, or set all_overdue to true.";
       }
 
       let targetOrgId = orgId;
       if (!targetOrgId && companyName) {
         const escapedName = escapeLikePattern(companyName);
-        const searchResult = await pool.query(`
+        const searchResult = await pool.query(
+          `
           SELECT workos_organization_id, name
           FROM organizations
           WHERE LOWER(name) LIKE LOWER($1) ESCAPE '\\'
@@ -6440,7 +8786,9 @@ Use add_committee_leader to assign a leader.`;
             CASE WHEN LOWER(name) = LOWER($2) THEN 0 ELSE 1 END,
             name ASC
           LIMIT 1
-        `, [`%${escapedName}%`, companyName]);
+        `,
+          [`%${escapedName}%`, companyName],
+        );
 
         if (searchResult.rows.length === 0) {
           return `❌ No organization found matching "${companyName}".`;
@@ -6448,7 +8796,8 @@ Use add_committee_leader to assign a leader.`;
         targetOrgId = searchResult.rows[0].workos_organization_id;
       }
 
-      const result = await pool.query(`
+      const result = await pool.query(
+        `
         UPDATE org_activities
         SET next_step_completed_at = NOW(),
             next_step_completed_reason = 'Marked done by user'
@@ -6457,13 +8806,18 @@ Use add_committee_leader to assign a leader.`;
           AND organization_id = $1
           AND next_step_owner_user_id = $2
         RETURNING id, description, next_step_due_date
-      `, [targetOrgId, userId]);
+      `,
+        [targetOrgId, userId],
+      );
 
       // Get org name
-      const orgResult = await pool.query(`
+      const orgResult = await pool.query(
+        `
         SELECT name FROM organizations WHERE workos_organization_id = $1
-      `, [targetOrgId]);
-      const orgName = orgResult.rows[0]?.name || 'Unknown';
+      `,
+        [targetOrgId],
+      );
+      const orgName = orgResult.rows[0]?.name || "Unknown";
 
       if (result.rows.length === 0) {
         return `ℹ️ No pending tasks found for **${orgName}**.`;
@@ -6472,38 +8826,43 @@ Use add_committee_leader to assign a leader.`;
       // Clear matching prospect_next_action for all completed tasks
       for (const row of result.rows) {
         if (row.next_step_due_date) {
-          await pool.query(`
+          await pool.query(
+            `
             UPDATE organizations
             SET prospect_next_action = NULL, prospect_next_action_date = NULL, updated_at = NOW()
             WHERE workos_organization_id = $1
               AND prospect_next_action_date = $2
-          `, [targetOrgId, row.next_step_due_date]);
+          `,
+            [targetOrgId, row.next_step_due_date],
+          );
         }
       }
 
-      const descriptions = result.rows.map(r => r.description).join(', ');
-      return `✅ Completed ${result.rows.length} task${result.rows.length === 1 ? '' : 's'} for **${orgName}**: ${descriptions}`;
+      const descriptions = result.rows.map((r) => r.description).join(", ");
+      return `✅ Completed ${result.rows.length} task${
+        result.rows.length === 1 ? "" : "s"
+      } for **${orgName}**: ${descriptions}`;
     } catch (error) {
-      logger.error({ error, orgId, userId }, 'Error completing task');
-      return '❌ Failed to complete task. Please try again.';
+      logger.error({ error, orgId, userId }, "Error completing task");
+      return "❌ Failed to complete task. Please try again.";
     }
   });
 
   // My upcoming tasks - list future scheduled tasks
-  handlers.set('my_upcoming_tasks', async (input) => {
-
+  handlers.set("my_upcoming_tasks", async (input) => {
     const pool = getPool();
     const limit = Math.min((input.limit as number) || 20, 50);
     const daysAhead = (input.days_ahead as number) || 7;
 
     const userId = memberContext?.workos_user?.workos_user_id;
     if (!userId) {
-      return '❌ Could not determine your user ID. Please try again.';
+      return "❌ Could not determine your user ID. Please try again.";
     }
 
     try {
       // Query upcoming tasks from org_activities
-      const result = await pool.query(`
+      const result = await pool.query(
+        `
         SELECT
           oa.id,
           oa.description,
@@ -6521,10 +8880,13 @@ Use add_committee_leader to assign a leader.`;
           AND oa.next_step_due_date <= CURRENT_DATE + $2::INTEGER
         ORDER BY oa.next_step_due_date ASC
         LIMIT $3
-      `, [userId, daysAhead, limit]);
+      `,
+        [userId, daysAhead, limit],
+      );
 
       // Also check for tasks based on org ownership (from prospect_next_action on organizations table)
-      const orgTasks = await pool.query(`
+      const orgTasks = await pool.query(
+        `
         SELECT
           o.prospect_next_action as description,
           o.prospect_next_action_date,
@@ -6541,7 +8903,9 @@ Use add_committee_leader to assign a leader.`;
           AND o.is_personal IS NOT TRUE
         ORDER BY o.prospect_next_action_date ASC
         LIMIT $3
-      `, [userId, daysAhead, limit]);
+      `,
+        [userId, daysAhead, limit],
+      );
 
       // Combine and dedupe by org_id (prefer activity-based tasks)
       const seenOrgs = new Set<string>();
@@ -6588,14 +8952,19 @@ Use add_committee_leader to assign a leader.`;
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      let currentDateStr = '';
+      let currentDateStr = "";
       for (const task of allTasks.slice(0, limit)) {
-        const dateStr = task.due_date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+        const dateStr = task.due_date.toLocaleDateString("en-US", {
+          weekday: "long",
+          month: "short",
+          day: "numeric",
+        });
 
         if (dateStr !== currentDateStr) {
           currentDateStr = dateStr;
           const isToday = task.due_date.getTime() === today.getTime();
-          const isTomorrow = task.due_date.getTime() === today.getTime() + 86400000;
+          const isTomorrow =
+            task.due_date.getTime() === today.getTime() + 86400000;
           let label = dateStr;
           if (isToday) label = `📌 Today (${dateStr})`;
           else if (isTomorrow) label = `📅 Tomorrow (${dateStr})`;
@@ -6603,7 +8972,7 @@ Use add_committee_leader to assign a leader.`;
           response += `\n### ${label}\n`;
         }
 
-        const hotEmoji = task.community_points >= 100 ? ' 🔥' : '';
+        const hotEmoji = task.community_points >= 100 ? " 🔥" : "";
         response += `• **${task.org_name}**${hotEmoji}: ${task.description}\n`;
       }
 
@@ -6615,30 +8984,29 @@ Use add_committee_leader to assign a leader.`;
 
       return response;
     } catch (error) {
-      logger.error({ error, userId }, 'Error fetching upcoming tasks');
-      return '❌ Failed to fetch upcoming tasks. Please try again.';
+      logger.error({ error, userId }, "Error fetching upcoming tasks");
+      return "❌ Failed to fetch upcoming tasks. Please try again.";
     }
   });
 
   // Log conversation - record an interaction and analyze for task management
-  handlers.set('log_conversation', async (input) => {
-
+  handlers.set("log_conversation", async (input) => {
     const pool = getPool();
     let orgId = input.org_id as string | undefined;
     const companyName = input.company_name as string | undefined;
     const contactName = input.contact_name as string | undefined;
-    const channel = (input.channel as string) || 'other';
+    const channel = (input.channel as string) || "other";
     const summary = input.summary as string;
 
     const userId = memberContext?.workos_user?.workos_user_id;
-    const userName = memberContext?.workos_user?.first_name || 'Unknown';
+    const userName = memberContext?.workos_user?.first_name || "Unknown";
 
     if (!userId) {
-      return '❌ Could not determine your user ID. Please try again.';
+      return "❌ Could not determine your user ID. Please try again.";
     }
 
     if (!summary) {
-      return '❌ Please provide a summary of the conversation.';
+      return "❌ Please provide a summary of the conversation.";
     }
 
     try {
@@ -6647,7 +9015,8 @@ Use add_committee_leader to assign a leader.`;
 
       if (!orgId && companyName) {
         const escapedName = escapeLikePattern(companyName);
-        const searchResult = await pool.query(`
+        const searchResult = await pool.query(
+          `
           SELECT workos_organization_id, name
           FROM organizations
           WHERE LOWER(name) LIKE LOWER($1) ESCAPE '\\'
@@ -6656,26 +9025,38 @@ Use add_committee_leader to assign a leader.`;
             CASE WHEN LOWER(name) = LOWER($2) THEN 0 ELSE 1 END,
             name ASC
           LIMIT 1
-        `, [`%${escapedName}%`, companyName]);
+        `,
+          [`%${escapedName}%`, companyName],
+        );
 
         if (searchResult.rows.length > 0) {
           orgId = searchResult.rows[0].workos_organization_id;
           orgName = searchResult.rows[0].name;
         }
       } else if (orgId) {
-        const orgResult = await pool.query(`
+        const orgResult = await pool.query(
+          `
           SELECT name FROM organizations WHERE workos_organization_id = $1
-        `, [orgId]);
+        `,
+          [orgId],
+        );
         orgName = orgResult.rows[0]?.name;
       }
 
       // Log the activity
-      const activityType = channel === 'call' || channel === 'video' ? 'call' :
-                          channel === 'email' ? 'email' :
-                          channel === 'in_person' ? 'meeting' : 'note';
+      const activityType =
+        channel === "call" || channel === "video"
+          ? "call"
+          : channel === "email"
+          ? "email"
+          : channel === "in_person"
+          ? "meeting"
+          : "note";
 
+      let activityId: number | undefined;
       if (orgId) {
-        await pool.query(`
+        const insertResult = await pool.query(
+          `
           INSERT INTO org_activities (
             organization_id,
             activity_type,
@@ -6685,21 +9066,30 @@ Use add_committee_leader to assign a leader.`;
             activity_date,
             metadata
           ) VALUES ($1, $2, $3, $4, $5, NOW(), $6)
-        `, [
-          orgId,
-          activityType,
-          summary,
-          userId,
-          userName,
-          JSON.stringify({ channel, contact_name: contactName }),
-        ]);
+          RETURNING id
+        `,
+          [
+            orgId,
+            activityType,
+            summary,
+            userId,
+            userName,
+            JSON.stringify({ channel, contact_name: contactName }),
+          ],
+        );
+        activityId = insertResult.rows[0]?.id;
       }
 
       // Analyze the interaction for task management
       const interactionContext: InteractionContext = {
         content: summary,
-        channel: channel === 'slack_dm' ? 'slack_dm' : channel === 'email' ? 'email' : 'slack_channel',
-        direction: 'outbound',
+        channel:
+          channel === "slack_dm"
+            ? "slack_dm"
+            : channel === "email"
+            ? "email"
+            : "slack_channel",
+        direction: "outbound",
         organizationId: orgId,
         organizationName: orgName,
         contactName,
@@ -6708,6 +9098,23 @@ Use add_committee_leader to assign a leader.`;
       };
 
       const analysisResult = await processInteraction(interactionContext);
+
+      // Persist learnings to org_activities metadata so get_account can surface them
+      if (activityId && analysisResult?.analysis?.learnings) {
+        const learnings = analysisResult.analysis.learnings;
+        const hasLearnings =
+          learnings.interests?.length ||
+          learnings.concerns?.length ||
+          learnings.decisionTimeline ||
+          learnings.budget ||
+          learnings.otherNotes;
+        if (hasLearnings) {
+          await pool.query(
+            `UPDATE org_activities SET metadata = metadata || $2::jsonb WHERE id = $1`,
+            [activityId, JSON.stringify({ learnings })],
+          );
+        }
+      }
 
       // Build response
       let response = `✅ Logged ${activityType}`;
@@ -6721,35 +9128,43 @@ Use add_committee_leader to assign a leader.`;
 
       // Report task actions
       if (analysisResult?.actionsApplied) {
-        const { completed, rescheduled, created } = analysisResult.actionsApplied;
+        const { completed, rescheduled, created } =
+          analysisResult.actionsApplied;
 
         if (completed > 0) {
-          response += `✓ Auto-completed ${completed} task${completed > 1 ? 's' : ''}\n`;
+          response += `✓ Auto-completed ${completed} task${
+            completed > 1 ? "s" : ""
+          }\n`;
         }
         if (rescheduled > 0) {
-          response += `📅 Rescheduled ${rescheduled} task${rescheduled > 1 ? 's' : ''}\n`;
+          response += `📅 Rescheduled ${rescheduled} task${
+            rescheduled > 1 ? "s" : ""
+          }\n`;
         }
         if (created > 0) {
-          response += `📝 Created ${created} new follow-up${created > 1 ? 's' : ''}\n`;
+          response += `📝 Created ${created} new follow-up${
+            created > 1 ? "s" : ""
+          }\n`;
         }
       }
 
       // Report learnings if any
       if (analysisResult?.analysis?.learnings) {
         const learnings = analysisResult.analysis.learnings;
-        const hasLearnings = learnings.interests?.length ||
-                            learnings.concerns?.length ||
-                            learnings.decisionTimeline ||
-                            learnings.budget ||
-                            learnings.otherNotes;
+        const hasLearnings =
+          learnings.interests?.length ||
+          learnings.concerns?.length ||
+          learnings.decisionTimeline ||
+          learnings.budget ||
+          learnings.otherNotes;
 
         if (hasLearnings) {
           response += `\n**Learnings captured:**\n`;
           if (learnings.interests?.length) {
-            response += `• Interests: ${learnings.interests.join(', ')}\n`;
+            response += `• Interests: ${learnings.interests.join(", ")}\n`;
           }
           if (learnings.concerns?.length) {
-            response += `• Concerns: ${learnings.concerns.join(', ')}\n`;
+            response += `• Concerns: ${learnings.concerns.join(", ")}\n`;
           }
           if (learnings.decisionTimeline) {
             response += `• Timeline: ${learnings.decisionTimeline}\n`;
@@ -6765,16 +9180,15 @@ Use add_committee_leader to assign a leader.`;
 
       return response;
     } catch (error) {
-      logger.error({ error, orgId, userId }, 'Error logging conversation');
-      return '❌ Failed to log conversation. Please try again.';
+      logger.error({ error, orgId, userId }, "Error logging conversation");
+      return "❌ Failed to log conversation. Please try again.";
     }
   });
 
   // ============================================
   // MEMBER SEARCH ANALYTICS HANDLERS
   // ============================================
-  handlers.set('get_member_search_analytics', async (input) => {
-
+  handlers.set("get_member_search_analytics", async (input) => {
     try {
       const days = Math.min(Math.max((input.days as number) || 30, 1), 365);
 
@@ -6790,22 +9204,26 @@ Use add_committee_leader to assign a leader.`;
       // Enrich top members with profile info
       const enrichedTopMembers = await Promise.all(
         globalAnalytics.top_members.slice(0, 5).map(async (member) => {
-          const profile = await memberDb.getProfileById(member.member_profile_id);
+          const profile = await memberDb.getProfileById(
+            member.member_profile_id,
+          );
           return {
-            display_name: profile?.display_name || 'Unknown',
+            display_name: profile?.display_name || "Unknown",
             slug: profile?.slug || null,
             impressions: member.impressions,
           };
-        })
+        }),
       );
 
       // Enrich recent introductions with profile info
       const enrichedIntroductions = await Promise.all(
         recentIntroductions.map(async (intro) => {
-          const profile = await memberDb.getProfileById(intro.member_profile_id);
+          const profile = await memberDb.getProfileById(
+            intro.member_profile_id,
+          );
           return {
             event_type: intro.event_type,
-            member_name: profile?.display_name || 'Unknown',
+            member_name: profile?.display_name || "Unknown",
             member_slug: profile?.slug || null,
             searcher_name: intro.searcher_name,
             searcher_email: intro.searcher_email,
@@ -6815,7 +9233,7 @@ Use add_committee_leader to assign a leader.`;
             message: intro.message,
             created_at: intro.created_at,
           };
-        })
+        }),
       );
 
       // Build response
@@ -6831,14 +9249,21 @@ Use add_committee_leader to assign a leader.`;
 
       // Calculate rates
       if (globalAnalytics.total_impressions > 0) {
-        const clickRate = ((globalAnalytics.total_clicks / globalAnalytics.total_impressions) * 100).toFixed(1);
+        const clickRate = (
+          (globalAnalytics.total_clicks / globalAnalytics.total_impressions) *
+          100
+        ).toFixed(1);
         response += `**Click-through rate:** ${clickRate}%\n`;
       }
       if (globalAnalytics.total_clicks > 0) {
-        const introRate = ((globalAnalytics.total_intro_requests / globalAnalytics.total_clicks) * 100).toFixed(1);
+        const introRate = (
+          (globalAnalytics.total_intro_requests /
+            globalAnalytics.total_clicks) *
+          100
+        ).toFixed(1);
         response += `**Introduction rate (from clicks):** ${introRate}%\n`;
       }
-      response += '\n';
+      response += "\n";
 
       // Top queries
       if (globalAnalytics.top_queries.length > 0) {
@@ -6846,7 +9271,7 @@ Use add_committee_leader to assign a leader.`;
         for (const q of globalAnalytics.top_queries.slice(0, 5)) {
           response += `- "${q.query}" (${q.count} searches)\n`;
         }
-        response += '\n';
+        response += "\n";
       }
 
       // Top members
@@ -6855,9 +9280,9 @@ Use add_committee_leader to assign a leader.`;
         for (const m of enrichedTopMembers) {
           response += `- **${m.display_name}** - ${m.impressions} impressions`;
           if (m.slug) response += ` ([profile](/members/${m.slug}))`;
-          response += '\n';
+          response += "\n";
         }
-        response += '\n';
+        response += "\n";
       }
 
       // Recent introductions
@@ -6865,32 +9290,38 @@ Use add_committee_leader to assign a leader.`;
         response += `### Recent Introductions\n`;
         for (const intro of enrichedIntroductions) {
           const date = new Date(intro.created_at).toLocaleDateString();
-          const status = intro.event_type === 'introduction_sent' ? '✅ Sent' : '📝 Requested';
+          const status =
+            intro.event_type === "introduction_sent"
+              ? "✅ Sent"
+              : "📝 Requested";
           response += `- ${status} **${intro.searcher_name}**`;
-          if (intro.searcher_company) response += ` (${intro.searcher_company})`;
+          if (intro.searcher_company)
+            response += ` (${intro.searcher_company})`;
           response += ` → **${intro.member_name}** on ${date}\n`;
-          if (intro.search_query) response += `  - Searched: "${intro.search_query}"\n`;
+          if (intro.search_query)
+            response += `  - Searched: "${intro.search_query}"\n`;
         }
       }
 
       return response;
     } catch (error) {
-      logger.error({ error }, 'Error getting member search analytics');
-      return '❌ Failed to get member search analytics. Please try again.';
+      logger.error({ error }, "Error getting member search analytics");
+      return "❌ Failed to get member search analytics. Please try again.";
     }
   });
 
   // ============================================
   // ORGANIZATION ANALYTICS HANDLERS
   // ============================================
-  handlers.set('list_organizations_by_users', async (input) => {
-
+  handlers.set("list_organizations_by_users", async (input) => {
     try {
       const pool = getPool();
       const limit = Math.min(Math.max((input.limit as number) || 20, 1), 100);
-      const validMemberStatuses = ['all', 'member', 'churned', 'prospect'];
-      const rawMemberStatus = (input.member_status as string) || 'all';
-      const memberStatus = validMemberStatuses.includes(rawMemberStatus) ? rawMemberStatus : 'all';
+      const validMemberStatuses = ["all", "member", "churned", "prospect"];
+      const rawMemberStatus = (input.member_status as string) || "all";
+      const memberStatus = validMemberStatuses.includes(rawMemberStatus)
+        ? rawMemberStatus
+        : "all";
       const minUsers = Math.max((input.min_users as number) || 1, 0);
 
       // Query organizations with user counts (members + Slack-only users)
@@ -6904,7 +9335,8 @@ Use add_committee_leader to assign a leader.`;
         messages_30d: number;
         subscription_status: string | null;
         member_status: string;
-      }>(`
+      }>(
+        `
         WITH member_counts AS (
           SELECT workos_organization_id, COUNT(*) as count
           FROM organization_memberships
@@ -6954,16 +9386,20 @@ Use add_committee_leader to assign a leader.`;
                ($2 = 'prospect' AND (o.subscription_status IS NULL OR o.subscription_status NOT IN ('active', 'canceled', 'past_due'))))
         ORDER BY total_user_count DESC, active_users_30d DESC, name ASC
         LIMIT $3
-      `, [minUsers, memberStatus, limit]);
+      `,
+        [minUsers, memberStatus, limit],
+      );
 
       if (result.rows.length === 0) {
-        return `No organizations found with ${minUsers}+ users${memberStatus !== 'all' ? ` (filtered by status: ${memberStatus})` : ''}.`;
+        return `No organizations found with ${minUsers}+ users${
+          memberStatus !== "all" ? ` (filtered by status: ${memberStatus})` : ""
+        }.`;
       }
 
       // Build response
       let response = `## Organizations by User Count\n\n`;
 
-      if (memberStatus !== 'all') {
+      if (memberStatus !== "all") {
         response += `_Filtered to ${memberStatus}s only_\n\n`;
       }
 
@@ -6973,8 +9409,12 @@ Use add_committee_leader to assign a leader.`;
       for (let i = 0; i < result.rows.length; i++) {
         const org = result.rows[i];
         const rank = i + 1;
-        const statusEmoji = org.member_status === 'member' ? '✅' :
-                           org.member_status === 'churned' ? '❌' : '🔄';
+        const statusEmoji =
+          org.member_status === "member"
+            ? "✅"
+            : org.member_status === "churned"
+            ? "❌"
+            : "🔄";
 
         response += `| ${rank} | **${org.name}** | ${org.total_user_count} | ${org.member_count} | ${org.slack_only_count} | ${org.active_users_30d} | ${statusEmoji} ${org.member_status} |\n`;
       }
@@ -6987,21 +9427,21 @@ Use add_committee_leader to assign a leader.`;
 
       return response;
     } catch (error) {
-      logger.error({ error }, 'Error listing organizations by users');
-      return '❌ Failed to list organizations by user count. Please try again.';
+      logger.error({ error }, "Error listing organizations by users");
+      return "❌ Failed to list organizations by user count. Please try again.";
     }
   });
 
   // List paying members grouped by subscription level
-  handlers.set('list_paying_members', async (input) => {
+  handlers.set("list_paying_members", async (input) => {
     try {
       const pool = getPool();
       const includeIndividual = input.include_individual !== false;
       const includePaymentIssues = input.include_payment_issues === true;
       const limit = Math.min(Math.max((input.limit as number) || 200, 1), 500);
       const allowedStatuses = includePaymentIssues
-        ? ['active', 'past_due', 'unpaid']
-        : ['active'];
+        ? ["active", "past_due", "unpaid"]
+        : ["active"];
 
       const result = await pool.query(
         `SELECT
@@ -7031,11 +9471,13 @@ Use add_committee_leader to assign a leader.`;
           AND ($1 = true OR o.is_personal = false)
         ORDER BY o.subscription_amount DESC NULLS LAST, o.name ASC
         LIMIT $2`,
-        [includeIndividual, limit, allowedStatuses]
+        [includeIndividual, limit, allowedStatuses],
       );
 
       if (result.rows.length === 0) {
-        return `No paying members found${includeIndividual ? '' : ' (corporate only)'}.`;
+        return `No paying members found${
+          includeIndividual ? "" : " (corporate only)"
+        }.`;
       }
 
       // Group by annual subscription amount level.
@@ -7050,7 +9492,8 @@ Use add_committee_leader to assign a leader.`;
 
       for (const org of result.rows) {
         const amount = org.subscription_amount || 0;
-        const annualCents = org.subscription_interval === 'month' ? amount * 12 : amount;
+        const annualCents =
+          org.subscription_interval === "month" ? amount * 12 : amount;
 
         if (org.is_personal) {
           groups.individual.push(org);
@@ -7065,34 +9508,65 @@ Use add_committee_leader to assign a leader.`;
         }
       }
 
-      const formatRow = (org: { name: string; subscription_status: string; subscription_amount: number | null; subscription_currency: string | null; subscription_interval: string | null; created_at: Date; contact_email: string | null; contact_first_name: string | null; contact_last_name: string | null }) => {
+      const formatRow = (org: {
+        name: string;
+        subscription_status: string;
+        subscription_amount: number | null;
+        subscription_currency: string | null;
+        subscription_interval: string | null;
+        created_at: Date;
+        contact_email: string | null;
+        contact_first_name: string | null;
+        contact_last_name: string | null;
+      }) => {
         const amount = org.subscription_amount
-          ? formatCurrency(org.subscription_amount, org.subscription_currency || 'usd')
-          : 'Comped';
+          ? formatCurrency(
+              org.subscription_amount,
+              org.subscription_currency || "usd",
+            )
+          : "Comped";
         const interval = org.subscription_amount
-          ? (org.subscription_interval === 'month' ? '/mo' : org.subscription_interval === 'year' ? '/yr' : '')
-          : '';
+          ? org.subscription_interval === "month"
+            ? "/mo"
+            : org.subscription_interval === "year"
+            ? "/yr"
+            : ""
+          : "";
         const since = formatDate(org.created_at);
-        const contactName = [org.contact_first_name, org.contact_last_name].filter(Boolean).join(' ');
-        const contact = contactName && org.contact_email
-          ? ` — ${contactName} <${org.contact_email}>`
-          : org.contact_email
+        const contactName = [org.contact_first_name, org.contact_last_name]
+          .filter(Boolean)
+          .join(" ");
+        const contact =
+          contactName && org.contact_email
+            ? ` — ${contactName} <${org.contact_email}>`
+            : org.contact_email
             ? ` — ${org.contact_email}`
-            : '';
-        const statusFlag = org.subscription_status === 'past_due' ? ' [PAST DUE]'
-          : org.subscription_status === 'unpaid' ? ' [UNPAID]'
-          : '';
+            : "";
+        const statusFlag =
+          org.subscription_status === "past_due"
+            ? " [PAST DUE]"
+            : org.subscription_status === "unpaid"
+            ? " [UNPAID]"
+            : "";
         return `- **${org.name}**${statusFlag}${contact} — ${amount}${interval} (since ${since})\n`;
       };
 
-      const pastDueCount = result.rows.filter((r: { subscription_status: string }) => r.subscription_status === 'past_due').length;
-      const unpaidCount = result.rows.filter((r: { subscription_status: string }) => r.subscription_status === 'unpaid').length;
+      const pastDueCount = result.rows.filter(
+        (r: { subscription_status: string }) =>
+          r.subscription_status === "past_due",
+      ).length;
+      const unpaidCount = result.rows.filter(
+        (r: { subscription_status: string }) =>
+          r.subscription_status === "unpaid",
+      ).length;
       const activeCount = result.rows.length - pastDueCount - unpaidCount;
 
       let response = includePaymentIssues
         ? `## Members\n\n`
         : `## Active Members\n\n`;
-      response += `**${result.rows.length} member${result.rows.length !== 1 ? 's' : ''}**`;
+      response += `**${result.rows.length} member${
+        result.rows.length !== 1 ? "s" : ""
+      }**`;
       if (!includeIndividual) response += ` (corporate only)`;
       if (includePaymentIssues) {
         response += ` — ${activeCount} active, ${pastDueCount} past due, ${unpaidCount} unpaid`;
@@ -7135,21 +9609,32 @@ Use add_committee_leader to assign a leader.`;
 
       return response;
     } catch (error) {
-      logger.error({ error }, 'Error listing members');
-      return '❌ Failed to list members. Please try again.';
+      logger.error({ error }, "Error listing members");
+      return "❌ Failed to list members. Please try again.";
     }
   });
 
-  handlers.set('list_users_by_engagement', async (input) => {
+  handlers.set("list_users_by_engagement", async (input) => {
     try {
       const pool = getPool();
       const limit = Math.min(Math.max((input.limit as number) || 25, 1), 100);
-      const validRelStages = ['prospect', 'welcomed', 'exploring', 'participating', 'contributing', 'leading'];
-      const rawStage = (input.stage as string) || 'all';
-      const stageFilter = validRelStages.includes(rawStage) ? rawStage : 'all';
+      const validRelStages = [
+        "prospect",
+        "welcomed",
+        "exploring",
+        "participating",
+        "contributing",
+        "leading",
+      ];
+      const rawStage = (input.stage as string) || "all";
+      const stageFilter = validRelStages.includes(rawStage) ? rawStage : "all";
       const memberOnly = input.member_only === true;
-      const validTiers = ['individual', 'company', 'all'];
-      const membershipTier = validTiers.includes(input.membership_tier as string) ? (input.membership_tier as string) : 'all';
+      const validTiers = ["individual", "company", "all"];
+      const membershipTier = validTiers.includes(
+        input.membership_tier as string,
+      )
+        ? (input.membership_tier as string)
+        : "all";
       const includeBreakdown = input.include_breakdown === true;
 
       const result = await pool.query<{
@@ -7163,7 +9648,8 @@ Use add_committee_leader to assign a leader.`;
         membership_tier: string | null;
         sentiment_trend: string | null;
         last_person_message_at: string | null;
-      }>(`
+      }>(
+        `
         SELECT
           u.workos_user_id,
           COALESCE(u.first_name || ' ' || u.last_name, pr.display_name) AS display_name,
@@ -7198,32 +9684,39 @@ Use add_committee_leader to assign a leader.`;
             OR ($4 = 'company' AND (org.is_personal = false OR org.is_personal IS NULL) AND org.workos_organization_id IS NOT NULL))
         ORDER BY COALESCE(cp.total_points, 0) DESC
         LIMIT $2
-      `, [stageFilter, limit, memberOnly, membershipTier]);
+      `,
+        [stageFilter, limit, memberOnly, membershipTier],
+      );
 
       const sorted = result.rows;
 
       if (sorted.length === 0) {
         const filters = [];
-        if (stageFilter !== 'all') filters.push(`stage: ${stageFilter}`);
-        if (memberOnly) filters.push('members only');
-        if (membershipTier !== 'all') filters.push(`tier: ${membershipTier}`);
-        return `No people found${filters.length > 0 ? ` (${filters.join(', ')})` : ''}.`;
+        if (stageFilter !== "all") filters.push(`stage: ${stageFilter}`);
+        if (memberOnly) filters.push("members only");
+        if (membershipTier !== "all") filters.push(`tier: ${membershipTier}`);
+        return `No people found${
+          filters.length > 0 ? ` (${filters.join(", ")})` : ""
+        }.`;
       }
 
       // Fetch per-action breakdown if requested
       let breakdownMap = new Map<string, Record<string, number>>();
       if (includeBreakdown && sorted.length > 0) {
-        const userIds = sorted.map(u => u.workos_user_id);
+        const userIds = sorted.map((u) => u.workos_user_id);
         const breakdownResult = await pool.query<{
           workos_user_id: string;
           action: string;
           action_points: number;
-        }>(`
+        }>(
+          `
           SELECT workos_user_id, action, SUM(points)::int AS action_points
           FROM community_points
           WHERE workos_user_id = ANY($1)
           GROUP BY workos_user_id, action
-        `, [userIds]);
+        `,
+          [userIds],
+        );
 
         for (const row of breakdownResult.rows) {
           const existing = breakdownMap.get(row.workos_user_id) || {};
@@ -7233,45 +9726,50 @@ Use add_committee_leader to assign a leader.`;
       }
 
       const stageEmoji: Record<string, string> = {
-        leading: '🏆',
-        contributing: '⭐',
-        participating: '✅',
-        exploring: '🔍',
-        welcomed: '👋',
-        prospect: '🆕',
+        leading: "🏆",
+        contributing: "⭐",
+        participating: "✅",
+        exploring: "🔍",
+        welcomed: "👋",
+        prospect: "🆕",
       };
 
       const actionLabels: Record<string, string> = {
-        event_attended: 'Events',
-        wg_joined: 'Groups',
-        wg_leadership: 'Leadership',
-        content_published: 'Content',
-        connection_made: 'Connections',
-        event_registered: 'Registrations',
-        meeting_rsvp_accepted: 'Meetings',
-        topic_subscribed: 'Topics',
-        github_linked: 'GitHub',
-        daily_visit: 'Visits',
+        event_attended: "Events",
+        wg_joined: "Groups",
+        wg_leadership: "Leadership",
+        content_published: "Content",
+        connection_made: "Connections",
+        event_registered: "Registrations",
+        meeting_rsvp_accepted: "Meetings",
+        topic_subscribed: "Topics",
+        github_linked: "GitHub",
+        daily_visit: "Visits",
       };
 
       let response = `## Most Engaged Community Members\n\n`;
       const filters = [];
-      if (stageFilter !== 'all') filters.push(`stage: ${stageFilter}`);
-      if (memberOnly) filters.push('members only');
-      if (membershipTier !== 'all') filters.push(`tier: ${membershipTier}`);
-      if (filters.length > 0) response += `_Filtered: ${filters.join(', ')}_\n\n`;
+      if (stageFilter !== "all") filters.push(`stage: ${stageFilter}`);
+      if (memberOnly) filters.push("members only");
+      if (membershipTier !== "all") filters.push(`tier: ${membershipTier}`);
+      if (filters.length > 0)
+        response += `_Filtered: ${filters.join(", ")}_\n\n`;
 
       response += `| # | Name | Org | Points | Stage | Sentiment | Last active |\n`;
       response += `|---|------|-----|--------|-------|-----------|-------------|\n`;
 
       for (let i = 0; i < sorted.length; i++) {
         const u = sorted[i];
-        const name = u.display_name?.trim() || u.email || '—';
-        const stage = u.stage ? `${stageEmoji[u.stage] || ''} ${u.stage}` : '—';
-        const org = u.org_name || '—';
-        const sentiment = u.sentiment_trend || '—';
-        const lastActive = u.last_person_message_at ? new Date(u.last_person_message_at).toLocaleDateString() : '—';
-        response += `| ${i + 1} | **${name}** | ${org} | ${u.total_points} | ${stage} | ${sentiment} | ${lastActive} |\n`;
+        const name = u.display_name?.trim() || u.email || "—";
+        const stage = u.stage ? `${stageEmoji[u.stage] || ""} ${u.stage}` : "—";
+        const org = u.org_name || "—";
+        const sentiment = u.sentiment_trend || "—";
+        const lastActive = u.last_person_message_at
+          ? new Date(u.last_person_message_at).toLocaleDateString()
+          : "—";
+        response += `| ${i + 1} | **${name}** | ${org} | ${
+          u.total_points
+        } | ${stage} | ${sentiment} | ${lastActive} |\n`;
       }
 
       response += `\n_Ranked by community points._\n`;
@@ -7282,36 +9780,35 @@ Use add_committee_leader to assign a leader.`;
           const u = sorted[i];
           const breakdown = breakdownMap.get(u.workos_user_id);
           if (!breakdown) continue;
-          const name = u.display_name?.trim() || u.email || '—';
+          const name = u.display_name?.trim() || u.email || "—";
           const parts = Object.entries(breakdown)
             .sort(([, a], [, b]) => b - a)
             .map(([action, pts]) => `${actionLabels[action] || action}: ${pts}`)
-            .join(', ');
+            .join(", ");
           response += `**${i + 1}. ${name}** (${u.total_points}): ${parts}\n`;
         }
       }
 
       return response;
     } catch (error) {
-      logger.error({ error }, 'Error listing users by engagement');
-      return '❌ Failed to list users by engagement. Please try again.';
+      logger.error({ error }, "Error listing users by engagement");
+      return "❌ Failed to list users by engagement. Please try again.";
     }
   });
 
   // List Slack users for a specific organization
-  handlers.set('list_slack_users_by_org', async (input) => {
-
+  handlers.set("list_slack_users_by_org", async (input) => {
     try {
       const pool = getPool();
-      const query = (input.query as string || '').trim();
+      const query = ((input.query as string) || "").trim();
 
       if (!query) {
-        return '❌ Please provide a company name or domain to look up.';
+        return "❌ Please provide a company name or domain to look up.";
       }
 
       // Find the organization
       // Escape LIKE metacharacters to prevent pattern injection
-      const escapedQuery = query.replace(/[%_\\]/g, '\\$&');
+      const escapedQuery = query.replace(/[%_\\]/g, "\\$&");
       const searchPattern = `%${escapedQuery}%`;
       const orgResult = await pool.query(
         `SELECT workos_organization_id, name, email_domain
@@ -7323,7 +9820,7 @@ Use add_committee_leader to assign a leader.`;
                 WHEN LOWER(name) LIKE LOWER($3) THEN 1
                 ELSE 2 END
          LIMIT 1`,
-        [searchPattern, escapedQuery, `${escapedQuery}%`]
+        [searchPattern, escapedQuery, `${escapedQuery}%`],
       );
 
       if (orgResult.rows.length === 0) {
@@ -7345,7 +9842,8 @@ Use add_committee_leader to assign a leader.`;
           email: string;
           first_name: string | null;
           last_name: string | null;
-        }>(`
+        }>(
+          `
           SELECT
             sm.slack_user_id,
             sm.slack_email,
@@ -7360,7 +9858,9 @@ Use add_committee_leader to assign a leader.`;
           WHERE om.workos_organization_id = $1
             AND sm.mapping_status = 'mapped'
           ORDER BY sm.last_slack_activity_at DESC NULLS LAST, sm.slack_real_name ASC
-        `, [orgId]),
+        `,
+          [orgId],
+        ),
 
         // Slack-only users (discovered via domain)
         pool.query<{
@@ -7369,7 +9869,8 @@ Use add_committee_leader to assign a leader.`;
           slack_display_name: string | null;
           slack_real_name: string | null;
           last_slack_activity_at: Date | null;
-        }>(`
+        }>(
+          `
           SELECT
             slack_user_id,
             slack_email,
@@ -7383,7 +9884,9 @@ Use add_committee_leader to assign a leader.`;
             AND slack_is_bot = false
             AND slack_is_deleted = false
           ORDER BY last_slack_activity_at DESC NULLS LAST, slack_real_name ASC
-        `, [orgId]),
+        `,
+          [orgId],
+        ),
       ]);
 
       const mappedUsers = mappedUsersResult.rows;
@@ -7398,12 +9901,14 @@ Use add_committee_leader to assign a leader.`;
 
       // Helper to format last activity
       const formatLastActive = (date: Date | null) => {
-        if (!date) return 'Never';
+        if (!date) return "Never";
         const d = new Date(date);
         const now = new Date();
-        const diffDays = Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
-        if (diffDays === 0) return 'Today';
-        if (diffDays === 1) return 'Yesterday';
+        const diffDays = Math.floor(
+          (now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24),
+        );
+        if (diffDays === 0) return "Today";
+        if (diffDays === 1) return "Yesterday";
         if (diffDays < 7) return `${diffDays} days ago`;
         if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
         return d.toLocaleDateString();
@@ -7415,13 +9920,16 @@ Use add_committee_leader to assign a leader.`;
         response += `_These users have both a website account and Slack_\n\n`;
 
         for (const user of mappedUsers) {
-          const name = [user.first_name, user.last_name].filter(Boolean).join(' ') ||
-                       user.slack_real_name || user.slack_display_name || 'Unknown';
+          const name =
+            [user.first_name, user.last_name].filter(Boolean).join(" ") ||
+            user.slack_real_name ||
+            user.slack_display_name ||
+            "Unknown";
           const lastActive = formatLastActive(user.last_slack_activity_at);
           response += `- **${name}** - ${user.email}`;
           response += ` _(Last active: ${lastActive})_\n`;
         }
-        response += '\n';
+        response += "\n";
       }
 
       // Slack-only users
@@ -7430,7 +9938,8 @@ Use add_committee_leader to assign a leader.`;
         response += `_These users are in Slack but haven't signed up for a website account_\n\n`;
 
         for (const user of slackOnlyUsers) {
-          const name = user.slack_real_name || user.slack_display_name || 'Unknown';
+          const name =
+            user.slack_real_name || user.slack_display_name || "Unknown";
           const lastActive = formatLastActive(user.last_slack_activity_at);
           response += `- **${name}**`;
           if (user.slack_email) response += ` - ${user.slack_email}`;
@@ -7440,20 +9949,23 @@ Use add_committee_leader to assign a leader.`;
 
       return response;
     } catch (error) {
-      logger.error({ error }, 'Error listing Slack users by org');
-      return '❌ Failed to list Slack users. Please try again.';
+      logger.error({ error }, "Error listing Slack users by org");
+      return "❌ Failed to list Slack users. Please try again.";
     }
   });
 
   // ============================================
   // LIST ESCALATIONS
   // ============================================
-  handlers.set('list_escalations', async (input) => {
-
+  handlers.set("list_escalations", async (input) => {
     try {
       // Direct ID lookup — returns a single escalation regardless of status
       const escalationId = input.escalation_id as number | undefined;
-      if (typeof escalationId === 'number' && Number.isInteger(escalationId) && escalationId > 0) {
+      if (
+        typeof escalationId === "number" &&
+        Number.isInteger(escalationId) &&
+        escalationId > 0
+      ) {
         const esc = await getEscalation(escalationId);
         if (!esc) {
           return `❌ Escalation #${escalationId} not found.`;
@@ -7464,8 +9976,9 @@ Use add_committee_leader to assign a leader.`;
         if (esc.user_display_name) {
           response += `**User**: ${esc.user_display_name}`;
           if (esc.user_email) response += ` (${esc.user_email})`;
-          if (esc.slack_user_id) response += ` — Slack: <@${esc.slack_user_id}>`;
-          response += '\n';
+          if (esc.slack_user_id)
+            response += ` — Slack: <@${esc.slack_user_id}>`;
+          response += "\n";
         } else if (esc.user_email) {
           response += `**Contact**: ${esc.user_email}\n`;
         }
@@ -7478,20 +9991,28 @@ Use add_committee_leader to assign a leader.`;
         if (esc.resolution_notes) {
           response += `**Resolution notes**: ${esc.resolution_notes}\n`;
         }
-        response += `**Created**: ${new Date(esc.created_at).toLocaleDateString()}\n`;
-        if (esc.status !== 'resolved' && esc.status !== 'wont_do') {
+        response += `**Created**: ${new Date(
+          esc.created_at,
+        ).toLocaleDateString()}\n`;
+        if (esc.status !== "resolved" && esc.status !== "wont_do") {
           response += `\n---\nUse \`resolve_escalation\` with escalation_id ${esc.id} to mark as resolved.`;
         }
         return response;
       }
 
-      const status = (input.status as EscalationStatus) || 'open';
+      const status = (input.status as EscalationStatus) || "open";
       const category = input.category as string | undefined;
       const limit = (input.limit as number) || 10;
 
       const escalations = await listEscalations({
         status,
-        category: category as 'capability_gap' | 'needs_human_action' | 'complex_request' | 'sensitive_topic' | 'other' | undefined,
+        category: category as
+          | "capability_gap"
+          | "needs_human_action"
+          | "complex_request"
+          | "sensitive_topic"
+          | "other"
+          | undefined,
         limit,
       });
 
@@ -7500,16 +10021,18 @@ Use add_committee_leader to assign a leader.`;
       }
 
       const priorityEmoji: Record<string, string> = {
-        urgent: '🚨',
-        high: '⚠️',
-        normal: '',
-        low: '',
+        urgent: "🚨",
+        high: "⚠️",
+        normal: "",
+        low: "",
       };
 
-      let response = `## ${status.charAt(0).toUpperCase() + status.slice(1)} Escalations (${escalations.length})\n\n`;
+      let response = `## ${
+        status.charAt(0).toUpperCase() + status.slice(1)
+      } Escalations (${escalations.length})\n\n`;
 
       for (const esc of escalations) {
-        const emoji = priorityEmoji[esc.priority] || '';
+        const emoji = priorityEmoji[esc.priority] || "";
         response += `### ${emoji} #${esc.id}: ${esc.summary}\n`;
         response += `**Category**: ${esc.category} | **Priority**: ${esc.priority}\n`;
         if (esc.user_display_name) {
@@ -7517,41 +10040,53 @@ Use add_committee_leader to assign a leader.`;
           if (esc.slack_user_id) {
             response += ` (<@${esc.slack_user_id}>)`;
           }
-          response += '\n';
+          response += "\n";
         }
         if (esc.original_request) {
-          response += `**Request**: ${esc.original_request.substring(0, 150)}${esc.original_request.length > 150 ? '...' : ''}\n`;
+          response += `**Request**: ${esc.original_request.substring(0, 150)}${
+            esc.original_request.length > 150 ? "..." : ""
+          }\n`;
         }
         if (esc.addie_context) {
-          response += `**Why escalated**: ${esc.addie_context.substring(0, 150)}${esc.addie_context.length > 150 ? '...' : ''}\n`;
+          response += `**Why escalated**: ${esc.addie_context.substring(
+            0,
+            150,
+          )}${esc.addie_context.length > 150 ? "..." : ""}\n`;
         }
-        response += `**Created**: ${new Date(esc.created_at).toLocaleDateString()}\n`;
-        response += '\n';
+        response += `**Created**: ${new Date(
+          esc.created_at,
+        ).toLocaleDateString()}\n`;
+        response += "\n";
       }
 
       response += `\n---\nUse \`resolve_escalation\` with the escalation ID to mark as resolved after handling.`;
 
       return response;
     } catch (error) {
-      logger.error({ error }, 'Error listing escalations');
-      return '❌ Failed to list escalations.';
+      logger.error({ error }, "Error listing escalations");
+      return "❌ Failed to list escalations.";
     }
   });
 
   // ============================================
   // RESOLVE ESCALATION
   // ============================================
-  handlers.set('resolve_escalation', async (input) => {
-
+  handlers.set("resolve_escalation", async (input) => {
     const escalationId = input.escalation_id;
-    if (typeof escalationId !== 'number' || !Number.isInteger(escalationId) || escalationId < 1) {
-      return '❌ Please provide a valid escalation_id (positive integer).';
+    if (
+      typeof escalationId !== "number" ||
+      !Number.isInteger(escalationId) ||
+      escalationId < 1
+    ) {
+      return "❌ Please provide a valid escalation_id (positive integer).";
     }
 
-    const status = (input.status as 'resolved' | 'wont_do') || 'resolved';
+    const status = (input.status as "resolved" | "wont_do") || "resolved";
     const resolutionNotes = input.resolution_notes as string | undefined;
     const notifyUser = input.notify_user !== false; // Default to true
-    const notificationMessage = input.notification_message as string | undefined;
+    const notificationMessage = input.notification_message as
+      | string
+      | undefined;
 
     try {
       // Get the escalation first
@@ -7560,26 +10095,54 @@ Use add_committee_leader to assign a leader.`;
         return `❌ Escalation #${escalationId} not found.`;
       }
 
-      if (escalation.status === 'resolved' || escalation.status === 'wont_do') {
+      if (escalation.status === "resolved" || escalation.status === "wont_do") {
         return `ℹ️ Escalation #${escalationId} is already ${escalation.status}.`;
       }
 
+      const guard = await guardEscalationResolution({ escalation, status });
+      if (!guard.ok) {
+        const blockers = guard.blockers
+          .map((b) => `- ${b.domain ? `${b.domain}: ` : ""}${b.message}`)
+          .join("\n");
+        return (
+          `❌ Escalation #${escalationId} looks like registry/domain propagation work, ` +
+          `but local registry state is not resolved yet.\n\n${blockers}\n\n` +
+          `Use manage_organization_domains with action "reconcile_workos" or the admin domain verify recovery path, then retry. ` +
+          `If the request is invalid or malicious, resolve it as wont_do instead.`
+        );
+      }
+
       // Get resolver info
-      const resolvedBy = memberContext?.workos_user?.email || memberContext?.slack_user?.email || 'admin';
+      const resolvedBy =
+        memberContext?.workos_user?.email ||
+        memberContext?.slack_user?.email ||
+        "admin";
 
       // Update status
-      const updated = await updateEscalationStatus(escalationId, status, resolvedBy, resolutionNotes);
+      const updated = await updateEscalationStatus(
+        escalationId,
+        status,
+        resolvedBy,
+        resolutionNotes,
+      );
       if (!updated) {
         return `❌ Failed to update escalation #${escalationId}.`;
       }
 
-      logger.info({ escalationId, status, resolvedBy, notifyUser }, 'Escalation resolved via Addie tool');
+      logger.info(
+        { escalationId, status, resolvedBy, notifyUser },
+        "Escalation resolved via Addie tool",
+      );
 
       let response = `✅ Escalation #${escalationId} marked as ${status}.`;
 
       // Notify user if requested
       if (notifyUser && escalation.slack_user_id) {
-        const messageText = buildResolutionNotificationMessage(escalation, status, notificationMessage);
+        const messageText = buildResolutionNotificationMessage(
+          escalation,
+          status,
+          notificationMessage,
+        );
 
         const dmResult = await sendDirectMessage(escalation.slack_user_id, {
           text: messageText,
@@ -7587,10 +10150,20 @@ Use add_committee_leader to assign a leader.`;
 
         if (dmResult.ok) {
           response += `\n📬 Notified user via Slack DM.`;
-          logger.info({ escalationId, slackUserId: escalation.slack_user_id }, 'Sent escalation resolution notification');
+          logger.info(
+            { escalationId, slackUserId: escalation.slack_user_id },
+            "Sent escalation resolution notification",
+          );
         } else {
           response += `\n⚠️ Could not notify user via Slack (DM failed).`;
-          logger.warn({ escalationId, slackUserId: escalation.slack_user_id, error: dmResult.error }, 'Failed to send notification');
+          logger.warn(
+            {
+              escalationId,
+              slackUserId: escalation.slack_user_id,
+              error: dmResult.error,
+            },
+            "Failed to send notification",
+          );
 
           // Fall back to email if Slack DM failed and we have an email
           if (escalation.user_email) {
@@ -7608,7 +10181,11 @@ Use add_committee_leader to assign a leader.`;
             }
           }
         }
-      } else if (notifyUser && !escalation.slack_user_id && escalation.user_email) {
+      } else if (
+        notifyUser &&
+        !escalation.slack_user_id &&
+        escalation.user_email
+      ) {
         // No Slack ID but we have their email — send notification via email
         const emailSent = await sendEscalationResolutionEmail({
           to: escalation.user_email,
@@ -7632,7 +10209,7 @@ Use add_committee_leader to assign a leader.`;
 
       return response;
     } catch (error) {
-      logger.error({ error, escalationId }, 'Error resolving escalation');
+      logger.error({ error, escalationId }, "Error resolving escalation");
       return `❌ Failed to resolve escalation #${escalationId}.`;
     }
   });
@@ -7641,9 +10218,9 @@ Use add_committee_leader to assign a leader.`;
   // BAN MANAGEMENT HANDLERS
   // ============================================
 
-  handlers.set('ban_entity', async (input) => {
+  handlers.set("ban_entity", async (input) => {
     try {
-      const { bansDb: bDb } = await import('../../db/bans-db.js');
+      const { bansDb: bDb } = await import("../../db/bans-db.js");
       const banType = input.ban_type as string;
       const entityId = input.entity_id as string;
       const scope = input.scope as string;
@@ -7651,21 +10228,23 @@ Use add_committee_leader to assign a leader.`;
       const reason = input.reason as string;
       const expiresInDays = input.expires_in_days as number | undefined;
 
-      const validBanTypes = ['user', 'organization', 'api_key'];
-      const validScopes = ['platform', 'registry_brand', 'registry_property'];
+      const validBanTypes = ["user", "organization", "api_key"];
+      const validScopes = ["platform", "registry_brand", "registry_property"];
       if (!validBanTypes.includes(banType)) {
-        return `Invalid ban_type. Must be one of: ${validBanTypes.join(', ')}`;
+        return `Invalid ban_type. Must be one of: ${validBanTypes.join(", ")}`;
       }
       if (!validScopes.includes(scope)) {
-        return `Invalid scope. Must be one of: ${validScopes.join(', ')}`;
+        return `Invalid scope. Must be one of: ${validScopes.join(", ")}`;
       }
 
       const expiresAt = expiresInDays
         ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000)
         : undefined;
 
-      const adminUserId = memberContext?.workos_user?.workos_user_id || 'system:addie';
-      const adminEmail = memberContext?.workos_user?.email || 'addie@agenticadvertising.org';
+      const adminUserId =
+        memberContext?.workos_user?.workos_user_id || "system:addie";
+      const adminEmail =
+        memberContext?.workos_user?.email || "addie@agenticadvertising.org";
 
       const ban = await bDb.createBan({
         ban_type: banType as any,
@@ -7678,7 +10257,10 @@ Use add_committee_leader to assign a leader.`;
         expires_at: expiresAt,
       });
 
-      const scopeLabel = scope === 'platform' ? 'platform-wide' : scope.replace(/registry_/g, '') + ' registry edits';
+      const scopeLabel =
+        scope === "platform"
+          ? "platform-wide"
+          : scope.replace(/registry_/g, "") + " registry edits";
       let response = `**Ban created** (ID: \`${ban.id}\`)\n`;
       response += `- **Type**: ${banType}\n`;
       response += `- **Entity**: \`${entityId}\`\n`;
@@ -7693,14 +10275,14 @@ Use add_committee_leader to assign a leader.`;
       if (error?.constraint) {
         return `❌ A ban already exists for this entity/scope combination.`;
       }
-      logger.error({ error }, 'Error creating ban');
-      return `❌ Failed to create ban: ${error?.message || 'Unknown error'}`;
+      logger.error({ error }, "Error creating ban");
+      return `❌ Failed to create ban: ${error?.message || "Unknown error"}`;
     }
   });
 
-  handlers.set('unban_entity', async (input) => {
+  handlers.set("unban_entity", async (input) => {
     try {
-      const { bansDb: bDb } = await import('../../db/bans-db.js');
+      const { bansDb: bDb } = await import("../../db/bans-db.js");
       const banId = input.ban_id as string | undefined;
       const banType = input.ban_type as string | undefined;
       const entityId = input.entity_id as string | undefined;
@@ -7719,9 +10301,12 @@ Use add_committee_leader to assign a leader.`;
           scope: scope as any,
         });
 
-        if (bans.length === 0) return `❌ No active ban found for ${banType} \`${entityId}\`${scope ? ` with scope ${scope}` : ''}.`;
+        if (bans.length === 0)
+          return `❌ No active ban found for ${banType} \`${entityId}\`${
+            scope ? ` with scope ${scope}` : ""
+          }.`;
 
-        let response = '';
+        let response = "";
         for (const ban of bans) {
           await bDb.removeBan(ban.id);
           response += `**Removed**: \`${ban.id}\` (${ban.scope}, reason: ${ban.reason})\n`;
@@ -7731,34 +10316,47 @@ Use add_committee_leader to assign a leader.`;
 
       return `❌ Provide either ban_id, or ban_type + entity_id to find the ban.`;
     } catch (error) {
-      logger.error({ error }, 'Error removing ban');
+      logger.error({ error }, "Error removing ban");
       return `❌ Failed to remove ban.`;
     }
   });
 
-  handlers.set('list_bans', async (input) => {
+  handlers.set("list_bans", async (input) => {
     try {
-      const { bansDb: bDb } = await import('../../db/bans-db.js');
+      const { bansDb: bDb } = await import("../../db/bans-db.js");
       const bans = await bDb.listBans({
         ban_type: input.ban_type as any,
         scope: input.scope as any,
         entity_id: input.entity_id as string | undefined,
       });
 
-      if (bans.length === 0) return 'No active bans found.';
+      if (bans.length === 0) return "No active bans found.";
 
       let response = `**Active bans** (${bans.length}):\n\n`;
       for (const ban of bans) {
-        const scopeLabel = ban.scope === 'platform' ? 'Platform' : ban.scope.replace(/registry_/g, '').charAt(0).toUpperCase() + ban.scope.replace(/registry_/g, '').slice(1) + ' registry';
+        const scopeLabel =
+          ban.scope === "platform"
+            ? "Platform"
+            : ban.scope
+                .replace(/registry_/g, "")
+                .charAt(0)
+                .toUpperCase() +
+              ban.scope.replace(/registry_/g, "").slice(1) +
+              " registry";
         response += `- **\`${ban.id}\`** — ${ban.ban_type} \`${ban.entity_id}\`\n`;
-        response += `  Scope: ${scopeLabel}${ban.scope_target ? ` (${ban.scope_target})` : ''}\n`;
+        response += `  Scope: ${scopeLabel}${
+          ban.scope_target ? ` (${ban.scope_target})` : ""
+        }\n`;
         response += `  Reason: ${ban.reason}\n`;
-        if (ban.expires_at) response += `  Expires: ${new Date(ban.expires_at).toISOString()}\n`;
-        response += `  Created: ${new Date(ban.created_at).toISOString()} by ${ban.banned_by_email || ban.banned_by_user_id}\n\n`;
+        if (ban.expires_at)
+          response += `  Expires: ${new Date(ban.expires_at).toISOString()}\n`;
+        response += `  Created: ${new Date(ban.created_at).toISOString()} by ${
+          ban.banned_by_email || ban.banned_by_user_id
+        }\n\n`;
       }
       return response;
     } catch (error) {
-      logger.error({ error }, 'Error listing bans');
+      logger.error({ error }, "Error listing bans");
       return `❌ Failed to list bans.`;
     }
   });
@@ -7767,16 +10365,16 @@ Use add_committee_leader to assign a leader.`;
   // ADDIE SDR HANDLERS
   // ============================================
 
-  handlers.set('triage_prospect_domain', async (input) => {
+  handlers.set("triage_prospect_domain", async (input) => {
     // Normalize and validate the domain input
-    let domain = (input.domain as string ?? '').trim();
+    let domain = ((input.domain as string) ?? "").trim();
 
     // Strip protocol prefix if user passed a URL
-    domain = domain.replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
+    domain = domain.replace(/^https?:\/\//i, "").replace(/\/.*$/, "");
 
     // Reject if it looks like a full email address
-    if (domain.includes('@')) {
-      domain = domain.split('@')[1] ?? domain;
+    if (domain.includes("@")) {
+      domain = domain.split("@")[1] ?? domain;
     }
 
     domain = domain.toLowerCase();
@@ -7789,30 +10387,43 @@ Use add_committee_leader to assign a leader.`;
     const createIfRelevant = input.create_if_relevant !== false; // default true
 
     try {
-      const { triageEmailDomain, triageAndCreateProspect } = await import('../../services/prospect-triage.js');
+      const { triageEmailDomain, triageAndCreateProspect } = await import(
+        "../../services/prospect-triage.js"
+      );
 
       if (createIfRelevant) {
-        const outcome = await triageAndCreateProspect(domain, { name: companyName, source: 'manual' });
+        const outcome = await triageAndCreateProspect(domain, {
+          name: companyName,
+          source: "manual",
+        });
         const { result } = outcome;
 
-        if (result.action === 'skip') {
+        if (result.action === "skip") {
           return `Assessed **${domain}**: skipped (${result.reason}).\n\n${result.verdict}`;
         }
 
         if (outcome.created) {
-          return `✅ Created prospect for **${result.companyName ?? domain}**.\n\nOwner: ${result.owner === 'addie' ? 'me (Addie)' : 'needs a human'}\nAssessment: ${result.verdict}`;
+          return `✅ Created prospect for **${
+            result.companyName ?? domain
+          }**.\n\nOwner: ${
+            result.owner === "addie" ? "me (Addie)" : "needs a human"
+          }\nAssessment: ${result.verdict}`;
         } else {
           return `**${domain}** is already in the system.\n\n${result.verdict}`;
         }
       } else {
         const result = await triageEmailDomain(domain, { name: companyName });
-        if (result.action === 'skip') {
+        if (result.action === "skip") {
           return `Assessment for **${domain}**: not a fit.\n\n${result.verdict}`;
         }
-        return `Assessment for **${domain}**: relevant prospect.\n\nRecommended owner: ${result.owner}\nCompany type: ${result.companyType ?? 'unknown'}\n\n${result.verdict}\n\n_(Use \`create_if_relevant: true\` to create the prospect.)_`;
+        return `Assessment for **${domain}**: relevant prospect.\n\nRecommended owner: ${
+          result.owner
+        }\nCompany type: ${result.companyType ?? "unknown"}\n\n${
+          result.verdict
+        }\n\n_(Use \`create_if_relevant: true\` to create the prospect.)_`;
       }
     } catch (error) {
-      logger.error({ error, domain }, 'Error triaging prospect domain');
+      logger.error({ error, domain }, "Error triaging prospect domain");
       return `❌ Failed to triage domain "${domain}".`;
     }
   });
@@ -7820,16 +10431,16 @@ Use add_committee_leader to assign a leader.`;
   // ============================================
   // UPDATE MEMBER LOGO
   // ============================================
-  handlers.set('update_member_logo', async (input) => {
+  handlers.set("update_member_logo", async (input) => {
     const orgName = input.org_name as string | undefined;
     const slug = input.slug as string | undefined;
     const logoUrl = input.logo_url as string;
 
     if (!logoUrl) {
-      return '❌ logo_url is required.';
+      return "❌ logo_url is required.";
     }
     if (!orgName && !slug) {
-      return '❌ Provide either org_name or slug to identify the member.';
+      return "❌ Provide either org_name or slug to identify the member.";
     }
 
     try {
@@ -7843,11 +10454,13 @@ Use add_committee_leader to assign a leader.`;
       if (!profile && orgName) {
         const profiles = await mDb.listProfiles({ search: orgName });
         const exactMatch = profiles.find(
-          p => p.display_name.toLowerCase() === orgName.toLowerCase()
+          (p) => p.display_name.toLowerCase() === orgName.toLowerCase(),
         );
         if (!exactMatch) {
           if (profiles.length > 0) {
-            const names = profiles.map(p => `"${p.display_name}" (${p.slug})`).join(', ');
+            const names = profiles
+              .map((p) => `"${p.display_name}" (${p.slug})`)
+              .join(", ");
             return `❌ No exact match for "${orgName}". Did you mean: ${names}?`;
           }
           return `❌ No member profile found for "${orgName}". Use get_account to verify they exist.`;
@@ -7856,7 +10469,9 @@ Use add_committee_leader to assign a leader.`;
       }
 
       if (!profile) {
-        return `❌ No member profile found for "${orgName || slug}". Use get_account to verify they exist.`;
+        return `❌ No member profile found for "${
+          orgName || slug
+        }". Use get_account to verify they exist.`;
       }
 
       try {
@@ -7866,33 +10481,53 @@ Use add_committee_leader to assign a leader.`;
           profile,
           logoUrl,
         });
-        const { invalidateMemberContextCache } = await import('../member-context.js');
+        const { invalidateMemberContextCache } = await import(
+          "../member-context.js"
+        );
         invalidateMemberContextCache();
-        const action = result.wasUpdate ? 'updated' : 'set';
-        logger.info({ profileId: profile.id, brandDomain: result.brandDomain, logoUrl, action }, 'Member logo updated');
+        const action = result.wasUpdate ? "updated" : "set";
+        logger.info(
+          {
+            profileId: profile.id,
+            brandDomain: result.brandDomain,
+            logoUrl,
+            action,
+          },
+          "Member logo updated",
+        );
         return `✅ Logo ${action} for **${profile.display_name}**.\n- Domain: ${result.brandDomain}\n- Logo: ${logoUrl}`;
       } catch (err) {
         if (err instanceof BrandIdentityError) {
           return `❌ ${err.message}`;
         }
-        logger.error({ error: err, orgName, slug, logoUrl }, 'Error updating member logo');
-        return `❌ Failed to update logo: ${err instanceof Error ? err.message : 'Unknown error'}`;
+        logger.error(
+          { error: err, orgName, slug, logoUrl },
+          "Error updating member logo",
+        );
+        return `❌ Failed to update logo: ${
+          err instanceof Error ? err.message : "Unknown error"
+        }`;
       }
     } catch (error) {
-      logger.error({ error, orgName, slug, logoUrl }, 'Error updating member logo');
-      return `❌ Failed to update logo: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      logger.error(
+        { error, orgName, slug, logoUrl },
+        "Error updating member logo",
+      );
+      return `❌ Failed to update logo: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`;
     }
   });
 
   // ============================================
   // UPDATE MEMBER PROFILE
   // ============================================
-  handlers.set('update_member_profile', async (input) => {
+  handlers.set("update_member_profile", async (input) => {
     const orgName = input.org_name as string | undefined;
     const slug = input.slug as string | undefined;
 
     if (!orgName && !slug) {
-      return '❌ Provide either org_name or slug to identify the member.';
+      return "❌ Provide either org_name or slug to identify the member.";
     }
 
     try {
@@ -7906,11 +10541,13 @@ Use add_committee_leader to assign a leader.`;
       if (!profile && orgName) {
         const profiles = await mDb.listProfiles({ search: orgName });
         const exactMatch = profiles.find(
-          p => p.display_name.toLowerCase() === orgName.toLowerCase()
+          (p) => p.display_name.toLowerCase() === orgName.toLowerCase(),
         );
         if (!exactMatch) {
           if (profiles.length > 0) {
-            const names = profiles.map(p => `"${p.display_name}" (${p.slug})`).join(', ');
+            const names = profiles
+              .map((p) => `"${p.display_name}" (${p.slug})`)
+              .join(", ");
             return `❌ No exact match for "${orgName}". Did you mean: ${names}?`;
           }
           return `❌ No member profile found for "${orgName}". Use get_account to verify they exist.`;
@@ -7919,7 +10556,9 @@ Use add_committee_leader to assign a leader.`;
       }
 
       if (!profile) {
-        return `❌ No member profile found for "${orgName || slug}". Use get_account to verify they exist.`;
+        return `❌ No member profile found for "${
+          orgName || slug
+        }". Use get_account to verify they exist.`;
       }
 
       // Build update object from provided fields
@@ -7927,8 +10566,14 @@ Use add_committee_leader to assign a leader.`;
       const updatedFields: string[] = [];
 
       const stringFields = [
-        'description', 'tagline', 'contact_email', 'contact_website',
-        'contact_phone', 'linkedin_url', 'twitter_url', 'headquarters',
+        "description",
+        "tagline",
+        "contact_email",
+        "contact_website",
+        "contact_phone",
+        "linkedin_url",
+        "twitter_url",
+        "headquarters",
       ] as const;
 
       for (const field of stringFields) {
@@ -7940,36 +10585,59 @@ Use add_committee_leader to assign a leader.`;
 
       if (input.markets !== undefined) {
         updates.markets = input.markets;
-        updatedFields.push('markets');
+        updatedFields.push("markets");
       }
 
       if (input.offerings !== undefined) {
         const offerings = input.offerings as string[];
-        const invalid = offerings.filter(o => !(VALID_MEMBER_OFFERINGS as readonly string[]).includes(o));
+        const invalid = offerings.filter(
+          (o) => !(VALID_MEMBER_OFFERINGS as readonly string[]).includes(o),
+        );
         if (invalid.length > 0) {
-          return `❌ Invalid offerings: ${invalid.join(', ')}. Valid options: ${VALID_MEMBER_OFFERINGS.join(', ')}`;
+          return `❌ Invalid offerings: ${invalid.join(
+            ", ",
+          )}. Valid options: ${VALID_MEMBER_OFFERINGS.join(", ")}`;
         }
         updates.offerings = offerings;
-        updatedFields.push('offerings');
+        updatedFields.push("offerings");
       }
 
       if (input.is_public !== undefined) {
         updates.is_public = input.is_public;
-        updatedFields.push('is_public');
+        updatedFields.push("is_public");
       }
 
       if (input.show_in_carousel !== undefined) {
         updates.show_in_carousel = input.show_in_carousel;
-        updatedFields.push('show_in_carousel');
+        updatedFields.push("show_in_carousel");
       }
 
       if (input.is_founding_member !== undefined) {
         updates.is_founding_member = input.is_founding_member;
-        updatedFields.push('is_founding_member');
+      }
+      if (input.founding_member_source !== undefined) {
+        updates.founding_member_source = input.founding_member_source;
+      }
+      if (input.founding_member_granted_reason !== undefined) {
+        updates.founding_member_granted_reason =
+          input.founding_member_granted_reason;
+      }
+
+      const foundingError = normalizeFoundingMemberGrant(updates);
+      if (foundingError) {
+        return `❌ ${foundingError.message}`;
+      }
+      // Mirror everything the helper actually wrote — including the
+      // server-set granted_at and any cleared metadata on revoke — so the
+      // user-facing report doesn't lie about which columns changed.
+      for (const field of foundingMemberFieldsTouched(updates)) {
+        if (!updatedFields.includes(field)) {
+          updatedFields.push(field);
+        }
       }
 
       if (updatedFields.length === 0) {
-        return '❌ No fields to update. Provide at least one field to change.';
+        return "❌ No fields to update. Provide at least one field to change.";
       }
 
       const updated = await mDb.updateProfile(profile.id, updates as any);
@@ -7978,15 +10646,24 @@ Use add_committee_leader to assign a leader.`;
         return `❌ Failed to update profile for **${profile.display_name}**.`;
       }
 
-      const { invalidateMemberContextCache } = await import('../member-context.js');
+      const { invalidateMemberContextCache } = await import(
+        "../member-context.js"
+      );
       invalidateMemberContextCache();
-      logger.info({ profileId: profile.id, slug: profile.slug, updatedFields }, 'Member profile updated by admin tool');
+      logger.info(
+        { profileId: profile.id, slug: profile.slug, updatedFields },
+        "Member profile updated by admin tool",
+      );
 
-      const fieldList = updatedFields.map(f => `- **${f}**: ${JSON.stringify(updates[f])}`).join('\n');
+      const fieldList = updatedFields
+        .map((f) => `- **${f}**: ${JSON.stringify(updates[f])}`)
+        .join("\n");
       return `✅ Profile updated for **${profile.display_name}** (${profile.slug}).\n\nUpdated fields:\n${fieldList}`;
     } catch (error) {
-      logger.error({ error, orgName, slug }, 'Error updating member profile');
-      return `❌ Failed to update profile: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      logger.error({ error, orgName, slug }, "Error updating member profile");
+      return `❌ Failed to update profile: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`;
     }
   });
 
@@ -7994,7 +10671,7 @@ Use add_committee_leader to assign a leader.`;
   // OUTREACH HANDLERS
   // ============================================
 
-  handlers.set('get_outreach_stats', async () => {
+  handlers.set("get_outreach_stats", async () => {
     const pool = getPool();
 
     try {
@@ -8013,9 +10690,10 @@ Use add_committee_leader to assign a leader.`;
       const s = result.rows[0];
       const totalSent = parseInt(s.total_sent);
       const totalResponded = parseInt(s.total_responded);
-      const responseRate = totalSent > 0 ? Math.round(totalResponded / totalSent * 100) : null;
+      const responseRate =
+        totalSent > 0 ? Math.round((totalResponded / totalSent) * 100) : null;
 
-      let response = '## Outreach performance\n\n';
+      let response = "## Outreach performance\n\n";
       response += `**Today:** ${s.sent_today} sent, ${s.responded_today} responded\n`;
       response += `**This week:** ${s.sent_week} sent, ${s.responded_week} responded\n`;
       response += `**This month:** ${s.sent_month} sent, ${s.responded_month} responded\n`;
@@ -8023,16 +10701,16 @@ Use add_committee_leader to assign a leader.`;
       if (responseRate !== null) {
         response += ` (${responseRate}% response rate)`;
       }
-      response += '\n';
+      response += "\n";
 
       return response;
     } catch (error) {
-      logger.error({ error }, 'Error fetching outreach stats');
-      return '❌ Failed to fetch outreach stats.';
+      logger.error({ error }, "Error fetching outreach stats");
+      return "❌ Failed to fetch outreach stats.";
     }
   });
 
-  handlers.set('get_outreach_history', async (input) => {
+  handlers.set("get_outreach_history", async (input) => {
     const slackUserId = input.slack_user_id as string | undefined;
     const limit = (input.limit as number) || 20;
     const pool = getPool();
@@ -8042,7 +10720,7 @@ Use add_committee_leader to assign a leader.`;
         // Find person by Slack ID
         const personResult = await pool.query(
           `SELECT id, display_name FROM person_relationships WHERE slack_user_id = $1`,
-          [slackUserId]
+          [slackUserId],
         );
         if (personResult.rows.length === 0) {
           return `No person found for Slack ID ${slackUserId}.`;
@@ -8054,23 +10732,30 @@ Use add_committee_leader to assign a leader.`;
           `SELECT * FROM person_events
            WHERE person_id = $1 AND event_type IN ('message_sent', 'message_received', 'outreach_decided', 'outreach_skipped')
            ORDER BY occurred_at DESC LIMIT $2`,
-          [person.id, limit]
+          [person.id, limit],
         );
 
-        let response = `## Outreach timeline for ${person.display_name || slackUserId}\n\n`;
+        let response = `## Outreach timeline for ${
+          person.display_name || slackUserId
+        }\n\n`;
         if (events.rows.length === 0) {
-          return response + 'No outreach history found.';
+          return response + "No outreach history found.";
         }
 
         for (const e of events.rows) {
           const date = formatDate(new Date(e.occurred_at));
-          const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-          const icon = e.event_type === 'message_received' ? '←' : e.event_type === 'message_sent' ? '→' : '·';
+          const data = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+          const icon =
+            e.event_type === "message_received"
+              ? "←"
+              : e.event_type === "message_sent"
+              ? "→"
+              : "·";
           response += `- ${icon} **${date}** ${e.event_type}`;
           if (e.channel) response += ` via ${e.channel}`;
           if (data.reason) response += ` — ${data.reason}`;
           if (data.goalHint) response += ` (goal: ${data.goalHint})`;
-          response += '\n';
+          response += "\n";
         }
 
         return response;
@@ -8082,57 +10767,69 @@ Use add_committee_leader to assign a leader.`;
            JOIN person_relationships pr ON pr.id = pe.person_id
            WHERE pe.event_type IN ('message_sent', 'message_received')
            ORDER BY pe.occurred_at DESC LIMIT $1`,
-          [limit]
+          [limit],
         );
 
         let response = `## Recent outreach (last ${events.rows.length})\n\n`;
         for (const e of events.rows) {
           const name = e.display_name || e.person_id;
           const date = formatDate(new Date(e.occurred_at));
-          const icon = e.event_type === 'message_received' ? '←' : '→';
+          const icon = e.event_type === "message_received" ? "←" : "→";
           response += `- ${icon} **${name}** [${e.stage}] — ${date}`;
           if (e.channel) response += ` via ${e.channel}`;
-          response += '\n';
+          response += "\n";
         }
 
         return response;
       }
     } catch (error) {
-      logger.error({ error }, 'Error fetching outreach history');
-      return '❌ Failed to fetch outreach history.';
+      logger.error({ error }, "Error fetching outreach history");
+      return "❌ Failed to fetch outreach history.";
     }
   });
 
-  handlers.set('send_outreach', async (input) => {
+  handlers.set("send_outreach", async (input) => {
     const slackUserId = input.slack_user_id as string;
 
     if (!slackUserId) {
-      return '❌ slack_user_id is required.';
+      return "❌ slack_user_id is required.";
     }
 
     // Build triggeredBy from member context
-    const triggeredBy = memberContext?.workos_user ? {
-      id: memberContext.workos_user.workos_user_id,
-      name: memberContext.workos_user.first_name
-        ? `${memberContext.workos_user.first_name} ${memberContext.workos_user.last_name || ''}`.trim()
-        : memberContext.workos_user.email,
-      email: memberContext.workos_user.email,
-    } : undefined;
+    const triggeredBy = memberContext?.workos_user
+      ? {
+          id: memberContext.workos_user.workos_user_id,
+          name: memberContext.workos_user.first_name
+            ? `${memberContext.workos_user.first_name} ${
+                memberContext.workos_user.last_name || ""
+              }`.trim()
+            : memberContext.workos_user.email,
+          email: memberContext.workos_user.email,
+        }
+      : undefined;
 
     try {
       // Check eligibility first
-      const eligibility = await canEngageSlackUser(slackUserId, { adminOverride: true });
+      const eligibility = await canEngageSlackUser(slackUserId, {
+        adminOverride: true,
+      });
       if (!eligibility.canContact) {
         return `❌ Cannot contact this user: ${eligibility.reason}`;
       }
 
       // Dry run: return eligibility info without sending
       if (input.dry_run) {
-        const capabilities = await getMemberCapabilities(slackUserId).catch(() => null);
+        const capabilities = await getMemberCapabilities(slackUserId).catch(
+          () => null,
+        );
         let dryRunResponse = `Eligible to contact ${slackUserId}.`;
         if (capabilities) {
-          dryRunResponse += `\nAccount linked: ${capabilities.account_linked ? 'yes' : 'no'}`;
-          dryRunResponse += `\nProfile complete: ${capabilities.profile_complete ? 'yes' : 'no'}`;
+          dryRunResponse += `\nAccount linked: ${
+            capabilities.account_linked ? "yes" : "no"
+          }`;
+          dryRunResponse += `\nProfile complete: ${
+            capabilities.profile_complete ? "yes" : "no"
+          }`;
           dryRunResponse += `\nWorking groups: ${capabilities.working_group_count}`;
           dryRunResponse += `\nSlack messages (30d): ${capabilities.slack_message_count_30d}`;
         }
@@ -8142,28 +10839,31 @@ Use add_committee_leader to assign a leader.`;
       const result = await sendRelationshipMessage(slackUserId, triggeredBy);
 
       if (result.success) {
-        captureEvent(slackUserId, 'admin_tool_used', {
-          tool_name: 'send_outreach',
+        captureEvent(slackUserId, "admin_tool_used", {
+          tool_name: "send_outreach",
           triggered_by: triggeredBy?.id,
           is_manual: true,
         });
         let response = `✅ Outreach sent to ${slackUserId}`;
-        if (triggeredBy) response += `\nAuto-assigned ${triggeredBy.name} as account owner.`;
+        if (triggeredBy)
+          response += `\nAuto-assigned ${triggeredBy.name} as account owner.`;
         return response;
       } else {
         return `❌ Outreach failed: ${result.error}`;
       }
     } catch (error) {
-      logger.error({ error, slackUserId }, 'Error sending outreach');
-      return `❌ Failed to send outreach: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      logger.error({ error, slackUserId }, "Error sending outreach");
+      return `❌ Failed to send outreach: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`;
     }
   });
 
-  handlers.set('lookup_person', async (input) => {
+  handlers.set("lookup_person", async (input) => {
     const queryStr = input.query as string;
 
     if (!queryStr) {
-      return '❌ query is required (Slack user ID, email, or name).';
+      return "❌ query is required (Slack user ID, email, or name).";
     }
 
     const pool = getPool();
@@ -8171,15 +10871,24 @@ Use add_committee_leader to assign a leader.`;
     try {
       // Look up in person_relationships by slack_user_id, email, or name search
       const isSlackId = /^U[A-Z0-9]{8,11}$/.test(queryStr);
-      const isEmail = queryStr.includes('@');
+      const isEmail = queryStr.includes("@");
 
       let personResult;
       if (isSlackId) {
-        personResult = await pool.query(`SELECT * FROM person_relationships WHERE slack_user_id = $1`, [queryStr]);
+        personResult = await pool.query(
+          `SELECT * FROM person_relationships WHERE slack_user_id = $1`,
+          [queryStr],
+        );
       } else if (isEmail) {
-        personResult = await pool.query(`SELECT * FROM person_relationships WHERE email = $1`, [queryStr]);
+        personResult = await pool.query(
+          `SELECT * FROM person_relationships WHERE email = $1`,
+          [queryStr],
+        );
       } else {
-        personResult = await pool.query(`SELECT * FROM person_relationships WHERE display_name ILIKE $1 LIMIT 5`, [`%${queryStr}%`]);
+        personResult = await pool.query(
+          `SELECT * FROM person_relationships WHERE display_name ILIKE $1 LIMIT 5`,
+          [`%${queryStr}%`],
+        );
       }
 
       if (personResult.rows.length === 0) {
@@ -8190,7 +10899,9 @@ Use add_committee_leader to assign a leader.`;
       if (personResult.rows.length > 1) {
         let response = `Found ${personResult.rows.length} people matching "${queryStr}":\n\n`;
         for (const p of personResult.rows) {
-          response += `- **${p.display_name}** (${p.stage}) — Slack: ${p.slack_user_id || 'none'}, Email: ${p.email || 'none'}\n`;
+          response += `- **${p.display_name}** (${p.stage}) — Slack: ${
+            p.slack_user_id || "none"
+          }, Email: ${p.email || "none"}\n`;
         }
         return response;
       }
@@ -8206,34 +10917,51 @@ Use add_committee_leader to assign a leader.`;
                JOIN organization_memberships om ON om.workos_organization_id = o.workos_organization_id
                WHERE om.workos_user_id = $1
                LIMIT 1`,
-              [person.workos_user_id]
+              [person.workos_user_id],
             )
           : Promise.resolve({ rows: [] }),
         pool.query(
           `SELECT * FROM person_events
            WHERE person_id = $1 AND event_type IN ('message_sent', 'message_received')
            ORDER BY occurred_at DESC LIMIT 10`,
-          [person.id]
+          [person.id],
         ),
-        person.slack_user_id ? canEngageSlackUser(person.slack_user_id) : Promise.resolve({ canContact: false, reason: 'no Slack ID' }),
+        person.slack_user_id
+          ? canEngageSlackUser(person.slack_user_id)
+          : Promise.resolve({ canContact: false, reason: "no Slack ID" }),
       ]);
 
       let response = `## ${person.display_name || queryStr}\n\n`;
       response += `**Stage:** ${person.stage}\n`;
       response += `**Sentiment:** ${person.sentiment_trend}\n`;
-      if (person.slack_user_id) response += `**Slack ID:** ${person.slack_user_id}\n`;
+      if (person.slack_user_id)
+        response += `**Slack ID:** ${person.slack_user_id}\n`;
       if (person.email) response += `**Email:** ${person.email}\n`;
-      response += `**Account linked:** ${person.workos_user_id ? 'yes' : 'no'}\n`;
+      response += `**Account linked:** ${
+        person.workos_user_id ? "yes" : "no"
+      }\n`;
       response += `**Interactions:** ${person.interaction_count}\n`;
       response += `**Unreplied:** ${person.unreplied_outreach_count}\n`;
-      response += `**Contact eligible:** ${eligibility.canContact ? 'yes' : `no (${eligibility.reason})`}\n`;
+      response += `**Contact eligible:** ${
+        eligibility.canContact ? "yes" : `no (${eligibility.reason})`
+      }\n`;
       if (person.last_addie_message_at) {
-        const days = Math.floor((Date.now() - new Date(person.last_addie_message_at).getTime()) / 86400000);
-        response += `**Last contacted:** ${formatDate(new Date(person.last_addie_message_at))} (${days} days ago)\n`;
+        const days = Math.floor(
+          (Date.now() - new Date(person.last_addie_message_at).getTime()) /
+            86400000,
+        );
+        response += `**Last contacted:** ${formatDate(
+          new Date(person.last_addie_message_at),
+        )} (${days} days ago)\n`;
       }
       if (person.last_person_message_at) {
-        const days = Math.floor((Date.now() - new Date(person.last_person_message_at).getTime()) / 86400000);
-        response += `**Last person message:** ${formatDate(new Date(person.last_person_message_at))} (${days} days ago)\n`;
+        const days = Math.floor(
+          (Date.now() - new Date(person.last_person_message_at).getTime()) /
+            86400000,
+        );
+        response += `**Last person message:** ${formatDate(
+          new Date(person.last_person_message_at),
+        )} (${days} days ago)\n`;
       }
       if (person.opted_out) response += `**Opted out:** yes\n`;
 
@@ -8242,7 +10970,7 @@ Use add_committee_leader to assign a leader.`;
         const org = orgResult.rows[0];
         response += `\n### Organization\n`;
         response += `**${org.name}** (${org.workos_organization_id})\n`;
-        response += `Status: ${org.subscription_status || 'no subscription'}\n`;
+        response += `Status: ${org.subscription_status || "no subscription"}\n`;
       }
 
       // Recent events
@@ -8250,47 +10978,49 @@ Use add_committee_leader to assign a leader.`;
         response += `\n### Recent activity (${recentEvents.rows.length})\n`;
         for (const e of recentEvents.rows) {
           const date = formatDate(new Date(e.occurred_at));
-          const icon = e.event_type === 'message_received' ? '←' : '→';
+          const icon = e.event_type === "message_received" ? "←" : "→";
           response += `- ${icon} ${date} ${e.event_type}`;
           if (e.channel) response += ` via ${e.channel}`;
-          response += '\n';
+          response += "\n";
         }
       }
 
       return response;
     } catch (error) {
-      logger.error({ error, query: queryStr }, 'Error looking up person');
-      return `❌ Failed to look up person: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      logger.error({ error, query: queryStr }, "Error looking up person");
+      return `❌ Failed to look up person: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`;
     }
   });
 
-  handlers.set('get_person_memory', async (input) => {
+  handlers.set("get_person_memory", async (input) => {
     const queryStr = (input.query as string)?.trim();
     if (!queryStr) {
-      return '❌ query is required (Slack user ID, email, or name).';
+      return "❌ query is required (Slack user ID, email, or name).";
     }
 
     const pool = getPool();
     try {
       const isSlackId = /^U[A-Z0-9]{8,11}$/.test(queryStr);
-      const isEmail = queryStr.includes('@');
+      const isEmail = queryStr.includes("@");
       let personResult;
       if (isSlackId) {
         personResult = await pool.query(
           `SELECT id FROM person_relationships WHERE slack_user_id = $1`,
-          [queryStr]
+          [queryStr],
         );
       } else if (isEmail) {
         // Match lookup_person's casing convention — emails are typically stored
         // normalized but resolvePersonId / lookup_person don't lowercase here.
         personResult = await pool.query(
           `SELECT id FROM person_relationships WHERE email = $1`,
-          [queryStr]
+          [queryStr],
         );
       } else {
         personResult = await pool.query(
           `SELECT id FROM person_relationships WHERE display_name ILIKE $1 LIMIT 5`,
-          [`%${queryStr}%`]
+          [`%${queryStr}%`],
         );
       }
 
@@ -8302,37 +11032,49 @@ Use add_committee_leader to assign a leader.`;
       }
       const personId = personResult.rows[0].id;
 
-      const ctx = await loadRelationshipContext(personId, { includeCommunity: true });
+      const ctx = await loadRelationshipContext(personId, {
+        includeCommunity: true,
+      });
       const r = ctx.relationship;
 
       const lines: string[] = [];
       lines.push(`## Memory for ${r.display_name ?? queryStr}`);
-      lines.push('');
+      lines.push("");
 
       lines.push(`### Identity`);
       lines.push(`- person_id: ${r.id}`);
       if (r.email) lines.push(`- email: ${r.email}`);
       if (r.slack_user_id) lines.push(`- slack: ${r.slack_user_id}`);
-      lines.push(`- account_linked: ${ctx.identity.account_linked ? 'yes' : 'no'}`);
-      lines.push('');
+      lines.push(
+        `- account_linked: ${ctx.identity.account_linked ? "yes" : "no"}`,
+      );
+      lines.push("");
 
       lines.push(`### Membership`);
       if (ctx.profile.company) {
-        lines.push(`- company: ${ctx.profile.company.name} (${ctx.profile.company.type})`);
-        lines.push(`- paying member: ${ctx.profile.company.is_member ? 'yes' : 'no'}`);
+        lines.push(
+          `- company: ${ctx.profile.company.name} (${ctx.profile.company.type})`,
+        );
+        lines.push(
+          `- paying member: ${ctx.profile.company.is_member ? "yes" : "no"}`,
+        );
       } else {
         lines.push(`- company: (none on file)`);
       }
       if (ctx.journey?.working_groups?.length) {
-        lines.push(`- working groups: ${ctx.journey.working_groups.join(', ')}`);
+        lines.push(
+          `- working groups: ${ctx.journey.working_groups.join(", ")}`,
+        );
       }
       if (ctx.journey?.tier) {
-        lines.push(`- tier: ${ctx.journey.tier} (${ctx.journey.points} points)`);
+        lines.push(
+          `- tier: ${ctx.journey.tier} (${ctx.journey.points} points)`,
+        );
       }
       if (ctx.journey?.credentials?.length) {
-        lines.push(`- credentials: ${ctx.journey.credentials.join(', ')}`);
+        lines.push(`- credentials: ${ctx.journey.credentials.join(", ")}`);
       }
-      lines.push('');
+      lines.push("");
 
       // Per-org memberships — every WorkOS org this person belongs to.
       // Use this to answer "is this person in org X?" — `company` above is
@@ -8341,76 +11083,141 @@ Use add_committee_leader to assign a leader.`;
       if (ctx.orgMemberships.length > 0) {
         lines.push(`### Org memberships (${ctx.orgMemberships.length})`);
         for (const m of ctx.orgMemberships) {
-          const tags: string[] = [m.role ?? 'member'];
-          if (m.seat_type === 'community_only') tags.push('community-only seat');
-          if (m.is_paying_member) tags.push('paying');
+          const tags: string[] = [m.role ?? "member"];
+          if (m.seat_type === "community_only")
+            tags.push("community-only seat");
+          if (m.is_paying_member) tags.push("paying");
           if (m.provisioning_source) tags.push(`via ${m.provisioning_source}`);
           lines.push(
-            `- ${m.org_name} (${m.workos_organization_id}) — ${tags.join(', ')}`
+            `- ${m.org_name} (${m.workos_organization_id}) — ${tags.join(
+              ", ",
+            )}`,
           );
         }
-        lines.push('');
+        lines.push("");
       }
 
       lines.push(`### Engagement`);
-      lines.push(`- stage: ${r.stage} (since ${r.stage_changed_at.toISOString().slice(0, 10)})`);
+      lines.push(
+        `- stage: ${r.stage} (since ${r.stage_changed_at
+          .toISOString()
+          .slice(0, 10)})`,
+      );
       lines.push(`- sentiment: ${r.sentiment_trend}`);
-      lines.push(`- interactions: ${r.interaction_count}, unreplied to Addie: ${r.unreplied_outreach_count}`);
-      const lastAddie = r.last_addie_message_at?.toISOString().slice(0, 10) ?? 'never';
-      const lastPerson = r.last_person_message_at?.toISOString().slice(0, 10) ?? 'never';
+      lines.push(
+        `- interactions: ${r.interaction_count}, unreplied to Addie: ${r.unreplied_outreach_count}`,
+      );
+      const lastAddie =
+        r.last_addie_message_at?.toISOString().slice(0, 10) ?? "never";
+      const lastPerson =
+        r.last_person_message_at?.toISOString().slice(0, 10) ?? "never";
       lines.push(`- last contact: Addie ${lastAddie}, them ${lastPerson}`);
-      lines.push('');
+      lines.push("");
 
       lines.push(`### Preferences`);
-      lines.push(`- contact_preference: ${ctx.preferences.contact_preference ?? '(none)'}`);
-      lines.push(`- opted_out: ${ctx.preferences.opted_out ? 'yes' : 'no'}`);
+      lines.push(
+        `- contact_preference: ${
+          ctx.preferences.contact_preference ?? "(none)"
+        }`,
+      );
+      lines.push(`- opted_out: ${ctx.preferences.opted_out ? "yes" : "no"}`);
       lines.push(
         `- marketing_opt_in: ${
           ctx.preferences.marketing_opt_in === null
-            ? '(unknown)'
+            ? "(unknown)"
             : ctx.preferences.marketing_opt_in
-              ? 'yes'
-              : 'no'
-        }`
+            ? "yes"
+            : "no"
+        }`,
       );
-      lines.push('');
+      lines.push("");
 
       if (ctx.invites.length > 0) {
         lines.push(`### Open invites (${ctx.invites.length})`);
         for (const inv of ctx.invites) {
           lines.push(
-            `- [${inv.status}] ${inv.lookup_key} at ${inv.org_name ?? inv.org_id} — created ${inv.created_at.toISOString().slice(0, 10)}, expires ${inv.expires_at.toISOString().slice(0, 10)}`
+            `- [${inv.status}] ${inv.lookup_key} at ${
+              inv.org_name ?? inv.org_id
+            } — created ${inv.created_at
+              .toISOString()
+              .slice(0, 10)}, expires ${inv.expires_at
+              .toISOString()
+              .slice(0, 10)}`,
           );
         }
-        lines.push('');
+        lines.push("");
       }
 
       if (ctx.recentThreads.length > 0) {
         lines.push(`### Recent threads (${ctx.recentThreads.length})`);
         for (const t of ctx.recentThreads) {
-          const title = t.title ?? '(no title set)';
+          const title = t.title ?? "(no title set)";
           lines.push(
-            `- [${t.channel}] "${title}" — ${t.message_count} messages, last ${t.last_message_at.toISOString().slice(0, 10)}`
+            `- [${t.channel}] "${title}" — ${
+              t.message_count
+            } messages, last ${t.last_message_at.toISOString().slice(0, 10)}`,
           );
         }
-        lines.push('');
+        lines.push("");
       }
 
       if (ctx.certification && ctx.certification.modulesCompleted > 0) {
         lines.push(`### Certification`);
         lines.push(
-          `- ${ctx.certification.modulesCompleted}/${ctx.certification.totalModules} modules complete`
+          `- ${ctx.certification.modulesCompleted}/${ctx.certification.totalModules} modules complete`,
         );
         if (ctx.certification.credentialsEarned.length > 0) {
-          lines.push(`- credentials: ${ctx.certification.credentialsEarned.join(', ')}`);
+          lines.push(
+            `- credentials: ${ctx.certification.credentialsEarned.join(", ")}`,
+          );
         }
-        lines.push('');
+        lines.push("");
       }
 
-      return lines.join('\n').trim();
+      return lines.join("\n").trim();
     } catch (error) {
-      logger.error({ error, query: queryStr }, 'Error loading person memory');
-      return `❌ Failed to load person memory: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      logger.error({ error, query: queryStr }, "Error loading person memory");
+      return `❌ Failed to load person memory: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`;
+    }
+  });
+
+  handlers.set("create_contact", async (input) => {
+    const email = (input.email as string)?.toLowerCase().trim();
+    const displayName = input.display_name as string | undefined;
+
+    if (!email) {
+      return "❌ email is required.";
+    }
+
+    try {
+      const [contactResult, personId] = await Promise.all([
+        upsertEmailContact({ email, displayName }, false),
+        relationshipDb.resolvePersonId({ email, display_name: displayName }),
+      ]);
+
+      let response = contactResult.isNew
+        ? `✅ Created new contact **${displayName ?? email}**`
+        : `ℹ️ Contact **${displayName ?? email}** already exists`;
+
+      response += ` (${email})`;
+
+      if (contactResult.organizationId) {
+        response += `\n- Linked to org \`${contactResult.organizationId}\` (${contactResult.mappingStatus})`;
+      } else {
+        response += `\n- Not matched to any organization (${contactResult.mappingStatus})`;
+      }
+
+      response += `\n- Contact ID: \`${contactResult.contactId}\``;
+      response += `\n- Person record: \`${personId}\``;
+
+      return response;
+    } catch (error) {
+      logger.error({ error, email }, "create_contact failed");
+      return `❌ Failed to create contact: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`;
     }
   });
 
@@ -8420,25 +11227,25 @@ Use add_committee_leader to assign a leader.`;
 
   function actionToHeader(action: string): string {
     switch (action) {
-      case 'invited':
-        return 'Invitation sent';
-      case 'member_added':
-        return 'Added to org';
-      case 'role_updated':
-        return 'Role updated';
-      case 'no_change':
-        return 'No change';
+      case "invited":
+        return "Invitation sent";
+      case "member_added":
+        return "Added to org";
+      case "role_updated":
+        return "Role updated";
+      case "no_change":
+        return "No change";
       default:
-        return 'Done';
+        return "Done";
     }
   }
 
   function formatRelativeDays(d: Date): string {
     const diffMs = d.getTime() - Date.now();
     const days = Math.round(diffMs / 86400000);
-    if (days === 0) return 'today';
-    if (days > 0) return `in ${days} day${days === 1 ? '' : 's'}`;
-    return `${-days} day${-days === 1 ? '' : 's'} ago`;
+    if (days === 0) return "today";
+    if (days > 0) return `in ${days} day${days === 1 ? "" : "s"}`;
+    return `${-days} day${-days === 1 ? "" : "s"} ago`;
   }
 
   function formatInviteLine(inv: MembershipInvite): string {
@@ -8448,35 +11255,35 @@ Use add_committee_leader to assign a leader.`;
       : inv.contact_email;
     const tokenSuffix = inv.token.slice(0, 8);
     let when: string;
-    if (status === 'pending') {
+    if (status === "pending") {
       when = `expires ${formatRelativeDays(inv.expires_at)}`;
-    } else if (status === 'expired') {
+    } else if (status === "expired") {
       when = `expired ${formatRelativeDays(inv.expires_at)}`;
-    } else if (status === 'accepted' && inv.accepted_at) {
+    } else if (status === "accepted" && inv.accepted_at) {
       when = `accepted ${formatRelativeDays(inv.accepted_at)}`;
-    } else if (status === 'revoked' && inv.revoked_at) {
+    } else if (status === "revoked" && inv.revoked_at) {
       when = `revoked ${formatRelativeDays(inv.revoked_at)}`;
     } else {
-      when = '';
+      when = "";
     }
     return `- [${status}] ${recipient} — ${when} — token=${tokenSuffix}…`;
   }
 
-  handlers.set('list_invites_for_org', async (input) => {
+  handlers.set("list_invites_for_org", async (input) => {
     const orgId = input.org_id as string;
     const includeAccepted = (input.include_accepted as boolean) ?? false;
     const includeRevoked = (input.include_revoked as boolean) ?? false;
 
-    if (!orgId || !orgId.startsWith('org_')) {
-      return '❌ org_id is required (org_…).';
+    if (!orgId || !orgId.startsWith("org_")) {
+      return "❌ org_id is required (org_…).";
     }
 
     try {
       const all = await listMembershipInvitesForOrg(orgId);
       const filtered = all.filter((inv) => {
         const s = inviteStatus(inv);
-        if (s === 'accepted' && !includeAccepted) return false;
-        if (s === 'revoked' && !includeRevoked) return false;
+        if (s === "accepted" && !includeAccepted) return false;
+        if (s === "revoked" && !includeRevoked) return false;
         return true;
       });
 
@@ -8484,8 +11291,8 @@ Use add_committee_leader to assign a leader.`;
       filtered.sort((a, b) => {
         const sa = inviteStatus(a);
         const sb = inviteStatus(b);
-        const aTerm = sa === 'accepted' || sa === 'revoked';
-        const bTerm = sb === 'accepted' || sb === 'revoked';
+        const aTerm = sa === "accepted" || sa === "revoked";
+        const bTerm = sb === "accepted" || sb === "revoked";
         if (aTerm !== bTerm) return aTerm ? 1 : -1;
         return a.expires_at.getTime() - b.expires_at.getTime();
       });
@@ -8493,10 +11300,10 @@ Use add_committee_leader to assign a leader.`;
       const capped = filtered.slice(0, 20);
 
       const counts = {
-        pending: all.filter((i) => inviteStatus(i) === 'pending').length,
-        expired: all.filter((i) => inviteStatus(i) === 'expired').length,
-        accepted: all.filter((i) => inviteStatus(i) === 'accepted').length,
-        revoked: all.filter((i) => inviteStatus(i) === 'revoked').length,
+        pending: all.filter((i) => inviteStatus(i) === "pending").length,
+        expired: all.filter((i) => inviteStatus(i) === "expired").length,
+        accepted: all.filter((i) => inviteStatus(i) === "accepted").length,
+        revoked: all.filter((i) => inviteStatus(i) === "revoked").length,
       };
 
       let response = `## Invitations for ${orgId}\n\n`;
@@ -8504,39 +11311,42 @@ Use add_committee_leader to assign a leader.`;
       if (capped.length === 0) {
         const filterDesc =
           includeAccepted || includeRevoked
-            ? 'matching the requested filters'
-            : 'pending or expired';
+            ? "matching the requested filters"
+            : "pending or expired";
         response += `_No invites ${filterDesc}._\n`;
       } else {
-        response += capped.map(formatInviteLine).join('\n') + '\n';
+        response += capped.map(formatInviteLine).join("\n") + "\n";
         if (filtered.length > capped.length) {
           response += `\n_Showing ${capped.length} of ${filtered.length} matching invites._\n`;
         }
       }
       return response;
     } catch (error) {
-      logger.error({ error, orgId }, 'Error listing invitations');
-      return `❌ Failed to list invitations: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      logger.error({ error, orgId }, "Error listing invitations");
+      return `❌ Failed to list invitations: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`;
     }
   });
 
-  handlers.set('resend_invite', async (input) => {
+  handlers.set("resend_invite", async (input) => {
     const token = input.token as string;
     const orgId = input.org_id as string;
 
-    if (!token) return '❌ token is required.';
-    if (!orgId || !orgId.startsWith('org_')) {
-      return '❌ org_id is required (org_…).';
+    if (!token) return "❌ token is required.";
+    if (!orgId || !orgId.startsWith("org_")) {
+      return "❌ org_id is required (org_…).";
     }
 
     const adminUser = memberContext?.workos_user;
     if (!adminUser) {
-      return '❌ Cannot resend — no signed-in admin context.';
+      return "❌ Cannot resend — no signed-in admin context.";
     }
     const adminUserId = adminUser.workos_user_id;
     const adminEmail = adminUser.email;
     const adminName =
-      [adminUser.first_name, adminUser.last_name].filter(Boolean).join(' ') || adminEmail;
+      [adminUser.first_name, adminUser.last_name].filter(Boolean).join(" ") ||
+      adminEmail;
 
     try {
       const existing = await getMembershipInviteByToken(token, orgId);
@@ -8552,12 +11362,14 @@ Use add_committee_leader to assign a leader.`;
         return `❌ Organization ${orgId} not found.`;
       }
 
-      const customerType = org.is_personal ? 'individual' : 'company';
+      const customerType = org.is_personal ? "individual" : "company";
       const eligibleProducts = await getProductsForCustomer({
         customerType,
-        category: 'membership',
+        category: "membership",
       });
-      const product = eligibleProducts.find((p) => p.lookup_key === existing.lookup_key);
+      const product = eligibleProducts.find(
+        (p) => p.lookup_key === existing.lookup_key,
+      );
       if (!product) {
         return `❌ Tier "${existing.lookup_key}" is no longer available for this org. Send a fresh invite with a current tier instead.`;
       }
@@ -8573,7 +11385,7 @@ Use add_committee_leader to assign a leader.`;
         invited_by_user_id: adminUserId,
       });
 
-      const baseUrl = process.env.BASE_URL || 'https://agenticadvertising.org';
+      const baseUrl = process.env.BASE_URL || "https://agenticadvertising.org";
       const inviteUrl = `${baseUrl}/invite/${fresh.token}`;
       const priceDisplay = `$${(product.amount_cents / 100).toLocaleString()}`;
 
@@ -8598,34 +11410,41 @@ Use add_committee_leader to assign a leader.`;
           emailSent,
           adminUserId,
         },
-        'Addie resent invite'
+        "Addie resent invite",
       );
 
       let response = `## Resent invite\n\n`;
       response += `**To:** ${fresh.contact_email}\n`;
       response += `**Tier:** ${product.display_name} (${priceDisplay}/year)\n`;
       response += `**New expiry:** ${formatRelativeDays(fresh.expires_at)}\n`;
-      response += `**Email delivered:** ${emailSent ? 'yes' : 'no (Resend not configured)'}\n`;
+      response += `**Email delivered:** ${
+        emailSent ? "yes" : "no (Resend not configured)"
+      }\n`;
       response += `\nThe original invite for this email was revoked atomically — only the new link works.\n`;
       return response;
     } catch (error) {
-      logger.error({ error, orgId, token: token.slice(0, 8) }, 'Error resending invite');
-      return `❌ Failed to resend: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      logger.error(
+        { error, orgId, token: token.slice(0, 8) },
+        "Error resending invite",
+      );
+      return `❌ Failed to resend: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`;
     }
   });
 
-  handlers.set('revoke_invite', async (input) => {
+  handlers.set("revoke_invite", async (input) => {
     const token = input.token as string;
     const orgId = input.org_id as string;
 
-    if (!token) return '❌ token is required.';
-    if (!orgId || !orgId.startsWith('org_')) {
-      return '❌ org_id is required (org_…).';
+    if (!token) return "❌ token is required.";
+    if (!orgId || !orgId.startsWith("org_")) {
+      return "❌ org_id is required (org_…).";
     }
 
     const adminUserId = memberContext?.workos_user?.workos_user_id;
     if (!adminUserId) {
-      return '❌ Cannot revoke — no signed-in admin context.';
+      return "❌ Cannot revoke — no signed-in admin context.";
     }
 
     try {
@@ -8634,7 +11453,7 @@ Use add_committee_leader to assign a leader.`;
         return `❌ Invite not found for ${orgId}.`;
       }
       const previousStatus = inviteStatus(existing);
-      if (previousStatus === 'accepted' || previousStatus === 'revoked') {
+      if (previousStatus === "accepted" || previousStatus === "revoked") {
         return `❌ Invite for ${existing.contact_email} is already ${previousStatus} — nothing to do.`;
       }
 
@@ -8651,7 +11470,7 @@ Use add_committee_leader to assign a leader.`;
           previousStatus,
           adminUserId,
         },
-        'Addie revoked invite'
+        "Addie revoked invite",
       );
 
       return (
@@ -8661,62 +11480,77 @@ Use add_committee_leader to assign a leader.`;
         `\nThe recipient's existing link will stop working. They received no notification.\n`
       );
     } catch (error) {
-      logger.error({ error, orgId, token: token.slice(0, 8) }, 'Error revoking invite');
-      return `❌ Failed to revoke: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      logger.error(
+        { error, orgId, token: token.slice(0, 8) },
+        "Error revoking invite",
+      );
+      return `❌ Failed to revoke: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`;
     }
   });
 
-  handlers.set('add_member_to_org', async (input) => {
-    const email = ((input.email as string) || '').trim().toLowerCase();
+  handlers.set("add_member_to_org", async (input) => {
+    const email = ((input.email as string) || "").trim().toLowerCase();
     const orgId = input.org_id as string;
-    const role = (input.role as string) ?? 'member';
-    const seatType = (input.seat_type as string) ?? 'community_only';
+    const role = (input.role as string) ?? "member";
+    const seatType = (input.seat_type as string) ?? "community_only";
 
-    if (!email || !email.includes('@')) {
-      return '❌ email is required (a valid email address).';
+    if (!email || !email.includes("@")) {
+      return "❌ email is required (a valid email address).";
     }
-    if (!orgId || !orgId.startsWith('org_')) {
-      return '❌ org_id is required (org_…).';
+    if (!orgId || !orgId.startsWith("org_")) {
+      return "❌ org_id is required (org_…).";
     }
-    if (!['member', 'admin', 'owner'].includes(role)) {
+    if (!["member", "admin", "owner"].includes(role)) {
       return `❌ role must be one of: member, admin, owner (got: ${role}).`;
     }
-    if (!['contributor', 'community_only'].includes(seatType)) {
+    if (!["contributor", "community_only"].includes(seatType)) {
       return `❌ seat_type must be one of: contributor, community_only (got: ${seatType}).`;
     }
 
     const adminUser = memberContext?.workos_user;
     if (!adminUser) {
-      return '❌ Cannot add member — no signed-in admin context.';
+      return "❌ Cannot add member — no signed-in admin context.";
     }
 
     const apiKey = process.env.ADMIN_API_KEY;
     if (!apiKey) {
-      return '❌ ADMIN_API_KEY is not configured on the server.';
+      return "❌ ADMIN_API_KEY is not configured on the server.";
     }
     // Match the base-URL precedence used by member-tools.ts:getBaseUrl —
     // BASE_URL (production) wins; otherwise PORT/CONDUCTOR_PORT for local.
     const baseUrl =
       process.env.BASE_URL ||
-      `http://localhost:${process.env.PORT || process.env.CONDUCTOR_PORT || '3000'}`;
-    const endpoint = `${baseUrl}/api/organizations/${encodeURIComponent(orgId)}/members/by-email`;
+      `http://localhost:${
+        process.env.PORT || process.env.CONDUCTOR_PORT || "3000"
+      }`;
+    const endpoint = `${baseUrl}/api/organizations/${encodeURIComponent(
+      orgId,
+    )}/members/by-email`;
 
     try {
       const response = await fetch(endpoint, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
           Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({ email, role, seat_type: seatType }),
         signal: AbortSignal.timeout(10000),
       });
-      const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+      const data = (await response.json().catch(() => ({}))) as Record<
+        string,
+        unknown
+      >;
       if (!response.ok) {
-        const errorMsg = (data.message as string) || (data.error as string) || `HTTP ${response.status}`;
+        const errorMsg =
+          (data.message as string) ||
+          (data.error as string) ||
+          `HTTP ${response.status}`;
         logger.warn(
           { status: response.status, orgId, email, error: errorMsg },
-          'add_member_to_org route returned non-OK'
+          "add_member_to_org route returned non-OK",
         );
         return `❌ Failed to add ${email} to ${orgId}: ${errorMsg}`;
       }
@@ -8731,20 +11565,23 @@ Use add_committee_leader to assign a leader.`;
           seatType,
           adminUserId: adminUser.workos_user_id,
         },
-        'Addie called add_member_to_org'
+        "Addie called add_member_to_org",
       );
 
       // Mirror the route's response shape rather than reflecting the input —
       // e.g. the route may keep an existing seat_type when adding to an org
       // the user already has a seat in.
-      const responseSeatType = (data.seat_type as string | undefined) ?? seatType;
+      const responseSeatType =
+        (data.seat_type as string | undefined) ?? seatType;
 
       let md = `## ${actionToHeader(action)}\n\n`;
       md += `**Email:** ${email}\n`;
       md += `**Org:** ${orgId}\n`;
 
-      if (action === 'invited') {
-        const invitation = data.invitation as Record<string, unknown> | undefined;
+      if (action === "invited") {
+        const invitation = data.invitation as
+          | Record<string, unknown>
+          | undefined;
         const expiresAt = invitation?.expires_at as string | undefined;
         md += `**Invited as:** member (must be promoted after acceptance for higher roles)\n`;
         md += `**Requested role:** ${role}\n`;
@@ -8753,35 +11590,37 @@ Use add_committee_leader to assign a leader.`;
         if (invitation?.accept_invitation_url) {
           md += `\nThey'll receive an email with a sign-up link.\n`;
         }
-      } else if (action === 'member_added') {
+      } else if (action === "member_added") {
         md += `**Role:** ${role}\n`;
         md += `**Seat type:** ${responseSeatType}\n`;
         md += `\nThey already had a WorkOS account; added directly to the org.\n`;
-      } else if (action === 'role_updated') {
+      } else if (action === "role_updated") {
         const previousRole = data.previous_role as string | null | undefined;
         md += `**New role:** ${role}\n`;
-        md += `**Previous role:** ${previousRole ?? '(none)'}\n`;
-      } else if (action === 'no_change') {
+        md += `**Previous role:** ${previousRole ?? "(none)"}\n`;
+      } else if (action === "no_change") {
         md += `\nNo change — they already have role ${role}.\n`;
       } else {
-        md += `**Action:** ${action ?? 'unknown'}\n`;
+        md += `**Action:** ${action ?? "unknown"}\n`;
       }
       return md;
     } catch (error) {
-      logger.error({ error, orgId, email }, 'Error calling members/by-email');
-      return `❌ Failed to add member: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      logger.error({ error, orgId, email }, "Error calling members/by-email");
+      return `❌ Failed to add member: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`;
     }
   });
 
-  handlers.set('diagnose_signin_block', async (input) => {
-    const email = ((input.email as string) || '').trim().toLowerCase();
+  handlers.set("diagnose_signin_block", async (input) => {
+    const email = ((input.email as string) || "").trim().toLowerCase();
     const orgId = input.org_id as string;
 
-    if (!email || !email.includes('@')) {
-      return '❌ email is required (a valid email address).';
+    if (!email || !email.includes("@")) {
+      return "❌ email is required (a valid email address).";
     }
-    if (!orgId || !orgId.startsWith('org_')) {
-      return '❌ org_id is required (org_…).';
+    if (!orgId || !orgId.startsWith("org_")) {
+      return "❌ org_id is required (org_…).";
     }
 
     const pool = getPool();
@@ -8796,16 +11635,18 @@ Use add_committee_leader to assign a leader.`;
       }
       const orgDomainResult = await pool.query<{ email_domain: string | null }>(
         `SELECT email_domain FROM organizations WHERE workos_organization_id = $1`,
-        [orgId]
+        [orgId],
       );
       const orgEmailDomain = orgDomainResult.rows[0]?.email_domain ?? null;
-      const emailDomain = email.split('@')[1];
+      const emailDomain = email.split("@")[1];
       // Mirror the project-wide AAO membership predicate: active subscription
       // and not in a canceled-but-period-still-active state. See server/src/db/org-filters.ts.
       const orgPays =
-        (org.subscription_status === 'active' || org.subscription_status === 'trialing') &&
+        (org.subscription_status === "active" ||
+          org.subscription_status === "trialing") &&
         org.subscription_canceled_at === null;
-      const domainMatches = (orgEmailDomain ?? '').toLowerCase() === emailDomain;
+      const domainMatches =
+        (orgEmailDomain ?? "").toLowerCase() === emailDomain;
 
       // 2. Person row — does the email already have a person_relationships entry?
       const personResult = await pool.query<{
@@ -8818,58 +11659,90 @@ Use add_committee_leader to assign a leader.`;
          FROM person_relationships
          WHERE email = $1
          LIMIT 1`,
-        [email]
+        [email],
       );
       const person = personResult.rows[0];
 
       // 3. Invites — any non-terminal one for this email + org?
       const invites = await listMembershipInvitesForOrg(orgId);
       const matchingInvites = invites.filter((i) => i.contact_email === email);
-      const pendingInvite = matchingInvites.find((i) => inviteStatus(i) === 'pending');
-      const expiredInvite = matchingInvites.find((i) => inviteStatus(i) === 'expired');
-      const acceptedInvite = matchingInvites.find((i) => inviteStatus(i) === 'accepted');
+      const pendingInvite = matchingInvites.find(
+        (i) => inviteStatus(i) === "pending",
+      );
+      const expiredInvite = matchingInvites.find(
+        (i) => inviteStatus(i) === "expired",
+      );
+      const acceptedInvite = matchingInvites.find(
+        (i) => inviteStatus(i) === "accepted",
+      );
 
       // 4. Verdict
-      let verdict: 'needs_signin' | 'needs_resend' | 'needs_invite' | 'needs_human';
+      let verdict:
+        | "needs_signin"
+        | "needs_resend"
+        | "needs_invite"
+        | "needs_human";
       let reason: string;
       let actionable: string | null = null;
 
       if (acceptedInvite || person?.workos_user_id) {
-        verdict = 'needs_signin';
+        verdict = "needs_signin";
         reason = acceptedInvite
-          ? 'They already accepted a membership invite at this org; the WorkOS account exists. They should sign in.'
-          : 'They have a WorkOS account; signing in at agenticadvertising.org should work. If sign-in still fails, the account may not be a member of this specific org — verify org membership before escalating.';
+          ? "They already accepted a membership invite at this org; the WorkOS account exists. They should sign in."
+          : "They have a WorkOS account; signing in at agenticadvertising.org should work. If sign-in still fails, the account may not be a member of this specific org — verify org membership before escalating.";
       } else if (expiredInvite) {
-        verdict = 'needs_resend';
-        reason = `Their last invite expired ${formatRelativeDays(expiredInvite.expires_at)}. Resend it.`;
-        actionable = `Use resend_invite with token=${expiredInvite.token.slice(0, 8)}… and org_id=${orgId}.`;
+        verdict = "needs_resend";
+        reason = `Their last invite expired ${formatRelativeDays(
+          expiredInvite.expires_at,
+        )}. Resend it.`;
+        actionable = `Use resend_invite with token=${expiredInvite.token.slice(
+          0,
+          8,
+        )}… and org_id=${orgId}.`;
       } else if (pendingInvite) {
-        verdict = 'needs_signin';
-        reason = `They have a pending invite (sent ${formatRelativeDays(pendingInvite.created_at)}, expires ${formatRelativeDays(pendingInvite.expires_at)}). They just need to click the link in their email.`;
-        actionable = `If they can't find the email, use resend_invite with token=${pendingInvite.token.slice(0, 8)}… to refresh.`;
+        verdict = "needs_signin";
+        reason = `They have a pending invite (sent ${formatRelativeDays(
+          pendingInvite.created_at,
+        )}, expires ${formatRelativeDays(
+          pendingInvite.expires_at,
+        )}). They just need to click the link in their email.`;
+        actionable = `If they can't find the email, use resend_invite with token=${pendingInvite.token.slice(
+          0,
+          8,
+        )}… to refresh.`;
       } else if (orgPays && domainMatches) {
-        verdict = 'needs_signin';
+        verdict = "needs_signin";
         reason = `The org is a paying member and this email's domain (${emailDomain}) matches the org's email_domain. Signing in at agenticadvertising.org should auto-link them.`;
       } else if (orgPays && !domainMatches) {
-        verdict = 'needs_invite';
-        reason = `The org is a paying member but this email's domain (${emailDomain}) does not match the org's email_domain (${orgEmailDomain ?? '(none)'}). They need an explicit invite.`;
+        verdict = "needs_invite";
+        reason = `The org is a paying member but this email's domain (${emailDomain}) does not match the org's email_domain (${
+          orgEmailDomain ?? "(none)"
+        }). They need an explicit invite.`;
         actionable = `Use send_payment_request with action="send_invite" to issue one.`;
       } else {
-        verdict = 'needs_human';
+        verdict = "needs_human";
         reason = `The org is not on an active membership and there is no invite on file for ${email}. Escalate to an admin to confirm whether they should be invited at all.`;
       }
 
       let response = `## Sign-in diagnosis for ${email}\n\n`;
-      response += `**Org:** ${org.name} (${orgId}) — subscription: ${org.subscription_status ?? 'none'}, email_domain: ${orgEmailDomain ?? 'none'}\n`;
-      response += `**Person record:** ${person ? `exists (stage=${person.stage}, workos_user_id=${person.workos_user_id ? 'yes' : 'no'}, slack_user_id=${person.slack_user_id ? 'yes' : 'no'})` : 'none'}\n`;
+      response += `**Org:** ${org.name} (${orgId}) — subscription: ${
+        org.subscription_status ?? "none"
+      }, email_domain: ${orgEmailDomain ?? "none"}\n`;
+      response += `**Person record:** ${
+        person
+          ? `exists (stage=${person.stage}, workos_user_id=${
+              person.workos_user_id ? "yes" : "no"
+            }, slack_user_id=${person.slack_user_id ? "yes" : "no"})`
+          : "none"
+      }\n`;
       const inviteSummary =
         [
-          pendingInvite ? 'pending' : null,
-          expiredInvite ? 'expired' : null,
-          acceptedInvite ? 'accepted' : null,
+          pendingInvite ? "pending" : null,
+          expiredInvite ? "expired" : null,
+          acceptedInvite ? "accepted" : null,
         ]
           .filter(Boolean)
-          .join(', ') || 'none';
+          .join(", ") || "none";
       response += `**Invites for this email at this org:** ${matchingInvites.length} (${inviteSummary})\n\n`;
       response += `**Verdict: ${verdict}**\n`;
       response += `${reason}\n`;
@@ -8878,28 +11751,39 @@ Use add_committee_leader to assign a leader.`;
       }
       return response;
     } catch (error) {
-      logger.error({ error, email, orgId }, 'Error diagnosing signin block');
-      return `❌ Failed to diagnose: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      logger.error({ error, email, orgId }, "Error diagnosing signin block");
+      return `❌ Failed to diagnose: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`;
     }
   });
 
-  handlers.set('get_engagement_plan', async (input) => {
+  handlers.set("get_engagement_plan", async (input) => {
     const queryStr = input.query as string;
-    if (!queryStr) return '❌ query is required.';
+    if (!queryStr) return "❌ query is required.";
 
     const pool = getPool();
 
     try {
       // Resolve person
       const isSlackId = /^U[A-Z0-9]{8,11}$/.test(queryStr);
-      const isEmail = queryStr.includes('@');
+      const isEmail = queryStr.includes("@");
       let personResult;
       if (isSlackId) {
-        personResult = await pool.query(`SELECT * FROM person_relationships WHERE slack_user_id = $1`, [queryStr]);
+        personResult = await pool.query(
+          `SELECT * FROM person_relationships WHERE slack_user_id = $1`,
+          [queryStr],
+        );
       } else if (isEmail) {
-        personResult = await pool.query(`SELECT * FROM person_relationships WHERE email = $1`, [queryStr]);
+        personResult = await pool.query(
+          `SELECT * FROM person_relationships WHERE email = $1`,
+          [queryStr],
+        );
       } else {
-        personResult = await pool.query(`SELECT * FROM person_relationships WHERE display_name ILIKE $1 LIMIT 1`, [`%${queryStr}%`]);
+        personResult = await pool.query(
+          `SELECT * FROM person_relationships WHERE display_name ILIKE $1 LIMIT 1`,
+          [`%${queryStr}%`],
+        );
       }
 
       if (personResult.rows.length === 0) {
@@ -8912,7 +11796,9 @@ Use add_committee_leader to assign a leader.`;
       const decision = shouldContactCheck(person);
 
       // 2. Load context and compute opportunities
-      const context = await loadRelationshipContext(person.id, { includeCommunity: true });
+      const context = await loadRelationshipContext(person.id, {
+        includeCommunity: true,
+      });
       const engagementCtx = {
         relationship: person,
         capabilities: context.profile.capabilities,
@@ -8920,19 +11806,28 @@ Use add_committee_leader to assign a leader.`;
         recentMessages: context.recentMessages,
         certification: context.certification ?? null,
       };
-      const opportunities = computeEngagementOpportunities(engagementCtx, decision.reason);
+      const opportunities = computeEngagementOpportunities(
+        engagementCtx,
+        decision.reason,
+      );
 
       // 3. Build compose prompt preview
       const composeCtx = {
         ...context,
         engagementOpportunities: opportunities,
       };
-      const composePrompt = buildComposePrompt(composeCtx, decision.channel, decision.reason);
+      const composePrompt = buildComposePrompt(
+        composeCtx,
+        decision.channel,
+        decision.reason,
+      );
 
       // Format response
       let response = `## Engagement plan for ${person.display_name}\n\n`;
       response += `### Contact eligibility\n`;
-      response += `**Decision:** ${decision.shouldContact ? '✅ Yes' : '❌ No'}\n`;
+      response += `**Decision:** ${
+        decision.shouldContact ? "✅ Yes" : "❌ No"
+      }\n`;
       response += `**Reason:** ${decision.reason}\n`;
       response += `**Channel:** ${decision.channel}\n\n`;
 
@@ -8942,20 +11837,26 @@ Use add_committee_leader to assign a leader.`;
       response += `- Unreplied: ${person.unreplied_outreach_count}\n`;
       response += `- Interactions: ${person.interaction_count}\n`;
       if (person.last_addie_message_at) {
-        const days = Math.floor((Date.now() - person.last_addie_message_at.getTime()) / 86400000);
+        const days = Math.floor(
+          (Date.now() - person.last_addie_message_at.getTime()) / 86400000,
+        );
         response += `- Last contacted: ${days} days ago\n`;
       }
       if (person.last_person_message_at) {
-        const days = Math.floor((Date.now() - person.last_person_message_at.getTime()) / 86400000);
+        const days = Math.floor(
+          (Date.now() - person.last_person_message_at.getTime()) / 86400000,
+        );
         response += `- Last person message: ${days} days ago\n`;
       }
-      response += '\n';
+      response += "\n";
 
       response += `### Engagement opportunities (top ${opportunities.length})\n`;
       for (const o of opportunities) {
-        response += `${o.relevance.toFixed(0).padStart(3)} [${o.dimension}] ${o.description}\n`;
+        response += `${o.relevance.toFixed(0).padStart(3)} [${o.dimension}] ${
+          o.description
+        }\n`;
       }
-      response += '\n';
+      response += "\n";
 
       response += `### Compose prompt summary\n`;
       response += `Channel: ${decision.channel}\n`;
@@ -8964,50 +11865,64 @@ Use add_committee_leader to assign a leader.`;
 
       return response;
     } catch (error) {
-      logger.error({ error, query: queryStr }, 'Error building engagement plan');
-      return `❌ Failed to build engagement plan: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      logger.error(
+        { error, query: queryStr },
+        "Error building engagement plan",
+      );
+      return `❌ Failed to build engagement plan: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`;
     }
   });
 
-  handlers.set('get_outreach_health', async () => {
+  handlers.set("get_outreach_health", async () => {
     try {
       const health = await assessHistoricalBehavior();
 
-      let response = '## Outreach health report\n\n';
+      let response = "## Outreach health report\n\n";
       response += `**Total active people:** ${health.totalPeople}\n\n`;
 
-      response += '### By stage\n';
-      response += '| Stage | Count | Avg unreplied | Max unreplied | Avg days since contact | Pulse+ |\n';
-      response += '|-------|-------|---------------|---------------|----------------------|--------|\n';
+      response += "### By stage\n";
+      response +=
+        "| Stage | Count | Avg unreplied | Max unreplied | Avg days since contact | Pulse+ |\n";
+      response +=
+        "|-------|-------|---------------|---------------|----------------------|--------|\n";
       for (const s of health.byStage) {
-        response += `| ${s.stage} | ${s.count} | ${s.avgUnreplied} | ${s.maxUnreplied} | ${s.avgDaysSinceContact ?? 'n/a'} | ${s.pulseCount} |\n`;
+        response += `| ${s.stage} | ${s.count} | ${s.avgUnreplied} | ${
+          s.maxUnreplied
+        } | ${s.avgDaysSinceContact ?? "n/a"} | ${s.pulseCount} |\n`;
       }
 
       if (health.overContactedPeople.length > 0) {
         response += `\n### Approaching circuit breaker (${MAX_TOTAL_UNREPLIED} unreplied)\n`;
         for (const p of health.overContactedPeople.slice(0, 20)) {
-          const warning = p.unrepliedCount >= MAX_TOTAL_UNREPLIED - 2 ? '⚠️' : '';
-          response += `- ${warning} **${p.displayName || p.personId}** [${p.stage}] — ${p.unrepliedCount} unreplied, ${p.messagesSent} sent, ${p.messagesReceived} received\n`;
+          const warning =
+            p.unrepliedCount >= MAX_TOTAL_UNREPLIED - 2 ? "⚠️" : "";
+          response += `- ${warning} **${p.displayName || p.personId}** [${
+            p.stage
+          }] — ${p.unrepliedCount} unreplied, ${p.messagesSent} sent, ${
+            p.messagesReceived
+          } received\n`;
         }
       }
 
-      response += '\n### Volume\n';
+      response += "\n### Volume\n";
       response += `- Last 7 days: ${health.recentOutreachRate.last7d} messages (${health.recentOutreachRate.avgPerDay7d}/day)\n`;
       response += `- Last 30 days: ${health.recentOutreachRate.last30d} messages (${health.recentOutreachRate.avgPerDay30d}/day)\n`;
 
-      response += '\n### Email\n';
+      response += "\n### Email\n";
       response += `- 7-day: ${health.emailStats.totalSent7d} sent\n`;
       response += `- 30-day: ${health.emailStats.totalSent30d} sent to ${health.emailStats.uniqueRecipients30d} unique recipients\n`;
 
       return response;
     } catch (error) {
-      logger.error({ error }, 'Error building outreach health report');
-      return '❌ Failed to build outreach health report. Is the database accessible?';
+      logger.error({ error }, "Error building outreach health report");
+      return "❌ Failed to build outreach health report. Is the database accessible?";
     }
   });
 
-  handlers.set('get_action_items', async (input) => {
-    const status = (input.status as ActionStatus) || 'open';
+  handlers.set("get_action_items", async (input) => {
+    const status = (input.status as ActionStatus) || "open";
     const actionType = input.action_type as ActionType | undefined;
     const priority = input.priority as ActionPriority | undefined;
     const limit = (input.limit as number) || 20;
@@ -9021,26 +11936,44 @@ Use add_committee_leader to assign a leader.`;
       });
 
       if (items.length === 0) {
-        return `No ${status} action items found${actionType ? ` of type "${actionType}"` : ''}.`;
+        return `No ${status} action items found${
+          actionType ? ` of type "${actionType}"` : ""
+        }.`;
       }
 
-      const summary = items.map(item => {
-        const parts = [
-          `#${item.id} [${item.priority.toUpperCase()}] ${item.action_type}: ${item.title}`,
-        ];
-        if (item.description) parts.push(`  ${item.description}`);
-        if (item.slack_user_id) parts.push(`  User: ${item.slack_user_id}`);
-        if (item.org_id) parts.push(`  Org: ${item.org_id}`);
-        if (item.assigned_to) parts.push(`  Assigned to: ${item.assigned_to}`);
-        if (item.snoozed_until) parts.push(`  Snoozed until: ${new Date(item.snoozed_until).toLocaleDateString()}`);
-        parts.push(`  Created: ${new Date(item.created_at).toLocaleDateString()}`);
-        return parts.join('\n');
-      }).join('\n\n');
+      const summary = items
+        .map((item) => {
+          const parts = [
+            `#${item.id} [${item.priority.toUpperCase()}] ${
+              item.action_type
+            }: ${item.title}`,
+          ];
+          if (item.description) parts.push(`  ${item.description}`);
+          if (item.slack_user_id) parts.push(`  User: ${item.slack_user_id}`);
+          if (item.org_id) parts.push(`  Org: ${item.org_id}`);
+          if (item.assigned_to)
+            parts.push(`  Assigned to: ${item.assigned_to}`);
+          if (item.snoozed_until)
+            parts.push(
+              `  Snoozed until: ${new Date(
+                item.snoozed_until,
+              ).toLocaleDateString()}`,
+            );
+          parts.push(
+            `  Created: ${new Date(item.created_at).toLocaleDateString()}`,
+          );
+          return parts.join("\n");
+        })
+        .join("\n\n");
 
       return `${items.length} ${status} action items:\n\n${summary}`;
     } catch (error) {
-      logger.error({ error }, 'Error fetching action items');
-      throw new ToolError(`Failed to fetch action items: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      logger.error({ error }, "Error fetching action items");
+      throw new ToolError(
+        `Failed to fetch action items: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
+      );
     }
   });
 
@@ -9048,18 +11981,23 @@ Use add_committee_leader to assign a leader.`;
   // BRAND LOGO REVIEW HANDLERS
   // ============================================
 
-  handlers.set('list_pending_brand_logos', async (input) => {
+  handlers.set("list_pending_brand_logos", async (input) => {
     const limit = Math.min(Math.max((input.limit as number) ?? 25, 1), 100);
     const offset = Math.max((input.offset as number) ?? 0, 0);
 
     try {
       const pending = await brandLogoDb.getPendingLogos(limit, offset);
       if (pending.length === 0) {
-        return JSON.stringify({ success: true, message: 'No brand logos pending review.', count: 0, logos: [] });
+        return JSON.stringify({
+          success: true,
+          message: "No brand logos pending review.",
+          count: 0,
+          logos: [],
+        });
       }
 
       const now = Date.now();
-      const logos = pending.map(l => ({
+      const logos = pending.map((l) => ({
         logo_id: l.id,
         domain: l.domain,
         brand_name: l.brand_name ?? null,
@@ -9071,25 +12009,37 @@ Use add_committee_leader to assign a leader.`;
         uploaded_by_email: l.uploaded_by_email,
         upload_note: l.upload_note,
         created_at: l.created_at,
-        age_hours: Math.round((now - new Date(l.created_at).getTime()) / 3_600_000),
+        age_hours: Math.round(
+          (now - new Date(l.created_at).getTime()) / 3_600_000,
+        ),
         preview_url: `/logos/brands/${l.domain}/${l.id}`,
       }));
 
-      return JSON.stringify({ success: true, count: logos.length, logos }, null, 2);
+      return JSON.stringify(
+        { success: true, count: logos.length, logos },
+        null,
+        2,
+      );
     } catch (error) {
-      logger.error({ error }, 'Error listing pending brand logos');
-      throw new ToolError(`Failed to list pending brand logos: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      logger.error({ error }, "Error listing pending brand logos");
+      throw new ToolError(
+        `Failed to list pending brand logos: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
+      );
     }
   });
 
-  handlers.set('list_brand_logos', async (input) => {
+  handlers.set("list_brand_logos", async (input) => {
     const rawDomain = input.domain as string;
-    if (!rawDomain) throw new ToolError('domain is required');
+    if (!rawDomain) throw new ToolError("domain is required");
     const domain = canonicalizeBrandDomain(rawDomain);
 
     try {
-      const logos = await brandLogoDb.listBrandLogos(domain, { include_all_statuses: true });
-      const summary = logos.map(l => ({
+      const logos = await brandLogoDb.listBrandLogos(domain, {
+        include_all_statuses: true,
+      });
+      const summary = logos.map((l) => ({
         logo_id: l.id,
         review_status: l.review_status,
         source: l.source,
@@ -9110,45 +12060,72 @@ Use add_committee_leader to assign a leader.`;
         return acc;
       }, {});
 
-      return JSON.stringify({ success: true, domain, total: summary.length, by_status: counts, logos: summary }, null, 2);
+      return JSON.stringify(
+        {
+          success: true,
+          domain,
+          total: summary.length,
+          by_status: counts,
+          logos: summary,
+        },
+        null,
+        2,
+      );
     } catch (error) {
-      logger.error({ error, domain }, 'Error listing brand logos');
-      throw new ToolError(`Failed to list logos for ${domain}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      logger.error({ error, domain }, "Error listing brand logos");
+      throw new ToolError(
+        `Failed to list logos for ${domain}: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
+      );
     }
   });
 
-  handlers.set('review_brand_logo', async (input) => {
+  handlers.set("review_brand_logo", async (input) => {
     const rawDomain = input.domain as string;
     const logoId = input.logo_id as string;
     const action = input.action as string;
-    const note = typeof input.note === 'string' ? input.note.slice(0, 500) : undefined;
+    const note =
+      typeof input.note === "string" ? input.note.slice(0, 500) : undefined;
 
-    if (!rawDomain) throw new ToolError('domain is required');
-    if (!logoId) throw new ToolError('logo_id is required');
-    if (!action) throw new ToolError('action is required');
+    if (!rawDomain) throw new ToolError("domain is required");
+    if (!logoId) throw new ToolError("logo_id is required");
+    if (!action) throw new ToolError("action is required");
 
     const domain = canonicalizeBrandDomain(rawDomain);
-    const statusMap: Record<string, 'approved' | 'rejected' | 'deleted'> = {
-      approve: 'approved',
-      reject: 'rejected',
-      delete: 'deleted',
+    const statusMap: Record<string, "approved" | "rejected" | "deleted"> = {
+      approve: "approved",
+      reject: "rejected",
+      delete: "deleted",
     };
     const status = statusMap[action];
-    if (!status) throw new ToolError(`Invalid action "${action}". Must be approve, reject, or delete.`);
+    if (!status)
+      throw new ToolError(
+        `Invalid action "${action}". Must be approve, reject, or delete.`,
+      );
 
-    if ((status === 'rejected' || status === 'deleted') && !note) {
-      throw new ToolError(`A note is required when you ${action} a logo so the uploader gets useful feedback.`);
+    if ((status === "rejected" || status === "deleted") && !note) {
+      throw new ToolError(
+        `A note is required when you ${action} a logo so the uploader gets useful feedback.`,
+      );
     }
 
-    const reviewerId = memberContext?.workos_user?.workos_user_id ?? 'system:addie-admin';
+    const reviewerId =
+      memberContext?.workos_user?.workos_user_id ?? "system:addie-admin";
 
     try {
-      const updated = await brandLogoDb.updateLogoReviewStatus(logoId, domain, status, reviewerId, note);
+      const updated = await brandLogoDb.updateLogoReviewStatus(
+        logoId,
+        domain,
+        status,
+        reviewerId,
+        note,
+      );
       if (!updated) {
         throw new ToolError(`Logo ${logoId} not found for domain ${domain}.`);
       }
 
-      if (status === 'approved') {
+      if (status === "approved") {
         const hosted = await brandDbForLogos.getHostedBrandByDomain(domain);
         if (!hosted || !hosted.domain_verified) {
           await rebuildManifestLogos(domain, brandLogoDb, brandDbForLogos);
@@ -9157,25 +12134,41 @@ Use add_committee_leader to assign a leader.`;
           await brandDbForLogos.editDiscoveredBrand(domain, {
             edit_summary: `Logo approved by ${reviewerId}`,
             editor_user_id: reviewerId,
-            editor_email: memberContext?.workos_user?.email ?? 'addie@agenticadvertising.org',
+            editor_email:
+              memberContext?.workos_user?.email ??
+              "addie@agenticadvertising.org",
           });
         } catch {
           // Non-critical — approval succeeded regardless
         }
       }
 
-      logger.info({ logoId, domain, action, reviewerId }, 'Addie: brand logo reviewed');
-      return JSON.stringify({
-        success: true,
-        logo_id: logoId,
-        domain,
-        review_status: status,
-        note: note ?? null,
-      }, null, 2);
+      logger.info(
+        { logoId, domain, action, reviewerId },
+        "Addie: brand logo reviewed",
+      );
+      return JSON.stringify(
+        {
+          success: true,
+          logo_id: logoId,
+          domain,
+          review_status: status,
+          note: note ?? null,
+        },
+        null,
+        2,
+      );
     } catch (error) {
       if (error instanceof ToolError) throw error;
-      logger.error({ error, logoId, domain, action }, 'Error reviewing brand logo');
-      throw new ToolError(`Failed to ${action} logo: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      logger.error(
+        { error, logoId, domain, action },
+        "Error reviewing brand logo",
+      );
+      throw new ToolError(
+        `Failed to ${action} logo: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
+      );
     }
   });
 
@@ -9183,84 +12176,131 @@ Use add_committee_leader to assign a leader.`;
   // BRAND REGISTRY HANDLERS
   // ============================================
 
-  handlers.set('transfer_brand_ownership', async (input) => {
+  handlers.set("transfer_brand_ownership", async (input) => {
     const rawDomain = input.domain as string;
     const newOrgId = input.new_org_id as string;
     const rawReason = input.reason as string;
 
-    if (!rawDomain) throw new ToolError('domain is required');
-    if (!newOrgId) throw new ToolError('new_org_id is required');
+    if (!rawDomain) throw new ToolError("domain is required");
+    if (!newOrgId) throw new ToolError("new_org_id is required");
     if (!/^org_[A-Z0-9]{20,}$/.test(newOrgId)) {
-      throw new ToolError(`new_org_id ${newOrgId} is not a valid WorkOS organization id (expected "org_..." format).`);
+      throw new ToolError(
+        `new_org_id ${newOrgId} is not a valid WorkOS organization id (expected "org_..." format).`,
+      );
     }
     if (!rawReason || rawReason.length < 20) {
-      throw new ToolError('reason must be descriptive (at least 20 characters)');
+      throw new ToolError(
+        "reason must be descriptive (at least 20 characters)",
+      );
     }
     // Cap so the audit revision can't be bloated to MB by a typo or
     // prompt-injected long reason; matches review_brand_logo's note cap.
     const reason = rawReason.slice(0, 1000);
 
     const domain = canonicalizeBrandDomain(rawDomain);
-    const adminUserId = memberContext?.workos_user?.workos_user_id ?? 'system:addie-admin';
+    const adminUserId =
+      memberContext?.workos_user?.workos_user_id ?? "system:addie-admin";
     const adminEmail = memberContext?.workos_user?.email;
     const adminName = memberContext?.workos_user?.first_name;
 
     try {
-      const result = await brandDbForLogos.transferBrandOwnership(domain, newOrgId, reason, {
-        userId: adminUserId,
-        email: adminEmail,
-        name: adminName,
-      });
-
-      logger.info({ domain, oldOrgId: result.oldOrgId, newOrgId, adminUserId }, 'Addie: brand ownership transferred');
-
-      return JSON.stringify({
-        success: true,
+      const result = await brandDbForLogos.transferBrandOwnership(
         domain,
-        old_org_id: result.oldOrgId,
-        new_org_id: newOrgId,
-        revision_number: result.revisionNumber,
+        newOrgId,
         reason,
-      }, null, 2);
+        {
+          userId: adminUserId,
+          email: adminEmail,
+          name: adminName,
+        },
+      );
+
+      logger.info(
+        { domain, oldOrgId: result.oldOrgId, newOrgId, adminUserId },
+        "Addie: brand ownership transferred",
+      );
+
+      return JSON.stringify(
+        {
+          success: true,
+          domain,
+          old_org_id: result.oldOrgId,
+          new_org_id: newOrgId,
+          revision_number: result.revisionNumber,
+          reason,
+        },
+        null,
+        2,
+      );
     } catch (error) {
       if (error instanceof ToolError) throw error;
-      logger.error({ error, domain, newOrgId }, 'Error transferring brand ownership');
-      throw new ToolError(`Failed to transfer ownership: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      logger.error(
+        { error, domain, newOrgId },
+        "Error transferring brand ownership",
+      );
+      throw new ToolError(
+        `Failed to transfer ownership: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
+      );
     }
   });
 
-  handlers.set('list_orphaned_brands', async (input) => {
+  handlers.set("list_orphaned_brands", async (input) => {
     const limit = Math.min(Math.max((input.limit as number) ?? 50, 1), 200);
     const offset = Math.max((input.offset as number) ?? 0, 0);
-    const adminUserId = memberContext?.workos_user?.workos_user_id ?? 'system:addie-admin';
+    const adminUserId =
+      memberContext?.workos_user?.workos_user_id ?? "system:addie-admin";
 
     try {
       const orphaned = await brandDbForLogos.listOrphanedBrands(limit, offset);
       // Log every invocation so a bulk-enumeration pattern (e.g., compromised
       // admin token sweeping the orphan pool for relinquish signals) shows up
       // in audit logs. Matches the pattern used by other admin list_* tools.
-      logger.info({ adminUserId, count: orphaned.length, limit, offset }, 'Addie: admin listed orphaned brands');
+      logger.info(
+        { adminUserId, count: orphaned.length, limit, offset },
+        "Addie: admin listed orphaned brands",
+      );
 
       if (orphaned.length === 0) {
-        return JSON.stringify({ success: true, message: 'No orphaned brands awaiting adoption.', count: 0, brands: [] }, null, 2);
+        return JSON.stringify(
+          {
+            success: true,
+            message: "No orphaned brands awaiting adoption.",
+            count: 0,
+            brands: [],
+          },
+          null,
+          2,
+        );
       }
 
       const now = Date.now();
-      const brands = orphaned.map(b => ({
+      const brands = orphaned.map((b) => ({
         domain: b.domain,
         brand_name: b.brand_name,
         prior_owner_org_id: b.prior_owner_org_id,
         prior_owner_org_name: b.prior_owner_org_name,
         last_updated_at: b.last_updated_at,
-        days_since_relinquished: Math.floor((now - new Date(b.last_updated_at).getTime()) / 86_400_000),
+        days_since_relinquished: Math.floor(
+          (now - new Date(b.last_updated_at).getTime()) / 86_400_000,
+        ),
         logo_url: b.manifest_preview.logo_url ?? null,
         brand_color: b.manifest_preview.brand_color ?? null,
       }));
 
-      return JSON.stringify({ success: true, count: brands.length, brands }, null, 2);
+      return JSON.stringify(
+        { success: true, count: brands.length, brands },
+        null,
+        2,
+      );
     } catch (error) {
-      logger.error({ error }, 'Error listing orphaned brands');
-      throw new ToolError(`Failed to list orphaned brands: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      logger.error({ error }, "Error listing orphaned brands");
+      throw new ToolError(
+        `Failed to list orphaned brands: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
+      );
     }
   });
 

@@ -43,7 +43,7 @@ The data flows in advance. The decision still happens in real time — but the d
 
 ## How it works: Priya's first SI campaign
 
-Priya starts with NovaMind, a major AI assistant that sells its own sponsored placements. NovaMind is a first-party AI platform — explicit accounts, its own ad serving, its own measurement.
+Priya starts with NovaMind, a major AI assistant that sells its own sponsored placements. NovaMind is a first-party AI platform — account-id namespace, its own ad serving, its own measurement.
 
 ### Step 1: Connect the account
 
@@ -171,6 +171,8 @@ NovaMind's LLM has Ridgeline's product catalog, knows the Trail Pro 3000 matches
 
 Every detail comes from the catalog Priya synced — the price, the features, the ratings. The voice matches `brand.json`. The [content standards](/docs/governance/content-standards/index) Priya set ensure the platform won't make unsupported claims. The user sees a relevant, helpful recommendation, clearly labeled as sponsored.
 
+Under the protocol, this is not just UI copy. Sponsored context can carry an accountability declaration that separates who paid for the context, how the host is allowed to use it, and whether user-facing disclosure is required. See [Sponsored Context Accountability](/docs/sponsored-intelligence/specification#sponsored-context-accountability) for the receipt and audit model.
+
 If the user taps "Talk to Ridgeline," NovaMind hands off to Ridgeline's brand agent via [SI Chat Protocol](/docs/sponsored-intelligence/si-chat-protocol) — a multi-turn conversation where the user can ask about sizing, compare models, and start a purchase. All within the AI experience.
 
 ### Step 6: Measure results
@@ -212,7 +214,7 @@ At serving time, Gravity's underlying AI platforms use the [Trusted Match Protoc
 
 <CardGroup cols={2}>
   <Card title="Ad networks deep dive" icon="diagram-project" href="/docs/sponsored-intelligence/networks">
-    Network topology, implicit account chains, catalog forwarding, and SI Chat Protocol routing through intermediaries.
+    Network topology, buyer-declared account chains, catalog forwarding, and SI Chat Protocol routing through intermediaries.
   </Card>
   <Card title="How demand reaches AI assistants" icon="shield-halved" href="/docs/trusted-match/ai-mediation">
     How TMP mediates demand on AI surfaces — context matching, frequency caps, and LLM integration.

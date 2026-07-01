@@ -16,6 +16,8 @@ type AccountReference = CreateMediaBuyRequest['account'];
 
 export interface TrainingContext {
   mode: 'open' | 'training';
+  /** Per-tenant route id for capability projection on /sales, /signals, etc. */
+  tenantId?: 'sales' | 'signals' | 'governance' | 'creative' | 'creative-builder' | 'brand';
   userId?: string;
   moduleId?: string;
   trackId?: string;
@@ -26,9 +28,13 @@ export interface TrainingContext {
   principal?: string;
   /** Route is the grader-targeted `/mcp-strict` endpoint. Advertises
    *  `required_for: ['create_media_buy']` in capabilities and enforces
-   *  presence-gated signing at the auth layer. Default `/mcp` leaves
-   *  `required_for` empty so unsigned bearer callers keep working. */
+   *  presence-gated signing at the auth layer. Default `/mcp` does not
+   *  advertise request signing, so unsigned bearer callers keep working. */
   strict?: boolean;
+  /** Local storyboard-runner compatibility shims. Never set in deployed routes. */
+  storyboardCompat?: { version: '3.0' };
+  /** Whether creative usage is billed through AdCP. Defaults to true for legacy/shared routes. */
+  creativeBillsThroughAdcp?: boolean;
   /**
    * `covers_content_digest` mode advertised by this route. Only meaningful
    * when `strict` is true. Defaults to `'either'` (the `/mcp-strict` route).
@@ -95,6 +101,14 @@ export interface PublisherProfile {
     vendor: { domain: string; brand_id?: string };
     metric_id: string;
   }>;
+  /** Optional: vendor-defined metrics this publisher can optimize against */
+  vendorMetricOptimization?: {
+    supported_metrics: Array<{
+      vendor: { domain: string; brand_id?: string };
+      metric_id: string;
+      supported_targets?: Array<'cost_per' | 'threshold_rate'>;
+    }>;
+  };
   /** Optional: shows this publisher carries */
   shows?: ShowDefinition[];
   /** Hero image URL for product and proposal cards */
@@ -184,6 +198,22 @@ export interface ComplyDeliveryAccumulator {
   clicks: number;
   reportedSpend: { amount: number; currency: string };
   conversions: number;
+  isFinal?: boolean;
+  finalizedAt?: string;
+  measurementWindow?: string;
+  reach?: number;
+  frequency?: number;
+  reachWindow?: {
+    kind: 'cumulative' | 'period' | 'rolling';
+    period?: { interval: number; unit: string };
+  };
+  viewability?: {
+    measurable_impressions?: number;
+    viewable_impressions?: number;
+    viewable_rate?: number;
+    viewed_seconds?: number;
+    standard?: string;
+  };
   /** vendor_metric_values injected via comply_test_controller simulate_delivery. */
   vendorMetricValues?: unknown[];
 }
@@ -192,6 +222,11 @@ export interface ComplyBudgetSimulation {
   spendPercentage: number;
   computedSpend: { amount: number; currency: string };
   budget: { amount: number; currency: string };
+}
+
+export interface SeededMeasurementCatalog {
+  vendor: { domain: string; brand_id?: string };
+  metrics: Array<{ metric_id: string; [key: string]: unknown }>;
 }
 
 export interface ComplyExtensions {
@@ -210,6 +245,16 @@ export interface ComplyExtensions {
    * giving storyboards a deterministic, size-controlled result set for
    * pagination-integrity assertions. Keyed by the format's id string. */
   seededCreativeFormats: Map<string, Record<string, unknown>>;
+  /** Measurement vendor catalogs seeded via comply_test_controller.seed_measurement_catalog.
+   * Keyed by `(vendor.domain, vendor.brand_id)` so vendor_metric optimization
+   * storyboards can distinguish product/reporting preconditions from the
+   * external measurement.metrics[] discovery precondition. */
+  seededMeasurementCatalogs: Map<string, SeededMeasurementCatalog>;
+  /** Audit observations recorded while processing sandbox creative submissions.
+   * Keyed by creative_id so conformance storyboards can assert non-blocking
+   * provenance observations without exposing the seller's internal audit log
+   * through public sync_creatives responses. */
+  provenanceAuditObservations: Map<string, unknown[]>;
   /** Single-shot directive registered via comply_test_controller.force_create_media_buy_arm.
    * Consumed by the next create_media_buy call from this session and cleared. A second
    * force_create_media_buy_arm before consumption overwrites the directive. Buyer-side
@@ -225,6 +270,14 @@ export interface ComplyExtensions {
     arm: 'submitted';
     taskId: string;
     message?: string;
+  };
+  /** Single-shot stale-cache directive registered by
+   * comply_test_controller.force_upstream_unavailable. Consumed by the next
+   * matching read tool so follow-up healthy reads do not emit STALE_RESPONSE. */
+  forcedUpstreamUnavailable?: {
+    tool: string;
+    upstreamName?: string;
+    createdAt: string;
   };
 }
 
@@ -284,7 +337,7 @@ export interface ToolArgs { account?: AccountRef; brand?: BrandRef }
 
 export interface AccountRef {
   account_id?: string;
-  brand?: { domain: string };
+  brand?: { domain: string; brand_id?: string };
   operator?: string;
   sandbox?: boolean;
 }
@@ -303,6 +356,27 @@ export interface MediaBuyHistoryEntry {
   packageId?: string;
 }
 
+export interface MediaBuyAvailableActionState {
+  action: string;
+  mode: 'self_serve' | 'conditional_self_serve' | 'requires_approval';
+  sla?: {
+    response_max?: string;
+    completion_max?: string;
+  };
+  terms_ref?: string;
+}
+
+export interface MediaBuyProductAllowedActionState {
+  action: string;
+  modes: MediaBuyAvailableActionState['mode'][];
+  allowed_statuses?: string[];
+  sla?: {
+    response_max?: string;
+    completion_max?: string;
+  };
+  terms_ref?: string;
+}
+
 export interface MediaBuyState {
   mediaBuyId: string;
   accountRef: AccountRef;
@@ -310,6 +384,8 @@ export interface MediaBuyState {
   status: string;
   currency: string;
   packages: PackageState[];
+  productAllowedActions?: MediaBuyProductAllowedActionState[];
+  availableActions?: MediaBuyAvailableActionState[];
   startTime: string;
   endTime: string;
   revision: number;
@@ -319,6 +395,7 @@ export interface MediaBuyState {
   cancellationReason?: string;
   creativeDeadline?: string;
   governanceContext?: string;
+  context?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
   history: MediaBuyHistoryEntry[];
@@ -326,6 +403,24 @@ export interface MediaBuyState {
    * cleared on the first deriveStatus read so subsequent real-workflow reads
    * see the normal pending_creatives guard. Never set by production code paths. */
   complyControllerForced?: boolean;
+  /** Open impairments — upstream dependency state changes affecting at least one
+   * package on this buy. health derives from impairments.length: empty → 'ok',
+   * non-empty → 'impaired'. Sellers add entries when a referenced resource
+   * (creative, audience, event_source, …) transitions offline; remove when the
+   * resource recovers or stops being a dependency (e.g., assignment swap). */
+  impairments?: Impairment[];
+}
+
+export interface Impairment {
+  impairmentId: string;
+  resourceType: 'audience' | 'creative' | 'catalog_item' | 'event_source' | 'property';
+  resourceId: string;
+  packageIds: string[];
+  transition: { from?: string; to: string };
+  reasonCode: string;
+  reason?: string;
+  observedAt: string;
+  remediation?: string;
 }
 
 export interface PackageState {
@@ -343,8 +438,18 @@ export interface PackageState {
   startTime: string;
   endTime: string;
   formatIds?: FormatID[];
+  formatOptionRefs?: unknown[];
+  formatKind?: string;
+  params?: Record<string, unknown>;
   creativeAssignments: string[];
   targeting?: PackageTargeting;
+  context?: Record<string, unknown>;
+  legacyOmitProductId?: boolean;
+  /** Buyer-declared optimization goals carried through from create_media_buy.
+   *  Persisted opaquely so delivery handlers can gate metric emission on
+   *  what the buyer actually requested (e.g., only surface reach + frequency
+   *  when a reach goal was requested). */
+  optimizationGoals?: Array<Record<string, unknown>>;
 }
 
 export interface ListReference {
@@ -376,12 +481,35 @@ export interface CreativeManifest {
 
 export interface CreativeState {
   creativeId: string;
+  accountId?: string;
+  accountRef?: AccountRef;
   formatId: FormatID;
   name?: string;
   status: string;
   syncedAt: string;
   manifest?: CreativeManifest;
   pricingOptionId?: string;
+  purge?: {
+    kind: 'soft';
+    at: string;
+    reasonCode: string;
+  };
+  webhookActivity?: CreativeWebhookActivityRecord[];
+}
+
+export interface CreativeWebhookActivityRecord {
+  idempotency_key: string;
+  subscriber_id: string;
+  fired_at: string;
+  completed_at: string;
+  notification_type: 'creative.status_changed' | 'creative.purged';
+  attempt: number;
+  status: 'success' | 'failed';
+  url: string;
+  http_status_code?: number;
+  response_time_ms?: number;
+  payload_size_bytes?: number;
+  error_message?: string | null;
 }
 
 export interface UsageRecord {
@@ -393,6 +521,9 @@ export interface UsageRecord {
   mediaSpend?: number;
   vendorCost: number;
   currency: string;
+  final?: boolean;
+  finalizedAt?: string;
+  measurementWindow?: string;
   reportedAt: string;
 }
 
@@ -435,6 +566,14 @@ export interface GovernancePlanState {
     reallocationUnlimited: boolean;
     policyCategories?: string[];
     policyIds?: string[];
+    /**
+     * The wire-shaped plan as-supplied at this revision. Retained so a token
+     * signed against an earlier `plan_hash` can still be verified by an
+     * auditor after a subsequent `sync_plans` mutated state — delivers the
+     * "forever binding" property per governance spec §"Governance-agent
+     * obligations".
+     */
+    planAsSupplied: Record<string, unknown>;
   }>;
   channels?: {
     required?: string[];
@@ -458,6 +597,14 @@ export interface GovernancePlanState {
   committedBudget: number;
   committedByType?: Record<string, number>;
   syncedAt: string;
+  /**
+   * Verbatim wire-shaped plan as supplied on the most recent `sync_plans`
+   * call. The `plan_hash` claim emitted in `governance_context` is computed
+   * over this exact value so the hash matches what the buyer can recompute
+   * from its own `sync_plans` request. Spec: governance/specification.mdx
+   * §"Plan binding and audit".
+   */
+  planAsSupplied: Record<string, unknown>;
 }
 
 export interface GovernanceCheckState {

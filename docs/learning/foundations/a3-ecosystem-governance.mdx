@@ -17,8 +17,8 @@ Completing A1 + A2 + A3 earns the **AdCP basics** credential.
 
 ## Learning objectives
 
-- Describe what `brand.json` is and why every brand should have one
-- Explain `adagents.json` and how agents discover each other
+- Describe what `brand.json` is and why advertisers, publishers, sellers, and platforms use it
+- Explain `adagents.json` and how publishers authorize agents for inventory
 - Name all eight AdCP protocol domains and what each covers
 - Identify which areas you want to explore deeper in a role track
 - Recognize the three trust primitives that make the ecosystem safe: authenticated identity, signed governance tokens, and agent/account isolation
@@ -28,6 +28,9 @@ Completing A1 + A2 + A3 earns the **AdCP basics** credential.
 <CardGroup cols={2}>
   <Card title="Brand protocol" icon="fingerprint" href="/docs/brand-protocol/index">
     Brand identity claims, brand.json discovery, and brand hierarchy. Four variants: house portfolio, brand agent, redirects, minimal.
+  </Card>
+  <Card title="Seller setup" icon="store" href="/docs/brand-protocol/seller-setup">
+    How seller identity, property relationships, and signing keys fit with publisher authorization.
   </Card>
   <Card title="Governance overview" icon="building-columns" href="/docs/governance/overview">
     The governance protocol: property governance, brand governance, content standards, creative governance, and campaign governance.
@@ -69,8 +72,8 @@ Completing A1 + A2 + A3 earns the **AdCP basics** credential.
 Addie walks through each domain with a quick live example — just enough to understand what each area does:
 
 **Discovery and community:**
-- `brand.json`: your brand's machine-readable identity at `/.well-known/brand.json`
-- `adagents.json`: how publishers declare which agents can access their inventory
+- `brand.json`: a machine-readable identity record at `/.well-known/brand.json` for advertisers, publishers, sellers, and platforms
+- `adagents.json`: how publishers declare properties and authorize sales or governance agents for inventory
 - Community registry: how agents and brands find each other
 - AgenticAdvertising.org: working groups, industry councils, how the spec evolves
 
@@ -86,7 +89,7 @@ Addie walks through each domain with a quick live example — just enough to und
 - **Signals** — audience data, privacy-compliant signals, conversion tracking, attribution
 - **Governance** — content standards, property lists, the Oracle model for AI-driven brand safety, campaign governance (multi-party validation, budget authority, policy registry)
 - **Sponsored Intelligence** — conversational brand experiences, cost-per-conversation instead of CPM ([experimental](/docs/reference/experimental-status) in 3.0)
-- **Trusted Match Protocol** — impression-time execution: context match (content fit) and identity match (user eligibility), cross-publisher frequency capping, works across web, mobile, CTV, AI assistants, and retail media
+- **Trusted Match Protocol** — impression-time execution: context match (content fit) and identity match (user eligibility), cross-publisher frequency capping, works across web, mobile, CTV, AI assistants, and retail media ([experimental](/docs/reference/experimental-status) in 3.0, feature id `trusted_match.core`)
 - **Brand Protocol** — `brand.json` resolution, brand identity claims, brand hierarchy
 - **Registry** — entity resolution, agent discovery, community directory
 

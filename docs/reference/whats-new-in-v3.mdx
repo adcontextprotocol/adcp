@@ -29,7 +29,7 @@ AdCP 3.0 expands the protocol beyond media buying into brand identity, governanc
 | **Disclosure matching** | Position-only disclosure handling | Position + persistence-aware disclosure matching (`continuous`, `initial`, `flexible`) |
 | **Collections and installments** | No content programming model | `shows` on products with distribution IDs, installment lifecycle, break-based inventory |
 | **Planning ergonomics** | No `time_budget`, `preferred_delivery_types`, `exclusivity`, or per-package flights | `time_budget` + `incomplete`, `preferred_delivery_types`, `exclusivity`, optional `delivery_measurement`, and package-level `start_time` / `end_time` |
-| **Channel model** | 9 channels | 20 planning-oriented channels (including `sponsored_intelligence`) with broadcast TV support (Ad-ID, measurement windows, spot formats) |
+| **Channel model** | 9 channels | 20 planning-oriented channels (including `sponsored_intelligence`) with broadcast TV support (creative identifiers, measurement windows, spot formats) |
 | **Capability discovery** | Agent card extensions | Runtime `get_adcp_capabilities` task |
 | **Sandbox discovery** | Mixed capability locations | `require_operator_auth` for auth model, `account.sandbox` for sandbox support, sandbox in natural account references |
 | **Creative assignment** | Simple ID arrays | Weighted assignments with placement targeting |
@@ -55,11 +55,11 @@ AdCP 3.0 expands the protocol beyond media buying into brand identity, governanc
 
 3.0 makes agent-to-agent transactions safe for real money by turning three operational disciplines into first-class protocol primitives.
 
-**`idempotency_key` is required on every mutating request.** Buyers generate a fresh key per logical operation — the schema requires `^[A-Za-z0-9_.:-]{16,255}$`; AdCP Verified additionally requires a cryptographically-random UUID v4. Sellers declare dedup semantics on `get_adcp_capabilities` as either `adcp.idempotency = { supported: true, replay_ttl_seconds: <1h–7d, 24h recommended> }` or `{ supported: false }`. When `supported: true`, replay is safe: the seller returns `replayed: true` on exact replay, `IDEMPOTENCY_CONFLICT` when the same key accompanies a different payload, and `IDEMPOTENCY_EXPIRED` after the TTL. **When `supported: false`, sending an `idempotency_key` is a no-op — naive retries double-process**, and buyers MUST use natural-key checks (e.g., `get_media_buys` by `buyer_ref`) before retrying spend-committing operations. Clients MUST NOT assume a default; a seller missing this block is non-compliant. Since `supported: true` is a trust-bearing claim, conformance runners probe it with a deliberate payload-mutation replay — sellers claiming support MUST pass this probe before the declaration is considered verified.
+**`idempotency_key` is required on every mutating request.** Buyers generate a fresh key per logical operation — the schema requires `^[A-Za-z0-9_.:-]{16,255}$`; AdCP Verified additionally requires a cryptographically-random UUID v4. Sellers declare dedup semantics on `get_adcp_capabilities` as either `adcp.idempotency = { supported: true, replay_ttl_seconds: <1h–7d, 24h recommended> }` or `{ supported: false }`. When `supported: true`, replay is safe: the seller returns `replayed: true` on exact replay, `IDEMPOTENCY_CONFLICT` when the same key accompanies a different payload, and `IDEMPOTENCY_EXPIRED` after the TTL. **When `supported: false`, sending an `idempotency_key` is a no-op — naive retries double-process**, and buyers MUST use natural-key checks (e.g., `get_media_buys` plus request context such as `context.internal_campaign_id` or package context such as `context.buyer_ref`) before retrying spend-committing operations. Clients MUST NOT assume a default; a seller missing this block is non-compliant. Since `supported: true` is a trust-bearing claim, conformance runners probe it with a deliberate payload-mutation replay — sellers claiming support MUST pass this probe before the declaration is considered verified.
 
 **RFC 9421 HTTP Message Signatures are optional in 3.0 and mandatory under AdCP Verified.** Agents sign mutating requests with Ed25519 over a canonicalized covered-component list (method, target URI, `content-digest`, protocol-level fields). The spec pins sf-binary encoding and URL canonicalization so independent implementations produce bit-identical canonical inputs. A 15-step verification checklist defines the seller's path: `alg` allowlist, `keyid` cap-before-crypto (defense against unbounded verification), JWKS resolution via SSRF-validated fetch, `jti` replay dedup, audience binding. Published test vectors at `static/compliance/source/test-vectors/request-signing/` let implementers validate correctness offline.
 
-**Webhooks are signed under the same RFC 9421 profile — baseline-required for sellers.** Webhook authentication unifies on the AdCP 9421 profile as a symmetric variant of request signing: the seller signs outbound webhook requests with a key published in its JWKS at `jwks_uri` (discoverable via `brand.json` `agents[]`). The JWK itself carries `adcp_use: "webhook-signing"` (distinct from `adcp_use: "request-signing"`); `kid` values MUST be unique across purposes within a JWKS. No shared secret crosses the wire. The buyer verifies the signature using the seller's JWKS. A 14-step webhook verifier checklist — documented in the [Security guide](/docs/building/implementation/security) — covers trust-anchor scoping, downgrade-and-injection resistance, and per-keyid replay dedup (100K per keyid, 10M aggregate); verification failures return typed reason codes defined there. HMAC-SHA256 remains a legacy fallback through 3.x (opt-in via `push_notification_config.authentication.credentials`); the entire `authentication` object is removed in 4.0.
+**Webhooks are signed under the same RFC 9421 profile — baseline-required for sellers.** Webhook authentication unifies on the AdCP 9421 profile as a symmetric variant of request signing: the seller signs outbound webhook requests with a key published in its JWKS at `jwks_uri` (discoverable via `brand.json` `agents[]`). New signers use `adcp_use: "request-signing"` for webhook delivery; deprecated `adcp_use: "webhook-signing"` keys remain accepted during the compatibility window. Operators that want webhook-only key material publish a distinct `request-signing` `kid`. No shared secret crosses the wire. The buyer verifies the signature using the seller's JWKS. A 14-step webhook verifier checklist — documented in the [Security guide](/docs/building/by-layer/L1/security) — covers trust-anchor scoping, downgrade-and-injection resistance, and per-keyid replay dedup (100K per keyid, 10M aggregate); verification failures return typed reason codes defined there. HMAC-SHA256 remains a legacy fallback through 3.x (opt-in via `push_notification_config.authentication.credentials`); the entire `authentication` object is removed in 4.0.
 
 **Every webhook payload carries a required `idempotency_key`.** Webhooks use at-least-once delivery, so receivers must dedupe. Every webhook payload — MCP, collection-list changes, property-list changes, content-standards artifacts, rights revocations — carries a sender-generated, cryptographically-random UUID v4 `idempotency_key` stable across retries of the same event. Same name and format as the request-side field. Predictable keys allow pre-seeding a receiver's dedup cache to suppress legitimate events, so sellers MUST generate keys from a cryptographic source.
 
@@ -69,9 +69,9 @@ AdCP 3.0 expands the protocol beyond media buying into brand identity, governanc
 
 **Cross-instance state persistence is now a spec requirement.** Agent state — tasks, media buys, plans, signed artifacts, idempotency keys — MUST be persistent across horizontally-scaled instances. In-memory-only state is non-compliant for production.
 
-See the [Security implementation guide](/docs/building/implementation/security) for the full threat model, principal roles (brand / operator / agent), and step-by-step verification paths.
+See the [Security implementation guide](/docs/building/by-layer/L1/security) for the full threat model, principal roles (brand / operator / agent), and step-by-step verification paths.
 
-<Card title="Security implementation" icon="arrow-right" href="/docs/building/implementation/security">
+<Card title="Security implementation" icon="arrow-right" href="/docs/building/by-layer/L1/security">
   Threat model, signing profile, verification paths, and the universal security storyboard.
 </Card>
 
@@ -91,7 +91,7 @@ Compliance runs have three tiers: **universal** storyboards every agent runs (ca
 
 The compliance runner and the storyboards are themselves software shipping at 3.0 — they have bugs, coverage gaps, and in a few places they encode our best guess at spec intent where the working group is still refining the exact rule. When an implementer sees a storyboard failure, three things are possible: their agent has a bug, the storyboard has a bug, or the spec is ambiguous. All three are legitimate issues to file.
 
-**Why self-attested and not audited at 3.0:** the reference implementations AAO operates — the training agent and the `@adcp/client` / Python / Go SDKs — aren't fully clean against the 3.0 storyboard suite yet. The training agent currently passes 32 of 55 applicable storyboards; SDK coverage is similar. We are working those pass rates to 100% over the 3.0 → 3.1 window on a 4–6 week cadence. When the reference implementations pass cleanly and the remaining spec ambiguities are resolved, **the formal AdCP Verified program launches with 3.1** — agents will be able to submit runner output for independent re-execution by AAO, with a public registry of verified agents. Self-attestation in 3.0 is the bridge, not the end state.
+**Why self-attested and not audited at 3.0:** the reference implementations AAO operates — the training agent and the `@adcp/sdk` / Python / Go SDKs — aren't fully clean against the 3.0 storyboard suite yet. The training agent currently passes 32 of 55 applicable storyboards; SDK coverage is similar. We are working those pass rates to 100% over the 3.0 → 3.1 window on a 4–6 week cadence. When the reference implementations pass cleanly and the remaining spec ambiguities are resolved, **the formal AdCP Verified program launches with 3.1** — agents will be able to submit runner output for independent re-execution by AAO, with a public registry of verified agents. Self-attestation in 3.0 is the bridge, not the end state.
 </Note>
 
 <Card title="Compliance Catalog" icon="arrow-right" href="/docs/building/compliance-catalog">
@@ -277,9 +277,9 @@ Conversational brand experiences in AI assistants. SI defines how AI assistants 
 
 ---
 
-### Signal catalogs for data providers
+### Published signal definitions for data providers
 
-Data providers can publish signal catalogs via `adagents.json`, following the same pattern as publishers declaring properties.
+Data providers can publish signal definitions via `adagents.json` `signals[]`, following the same pattern as publishers declaring properties.
 
 | Publishers | Data providers |
 |------------|----------------|
@@ -287,10 +287,10 @@ Data providers can publish signal catalogs via `adagents.json`, following the sa
 | Use `property_ids` / `property_tags` | Use `signal_ids` / `signal_tags` |
 | Buyers verify via `publisher_domain` | Buyers verify via `data_provider_domain` |
 
-Signals now have explicit `value_type` (binary, categorical, numeric) with typed targeting, and structured `signal_id` objects that reference the data provider's catalog.
+Signals now have explicit `value_type` (binary, categorical, numeric) with typed targeting, and structured `signal_id` objects that reference the data provider's published definitions.
 
 <Card title="Data provider guide" icon="arrow-right" href="/docs/signals/data-providers">
-  Complete implementation guide for publishing signal catalogs.
+  Complete implementation guide for publishing signal definitions.
 </Card>
 
 ---
@@ -305,7 +305,7 @@ This page covers the full v2 → v3 shift. If you already adopted `3.0.0-rc.1`, 
 
 ### Planning, accounts, and sandbox refinements
 
-`account_resolution` is removed; buyers now use `require_operator_auth` to determine the auth and account model. Sandbox support moves to `account.sandbox`, and sandbox can participate in the natural account key for implicit-account flows. Product discovery adds `preferred_delivery_types`, `exclusivity`, and `time_budget`, with `incomplete` in responses when the seller cannot finish within the requested budget. Packages and product allocations can now carry per-package `start_time` / `end_time`, and `delivery_measurement` becomes optional on products.
+`account_resolution` is removed; buyers now use `require_operator_auth` to determine the auth model and initial account-reference shape. Sandbox support moves to `account.sandbox`, and sandbox can participate in the natural account key for buyer-declared account flows. Product discovery adds `preferred_delivery_types`, `exclusivity`, and `time_budget`, with `incomplete` in responses when the seller cannot finish within the requested budget. Packages and product allocations can now carry per-package `start_time` / `end_time`, and `delivery_measurement` becomes optional on products.
 
 ### Compliance and governance refinements
 
@@ -343,9 +343,11 @@ Campaign governance extends beyond media buys to cover brand rights licensing, s
 
 ### Per-request version declaration
 
-All request schemas now include `adcp_major_version`, allowing v3 buyers to declare which major version their payloads conform to. Sellers validate against their `major_versions` and return `VERSION_UNSUPPORTED` if unsupported. When omitted, sellers default to their highest supported version.
+All request schemas now include `adcp_version` (release-precision, e.g., `"3.1"`), allowing v3 buyers to declare which release their payloads conform to. Sellers validate against their advertised `adcp.supported_versions` array on `get_adcp_capabilities` and echo `adcp_version` at the envelope root on every response. Unsupported releases return `VERSION_UNSUPPORTED`. When omitted, sellers default to their highest supported version.
 
-Note: `adcp_major_version` is a v3 field — v2 clients cannot set it (the field does not exist in v2 schemas). Multi-version sellers detect v2 payloads by structural cues (missing `buying_mode`, `fixed_rate` vs `fixed_price`, `geo_postal_codes` vs `geo_postal_areas`, etc.) rather than by this field.
+3.1 also retains `adcp_major_version` (integer) as a backwards-compatible legacy field, but release-precision `adcp_version` is the primary wire field going forward. See [Version negotiation](/docs/reference/versioning#version-negotiation) for the negotiation contract, migration timeline, and SDK pinning examples.
+
+Note: both fields are v3-only — v2 clients cannot set either (the fields do not exist in v2 schemas). Multi-version sellers detect v2 payloads by structural cues (missing `buying_mode`, `fixed_rate` vs `fixed_price`, `geo_postal_codes` vs `geo_postal_areas`, etc.) rather than by these fields.
 
 ### Collection lists
 
@@ -361,14 +363,14 @@ New targeting overlay fields `collection_list` and `collection_list_exclude` ena
 
 Linear TV sellers can now fully participate in AdCP. This release adds the protocol primitives that distinguish broadcast from digital:
 
-- **Ad-ID identifiers** — `industry_identifiers` on creative assets and manifests, with `creative-identifier-type` enum (`ad_id`, `isci`, `clearcast_clock`). Broadcast creatives are identified by Ad-ID, which ties spots to rotation instructions and traffic systems.
+- **Broadcast creative identifiers** — `industry_identifiers` on creative assets and manifests, with `creative-identifier-type` enum (`ad_id`, `isci`, `clearcast_clock`, `idcrea`). Broadcast creatives carry the traffic or clearance identifier used by the relevant workflow, which ties spots to rotation instructions and traffic systems.
 - **Broadcast spot formats** — Reference formats for :15, :30, and :60 spots. Video file only — no VAST, no impression trackers, no clickthrough URLs. The absence of tracker asset slots in a format signals that third-party pixel tracking is not supported.
 - **Agency Estimate Number** — `agency_estimate_number` on media buys and packages. The financial reference that links broadcast orders to agency media plans and billing.
 - **Measurement windows** — `measurement_windows` on `reporting_capabilities` for Live, C3, and C7 maturation. `measurement_window` on `billing_measurement` declares which window the guarantee is reconciled against.
 - **Delivery data completeness** — `is_final` and `measurement_window` on per-package delivery data. Buyers know whether numbers are provisional or closed, and which measurement window they represent. Applies to any channel with maturing data (broadcast, podcast, long-tail content).
 
 <Card title="Broadcast TV" icon="arrow-right" href="/docs/creative/channels/broadcast">
-  Channel guide covering spot formats, Ad-ID, measurement windows, and how broadcast differs from CTV.
+  Channel guide covering spot formats, creative identifiers, measurement windows, and how broadcast differs from CTV.
 </Card>
 
 ### Structured measurement terms
@@ -487,12 +489,12 @@ These fields map to standard deal types: `fixed_price` corresponds to Programmat
 
 ### Geo targeting with named systems
 
-Metro and postal targeting now require explicit system specification, supporting global markets. Values are grouped by system using `{ "system": "...", "values": [...] }` objects.
+Metro and postal targeting values now carry explicit system information, supporting global markets. Metro values are grouped by system using `{ "system": "...", "values": [...] }` objects; native postal values use `{ "country": "...", "system": "...", "values": [...] }`.
 
 | v2 field | v3 field |
 |----------|----------|
 | `geo_metros` (string array) | `geo_metros` (system/values objects) |
-| `geo_postal_codes` (string array) | `geo_postal_areas` (system/values objects) |
+| `geo_postal_codes` (string array) | `geo_postal_areas` (country/system/values objects) |
 
 v3 also adds `geo_metros_exclude` and `geo_postal_areas_exclude` for negative targeting (e.g., target the US except the New York DMA).
 
@@ -713,7 +715,7 @@ Brand `tone` is now an object type only — string format is removed. Structured
 
 ### Account resolution removed
 
-`account_resolution` capability field is removed. `require_operator_auth` now determines both the auth model and account reference style: `true` means explicit accounts (discover via `list_accounts`, pass `account_id`), `false` means implicit accounts (declare via `sync_accounts`, pass natural key).
+`account_resolution` capability field is removed. `require_operator_auth` now determines the auth model and account reference style: `true` means account-id namespaces (discover via `list_accounts` when exposed, pass `account_id`), `false` means buyer-declared accounts (declare via `sync_accounts`, pass natural key).
 
 | v2/beta/rc.1 field | v3 rc.2 field |
 |---------------------|---------------|
@@ -880,13 +882,13 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
   </Accordion>
 
   <Accordion title="Data providers (new in v3)">
-    Publish signal catalogs via `adagents.json`. See [Data Provider Guide](/docs/signals/data-providers).
+    Publish signal definitions via `adagents.json`. See [Data Provider Guide](/docs/signals/data-providers).
 
-    - [ ] Create signal catalog in `/.well-known/adagents.json`
+    - [ ] Create published signal definitions in `/.well-known/adagents.json`
     - [ ] Define signals with `id`, `name`, `value_type`, and optional metadata
     - [ ] Add `signal_tags` for grouping and efficient authorization
     - [ ] Authorize signals agents using `signal_ids` or `signal_tags` authorization types
-    - [ ] Validate catalog using AdAgents.json Builder
+    - [ ] Validate the file using AdAgents.json Builder
   </Accordion>
 
   <Accordion title="Creative agents (creative management, DCO providers)">
@@ -912,7 +914,7 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
   </Accordion>
 
   <Accordion title="Brands (new in v3)">
-    Establish buy-side identity. See [brand.json specification](/docs/brand-protocol/brand-json).
+    Establish machine-readable brand and operator identity. See [brand.json specification](/docs/brand-protocol/brand-json).
 
     - [ ] Host `/.well-known/brand.json` on your domain
     - [ ] Declare brand portfolio, properties, and authorized operators

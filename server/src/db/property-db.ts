@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import { query, getClient } from './client.js';
 import type { HostedProperty, ResolvedProperty, RegistryRevision } from '../types.js';
 
@@ -277,6 +278,16 @@ export class PropertyDatabase {
             AND p.source_type = 'adagents_json'
             AND prop->>'name' IS NOT NULL
             AND prop->>'property_type' IS NOT NULL
+            AND LOWER(REGEXP_REPLACE(
+                  REGEXP_REPLACE(
+                    BTRIM(COALESCE(NULLIF(prop->>'publisher_domain', ''), p.domain)),
+                    '^https?://',
+                    '',
+                    'i'
+                  ),
+                  '[./]+$',
+                  ''
+                )) = p.domain
        )
        SELECT DISTINCT ON (publisher_domain, name, property_type)
               id, property_id, publisher_domain, property_type, name,
@@ -335,6 +346,16 @@ export class PropertyDatabase {
             AND regexp_replace(cp.created_by, '^[^:]+:', '') = $1
             AND prop->>'property_id' = cp.property_id
             AND prop->>'name' IS NOT NULL
+            AND LOWER(REGEXP_REPLACE(
+                  REGEXP_REPLACE(
+                    BTRIM(COALESCE(NULLIF(prop->>'publisher_domain', ''), pub.domain)),
+                    '^https?://',
+                    '',
+                    'i'
+                  ),
+                  '[./]+$',
+                  ''
+                )) = pub.domain
        )
        SELECT DISTINCT ON (agent_url, name, COALESCE(authorized_for, ''))
               agent_url, name, authorized_for
@@ -829,9 +850,168 @@ export class PropertyDatabase {
     return {
       ...row,
       adagents_json: typeof row.adagents_json === 'string' ? JSON.parse(row.adagents_json) : row.adagents_json,
+      origin_verified_at: row.origin_verified_at ? new Date(row.origin_verified_at) : null,
+      origin_last_checked_at: row.origin_last_checked_at ? new Date(row.origin_last_checked_at) : null,
       created_at: new Date(row.created_at),
       updated_at: new Date(row.updated_at),
     };
+  }
+
+  /**
+   * Mark a hosted property's origin verification result. Called by the
+   * verifier (services/hosted-property-origin-verifier.ts) after fetching
+   * the publisher's /.well-known/adagents.json. `verified=true` sets
+   * origin_verified_at; `verified=false` clears it (so a stub that's
+   * removed from the publisher's origin demotes back). Both branches
+   * stamp origin_last_checked_at.
+   */
+  async recordOriginVerification(
+    publisherDomain: string,
+    verified: boolean,
+  ): Promise<HostedProperty | null> {
+    const result = await query<HostedProperty>(
+      `UPDATE hosted_properties
+          SET origin_verified_at = CASE WHEN $2::boolean THEN NOW() ELSE NULL END,
+              origin_last_checked_at = NOW()
+        WHERE publisher_domain = $1
+        RETURNING *`,
+      [publisherDomain.toLowerCase(), verified],
+    );
+    return result.rows[0] ? this.deserializeHostedProperty(result.rows[0]) : null;
+  }
+
+  /**
+   * Touch only `origin_last_checked_at`, leaving `origin_verified_at`
+   * untouched. Used by the verifier when the publisher's origin
+   * returns a transient response (5xx, 429, 3xx, or a network error
+   * not classified as permanent) — we want the UI to show the attempt
+   * happened, but a network blip MUST NOT flip a previously-verified
+   * row to unverified.
+   */
+  async touchOriginLastCheckedAt(publisherDomain: string): Promise<HostedProperty | null> {
+    const result = await query<HostedProperty>(
+      `UPDATE hosted_properties
+          SET origin_last_checked_at = NOW()
+        WHERE publisher_domain = $1
+        RETURNING *`,
+      [publisherDomain.toLowerCase()],
+    );
+    return result.rows[0] ? this.deserializeHostedProperty(result.rows[0]) : null;
+  }
+
+  /**
+   * Issue a pending domain claim for `claimantOrgId`. Creates the hosted row
+   * if absent (community / private / pending) and stamps a fresh claim token.
+   * The caller pastes a pointer carrying this token at their origin; a later
+   * `verify-origin` binds the owner via {@link bindOwnerFromVerifiedClaim}.
+   *
+   * Refuses to issue a claim for a domain already locked to a DIFFERENT org (a
+   * verified owner exists) — returns `{ token: null, lockedToOrgId }`.
+   */
+  async issueDomainClaim(
+    publisherDomain: string,
+    claimantOrgId: string,
+  ): Promise<{ token: string | null; lockedToOrgId?: string }> {
+    const domain = publisherDomain.toLowerCase();
+    const existing = await this.getHostedPropertyByDomain(domain);
+
+    // A row is "locked" once a verified owner is bound. Issuing a claim to a
+    // different org would be a takeover attempt — refuse. (Same org may re-issue.)
+    if (
+      existing?.origin_verified_at &&
+      existing.workos_organization_id &&
+      existing.workos_organization_id !== claimantOrgId
+    ) {
+      return { token: null, lockedToOrgId: existing.workos_organization_id };
+    }
+
+    const token = randomBytes(32).toString('base64url');
+
+    if (existing) {
+      await query(
+        `UPDATE hosted_properties
+            SET claim_token = $2, claimant_org_id = $3
+          WHERE publisher_domain = $1`,
+        [domain, token, claimantOrgId],
+      );
+    } else {
+      await this.createHostedProperty({
+        publisher_domain: domain,
+        adagents_json: {
+          $schema: 'https://adcontextprotocol.org/schemas/latest/adagents.json',
+          authorized_agents: [],
+          properties: [],
+        },
+        source_type: 'community',
+      });
+      await query(
+        `UPDATE hosted_properties
+            SET claim_token = $2, claimant_org_id = $3
+          WHERE publisher_domain = $1`,
+        [domain, token, claimantOrgId],
+      );
+    }
+    return { token };
+  }
+
+  /**
+   * Bind the owner from a verified claim. Sets `workos_organization_id` to the
+   * pending `claimant_org_id` and consumes the token — but ONLY when `token`
+   * matches the pending `claim_token` and the row is not currently
+   * verified-locked to a different org. Binding is therefore driven by which
+   * token the origin pointer carries, never by who triggers verification.
+   *
+   * "Verified-locked" means `origin_verified_at IS NOT NULL`. A domain whose
+   * verification has lapsed (origin pointer removed / domain transferred → the
+   * periodic re-verify cleared `origin_verified_at`) is re-claimable: the stale
+   * `workos_organization_id` no longer blocks a new owner from re-binding.
+   *
+   * Returns the bound org id, or null when no matching pending claim binds.
+   */
+  async bindOwnerFromVerifiedClaim(
+    publisherDomain: string,
+    token: string,
+  ): Promise<{ boundOrgId: string } | null> {
+    // Binding also publishes the row: an origin-verified, owned record is the
+    // publisher's authoritative document, not a pending community contribution.
+    const result = await query<HostedProperty>(
+      `UPDATE hosted_properties
+          SET workos_organization_id = claimant_org_id,
+              claim_token = NULL,
+              is_public = TRUE,
+              review_status = 'approved'
+        WHERE publisher_domain = $1
+          AND claim_token = $2
+          AND claimant_org_id IS NOT NULL
+          AND (workos_organization_id IS NULL
+               OR workos_organization_id = claimant_org_id
+               OR origin_verified_at IS NULL)
+        RETURNING workos_organization_id`,
+      [publisherDomain.toLowerCase(), token],
+    );
+    const bound = result.rows[0]?.workos_organization_id;
+    return bound ? { boundOrgId: bound } : null;
+  }
+
+  /**
+   * Fetch verified hosted properties whose origin hasn't been re-checked since
+   * `staleBefore` — the work-list for the periodic origin re-verification job.
+   * Only rows that are currently verified (`origin_verified_at IS NOT NULL`)
+   * are candidates; an unverified row has no verification state to lapse.
+   */
+  async getHostedPropertiesDueForReverification(
+    staleBefore: Date,
+    limit: number,
+  ): Promise<HostedProperty[]> {
+    const result = await query<HostedProperty>(
+      `SELECT * FROM hosted_properties
+        WHERE origin_verified_at IS NOT NULL
+          AND (origin_last_checked_at IS NULL OR origin_last_checked_at < $1)
+        ORDER BY origin_last_checked_at ASC NULLS FIRST
+        LIMIT $2`,
+      [staleBefore.toISOString(), limit],
+    );
+    return result.rows.map((row) => this.deserializeHostedProperty(row));
   }
 }
 

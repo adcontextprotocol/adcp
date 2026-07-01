@@ -283,6 +283,22 @@
         .status-banner__text { font-size: var(--text-lg); font-weight: var(--font-semibold); }
         .status-banner__meta { opacity: 0.9; margin-left: var(--space-4); }
         .status-banner__time { opacity: 0.9; font-size: var(--text-sm); }
+        .status-banner__error {
+            margin-top: var(--space-2);
+            font-size: var(--text-sm);
+            opacity: 0.95;
+            line-height: 1.4;
+        }
+        .status-banner__error-detail {
+            margin-top: var(--space-1);
+            font-size: var(--text-xs);
+            opacity: 0.85;
+            font-family: var(--font-mono, monospace);
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .status-banner__error-detail summary { cursor: pointer; opacity: 0.9; }
+        .status-banner > div:first-child { display: flex; flex-direction: column; align-items: flex-start; }
 
         /* Compliance badge */
         .compliance-badge {
@@ -327,7 +343,7 @@
         .tools-summary__desc { margin-top: var(--space-2); font-size: var(--text-sm); color: var(--color-text-muted); }
         .tools-list { display: grid; gap: var(--space-4); }
         .tool-item {
-            background: var(--color-gray-50);
+            background: var(--color-bg-subtle);
             padding: var(--space-4);
             border-radius: var(--radius-md);
             border-left: 3px solid var(--color-border);
@@ -346,7 +362,7 @@
         .publishers-group__title--unverified { color: var(--color-error-500); }
         .publishers-group__title--unchecked { color: var(--color-warning-500); }
         .publisher-item {
-            background: var(--color-gray-50);
+            background: var(--color-bg-subtle);
             padding: var(--space-4);
             border-radius: var(--radius-md);
         }
@@ -413,7 +429,7 @@
             transition: var(--transition-all);
         }
         .format-filter-btn.active {
-            background: var(--color-primary-100);
+            background: var(--color-brand-bg);
             color: var(--color-brand);
             border-color: var(--color-brand);
         }
@@ -434,7 +450,7 @@
         .format-modal__cta:hover { background: var(--color-brand-hover); }
 
         /* Info box */
-        .info-box { background: var(--color-gray-50); padding: var(--space-4); border-radius: var(--radius-md); }
+        .info-box { background: var(--color-bg-subtle); padding: var(--space-4); border-radius: var(--radius-md); }
         .info-box__desc { margin-bottom: var(--space-4); font-size: var(--text-base); }
         .info-box__grid { display: grid; gap: var(--space-3); }
         .info-box__code { background: var(--color-primary-100); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); font-size: var(--text-sm); word-break: break-all; }
@@ -610,6 +626,8 @@
         if (type === 'buying') return 'Buying';
         if (type === 'creative') return 'Creative';
         if (type === 'signals') return 'Signals';
+        if (type === 'measurement') return 'Measurement';
+        if (type === 'governance') return 'Governance';
         return 'Unclassified';
     }
 
@@ -728,7 +746,7 @@
                 if (trackEntries.length > 0) {
                     complianceHtml += '<div class="track-pills">';
                     for (const [track, status] of trackEntries) {
-                        const pillClass = status === 'pass' ? 'track-pill--pass'
+                        const pillClass = status === 'pass' || status === 'silent' ? 'track-pill--pass'
                             : status === 'fail' ? 'track-pill--fail'
                             : status === 'partial' ? 'track-pill--partial'
                             : 'track-pill--skip';
@@ -899,14 +917,25 @@
 
             let html = '';
 
-            // Health status banner
+            // Health status banner — when offline, surface the classified
+            // probe-error hint so registrants see *why* (wrong path, missing
+            // auth, unreachable host) rather than just "Offline." Raw SDK
+            // error is hidden behind a details/summary toggle.
             const health = agent.health || {};
             const statusText = health.online ? 'Active' : 'Offline';
+            const errorBlock = (!health.online && health.error)
+                ? `<div class="status-banner__error">${escapeHtml(health.error)}</div>${
+                    health.error_detail
+                      ? `<details class="status-banner__error-detail"><summary>Show technical detail</summary>${escapeHtml(health.error_detail)}</details>`
+                      : ''
+                  }`
+                : '';
             html += `
                 <div class="status-banner ${health.online ? 'status-banner--online' : 'status-banner--offline'}">
                     <div>
                         <span class="status-banner__text">Status: ${statusText}</span>
                         ${health.response_time_ms ? `<span class="status-banner__meta">Response time: ${health.response_time_ms}ms</span>` : ''}
+                        ${errorBlock}
                     </div>
                     ${health.last_check ? `<div class="status-banner__time">Last check: ${new Date(health.last_check).toLocaleString()}</div>` : ''}
                 </div>
@@ -979,7 +1008,7 @@
                 let trackPillsHtml = '';
                 const tracks = cs.tracks || {};
                 for (const [track, status] of Object.entries(tracks).filter(([, s]) => s !== 'skip' && s !== 'expected')) {
-                    const pillClass = status === 'pass' ? 'track-pill--pass'
+                    const pillClass = status === 'pass' || status === 'silent' ? 'track-pill--pass'
                         : status === 'fail' ? 'track-pill--fail'
                         : status === 'partial' ? 'track-pill--partial'
                         : 'track-pill--skip';

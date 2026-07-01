@@ -12,11 +12,60 @@ vi.mock('dns', async () => {
   };
 });
 
+vi.mock('dns/promises', () => {
+  const resolve4 = vi.fn();
+  const resolve6 = vi.fn();
+  return {
+    default: { resolve4, resolve6 },
+    resolve4,
+    resolve6,
+  };
+});
+
 import { lookup as dnsLookup } from 'dns';
-import { ssrfSafeLookup, isPrivateHostname } from '../../src/utils/url-security.js';
+import dnsPromises from 'dns/promises';
+import { ssrfSafeLookup, isPrivateHostname, validateHostResolution } from '../../src/utils/url-security.js';
 
 type LookupCallback = (err: NodeJS.ErrnoException | null, addresses: LookupAddress[]) => void;
 type LookupSingleCallback = (err: NodeJS.ErrnoException | null, address: string, family: number) => void;
+
+describe('validateHostResolution', () => {
+  const resolve4Mock = dnsPromises.resolve4 as unknown as ReturnType<typeof vi.fn>;
+  const resolve6Mock = dnsPromises.resolve6 as unknown as ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    resolve4Mock.mockReset();
+    resolve6Mock.mockReset();
+  });
+
+  it('preserves transient DNS failure codes when hostname resolution collapses to no addresses', async () => {
+    resolve4Mock.mockRejectedValue(Object.assign(new Error('queryA EAI_AGAIN example.com'), { code: 'EAI_AGAIN' }));
+    resolve6Mock.mockRejectedValue(Object.assign(new Error('queryAaaa ENOTFOUND example.com'), { code: 'ENOTFOUND' }));
+
+    await expect(validateHostResolution('example.com')).rejects.toMatchObject({
+      message: 'Could not resolve hostname',
+      cause: {
+        code: 'EAI_AGAIN',
+        codes: ['EAI_AGAIN', 'ENOTFOUND'],
+        hostname: 'example.com',
+      },
+    });
+  });
+
+  it('preserves permanent DNS failure codes for NXDOMAIN/no-address results', async () => {
+    resolve4Mock.mockRejectedValue(Object.assign(new Error('queryA ENOTFOUND missing.example'), { code: 'ENOTFOUND' }));
+    resolve6Mock.mockRejectedValue(Object.assign(new Error('queryAaaa ENODATA missing.example'), { code: 'ENODATA' }));
+
+    await expect(validateHostResolution('missing.example')).rejects.toMatchObject({
+      message: 'Could not resolve hostname',
+      cause: {
+        code: 'ENOTFOUND',
+        codes: ['ENOTFOUND', 'ENODATA'],
+        hostname: 'missing.example',
+      },
+    });
+  });
+});
 
 describe('ssrfSafeLookup', () => {
   const lookupMock = dnsLookup as unknown as ReturnType<typeof vi.fn>;
@@ -162,11 +211,40 @@ describe('isPrivateHostname (regression coverage for the surfaces ssrfSafeLookup
     expect(isPrivateHostname(host)).toBe(true);
   });
 
+  // IPv6 shorthands that previously bypassed because the literal-string check
+  // (`hostname === '::1'`) didn't match expanded / zero-padded forms, and
+  // because the `startsWith('fc00:')` / `startsWith('fe80:')` prefixes only
+  // covered one address out of each /7 or /10 block.
+  it.each([
+    ['0:0:0:0:0:0:0:1'],          // expanded ::1
+    ['0000:0000:0000:0000:0000:0000:0000:0001'], // fully zero-padded ::1
+    ['0:0:0:0:0:0:0:0'],          // expanded ::
+    ['0:0:0:0:0:ffff:7f00:1'],    // expanded ::ffff:127.0.0.1
+    ['fe81::1'],                  // fe80::/10 — second address in block
+    ['febf::1'],                  // fe80::/10 — last address in block
+    ['fc12::1'],                  // fc00::/7 ULA — middle of block
+    ['fdff::1'],                  // fc00::/7 ULA — last address in block
+    ['fec0::1'],                  // fec0::/10 deprecated site-local
+    ['feff::1'],                  // fec0::/10 last address
+    ['fe80::1%eth0'],             // zone-id stripped before classification
+    ['::7f00:1'],                 // deprecated IPv4-compatible ::127.0.0.1
+    ['::a00:1'],                  // deprecated IPv4-compatible ::10.0.0.1
+    ['2002:7f00:1::'],            // 6to4 wrapping 127.0.0.1
+    ['2002:a9fe:a9fe::'],         // 6to4 wrapping 169.254.169.254 (link-local/metadata)
+    ['64:ff9b::a00:1'],           // NAT64 well-known wrapping 10.0.0.1
+  ])('flags %s as private (IPv6 canonicalization)', (host) => {
+    expect(isPrivateHostname(host)).toBe(true);
+  });
+
   it.each([
     ['93.184.216.34'],
     ['172.66.147.243'], // outside 172.16/12, public
     ['8.8.8.8'],
     ['example.com'],
+    ['2001:4860:4860::8888'],     // public IPv6 (Google DNS) — must not match private blocks
+    ['ff00::1'],                  // multicast — not private, separate concern
+    ['2002:808:808::'],           // 6to4 wrapping public 8.8.8.8 — embedded v4 is public
+    ['64:ff9b::808:808'],         // NAT64 wrapping public 8.8.8.8 — embedded v4 is public
   ])('does not flag %s as private', (host) => {
     expect(isPrivateHostname(host)).toBe(false);
   });

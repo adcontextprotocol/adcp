@@ -1,0 +1,357 @@
+/**
+ * mergeUsers — bind, don't delete (Phase 2a) integration tests.
+ *
+ * The new contract:
+ *   - All of the secondary user's app-state rows move to the primary (same
+ *     as before).
+ *   - The secondary WorkOS user stays alive in `users`. Each linked email is
+ *     a real sign-in credential.
+ *   - Both WorkOS users end up bound to the primary's identity. The
+ *     secondary's binding is `is_primary = FALSE`.
+ *   - The secondary's orphaned singleton identity gets dropped.
+ */
+
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { initializeDatabase, closeDatabase, getPool } from '../../src/db/client.js';
+import { runMigrations } from '../../src/db/migrate.js';
+import { mergeUsers } from '../../src/db/user-merge-db.js';
+import type { Pool } from 'pg';
+
+const PRIMARY_ID = 'user_bind_test_primary';
+const SECONDARY_ID = 'user_bind_test_secondary';
+const ORG_ID = 'org_bind_test';
+
+describe('mergeUsers (bind, don\'t delete)', () => {
+  let pool: Pool;
+
+  beforeAll(async () => {
+    pool = initializeDatabase({
+      connectionString: process.env.DATABASE_URL || 'postgresql://adcp:localdev@localhost:5432/adcp_test',
+    });
+    await runMigrations();
+  }, 60000);
+
+  afterAll(async () => {
+    await cleanup();
+    await closeDatabase();
+  });
+
+  beforeEach(async () => {
+    await cleanup();
+    await pool.query(
+      `INSERT INTO users (workos_user_id, email, first_name, last_name, email_verified,
+                          workos_created_at, workos_updated_at, created_at, updated_at)
+       VALUES ($1, 'primary@test.example', 'Primary', 'User', true, NOW(), NOW(), NOW(), NOW()),
+              ($2, 'secondary@test.example', 'Secondary', 'User', true, NOW(), NOW(), NOW(), NOW())`,
+      [PRIMARY_ID, SECONDARY_ID]
+    );
+    await pool.query(
+      `INSERT INTO organizations (workos_organization_id, name, created_at, updated_at)
+       VALUES ($1, 'Test Org', NOW(), NOW())
+       ON CONFLICT (workos_organization_id) DO NOTHING`,
+      [ORG_ID]
+    );
+  });
+
+  async function cleanup() {
+    // addie_threads.person_id has no CASCADE, and person_relationships has no
+    // FK to users(workos_user_id), so deleting users wouldn't reach either.
+    // Drop the threads first so the person_relationships DELETE can succeed.
+    await pool.query(
+      `DELETE FROM addie_threads
+        WHERE person_id IN (
+          SELECT id FROM person_relationships WHERE workos_user_id IN ($1, $2)
+        )`,
+      [PRIMARY_ID, SECONDARY_ID]
+    );
+    await pool.query(
+      `DELETE FROM person_relationships WHERE workos_user_id IN ($1, $2)`,
+      [PRIMARY_ID, SECONDARY_ID]
+    );
+    await pool.query(
+      `DELETE FROM addie_prompt_telemetry WHERE workos_user_id IN ($1, $2)`,
+      [PRIMARY_ID, SECONDARY_ID]
+    );
+    await pool.query(
+      `DELETE FROM organization_memberships WHERE workos_user_id IN ($1, $2)`,
+      [PRIMARY_ID, SECONDARY_ID]
+    );
+    await pool.query(`DELETE FROM users WHERE workos_user_id IN ($1, $2)`, [PRIMARY_ID, SECONDARY_ID]);
+    await pool.query(`DELETE FROM organizations WHERE workos_organization_id = $1`, [ORG_ID]);
+  }
+
+  it('keeps the secondary WorkOS user alive after merge', async () => {
+    await mergeUsers(PRIMARY_ID, SECONDARY_ID, PRIMARY_ID);
+
+    const result = await pool.query(
+      `SELECT workos_user_id FROM users WHERE workos_user_id IN ($1, $2)`,
+      [PRIMARY_ID, SECONDARY_ID]
+    );
+    expect(result.rows.map(r => r.workos_user_id).sort()).toEqual([PRIMARY_ID, SECONDARY_ID].sort());
+  });
+
+  it('binds both WorkOS users to one identity, with the secondary marked non-primary', async () => {
+    await mergeUsers(PRIMARY_ID, SECONDARY_ID, PRIMARY_ID);
+
+    const result = await pool.query<{ workos_user_id: string; identity_id: string; is_primary: boolean }>(
+      `SELECT workos_user_id, identity_id, is_primary
+         FROM identity_workos_users
+        WHERE workos_user_id IN ($1, $2)
+        ORDER BY workos_user_id`,
+      [PRIMARY_ID, SECONDARY_ID]
+    );
+
+    expect(result.rows).toHaveLength(2);
+    const [primary, secondary] = result.rows.sort((a, b) =>
+      a.workos_user_id === PRIMARY_ID ? -1 : 1
+    );
+    expect(primary.workos_user_id).toBe(PRIMARY_ID);
+    expect(primary.is_primary).toBe(true);
+    expect(secondary.workos_user_id).toBe(SECONDARY_ID);
+    expect(secondary.is_primary).toBe(false);
+    expect(primary.identity_id).toBe(secondary.identity_id);
+  });
+
+  it('drops the secondary user\'s orphaned singleton identity', async () => {
+    // Capture the secondary's pre-merge identity id, then verify it's gone after.
+    const before = await pool.query<{ identity_id: string }>(
+      `SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1`,
+      [SECONDARY_ID]
+    );
+    const secondaryIdentityBefore = before.rows[0].identity_id;
+
+    await mergeUsers(PRIMARY_ID, SECONDARY_ID, PRIMARY_ID);
+
+    const after = await pool.query(
+      `SELECT 1 FROM identities WHERE id = $1`,
+      [secondaryIdentityBefore]
+    );
+    expect(after.rows).toEqual([]);
+  });
+
+  it('moves organization memberships from secondary to primary (existing read paths still work)', async () => {
+    await pool.query(
+      `INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, created_at, updated_at)
+       VALUES ($1, $2, 'secondary@test.example', 'member', NOW(), NOW())`,
+      [SECONDARY_ID, ORG_ID]
+    );
+
+    await mergeUsers(PRIMARY_ID, SECONDARY_ID, PRIMARY_ID);
+
+    const result = await pool.query<{ workos_user_id: string }>(
+      `SELECT workos_user_id FROM organization_memberships WHERE workos_organization_id = $1`,
+      [ORG_ID]
+    );
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].workos_user_id).toBe(PRIMARY_ID);
+  });
+
+  it('records a merge_user audit row', async () => {
+    await mergeUsers(PRIMARY_ID, SECONDARY_ID, PRIMARY_ID);
+
+    const result = await pool.query<{ resource_id: string; details: { primary_user_id: string; secondary_user_id: string } }>(
+      `SELECT resource_id, details
+         FROM registry_audit_log
+        WHERE action = 'merge_user' AND resource_id = $1
+        ORDER BY created_at DESC LIMIT 1`,
+      [SECONDARY_ID]
+    );
+
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].details.primary_user_id).toBe(PRIMARY_ID);
+    expect(result.rows[0].details.secondary_user_id).toBe(SECONDARY_ID);
+  });
+
+  it('throws if the primary lacks an identity binding (Phase 1 trigger should make this impossible)', async () => {
+    // Manually break the invariant to confirm we fail loud rather than
+    // silently producing partial state. The AFTER INSERT trigger normally
+    // guarantees this can't happen.
+    await pool.query(`DELETE FROM identity_workos_users WHERE workos_user_id = $1`, [PRIMARY_ID]);
+
+    await expect(mergeUsers(PRIMARY_ID, SECONDARY_ID, PRIMARY_ID)).rejects.toThrow(
+      /no identity binding/
+    );
+
+    // ROLLBACK should leave the secondary intact (no partial bind).
+    const secondaryStill = await pool.query(
+      `SELECT 1 FROM users WHERE workos_user_id = $1`,
+      [SECONDARY_ID]
+    );
+    expect(secondaryStill.rows).toHaveLength(1);
+  });
+
+  it('repoints addie_threads and person_events to the primary\'s person_relationship before deleting the secondary\'s', async () => {
+    // Both users have a person_relationships row (the path that previously
+    // failed with FK 23503 on addie_threads_person_id_fkey).
+    const primaryRel = await pool.query<{ id: string }>(
+      `INSERT INTO person_relationships (workos_user_id, email, stage)
+       VALUES ($1, 'primary@test.example', 'exploring') RETURNING id`,
+      [PRIMARY_ID]
+    );
+    const secondaryRel = await pool.query<{ id: string }>(
+      `INSERT INTO person_relationships (workos_user_id, email, stage)
+       VALUES ($1, 'secondary@test.example', 'exploring') RETURNING id`,
+      [SECONDARY_ID]
+    );
+    const primaryRelId = primaryRel.rows[0].id;
+    const secondaryRelId = secondaryRel.rows[0].id;
+
+    // Thread keyed to secondary's person_relationship — the row that hit FK
+    // violations under the old code path.
+    const thread = await pool.query<{ thread_id: string }>(
+      `INSERT INTO addie_threads (channel, external_id, user_type, person_id)
+       VALUES ('slack', 'C_test_merge_pr', 'slack', $1) RETURNING thread_id`,
+      [secondaryRelId]
+    );
+    await pool.query(
+      `INSERT INTO person_events (person_id, event_type, data)
+       VALUES ($1, 'message_received', '{}'::jsonb)`,
+      [secondaryRelId]
+    );
+
+    await mergeUsers(PRIMARY_ID, SECONDARY_ID, PRIMARY_ID);
+
+    const threadAfter = await pool.query<{ person_id: string }>(
+      `SELECT person_id FROM addie_threads WHERE thread_id = $1`,
+      [thread.rows[0].thread_id]
+    );
+    expect(threadAfter.rows[0].person_id).toBe(primaryRelId);
+
+    const eventAfter = await pool.query<{ count: string }>(
+      `SELECT COUNT(*) as count FROM person_events WHERE person_id = $1 AND event_type = 'message_received'`,
+      [primaryRelId]
+    );
+    expect(parseInt(eventAfter.rows[0].count, 10)).toBe(1);
+
+    const secondaryRelAfter = await pool.query(
+      `SELECT 1 FROM person_relationships WHERE id = $1`,
+      [secondaryRelId]
+    );
+    expect(secondaryRelAfter.rows).toHaveLength(0);
+  });
+
+  it('refreshes person_relationships.email from users.email for the surviving primary row (promote case)', async () => {
+    // Promote shape: primary is the freshly-added credential with no
+    // person_relationships row of its own; secondary owns the row with the
+    // old email. After mergeUsers, the row is re-pointed to primary and its
+    // email column should reflect the primary's current users.email.
+    await pool.query(
+      `INSERT INTO person_relationships (workos_user_id, email, stage)
+       VALUES ($1, 'secondary@test.example', 'exploring')`,
+      [SECONDARY_ID]
+    );
+
+    await mergeUsers(PRIMARY_ID, SECONDARY_ID, PRIMARY_ID);
+
+    const rel = await pool.query<{ workos_user_id: string; email: string }>(
+      `SELECT workos_user_id, email FROM person_relationships WHERE workos_user_id = $1`,
+      [PRIMARY_ID]
+    );
+    expect(rel.rows).toHaveLength(1);
+    expect(rel.rows[0].email).toBe('primary@test.example');
+  });
+
+  it('refreshes person_relationships.email for primary\'s pre-existing row when its email is stale (merge case)', async () => {
+    // Both users have a person_relationships row, and primary's row carries a
+    // stale email that pre-dates the credential swap. After mergeUsers, the
+    // secondary's row is deleted and the primary's row keeps its id but its
+    // email column gets re-derived from users.email.
+    const primaryRel = await pool.query<{ id: string }>(
+      `INSERT INTO person_relationships (workos_user_id, email, stage)
+       VALUES ($1, 'stale-primary@test.example', 'exploring') RETURNING id`,
+      [PRIMARY_ID]
+    );
+    await pool.query(
+      `INSERT INTO person_relationships (workos_user_id, email, stage)
+       VALUES ($1, 'secondary@test.example', 'exploring')`,
+      [SECONDARY_ID]
+    );
+
+    await mergeUsers(PRIMARY_ID, SECONDARY_ID, PRIMARY_ID);
+
+    const rel = await pool.query<{ id: string; email: string }>(
+      `SELECT id, email FROM person_relationships WHERE workos_user_id = $1`,
+      [PRIMARY_ID]
+    );
+    expect(rel.rows).toHaveLength(1);
+    expect(rel.rows[0].id).toBe(primaryRel.rows[0].id);
+    expect(rel.rows[0].email).toBe('primary@test.example');
+  });
+
+  it('refreshes organization_memberships.email from users.email when it has drifted', async () => {
+    await pool.query(
+      `INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, created_at, updated_at)
+       VALUES ($1, $2, 'stale-primary@test.example', 'member', NOW(), NOW())`,
+      [PRIMARY_ID, ORG_ID]
+    );
+
+    await mergeUsers(PRIMARY_ID, SECONDARY_ID, PRIMARY_ID);
+
+    const row = await pool.query<{ email: string }>(
+      `SELECT email FROM organization_memberships WHERE workos_user_id = $1 AND workos_organization_id = $2`,
+      [PRIMARY_ID, ORG_ID]
+    );
+    expect(row.rows).toHaveLength(1);
+    expect(row.rows[0].email).toBe('primary@test.example');
+  });
+
+  it('refreshes email even on the consolidate path when secondary has app-state to move', async () => {
+    // Consolidate shape: secondary owns app-state (telemetry rows + a stale
+    // relationship row) and primary is the newly-bound credential. The merge
+    // moves data forward AND refreshes the denormalized email on the
+    // surviving primary row. This proves the refresh isn't short-circuited
+    // by any of the other merge branches.
+    await pool.query(
+      `INSERT INTO addie_prompt_telemetry (workos_user_id, rule_id, shown_count, clicked_count)
+       VALUES ($1, 'secondary_rule', 3, 1)`,
+      [SECONDARY_ID]
+    );
+    await pool.query(
+      `INSERT INTO person_relationships (workos_user_id, email, stage)
+       VALUES ($1, 'secondary@test.example', 'exploring')`,
+      [SECONDARY_ID]
+    );
+
+    await mergeUsers(PRIMARY_ID, SECONDARY_ID, PRIMARY_ID);
+
+    const rel = await pool.query<{ email: string }>(
+      `SELECT email FROM person_relationships WHERE workos_user_id = $1`,
+      [PRIMARY_ID]
+    );
+    expect(rel.rows[0].email).toBe('primary@test.example');
+
+    const telemetry = await pool.query<{ rule_id: string }>(
+      `SELECT rule_id FROM addie_prompt_telemetry WHERE workos_user_id = $1`,
+      [PRIMARY_ID]
+    );
+    expect(telemetry.rows.map(r => r.rule_id)).toEqual(['secondary_rule']);
+  });
+
+  it('merges addie_prompt_telemetry on (workos_user_id, rule_id), keeping primary\'s row when both have one for the same rule', async () => {
+    // Same rule on both — primary's counters survive, secondary's are dropped.
+    await pool.query(
+      `INSERT INTO addie_prompt_telemetry (workos_user_id, rule_id, shown_count, clicked_count)
+       VALUES ($1, 'shared_rule', 5, 2),
+              ($2, 'shared_rule', 9, 4),
+              ($2, 'unique_rule', 1, 0)`,
+      [PRIMARY_ID, SECONDARY_ID]
+    );
+
+    await mergeUsers(PRIMARY_ID, SECONDARY_ID, PRIMARY_ID);
+
+    const after = await pool.query<{ rule_id: string; shown_count: number; clicked_count: number }>(
+      `SELECT rule_id, shown_count, clicked_count FROM addie_prompt_telemetry
+       WHERE workos_user_id = $1 ORDER BY rule_id`,
+      [PRIMARY_ID]
+    );
+    expect(after.rows).toHaveLength(2);
+    expect(after.rows[0]).toMatchObject({ rule_id: 'shared_rule', shown_count: 5, clicked_count: 2 });
+    expect(after.rows[1]).toMatchObject({ rule_id: 'unique_rule', shown_count: 1, clicked_count: 0 });
+
+    const secondaryAfter = await pool.query(
+      `SELECT 1 FROM addie_prompt_telemetry WHERE workos_user_id = $1`,
+      [SECONDARY_ID]
+    );
+    expect(secondaryAfter.rows).toHaveLength(0);
+  });
+});

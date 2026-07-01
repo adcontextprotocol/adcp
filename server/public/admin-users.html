@@ -50,7 +50,7 @@
     .filter-bar input,
     .filter-bar select {
       padding: var(--space-2) var(--space-3);
-      border: var(--border-1) solid var(--color-gray-200);
+      border: var(--border-1) solid var(--color-border);
       border-radius: var(--radius-md);
       font-size: var(--text-sm);
     }
@@ -70,19 +70,19 @@
       gap: var(--space-2);
     }
     .btn-small { padding: var(--space-1_5) var(--space-3); font-size: var(--text-xs); }
-    .btn-primary { background: var(--color-brand); color: white; }
+    .btn-primary { background: var(--color-brand); color: var(--color-text-on-dark); }
     .btn-primary:hover { background: var(--color-primary-700); }
-    .btn-secondary { background: var(--color-gray-200); color: var(--color-text-heading); }
-    .btn-secondary:hover { background: var(--color-gray-300); }
+    .btn-secondary { background: var(--color-bg-button-secondary); color: var(--color-text-heading); }
+    .btn-secondary:hover { background: var(--color-bg-button-secondary-hover); }
     .btn-outline {
       background: transparent;
       color: var(--color-brand);
       border: var(--border-1) solid var(--color-brand);
     }
     .btn-outline:hover {
-      background: var(--color-primary-50);
+      background: var(--color-brand-bg);
     }
-    .btn-success { background: var(--color-success-600); color: white; }
+    .btn-success { background: var(--color-success-600); color: var(--color-text-on-dark); }
     .btn-success:hover { background: var(--color-success-700); }
     .btn:disabled {
       opacity: 0.5;
@@ -97,7 +97,7 @@
       margin-bottom: var(--space-6);
     }
     .stat-card {
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       padding: var(--space-4);
       border-radius: var(--radius-md);
       text-align: center;
@@ -107,10 +107,10 @@
       transition: var(--transition-all);
     }
     .stat-card.clickable:hover {
-      background: var(--color-primary-50);
+      background: var(--color-brand-bg);
     }
     .stat-card.active {
-      background: var(--color-primary-100);
+      background: var(--color-brand-bg);
       border: 2px solid var(--color-brand);
     }
     .stat-value {
@@ -135,12 +135,12 @@
     .users-table td {
       padding: var(--space-3);
       text-align: left;
-      border-bottom: var(--border-1) solid var(--color-gray-200);
+      border-bottom: var(--border-1) solid var(--color-border);
     }
     .users-table th {
       font-weight: var(--font-semibold);
       color: var(--color-text-heading);
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       font-size: var(--text-sm);
     }
     .users-table th.th-sortable {
@@ -148,10 +148,10 @@
       user-select: none;
     }
     .users-table th.th-sortable:hover {
-      background: var(--color-primary-50);
+      background: var(--color-brand-bg);
     }
     .users-table tr:hover {
-      background: var(--color-gray-50);
+      background: var(--color-bg-row-hover);
     }
     .user-name {
       font-weight: var(--font-medium);
@@ -227,7 +227,7 @@
       color: var(--color-success-700);
     }
     .status-unmapped {
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
       color: var(--color-gray-600);
     }
     .status-suggested {
@@ -247,7 +247,7 @@
     .score-bar {
       width: 50px;
       height: 6px;
-      background: var(--color-gray-200);
+      background: var(--color-bg-button-secondary);
       border-radius: 3px;
       overflow: hidden;
       display: inline-block;
@@ -286,7 +286,7 @@
     .stage-participating { background: var(--color-success-100); color: var(--color-success-700); }
     .stage-exploring { background: var(--color-info-100); color: var(--color-info-700); }
     .stage-welcomed { background: var(--color-primary-100); color: var(--color-primary-700); }
-    .stage-prospect { background: var(--color-gray-100); color: var(--color-gray-600); }
+    .stage-prospect { background: var(--color-bg-subtle); color: var(--color-text-secondary); }
 
     .lifecycle-badge {
       display: inline-block;
@@ -299,7 +299,7 @@
     .lifecycle-champion { background: #ffd70030; color: #b8860b; }
     .lifecycle-engaged { background: var(--color-success-100); color: var(--color-success-700); }
     .lifecycle-active { background: var(--color-info-100); color: var(--color-info-700); }
-    .lifecycle-new { background: var(--color-gray-100); color: var(--color-gray-600); }
+    .lifecycle-new { background: var(--color-bg-subtle); color: var(--color-text-secondary); }
     .lifecycle-at_risk { background: var(--color-error-100); color: var(--color-error-700); }
 
     /* Goal badges */
@@ -336,7 +336,7 @@
       color: #009688;
     }
     .goal-initial_contact {
-      background: var(--color-gray-200);
+      background: var(--color-bg-button-secondary);
       color: var(--color-text-secondary);
     }
 
@@ -351,7 +351,7 @@
     }
     .optin-yes { background: var(--color-success-100); color: var(--color-success-700); }
     .optin-no { background: var(--color-error-100); color: var(--color-error-700); }
-    .optin-unknown { background: var(--color-gray-100); color: var(--color-gray-600); }
+    .optin-unknown { background: var(--color-bg-subtle); color: var(--color-text-secondary); }
 
     /* Source indicator */
     .source-icon {
@@ -373,7 +373,7 @@
     }
     .btn-info {
       background: var(--color-info-500);
-      color: white;
+      color: var(--color-text-on-dark);
     }
     .btn-info:hover {
       background: var(--color-info-600);
@@ -534,7 +534,7 @@
 
     /* Sync banner */
     .sync-banner {
-      background: var(--color-info-50);
+      background: var(--color-info-bg);
       border: 1px solid var(--color-info-200);
       border-radius: var(--radius-md);
       padding: var(--space-4);
@@ -602,7 +602,7 @@
       justify-content: space-between;
       align-items: flex-start;
       padding: var(--space-4);
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       border-radius: var(--radius-md);
       border-left: 3px solid var(--color-gray-400);
     }
@@ -659,7 +659,7 @@
     .tab-nav {
       display: flex;
       gap: var(--space-1);
-      border-bottom: var(--border-1) solid var(--color-gray-200);
+      border-bottom: var(--border-1) solid var(--color-border);
       margin-bottom: var(--space-5);
     }
     .tab-btn {
@@ -695,7 +695,7 @@
       gap: var(--space-4);
     }
     .account-card {
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       border-radius: var(--radius-md);
       padding: var(--space-4);
       position: relative;
@@ -722,7 +722,7 @@
     }
     .role-owner { background: var(--color-primary-100); color: var(--color-primary-700); }
     .role-interested { background: var(--color-info-100); color: var(--color-info-700); }
-    .role-connected { background: var(--color-gray-200); color: var(--color-gray-600); }
+    .role-connected { background: var(--color-bg-button-secondary); color: var(--color-text-secondary); }
     .account-stats {
       display: flex;
       gap: var(--space-4);
@@ -746,7 +746,7 @@
       .users-table tr {
         display: block;
         margin-bottom: var(--space-4);
-        border: var(--border-1) solid var(--color-gray-200);
+        border: var(--border-1) solid var(--color-border);
         border-radius: var(--radius-md);
       }
       .users-table td {
@@ -846,13 +846,13 @@
         </div>
 
         <!-- Org Admin Audit Banner -->
-        <div id="orgAdminBanner" class="sync-banner" style="display: none; background: var(--color-warning-50); border-color: var(--color-warning-200);">
+        <div id="orgAdminBanner" class="sync-banner" style="display: none; background: var(--color-warning-bg); border-color: var(--color-warning-200);">
           <div class="sync-info">
-            <strong id="orgAdminStatus" style="color: var(--color-warning-700);"></strong>
-            <span id="orgAdminDetails" style="font-size: var(--text-sm); color: var(--color-warning-600);"></span>
+            <strong id="orgAdminStatus" style="color: var(--color-warning-fg);"></strong>
+            <span id="orgAdminDetails" style="font-size: var(--text-sm); color: var(--color-warning-fg);"></span>
           </div>
           <div style="display: flex; gap: 8px;">
-            <button id="fixOrgAdminsBtn" class="btn btn-small" style="background: var(--color-warning-600); color: white;" onclick="fixOrgAdmins()">
+            <button id="fixOrgAdminsBtn" class="btn btn-small" style="background: var(--color-warning-600); color: var(--color-text-on-dark);" onclick="fixOrgAdmins()">
               Fix Now
             </button>
             <button id="showReviewOrgsBtn" class="btn btn-small btn-secondary" style="display: none;" onclick="toggleReviewOrgsList()">
@@ -861,8 +861,8 @@
           </div>
         </div>
         <!-- Multi-member orgs needing review -->
-        <div id="reviewOrgsList" style="display: none; background: var(--color-warning-50); border: 1px solid var(--color-warning-200); border-top: none; border-radius: 0 0 8px 8px; padding: 12px 16px; margin-top: -8px;">
-          <div style="font-size: var(--text-sm); font-weight: 500; color: var(--color-warning-700); margin-bottom: 8px;">Multi-member orgs needing admin assignment:</div>
+        <div id="reviewOrgsList" style="display: none; background: var(--color-warning-bg); border: 1px solid var(--color-warning-200); border-top: none; border-radius: 0 0 8px 8px; padding: 12px 16px; margin-top: -8px;">
+          <div style="font-size: var(--text-sm); font-weight: 500; color: var(--color-warning-fg); margin-bottom: 8px;">Multi-member orgs needing admin assignment:</div>
           <div id="reviewOrgsListContent" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
         </div>
 
@@ -1009,19 +1009,19 @@
 
           <div class="form-group" style="margin-bottom: var(--space-4);">
             <label for="insightType" style="display: block; font-weight: var(--font-medium); margin-bottom: var(--space-2);">Insight Type</label>
-            <select id="insightType" required style="width: 100%; padding: var(--space-2); border: 1px solid var(--color-gray-300); border-radius: var(--radius-sm);">
+            <select id="insightType" required style="width: 100%; padding: var(--space-2); border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm);">
               <option value="">Select type...</option>
             </select>
           </div>
 
           <div class="form-group" style="margin-bottom: var(--space-4);">
             <label for="insightValue" style="display: block; font-weight: var(--font-medium); margin-bottom: var(--space-2);">Value</label>
-            <textarea id="insightValue" required rows="3" placeholder="What do you know about this person?" style="width: 100%; padding: var(--space-2); border: 1px solid var(--color-gray-300); border-radius: var(--radius-sm); resize: vertical;"></textarea>
+            <textarea id="insightValue" required rows="3" placeholder="What do you know about this person?" style="width: 100%; padding: var(--space-2); border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm); resize: vertical;"></textarea>
           </div>
 
           <div class="form-group" style="margin-bottom: var(--space-4);">
             <label for="insightConfidence" style="display: block; font-weight: var(--font-medium); margin-bottom: var(--space-2);">Confidence</label>
-            <select id="insightConfidence" style="width: 100%; padding: var(--space-2); border: 1px solid var(--color-gray-300); border-radius: var(--radius-sm);">
+            <select id="insightConfidence" style="width: 100%; padding: var(--space-2); border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm);">
               <option value="high">High - Directly told to me</option>
               <option value="medium" selected>Medium - Inferred from context</option>
               <option value="low">Low - Guess/assumption</option>
@@ -1048,20 +1048,20 @@
         <input type="hidden" id="nudgeSlackUserId" />
         <input type="hidden" id="nudgeGoalId" />
 
-        <div id="nudgeGoalInfo" style="background: var(--color-primary-50); border-radius: var(--radius-sm); padding: var(--space-3); margin-bottom: var(--space-4);">
+        <div id="nudgeGoalInfo" style="background: var(--color-brand-bg); border-radius: var(--radius-sm); padding: var(--space-3); margin-bottom: var(--space-4);">
           <div style="font-weight: var(--font-medium); margin-bottom: var(--space-1);" id="nudgeGoalName">Loading...</div>
           <div style="font-size: var(--text-sm); color: var(--color-text-secondary);" id="nudgeGoalDescription"></div>
         </div>
 
         <div class="form-group" style="margin-bottom: var(--space-4);">
           <label for="nudgeContext" style="display: block; font-weight: var(--font-medium); margin-bottom: var(--space-2);">Additional Context (optional)</label>
-          <textarea id="nudgeContext" rows="3" placeholder="Share what you know about this person that might help personalize the message... (this will be saved as an insight)" style="width: 100%; padding: var(--space-2); border: 1px solid var(--color-gray-300); border-radius: var(--radius-sm); resize: vertical;"></textarea>
+          <textarea id="nudgeContext" rows="3" placeholder="Share what you know about this person that might help personalize the message... (this will be saved as an insight)" style="width: 100%; padding: var(--space-2); border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm); resize: vertical;"></textarea>
           <p style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-1);">If provided, this will be recorded as an "admin_context" insight for future reference.</p>
         </div>
 
         <div id="nudgeMessagePreview" style="margin-bottom: var(--space-4); display: none;">
           <label style="display: block; font-weight: var(--font-medium); margin-bottom: var(--space-2);">Message Preview</label>
-          <div style="background: white; border: 1px solid var(--color-gray-200); border-radius: var(--radius-sm); padding: var(--space-3); font-size: var(--text-sm); white-space: pre-wrap; max-height: 150px; overflow-y: auto;" id="nudgeMessageText"></div>
+          <div style="background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: var(--space-3); font-size: var(--text-sm); white-space: pre-wrap; max-height: 150px; overflow-y: auto;" id="nudgeMessageText"></div>
         </div>
 
         <div style="display: flex; gap: var(--space-2); justify-content: flex-end; flex-wrap: wrap;">
@@ -1995,7 +1995,7 @@
 
         const data = await response.json();
 
-        let html = '<div style="background: var(--color-gray-50); border-radius: var(--radius-md); padding: var(--space-3);">';
+        let html = '<div style="background: var(--color-bg-subtle); border-radius: var(--radius-md); padding: var(--space-3);">';
 
         // Mode warning
         if (data.mode === 'disabled') {
@@ -2026,7 +2026,7 @@
         // Preview message
         html += `<div style="margin-top: var(--space-2);">
           <div style="font-size: var(--text-xs); color: var(--color-text-tertiary); margin-bottom: var(--space-1);">Message Preview:</div>
-          <div style="background: white; border: 1px solid var(--color-gray-200); border-radius: var(--radius-sm); padding: var(--space-3); font-size: var(--text-sm); white-space: pre-wrap;">${escapeHtml(data.preview_message)}</div>
+          <div style="background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: var(--space-3); font-size: var(--text-sm); white-space: pre-wrap;">${escapeHtml(data.preview_message)}</div>
         </div>`;
 
         html += '</div>';
@@ -2138,7 +2138,7 @@
 
       const form = document.createElement('div');
       form.id = 'adminNameEditForm';
-      form.style.cssText = 'background: var(--color-gray-50); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);';
+      form.style.cssText = 'background: var(--color-bg-subtle); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);';
       form.innerHTML = `
         <h3 style="margin: 0 0 var(--space-3) 0; font-size: var(--text-sm);">Edit Display Name</h3>
         <div style="display: flex; gap: var(--space-3); margin-bottom: var(--space-3);">
@@ -2284,7 +2284,7 @@
       if (context.planner?.recommended_action) {
         const action = context.planner.recommended_action;
         const slackUserId = context.slack_user?.slack_user_id;
-        html += '<div class="context-section" style="background: linear-gradient(135deg, var(--color-primary-50), var(--color-gray-50)); border-left: 4px solid var(--color-brand); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">';
+        html += '<div class="context-section" style="background: linear-gradient(135deg, var(--color-brand-bg), var(--color-bg-subtle)); border-left: 4px solid var(--color-brand); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">';
         html += '<h3 style="margin-bottom: var(--space-2);">Planner Recommendation</h3>';
         html += `<div style="font-size: var(--text-lg); font-weight: var(--font-semibold); color: var(--color-text-heading); margin-bottom: var(--space-2);">${escapeHtml(action.goal_name)}</div>`;
         html += `<div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-2);">${escapeHtml(action.reason)}</div>`;
@@ -2296,9 +2296,9 @@
 
         // Show message preview
         if (context.planner.message_preview) {
-          html += '<div style="margin-top: var(--space-3); border-top: 1px solid var(--color-gray-200); padding-top: var(--space-3);">';
+          html += '<div style="margin-top: var(--space-3); border-top: 1px solid var(--color-border); padding-top: var(--space-3);">';
           html += '<div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-2);">Message Preview:</div>';
-          html += `<div style="background: white; border: 1px solid var(--color-gray-200); border-radius: var(--radius-sm); padding: var(--space-3); font-size: var(--text-sm); white-space: pre-wrap; max-height: 200px; overflow-y: auto;">${escapeHtml(context.planner.message_preview)}</div>`;
+          html += `<div style="background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: var(--space-3); font-size: var(--text-sm); white-space: pre-wrap; max-height: 200px; overflow-y: auto;">${escapeHtml(context.planner.message_preview)}</div>`;
 
           // Send button and different approach link
           if (slackUserId && !context.outreach?.opted_out) {
@@ -2312,17 +2312,17 @@
         }
 
         if (context.planner.alternative_goals && context.planner.alternative_goals.length > 0) {
-          html += '<div style="margin-top: var(--space-3); padding-top: var(--space-2); border-top: 1px solid var(--color-gray-200);">';
+          html += '<div style="margin-top: var(--space-3); padding-top: var(--space-2); border-top: 1px solid var(--color-border);">';
           html += '<div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-2);">Alternative goals (click to use instead):</div>';
           html += '<div style="display: flex; flex-wrap: wrap; gap: var(--space-1);">';
           html += context.planner.alternative_goals.map(g =>
-            `<button onclick="openNudgeModal('${slackUserId}', ${g.id})" style="display: inline-block; padding: 4px var(--space-2); background: var(--color-gray-100); border: 1px solid var(--color-gray-200); border-radius: var(--radius-sm); font-size: var(--text-xs); cursor: pointer; transition: all 0.15s;" onmouseover="this.style.background='var(--color-primary-50)';this.style.borderColor='var(--color-brand)'" onmouseout="this.style.background='var(--color-gray-100)';this.style.borderColor='var(--color-gray-200)'">${escapeHtml(g.name)}</button>`
+            `<button onclick="openNudgeModal('${slackUserId}', ${g.id})" style="display: inline-block; padding: 4px var(--space-2); background: var(--color-bg-subtle); border: 1px solid var(--color-border); border-radius: var(--radius-sm); font-size: var(--text-xs); cursor: pointer; transition: all 0.15s;" onmouseover="this.style.background='var(--color-brand-bg)';this.style.borderColor='var(--color-brand)'" onmouseout="this.style.background='var(--color-bg-subtle)';this.style.borderColor='var(--color-border)'">${escapeHtml(g.name)}</button>`
           ).join('');
           html += '</div></div>';
         }
         html += '</div>';
       } else if (context.planner && !context.planner.recommended_action) {
-        html += '<div class="context-section" style="background: var(--color-gray-50); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">';
+        html += '<div class="context-section" style="background: var(--color-bg-subtle); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">';
         html += '<h3 style="margin-bottom: var(--space-2);">Planner Status</h3>';
         const eligibility = context.planner.contact_eligibility;
         if (!eligibility?.can_contact) {
@@ -2357,11 +2357,11 @@
         html += renderCapabilityCount('Events Attended', caps.events_attended);
 
         // Activity
-        html += `<div style="padding: var(--space-2); background: var(--color-gray-50); border-radius: var(--radius-sm);">
+        html += `<div style="padding: var(--space-2); background: var(--color-bg-subtle); border-radius: var(--radius-sm);">
           <span style="font-size: var(--text-xs); color: var(--color-text-muted);">Slack (30d)</span>
           <span style="font-weight: var(--font-medium); color: ${caps.slack_message_count_30d > 0 ? 'var(--color-success-600)' : 'var(--color-text-muted)'}; float: right;">${caps.slack_message_count_30d}</span>
         </div>`;
-        html += `<div style="padding: var(--space-2); background: var(--color-gray-50); border-radius: var(--radius-sm);">
+        html += `<div style="padding: var(--space-2); background: var(--color-bg-subtle); border-radius: var(--radius-sm);">
           <span style="font-size: var(--text-xs); color: var(--color-text-muted);">Last Active</span>
           <span style="font-weight: var(--font-medium); color: ${caps.last_active_days_ago !== null && caps.last_active_days_ago < 30 ? 'var(--color-success-600)' : 'var(--color-text-muted)'}; float: right;">${caps.last_active_days_ago !== null ? caps.last_active_days_ago + 'd ago' : 'Never'}</span>
         </div>`;
@@ -2520,7 +2520,7 @@
 
         // Strategic insights get prominent display
         if (strategicInsights.length > 0) {
-          html += '<div class="context-section" style="background: linear-gradient(135deg, var(--color-success-50), var(--color-gray-50)); border-left: 4px solid var(--color-success-600); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">';
+          html += '<div class="context-section" style="background: linear-gradient(135deg, var(--color-success-bg, var(--color-success-50)), var(--color-bg-subtle)); border-left: 4px solid var(--color-success-600); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">';
           html += `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-3);">
             <h3 style="margin: 0;">Strategic Insights</h3>
             ${slackUserIdForInsight ? `<button onclick="openAddInsightModal('${slackUserIdForInsight}')" class="btn btn-small" style="font-size: var(--text-xs);">+ Add Insight</button>` : ''}
@@ -2528,7 +2528,7 @@
           html += '<div style="display: grid; gap: var(--space-3);">';
           strategicInsights.forEach(insight => {
             const label = formatInsightLabel(insight.type_name);
-            html += `<div style="background: white; border-radius: var(--radius-sm); padding: var(--space-3); box-shadow: var(--shadow-xs);">
+            html += `<div style="background: var(--color-bg-card); border-radius: var(--radius-sm); padding: var(--space-3); box-shadow: var(--shadow-xs);">
               <div style="font-weight: var(--font-semibold); font-size: var(--text-xs); color: var(--color-success-700); text-transform: uppercase; margin-bottom: var(--space-1);">${escapeHtml(label)}</div>
               <div style="font-size: var(--text-sm); color: var(--color-text-primary);">${escapeHtml(insight.value)}</div>
             </div>`;
@@ -2542,7 +2542,7 @@
           html += '<h3>Other Insights</h3>';
           html += '<div style="max-height: 150px; overflow-y: auto;">';
           otherInsights.forEach(insight => {
-            html += `<div style="background: var(--color-gray-50); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2);">
+            html += `<div style="background: var(--color-bg-subtle); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2);">
               <div style="font-weight: var(--font-medium); font-size: var(--text-xs); color: var(--color-text-heading);">${escapeHtml(insight.type_name || 'Insight')}</div>
               <div style="font-size: var(--text-sm); color: var(--color-text-primary);">${escapeHtml(insight.value)}</div>
             </div>`;
@@ -2551,7 +2551,7 @@
         }
       } else if (slackUserIdForInsight) {
         // No insights yet - show add button
-        html += '<div class="context-section" style="background: var(--color-gray-50); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4); text-align: center;">';
+        html += '<div class="context-section" style="background: var(--color-bg-subtle); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4); text-align: center;">';
         html += '<p style="color: var(--color-text-muted); margin-bottom: var(--space-3);">No insights recorded yet</p>';
         html += `<button onclick="openAddInsightModal('${slackUserIdForInsight}')" class="btn btn-primary btn-small">+ Add First Insight</button>`;
         html += '</div>';
@@ -2567,7 +2567,7 @@
           const channel = conv.channel === 'slack' ? '💬 Slack' : conv.channel === 'web' ? '🌐 Web' : conv.channel;
           const title = conv.title || `${conv.message_count} messages`;
           const threadContainerId = `conv-thread-${conv.thread_id.substring(0, 8)}-${idx}`;
-          html += `<div style="background: var(--color-gray-50); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2);">
+          html += `<div style="background: var(--color-bg-subtle); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-1);">
               <span style="font-size: var(--text-sm); color: var(--color-text-primary);">${escapeHtml(title)}</span>
               <span style="font-size: var(--text-xs); color: var(--color-text-tertiary);">${channel}</span>
@@ -2644,7 +2644,7 @@
             if (sentiment) {
               const colors = {
                 positive: 'background: var(--color-success-100); color: var(--color-success-700);',
-                neutral: 'background: var(--color-gray-100); color: var(--color-gray-700);',
+                neutral: 'background: var(--color-bg-subtle); color: var(--color-text-secondary);',
                 negative: 'background: var(--color-warning-100); color: var(--color-warning-700);',
                 refusal: 'background: var(--color-error-100); color: var(--color-error-700);'
               };
@@ -2654,7 +2654,7 @@
             // Expandable thread widget container
             const threadContainerId = outreach.thread_id ? `outreach-thread-${outreach.id || idx}` : null;
 
-            html += `<div style="background: var(--color-gray-50); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2);">
+            html += `<div style="background: var(--color-bg-subtle); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2);">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-1);">
                 <span style="font-weight: var(--font-medium); font-size: var(--text-sm); color: var(--color-text-heading);">${escapeHtml(goalName)}</span>
                 <span style="font-size: var(--text-xs); color: var(--color-text-tertiary);">${date}</span>
@@ -2714,7 +2714,7 @@
               <div id="addieHomePreviewLoading" style="text-align: center; padding: var(--space-4); color: var(--color-text-muted);">
                 Loading Addie Home...
               </div>
-              <div id="addieHomePreviewError" style="display: none; padding: var(--space-3); background: var(--color-error-50); border-radius: var(--radius-md); color: var(--color-error-600);"></div>
+              <div id="addieHomePreviewError" style="display: none; padding: var(--space-3); background: var(--color-error-bg); border-radius: var(--radius-md); color: var(--color-error-600);"></div>
               <div id="addieHomePreviewContent" style="border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--space-4); background: var(--color-bg-page);"></div>
             </div>
             <p id="addieHomePreviewPlaceholder" style="color: var(--color-text-muted); font-size: var(--text-sm); margin: 0;">
@@ -2738,7 +2738,7 @@
 
     function renderCapabilityItem(label, value) {
       const done = !!value;
-      return `<div style="padding: var(--space-2); background: var(--color-gray-50); border-radius: var(--radius-sm);">
+      return `<div style="padding: var(--space-2); background: var(--color-bg-subtle); border-radius: var(--radius-sm);">
         <span style="font-size: var(--text-xs); color: var(--color-text-muted);">${escapeHtml(label)}</span>
         <span style="font-weight: var(--font-medium); color: ${done ? 'var(--color-success-600)' : 'var(--color-error-600)'}; float: right;">${done ? 'Yes' : 'No'}</span>
       </div>`;
@@ -2746,7 +2746,7 @@
 
     function renderCapabilityCount(label, count) {
       const hasAny = count > 0;
-      return `<div style="padding: var(--space-2); background: var(--color-gray-50); border-radius: var(--radius-sm);">
+      return `<div style="padding: var(--space-2); background: var(--color-bg-subtle); border-radius: var(--radius-sm);">
         <span style="font-size: var(--text-xs); color: var(--color-text-muted);">${escapeHtml(label)}</span>
         <span style="font-weight: var(--font-medium); color: ${hasAny ? 'var(--color-success-600)' : 'var(--color-text-muted)'}; float: right;">${count}</span>
       </div>`;

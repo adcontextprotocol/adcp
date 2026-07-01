@@ -33,7 +33,7 @@
       gap: var(--space-4);
       margin-bottom: var(--space-5);
       padding: var(--space-5);
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       border-radius: var(--radius-md);
     }
     .filter-group label {
@@ -72,11 +72,11 @@
       background: var(--color-primary-700);
     }
     .btn-secondary {
-      background: var(--color-gray-200);
+      background: var(--color-bg-button-secondary);
       color: var(--color-text-heading);
     }
     .btn-secondary:hover {
-      background: var(--color-gray-300);
+      background: var(--color-bg-button-secondary-hover);
     }
     .properties-table {
       width: 100%;
@@ -84,7 +84,7 @@
       margin-top: var(--space-5);
     }
     .properties-table th {
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       padding: var(--space-3);
       text-align: left;
       font-weight: var(--font-semibold);
@@ -96,7 +96,7 @@
       border-bottom: var(--border-1) solid var(--color-gray-200);
     }
     .properties-table tr:hover {
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
     }
     .domain-link {
       color: var(--color-text-heading);
@@ -125,8 +125,8 @@
       color: var(--color-info-700);
     }
     .source-discovered {
-      background: var(--color-gray-200);
-      color: var(--color-gray-600);
+      background: var(--color-bg-button-secondary);
+      color: var(--color-text-secondary);
     }
     .loading {
       text-align: center;
@@ -143,7 +143,7 @@
       transition: var(--transition-all);
     }
     .btn-icon:hover {
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       border-color: var(--color-brand);
     }
     .btn-icon:disabled {
@@ -157,7 +157,7 @@
       margin-bottom: var(--space-5);
     }
     .stat-card {
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       padding: var(--space-4);
       border-radius: var(--radius-md);
       text-align: center;
@@ -258,7 +258,7 @@
       margin-bottom: var(--space-4);
     }
     .validation-result {
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       padding: var(--space-4);
       border-radius: var(--radius-md);
       margin-bottom: var(--space-4);
@@ -672,7 +672,7 @@
         const response = await fetch(`/api/properties/resolve?domain=${encodeURIComponent(domain)}`);
         const data = await response.json();
 
-        let html = '<pre style="background: var(--color-gray-50); padding: var(--space-4); border-radius: var(--radius-md); overflow: auto;">';
+        let html = '<pre style="background: var(--color-bg-subtle); padding: var(--space-4); border-radius: var(--radius-md); overflow: auto;">';
         html += JSON.stringify(data, null, 2);
         html += '</pre>';
 

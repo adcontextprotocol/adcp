@@ -197,6 +197,36 @@ The product entries define which products the seller should consider for the pro
 }
 ```
 
+## Finalize is exclusive within `refine[]`
+
+`action: "finalize"` is seller commitment, not buyer acceptance — it transitions a draft proposal to committed with firm pricing and an expires_at hold window. The buyer accepts/executes a committed proposal later via `create_media_buy(proposal_id)`. When a buyer wants to finalize, the spec requires the `refine[]` array contain **only** finalize entries:
+
+- If any entry has `action: "finalize"`, **all** entries in the array MUST be proposal-scoped with `action: "finalize"`. Mixing finalize with `include` / `omit` entries, or with request- or product-scoped entries, MUST be rejected by the seller with `INVALID_REQUEST`.
+- Buyers needing to refine *and* commit in close succession **sequence** the calls: first a refine call (no finalize), then a finalize call against the resulting `proposal_id`(s). The two intents are distinct decisions and the spec treats them as distinct calls.
+
+```yaml
+# ✅ Refine only — no finalize present, mixed scopes allowed
+refine:
+  - { scope: proposal, proposal_id: p1, ask: "shift more to ctv" }
+  - { scope: request, ask: "frequency cap 3/day across all products" }
+
+# ✅ Finalize only — multiple finalize entries against different proposals
+refine:
+  - { scope: proposal, proposal_id: p1, action: finalize }
+  - { scope: proposal, proposal_id: p2, action: finalize }
+
+# ❌ Rejected — finalize mixed with non-finalize
+refine:
+  - { scope: proposal, proposal_id: p1, action: finalize }
+  - { scope: proposal, proposal_id: p2, ask: "shift more to ctv" }
+```
+
+**Multi-finalize is atomic at the observation point.** When multiple finalize entries target different proposals in one call, the contract is: sellers MUST NOT return a success response unless every named proposal has both completed and been persisted as committed. Pre-commit validation runs before any side-effects (inventory pull, terms lock, governance attestation); if any proposal fails validation, the seller MUST reject the entire call without committing any. There is no `unfinalize` operation — atomicity runs on the pre-commit validation gate, not on post-commit reversal. Sellers that cannot guarantee atomic pre-commit validation MUST reject multi-finalize arrays with `MULTI_FINALIZE_UNSUPPORTED` (preferred — explicitly signals seller-side capability gap rather than client-side mistake) or `INVALID_REQUEST` (acceptable fallback for sellers on a pre-3.1 error catalog), and buyers SHOULD then sequence single-finalize calls.
+
+**Mid-commit failure (post-validation, pre-persist).** If a downstream system fails between commit one and commit two — e.g., the second ad server times out after the first has already locked inventory — the seller MUST return `INTERNAL_ERROR` with `refinement_applied[]` carrying per-position outcomes. The spec does NOT define a recovery path: buyers SHOULD treat the resulting state as undefined and re-read via `get_media_buys` / equivalent before retrying. Recovery from this case is operational, not protocol-defined.
+
+**Buyer intent caveat.** Buyers whose intent specifically requires atomic commit (e.g., budget-shared proposals where one finalizing without the other is incoherent) MUST be prepared to abandon the intent if the seller returns `MULTI_FINALIZE_UNSUPPORTED`. The fallback path — sequencing single-finalize calls — is a looser commit guarantee than the original atomic intent; there is no recovery for that loss of intent beyond accepting the looser guarantee or declining to commit at all. There is no capability flag for multi-finalize support — the failure response is the discovery surface, so buyers MUST NOT assume support without a successful first attempt.
+
 ## Proposals in refine mode
 
 Sellers MAY return proposals alongside refined products, even when the buyer did not include proposal entries. For example, a buyer refining three products may receive those products back with updated pricing *and* a proposal suggesting how to combine them.
@@ -236,6 +266,8 @@ Client implementations should validate refinement requests against the [request 
 |------------|------|------------|
 | `PRODUCT_NOT_FOUND` | One or more referenced product IDs are unknown or expired | Remove invalid IDs and retry, or re-discover with a `brief` request |
 | `PROPOSAL_EXPIRED` | A referenced proposal ID has passed its `expires_at` | Re-discover with a new `brief` or `wholesale` request |
+| `PROPOSAL_NOT_FOUND` | The referenced `proposal_id` is unknown to the seller (never finalized, wrong tenant, or evicted from cache) | Re-issue `get_products` in `refine` mode with `action: 'finalize'` to obtain a current proposal_id |
+| `MULTI_FINALIZE_UNSUPPORTED` | `refine[]` carried multiple `action: 'finalize'` entries but the seller cannot guarantee atomic multi-proposal commit | Sequence single-proposal finalize calls (one finalize per `get_products` call) |
 | `INVALID_REQUEST` | `refine` provided in `brief` or `wholesale` mode, empty `refine` array, or missing required fields | Check `buying_mode` and required fields |
 
 ### Troubleshooting: "must NOT have additional properties" on `refine[].id`

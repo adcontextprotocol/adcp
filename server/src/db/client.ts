@@ -1,4 +1,4 @@
-import { Pool, PoolClient, QueryResult, QueryResultRow } from "pg";
+import { Client, Pool, PoolClient, QueryResult, QueryResultRow } from "pg";
 import { DatabaseConfig } from "../config.js";
 import { createLogger } from "../logger.js";
 
@@ -7,6 +7,7 @@ const logger = createLogger("db");
 const SLOW_QUERY_THRESHOLD_MS = 500;
 
 let pool: Pool | null = null;
+let poolConfig: DatabaseConfig | null = null;
 
 /** Callback invoked on pool-level errors (set via onPoolError). */
 let poolErrorCallback: ((err: Error) => void) | null = null;
@@ -26,6 +27,7 @@ export function initializeDatabase(config: DatabaseConfig): Pool {
   if (pool) {
     return pool;
   }
+  poolConfig = config;
 
   pool = new Pool({
     connectionString: config.connectionString,
@@ -72,12 +74,23 @@ const TRANSIENT_CONNECTION_ERRORS = new Set([
   "08003", // connection_does_not_exist
 ]);
 
-function isTransientConnectionError(err: unknown): boolean {
+// pg-pool throws plain Errors with these messages and no `code` when the
+// other side closes a pooled connection between checkout and use. Matched
+// as substrings rather than exact set hits.
+const TRANSIENT_CONNECTION_MESSAGES = [
+  "Connection terminated unexpectedly",
+  "Connection terminated due to connection timeout",
+  "timeout exceeded when trying to connect",
+];
+
+export function isTransientConnectionError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   const code = (err as any).code || "";
   const message = err.message || "";
-  return TRANSIENT_CONNECTION_ERRORS.has(code)
-    || TRANSIENT_CONNECTION_ERRORS.has(message);
+  if (TRANSIENT_CONNECTION_ERRORS.has(code) || TRANSIENT_CONNECTION_ERRORS.has(message)) {
+    return true;
+  }
+  return TRANSIENT_CONNECTION_MESSAGES.some((m) => message.includes(m));
 }
 
 /**
@@ -113,22 +126,53 @@ export async function query<T extends QueryResultRow = any>(
  */
 export async function getClient(): Promise<PoolClient> {
   const p = getPool();
-  return p.connect();
+  try {
+    return await p.connect();
+  } catch (err) {
+    if (isTransientConnectionError(err)) {
+      console.warn("Transient DB connection error, retrying client checkout:", (err as Error).message);
+      return p.connect();
+    }
+    throw err;
+  }
 }
 
 /**
- * Perform a health check. If the pool can't serve a trivial query,
- * the machine can't handle DB traffic and Fly should stop routing to it.
+ * Perform a health check using a one-off connection, outside the application
+ * pool, so saturated worker traffic does not make a reachable database look
+ * down to the load balancer.
  */
 export async function healthCheck(timeoutMs = 5000): Promise<void> {
-  const p = getPool();
-  const result = await Promise.race([
-    p.query('SELECT 1'),
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('health check query timed out')), timeoutMs)
-    ),
-  ]);
-  return result as unknown as void;
+  if (!poolConfig) {
+    throw new Error("Database not initialized. Call initializeDatabase() first.");
+  }
+
+  const client = new Client({
+    connectionString: poolConfig.connectionString,
+    host: poolConfig.host,
+    port: poolConfig.port,
+    database: poolConfig.database,
+    user: poolConfig.user,
+    password: poolConfig.password,
+    ssl: poolConfig.ssl,
+    connectionTimeoutMillis: Math.min(poolConfig.connectionTimeoutMillis ?? timeoutMs, timeoutMs),
+  });
+
+  let timeout: NodeJS.Timeout | null = null;
+  try {
+    await client.connect();
+    await Promise.race([
+      client.query('SELECT 1'),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error('health check query timed out')), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+    await client.end().catch((err) => {
+      logger.warn({ err }, "Health check connection cleanup failed");
+    });
+  }
 }
 
 /**
@@ -138,6 +182,7 @@ export async function closeDatabase(): Promise<void> {
   if (pool) {
     await pool.end();
     pool = null;
+    poolConfig = null;
     console.log("Database connection pool closed");
   }
 }

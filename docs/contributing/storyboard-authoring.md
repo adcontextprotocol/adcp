@@ -6,7 +6,9 @@ description: "How to author AdCP compliance storyboards: the canonical account s
 
 # Storyboard authoring — scoping rules
 
-Compliance storyboards live under `static/compliance/source/`. Each step that invokes a training-agent task that scopes session state by tenant **must** carry brand or account identity in `sample_request`. Otherwise the call lands in `open:default`, and a follow-up step that *does* carry identity writes to `open:<brand>` — giving you `MEDIA_BUY_NOT_FOUND` against your own just-created media buy.
+Compliance storyboards live under `static/compliance/source/`, the canonical authored source for the compliance bundle. Do not add generated cache artifacts such as `domains/` or `index.json` there; `scripts/build-compliance.cjs` creates them in `dist/compliance/latest/` during development and stamps `dist/compliance/{version}/` on release.
+
+Each step that invokes a training-agent task that scopes session state by tenant **must** carry brand or account identity in `sample_request`. Otherwise the call lands in `open:default`, and a follow-up step that *does* carry identity writes to `open:<brand>` — giving you `MEDIA_BUY_NOT_FOUND` against your own just-created media buy.
 
 This rule is enforced at build time by `scripts/lint-storyboard-scoping.cjs`, which runs as part of `npm run build:compliance`.
 
@@ -135,6 +137,8 @@ phases:
 
 The runner injects a fixtures phase that calls `comply_test_controller` with `scenario: seed_product`, `scenario: seed_pricing_option`, and `scenario: seed_creative` (in foreign-key order) before running `place_buy`. An agent that implements the seed scenarios passes out of the box; an agent that returns `UNKNOWN_SCENARIO` on the seeds causes the storyboard to grade as `not_applicable`, not failed — implementers don't get penalized for missing sandbox-only surface.
 
+When a vendor-metric storyboard needs a deterministic external `measurement.metrics[]` snapshot, add an explicit `comply_test_controller` step with `scenario: seed_measurement_catalog`. Use `measurement_catalogs[]` inside a product fixture only as a compatibility fallback when the same storyboard also needs to carry the seller's product-level capability fields.
+
 See the full list of seed scenarios and their params in [Compliance test controller — Scenarios](/docs/building/implementation/comply-test-controller#scenarios).
 
 ### Pattern B — flow-derived captures via `context_outputs:` + `$context.<name>`
@@ -222,7 +226,7 @@ Aliased codes pass the lint as **warnings** during the deprecation window, givin
 
 ## Asserting on branchable behaviors
 
-Some spec requirements allow multiple conformant agent behaviors — e.g. a past `start_time` on `create_media_buy` MAY be rejected with `INVALID_REQUEST` OR accepted-and-adjusted forward. A single-assertion validator that asserts only one branch forces a conformant agent that picked the other branch to silently fail.
+Some spec requirements allow multiple conformant agent behaviors — e.g. an operation may return immediate success OR `pending_review` depending on seller policy. A single-assertion validator that asserts only one branch forces a conformant agent that picked the other branch to silently fail.
 
 When the spec allows a branchable outcome, split the storyboard into parallel optional phases and resolve via `assert_contribution`:
 
@@ -262,7 +266,7 @@ Failures inside an `optional: true` phase do NOT fail the storyboard — only th
 
 The non-chosen branch's failing steps MUST be reported by the runner with skip reason `peer_branch_taken`, not `failed`. This keeps runner summaries accurate for conformant agents (the other-branch failures were not real failures) and keeps dashboard coverage signals clean (`peer_branch_taken` is runtime routing; `not_applicable` is for protocol coverage gaps). See `universal/storyboard-schema.yaml` § "Per-step grading in any_of branch patterns" and `universal/runner-output-contract.yaml` > `skip_result.reasons.peer_branch_taken` for the normative rule.
 
-Canonical example: `past_start_reject_path` / `past_start_adjust_path` / `past_start_enforcement` in `universal/schema-validation.yaml`. Use the same shape for any spec `MAY` / `any_of` where observable outcomes differ across branches.
+Use this shape for any spec `MAY` / `any_of` where observable outcomes differ across branches. Do not use it for `create_media_buy.start_time` in the past; that case is now reject-only with `INVALID_REQUEST`.
 
 Single-code `check: error_code` is still correct when the spec mandates a canonical code for a scenario (e.g. `GOVERNANCE_DENIED` on a governance-denied outcome, `NOT_CANCELLABLE` on re-cancel). The split-phase pattern applies only when the spec itself leaves the outcome branchable.
 

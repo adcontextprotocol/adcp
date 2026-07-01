@@ -7,6 +7,10 @@ testable: false
 
 Discover a seller's protocol support and capabilities across all AdCP protocols. This is the first call a buyer should make to understand what a seller supports.
 
+<Info>
+**Why this shape.** Capabilities are organized into ~14 top-level domain keys (one per protocol plus identity and signing infrastructure), with feature flags nested under each domain's `features`/`execution`/etc. sub-namespace. We rejected a flat capability list — it forces every implementer to scan an unbounded surface, and it removes the discoverability that comes from related flags sitting next to each other. New capability flags belong under existing domains, not in new top-level keys; declarations are commitments, not advertisements (the conformance runner probes them). → [Capabilities explorer](/docs/protocol/capabilities-explorer) walks the tree before you propose. → [Design principle: capabilities are commitments](/docs/protocol/design-principles#4-capabilities-are-commitments-declared-under-existing-buckets).
+</Info>
+
 **Response Time**: ~2 seconds (configuration lookup)
 
 **Purpose**:
@@ -80,15 +84,15 @@ Core AdCP protocol information:
 | Field | Type | Description |
 |-------|------|-------------|
 | `major_versions` | integer[] | **Required.** AdCP major versions supported (e.g., `[3]`) |
-| `idempotency` | object | **Required.** Idempotency semantics for mutating requests. See [idempotency](#idempotency). |
+| `idempotency` | object | **Required.** Idempotency semantics. See [idempotency](#idempotency). |
 
 #### idempotency
 
-Declares whether this seller honors `idempotency_key` replay protection on mutating requests. Mirrors the `request_signing.supported` pattern — a single positive declaration, decoupled from the window detail. Clients MUST NOT assume a default; a seller without this block is non-compliant and should be treated as unsafe for retry-sensitive operations.
+Declares whether this seller honors `idempotency_key` replay protection. From 3.1 onward `idempotency_key` is required on every AdCP task request (read and mutating alike — staged enforcement for reads: SHOULD-reject in 3.1, MUST-reject in 3.2; see [security.mdx § Idempotency](/docs/building/by-layer/L1/security#idempotency)). Mirrors the `request_signing.supported` pattern — a single positive declaration, decoupled from the window detail. Clients MUST NOT assume a default; a seller without this block is non-compliant and should be treated as unsafe for retry-sensitive operations across all call modes.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `supported` | boolean | **Required.** Whether the seller deduplicates replays. When `false`, sending an `idempotency_key` is a no-op — the seller will NOT return `IDEMPOTENCY_CONFLICT` or `IDEMPOTENCY_EXPIRED`, and a naive retry WILL double-process. Buyers MUST use natural-key checks (e.g., `get_media_buys` by `buyer_ref`) before retrying spend-committing operations. |
+| `supported` | boolean | **Required.** Whether the seller deduplicates replays. When `false`, sending an `idempotency_key` is a no-op — the seller will NOT return `IDEMPOTENCY_CONFLICT` or `IDEMPOTENCY_EXPIRED`, and a naive retry WILL double-process. Buyers MUST use natural-key checks (e.g., `get_media_buys` plus request context such as `context.internal_campaign_id` or package context such as `context.buyer_ref`) before retrying spend-committing operations. |
 | `replay_ttl_seconds` | integer | Required when `supported: true`. How long the seller retains a canonical response for a key. Minimum `3600` (1h); recommended `86400` (24h); maximum `604800` (7d). |
 
 ```json
@@ -125,7 +129,7 @@ AdCP protocols this agent supports. This is the single capability axis — each 
 
 Valid values: `media_buy`, `creative`, `signals`, `governance`, `brand`, `sponsored_intelligence`.
 
-See the [Compliance Catalog](/docs/building/compliance-catalog) for every protocol's scope. Support for the [compliance test controller](/docs/building/implementation/comply-test-controller) is declared via the separate `compliance_testing` capability block (below), not as a protocol value.
+See the [Compliance Catalog](/docs/building/verification/compliance-catalog) for every protocol's scope. Support for the [compliance test controller](/docs/building/by-layer/L3/comply-test-controller) is declared via the separate `compliance_testing` capability block (below), not as a protocol value.
 
 ### specialisms
 
@@ -137,7 +141,13 @@ Optional specialization claims. Each entry corresponds to a narrow storyboard at
 }
 ```
 
-See the full [Compliance Catalog](/docs/building/compliance-catalog) for every specialism and the [enum schema](https://adcontextprotocol.org/schemas/v3/enums/specialism.json) for the authoritative list.
+See the full [Compliance Catalog](/docs/building/verification/compliance-catalog) for every specialism and the [enum schema](https://adcontextprotocol.org/schemas/v3/enums/specialism.json) for the authoritative list.
+
+### Capability slot gaps
+
+SDK helpers such as `definePlatform` can project a platform implementation into narrower capability slots. Treat those slots as commitments: only declare a slot when the agent can execute the corresponding task path end to end.
+
+If a storyboard or local test vector targets a slot the agent does not declare, the expected conformance outcome is `not_applicable`, not failure. Until runner-side enforcement lands in `adcp-client#2244`, implementers running custom or prerelease suites should add explicit skip gates for vectors outside the declared slot scope. Do not work around a missing slot by declaring it and returning placeholder responses; that turns an honest coverage gap into a failed capability claim.
 
 ### account
 
@@ -146,19 +156,19 @@ Account and authentication capabilities. All sellers should declare this section
 | Field | Type | Description |
 |-------|------|-------------|
 | `supported_billing` | string[] | **Required.** Billing models this seller supports: `operator`, `agent`. The buyer must pass one of these values as `billing` in every `sync_accounts` entry. |
-| `require_operator_auth` | boolean | Default: `false`. Determines the account model. When `true` (explicit accounts): each operator authenticates independently, buyer discovers accounts via `list_accounts`, passes `account_id`. When `false` (implicit accounts): agent is trusted, buyer declares accounts via `sync_accounts`, passes natural key (`brand` + `operator`). For sandbox, the path follows the account model: explicit accounts discover pre-existing test accounts via `list_accounts`; implicit accounts declare sandbox via `sync_accounts` with `sandbox: true`. |
+| `require_operator_auth` | boolean | Default: `false`. Declares who must authenticate; it does not by itself declare whether OAuth is used, whether `list_accounts` is exposed, or which `sync_accounts` modes are supported. When `true`, each operator authenticates independently and account-scoped calls use seller-assigned `account_id` values because the seller or upstream platform owns the canonical account namespace. If a credential may access more than one account, the seller MUST expose `list_accounts` and buyers MUST resolve an explicit `account_id` before the first account-scoped request. If a credential is bound to exactly one account, the seller SHOULD expose `list_accounts` returning that singleton; a seller MAY omit `list_accounts` only when it provides the same explicit `account_id` through another declared path or out-of-band onboarding. When `false`, the agent is trusted, buyer declares accounts via `sync_accounts`, and subsequent calls pass the natural key (`brand` + `operator`). For sandbox, account-id namespaces use pre-existing test accounts from `list_accounts` or out-of-band setup; buyer-declared accounts use `sync_accounts` with `sandbox: true`. |
 | `authorization_endpoint` | string | OAuth URL for operator authentication. Present when the seller supports OAuth for operator authentication. Relevant when `require_operator_auth: true`; if absent, operators obtain credentials out-of-band (seller portal, API key). |
 | `required_for_products` | boolean | Default: `false`. When `true`, the buyer must establish an account before calling `get_products`. When `false`, the buyer can browse products without an account — useful for price comparison and discovery before committing to a seller. |
 | `account_financials` | boolean | Default: `false`. When `true`, the seller supports [`get_account_financials`](/docs/accounts/tasks/get_account_financials) for querying spend, credit, and invoice status. Only applicable to operator-billed accounts. |
-| `sandbox` | boolean | Default: `false`. Strongly recommended for production sales agents. When `true`, the seller supports sandbox accounts for testing. For sandbox, the path follows the account model: explicit accounts discover pre-existing test accounts via `list_accounts`; implicit accounts declare sandbox via `sync_accounts` with `sandbox: true` — no real platform calls or spend. See [Sandbox mode](/docs/media-buy/advanced-topics/sandbox). |
+| `sandbox` | boolean | Default: `false`. Strongly recommended for production sales agents. When `true`, the seller supports sandbox accounts for testing. For sandbox, account-id namespaces discover pre-existing test accounts through `list_accounts` or out-of-band setup; buyer-declared accounts declare sandbox via `sync_accounts` with `sandbox: true` — no real platform calls or spend. See [Sandbox mode](/docs/media-buy/advanced-topics/sandbox). |
 
 #### Auth models
 
-**Implicit accounts** (`require_operator_auth: false`) — The seller trusts the agent's identity claims. The agent authenticates once with its own bearer token, then calls `sync_accounts` to declare which brands and operators it represents. The seller provisions accounts based on the agent's claims, optionally verifying operators against `brand.json`. All subsequent calls use the agent's single credential and pass natural keys (`brand` + `operator`).
+**Buyer-declared accounts** (`require_operator_auth: false`) — The seller trusts the agent's identity claims. The agent authenticates once with its own bearer token, then calls `sync_accounts` to declare which brands and operators it represents. The seller provisions accounts based on the agent's claims, optionally verifying operators against `brand.json`. All subsequent calls use the agent's single credential and pass natural keys (`brand` + `operator`).
 
-**Explicit accounts** (`require_operator_auth: true`) — Each operator must authenticate with the seller directly. The agent obtains a credential per operator — via OAuth using `authorization_endpoint`, or out-of-band — opens a per-operator session, and discovers accounts via `list_accounts`. The buyer passes seller-assigned `account_id` values on all subsequent requests.
+**Account-id namespaces** (`require_operator_auth: true`) — Each operator must authenticate with the seller directly. The agent obtains a credential per operator — via OAuth using `authorization_endpoint`, or out-of-band — opens a per-operator session, and passes seller-assigned `account_id` values on subsequent requests. OAuth is credential acquisition, not an account taxonomy axis. Two namespace patterns use the same wire reference: upstream-managed sellers expose `list_accounts`, making explicit account resolution mandatory before account-scoped calls; seller-defined namespaces without `list_accounts` provide account IDs out-of-band. SDKs SHOULD lazily call `list_accounts` when first needed, auto-select a singleton, cache it per credential/session, and still send explicit `AccountRef` values on required-account calls.
 
-For sandbox, the path follows the account model: explicit accounts (`require_operator_auth: true`) discover pre-existing test accounts via `list_accounts`; implicit accounts declare sandbox via `sync_accounts` with `sandbox: true`.
+For sandbox, the path follows the account namespace: account-id namespaces discover pre-existing test accounts via `list_accounts` or out-of-band setup; buyer-declared accounts declare sandbox via `sync_accounts` with `sandbox: true`.
 
 See [Accounts and Agents](/docs/building/integration/accounts-and-agents#what-sellers-declare) for full workflows and [seller patterns](/docs/building/integration/accounts-and-agents#seller-patterns) for common combinations of auth model and billing support.
 
@@ -193,13 +203,24 @@ When `offline` is declared, also include `offline_delivery_protocols` to declare
 
 For offline delivery, the seller provisions a per-account bucket and grants the buyer read access out-of-band. The bucket location (including `file_retention_days`) appears on the account object returned by `sync_accounts` as `reporting_bucket`. See [Offline File Delivery](/docs/media-buy/media-buys/optimization-reporting#offline-file-delivery-based-reporting) for details.
 
+#### creative_approval_mode
+
+Declares the seller's tenant-wide creative approval posture after creatives are assigned and automated validation passes. This is not a notification surface or a new approval workflow; it tells buyers and compliance runners whether human review can still block serving eligibility. Compliance runners use this declaration mainly to decide whether auto-approval-dependent storyboards such as `media_buy_seller/pending_creatives_to_start` apply.
+
+| Value | Description |
+|-------|-------------|
+| `auto_approve` | Human review does not block serving eligibility after creatives are assigned and automated validation passes. Auto-approval-dependent storyboards can run. |
+| `require_human` | One or more products/accounts may require manual review before creatives become eligible to serve. Treat this as a tenant-wide worst-case ceiling until a product-level override exists. |
+
+Sellers with mixed approval policies SHOULD declare `require_human` unless every product/account that can be reached by the advertised agent supports automatic eligibility after automated validation. When the field is absent, approval behavior is legacy-unspecified; runners SHOULD NOT treat omission as an affirmative `auto_approve` claim. `ai_assisted` is intentionally not a value until the protocol defines what assistance changes in observable behavior.
+
 #### features
 
 Optional media-buy features. **If declared true, seller MUST honor requests using that feature.**
 
 | Feature | Description |
 |---------|-------------|
-| `inline_creative_management` | Accepts creatives inline in `create_media_buy` requests |
+| `inline_creative_management` | Accepts creatives inline in `create_media_buy` and `update_media_buy` package payloads |
 | `property_list_filtering` | Honors `property_list` parameter in `get_products` |
 | `catalog_management` | Supports `sync_catalogs` for catalog feed management |
 
@@ -298,21 +319,20 @@ Sellers that support a geographic targeting level SHOULD support both inclusion 
 | `uk_itl2` | UK ITL Level 2 regions |
 | `eurostat_nuts2` | Eurostat NUTS Level 2 regions (EU) |
 
-**geo_postal_areas** specifies which postal code systems are supported:
+**geo_postal_areas** specifies which country-local postal code systems are supported. The preferred shape is keyed by ISO 3166-1 alpha-2 country, with each country listing supported systems:
 
-| System | Description |
-|--------|-------------|
-| `us_zip` | US 5-digit ZIP codes (e.g., `10001`) |
-| `us_zip_plus_four` | US 9-digit ZIP+4 codes (e.g., `10001-1234`) |
-| `gb_outward` | UK postcode district (e.g., `SW1`, `EC1`) |
-| `gb_full` | UK full postcode (e.g., `SW1A 1AA`) |
-| `ca_fsa` | Canadian Forward Sortation Area (e.g., `K1A`) |
-| `ca_full` | Canadian full postal code (e.g., `K1A 0B1`) |
-| `de_plz` | German Postleitzahl (e.g., `10115`) |
-| `fr_code_postal` | French code postal (e.g., `75001`) |
-| `au_postcode` | Australian postcode (e.g., `2000`) |
-| `ch_plz` | Swiss Postleitzahl (e.g., `8000`) |
-| `at_plz` | Austrian Postleitzahl (e.g., `1010`) |
+```json
+{
+  "us_zip": true,
+  "us_zip_plus_four": true,
+  "US": ["zip", "zip_plus_four"],
+  "GB": ["outward", "full"],
+  "CA": ["fsa", "full"],
+  "ZA": ["postal_code"]
+}
+```
+
+Use `postal_code` for the normal postal code string in countries without a more specific registered local system. During the 3.x migration, sellers SHOULD emit equivalent deprecated aliases such as `us_zip` alongside native country keys where an alias exists. Buyers and SDKs SHOULD normalize both shapes before making capability decisions.
 
 #### audience_targeting
 
@@ -353,7 +373,17 @@ Inventory portfolio information:
 
 ### signals
 
-Signals protocol capabilities. Only present if `signals` is in `supported_protocols`. Reserved for future use.
+Signals protocol capabilities. Only present if `signals` is in `supported_protocols`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `data_provider_domains` | string[] | Data provider domains this signals agent is authorized to resell. Buyers should fetch each provider's `adagents.json` for signal definitions and to verify authorization. |
+| `discovery_modes` | string[] | Discovery modes the agent supports on `get_signals`. `"brief"` (semantic discovery via `signal_spec` / `signal_refs`, with deprecated `signal_ids` accepted for older clients) is implicit and always supported. Declare `"wholesale"` to advertise that callers can omit `signal_spec` / `signal_refs` / `signal_ids` and enumerate the full priced signals feed. Agents not declaring `"wholesale"` MAY return `INVALID_REQUEST` for wholesale calls. Absent declaration is treated as `["brief"]`. |
+| `features.catalog_signals` | boolean | **Deprecated.** Legacy wire flag for structured `signal_ref` references to provider-published signal definitions in adagents.json `signals[]`. |
+
+<Note>
+`catalog_signals` is deprecated. Existing 3.x agents may continue to emit it for compatibility, but new agents SHOULD omit it and callers MUST NOT require it before using `signal_ref`. Treat `supported_protocols: ["signals"]`, `signals.data_provider_domains`, `signals.discovery_modes`, and the actual `get_signals` response as the capability surface.
+</Note>
 
 ### creative
 
@@ -362,6 +392,12 @@ Creative protocol capabilities. Only present if `creative` is in `supported_prot
 | Field | Type | Description |
 |-------|------|-------------|
 | `supports_compliance` | boolean | When `true`, this creative agent can process briefs with compliance requirements (`required_disclosures`, `prohibited_claims`) and will validate that disclosures can be satisfied by the target format. Use the `disclosure_positions` filter on `list_creative_formats` to find compatible formats. |
+| `supports_transformers` | boolean | When `true`, this creative agent offers account-scoped transformers — the selectable units of build capability (voices, models, styles) discovered via [`list_transformers`](/docs/creative/task-reference/list_transformers) and selected with `transformer_id` (plus the typed `config` bag) on [`build_creative`](/docs/creative/task-reference/build_creative). When `false` or absent, the agent does not expose transformers; `list_transformers` is unavailable and `build_creative` ignores `transformer_id`/`config`. Pre-call discriminator for routing across creative agents. |
+| `supports_refinement` | boolean | When `true`, this creative agent retains produced `build_variant` leaves (for an agent-defined window) and can re-build from one via `refine_from_build_variant_id` on [`build_creative`](/docs/creative/task-reference/build_creative) — applying a natural-language instruction in `message` plus an optional `config` delta, returning new lineage-linked variants. A build-time capability independent of generation/transformation. When `false` or absent, `refine_from_build_variant_id` returns `UNSUPPORTED_FEATURE`; refine via the transform path (`creative_manifest` + `message`) instead. |
+| `refinable_retention_seconds` | integer | When `supports_refinement` is `true`, the **guaranteed-minimum** window (a floor, not a ceiling) during which a produced `build_variant_id` stays refinable via `refine_from_build_variant_id`. A ref within the window SHOULD resolve; the agent MAY retain longer. Omit to leave the window agent-defined (buyers treat refinability as best-effort and handle `REFERENCE_NOT_FOUND`). |
+| `multiplicity` | object | Pre-call fan-out discriminators so a buyer knows before sending `max_creatives`/`max_variants`: `supports_catalog_fanout` + `max_creatives_limit`, `supports_variants` + `max_variants_limit`, and `variant_dimensions[]` (which `variant_axis.dimension` values are supported). Over-limit requests are **clamped** to the ceilings (shortfall shown via `items_returned` < `items_total`), not rejected. Absent means no fan-out — `build_creative` produces a single creative. Individual transformers may narrow this via `transformer.multiplicity`. |
+| `supports_spend_controls` | boolean | When `true`, `build_creative` honors a per-call `max_spend` ceiling (returns a partial paid build with `budget_status: "capped"` + a `BUDGET_CAP_REACHED` advisory rather than overspending) and supports `mode: "estimate"` dry-runs (a projected cost band, producing/billing nothing). When `false` or absent, both are rejected with `UNSUPPORTED_FEATURE`. Meaningful only with `bills_through_adcp: true`. |
+| `bills_through_adcp` | boolean | When `true`, this creative agent bills through the AdCP rate-card surface — `list_creatives` returns `pricing_options` (with `include_pricing=true` and an authenticated account), `build_creative` populates `pricing_option_id` and `vendor_cost`, and `report_usage` accepts records against the rate card. When `false` or absent, the agent bills out of band (flat license, SaaS contract, bundled enterprise agreement); buyers should skip pricing fields and tolerate `report_usage` returning `accepted: 0` with `BILLING_OUT_OF_BAND` errors. Pre-call discriminator for routing across creative agents. |
 
 ### governance
 
@@ -409,6 +445,7 @@ Policy registry integration capabilities. See [Policy Registry](/docs/governance
 ```json
 {
   "$schema": "/schemas/protocol/get-adcp-capabilities-response.json",
+  "status": "completed",
   "adcp": {
     "major_versions": [3],
     "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
@@ -439,32 +476,86 @@ Policy registry integration capabilities. See [Policy Registry](/docs/governance
 }
 ```
 
-### compliance_testing
+### measurement
 
-Compliance testing capabilities. The presence of this block declares that the agent supports deterministic testing via [`comply_test_controller`](/docs/building/implementation/comply-test-controller). Omit the block if the agent does not support compliance testing.
+Experimental measurement protocol capabilities. Only present if `measurement` is in `supported_protocols`; agents implementing it must also list `measurement.core` in `experimental_features`. The `measurement` protocol is currently scoped to `get_adcp_capabilities` for catalog discovery (this block); additional measurement tasks (reporting, attribution, panel queries) and a baseline compliance storyboard land in subsequent minors. The capability block is shipping now so measurement vendors can publish their per-metric catalogs and AAO can crawl them, before the broader task surface is settled.
+
+**Scope.** An agent claiming `measurement` computes one or more quantitative metrics about ad delivery, exposure, or effect (impression verification, viewability, IVT, attention, brand lift, incrementality, outcomes, emissions — vendors define the surface in `metrics[]`). Returns metric definitions (this block), not pricing or coverage (negotiated per buy via `measurement_terms`) and not live values (returned per buy via `vendor_metric_values`). Same mechanical model as `compliance_testing` and `webhook_signing`: presence asserts the capability; the block carries the structured payload.
+
+Measurement agents publish a per-metric catalog so buyers know which metrics each vendor offers. This is the canonical source of truth — AAO crawls it to populate the federated [measurement-vendor index](/docs/registry/index#measurement-vendor-discovery).
+
+#### metrics
+
+Array of metrics this measurement agent computes.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `scenarios` | string[] | Compliance testing scenarios this agent supports. Possible values: `force_creative_status`, `force_account_status`, `force_media_buy_status`, `force_session_status`, `simulate_delivery`, `simulate_budget_spend`, `seed_product`, `seed_pricing_option`, `seed_creative`, `seed_plan`, `seed_media_buy`. Runners MUST accept unknown scenario strings — new scenarios may be added in additive minor bumps. |
+| `metric_id` | string | **Required.** Vendor-scoped identifier (`attention_units`, `gco2e_per_impression`, etc.) — matches the `metric_id` populated in `vendor_metric_values` on delivery. The full identity is the tuple `(vendor.domain, vendor.brand_id, metric_id)`. Each `metric_id` MUST be unique within a single agent's catalog. |
+| `standard_reference` | string (URI) | Optional URI pointing at the published standard this metric **implements** (IAB Attention Measurement Guidelines, MRC Viewable Impression Measurement, GARM emissions framework). Distinct from `accreditations` below — `standard_reference` is what the metric is built against; `accreditations` is third-party certification of conformance. |
+| `accreditations` | object[] | Optional list of third-party accreditations this metric holds (MRC, ARF, JIC bodies, ABC, BARB, AGOF, etc.). Each entry: `accrediting_body` (required), optional `certification_id`, `valid_until`, `evidence_url`. Buyers asking "is this MRC-accredited?" SHOULD check this array — implementing a standard is not the same as being independently accredited. |
+| `unit` | string | Unit of the value when reported in `vendor_metric_values.value` (`score`, `seconds`, `persons`, `gCO2e`, `lift_percent`, `USD`, etc.). Sellers populating `vendor_metric_values.unit` MUST match this declaration. |
+| `description` | string | Human-readable description of what the metric measures and any methodology notes. AAO and buyer agents normalize across catalogs from this field plus the structured fields above; classification facets are not declared at the metric level. |
+| `methodology_url` | string (URI) | URL to vendor's full methodology documentation. Mirrors `governance.property_features[].methodology_url`. |
+| `methodology_version` | string | Optional version identifier (semver, ISO date, or vendor-defined string) for the methodology. When present, buyer agents can pin a contracted version so silent methodology changes are detectable; absence means the vendor does not version their methodology and buyers MUST treat any change as untracked. |
+| `ext` | object | Vendor extensions per the AdCP `ext` convention. |
+
+```json Response example
+{
+  "measurement": {
+    "metrics": [
+      {
+        "metric_id": "attention_units",
+        "standard_reference": "https://iabtechlab.com/standards/attention-measurement",
+        "accreditations": [
+          { "accrediting_body": "MRC", "certification_id": "MRC-ATT-2026-001", "valid_until": "2027-12-31", "evidence_url": "https://mediaratingcouncil.org/accreditations/attentionvendor" }
+        ],
+        "unit": "score",
+        "description": "Eye-tracking-based attention score (0-100). Computed from a panel of 25K opted-in households.",
+        "methodology_url": "https://attentionvendor.example/docs/attention-units",
+        "methodology_version": "v2.1"
+      },
+      {
+        "metric_id": "engagement_seconds",
+        "unit": "seconds",
+        "description": "Active dwell time in seconds, measured via in-content telemetry."
+      }
+    ]
+  }
+}
+```
+
+**Discovery vs. settlement.** Buyers MAY hit a measurement agent's `get_adcp_capabilities` directly to see its current catalog (live, canonical, no staleness), or query AAO's federated index for cross-vendor aggregation. The index trades a TTL refresh window for cross-vendor speed; live calls trade speed for currency. Both are valid — typically planning queries hit the index, settlement/audit queries hit the agent.
+
+**This is a discovery surface, not a rate card.** The catalog tells buyers *what* a vendor measures and *what standards/accreditations* back it. Pricing per impression, minimum measurable inventory, attribution windows, geographic coverage, and data-freshness SLAs are negotiated per buy through the seller's `measurement_terms` on `create_media_buy` — not through this catalog.
+
+### compliance_testing
+
+Compliance testing capabilities. The presence of this block declares that the agent supports deterministic testing via [`comply_test_controller`](/docs/building/by-layer/L3/comply-test-controller). Omit the block if the agent does not support compliance testing.
+
+**Production deployments MUST NOT include this block.** `comply_test_controller` is sandbox-only at the deployment level; advertising the capability on a production endpoint is non-conformant even if dispatch is gated. See [Compliance test controller § Sandbox gating](/docs/building/by-layer/L3/comply-test-controller#sandbox-gating).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `scenarios` | string[] | Compliance testing scenarios this agent supports. Values SHOULD include every canonical controller scenario the agent implements, excluding `list_scenarios` because that value is a discovery operation rather than a test capability. Current canonical values include `force_creative_status`, `force_account_status`, `force_media_buy_status`, `force_create_media_buy_arm`, `force_task_completion`, `force_session_status`, `simulate_delivery`, `simulate_budget_spend`, `seed_product`, `seed_pricing_option`, `seed_creative`, `seed_plan`, `seed_media_buy`, `seed_creative_format`, `seed_measurement_catalog`, `query_upstream_traffic`, `query_provenance_audit_observations`, and `force_upstream_unavailable`. Values MAY also include implementation-specific scenarios. Runners MUST treat scenario names as open strings — new scenarios may be added in additive releases. |
 
 Storyboard runners check for the `compliance_testing` block before running deterministic testing steps. If the agent does not include the block, controller-dependent storyboard steps cannot be validated.
 
-Agents that implement `comply_test_controller` SHOULD include the `compliance_testing` capability block and list supported scenarios. Agents that only support a subset of scenarios (e.g., media buy status but not SI sessions) declare only those scenarios — the runner skips unsupported ones.
+Agents that implement `comply_test_controller` SHOULD include the `compliance_testing` capability block and list supported scenarios. Agents that only support a subset of scenarios (e.g., media buy status but not SI sessions) declare only those scenarios — the runner reports unsupported scenario coverage as skipped or partial rather than as a hidden pass.
 
 :::note
-Compliance testing requires sandbox mode. The `comply_test_controller` tool returns `FORBIDDEN` if the account is not in sandbox.
+Compliance testing is sandbox-only at the deployment level — production deployments MUST NOT advertise this block or expose `comply_test_controller` on any surface. `FORBIDDEN` is returned only when an in-sandbox caller passes `params` that reference a non-sandbox account; live-mode probes for the tool by name receive the transport's standard unknown-tool error. See [Sandbox gating](/docs/building/by-layer/L3/comply-test-controller#sandbox-gating).
 :::
 
 ### webhook_signing
 
-Declares a seller's webhook-signing posture. Any seller whose capability surface advertises mutating-webhook emission — including but not limited to `media_buy.reporting_delivery_methods` containing `webhook` or `media_buy.content_standards.supports_webhook_delivery: true` — MUST include this block with `supported: true`. A seller that emits no webhooks at all MAY omit the block entirely; the absence of both mutating-webhook emission in other capabilities and this block is an unambiguous "does not emit webhooks" posture. Buyers read the block at onboarding to determine which algorithms to expect per the [AdCP webhook-signing profile](/docs/building/implementation/security#webhook-callbacks). Buyers integrating with a seller that advertises mutating-webhook emission while advertising `supported: false` or omitting this block MUST fail onboarding with a user-actionable error; silent integration with a non-signing-but-webhook-emitting seller is unsafe for any mutating-webhook use case.
+Declares a seller's webhook-signing posture. Any seller whose capability surface advertises mutating-webhook emission — including but not limited to `media_buy.reporting_delivery_methods` containing `webhook`, `media_buy.content_standards.supports_webhook_delivery: true`, or `wholesale_feed_webhooks.supported: true` — MUST include this block with `supported: true`. A seller that emits no webhooks at all MAY omit the block entirely; the absence of both mutating-webhook emission in other capabilities and this block is an unambiguous "does not emit webhooks" posture. Buyers read the block at onboarding to determine which algorithms to expect per the [AdCP webhook-signing profile](/docs/building/implementation/security#webhook-callbacks). Buyers integrating with a seller that advertises mutating-webhook emission while advertising `supported: false` or omitting this block MUST fail onboarding with a user-actionable error; silent integration with a non-signing-but-webhook-emitting seller is unsafe for any mutating-webhook use case.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `supported` | boolean | **Required when the seller advertises mutating-webhook emission elsewhere in its capability surface.** `true` iff the seller signs outbound webhooks. `false` means the seller emits webhooks but does not sign them; buyers MUST fail onboarding. Sellers that emit no webhooks SHOULD omit the entire block rather than set `supported: false` — `false` is reserved for the unsafe posture of unsigned-webhook emission, not absence-of-webhooks. |
 | `profile` | string | **Required when `supported: true`.** The profile version string. Currently `"adcp/webhook-signing/v1"`. Future versions bump the string. |
 | `algorithms` | string[] | **Required when `supported: true`.** Subset of `["ed25519", "ecdsa-p256-sha256"]` — the algorithms this seller will sign webhooks with. Matches the webhook-signing verifier allowlist (see [Verifier checklist for webhooks](/docs/building/implementation/security#webhook-callbacks), step 4). Buyers MUST be prepared to verify any algorithm listed AND MUST reject onboarding with a user-actionable error if an advertised algorithm is outside this enumerated set — a seller advertising an out-of-set algorithm (e.g., `hs256`) is either misconfigured or signalling a non-conforming profile. |
-| `legacy_hmac_fallback` | boolean | **Required when `supported: true`.** `true` iff the seller supports the legacy HMAC-SHA256 scheme when the buyer populates `push_notification_config.authentication.credentials`. `false` is the recommended posture in 3.x — the HMAC scheme is removed in AdCP 4.0. |
+| `legacy_hmac_fallback` | boolean | **Required when `supported: true`.** `true` iff the seller supports the legacy HMAC-SHA256 scheme when the buyer populates `push_notification_config.authentication.credentials` or `accounts[].notification_configs[].authentication.credentials`. `false` is the recommended posture in 3.x — the HMAC scheme is removed in AdCP 4.0. |
 
 **Example:**
 
@@ -498,35 +589,93 @@ Extension schemas are published in the [AdCP extension registry](/docs/building/
 }
 ```
 
+This tells buyers:
+- Responses may include `ext.iab_tcf` with IAB TCF consent data
+- Responses may include `ext.iab_gpp` with IAB GPP (Global Privacy Platform) signals
+- Responses may include `ext.acmecorp` with vendor-specific data from Acme Corp
+
 ### experimental_features
 
 Array of experimental AdCP surfaces this agent implements. A surface is experimental when its schema carries `x-status: experimental` — it is part of the core protocol but not yet frozen and may break between 3.x releases with 6 weeks' notice. Sellers that implement any experimental surface MUST list its feature id here.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `experimental_features` | string[] | Experimental feature ids (e.g., `["brand.rights_lifecycle", "governance.campaign", "trusted_match.core", "sponsored_intelligence.core"]`) |
+| `experimental_features` | string[] | Experimental feature ids (e.g., `["brand.rights_lifecycle", "governance.campaign", "measurement.core", "trusted_match.core", "sponsored_intelligence.core"]`) |
 
 Buyers should inspect `experimental_features` before relying on an experimental surface. A seller that does not list a surface is asserting it does not implement it — there is no "silently experimental" mode.
 
 **Example:**
 ```json
 {
-  "experimental_features": ["brand.rights_lifecycle", "trusted_match.core"]
+  "experimental_features": ["brand.rights_lifecycle", "measurement.core", "trusted_match.core"]
 }
 ```
 
 See [experimental status](/docs/reference/experimental-status) for the full stability contract, graduation criteria, and client guidance.
 
-This tells buyers:
-- Responses may include `ext.iab_tcf` with IAB TCF consent data
-- Responses may include `ext.iab_gpp` with IAB GPP (Global Privacy Platform) signals
-- Responses may include `ext.acmecorp` with vendor-specific data from Acme Corp
+### wholesale_feed_versioning
+
+Conditional-fetch token capabilities for [`get_products`](/docs/media-buy/task-reference/get_products#wholesale-feed-versioning) and [`get_signals`](/docs/signals/tasks/get_signals#wholesale-feed-versioning). Independent of wholesale feed webhooks: an agent MAY support cheap version probes without pushing change payloads, and an agent MAY push change payloads while still requiring reconciliation reads for repair.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `supported` | boolean | **Required.** Whether the agent returns `wholesale_feed_version` on responses and honors `if_wholesale_feed_version` on requests. When absent or `false`, buyers can still probe by reading the response (the field-presence detection path) but can't pre-flight-decide which agents to cache versions for. |
+| `pricing_version_separate` | boolean | Whether the agent tracks `pricing_version` independently of `wholesale_feed_version`. When `true`, callers can send `if_pricing_version` alongside `if_wholesale_feed_version` for finer-grained "did prices change?" probes. When `false` or absent, the agent collapses both into `wholesale_feed_version` — sending `if_pricing_version` is wasted bytes. |
+| `cache_scope_account` | boolean | Whether the agent ever returns `cache_scope: "account"` (i.e., publishes per-account overlays distinct from the public rate card). When `true`, buyers MUST be prepared to maintain account-overlay caches alongside the public layer. When `false` or absent, all responses are `cache_scope: "public"` — the agent's rate card is universal across accounts. Note: declaring `true` advertises that the agent runs custom-pricing deals, which is itself a small market-posture signal; agents preferring confidentiality MAY omit the field and detect-on-call instead. |
+
+**Example:**
+
+```json
+{
+  "wholesale_feed_versioning": {
+    "supported": true,
+    "pricing_version_separate": true,
+    "cache_scope_account": true
+  }
+}
+```
+
+### wholesale_feed_webhooks
+
+Per-agent wholesale product-feed and wholesale signals-feed webhook capabilities. Declared by sales agents (products) and signals agents (signals). When `supported` is `true`, consumers can register `sync_accounts.accounts[].notification_configs[]` entries for `product.*`, `signal.*`, and `wholesale_feed.bulk_change` events and receive the actual change payload in each webhook. See `specs/wholesale-feed-webhooks.md` for the full spec.
+
+**Terminology.** Here "wholesale feed" means the agent's buyable wholesale product feed and wholesale signals feed exposed by `get_products` and `get_signals`. It is distinct from `sync_catalogs`, which pushes buyer-provided campaign input feeds into a seller account for campaign execution.
+
+Complementary to (and independent of) [`wholesale_feed_versioning`](#wholesale_feed_versioning): webhooks push changed products/signals or bulk-change summaries; version tokens give a cheap repair and reconciliation probe. Adopters MAY ship either, both, or neither.
+
+Agents that declare `supported: true` MUST apply the same account/caller authorization and scope predicate used by the corresponding wholesale read before emitting each webhook. A caller that could not see a product, signal, price, or account overlay through `get_products buying_mode: "wholesale"` or `get_signals discovery_mode: "wholesale"` MUST NOT receive a webhook revealing that change. Agents unable to guarantee per-principal filtering MUST NOT declare support.
+
+**Capability consistency.** Agents listing any `product.*` value in `event_types[]` MUST declare and support wholesale `get_products` (`media_buy.buying_modes` includes `"wholesale"`). Agents listing any `signal.*` value MUST declare and support wholesale `get_signals` (`signals.discovery_modes` includes `"wholesale"`). Agents listing `wholesale_feed.bulk_change` MUST have at least one of those wholesale repair paths, and each bulk-change payload's `affected_entity_type` MUST name only a feed family the agent can repair through a declared wholesale read.
+
+**Consumer precedence.** When more than one mechanism is declared, consumers SHOULD prefer them in this order: (1) `wholesale_feed_webhooks` when maintaining a long-lived mirror (lowest latency, lowest seller cost); (2) `wholesale_feed_versioning` conditional fetch for occasional polling and webhook repair; (3) wholesale enumeration via `buying_modes` / `discovery_modes` for cold start, `wholesale_feed.bulk_change`, or any missed/distrusted push.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `supported` | boolean | **Required.** Whether this agent can push wholesale feed change payloads through account-level `sync_accounts.accounts[].notification_configs[]`. When `false` or this stanza is absent, consumers fall back to wholesale polling, optionally with `if_wholesale_feed_version` probes. |
+| `event_types` | string[] | Event types this agent can emit. Sales agents emit `product.*` events; signals agents emit `signal.*` events; agents that are both can emit both event families. `product.*` requires wholesale `get_products`; `signal.*` requires wholesale `get_signals`; `wholesale_feed.bulk_change` requires at least one declared wholesale repair path and names one affected feed the consumer repairs by re-reading via `get_products` or `get_signals`. |
+
+**Example (sales + signals agent):**
+
+```json
+{
+  "wholesale_feed_webhooks": {
+    "supported": true,
+    "event_types": [
+      "product.created", "product.updated", "product.priced", "product.removed",
+      "signal.created", "signal.updated", "signal.priced", "signal.removed",
+      "wholesale_feed.bulk_change"
+    ]
+  }
+}
+```
 
 ## The Capability Contract
 
 **If a capability is declared, the seller MUST honor it.**
 
-- `media_buy.execution.targeting.geo_postal_areas.us_zip: true` → Buyer can send US ZIP codes, seller MUST honor them
+- `media_buy.execution.targeting.geo_postal_areas.US` contains `zip` → Buyer can send `{ country: "US", system: "zip", values: [...] }`, seller MUST honor it
+- `media_buy.execution.targeting.geo_postal_areas.us_zip: true` → Buyer can send the deprecated `{ system: "us_zip", values: [...] }` form, and SDKs can backfill the native `{ country: "US", system: "zip", values: [...] }` form
+- `media_buy.execution.targeting.geo_postal_areas.ZA` contains `postal_code` → Buyer can send normal South African postal codes, seller MUST honor them
 - `media_buy.execution.targeting.geo_metros.nielsen_dma: true` → Buyer can send DMA codes, seller MUST honor them
 - `media_buy.execution.targeting.collection_list: true` → Buyer can send `targeting_overlay.collection_list`, seller MUST honor it
 - `media_buy.execution.targeting.collection_list_exclude: true` → Buyer can send `targeting_overlay.collection_list_exclude`, seller MUST honor it
@@ -544,7 +693,7 @@ No silent ignoring. If a seller can't support a capability, they should declare 
 ### Basic Capability Discovery
 
 ```javascript
-import { AdcpClient } from '@adcp/client';
+import { AdcpClient } from '@adcp/sdk';
 
 const client = new AdcpClient({ baseUrl: 'https://seller.example.com/mcp' });
 
@@ -573,8 +722,9 @@ if (result.supported_protocols.includes('media_buy')) {
     console.log('AXE integration available');
   }
 
-  // Check geo targeting
-  if (mediaBuy.execution?.targeting?.geo_postal_areas?.us_zip) {
+  // Check geo targeting (normalize native country keys and deprecated aliases)
+  const postalSupport = mediaBuy.execution?.targeting?.geo_postal_areas;
+  if (postalSupport?.US?.includes('zip') || postalSupport?.us_zip === true) {
     console.log('US ZIP code targeting supported');
   }
 
@@ -628,7 +778,8 @@ async function findCompatibleSellers(sellers, requirements) {
 
     // Check geo targeting requirement
     if (requirements.postalCodeTargeting) {
-      if (!mediaBuy.execution?.targeting?.geo_postal_areas?.us_zip) {
+      const postalSupport = mediaBuy.execution?.targeting?.geo_postal_areas;
+      if (!(postalSupport?.US?.includes('zip') || postalSupport?.us_zip === true)) {
         continue;
       }
     }
@@ -670,6 +821,7 @@ if (!caps.supported_protocols.includes('media_buy')) {
 }
 
 const mediaBuy = caps.media_buy;
+const postalSupport = mediaBuy.execution?.targeting?.geo_postal_areas;
 
 // Filter products to sellers with specific geo targeting capabilities
 const products = await client.getProducts({
@@ -680,7 +832,7 @@ const products = await client.getProducts({
     // Require seller supports ZIP targeting (capability filter - no actual ZIPs needed)
     // level = granularity, system = classification taxonomy
     required_geo_targeting: [
-      { level: 'postal_area', system: 'us_zip' }
+      { level: 'postal_area', country: 'US', system: 'zip' }
     ],
     // Only include if seller supports this AXE (legacy — new integrations use TMP)
     required_axe_integrations: ['https://axe.example.com']
@@ -699,9 +851,10 @@ const buy = await client.createMediaBuy({
     targeting_overlay: {
       geo_countries: ['US'],
       // Only specify ZIP targeting if seller supports it
-      ...(mediaBuy.execution?.targeting?.geo_postal_areas?.us_zip && {
+      ...((postalSupport?.US?.includes('zip') || postalSupport?.us_zip === true) && {
         geo_postal_areas: [{
-          system: 'us_zip',
+          country: 'US',
+          system: 'zip',
           values: ['10001', '10002', '10003', '10004', '10005']
         }]
       })
@@ -760,6 +913,7 @@ const buy = await client.createMediaBuy({
 ```json
 {
   "$schema": "/schemas/protocol/get-adcp-capabilities-response.json",
+  "status": "completed",
   "adcp": {
     "major_versions": [3],
     "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
@@ -770,6 +924,7 @@ const buy = await client.createMediaBuy({
     "supported_billing": ["operator", "agent"]
   },
   "media_buy": {
+    "creative_approval_mode": "auto_approve",
     "features": {
       "inline_creative_management": true,
       "property_list_filtering": true
@@ -790,8 +945,11 @@ const buy = await client.createMediaBuy({
         },
         "geo_postal_areas": {
           "us_zip": true,
-          "gb_outward": true,
-          "ca_fsa": true
+          "us_zip_plus_four": true,
+          "US": ["zip", "zip_plus_four"],
+          "GB": ["outward", "full"],
+          "CA": ["fsa", "full"],
+          "ZA": ["postal_code"]
         },
         "language": true,
         "keyword_targets": {
@@ -853,6 +1011,7 @@ An agent can implement multiple protocols from a single endpoint. This is common
 ```json
 {
   "$schema": "/schemas/protocol/get-adcp-capabilities-response.json",
+  "status": "completed",
   "adcp": {
     "major_versions": [3],
     "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
@@ -863,6 +1022,7 @@ An agent can implement multiple protocols from a single endpoint. This is common
     "supported_billing": ["operator"]
   },
   "media_buy": {
+    "creative_approval_mode": "require_human",
     "features": {
       "inline_creative_management": true
     },
@@ -875,7 +1035,8 @@ An agent can implement multiple protocols from a single endpoint. This is common
     "has_creative_library": true,
     "supports_generation": true,
     "supports_transformation": false,
-    "supports_compliance": false
+    "supports_compliance": false,
+    "bills_through_adcp": true
   }
 }
 ```
@@ -896,11 +1057,11 @@ When `supported_protocols` includes `"creative"`, the buyer can call Creative Pr
 | Metro (US) | `nielsen_dma` | `501` (NYC), `803` (LA), `602` (Chicago) |
 | Metro (UK) | `uk_itl2` | `UKI` (London), `UKD` (North West) |
 | Metro (EU) | `eurostat_nuts2` | `DE30` (Berlin), `FR10` (Île-de-France) |
-| Postal (US) | `us_zip` | `10001`, `90210` |
-| Postal (US) | `us_zip_plus_four` | `10001-1234` |
-| Postal (UK) | `gb_outward` | `SW1`, `EC1`, `M1` |
-| Postal (UK) | `gb_full` | `SW1A 1AA` |
-| Postal (CA) | `ca_fsa` | `K1A`, `M5V` |
+| Postal (US) | `US` / `zip` | `10001`, `90210` |
+| Postal (US) | `US` / `zip_plus_four` | `10001-1234` |
+| Postal (UK) | `GB` / `outward` | `SW1`, `EC1`, `M1` |
+| Postal (UK) | `GB` / `full` | `SW1A 1AA` |
+| Postal (CA) | `CA` / `fsa` | `K1A`, `M5V` |
 
 ## Migration from list_authorized_properties (v2)
 
@@ -927,7 +1088,8 @@ New fields:
 
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
-| `AUTH_REQUIRED` | Authentication needed | Provide credentials |
+| `AUTH_MISSING` | No credentials presented | Provide credentials via auth header |
+| `AUTH_INVALID` | Credentials rejected (expired / revoked) | Human credential rotation required |
 | `VERSION_UNSUPPORTED` | Declared `adcp_major_version` not in seller's `major_versions` | Call without `adcp_major_version` to discover supported versions, then retry |
 | `INTERNAL_ERROR` | Server error | Retry with backoff |
 

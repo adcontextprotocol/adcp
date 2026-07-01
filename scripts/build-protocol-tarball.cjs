@@ -35,6 +35,7 @@ const fs = require('fs');
 const path = require('path');
 const tar = require('tar');
 const { execSync } = require('child_process');
+const { assertCompliancePackagedRefs } = require('./lint-compliance-packaged-refs.cjs');
 
 const ROOT = path.join(__dirname, '..');
 const DIST_SCHEMAS = path.join(ROOT, 'dist/schemas');
@@ -154,7 +155,7 @@ ship with a major bump.
 ## Docs
 
 - https://adcontextprotocol.org/docs/building/schemas-and-sdks
-- https://adcontextprotocol.org/docs/building/validate-your-agent
+- https://adcontextprotocol.org/docs/building/verification/validate-your-agent
 `;
   fs.writeFileSync(path.join(bundleDir, 'README.md'), readme);
 }
@@ -186,7 +187,9 @@ function stageBundle(bundleParent, version, schemasSource, rootDirName, isDev = 
   if (!fs.existsSync(complianceSource)) {
     throw new Error(`Compliance not built for version ${version}: ${complianceSource}`);
   }
-  copyTree(complianceSource, path.join(bundleDir, 'compliance'));
+  const complianceDst = path.join(bundleDir, 'compliance');
+  copyTree(complianceSource, complianceDst);
+  assertCompliancePackagedRefs(complianceDst, 'Compliance packaged-reference lint failed for staged protocol bundle');
 
   if (fs.existsSync(OPENAPI_FILE)) {
     const openapiDst = path.join(bundleDir, 'openapi');
@@ -227,7 +230,7 @@ function stageBundle(bundleParent, version, schemasSource, rootDirName, isDev = 
     root_dir: rootDirName,
     contents: {
       schemas: fs.existsSync(schemasDst),
-      compliance: fs.existsSync(path.join(bundleDir, 'compliance')),
+      compliance: fs.existsSync(complianceDst),
       skills: skillNames,
       openapi: fs.existsSync(path.join(bundleDir, 'openapi')),
       changelog: fs.existsSync(path.join(bundleDir, 'CHANGELOG.md')),

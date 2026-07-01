@@ -6,12 +6,16 @@ on:
     paths:
       - 'docs/**/*.md'
       - 'docs/**/*.mdx'
+      - 'scripts/check-testable-snippets.cjs'
+      - 'scripts/docs-example-coverage.cjs'
+      - 'scripts/docs-json-field-audit.cjs'
+      - '.github/workflows/check-testable-snippets.yml'
 
 jobs:
   check-snippets:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.0
         with:
           fetch-depth: 0  # Need full history for diff
 
@@ -31,3 +35,20 @@ jobs:
           else
             echo "✓ No documentation files changed"
           fi
+
+      - name: Publish docs example coverage
+        run: |
+          node scripts/docs-example-coverage.cjs --markdown >> "$GITHUB_STEP_SUMMARY"
+          node scripts/docs-example-coverage.cjs --json > docs-example-coverage.json
+          node scripts/docs-json-field-audit.cjs --markdown >> "$GITHUB_STEP_SUMMARY"
+          node scripts/docs-json-field-audit.cjs --json > docs-json-field-audit.json
+          node scripts/docs-json-field-audit.cjs --check --top 1
+
+      - name: Upload docs example coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: docs-example-coverage
+          path: |
+            docs-example-coverage.json
+            docs-json-field-audit.json

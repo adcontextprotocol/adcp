@@ -452,7 +452,7 @@ A product can reference a collection without listing installments. This means "i
   "name": "Pinnacle Challenge Run of Show",
   "collections": [{ "publisher_domain": "acmestreaming.example.com", "collection_ids": ["pinnacle_challenge"] }],
   "placements": [
-    { "placement_id": "pre_roll", "name": "Pre-roll" }
+    { "kind": "seller_inline", "placement_id": "pre_roll", "name": "Pre-roll", "mode": "targetable" }
   ],
   "delivery_type": "non_guaranteed",
   "pricing_options": [
@@ -520,8 +520,8 @@ Products reference collections via `collections` selectors — the same pattern 
         }
       ],
       "placements": [
-        { "placement_id": "pre_roll", "name": "Pre-roll" },
-        { "placement_id": "mid_roll", "name": "Mid-roll" }
+        { "kind": "seller_inline", "placement_id": "pre_roll", "name": "Pre-roll", "mode": "targetable" },
+        { "kind": "seller_inline", "placement_id": "mid_roll", "name": "Mid-roll", "mode": "targetable" }
       ],
       "delivery_type": "guaranteed",
       "pricing_options": [
@@ -615,8 +615,8 @@ A streaming platform selling sponsorships against a known collection with upcomi
         }
       ],
       "placements": [
-        { "placement_id": "pre_roll", "name": "Pre-roll (15s)" },
-        { "placement_id": "mid_roll", "name": "Mid-roll (30s)" }
+        { "kind": "seller_inline", "placement_id": "pre_roll", "name": "Pre-roll (15s)", "mode": "targetable" },
+        { "kind": "seller_inline", "placement_id": "mid_roll", "name": "Mid-roll (30s)", "mode": "targetable" }
       ],
       "delivery_type": "guaranteed",
       "pricing_options": [
@@ -657,7 +657,7 @@ A streaming platform offering a main collection and its companion after-collecti
         }
       ],
       "placements": [
-        { "placement_id": "pre_roll", "name": "Pre-roll (15s)" }
+        { "kind": "seller_inline", "placement_id": "pre_roll", "name": "Pre-roll (15s)", "mode": "targetable" }
       ],
       "delivery_type": "non_guaranteed",
       "pricing_options": [
@@ -703,8 +703,8 @@ A podcast network selling across multiple distribution platforms. The collection
         }
       ],
       "placements": [
-        { "placement_id": "pre_roll", "name": "Pre-roll (30s)" },
-        { "placement_id": "mid_roll", "name": "Mid-roll host read (60s)" }
+        { "kind": "seller_inline", "placement_id": "pre_roll", "name": "Pre-roll (30s)", "mode": "targetable" },
+        { "kind": "seller_inline", "placement_id": "mid_roll", "name": "Mid-roll host read (60s)", "mode": "targetable" }
       ],
       "delivery_type": "guaranteed",
       "pricing_options": [
@@ -761,8 +761,8 @@ A sports league selling sponsorships against a live event series. Live broadcast
         }
       ],
       "placements": [
-        { "placement_id": "in_game_overlay", "name": "In-game overlay (10s)" },
-        { "placement_id": "halftime", "name": "Halftime feature (60s)" }
+        { "kind": "seller_inline", "placement_id": "in_game_overlay", "name": "In-game overlay (10s)", "mode": "targetable" },
+        { "kind": "seller_inline", "placement_id": "halftime", "name": "Halftime feature (60s)", "mode": "targetable" }
       ],
       "delivery_type": "guaranteed",
       "exclusivity": "category",
@@ -792,7 +792,9 @@ Buyers discover collections through the standard `get_products` workflow. Natura
 }
 ```
 
-The seller returns products with `collections` selectors. The buyer resolves full collection objects from each publisher's [adagents.json](/docs/governance/property/adagents). There is no separate collection discovery endpoint — collections surface through product discovery and `adagents.json` crawling.
+The seller returns products with `collections` selectors. The buyer resolves full collection objects from each publisher's [adagents.json](/docs/governance/property/adagents). Registry clients can also bootstrap and look up the crawled collection catalog through `/api/registry/catalog/collections/sync` and `/api/registry/catalog/collections/distribution`, which is useful for cross-referencing platform aliases such as YouTube channel IDs back to the publisher-declared collection.
+
+For community-maintained entries, registry moderators can seed a publisher-scoped collection with `PUT /api/registry/catalog/collections/{publisher_domain}/{collection_id}`. This creates a contributed registry record and emits the same `collection.created` / `collection.updated` feed events. It does not replace publisher-origin proof: once the publisher declares the collection in their own `adagents.json`, the authoritative declaration wins.
 
 ## Brand safety
 
@@ -874,7 +876,7 @@ Shows SHOULD include at least one platform-independent identifier when available
 
 </CodeGroup>
 
-Available podcast types: `apple_podcast_id`, `spotify_collection_id`, `rss_url`, `podcast_guid`, `amazon_music_id`, `iheart_id`, `podcast_index_id`. Available video/CTV types: `youtube_channel_id`, `youtube_playlist_id`, `amazon_title_id`, `roku_channel_id`, `pluto_channel_id`, `tubi_id`, `peacock_id`, `tiktok_id`, `twitch_channel`. Other: `domain`, `substack_id`.
+Available podcast types: `apple_podcast_id`, `spotify_collection_id`, `rss_url`, `podcast_guid`, `amazon_music_id`, `iheart_id`, `podcast_index_id`. Available video/CTV types: `youtube_channel_id`, `youtube_channel_handle`, `youtube_channel_url`, `youtube_playlist_id`, `amazon_title_id`, `roku_channel_id`, `pluto_channel_id`, `tubi_id`, `peacock_id`, `tiktok_id`, `twitch_channel`. Other: `domain`, `substack_id`. For YouTube channels, `youtube_channel_id` is the preferred canonical identifier; handles and URLs are aliases for discovery and matching when the channel ID is not yet resolved.
 
 ## Ad inventory
 
@@ -987,9 +989,9 @@ A magazine publisher selling display ads across upcoming issues. Each issue is a
         }
       ],
       "placements": [
-        { "placement_id": "full_page", "name": "Full Page" },
-        { "placement_id": "dps", "name": "Double Page Spread" },
-        { "placement_id": "ifc", "name": "Inside Front Cover" }
+        { "kind": "seller_inline", "placement_id": "full_page", "name": "Full Page", "mode": "targetable" },
+        { "kind": "seller_inline", "placement_id": "dps", "name": "Double Page Spread", "mode": "targetable" },
+        { "kind": "seller_inline", "placement_id": "ifc", "name": "Inside Front Cover", "mode": "targetable" }
       ],
       "delivery_type": "guaranteed",
       "delivery_measurement": {

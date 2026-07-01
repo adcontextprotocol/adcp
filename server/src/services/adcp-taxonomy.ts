@@ -28,21 +28,19 @@ export function isVerificationMode(value: unknown): value is VerificationMode {
 }
 
 /**
- * AdCP versions for which AAO actively issues per-version badges. The
- * heartbeat fans out per entry: for each version, it runs `comply()`
- * with the version-filtered storyboard set and calls
- * `processAgentBadges()` with that version.
+ * AdCP versions for which AAO actively issues per-version badges. Compliance
+ * runs update only the public badge version selected by their compliance
+ * target; they do not fan one run out across every entry here.
  *
- * Adding a version is a deliberate decision — adding `'3.1'` here turns
- * on Verified Media Buy 3.1 (Spec) issuance for every eligible agent,
- * even ones that haven't been told yet. Update this in lockstep with
- * the `introduced_in:` fields on new storyboards under
- * static/compliance/source/specialisms/.
+ * Adding a version is a deliberate decision — adding `'3.1'` here turns on
+ * Verified Media Buy 3.1 (Spec) issuance for public compliance targets on
+ * that line. Update this in lockstep with the `introduced_in:` fields on new
+ * storyboards under static/compliance/source/specialisms/.
  *
- * Order matters: highest version first so heartbeat reports and queue
- * draining surface the newest version's pass/fail state first.
+ * Order matters for display and filtering where callers show all badge
+ * versions: newest first.
  */
-export const SUPPORTED_BADGE_VERSIONS = ['3.0'] as const;
+export const SUPPORTED_BADGE_VERSIONS = ['3.1', '3.0'] as const;
 export type SupportedBadgeVersion = typeof SUPPORTED_BADGE_VERSIONS[number];
 
 export function isSupportedBadgeVersion(value: unknown): value is SupportedBadgeVersion {
@@ -74,7 +72,8 @@ export type AdcpProtocol =
   | 'governance'
   | 'creative'
   | 'brand'
-  | 'sponsored-intelligence';
+  | 'sponsored-intelligence'
+  | 'measurement';
 
 export const ADCP_PROTOCOLS: readonly AdcpProtocol[] = [
   'media-buy',
@@ -83,6 +82,7 @@ export const ADCP_PROTOCOLS: readonly AdcpProtocol[] = [
   'creative',
   'brand',
   'sponsored-intelligence',
+  'measurement',
 ];
 
 /** AdCP specialism enum — must match enums/specialism.json. */
@@ -94,6 +94,7 @@ export type AdcpSpecialism =
   | 'creative-ad-server'
   | 'creative-generative'
   | 'creative-template'
+  | 'creative-transformers'
   | 'governance-aware-seller'
   | 'governance-delivery-monitor'
   | 'governance-spend-authority'
@@ -106,7 +107,8 @@ export type AdcpSpecialism =
   | 'sales-social'
   | 'signal-marketplace'
   | 'signal-owned'
-  | 'signed-requests';
+  | 'signed-requests'
+  | 'sponsored-intelligence';
 
 export const ADCP_SPECIALISMS: readonly AdcpSpecialism[] = [
   'audience-sync',
@@ -116,6 +118,7 @@ export const ADCP_SPECIALISMS: readonly AdcpSpecialism[] = [
   'creative-ad-server',
   'creative-generative',
   'creative-template',
+  'creative-transformers',
   'governance-aware-seller',
   'governance-delivery-monitor',
   'governance-spend-authority',
@@ -129,6 +132,7 @@ export const ADCP_SPECIALISMS: readonly AdcpSpecialism[] = [
   'signal-marketplace',
   'signal-owned',
   'signed-requests',
+  'sponsored-intelligence',
 ];
 
 /** Per-specialism status derived from compliance catalog frontmatter. */

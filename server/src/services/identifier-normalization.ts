@@ -36,6 +36,31 @@ export function assertValidBrandDomain(canonical: string): void {
 }
 
 /**
+ * High-volume free-email provider domains. Exported so downstream consumers
+ * (admin health checks, etc.) can stay in sync without maintaining a
+ * parallel list.
+ */
+export const FREE_EMAIL_PROVIDER_DOMAINS: readonly string[] = [
+  // Google
+  'gmail.com', 'googlemail.com',
+  // Microsoft
+  'outlook.com', 'hotmail.com', 'live.com', 'msn.com',
+  // Yahoo
+  'yahoo.com', 'yahoo.co.uk', 'ymail.com', 'rocketmail.com',
+  // AOL
+  'aol.com', 'aim.com',
+  // Apple
+  'icloud.com', 'me.com', 'mac.com',
+  // Proton
+  'proton.me', 'protonmail.com', 'pm.me',
+  // Other providers
+  'zoho.com', 'fastmail.com', 'gmx.com', 'gmx.net', 'mail.com',
+  'yandex.com', 'yandex.ru', 'qq.com', '163.com', '126.com',
+  // Forwarding alias / privacy-email services (multi-tenant; same blast radius as hosted mailbox providers)
+  'duck.com', 'hey.com', 'tutanota.com', 'tutanota.de',
+];
+
+/**
  * Shared-platform and public-suffix domains where any one tenant claiming
  * the apex would steal the brand identity for thousands of others. WorkOS
  * may or may not reject these at create — defense in depth so the
@@ -44,7 +69,7 @@ export function assertValidBrandDomain(canonical: string): void {
  * Not exhaustive — for full coverage we'd need the public-suffix list
  * from publicsuffix.org. This blocks the highest-volume offenders.
  */
-const SHARED_PLATFORM_DOMAINS = new Set<string>([
+export const SHARED_PLATFORM_DOMAINS = new Set<string>([
   // Hosting / serverless
   'vercel.app', 'vercel.com', 'netlify.app', 'netlify.com', 'fly.dev',
   'fly.io', 'render.com', 'pages.dev', 'workers.dev', 'web.app',
@@ -54,22 +79,65 @@ const SHARED_PLATFORM_DOMAINS = new Set<string>([
   'github.io', 'gitlab.io', 'bitbucket.io', 'readthedocs.io',
   'medium.com', 'substack.com', 'wordpress.com', 'blogspot.com',
   'tumblr.com', 'wixsite.com', 'squarespace.com',
+  // Social / profile platforms — owned by other entities, claiming one would
+  // route their entire user base into the claiming tenant via auto-link
+  // (e.g., Mangrove had `linkedin.com` as their primary brand domain).
+  'linkedin.com', 'twitter.com', 'x.com', 'facebook.com', 'fb.com',
+  'instagram.com', 'youtube.com', 'tiktok.com', 'reddit.com',
+  'pinterest.com', 'discord.com', 'snapchat.com', 'threads.net',
+  'whatsapp.com', 'wa.me',
   // Common eTLDs that pass the apex regex
   'co.uk', 'co.jp', 'com.au', 'com.br', 'co.in', 'co.nz', 'co.za',
   'org.uk', 'ac.uk', 'gov.uk', 'me.uk', 'ne.jp', 'or.jp',
+  // Free email providers — claiming one would auto-assign brand identity for
+  // every user on that service. WorkOS DNS verification blocks this in practice
+  // but this is defense-in-depth for admin overrides and future trust paths.
+  ...FREE_EMAIL_PROVIDER_DOMAINS,
 ]);
 
 /**
+ * Shared-content / SaaS domains where any subdomain belongs to the platform
+ * vendor, not the tenant whose content is hosted there. Stage 0.3 surfaced
+ * `243380875.fs1.hubspotusercontent-na2.net` as a stored brand domain —
+ * exact-match against the apex misses that, so we also reject anything
+ * ending in one of these suffixes.
+ *
+ * Suffix matches must include the leading `.` (so `hubspotusercontent.com`
+ * matches `foo.hubspotusercontent.com` but not `xhubspotusercontent.com`).
+ */
+const SHARED_PLATFORM_SUFFIXES: readonly string[] = [
+  // HubSpot user-content CDN (multi-region)
+  '.hubspotusercontent.com',
+  '.hubspotusercontent-na1.net', '.hubspotusercontent-na2.net',
+  '.hubspotusercontent-eu1.net', '.hubspotusercontent-ap1.net',
+  // Other shared SaaS content hosts
+  '.amazonaws.com',                        // S3 buckets, Amplify, etc.
+  '.googleusercontent.com',                // Drive shares, public Sheets, etc.
+  '.atlassian.net',                        // Confluence/Jira hosted
+  '.zendesk.com', '.freshdesk.com',        // Helpdesk hosted
+  '.salesforce.com', '.force.com', '.lightning.force.com',
+  '.shopify.com', '.myshopify.com',
+  '.typeform.com', '.airtable.com', '.notion.site',
+  '.canva.site', '.canva.com',
+  '.mailchimp.com', '.intercom.io',
+];
+
+/**
  * Throw if a caller is trying to claim a domain that's a shared platform
- * (vercel.app, github.io) or a country-code public suffix (co.uk). Used
- * by the brand-claim flow before issuing a verification challenge —
- * letting one member claim `vercel.app` would steal the brand identity
- * for every Vercel-hosted site.
+ * (vercel.app, github.io), a public-suffix etld (co.uk), a free-email
+ * provider (gmail.com), or a subdomain of a shared SaaS host
+ * (243380875.fs1.hubspotusercontent-na2.net). Used by the brand-claim flow
+ * before issuing a verification challenge.
  */
 export function assertClaimableBrandDomain(canonical: string): void {
   assertValidBrandDomain(canonical);
   if (SHARED_PLATFORM_DOMAINS.has(canonical)) {
     throw new Error(`"${canonical}" is a shared platform or public-suffix domain and can't be claimed as a single brand.`);
+  }
+  for (const suffix of SHARED_PLATFORM_SUFFIXES) {
+    if (canonical.endsWith(suffix)) {
+      throw new Error(`"${canonical}" is hosted on a shared SaaS platform (${suffix.slice(1)}) and can't be claimed as a brand domain.`);
+    }
   }
 }
 

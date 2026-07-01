@@ -1,10 +1,17 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import axios from 'axios';
-import { BrandManager } from '../../src/brand-manager.js';
 
-// Mock axios
-vi.mock('axios');
-const mockedAxios = vi.mocked(axios, true);
+vi.mock('../../src/utils/url-security.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/utils/url-security.js')>();
+  return {
+    ...actual,
+    safeFetchAxiosLike: vi.fn(),
+  };
+});
+
+import { BrandManager } from '../../src/brand-manager.js';
+import { safeFetchAxiosLike } from '../../src/utils/url-security.js';
+
+const mockedSafeFetch = vi.mocked(safeFetchAxiosLike);
 
 describe('BrandManager caching', () => {
   let manager: BrandManager;
@@ -36,7 +43,7 @@ describe('BrandManager caching', () => {
         ],
       };
 
-      mockedAxios.get.mockResolvedValueOnce({
+      mockedSafeFetch.mockResolvedValueOnce({
         status: 200,
         data: Buffer.from(JSON.stringify(mockBrandJson)),
       });
@@ -44,19 +51,19 @@ describe('BrandManager caching', () => {
       // First call - should fetch
       const result1 = await manager.validateDomain('acme.com');
       expect(result1.valid).toBe(true);
-      expect(mockedAxios.get).toHaveBeenCalledTimes(1);
+      expect(mockedSafeFetch).toHaveBeenCalledTimes(1);
 
       // Second call - should use cache
       const result2 = await manager.validateDomain('acme.com');
       expect(result2.valid).toBe(true);
-      expect(mockedAxios.get).toHaveBeenCalledTimes(1); // Still 1
+      expect(mockedSafeFetch).toHaveBeenCalledTimes(1); // Still 1
 
       // Results should be identical
       expect(result1.variant).toBe(result2.variant);
     });
 
     it('caches failed lookups separately', async () => {
-      mockedAxios.get.mockResolvedValueOnce({
+      mockedSafeFetch.mockResolvedValueOnce({
         status: 404,
         data: null,
       });
@@ -64,12 +71,12 @@ describe('BrandManager caching', () => {
       // First call - should fetch and fail
       const result1 = await manager.validateDomain('missing.com');
       expect(result1.valid).toBe(false);
-      expect(mockedAxios.get).toHaveBeenCalledTimes(1);
+      expect(mockedSafeFetch).toHaveBeenCalledTimes(1);
 
       // Second call - should use failed lookup cache
       const result2 = await manager.validateDomain('missing.com');
       expect(result2.valid).toBe(false);
-      expect(mockedAxios.get).toHaveBeenCalledTimes(1); // Still 1
+      expect(mockedSafeFetch).toHaveBeenCalledTimes(1); // Still 1
     });
 
     it('bypasses cache with skipCache option', async () => {
@@ -89,18 +96,18 @@ describe('BrandManager caching', () => {
         ],
       };
 
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: Buffer.from(JSON.stringify(mockBrandJson)),
       });
 
       // First call
       await manager.validateDomain('fresh.com');
-      expect(mockedAxios.get).toHaveBeenCalledTimes(1);
+      expect(mockedSafeFetch).toHaveBeenCalledTimes(1);
 
       // Second call with skipCache - should fetch again
       await manager.validateDomain('fresh.com', { skipCache: true });
-      expect(mockedAxios.get).toHaveBeenCalledTimes(2);
+      expect(mockedSafeFetch).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -125,7 +132,7 @@ describe('BrandManager caching', () => {
         ],
       };
 
-      mockedAxios.get.mockResolvedValueOnce({
+      mockedSafeFetch.mockResolvedValueOnce({
         status: 200,
         data: Buffer.from(JSON.stringify(mockBrandJson), 'utf-8'),
       });
@@ -157,7 +164,7 @@ describe('BrandManager caching', () => {
         ],
       };
 
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: Buffer.from(JSON.stringify(mockBrandJson)),
       });
@@ -174,11 +181,11 @@ describe('BrandManager caching', () => {
       const result2 = await manager.resolveBrand('example.com');
       expect(result2).not.toBeNull();
       expect(result2?.brand_name).toBe('Example');
-      expect(mockedAxios.get).not.toHaveBeenCalled(); // Should not fetch
+      expect(mockedSafeFetch).not.toHaveBeenCalled(); // Should not fetch
     });
 
     it('caches null results for failed resolutions', async () => {
-      mockedAxios.get.mockResolvedValueOnce({
+      mockedSafeFetch.mockResolvedValueOnce({
         status: 404,
         data: null,
       });
@@ -192,7 +199,7 @@ describe('BrandManager caching', () => {
       // Second call - should use cache (no fetch)
       const result2 = await manager.resolveBrand('notfound.com');
       expect(result2).toBeNull();
-      expect(mockedAxios.get).not.toHaveBeenCalled();
+      expect(mockedSafeFetch).not.toHaveBeenCalled();
     });
 
     it('bypasses cache with skipCache option', async () => {
@@ -212,7 +219,7 @@ describe('BrandManager caching', () => {
         ],
       };
 
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: Buffer.from(JSON.stringify(mockBrandJson)),
       });
@@ -224,7 +231,217 @@ describe('BrandManager caching', () => {
 
       // Second call with skipCache
       await manager.resolveBrand('bypass.com', { skipCache: true });
-      expect(mockedAxios.get).toHaveBeenCalled();
+      expect(mockedSafeFetch).toHaveBeenCalled();
+    });
+  });
+
+  describe('brand_manifest construction', () => {
+    it('populates brand_manifest from flat brand fields (master-brand fallback)', async () => {
+      const mockBrandJson = {
+        $schema: 'https://adcontextprotocol.org/schemas/latest/brand.json',
+        version: '1.0',
+        house: {
+          domain: 'wonderstruck.org',
+          name: 'Wonderstruck',
+        },
+        brands: [
+          {
+            id: 'wonderstruck',
+            names: [{ en: 'Wonderstruck' }],
+            keller_type: 'master',
+            description: 'A creative studio',
+            target_audience: 'designers',
+            tagline: 'Make wonder',
+            logos: [{ url: 'https://wonderstruck.org/logo.svg' }],
+            colors: { primary: '#ff00ff' },
+            fonts: { primary: 'Inter' },
+            tone: 'playful',
+          },
+        ],
+      };
+
+      mockedSafeFetch.mockResolvedValue({
+        status: 200,
+        data: Buffer.from(JSON.stringify(mockBrandJson)),
+      });
+
+      const result = await manager.resolveBrand('wonderstruck.org');
+      expect(result).not.toBeNull();
+      expect(result?.brand_manifest).toBeDefined();
+      expect(result?.brand_manifest?.description).toBe('A creative studio');
+      expect(result?.brand_manifest?.target_audience).toBe('designers');
+      expect(result?.brand_manifest?.tagline).toBe('Make wonder');
+      expect(result?.brand_manifest?.logos).toEqual([
+        { url: 'https://wonderstruck.org/logo.svg' },
+      ]);
+      expect(result?.brand_manifest?.colors).toEqual({ primary: '#ff00ff' });
+      expect(result?.brand_manifest?.fonts).toEqual({ primary: 'Inter' });
+      expect(result?.brand_manifest?.tone).toBe('playful');
+    });
+
+    it('strips identity fields from brand_manifest', async () => {
+      const mockBrandJson = {
+        $schema: 'https://adcontextprotocol.org/schemas/latest/brand.json',
+        version: '1.0',
+        house: {
+          domain: 'acme.com',
+          name: 'Acme',
+        },
+        brands: [
+          {
+            id: 'acme',
+            names: [{ en: 'Acme' }],
+            keller_type: 'master',
+            parent_brand: 'parent',
+            description: 'A brand',
+          },
+        ],
+      };
+
+      mockedSafeFetch.mockResolvedValue({
+        status: 200,
+        data: Buffer.from(JSON.stringify(mockBrandJson)),
+      });
+
+      const result = await manager.resolveBrand('acme.com');
+      expect(result?.brand_manifest).toBeDefined();
+      expect(result?.brand_manifest).not.toHaveProperty('id');
+      expect(result?.brand_manifest).not.toHaveProperty('names');
+      expect(result?.brand_manifest).not.toHaveProperty('keller_type');
+      expect(result?.brand_manifest).not.toHaveProperty('parent_brand');
+      expect(result?.brand_manifest?.description).toBe('A brand');
+    });
+
+    it('returns brand_manifest from property-match resolution', async () => {
+      const mockBrandJson = {
+        $schema: 'https://adcontextprotocol.org/schemas/latest/brand.json',
+        version: '1.0',
+        house: {
+          domain: 'house.com',
+          name: 'House',
+        },
+        brands: [
+          {
+            id: 'subbrand',
+            names: [{ en: 'Sub Brand' }],
+            keller_type: 'sub_brand',
+            description: 'A sub-brand',
+            properties: [{ type: 'website', identifier: 'subbrand.com' }],
+          },
+        ],
+      };
+
+      mockedSafeFetch.mockResolvedValue({
+        status: 200,
+        data: Buffer.from(JSON.stringify(mockBrandJson)),
+      });
+
+      const result = await manager.resolveBrand('subbrand.com');
+      expect(result).not.toBeNull();
+      expect(result?.brand_manifest).toBeDefined();
+      expect(result?.brand_manifest?.description).toBe('A sub-brand');
+      // properties is ownership/identity data, not creative payload — must
+      // not leak into brand_manifest, which downstream consumers treat as
+      // logos/colors/fonts/tone (see services/brand-enrichment.ts).
+      expect(result?.brand_manifest).not.toHaveProperty('properties');
+    });
+
+    it('merges legacy nested brand_manifest with flat fields', async () => {
+      const mockBrandJson = {
+        $schema: 'https://adcontextprotocol.org/schemas/latest/brand.json',
+        version: '1.0',
+        house: {
+          domain: 'legacy.com',
+          name: 'Legacy',
+        },
+        brands: [
+          {
+            id: 'legacy',
+            names: [{ en: 'Legacy' }],
+            keller_type: 'master',
+            description: 'Flat description',
+            brand_manifest: {
+              legacy_field: 'from-nested',
+              description: 'Nested description (should be overridden)',
+            },
+          },
+        ],
+      };
+
+      mockedSafeFetch.mockResolvedValue({
+        status: 200,
+        data: Buffer.from(JSON.stringify(mockBrandJson)),
+      });
+
+      const result = await manager.resolveBrand('legacy.com');
+      expect(result?.brand_manifest).toBeDefined();
+      expect(result?.brand_manifest?.legacy_field).toBe('from-nested');
+      // Flat fields take precedence over legacy nested values
+      expect(result?.brand_manifest?.description).toBe('Flat description');
+    });
+
+    it('omits brand_manifest when no manifest data is present', async () => {
+      const mockBrandJson = {
+        $schema: 'https://adcontextprotocol.org/schemas/latest/brand.json',
+        version: '1.0',
+        house: {
+          domain: 'minimal.com',
+          name: 'Minimal',
+        },
+        brands: [
+          {
+            id: 'minimal',
+            names: [{ en: 'Minimal' }],
+            keller_type: 'master',
+          },
+        ],
+      };
+
+      mockedSafeFetch.mockResolvedValue({
+        status: 200,
+        data: Buffer.from(JSON.stringify(mockBrandJson)),
+      });
+
+      const result = await manager.resolveBrand('minimal.com');
+      expect(result).not.toBeNull();
+      expect(result?.brand_manifest).toBeUndefined();
+    });
+
+    it('populates brand_manifest from resolveBrandRef with brand_id', async () => {
+      const mockBrandJson = {
+        $schema: 'https://adcontextprotocol.org/schemas/latest/brand.json',
+        version: '1.0',
+        house: {
+          domain: 'multi.com',
+          name: 'Multi',
+        },
+        brands: [
+          {
+            id: 'brand-a',
+            names: [{ en: 'Brand A' }],
+            keller_type: 'master',
+            description: 'Brand A description',
+          },
+          {
+            id: 'brand-b',
+            names: [{ en: 'Brand B' }],
+            keller_type: 'sub_brand',
+            description: 'Brand B description',
+          },
+        ],
+      };
+
+      mockedSafeFetch.mockResolvedValue({
+        status: 200,
+        data: Buffer.from(JSON.stringify(mockBrandJson)),
+      });
+
+      const result = await manager.resolveBrandRef({
+        domain: 'multi.com',
+        brand_id: 'brand-b',
+      });
+      expect(result).not.toBeNull();
+      expect(result?.brand_manifest?.description).toBe('Brand B description');
     });
   });
 
@@ -246,7 +463,7 @@ describe('BrandManager caching', () => {
         ],
       };
 
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: Buffer.from(JSON.stringify(mockBrandJson)),
       });
@@ -285,7 +502,7 @@ describe('BrandManager caching', () => {
         ],
       };
 
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: Buffer.from(JSON.stringify(mockBrandJson)),
       });

@@ -1,0 +1,107 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.15/formats/canonical/native_in_feed.json",
+  "title": "Canonical Format: Native In-Feed",
+  "description": "IAB-shaped native creative for in-feed and content-recommendation surfaces. Default slots cover the primary IAB OpenRTB Native 1.2 asset types — `title` (Title Asset), `body_text` (Data Asset type 2), `main_image` (Image Asset main), `icon` (Image Asset icon), `cta` (Data Asset type 12), `advertiser_name` (Data Asset type 1), `sponsored_label` (Title-adjacent), `landing_page_url` (Link Asset), `display_url` (Data Asset type 11 — visible URL/domain, distinct from clickthrough), `rating` (Data Asset type 3 — app/product rating), `price` (Data Asset type 6 — product price), plus renderer-fired `impression_tracker` / `viewability_tracker` / `click_tracker` (`pixel_tracker`). Products MAY use `slots_override` to add other IAB Native data asset types (likes — type 4, downloads — type 5, saleprice — type 7, phone_number — type 8, address — type 9, desc2 — type 10, etc.) or to remove slots the surface doesn't render. The publisher's renderer assembles these into its own look-and-feel — feed card, content-recommendation slot, in-stream native unit. Buyer ships a single asset bundle; the surface chooses presentation.\n\n**Scope (normative — buyer-agent routing).** This canonical is the home for:\n- IAB OpenRTB Native 1.2 in-feed native ads (publisher feeds, app feeds)\n- Content-recommendation widgets (Taboola, Outbrain, Yahoo Recommendations)\n- AdMob Native / Yahoo Native publisher slots\n- In-feed sponsored placements without catalog dependency\n\n**Not this canonical:**\n- Catalog-driven retail-media (Amazon SP, Criteo SP, CitrusAd SP) — use `sponsored_placement` (requires `source_catalog`).\n- Algorithmic surface that picks from a buyer-supplied asset pool (Google PMax, Meta Advantage+) — use `responsive_creative`.\n- Multi-card carousel — use `image_carousel`.\n- Video-first native units where the asset is a hosted video file — use `video_hosted` with `applies_to_channels: [\"native\"]`.\n\nDistinct from `sponsored_placement` along the catalog axis: native_in_feed is asset-bundle composition; sponsored_placement is catalog-row composition. A buyer agent reading `format_kind: native_in_feed` knows to assemble title + image + body + CTA; reading `format_kind: sponsored_placement` knows to attach a catalog feed.",
+  "allOf": [{ "$ref": "/schemas/3.1.0-rc.15/formats/canonical/_base.json" }],
+  "properties": {
+    "experimental": {
+      "default": false,
+      "description": "Stable at 3.1 GA. Shape mirrors IAB OpenRTB Native 1.2 — the renderer contract is well-established across in-feed native and content-recommendation adopters."
+    },
+    "v1_translatable": {
+      "default": true,
+      "description": "Translates to v1 named native formats (e.g., `native_standard`, `native_content`) via the projection registry. Sellers with existing v1 named native formats SHOULD point `v1_format_ref[]` at them."
+    },
+    "slots": {
+      "default": [
+        { "asset_group_id": "title", "asset_type": "text", "required": true },
+        { "asset_group_id": "body_text", "asset_type": "text", "required": false },
+        { "asset_group_id": "main_image", "asset_type": "image", "required": false },
+        { "asset_group_id": "icon", "asset_type": "image", "required": false },
+        { "asset_group_id": "cta", "asset_type": "text", "required": false },
+        { "asset_group_id": "advertiser_name", "asset_type": "text", "required": true },
+        { "asset_group_id": "sponsored_label", "asset_type": "text", "required": false },
+        { "asset_group_id": "landing_page_url", "asset_type": "url", "required": true },
+        { "asset_group_id": "display_url", "asset_type": "text", "required": false },
+        { "asset_group_id": "rating", "asset_type": "text", "required": false },
+        { "asset_group_id": "price", "asset_type": "text", "required": false },
+        { "asset_group_id": "impression_tracker", "asset_type": "pixel_tracker", "required": false },
+        { "asset_group_id": "viewability_tracker", "asset_type": "pixel_tracker", "required": false },
+        { "asset_group_id": "click_tracker", "asset_type": "pixel_tracker", "required": false }
+      ],
+      "description": "Default slot shape for native_in_feed. Mirrors IAB OpenRTB Native 1.2 asset types. Products MAY override (`slots_override` on the projection ref) to narrow per-slot limits (`max_chars` on title/body) or remove unused slots (a content-recommendation slot that doesn't display an icon)."
+    },
+    "title_max_chars": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum character length for the title slot. IAB native typical: 25 (short) to 90 (long). Buyer agents SHOULD validate ship-time title length against this."
+    },
+    "body_text_max_chars": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum character length for the body_text slot. IAB native typical: 90 (mainline) to 140 (extended)."
+    },
+    "cta_max_chars": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum character length for the cta slot. Typical: 15–25."
+    },
+    "cta_values": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Permitted CTA values for this product (e.g., ['LEARN_MORE', 'SHOP_NOW', 'SIGN_UP', 'DOWNLOAD']). When set, narrows the cta slot to a closed enum."
+    },
+    "main_image_sizes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["width", "height"],
+        "properties": {
+          "width": { "type": "integer", "minimum": 1 },
+          "height": { "type": "integer", "minimum": 1 }
+        },
+        "additionalProperties": false
+      },
+      "description": "Accepted (width, height) pairs for the main_image slot. Common IAB native sizes: 1200×627 (1.91:1), 1080×1080 (1:1), 1080×1350 (4:5)."
+    },
+    "icon_size": {
+      "type": "object",
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false,
+      "description": "Required (width, height) for the icon slot when present (typical: 80×80 or 100×100)."
+    },
+    "max_image_file_size_kb": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum file size in kilobytes for main_image and icon."
+    },
+    "image_formats": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["jpg", "jpeg", "png", "gif", "webp"] },
+      "description": "Permitted image file formats."
+    },
+    "ssl_required": {
+      "type": "boolean",
+      "description": "Whether trackers, landing pages, and image URLs must be served over HTTPS."
+    },
+    "asset_source": {
+      "type": "string",
+      "enum": ["buyer_uploaded", "seller_pre_rendered_from_brief", "seller_human_designed", "agent_synthesized", "publisher_owned_reference"],
+      "default": "buyer_uploaded",
+      "description": "Where the rendered native assets come from. `publisher_host_recorded` is omitted (audio-specific and not meaningful for native). Other values mirror the shared production-source axis used on `image` / `video_hosted`. `buyer_uploaded` (default): buyer ships pre-rendered title/image/body. `seller_pre_rendered_from_brief`: buyer ships a brief, seller renders the native bundle. `agent_synthesized`: AI synthesis pipeline produces title + image + body from a brief; pair with `synthesis_nondeterministic: true` for generative pipelines that can't guarantee in-spec output. `publisher_owned_reference`: buyer ships an existing published post reference; the seller resolves the post into the native presentation after authorization/review."
+    },
+    "buyer_asset_acceptance": {
+      "type": "string",
+      "enum": ["accepted", "rejected"],
+      "default": "accepted",
+      "description": "Whether the product accepts buyer-uploaded native assets. When `rejected`, the buyer cannot ship pre-rendered title/image/body — they must use `build_creative`, `sync_creatives` with brief inputs, or an accepted `published_post` reference so the seller produces or resolves the native bundle."
+    }
+  },
+  "additionalProperties": true
+}

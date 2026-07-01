@@ -188,7 +188,7 @@
       align-items: center;
       gap: var(--space-4);
       padding: var(--space-4);
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       border-radius: var(--radius-lg);
     }
 
@@ -304,7 +304,7 @@
       align-items: center;
       gap: var(--space-3);
       padding: var(--space-3);
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       border-radius: var(--radius-lg);
       transition: var(--transition-colors);
     }
@@ -316,7 +316,7 @@
     .member-avatar {
       width: 36px;
       height: 36px;
-      background: var(--color-gray-300);
+      background: var(--color-bg-button-secondary-hover);
       border-radius: var(--radius-full);
       display: flex;
       align-items: center;
@@ -357,7 +357,7 @@
 
     .post-card {
       padding: var(--space-4);
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       border-radius: var(--radius-lg);
       border: var(--border-1) solid var(--color-border);
       text-decoration: none;
@@ -413,7 +413,7 @@
       display: flex;
       gap: var(--space-4);
       padding: var(--space-4);
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       border-radius: var(--radius-lg);
       border: var(--border-1) solid var(--color-border);
       text-decoration: none;
@@ -543,7 +543,7 @@
       display: flex;
       gap: var(--space-4);
       padding: var(--space-4);
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       border-radius: var(--radius-lg);
       border: var(--border-1) solid var(--color-border);
       text-decoration: none;
@@ -634,8 +634,8 @@
     }
 
     .rsvp-badge.pending {
-      background: var(--color-gray-200);
-      color: var(--color-gray-700);
+      background: var(--color-bg-button-secondary);
+      color: var(--color-text);
     }
 
     .empty-meetings {
@@ -655,7 +655,7 @@
       display: flex;
       gap: var(--space-4);
       padding: var(--space-4);
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       border-radius: var(--radius-lg);
       border: var(--border-1) solid var(--color-border);
       transition: var(--transition-all);
@@ -1045,14 +1045,14 @@
       font-style: italic;
     }
     .article-view-content pre {
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
       padding: var(--space-4);
       border-radius: var(--radius-md);
       overflow-x: auto;
       margin: var(--space-4) 0;
     }
     .article-view-content code {
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
       padding: 2px var(--space-1);
       border-radius: var(--radius-sm);
       font-size: var(--text-sm);
@@ -1096,6 +1096,9 @@
     .article-view-actions .btn-icon svg {
       width: 14px;
       height: 14px;
+    }
+    .article-view-share-actions {
+      justify-content: center;
     }
     .article-view-hero {
       width: 100%;
@@ -1388,6 +1391,15 @@
       <div class="article-view-header">
         <h1 id="articleViewTitle" class="article-view-title"></h1>
         <div id="articleViewMeta" class="article-view-meta"></div>
+        <div class="article-view-actions article-view-share-actions">
+          <button class="btn btn-secondary btn-icon" id="copyArticleLinkBtn" onclick="copyCurrentArticleLink(this)" title="Copy post link" aria-label="Copy post link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+            </svg>
+            Copy link
+          </button>
+        </div>
         <div id="articleViewActions" class="article-view-actions" style="display:none;">
           <button class="btn btn-secondary btn-icon" onclick="editCurrentArticle()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
@@ -1431,9 +1443,9 @@
     let postsData = [];
 
     async function init() {
-      // Get slug from URL
-      const pathParts = window.location.pathname.split('/');
-      currentSlug = pathParts[pathParts.length - 1];
+      // Get slug from either /working-groups/:slug or /working-groups/:slug/posts/:postSlug.
+      const pathInfo = parseWorkingGroupPath();
+      currentSlug = pathInfo.groupSlug;
 
       if (!currentSlug || currentSlug === 'detail.html') {
         showError();
@@ -1445,6 +1457,28 @@
 
       // Load working group data
       await loadWorkingGroup();
+    }
+
+    function safeDecodeURIComponent(value) {
+      try {
+        return decodeURIComponent(value || '');
+      } catch {
+        return value || '';
+      }
+    }
+
+    function parseWorkingGroupPath() {
+      const pathParts = window.location.pathname.split('/').filter(Boolean);
+      const workingGroupsIndex = pathParts.indexOf('working-groups');
+      if (workingGroupsIndex === -1) {
+        return { groupSlug: '', postSlug: null };
+      }
+
+      const groupSlug = safeDecodeURIComponent(pathParts[workingGroupsIndex + 1]);
+      const postSlug = pathParts[workingGroupsIndex + 2] === 'posts'
+        ? safeDecodeURIComponent(pathParts[workingGroupsIndex + 3])
+        : null;
+      return { groupSlug, postSlug };
     }
 
     async function checkAuth() {
@@ -1705,7 +1739,7 @@
           } else {
             const articleSlug = post.source_group ? post.source_group.slug : currentSlug;
             return `
-              <a href="/working-groups/${escapeHtml(articleSlug)}#post-${escapeHtml(post.slug)}" id="post-${escapeHtml(post.slug)}" class="post-card article-link" data-post-slug="${escapeHtml(post.slug)}">
+              <a href="/working-groups/${escapeHtml(articleSlug)}/posts/${escapeHtml(post.slug)}" id="post-${escapeHtml(post.slug)}" class="post-card article-link" data-post-slug="${escapeHtml(post.slug)}">
                 <div class="post-title">${escapeHtml(post.title)}</div>
                 <div class="post-meta">
                   <span>${formatDate(post.published_at)}</span>
@@ -2412,22 +2446,40 @@
 
     function handlePostAnchor() {
       const hash = window.location.hash;
-      if (hash && hash.startsWith('#post-')) {
-        const postSlug = hash.substring(6); // Remove '#post-'
-        const post = postsData.find(p => p.slug === postSlug);
-        if (post) {
-          if (post.content_type === 'link' && post.external_url) {
-            // For link posts, redirect to external URL
-            window.open(post.external_url, '_blank', 'noopener,noreferrer');
-          } else {
-            // For article posts, open the article view
-            openArticle(postSlug);
-          }
+      const pathInfo = parseWorkingGroupPath();
+      const canonicalPostSlug = pathInfo.groupSlug === currentSlug ? pathInfo.postSlug : null;
+      const postSlug = canonicalPostSlug || (hash && hash.startsWith('#post-') ? hash.substring(6) : null);
+
+      if (postSlug) {
+        const decodedPostSlug = safeDecodeURIComponent(postSlug);
+        const post = postsData.find(p => p.slug === decodedPostSlug);
+        if (!post) return;
+
+        if (post.content_type === 'link' && post.external_url) {
+          // For link posts, redirect to external URL
+          window.open(post.external_url, '_blank', 'noopener,noreferrer');
+        } else {
+          // For article posts, open the article view
+          openArticle(decodedPostSlug);
         }
       }
     }
 
+    function hasRequestedPostInLocation() {
+      const hash = window.location.hash;
+      const pathInfo = parseWorkingGroupPath();
+      return Boolean(
+        (hash && hash.startsWith('#post-')) ||
+        (pathInfo.groupSlug === currentSlug && pathInfo.postSlug)
+      );
+    }
+
     let currentArticleSlug = null;
+
+    function articlePermalinkForPost(post) {
+      const groupSlug = post.source_group?.slug || currentSlug;
+      return `/working-groups/${encodeURIComponent(groupSlug)}/posts/${encodeURIComponent(post.slug)}`;
+    }
 
     function openArticle(postSlug) {
       const post = postsData.find(p => p.slug === postSlug);
@@ -2436,7 +2488,7 @@
       currentArticleSlug = postSlug;
 
       // Update URL without reloading (use encodeURIComponent for safety)
-      history.pushState(null, '', `/working-groups/${encodeURIComponent(currentSlug)}#post-${encodeURIComponent(postSlug)}`);
+      history.pushState(null, '', articlePermalinkForPost(post));
 
       // Populate modal
       document.getElementById('articleViewTitle').textContent = post.title;
@@ -2479,13 +2531,36 @@
       document.body.style.overflow = 'hidden';
     }
 
-    function closeArticleView() {
+    function copyCurrentArticleLink(button) {
+      const post = postsData.find(p => p.slug === currentArticleSlug);
+      if (!post) return;
+
+      const url = `${window.location.origin}${articlePermalinkForPost(post)}`;
+      navigator.clipboard.writeText(url).then(() => {
+        const originalHtml = button.innerHTML;
+        button.innerHTML = `
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20 6L9 17l-5-5"/>
+          </svg>
+          Copied`;
+        setTimeout(() => {
+          button.innerHTML = originalHtml;
+        }, 2000);
+      }).catch((err) => {
+        console.error('Copy post link failed:', err);
+        alert('Failed to copy link');
+      });
+    }
+
+    function closeArticleView(updateUrl = true) {
       document.getElementById('articleViewModal').style.display = 'none';
       document.body.style.overflow = '';
       currentArticleSlug = null;
 
       // Update URL to remove anchor
-      history.pushState(null, '', `/working-groups/${encodeURIComponent(currentSlug)}`);
+      if (updateUrl) {
+        history.pushState(null, '', `/working-groups/${encodeURIComponent(currentSlug)}`);
+      }
     }
 
     function editCurrentArticle() {
@@ -2618,11 +2693,10 @@
 
     // Handle browser back/forward
     window.addEventListener('popstate', () => {
-      const hash = window.location.hash;
-      if (hash && hash.startsWith('#post-') && postsData.length > 0) {
+      if (hasRequestedPostInLocation() && postsData.length > 0) {
         handlePostAnchor();
       } else {
-        closeArticleView();
+        closeArticleView(false);
       }
     });
 

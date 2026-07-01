@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.6/core/forecast-dimension-signal.json",
+  "title": "Signal Forecast Dimension",
+  "description": "A signal value or signal-presence dimension for a ForecastPoint row. Variant of ForecastPoint dimensions; see forecast-point-dimensions.json for dispatch rules.",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "const": "signal",
+      "description": "Dimension family discriminator."
+    },
+    "signal_ref": {
+      "$ref": "/schemas/3.1.0-rc.6/core/signal-ref.json",
+      "description": "Canonical signal reference for this forecast row. Required when the row needs to disambiguate product-local, data-provider, or signal-source identity. Product-relative forecasts SHOULD use signal_ref."
+    },
+    "signal_id": {
+      "type": "string",
+      "description": "Signal identifier shorthand for this forecast row. Use only when the enclosing context already identifies the signal unambiguously, such as a coverage_forecast nested directly under one get_signals signal item. Otherwise use signal_ref.",
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "x-entity": "signal"
+    },
+    "signal_value": {
+      "type": ["string", "number", "boolean", "null"],
+      "description": "Signal value bucket represented by this point. Use null with presence 'absent' to represent inventory where the signal is not present. Omit when the row describes any present value rather than one specific value."
+    },
+    "presence": {
+      "type": "string",
+      "enum": ["present", "absent"],
+      "description": "Whether the signal is present for this point. Use 'absent' for the explicit not-present bucket."
+    },
+    "signal_name": {
+      "type": "string",
+      "description": "Human-readable signal name, useful when the buyer has not resolved the signal definition."
+    },
+    "signal_value_name": {
+      "type": "string",
+      "description": "Human-readable label for the signal value bucket."
+    }
+  },
+  "required": ["kind", "presence"],
+  "anyOf": [
+    { "required": ["signal_ref"] },
+    { "required": ["signal_id"] }
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "presence": {
+            "const": "absent"
+          }
+        },
+        "required": ["presence"]
+      },
+      "then": {
+        "properties": {
+          "signal_value": {
+            "type": "null"
+          }
+        },
+        "required": ["signal_value"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presence": {
+            "const": "present"
+          }
+        },
+        "required": ["presence"]
+      },
+      "then": {
+        "properties": {
+          "signal_value": {
+            "type": ["string", "number", "boolean"]
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

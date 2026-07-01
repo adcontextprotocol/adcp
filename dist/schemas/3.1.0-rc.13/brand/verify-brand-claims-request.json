@@ -1,0 +1,184 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.13/brand/verify-brand-claims-request.json",
+  "title": "Verify Brand Claims Request (Bulk)",
+  "description": "Bulk variant of `verify_brand_claim` — ask a brand-agent to verify many claims in a single round-trip. Use when a caller (e.g., a crawler refreshing a brand portfolio, a creative-clearance pipeline batch, an inventory-onboarding scan) needs to verify 10s-100s of claims against one brand-agent and the per-call MCP overhead dominates. Each entry in `claims[]` carries the same `{ claim_type, claim }` shape as the single-target tool; the agent returns one result per claim in the same order (zip-by-index). Sibling to `verify_brand_claim`; the single-target tool remains the right choice for one-off verifications. Read-only; naturally idempotent — same per-claim dedup as the single-target tool (the brand's internal bookkeeping deduplicates per {caller_identity, claim_type, claim-target}).",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/3.1.0-rc.13/core/version-envelope.json"
+    }
+  ],
+  "properties": {
+    "claims": {
+      "type": "array",
+      "description": "Ordered list of verification claims. The agent MUST return `results[]` in the same order (positional zip-by-index). Maximum batch size is 100 per call; agents MAY enforce a lower limit and SHOULD advertise it via `get_adcp_capabilities` (see the task page).",
+      "minItems": 1,
+      "maxItems": 100,
+      "items": {
+        "$ref": "#/definitions/claim_entry"
+      }
+    }
+  },
+  "required": ["claims"],
+  "additionalProperties": true,
+  "definitions": {
+    "claim_entry": {
+      "type": "object",
+      "description": "One verification claim. Shape mirrors the single-target `verify_brand_claim` request body (minus the version envelope, which lives on the batch).",
+      "discriminator": {
+        "propertyName": "claim_type"
+      },
+      "oneOf": [
+        {
+          "title": "VerifySubsidiaryClaim",
+          "description": "House-side: is this brand a subsidiary of mine?",
+          "properties": {
+            "claim_type": {
+              "type": "string",
+              "const": "subsidiary"
+            },
+            "claim": {
+              "type": "object",
+              "properties": {
+                "subsidiary_domain": {
+                  "type": "string",
+                  "format": "hostname",
+                  "description": "Domain of the leaf brand whose `house_domain` claim is being verified."
+                },
+                "subsidiary_brand_id": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9_]+$",
+                  "description": "Stable brand identifier the leaf uses for itself. Optional but recommended."
+                },
+                "observed_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When the caller observed the leaf's claim."
+                }
+              },
+              "required": ["subsidiary_domain"],
+              "additionalProperties": true
+            }
+          },
+          "required": ["claim_type", "claim"],
+          "additionalProperties": true
+        },
+        {
+          "title": "VerifyParentClaim",
+          "description": "Leaf-side mirror: is this brand my parent house?",
+          "properties": {
+            "claim_type": {
+              "type": "string",
+              "const": "parent"
+            },
+            "claim": {
+              "type": "object",
+              "properties": {
+                "parent_domain": {
+                  "type": "string",
+                  "format": "hostname",
+                  "description": "Domain of the house claimed as this brand's parent."
+                },
+                "claimant_says": {
+                  "type": "string",
+                  "description": "Optional context — what the claimant published or said."
+                },
+                "observed_at": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              },
+              "required": ["parent_domain"],
+              "additionalProperties": true
+            }
+          },
+          "required": ["claim_type", "claim"],
+          "additionalProperties": true
+        },
+        {
+          "title": "VerifyPropertyClaim",
+          "description": "Is this property (website, app, podcast, etc.) one of mine?",
+          "properties": {
+            "claim_type": {
+              "type": "string",
+              "const": "property"
+            },
+            "claim": {
+              "type": "object",
+              "properties": {
+                "property": {
+                  "type": "object",
+                  "description": "Shape matches brand.json properties[] entry.",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": ["website", "mobile_app", "ctv_app", "desktop_app", "dooh", "podcast", "radio", "streaming_audio"]
+                    },
+                    "identifier": { "type": "string" },
+                    "store": {
+                      "type": "string",
+                      "enum": ["apple", "google", "amazon", "roku", "fire_tv", "samsung", "lg", "vizio", "other"]
+                    },
+                    "region": { "type": "string" }
+                  },
+                  "required": ["type", "identifier"],
+                  "additionalProperties": true
+                },
+                "use_case": {
+                  "type": "string",
+                  "maxLength": 100,
+                  "description": "Optional caller-declared use case."
+                }
+              },
+              "required": ["property"],
+              "additionalProperties": true
+            }
+          },
+          "required": ["claim_type", "claim"],
+          "additionalProperties": true
+        },
+        {
+          "title": "VerifyTrademarkClaim",
+          "description": "Is this trademark mine?",
+          "properties": {
+            "claim_type": {
+              "type": "string",
+              "const": "trademark"
+            },
+            "claim": {
+              "type": "object",
+              "properties": {
+                "mark": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "registry": {
+                  "type": "string",
+                  "maxLength": 50
+                },
+                "number": {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                "countries": {
+                  "type": "array",
+                  "items": { "type": "string", "minLength": 2, "maxLength": 2 }
+                },
+                "use_case": {
+                  "type": "string",
+                  "maxLength": 100
+                }
+              },
+              "required": ["mark"],
+              "additionalProperties": true
+            }
+          },
+          "required": ["claim_type", "claim"],
+          "additionalProperties": true
+        }
+      ]
+    }
+  }
+}

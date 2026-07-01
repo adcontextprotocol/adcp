@@ -72,14 +72,14 @@
     }
     .badge-active { background: var(--color-success-100); color: var(--color-success-700); }
     .badge-inactive { background: var(--color-warning-100); color: var(--color-warning-700); }
-    .badge-archived { background: var(--color-gray-200); color: var(--color-gray-700); }
+    .badge-archived { background: var(--color-bg-button-secondary); color: var(--color-text); }
     .badge-private { background: var(--color-error-100); color: var(--color-error-700); }
     .badge-public { background: var(--color-info-100); color: var(--color-info-700); }
     /* Committee type badges */
     .badge-working_group { background: var(--color-primary-100); color: var(--color-primary-700); }
     .badge-council { background: var(--color-purple-100, #f3e8ff); color: var(--color-purple-700, #7c3aed); }
     .badge-chapter { background: var(--color-teal-100, #ccfbf1); color: var(--color-teal-700, #0f766e); }
-    .badge-governance { background: var(--color-gray-300); color: var(--color-gray-700); }
+    .badge-governance { background: var(--color-bg-button-secondary-hover); color: var(--color-text); }
     .badge-industry_gathering { background: var(--color-warning-100); color: var(--color-warning-700); }
     .btn {
       padding: var(--space-2) var(--space-4);
@@ -93,8 +93,8 @@
     .btn-primary { background: var(--color-brand); color: white; }
     .btn-primary:hover { background: var(--color-primary-700); }
     .btn-primary:disabled { background: var(--color-gray-400); cursor: not-allowed; }
-    .btn-secondary { background: var(--color-gray-200); color: var(--color-text-heading); }
-    .btn-secondary:hover { background: var(--color-gray-300); }
+    .btn-secondary { background: var(--color-bg-button-secondary); color: var(--color-text-heading); }
+    .btn-secondary:hover { background: var(--color-bg-button-secondary-hover); }
     .btn-danger { background: var(--color-error-500); color: white; }
     .btn-danger:hover { background: var(--color-error-600); }
     .btn-success { background: var(--color-success-500, #22c55e); color: white; }
@@ -227,7 +227,7 @@
       border-bottom: var(--border-1) solid var(--color-gray-100);
     }
     .user-search-item:hover {
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
     }
     .user-search-item:last-child {
       border-bottom: none;
@@ -241,7 +241,7 @@
       color: var(--color-text-secondary);
     }
     .selected-user {
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       padding: var(--space-2_5);
       border-radius: var(--radius-md);
       display: flex;
@@ -269,7 +269,7 @@
       justify-content: space-between;
       align-items: center;
       padding: var(--space-2);
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       border-radius: var(--radius-sm);
     }
     .tabs {
@@ -292,10 +292,10 @@
     }
     .tab:hover {
       color: var(--color-text-heading);
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
     }
     .tab.active {
-      border-color: var(--color-gray-200);
+      border-color: var(--color-border);
       background: var(--color-bg-card);
       color: var(--color-brand);
     }
@@ -382,7 +382,7 @@
           <div id="allMembersList" style="overflow-x: auto;">
             <table style="width: 100%; border-collapse: collapse;">
               <thead>
-                <tr style="background: var(--color-gray-50);">
+                <tr style="background: var(--color-bg-subtle);">
                   <th style="padding: var(--space-3); text-align: left; border-bottom: var(--border-1) solid var(--color-gray-200); font-size: var(--text-sm);">User</th>
                   <th style="padding: var(--space-3); text-align: left; border-bottom: var(--border-1) solid var(--color-gray-200); font-size: var(--text-sm);">Organization</th>
                   <th style="padding: var(--space-3); text-align: left; border-bottom: var(--border-1) solid var(--color-gray-200); font-size: var(--text-sm);">Working Group</th>
@@ -1042,7 +1042,7 @@
         && !editingGroup.parent_id;
 
       listDiv.innerHTML = currentTopics.map((t, i) => `
-        <div style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-2); background: var(--color-gray-50); border-radius: var(--radius-sm); margin-bottom: var(--space-2);">
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-2); background: var(--color-bg-subtle); border-radius: var(--radius-sm); margin-bottom: var(--space-2);">
           <div>
             <strong>${escapeHtml(t.name)}</strong>
             <span style="color: var(--color-text-muted); font-size: var(--text-sm); margin-left: var(--space-2);">(${escapeHtml(t.slug)})</span>

@@ -45,6 +45,9 @@ Implemented by any agent that hosts a creative library — creative agents (ad s
 | `include_items` | boolean | No | Include items for multi-asset formats like carousels and native ads (default: false) |
 | `include_variables` | boolean | No | Include dynamic content variable definitions (default: false) |
 | `include_pricing` | boolean | No | Include `pricing_options` on each creative (default: false). Requires `account`. |
+| `include_purged` | boolean | No | Include soft-purged creative tombstones (default: false). See [Purged tombstones](#purged-tombstones). |
+| `include_webhook_activity` | boolean | No | Include recent webhook fires per creative (default: false). See [Webhook activity](#webhook-activity). |
+| `webhook_activity_limit` | integer | No | Maximum `webhook_activity[]` records per creative when `include_webhook_activity: true` (default: 50, range 1–200). |
 | `account` | [AccountRef](/docs/building/integration/accounts-and-agents#account-references) | No | Account reference for pricing. When provided with `include_pricing`, the agent returns `pricing_options` from this account's rate card on each creative. |
 | `fields` | array | No | Specific fields to return (omit for all fields). Includes `"pricing_options"` for sparse selection. |
 
@@ -54,9 +57,9 @@ The `filters` object supports these optional, composable filters:
 
 | Filter | Type | Description |
 |--------|------|-------------|
-| `accounts` | array | Filter by owning accounts |
-| `format_ids` | format_id[] | Filter by structured format IDs |
-| `statuses` | string[] | Filter by approval status |
+| `accounts` | [AccountRef](/docs/building/integration/accounts-and-agents#account-references)[] | Filter by owning accounts |
+| `format_ids` | FormatID[] | Filter by structured format IDs |
+| `statuses` | [CreativeStatus](/docs/creative/specification#creative-status-lifecycle)[] | Filter by approval status |
 | `tags` | string[] | Filter by tags (all must match) |
 | `tags_any` | string[] | Filter by tags (any must match) |
 | `name_contains` | string | Case-insensitive name search |
@@ -73,7 +76,11 @@ The `filters` object supports these optional, composable filters:
 \* Assignment-related filters are specific to sales agents. Standalone creative agents ignore these.
 
 <Note>
-**Archived creatives are excluded by default.** To include archived creatives in results, explicitly include `"archived"` in the `statuses` array.
+**Archived creatives are excluded by default.** To include archived creatives in results, explicitly include `"archived"` in the `statuses` array. Suspended creatives are not archived; include `"suspended"` when you specifically want recoverably offline creatives such as published-post references with expired authorization.
+</Note>
+
+<Note>
+For published-post reference products, `list_creatives` is limited to the downstream publisher identities the seller is authorized to inspect. If a product requires a second platform connection such as `publisher_identity` and it is missing, the seller should return `AUTHORIZATION_REQUIRED` with `error.details.missing_connections[]`. It should not present `list_creatives` as global platform post search.
 </Note>
 
 
@@ -225,6 +232,96 @@ When `include_snapshot=true`, each creative includes a lightweight delivery snap
 | `staleness_seconds` | integer | Yes | Maximum age of data in seconds |
 | `impressions` | integer | Yes | Lifetime impressions (not scoped to any date range) |
 | `last_served` | date-time | No | Last time this creative served. Absent when it has never served. |
+
+### Purged tombstones
+
+When a creative is destroyed via [`creative.purged`](https://adcontextprotocol.org/schemas/v3/creative/creative-purged-webhook.json) with `purge_kind: soft`, the seller retains a tombstone for 30 days from the purge timestamp. The tombstone surfaces on `list_creatives` only when the request sets `include_purged: true`:
+
+```json
+{
+  "creative_id": "ft_87100",
+  "name": "Holiday Sale - Leaderboard (purged)",
+  "status": "approved",
+  "purge": {
+    "kind": "soft",
+    "at": "2026-05-18T02:59:48Z",
+    "reason_code": "retention_expired"
+  }
+}
+```
+
+The `status` field on a tombstone is **frozen at its pre-purge value** (in the example above, `"approved"` is what the creative was right before purge — not a current claim). Buyers MUST treat the creative as gone: assignments, serving operations, and delivery reads no longer apply. The presence of the `purge` block is the unambiguous signal.
+
+Hard-purged creatives (`purge_kind: hard`, used for legal erasure under GDPR Article 17 / CCPA / equivalent) retain no tombstone; the [`creative.purged`](https://adcontextprotocol.org/schemas/v3/creative/creative-purged-webhook.json) webhook is the only signal. See [snapshot-and-log § Rule 4 carve-out](/docs/protocol/snapshot-and-log#account-level-adopters-3-1) for the rationale.
+
+### Webhook activity
+
+When `include_webhook_activity: true`, each returned creative carries a `webhook_activity[]` array of the most recent fires scoped to that creative — `creative.status_changed` and `creative.purged` deliveries. This is the buyer's debug surface for "did the publisher fire? did my endpoint receive it? was the retry trail clean?" — the same shape and contract as `webhook_activity[]` on `get_media_buys`. See [Webhook activity log pattern](/docs/protocol/snapshot-and-log#webhook-activity-log-pattern) for the full normative contract (retention, three-state presence, request-field conventions).
+
+**To subscribe** to these fires, register a [`notification_configs[]`](/docs/accounts/tasks/sync_accounts#account-level-webhook-subscriptions) entry on the account via `sync_accounts`. The seller fires per-subscriber against each entry whose `event_types[]` includes the type. `webhook_activity[]` on this read is the buyer-side debug log of what actually fired.
+
+Three-state presence applies:
+
+- **Field omitted** — seller does not surface webhook activity on this read.
+- **`[]`** — seller surfaces the field but no fires fall in the retention window for this creative.
+- **Non-empty** — actual records, most recent first, capped at `webhook_activity_limit` (max 200).
+
+Correlate to your endpoint logs by `idempotency_key`. Each record's `notification_type` discriminates the fire kind:
+
+```json
+{
+  "webhook_activity": [
+    {
+      "idempotency_key": "whk_01HW9D2T3VXQ5M7K9N1P3R5S7U",
+      "subscriber_id": "buyer-primary",
+      "fired_at": "2026-05-18T14:20:00Z",
+      "completed_at": "2026-05-18T14:20:00Z",
+      "notification_type": "creative.status_changed",
+      "attempt": 1,
+      "status": "success",
+      "url": "https://buyer.example/webhooks/adcp/creative",
+      "http_status_code": 200,
+      "response_time_ms": 142,
+      "payload_size_bytes": 612,
+      "error_message": null
+    }
+  ]
+}
+```
+
+Buyers diagnose "no fires arrived" by combining: (a) subscriber registration state on `list_accounts.accounts[].notification_configs[]` — is the right URL active with the right `event_types[]`? — and (b) seller capability declaration via `get_adcp_capabilities` — does the seller support the event types I subscribed to? Field omission on `webhook_activity` alone does not distinguish "seller doesn't surface the log" from "no fires occurred."
+
+### Buyer handler (end-to-end)
+
+A buyer's webhook handler for `creative.status_changed` correlates each fire with library state via `creative_id`, dedupes on `idempotency_key`, and re-reads `list_creatives` for the authoritative snapshot (per [snapshot-and-log Rule 3](/docs/protocol/snapshot-and-log#the-five-rules)):
+
+```javascript
+// POST /webhooks/adcp/creative
+async function handleCreativeWebhook(req, res) {
+  // 1. Verify signature per the registered scheme (RFC 9421 by default).
+  if (!verifyWebhookSignature(req)) return res.status(401).end();
+
+  const fire = req.body; // creative-status-changed-webhook or creative-purged-webhook
+  const { notification_type, idempotency_key, creative_id, account_id } = fire;
+
+  // 2. Dedupe at-least-once delivery.
+  if (await alreadyProcessed(idempotency_key)) return res.status(200).end();
+
+  // 3. Re-read snapshot for authoritative state. Push is signal; snapshot is truth.
+  const snapshot = await testAgent.listCreatives({
+    filters: { creative_ids: [creative_id] },
+    include_purged: notification_type === "creative.purged"
+  });
+
+  // 4. Apply local effects from the snapshot, not the webhook payload.
+  await reconcileCreative(snapshot.creatives[0]);
+
+  await markProcessed(idempotency_key);
+  return res.status(200).end();
+}
+```
+
+Two pitfalls this handler avoids: (1) applying state from the webhook payload directly (ordering and re-emission make the payload non-authoritative); (2) skipping dedup (sellers retry on non-2xx and re-emit on missed-events warnings).
 
 ## Account requirements
 

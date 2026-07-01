@@ -20,6 +20,7 @@ import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
 import { AgentContextDatabase } from '../../db/agent-context-db.js';
 import { AuthenticationRequiredError } from '@adcp/sdk';
+import { buildAgentOAuthAuthorizeUrl } from '../../routes/helpers/agent-oauth-prompt.js';
 import { TRAINING_AGENT_HOSTNAMES } from '../../training-agent/config.js';
 
 // Tool handler type (matches claude-client.ts internal type)
@@ -49,6 +50,112 @@ interface AdcpTaskMeta {
   validate?: (params: Record<string, unknown>) => string | null;
 }
 
+const DOMAIN_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
+const BRAND_ID_PATTERN = /^[a-z0-9_]+$/;
+const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9_.:-]{16,255}$/;
+const BRAND_REF_PROPERTIES = new Set([
+  'domain',
+  'brand_id',
+  'industries',
+  'data_subject_contestation',
+  'brand_kit_override',
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function validateIdempotencyKey(params: Record<string, unknown>): string | null {
+  if (typeof params.idempotency_key !== 'string' || !IDEMPOTENCY_KEY_PATTERN.test(params.idempotency_key)) {
+    return 'idempotency_key is required and must be 16-255 characters matching [A-Za-z0-9_.:-].';
+  }
+  return null;
+}
+
+function validateTotalBudget(totalBudget: unknown): string | null {
+  if (!isRecord(totalBudget)) {
+    return 'total_budget must be an object with amount and currency.';
+  }
+  const extra = Object.keys(totalBudget).filter((key) => !['amount', 'currency'].includes(key));
+  if (extra.length > 0) {
+    return `total_budget must not include additional fields: ${extra.join(', ')}.`;
+  }
+  if (typeof totalBudget.amount !== 'number' || totalBudget.amount < 0) {
+    return 'total_budget.amount must be a non-negative number.';
+  }
+  if (typeof totalBudget.currency !== 'string' || totalBudget.currency.trim() === '') {
+    return 'total_budget.currency must be a non-empty string.';
+  }
+  return null;
+}
+
+export function validateAccountRefParam(account: unknown): string | null {
+  if (!isRecord(account)) {
+    return 'account is required and must be an object: { account_id } OR { brand: { domain }, operator: "operator.example" }.';
+  }
+
+  const hasAccountId = account.account_id !== undefined;
+  const hasNaturalKey =
+    account.brand !== undefined ||
+    account.operator !== undefined ||
+    account.sandbox !== undefined;
+
+  if (hasAccountId && hasNaturalKey) {
+    if (account.sandbox !== undefined && account.brand === undefined && account.operator === undefined) {
+      return 'account.sandbox is only valid with the natural-key AccountRef: { brand: { domain }, operator: "operator.example", sandbox?: true }.';
+    }
+    return 'account must use exactly one AccountRef variant: { account_id } OR { brand: { domain }, operator: "operator.example" }. Do not combine account_id with brand/operator/sandbox.';
+  }
+
+  if (hasAccountId) {
+    if (typeof account.account_id !== 'string' || account.account_id.trim() === '') {
+      return 'account.account_id must be a non-empty string.';
+    }
+    const extra = Object.keys(account).filter((key) => key !== 'account_id');
+    if (extra.length > 0) {
+      return `account with account_id must not include additional fields: ${extra.join(', ')}.`;
+    }
+    return null;
+  }
+
+  if (!isRecord(account.brand)) {
+    return 'account.brand must be an object with domain: { brand: { domain: "brand.example" }, operator: "operator.example" }.';
+  }
+  const brandExtra = Object.keys(account.brand).filter((key) => !BRAND_REF_PROPERTIES.has(key));
+  if (brandExtra.length > 0) {
+    return `account.brand contains fields not allowed by BrandRef: ${brandExtra.join(', ')}.`;
+  }
+  if (typeof account.brand.domain !== 'string' || !DOMAIN_PATTERN.test(account.brand.domain)) {
+    return 'account.brand.domain must be a valid lowercase domain.';
+  }
+  if (account.brand.brand_id !== undefined && (typeof account.brand.brand_id !== 'string' || !BRAND_ID_PATTERN.test(account.brand.brand_id))) {
+    return 'account.brand.brand_id must be a lowercase alphanumeric string with underscores only.';
+  }
+  if (account.brand.industries !== undefined && (!Array.isArray(account.brand.industries) || !account.brand.industries.every((value) => typeof value === 'string'))) {
+    return 'account.brand.industries must be an array of strings when present.';
+  }
+  if (account.brand.data_subject_contestation !== undefined && !isRecord(account.brand.data_subject_contestation)) {
+    return 'account.brand.data_subject_contestation must be an object when present.';
+  }
+  if (account.brand.brand_kit_override !== undefined && !isRecord(account.brand.brand_kit_override)) {
+    return 'account.brand.brand_kit_override must be an object when present.';
+  }
+  if (Array.isArray(account.operator)) {
+    return 'account.operator must be a string domain, not an array. Use "operator.example", not ["operator.example"].';
+  }
+  if (typeof account.operator !== 'string' || !DOMAIN_PATTERN.test(account.operator)) {
+    return 'account.operator must be a valid lowercase domain string.';
+  }
+  if (account.sandbox !== undefined && typeof account.sandbox !== 'boolean') {
+    return 'account.sandbox must be a boolean when present.';
+  }
+  const extra = Object.keys(account).filter((key) => !['brand', 'operator', 'sandbox'].includes(key));
+  if (extra.length > 0) {
+    return `natural-key account must not include additional fields: ${extra.join(', ')}.`;
+  }
+  return null;
+}
+
 export const ADCP_TASK_REGISTRY: Record<string, AdcpTaskMeta> = {
   // Media Buy
   get_products: { area: 'media-buy', description: 'Discover advertising products from a sales agent using natural language briefs' },
@@ -56,10 +163,26 @@ export const ADCP_TASK_REGISTRY: Record<string, AdcpTaskMeta> = {
     area: 'media-buy',
     description: 'Create an advertising campaign from selected products',
     validate: (params) => {
+      const idempotencyError = validateIdempotencyKey(params);
+      if (idempotencyError) return idempotencyError;
+      const accountError = validateAccountRefParam(params.account);
+      if (accountError) return accountError;
       if (!params.brand) return 'brand is required (with domain).';
-      if (!params.packages || !Array.isArray(params.packages)) return 'packages array is required.';
-      if (!params.start_time) return 'start_time is required.';
-      if (!params.end_time) return 'end_time is required.';
+      if (params.packages !== undefined && !Array.isArray(params.packages)) return 'packages must be a non-empty array when provided.';
+      if (Array.isArray(params.packages) && params.packages.length === 0) return 'packages must be a non-empty array when provided.';
+      if (params.proposal_id !== undefined && (typeof params.proposal_id !== 'string' || params.proposal_id.length === 0)) return 'proposal_id must be a non-empty string when provided.';
+      const hasPackages = Array.isArray(params.packages) && params.packages.length > 0;
+      const hasProposal = typeof params.proposal_id === 'string' && params.proposal_id.length > 0;
+      if (!hasPackages && !hasProposal) return 'Either packages array or proposal_id must be provided.';
+      if (hasPackages && hasProposal) return 'Use either packages array or proposal_id + total_budget, not both.';
+      if (!hasProposal && params.total_budget !== undefined) return 'total_budget is only valid with proposal_id.';
+      if (hasProposal && params.total_budget === undefined) return 'total_budget is required when proposal_id is provided.';
+      if (params.total_budget !== undefined) {
+        const totalBudgetError = validateTotalBudget(params.total_budget);
+        if (totalBudgetError) return totalBudgetError;
+      }
+      if (typeof params.start_time !== 'string' || !params.start_time) return 'start_time must be "asap" or an ISO 8601 datetime string.';
+      if (typeof params.end_time !== 'string' || !params.end_time) return 'end_time must be an ISO 8601 datetime string.';
       return null;
     },
   },
@@ -73,14 +196,16 @@ export const ADCP_TASK_REGISTRY: Record<string, AdcpTaskMeta> = {
   },
   sync_catalogs: { area: 'media-buy', description: 'Sync product catalogs, store locations, job postings, and other structured feeds to a seller account' },
   list_creative_formats: { area: 'media-buy', description: 'View supported creative specifications from a sales or creative agent' },
-  list_authorized_properties: { area: 'media-buy', description: 'Get the list of publisher properties this sales agent can sell' },
   get_media_buys: { area: 'media-buy', description: 'Retrieve media buy state: status, valid_actions, creative approvals, pending formats' },
   get_media_buy_delivery: { area: 'media-buy', description: 'Retrieve performance metrics for a campaign' },
   update_media_buy: {
     area: 'media-buy',
     description: 'Modify an existing media buy (dates, pause/resume, cancel, budget, targeting, creatives)',
     validate: (params) => {
-      if (!params.account) return 'account is required (account_id or brand+operator).';
+      const idempotencyError = validateIdempotencyKey(params);
+      if (idempotencyError) return idempotencyError;
+      const accountError = validateAccountRefParam(params.account);
+      if (accountError) return accountError;
       if (!params.media_buy_id) return 'media_buy_id is required to identify the media buy to update.';
       return null;
     },
@@ -470,7 +595,8 @@ const askAboutAdcpTaskTool: AddieTool = {
 const callAdcpTaskTool: AddieTool = {
   name: 'call_adcp_task',
   description: [
-    'Execute any AdCP protocol task against an agent. For uncommon tasks or when unsure about parameters, call ask_about_adcp_task first.',
+    'Execute any registered AdCP protocol task against an agent. For uncommon tasks or when unsure about parameters, call ask_about_adcp_task first.',
+    'Does NOT include capability discovery — use the `get_adcp_capabilities` tool directly for that (it is not a task).',
     '',
     'Two rules a search round-trip cannot rescue you from after a mutating call:',
     '• idempotency_key: REQUIRED on every mutating task (UUID). Same key on retry replays the same response. Generating a fresh UUID after a failed attempt is how you double-book.',
@@ -497,7 +623,7 @@ const callAdcpTaskTool: AddieTool = {
         description: [
           'Task-specific parameters. Quick reference for common tasks:',
           '• get_products: { brief, brand: { domain }, buying_mode?: "brief"|"wholesale"|"refine", filters?: { channels, budget_range } }',
-          '• create_media_buy: { idempotency_key, brand: { domain }, packages: [{ product_id, pricing_option_id, budget }], start_time: { type: "asap"|"scheduled" }, end_time }',
+          '• create_media_buy: { idempotency_key, account: { account_id } OR { brand:{domain}, operator: "operator.example" }, brand: { domain }, packages: [...] OR proposal_id + total_budget, start_time: "asap" | "2024-06-01T00:00:00Z", end_time: "2024-06-30T23:59:59Z" }',
           '• update_media_buy: { idempotency_key, account: { account_id } OR { brand:{domain}, operator }, media_buy_id, paused?, canceled?, packages?: [{ package_id, budget? }] }',
           '• sync_creatives: { idempotency_key, creatives: [{ creative_id, format_id: { agent_url, id }, assets }], assignments? }',
           '• build_creative: { message, target_format_id: { agent_url, id }, brand?: { domain } }',
@@ -520,7 +646,7 @@ const getAdcpCapabilitiesTool: AddieTool = {
   description:
     'Discover an agent\'s AdCP protocol support and capabilities. Returns supported tasks, domains, features, and configuration.',
   usage_hints:
-    'use when the user wants to discover what an agent can do, check supported features, or understand agent capabilities before using other tasks',
+    'use to discover an agent\'s supported tasks and features — call this tool directly, NOT via call_adcp_task',
   input_schema: {
     type: 'object',
     properties: {
@@ -756,49 +882,21 @@ export function createAdcpToolHandlers(
       // Handle AuthenticationRequiredError from @adcp/sdk (includes OAuth metadata)
       if (error instanceof AuthenticationRequiredError) {
         const organizationId = memberContext?.organization?.workos_organization_id;
-        if (organizationId && error.hasOAuth) {
-          try {
-            // Get or create agent context for OAuth flow
-            const baseUrl = new URL(agentUrl);
-            let agentContext = await agentContextDb.getByOrgAndUrl(organizationId, agentUrl);
-            if (!agentContext) {
-              agentContext = await agentContextDb.create({
-                organization_id: organizationId,
-                agent_url: agentUrl,
-                agent_name: baseUrl.hostname,
-                agent_type: 'unknown',
-                protocol: 'mcp',
-              });
-              logger.info({ agentUrl, agentContextId: agentContext.id }, 'Created agent context for OAuth');
-            }
-
-            // Build auth URL with pending request context for auto-retry
-            // Note: URLSearchParams handles encoding, so don't double-encode
-            // Strip bank details from params before URL serialization — bank data
-            // in URLs leaks to browser history, access logs, and referrer headers.
-            const safeParams = structuredClone(params);
-            for (const key of ['billing_entity', 'invoice_recipient'] as const) {
-              const obj = (safeParams as Record<string, unknown>)[key];
-              if (obj && typeof obj === 'object' && 'bank' in (obj as Record<string, unknown>)) {
-                delete (obj as Record<string, unknown>).bank;
-              }
-            }
-            const authParams = new URLSearchParams({
-              agent_context_id: agentContext.id,
-              pending_task: task,
-              pending_params: JSON.stringify(safeParams),
-            });
-            const authUrl = `${getBaseUrl()}/api/oauth/agent/start?${authParams.toString()}`;
-
+        if (error.hasOAuth) {
+          const authUrl = await buildAgentOAuthAuthorizeUrl(
+            agentUrl,
+            organizationId,
+            agentContextDb,
+            { pendingTask: task, pendingParams: params },
+          );
+          if (authUrl) {
             return (
               `**Task failed:** \`${task}\`\n\n` +
               `**Error:** OAuth authorization required\n\n` +
               `The agent at \`${agentUrl}\` requires OAuth authentication.\n\n` +
               `**[Click here to authorize this agent](${authUrl})**\n\n` +
-              `After you authorize, I'll automatically retry your request.`
+              `After you authorize, ask me to run \`${task}\` again.`
             );
-          } catch (oauthSetupError) {
-            logger.debug({ error: oauthSetupError, agentUrl }, 'Failed to set up OAuth flow');
           }
         }
 
@@ -838,6 +936,13 @@ export function createAdcpToolHandlers(
 
     if (!agentUrl) return '**Error:** agent_url is required.';
     if (!task) return '**Error:** task is required.';
+
+    // Defense-in-depth: fires if the MCP layer skips enum validation.
+    // In well-formed requests this branch is unreachable because 'get_adcp_capabilities'
+    // is not in TASK_NAMES and will be rejected by the input schema first.
+    if (task === 'get_adcp_capabilities') {
+      return '**Error:** `get_adcp_capabilities` is a protocol-layer handshake, not an AdCP task — use the dedicated `get_adcp_capabilities` tool directly (it takes only `agent_url`, no `task` parameter).';
+    }
 
     const meta = ADCP_TASK_REGISTRY[task];
     if (!meta) {

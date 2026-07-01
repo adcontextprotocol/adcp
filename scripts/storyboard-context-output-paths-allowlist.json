@@ -1,0 +1,4 @@
+{
+  "$comment": "Per-storyboard exceptions for lint-storyboard-context-output-paths.cjs. Each entry MUST carry a `reason` explaining why the lint can't statically verify the path against the response schema. Re-review during spec changes — if the polymorphism the lint can't follow gets first-class schema treatment, remove the entry.",
+  "allowlist": []
+}

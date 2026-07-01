@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/core/truncation-sentinel.json",
+  "title": "Truncation Sentinel",
+  "description": "Universal AdCP sentinel value that replaces a field's content when the seller has truncated it due to a size cap. Used wherever an AdCP field may carry large user-supplied content (e.g., webhook request/response payloads under a future `include_webhook_payloads` extension, large structured-event blobs, captured response bodies) and the seller has elected to surface a bounded preview instead of the full value. The leading-underscore key `_truncation` is a deliberate control marker — its presence on an object is the discriminator that distinguishes a truncation sentinel from the natural value the field would otherwise carry. Schemas that may carry truncated content reference this shape via `oneOf` against the natural value type — e.g., `{ \"oneOf\": [ { \"$ref\": \"#/definitions/NaturalValue\" }, { \"$ref\": \"/schemas/core/truncation-sentinel.json\" } ] }`. Receivers detect a sentinel by testing `'_truncation' in value`. See snapshot-and-log.mdx § Webhook activity log pattern for the cross-resource context this sentinel was introduced under.",
+  "type": "object",
+  "properties": {
+    "_truncation": {
+      "type": "object",
+      "description": "Truncation envelope. The leading underscore is a deliberate signal that this property is a control marker and not a payload field — the natural value being surfaced will not have a `_truncation` key. `additionalProperties: true` so future revisions of this contract can add classification fields without a forward-compat break.",
+      "properties": {
+        "original_size_bytes": {
+          "type": "integer",
+          "description": "Size of the untruncated original content in bytes, measured before any encoding overhead. Lets the receiver decide whether to fetch the full value via a payload-bearing surface (when one exists) or proceed with the preview.",
+          "minimum": 0
+        },
+        "preview": {
+          "type": "string",
+          "description": "Optional bounded human-readable excerpt of the original content. Sellers SHOULD keep previews under 8 KiB and SHOULD truncate on a UTF-8 codepoint boundary. Absent when the seller cannot safely surface even a preview (e.g., the original content is binary and not text-decodable, or seller policy forbids any payload surfacing). Receivers MUST NOT parse `preview` as a complete representation of the original value."
+        },
+        "preview_format": {
+          "type": "string",
+          "description": "Hint for how to render `preview`. Common values: `text` (plain UTF-8), `json` (JSON fragment), `base64` (base64-encoded binary), `xml`, `html`. The list is open — adopters MAY use other MIME-derived shorthands. Receivers SHOULD treat unknown values as `text` and SHOULD NOT reject the sentinel when the value is unfamiliar."
+        }
+      },
+      "required": [
+        "original_size_bytes"
+      ],
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "_truncation"
+  ],
+  "additionalProperties": false
+}

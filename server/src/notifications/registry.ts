@@ -10,6 +10,11 @@ import { sendChannelMessage, isSlackConfigured } from '../slack/client.js';
 import type { SlackBlockMessage } from '../slack/types.js';
 
 const CHANNEL_ID = process.env.REGISTRY_EDITS_CHANNEL_ID;
+// KYC / signup-ops channel — falls back to the registry-edits channel
+// when unset so the notification still fires in dev / staging without
+// extra env wiring, but distinct in prod so the two audiences don't mix
+// (wiki edits vs. signup KYC are different reviewer flows).
+const SIGNUP_OPS_CHANNEL_ID = process.env.SIGNUP_OPS_CHANNEL_ID || CHANNEL_ID;
 const APP_URL = process.env.APP_URL || 'https://agenticadvertising.org';
 
 function getChannelId(): string | null {
@@ -18,6 +23,14 @@ function getChannelId(): string | null {
     return null;
   }
   return CHANNEL_ID;
+}
+
+function getSignupOpsChannelId(): string | null {
+  if (!SIGNUP_OPS_CHANNEL_ID) {
+    logger.debug('SIGNUP_OPS_CHANNEL_ID / REGISTRY_EDITS_CHANNEL_ID not configured, skipping signup ops notification');
+    return null;
+  }
+  return SIGNUP_OPS_CHANNEL_ID;
 }
 
 /**
@@ -69,6 +82,97 @@ export async function notifyRegistryEdit(edit: {
     logger.error({ error, domain: edit.domain }, 'Failed to send registry edit notification');
     return null;
   }
+}
+
+/**
+ * Notify ops when a new user signs up whose verified email domain
+ * matches a brand in our registry — the KYC signal Brian flagged in
+ * the brand-claim follow-up (#4744). At today's signup volume we
+ * notify on every match regardless of brand verification state so ops
+ * can watch the funnel; later we can threshold by signal value.
+ *
+ * Fire-and-forget at the call site — never block the webhook response.
+ */
+export async function notifyBrandClaimOpportunity(opportunity: {
+  user_email: string;
+  user_first_name?: string;
+  user_last_name?: string;
+  domain: string;
+  brand_name?: string | null;
+  brand_view_url: string;
+  brand_already_verified: boolean;
+  verified_owner_org_name?: string | null;
+}): Promise<void> {
+  const channelId = getSignupOpsChannelId();
+  if (!channelId || !isSlackConfigured()) return;
+
+  // All user-controlled fields go through sanitizeMrkdwn before
+  // interpolation — first_name / last_name / email arrive from WorkOS
+  // signup (user-supplied), brand_name and verified_owner_org_name flow
+  // from the discovered-brands / organizations tables which can be
+  // populated by external research. Without sanitization an attacker
+  // could plant <!channel> mentions or <https://evil|legit-text> links
+  // into the moderator-trusted channel (same threat as #4754).
+  // Link labels additionally strip `|`, `<`, `>` since those break out
+  // of mrkdwn link syntax even after standard escaping.
+  const display = sanitizeMrkdwn(
+    [opportunity.user_first_name, opportunity.user_last_name]
+      .filter(Boolean)
+      .join(' ')
+      || opportunity.user_email,
+  );
+  const emailSafe = sanitizeMrkdwn(opportunity.user_email);
+  const domainSafe = sanitizeMrkdwn(opportunity.domain);
+  const brandLabel = sanitizeMrkdwnLinkLabel(
+    opportunity.brand_name
+      ? `${opportunity.brand_name} (${opportunity.domain})`
+      : opportunity.domain,
+  );
+  const ownerLabel = opportunity.verified_owner_org_name
+    ? sanitizeMrkdwn(opportunity.verified_owner_org_name)
+    : null;
+  const statusLine = opportunity.brand_already_verified
+    ? `_Brand is already verified-owned${ownerLabel ? ` by *${ownerLabel}*` : ''} — claim won't fire._`
+    : `_Brand is unclaimed — signup will see a claim suggestion._`;
+
+  const message: SlackBlockMessage = {
+    text: `🪪 New signup matches brand: ${emailSafe} → ${domainSafe}`,
+    blocks: [
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `🪪 *New signup matches a registry brand* — <${APP_URL}${opportunity.brand_view_url}|${brandLabel}>`,
+        },
+      },
+      {
+        type: 'section',
+        fields: [
+          { type: 'mrkdwn', text: `*User:*\n${display}` },
+          { type: 'mrkdwn', text: `*Email:*\n${emailSafe}` },
+        ],
+      },
+      {
+        type: 'section',
+        text: { type: 'mrkdwn', text: statusLine },
+      },
+    ],
+  };
+
+  try {
+    await sendChannelMessage(channelId, message);
+  } catch (error) {
+    logger.error({ error, domain: opportunity.domain }, 'Failed to send brand-claim opportunity notification');
+  }
+}
+
+/**
+ * Stricter sanitizer for link-label interpolation (`<url|LABEL>`). On
+ * top of the standard mrkdwn escaping, strip `|`, `<`, `>` because those
+ * break out of the label segment of Slack link syntax.
+ */
+function sanitizeMrkdwnLinkLabel(s: string): string {
+  return sanitizeMrkdwn(s).replace(/[<>|]/g, '');
 }
 
 /**
@@ -189,6 +293,144 @@ export async function notifyRegistryRollback(rollback: {
     await sendChannelMessage(channelId, message);
   } catch (error) {
     logger.error({ error, domain: rollback.domain }, 'Failed to send registry rollback notification');
+  }
+}
+
+/**
+ * Strip Slack mrkdwn meta-characters from user-controlled strings before
+ * interpolating them into a channel message. Without this, an uploader
+ * could plant `<!channel>` / `<!here>` / `<@U…>` mentions to ping the
+ * whole moderator channel, or `<https://evil/|legit-text>` to plant a
+ * phishing link in a moderator-trusted surface. Replaces angle brackets
+ * and ampersand with HTML-escaped equivalents and inserts a zero-width
+ * space inside `!channel|here|everyone` so the broadcast token loses
+ * its meaning while staying human-readable.
+ */
+function sanitizeMrkdwn(s: string): string {
+  return s
+    .replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]!))
+    .replace(/!(channel|here|everyone)/gi, '!​$1');
+}
+
+/**
+ * Notify moderators when a community logo upload queues for review.
+ *
+ * Fires from both the HTTP route and the Addie MCP tool whenever a logo
+ * lands with `review_status='pending'`. Verified-owner uploads (auto-
+ * approved) do NOT fire this — they're owner-attested and don't need a
+ * second pair of eyes. Returns the message ts so future approval/rejection
+ * notifications can thread off it.
+ */
+export async function notifyPendingBrandLogo(upload: {
+  domain: string;
+  logo_id: string;
+  content_type: string;
+  tags: string[];
+  uploader_email?: string;
+  uploader_name?: string;
+  upload_note?: string;
+  source: 'community' | 'addie';
+}): Promise<string | null> {
+  const channelId = getChannelId();
+  if (!channelId || !isSlackConfigured()) return null;
+
+  const rawUploader = upload.source === 'addie'
+    ? 'Addie (chat)'
+    : (upload.uploader_name || upload.uploader_email || 'Unknown');
+  const uploaderDisplay = sanitizeMrkdwn(rawUploader);
+  const reviewUrl = `${APP_URL}/brand/view/${upload.domain}`;
+  const tagsLine = upload.tags.length ? upload.tags.join(', ') : '(none)';
+
+  const fields = [
+    { type: 'mrkdwn', text: `*Uploader:*\n${uploaderDisplay}` },
+    { type: 'mrkdwn', text: `*Tags:*\n${tagsLine}` },
+    { type: 'mrkdwn', text: `*Format:*\n${upload.content_type}` },
+  ] as const;
+
+  const blocks: SlackBlockMessage['blocks'] = [
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `🖼️ *Logo pending review:* <${reviewUrl}|${upload.domain}>`,
+      },
+    },
+    { type: 'section', fields: [...fields] },
+  ];
+
+  if (upload.upload_note) {
+    // Truncate to keep the Slack block under the 3000-char text limit and
+    // sanitize before interpolating — the note is uploader-controlled and
+    // posted into a moderator-trusted channel.
+    const note = sanitizeMrkdwn(upload.upload_note.slice(0, 500));
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: `*Note:*\n${note}` },
+    });
+  }
+
+  const message: SlackBlockMessage = {
+    text: `🖼️ Logo pending review: ${upload.domain} by ${uploaderDisplay}`,
+    blocks,
+  };
+
+  try {
+    const result = await sendChannelMessage(channelId, message);
+    return result.ts || null;
+  } catch (error) {
+    logger.error({ error, domain: upload.domain, logoId: upload.logo_id }, 'Failed to send pending-logo notification');
+    return null;
+  }
+}
+
+/**
+ * Notify (as a thread reply) when a moderator resolves a pending logo
+ * upload. Threads off the original `notifyPendingBrandLogo` ts so the
+ * channel reads as a conversation rather than a stream of disconnected
+ * verdicts. Silently skips when `thread_ts` is missing — older uploads
+ * predate the notify path and Slack-disabled environments never had a
+ * parent message to thread off.
+ */
+export async function notifyBrandLogoReviewed(review: {
+  thread_ts: string | null;
+  domain: string;
+  action: 'approve' | 'reject' | 'delete';
+  reviewer_email?: string;
+  reviewer_name?: string;
+  note?: string;
+}): Promise<void> {
+  const channelId = getChannelId();
+  if (!channelId || !isSlackConfigured() || !review.thread_ts) return;
+
+  const verdictEmoji =
+    review.action === 'approve' ? '✅' :
+    review.action === 'reject' ? '❌' :
+    '🗑️';
+  const verdictLabel =
+    review.action === 'approve' ? 'Approved' :
+    review.action === 'reject' ? 'Rejected' :
+    'Deleted';
+  const reviewer = review.reviewer_name || review.reviewer_email || 'Moderator';
+  const noteSuffix = review.note ? `\n_${review.note.slice(0, 500)}_` : '';
+
+  const message: SlackBlockMessage = {
+    text: `${verdictEmoji} ${verdictLabel} by ${reviewer}`,
+    thread_ts: review.thread_ts,
+    blocks: [
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `${verdictEmoji} *${verdictLabel}* by ${reviewer}${noteSuffix}`,
+        },
+      },
+    ],
+  };
+
+  try {
+    await sendChannelMessage(channelId, message);
+  } catch (error) {
+    logger.error({ error, domain: review.domain }, 'Failed to send logo-review thread reply');
   }
 }
 

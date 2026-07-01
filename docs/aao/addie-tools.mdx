@@ -68,7 +68,7 @@ Download and read a file that was shared in Slack. PROACTIVELY use this whenever
 
 ### `list_github_issues`
 
-Search or list GitHub issues and PRs to find open items on a topic, check RFC/epic status, or answer "what is being worked on for X" questions. Pass `query` for keyword search (GitHub search syntax, but `repo:`/`org:`/`user:`/`is:` qualifiers are rejected — use the `repo` param instead). Returns title, number, state, labels, author, last-updated. Do NOT use when the user has a specific issue number — use get_github_issue. Allowed repos: any `adcontextprotocol/*` or `prebid/*`.
+Search or list GitHub issues and PRs to find open items on a topic, check RFC/epic status, or answer "what is being worked on for X" questions. Pass `query` for keyword search (GitHub search syntax, but `repo:`/`org:`/`user:`/`is:` qualifiers are rejected — use the `repo` param instead). Returns title, number, state, labels, author, last-updated. Works on any public GitHub repo. Do NOT use when the user has a specific issue number — use get_github_issue.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
@@ -108,7 +108,7 @@ Get the current user's personal profile — who they are as a person. Shows head
 
 ### `update_my_profile`
 
-Update the current user's personal profile — who they are as a person. Can update headline, bio, expertise, interests, location, and social links. Only updates fields that are provided.
+Update the current user's personal profile — who they are as a person. Can update headline, bio, expertise, interests, location, and social links. Only updates fields that are provided. Does NOT update first/last name — use set_my_name for that.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
@@ -134,13 +134,13 @@ If the brand domain was previously registered by another organization, the tool 
 
 ### `request_brand_domain_challenge`
 
-Issue a DNS TXT challenge so the caller's organization can claim a brand domain currently registered to another org or unregistered. Returns the verification record (Name/Type/Value) for the user to publish at their DNS host. DO NOT use when: the domain is already owned by the caller's org (already linked in their member profile); the user is just asking what their domain is; the user is asking generic 'is my domain set up?' questions. Pair with verify_brand_domain_challenge ONLY after the user confirms they've published the record. Response begins with an HTML comment '&lt;!-- STATUS: &lt;code> -->' for machine parsing (invisible in rendered markdown) — codes: dns_record_issued, already_verified, collision, invalid_domain, workos_error, not_authenticated, no_org, not_admin, missing_domain.
+Issue a DNS TXT challenge so the caller's selected organization can claim a brand domain currently registered to another org or unregistered. Returns the verification record (Name/Type/Value) for the user to publish at their DNS host. DO NOT use when: the domain is already owned by the caller's org (already linked in their member profile); the user is just asking what their domain is; the user is asking generic 'is my domain set up?' questions. If the caller belongs to multiple organizations, or the current org is a personal workspace while the domain matches a company org, STOP and ask them to choose the company organization_id before issuing a challenge. Pair with verify_brand_domain_challenge ONLY after the user confirms they've published the record. Response begins with an HTML comment '&lt;!-- STATUS: &lt;code> -->' for machine parsing (invisible in rendered markdown) — codes: dns_record_issued, already_verified, collision, invalid_domain, workos_error, not_authenticated, no_org, org_selection_required, not_admin, missing_domain.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
 ### `verify_brand_domain_challenge`
 
-Run the WorkOS DNS lookup against a previously-issued challenge and, on success, apply the brand-registry update. ONLY call after request_brand_domain_challenge returned DNS instructions in this same conversation AND the user has explicitly confirmed they published the record. NEVER call speculatively, as a 'check status' tool, or in a retry loop — DNS propagation takes minutes and the server enforces a cooldown that will return still_pending if you call again too soon. If the call returns still_pending, STOP and ask the user to confirm before any retry. Response begins with an HTML comment '&lt;!-- STATUS: &lt;code> -->' (invisible in rendered markdown) — codes: verified, still_pending, no_challenge, workos_error, not_authenticated, no_org, not_admin, missing_domain. After 'verified' the claim is complete; after 'still_pending' STOP and ask the user to confirm before retrying.
+Run the WorkOS DNS lookup against a previously-issued challenge for the selected organization and, on success, apply the brand-registry update. ONLY call after request_brand_domain_challenge returned DNS instructions in this same conversation AND the user has explicitly confirmed they published the record. NEVER call speculatively, as a 'check status' tool, or in a retry loop — DNS propagation takes minutes and the server enforces a cooldown that will return still_pending if you call again too soon. If the call returns still_pending, STOP and ask the user to confirm before any retry. Response begins with an HTML comment '&lt;!-- STATUS: &lt;code> -->' (invisible in rendered markdown) — codes: verified, still_pending, no_challenge, workos_error, not_authenticated, no_org, org_selection_required, not_admin, missing_domain. After 'verified' the claim is complete; after 'still_pending' STOP and ask the user to confirm before retrying.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
@@ -316,7 +316,7 @@ Publisher and agent setup, verification, and testing — validate adagents.json,
 
 ### `validate_adagents`
 
-Validate a domain's /.well-known/adagents.json file. Returns validation results including any errors or warnings.
+Validate a domain's /.well-known/adagents.json file with a live fetch. Returns validation results including any errors or warnings.
 
 *Source: `server/src/addie/mcp/property-tools.ts`*
 
@@ -326,15 +326,15 @@ Resolve a domain to its canonical brand identity by checking for brand.json at /
 
 *Source: `server/src/addie/mcp/brand-tools.ts`*
 
-### `probe_adcp_agent`
+### `get_agent_status`
 
-Check if an AdCP agent is online and list its advertised capabilities. This only verifies connectivity (the agent responds to HTTP requests) - it does NOT verify the agent implements the protocol correctly. Use evaluate_agent_quality to verify actual protocol compliance.
+Return the AAO registry's current status for an agent: health (online / last checked), declared capabilities, and the most recent compliance verdict per track from the comply storyboard suite. Reads cached state — does NOT perform a live probe. For agents not in the registry, returns guidance to register the agent (so the heartbeat picks it up) or to run evaluate_agent_quality for an on-demand check.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
 ### `check_publisher_authorization`
 
-Check if a publisher domain has authorized a specific agent.
+Check if a publisher domain has authorized a specific agent. Results are cached briefly; pass force_refresh: true after the publisher changes adagents.json to bypass the cache.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
@@ -410,13 +410,29 @@ List the most-requested publisher domains that are not yet in the registry. Show
 
 *Source: `server/src/addie/mcp/property-tools.ts`*
 
+## agent_conformance
+
+Run AdCP compliance storyboards against the user's own dev/staging MCP server via Addie's Socket Mode channel — outbound WebSocket from the adopter to Addie, no public DNS or ngrok needed. Use when the user wants to test their own AdCP agent during development. Requires the user to be mapped to a WorkOS organization. Tools issue a session-bound token and then run a storyboard against the connected adopter agent.
+
+### `issue_conformance_token`
+
+Issue a short-lived JWT (1h TTL) the adopter pastes into their `@adcp/sdk/server` ConformanceClient config to connect their dev/staging MCP server outbound to Addie's conformance channel. The token is bound to the caller's WorkOS organization. Use this when the user is building an AdCP agent and wants Addie to run conformance/compliance tests against their dev environment without exposing it publicly. Returns the token, the WebSocket URL, and the expiry time.
+
+*Source: `server/src/addie/mcp/conformance-tools.ts`*
+
+### `run_conformance_against_my_agent`
+
+Run a compliance storyboard against the adopter MCP server connected to this Addie session via Socket Mode. The adopter must have started `@adcp/sdk/server` ConformanceClient with a token issued in this same chat session — the channel routes by WorkOS organization id. Returns a markdown report with phase/step pass/fail/skipped status, trimmed error text, and sanitized failed-validation details such as id, expected, and actual on failures. Use this after the user confirms their conformance client shows `status=connected`.
+
+*Source: `server/src/addie/mcp/conformance-tools.ts`*
+
 ## adcp_operations
 
 Execute AdCP protocol operations - discover documentation, execute tasks against agents, check agent capabilities. Covers media buy, creative, signals, governance, SI, and brand protocol.
 
 ### `save_agent`
 
-Save an agent URL to the organization's context and add it to the dashboard for compliance monitoring. New agents land in the dashboard with `members_only` visibility — discoverable to fellow Professional-tier (or higher) members, but not publicly listed in the directory or brand.json. To list publicly, the caller promotes the agent via the dashboard publish flow; that flow gates on an API-access subscription tier. Optionally store credentials securely (encrypted, never shown in conversations). Three auth modes, any of which may be combined with a new or existing save: (1) static bearer/basic via `auth_token`, (2) OAuth 2.0 client credentials (RFC 6749 §4.4, machine-to-machine) via `oauth_client_credentials`. Use this when users want to connect their agent, set up compliance monitoring, save their agent for testing, or provide credentials.
+Register an agent in the AgenticAdvertising.org registry on behalf of the current organization, or an explicitly selected active organization via `organization_id` / `organization_name`. Adds the agent to the org's member profile; surfaces in `/dashboard/agents`. New agents land with `members_only` visibility (discoverable to other paying AgenticAdvertising.org members — Professional, Builder, Member, or Leader; not publicly listed in the directory or brand.json). To list publicly, the caller promotes the agent via the dashboard; public visibility requires a paid AgenticAdvertising.org tier (Professional, Builder, Member, or Leader) and a primary brand domain. Auth modes: (1) none — public agent, no credentials; (2) static `auth_token` + `auth_type` (`bearer` or `basic`, stored encrypted); (3) `oauth_client_credentials` for machine-to-machine (RFC 6749 §4.4). For interactive OAuth user authorization, save with no auth fields and have the user complete the dashboard's **Authorize** flow afterward — `save_agent` does not collect end-user OAuth state. The caller MUST declare the agent's `type` (`brand`, `rights`, `measurement`, `governance`, `creative`, `sales`, `buying`, `signals`); ask the owner — do not guess. Server-side smuggle protection still validates the declared type against the capability snapshot when one is available. If the user mentions their MCP endpoint requires auth, lives at a non-root path (e.g. /adcp/mcp), or shows up as offline after saving, suggest setting `health_check_url` for a liveness fallback while they fix the underlying URL. See the "Registering an Agent in the AgenticAdvertising.org Registry" section of the rules for the intake script.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
@@ -544,6 +560,18 @@ Update the billing email on a Stripe customer. Use this when invoices need to go
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
+### `preview_org_stripe_customer_update`
+
+Preview relinking an organization to a different Stripe customer. This validates the org and Stripe customer, shows the current and proposed customer IDs, and returns a preview_token. It does not write any changes. Always show the preview to the admin before confirming.
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
+### `confirm_org_stripe_customer_update`
+
+Confirm a previously previewed organization Stripe customer relink. This tool does not accept a raw Stripe customer ID; it only commits the validated preview_token after explicit admin approval.
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
 ### `list_pending_invoices`
 
 List all organizations with pending (unpaid) invoices.
@@ -554,7 +582,7 @@ Returns a list of organizations with open or draft invoices.
 
 ### `get_account`
 
-Get complete account view for any organization: lifecycle stage, membership status, engagement metrics, pipeline info, and enrichment data. Use for any company lookup.
+Get complete account view for any organization: lifecycle stage, membership status, engagement metrics, pipeline info, and enrichment data. Use for any company lookup. If no org matches, falls back to the users table — surfaces people who signed up with a matching email domain but have not yet created/joined an org (typical for inbound website signups).
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
@@ -700,7 +728,7 @@ Manage topics for a working group/committee. Topics help organize meetings and f
 
 ## committee_leadership
 
-Manage committee co-leaders - add or remove co-leaders for committees you lead (working groups, councils, chapters, industry gatherings)
+Manage committees you lead: co-leaders plus event management for working groups, councils, chapters, and industry gatherings
 
 ### `add_committee_co_leader`
 
@@ -741,6 +769,49 @@ Works for working groups, councils, chapters, and industry gatherings.
 List active committees in AgenticAdvertising.org. Can filter by type: working groups (technical), councils (industry verticals), or chapters (regional). Shows public groups to everyone, and includes private groups for members.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `create_event`
+
+Create a new AAO event. Use this when someone asks to create a meetup, webinar, summit, or workshop.
+The event will be created in both Luma (for registration) and the AAO website.
+Returns the Luma URL for sharing and the AAO event page URL.
+
+Required: title, start_time (ISO format), event_type
+Optional: description, end_time, timezone, location details, virtual_url, max_attendees
+
+*Source: `server/src/addie/mcp/event-tools.ts`*
+
+### `update_event`
+
+Update an existing event. Use this to change event details like description, capacity, or timing.
+
+*Source: `server/src/addie/mcp/event-tools.ts`*
+
+### `manage_event_registrations`
+
+Manage event registrations - view registrations, approve waitlisted attendees, or export attendee list.
+
+*Source: `server/src/addie/mcp/event-tools.ts`*
+
+### `check_person_event_status`
+
+Look up a specific person's status at an event. Use when someone asks "Is [person] invited to [event]?", "Did [person] attend [event]?", "What's [person]'s RSVP status?", etc.
+
+Searches by name or email across invite list, registrations, and attendance records.
+Returns their invite status, registration status, and whether they attended.
+
+*Source: `server/src/addie/mcp/event-tools.ts`*
+
+### `invite_to_event`
+
+Invite a person to an event. Adds them to the invite list and creates a registration record.
+
+Use when someone says "Invite [person] to [event]", "Add [person] to the Foundry guest list", etc.
+
+If draft_message is true, returns a suggested outreach message that can be sent via Slack or email.
+The invitation is recorded immediately; the outreach message is a draft for the admin to review.
+
+*Source: `server/src/addie/mcp/event-tools.ts`*
 
 ## admin (admin only)
 
@@ -799,7 +870,7 @@ Returns a list of organizations with open or draft invoices.
 
 ### `get_account`
 
-Get complete account view for any organization: lifecycle stage, membership status, engagement metrics, pipeline info, and enrichment data. Use for any company lookup.
+Get complete account view for any organization: lifecycle stage, membership status, engagement metrics, pipeline info, and enrichment data. Use for any company lookup. If no org matches, falls back to the users table — surfaces people who signed up with a matching email domain but have not yet created/joined an org (typical for inbound website signups).
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
@@ -848,6 +919,12 @@ Add a new RSS feed to monitor for industry news. Provide the feed URL and a name
 ### `get_feed_stats`
 
 Get statistics about industry feeds - total feeds, active feeds, articles collected, processing status, etc.
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
+### `get_platform_stats`
+
+Get admin platform stats: deduplicated people totals plus organization counts by lifecycle tier, membership tier, and subscription status. Use for platform-level member, user, or organization counts.
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
@@ -961,7 +1038,7 @@ Check domain health for data quality issues: orphan domains, conflicts, misalign
 
 ### `manage_organization_domains`
 
-Add, remove, or list verified domains for an organization. Syncs to WorkOS.
+Add, remove, list, set primary, or reconcile verified domains for an organization. Syncs to WorkOS.
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
@@ -1170,6 +1247,12 @@ List brand domains in the orphaned state — a prior owner relinquished and the 
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
+### `create_contact`
+
+Create or find a contact record for a person by email. Writes to email_contacts (CRM) and person_relationships (engagement tracking). Returns whether the contact was new and whether they were auto-matched to an organization.
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
 ## outreach (admin only)
 
 SDR outreach operations — view outreach stats, check history, send outreach, look up people, manage action items (admin only)
@@ -1206,7 +1289,7 @@ Get open action items from the outreach pipeline — nudges, warm leads, momentu
 
 ### `get_account`
 
-Get complete account view for any organization: lifecycle stage, membership status, engagement metrics, pipeline info, and enrichment data. Use for any company lookup.
+Get complete account view for any organization: lifecycle stage, membership status, engagement metrics, pipeline info, and enrichment data. Use for any company lookup. If no org matches, falls back to the users table — surfaces people who signed up with a matching email domain but have not yet created/joined an org (typical for inbound website signups).
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
@@ -1268,13 +1351,13 @@ Get the current learner's progress across all certification modules and tracks. 
 
 ### `test_out_modules`
 
-Mark modules as tested out after a placement assessment confirms the learner already has the knowledge. Only call this after conducting a thorough assessment — ask probing questions per module topic, not just surface-level familiarity. Never test out specialist or build project modules (S1-S5, B4, C4, D4). Does not award scores since no formal coursework was completed, but satisfies prerequisites for advancement.
+Mark modules as tested out after a placement assessment confirms the learner already has the knowledge. Only call this after conducting a thorough assessment — ask probing questions per module topic, not just surface-level familiarity. Never test out specialist or build project modules (any S-track module, B4, C4, D4). Does not award scores since no formal coursework was completed, but satisfies prerequisites for advancement.
 
 *Source: `server/src/addie/mcp/certification-tools.ts`*
 
 ### `start_certification_exam`
 
-Begin a specialist deep dive module (S1: Media Buy, S2: Creative, S3: Signals, S4: Governance, S5: Sponsored Intelligence). The learner must hold the Practitioner credential. Returns the capstone format, lab exercises, and assessment criteria. You (Addie) will conduct the combined hands-on lab and adaptive exam.
+Begin a specialist deep dive module (S1: Media Buy, S2: Creative, S3: Signals, S4: Governance, S5: Sponsored Intelligence). The learner must hold the Practitioner credential. Returns the capstone format, lab exercises, and assessment criteria. You (Sage) will conduct the combined hands-on lab and adaptive exam — technically assess the learner against the spec.
 
 *Source: `server/src/addie/mcp/certification-tools.ts`*
 
@@ -1383,7 +1466,7 @@ File a GitHub issue on adcontextprotocol/adcp authored by the logged-in user via
 
 ### `get_github_issue`
 
-Read a GitHub issue or PR by number. Use when the user pastes a GitHub link, references "issue #1234", or asks about the status of a specific RFC, epic, or PR. Returns title, body, state, labels, author, and optionally recent comments. Works on any `adcontextprotocol/*` or `prebid/*` repo. PR review-thread comments (on specific diff lines) are NOT included — only issue-style comments. Do NOT use for keyword search — use list_github_issues. Do NOT use fetch_url on github.com/.../issues URLs; this tool returns structured fields and labels.
+Read a GitHub issue or PR by number. Use when the user pastes a GitHub link, references "issue #1234", or asks about the status / contents of a specific RFC, epic, or PR. Returns title, body, state, labels, author, and optionally recent comments and the PR diff. Works on any public GitHub repo (forks included). PR review-thread comments (on specific diff lines) are NOT returned — only issue-style top-level comments. When the user pastes a PR link or asks for a code review, set `include_diff: true`. Do NOT use for keyword search — use list_github_issues. Do NOT use fetch_url on github.com/.../issues|pull URLs; this tool returns structured fields.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
@@ -1413,7 +1496,13 @@ Approve pending content for publication. Only committee leads (for their committ
 
 ### `reject_content`
 
-Reject pending content with a reason. Only committee leads (for their committees) and admins can reject content. The proposer will see the rejection reason.
+Permanently reject content. Only committee leads (for their committees) and admins can reject content. The proposer will see the rejection reason. Use request_revisions instead if the author should address feedback and resubmit.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `request_revisions`
+
+Ask the author to revise and resubmit content. The article stays visible in the review queue as "needs revisions" until the author resubmits. Use this instead of reject_content when the content is fixable.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
@@ -1462,6 +1551,36 @@ Comprehensive domain research: checks brand registry, enriches via Brandfetch + 
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
+### `diagnose_signin_block`
+
+Use when a user reports they cannot sign in to AgenticAdvertising.org. Combines person, invite, and org-membership state into a single verdict — needs_signin (account exists, just sign in), needs_resend (invite expired or stale, send a fresh one), needs_invite (no invite on file, send one), or needs_human (state is unclear). Do NOT use for general account questions — use lookup_person or get_account for those. Returns the verdict plus a one-line reason and any pending invite token to act on.
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
+### `list_invites_for_org`
+
+Use when an admin asks "what invites do we have for X" or you need to reference an invite token before resending or revoking. Defaults to pending only; pass include_accepted or include_revoked to widen. Capped at 20, sorted by expiry (soonest first). Returns one invite per line with its token suffix so you can quote a token back into resend_invite or revoke_invite.
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
+### `resend_invite`
+
+Use to refresh a pending or expired membership invite — atomically revokes the original and emails a fresh one. Do NOT use to invite a brand-new contact (use send_payment_request for that). Do NOT use on an accepted invite. Returns the new expiry and whether the email was delivered.
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
+### `revoke_invite`
+
+Use to cancel a pending or expired invite (e.g. wrong email, person no longer joining). Does NOT send any notification to the recipient — their existing invite link will simply stop working. Cannot revoke an already-accepted or already-revoked invite. Returns confirmation including the previous status.
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
+### `add_member_to_org`
+
+Use when an admin or owner asks to add, invite, or promote a colleague on a paying org. Also the action to take when diagnose_signin_block returns needs_invite for an authorized requester. Handles four states automatically: invites new users (no WorkOS account yet), adds existing users to the org, updates roles, or no-ops if already correct. Do NOT use to remove members (no removal path), to change your own role, or for personal workspaces. Returns one of: invited, member_added, role_updated, no_change.
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
 ### `create_committee`
 
 Create a committee (working group, council, or governance body). For chapters use create_chapter; for conferences use create_industry_gathering. Can link an existing Slack channel by name.
@@ -1497,6 +1616,12 @@ List active bans. Optionally filter by ban_type, scope, or entity_id.
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
+### `get_person_memory`
+
+Use when you need the full picture of what we know about a person — identity, membership, engagement, preferences, pending invites, recent threads — gathered into one view before reasoning. Prefer this over chaining lookup_person + get_account + list_invites_for_org. Do NOT use for org-level questions. Returns a structured summary with sources so you can cite where each fact came from.
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
 ### `get_engagement_plan`
 
 Preview the engagement plan for a person — shows contact eligibility, scored opportunities, and what Addie would say. Use this to understand or debug engagement decisions.
@@ -1526,11 +1651,53 @@ The member must be signed in.
 
 *Source: `server/src/addie/mcp/billing-tools.ts`*
 
+### `publish_brand_canonical_document`
+
+Generate a Brand Canonical Document (brand.json variant 5) for a sub-brand team. Builds a JSON document with the brand's identity fields (logos/colors/tone/etc.), validates it against the brand.json schema, and returns the document plus the path where it should be hosted (https://{domain}/.well-known/brand.json). Returns validation errors instead of an invalid document. Does NOT upload — the operator hosts the returned JSON themselves.
+
+*Source: `server/src/addie/mcp/brand-canonical-tools.ts`*
+
+### `add_to_brand_refs`
+
+Append a portfolio_entry pointer to a House Portfolio's brand_refs[]. Either pass the house's brand.json directly (house_brand_json) or have the tool fetch it (house_domain). Enforces the cross-array uniqueness invariants from the spec: a brand_id MUST NOT appear in both brands[] and brand_refs[], and each brand_id/domain MUST be unique within brand_refs[]. Returns the updated brand.json or a clear validation error.
+
+*Source: `server/src/addie/mcp/brand-canonical-tools.ts`*
+
+### `check_mutual_assertion`
+
+Given a leaf brand's domain, fetch its canonical document and its claimed house's portfolio (following House Redirects on the house side, up to 3 hops, per the Conformance section). Classify the relationship trust into: mutual (both sides reciprocate), leaf_only (leaf claims house, house silent), house_only (house claims leaf, leaf silent — returned by checking the house if a different caller already has it), standalone (no house_domain), or unverifiable (one or both fetches failed). Returns the house's contact.email when present so the caller can pass it into notify_pending_verification on leaf_only edges.
+
+*Source: `server/src/addie/mcp/brand-canonical-tools.ts`*
+
+### `notify_pending_verification`
+
+Send the SHOULD-level notification email to the house's contact.email when a leaf_only edge is detected. Rate-limited to one notification per {leaf, house} pair per 24 hours, persisted in the brand_assertion_notifications table so concurrent callers can't double-send. Behind a feature flag (BRAND_ASSERTION_EMAIL_ENABLED) — defaults to log-only so operators can review the would-have-sent payload before enabling the live send path.
+
+*Source: `server/src/addie/mcp/brand-canonical-tools.ts`*
+
+### `parse_brand_properties`
+
+Preview a smart-paste import for a brand the operator owns. Takes pasted text (a list of domains and app bundles) or a URL whose body should be fetched, and returns the structured property list that would be imported. The user MUST confirm before you call import_brand_properties — show them the parsed list first. Caller's organization must own the brand domain.
+
+*Source: `server/src/addie/mcp/brand-property-tools.ts`*
+
+### `import_brand_properties`
+
+Commit a previewed property import. Takes a property list (typically the output of parse_brand_properties, possibly trimmed by the user) and merges it into the brand manifest by identifier — existing entries are updated in place, new entries are added. ONLY call after the user has explicitly confirmed the list from parse_brand_properties. Caller's organization must own the brand domain.
+
+*Source: `server/src/addie/mcp/brand-property-tools.ts`*
+
 ### `upload_brand_logo`
 
-Upload a logo file for a brand in the registry. The logo will be pending review.
+Fetch and promote a logo file for a brand in the registry. The upload queues for moderator review (community contribution) and, when approved, receives an AAO-hosted public /assets/brands URL suitable for brand.json. Blocked when a brand has a verified DNS owner — only that org can change its logo, and the human must use the brand-builder UI for owner-attested uploads.
 
 *Source: `server/src/addie/mcp/brand-tools.ts`*
+
+### `check_credentials`
+
+Award any newly-eligible credentials and finalize any previously-deferred Certifier issuances for the current learner. Returns share links for newly-issued credentials, or a NAME_REQUIRED marker when the learner has no name on file. Use this after `set_my_name` to finalize a credential that was gated on the missing name.
+
+*Source: `server/src/addie/mcp/certification-tools.ts`*
 
 ### `checkpoint_teaching_progress`
 
@@ -1549,6 +1716,12 @@ Get the exact instructions for a build project phase transition. You MUST call t
 Save learner feedback after completing a certification module. Call this when the learner shares thoughts about the experience — what was confusing, what worked well, suggestions for improvement.
 
 *Source: `server/src/addie/mcp/certification-tools.ts`*
+
+### `set_my_name`
+
+Set the current user's first name and (optionally) last name. Writes through to the local DB, organization memberships, and back to WorkOS. Use this when a credential check tells you the user has no name on file, or whenever the user explicitly asks to set or correct their name.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
 
 ### `recommend_storyboards`
 

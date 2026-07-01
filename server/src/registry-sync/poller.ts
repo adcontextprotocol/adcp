@@ -16,9 +16,11 @@ export interface PollerConfig {
 }
 
 export interface PollerCallbacks {
+  onBootstrapStart?: () => void;
   onEvents: (events: CatalogEvent[]) => void;
   onBootstrapAgents: (agents: unknown[]) => void;
   onBootstrapProperties: (properties: unknown[]) => void;
+  onBootstrapCollections?: (collections: unknown[]) => void;
 }
 
 export class FeedPoller {
@@ -69,6 +71,8 @@ export class FeedPoller {
 
   private async bootstrap(): Promise<void> {
     try {
+      this.callbacks.onBootstrapStart?.();
+
       // Bootstrap agents — paginate through all results
       let agentCursor: string | undefined;
       do {
@@ -84,19 +88,36 @@ export class FeedPoller {
       } while (agentCursor);
 
       // Bootstrap properties — paginate through all results
-      let propOffset = 0;
+      let propCursor: string | undefined;
       const PROP_PAGE = 1000;
-      let propCount: number;
       do {
-        const res = await this.apiFetch(`/catalog/sync?limit=${PROP_PAGE}&offset=${propOffset}`);
+        const params = new URLSearchParams({ limit: String(PROP_PAGE) });
+        if (propCursor) params.set('cursor', propCursor);
+        const res = await this.apiFetch(`/catalog?${params}`);
         if (!res.ok) break;
-        const data = await res.json() as { properties?: unknown[] };
-        propCount = data.properties?.length ?? 0;
-        if (propCount > 0) {
-          this.callbacks.onBootstrapProperties(data.properties!);
+        const data = await res.json() as { entries?: unknown[]; next_cursor?: string | null };
+        if (data.entries?.length) {
+          this.callbacks.onBootstrapProperties(data.entries);
         }
-        propOffset += propCount;
-      } while (propCount === PROP_PAGE);
+        propCursor = data.next_cursor ?? undefined;
+      } while (propCursor);
+
+      if (this.callbacks.onBootstrapCollections) {
+        // Bootstrap collections — paginate through all results.
+        let collectionOffset = 0;
+        const COLLECTION_PAGE = 1000;
+        let collectionCount: number;
+        do {
+          const res = await this.apiFetch(`/catalog/collections/sync?limit=${COLLECTION_PAGE}&offset=${collectionOffset}`);
+          if (!res.ok) break;
+          const data = await res.json() as { collections?: unknown[] };
+          collectionCount = data.collections?.length ?? 0;
+          if (collectionCount > 0) {
+            this.callbacks.onBootstrapCollections(data.collections!);
+          }
+          collectionOffset += collectionCount;
+        } while (collectionCount === COLLECTION_PAGE);
+      }
 
       this.backoffMs = 1000;
     } catch (err) {

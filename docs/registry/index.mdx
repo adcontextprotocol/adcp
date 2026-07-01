@@ -89,6 +89,22 @@ Rate-limited endpoints return `429 Too Many Requests` when the limit is exceeded
   </Card>
 </CardGroup>
 
+## Lookups by entity
+
+Three endpoints answer different questions about who is in the registry. They span two tag groups in the API reference, so use this table to pick the right lookup surface before diving into endpoint-specific parameters.
+
+| Endpoint | Auth surface | What it returns |
+|----------|--------------|-----------------|
+| `GET /api/registry/agents` | Public catalog; authenticated AgenticAdvertising.org API-tier members also see `members_only` agents. | The AgenticAdvertising.org-attested member-enrolled agent catalog, with optional filters and enrichment for health, capabilities, properties, compliance, measurement metrics, and verification state. |
+| `GET /api/registry/operator?domain=X` | Auth-aware: anonymous callers see `public`; AgenticAdvertising.org API-tier members also see `members_only`; profile owners can also see `private`. | The agents operated by the queried entity plus the publishers that trust those agents. |
+| `GET /api/registry/publisher?domain=X` | Public and unauthenticated; AgenticAdvertising.org membership does not change the response shape. | The inventory the queried entity publishes (`properties[]`) and the agents it authorizes (`authorized_agents[]` from `adagents.json`). |
+
+**`GET /api/registry/agents`** — use this when you want to browse or filter the public agent population. See [Registering an agent](/docs/registry/registering-an-agent) for how agents end up in this catalog. Reference: [List agents endpoint](#agent-discovery) under Agent Discovery.
+
+**`GET /api/registry/operator?domain=X`** — use this when you have one entity in hand and want its agent footprint.
+
+**`GET /api/registry/publisher?domain=X`** — use this when you have one publisher in hand and want its inventory and delegations.
+
 ### Brand Resolution
 
 These endpoints resolve domains to brand identities. The `source` field in the response indicates where the data came from:
@@ -126,7 +142,7 @@ All sources produce the same resolution response structure. To get full brand id
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/registry/agents` | List all agents — filter by type (`?type=brand|rights|measurement|governance|creative|sales|buying|signals`); merges registered (member-declared) and discovered (crawled) sources, registered takes precedence |
+| GET | `/api/registry/agents` | List all member-enrolled agents — filter by type (`?type=brand|rights|measurement|governance|creative|sales|buying|signals`) |
 | GET | `/api/registry/agents/search` | Search agents by inventory profile (auth required) |
 | GET | `/api/registry/publishers` | List all publishers |
 | GET | `/api/registry/stats` | Registry statistics |
@@ -140,15 +156,40 @@ To discover measurement vendors specifically (Adelaide-style attention, Scope3-s
 curl "https://agenticadvertising.org/api/registry/agents?type=measurement"
 ```
 
-This returns every measurement agent the registry knows about — registered via member profiles plus discovered through crawling brand.json declarations. Use this to populate buyer-agent vendor catalogs for the [vendor-metric extensions surface](/docs/media-buy/media-buys/optimization-reporting#vendor-defined-metrics) when buyers request cross-vendor metric availability.
+This returns every measurement agent enrolled in the registry by an AAO member.
 
-**Current limitation — per-metric catalog not yet structured.** The registry knows *which* agents do measurement, but not *which specific metrics* each one offers. Buyer agents that want to filter on `category="attention"` or `metric_id="attention_units"` across vendors must currently call each vendor's measurement agent for capability details. A structured per-metric catalog on brand.json's `agents[type='measurement']` declarations is tracked under [#3586](https://github.com/adcontextprotocol/adcp/issues/3586).
+**Per-metric catalog discovery.** Each measurement agent publishes its full per-metric catalog at [`get_adcp_capabilities.measurement.metrics[]`](/docs/protocol/get_adcp_capabilities#measurement) — the canonical, vendor-controlled source of truth. AAO crawls each measurement agent's `get_adcp_capabilities` on a TTL and stores the result; passing `?capabilities=true` folds the catalog into the response next to `creative_capabilities` and `signals_capabilities`.
+
+**Filter parameters** (all imply `type=measurement` when present; an explicit non-measurement type returns 400):
+
+| Param | Match | Notes |
+|-------|-------|-------|
+| `metric_id=attention_units` | Exact match on `metrics[].metric_id` | Repeatable; multiple values are OR'd within the param. |
+| `accreditation=MRC` | Exact match on `metrics[].accreditations[].accrediting_body` | Repeatable. Vendor-asserted — `verified_by_aao` is always `false` in the response; renderers should mark these as vendor claims, not AAO endorsements. |
+| `q=attention` | Case-insensitive substring on `metric_id` | v1 scope: metric_id only. Max 64 chars; SQL wildcards (`%`, `_`) rejected. Description/standard fuzzy search is a follow-up. |
+
+```bash
+# All vendors offering attention measurement
+curl "https://agenticadvertising.org/api/registry/agents?metric_id=attention_units&capabilities=true"
+
+# MRC-accredited viewability vendors
+curl "https://agenticadvertising.org/api/registry/agents?type=measurement&accreditation=MRC&q=viewab&capabilities=true"
+```
+
+**Direct call vs. index — when to use which.** Buyers have two paths to a vendor's metric catalog:
+
+| Use case | Path | Why |
+|----------|------|-----|
+| Discovery / planning ("which vendors offer attention?") | AAO index (`?metric_id=...`) | Pre-aggregated, cached, fast. Cross-vendor in one call. Stale up to the AAO TTL window (typically 24h). |
+| Settlement / audit ("does Adelaide currently support metric X?") | Direct call to `get_adcp_capabilities` | Live, canonical, no staleness. The buyer is already calling the measurement agent at delivery / reconciliation time; one extra call is cheap and removes index staleness from the audit trail. |
+| Filtering at `get_products` time | AAO index | Buyer is in a fast-path query and the seller's product catalog already needs to know which vendors are valid. |
 
 ### Change Feed
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/registry/feed` | Poll cursor-based registry change feed (auth required) |
+| GET | `/api/registry/feed/stream` | Stream cursor-based registry feed pages over Server-Sent Events (auth required) |
 
 
 ### Lookups & Authorization
@@ -354,14 +395,13 @@ result = requests.post(
 
 Save or update a hosted property in the registry. For existing properties, creates a revision-tracked edit. Cannot edit authoritative properties managed via `adagents.json` — those return `409 Conflict`.
 
+This is an identity-only write surface: the stored document always carries `authorized_agents: []`. Sales authorization lives solely in the publisher's own origin `adagents.json` — the community registry cannot mint or carry it — so any `authorized_agents` sent in the request body is ignored.
+
 **Request body:**
 
 ```json
 {
   "publisher_domain": "examplepub.com",
-  "authorized_agents": [
-    { "url": "https://agent.example.com", "authorized_for": "sell" }
-  ],
   "properties": [
     { "type": "website", "name": "Example Publisher" }
   ],
@@ -372,7 +412,7 @@ Save or update a hosted property in the registry. For existing properties, creat
 }
 ```
 
-`publisher_domain` and `authorized_agents` (each with a required `url` and optional `authorized_for`) are required. `properties` (each requiring `type` and `name`) and `contact` are optional. Domains are normalized (protocol stripped, lowercased).
+`publisher_domain` is required. `properties` (each requiring `type` and `name`) and `contact` are optional. Domains are normalized (protocol stripped, lowercased).
 
 <CodeGroup>
 
@@ -382,7 +422,6 @@ curl -X POST "https://agenticadvertising.org/api/properties/save" \
   -H "Content-Type: application/json" \
   -d '{
     "publisher_domain": "examplepub.com",
-    "authorized_agents": [{"url": "https://agent.example.com", "authorized_for": "sell"}],
     "properties": [{"type": "website", "name": "Example Publisher"}]
   }'
 ```
@@ -398,7 +437,6 @@ const res = await fetch(
     },
     body: JSON.stringify({
       publisher_domain: "examplepub.com",
-      authorized_agents: [{ url: "https://agent.example.com", authorized_for: "sell" }],
       properties: [{ type: "website", name: "Example Publisher" }],
     }),
   }
@@ -414,7 +452,6 @@ result = requests.post(
     headers={"Authorization": "Bearer YOUR_API_KEY"},
     json={
         "publisher_domain": "examplepub.com",
-        "authorized_agents": [{"url": "https://agent.example.com", "authorized_for": "sell"}],
         "properties": [{"type": "website", "name": "Example Publisher"}],
     },
 ).json()
@@ -443,7 +480,9 @@ result = requests.post(
 
 `GET /api/registry/feed`
 
-Poll a cursor-based feed of registry changes. Use this to keep a local copy of the registry in sync without re-fetching the full dataset. Events are ordered by UUID v7 `event_id`, providing monotonic cursor progression. The feed retains events for 90 days — expired cursors return `410 Gone`.
+Poll a cursor-based feed of registry changes. Use this to keep a local copy of the registry in sync without re-fetching the full dataset. Events are ordered by UUID v7 `event_id`, providing monotonic cursor progression. The feed retains events for 90 days — expired cursors return `410 Gone`. Each response includes `freshness` metadata so consumers can measure feed lag for the requested type filter.
+
+**Schema:** [`core/registry-feed-response.json`](https://adcontextprotocol.org/schemas/v3/core/registry-feed-response.json) wraps [`core/registry-event.json`](https://adcontextprotocol.org/schemas/v3/core/registry-event.json) items.
 
 **Query parameters:**
 
@@ -462,12 +501,21 @@ Poll a cursor-based feed of registry changes. Use this to keep a local copy of t
 | `property.merged` | Two property records were merged |
 | `property.stale` | Property failed re-crawl validation |
 | `property.reactivated` | A stale property passed re-crawl |
-| `agent.discovered` | A new agent was found via adagents.json |
+| `collection.created` | A new publisher collection was added to the registry |
+| `collection.updated` | Collection metadata or distribution identifiers changed |
+| `collection.merged` | Two collection records were merged |
+| `collection.removed` | A collection is no longer visible in the publisher's authoritative catalog |
+| `agent.discovered` | A new `agent_url` appeared in a publisher's `adagents.json` (authorization graph; does not imply the agent is in `/api/registry/agents`) |
 | `agent.removed` | An agent was removed from the registry |
 | `agent.profile_updated` | Agent inventory profile changed |
+| `agent.compliance_changed` | Agent compliance or verification status changed |
+| `agent.verification_earned` | Agent earned an AAO Verified badge |
+| `agent.verification_lost` | Agent lost an AAO Verified badge |
+| `publisher.adagents_discovered` | A publisher's adagents.json was discovered and projected into the registry |
 | `publisher.adagents_changed` | A publisher's adagents.json was updated |
 | `authorization.granted` | An agent was authorized for a property |
 | `authorization.revoked` | An authorization was removed |
+| `authorization.modified` | An authorization stayed visible, but externally visible metadata changed |
 
 <CodeGroup>
 
@@ -506,24 +554,41 @@ feed = requests.get(
       "event_type": "property.created",
       "entity_type": "property",
       "entity_id": "019539a0-b1c2-7000-8000-000000000002",
-      "payload": {},
+      "payload": {
+        "property_rid": "019539a0-b1c2-7000-8000-000000000002",
+        "classification": "property",
+        "source": "contributed",
+        "identifiers": [
+          { "type": "domain", "value": "streamer.example.com" }
+        ]
+      },
       "actor": "crawler",
       "created_at": "2026-03-31T10:00:00.000Z"
     }
   ],
   "cursor": "019539a0-1234-7000-8000-000000000001",
-  "has_more": true
+  "has_more": true,
+  "freshness": {
+    "generated_at": "2026-03-31T10:00:15.000Z",
+    "latest_event_created_at": "2026-03-31T10:00:00.000Z",
+    "lag_seconds": 15,
+    "retention_days": 90
+  }
 }
 ```
 
 When `has_more` is `true`, pass the returned `cursor` value in the next request to continue polling. When `false`, you've reached the end of the current feed — poll again later with the same cursor to pick up new events.
+
+`latest_event_created_at` is the newest matching event currently visible to the feed. `lag_seconds` is computed against `generated_at`; alert on it according to your own mirror freshness target.
+
+`GET /api/registry/feed/stream` provides the same feed pages over Server-Sent Events. Reconnect with your last persisted cursor after disconnects. The stream emits `event: feed` with the same JSON shape shown above and `event: heartbeat` while caught up. Cursors are tied to the same logical `types` subscription; changing filters while reusing a cursor can skip events that were filtered out previously. The stream carries the resume cursor in JSON `data.cursor`, not SSE `id`, so browser `EventSource` clients must reconnect with `?cursor=...`.
 
 If the cursor has expired (older than 90 days or not found), the response is `410 Gone`:
 
 ```json 410 Gone
 {
   "error": "cursor_expired",
-  "message": "Cursor is older than 90-day retention window. Re-bootstrap from /registry/agents/search and /catalog/sync."
+  "message": "Cursor is older than 90-day retention window. Re-bootstrap from /registry/agents/search, /catalog, and /catalog/collections/sync."
 }
 ```
 

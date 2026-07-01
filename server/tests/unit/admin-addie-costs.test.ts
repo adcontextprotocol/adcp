@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   classifyScopeKey,
   inferDisplayTier,
+  isValidScopeKey,
   microsToUsd,
   NAMESPACE_FALLBACK_TIER,
 } from '../../src/routes/admin/addie-costs-helpers.js';
@@ -53,6 +54,11 @@ describe('classifyScopeKey', () => {
 });
 
 describe('inferDisplayTier', () => {
+  it('promotes to aao_team when the user is in the AAO admin team', () => {
+    expect(inferDisplayTier('workos', false, true)).toBe('aao_team');
+    expect(inferDisplayTier('workos', true, true)).toBe('aao_team');
+  });
+
   it('promotes to member_paid when the joined org has an active subscription', () => {
     expect(inferDisplayTier('workos', true)).toBe('member_paid');
     // Subscription status wins over namespace fallback even for a
@@ -105,5 +111,21 @@ describe('microsToUsd', () => {
     // Summing a day's spend for a leaderboard row — 250,000 micros ×
     // 1000 events = 250M micros = $250. Must not drift to $249.9999.
     expect(microsToUsd(250_000_000)).toBe(250);
+  });
+});
+
+describe('isValidScopeKey', () => {
+  it('accepts printable scope keys used by cost namespaces', () => {
+    expect(isValidScopeKey('user_01H2ABC3DEF')).toBe(true);
+    expect(isValidScopeKey('slack:U12345')).toBe(true);
+    expect(isValidScopeKey('mcp:oauth/user+001@example.com')).toBe(true);
+    expect(isValidScopeKey('email:abc123def4567890')).toBe(true);
+  });
+
+  it('rejects empty, oversized, whitespace, and control-byte keys', () => {
+    expect(isValidScopeKey('')).toBe(false);
+    expect(isValidScopeKey('user abc')).toBe(false);
+    expect(isValidScopeKey('user_abc\nnext')).toBe(false);
+    expect(isValidScopeKey('x'.repeat(257))).toBe(false);
   });
 });

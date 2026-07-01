@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Pure-logic regression test for the type-update policy in
 // `crawler.ts:refreshAgentSnapshots`. The on-disk function is too coupled
@@ -47,5 +47,102 @@ describe('crawler type-update policy', () => {
     expect(decide(undefined, 'unknown')).toEqual({ canPromote: false, isDisagreement: false });
     expect(decide('sales', 'unknown')).toEqual({ canPromote: false, isDisagreement: false });
     expect(decide('unknown', 'unknown')).toEqual({ canPromote: false, isDisagreement: false });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Audit-log hook for the disagreement path. Closes #3550.
+//
+// The crawler's disagreement branch ALSO writes a row to
+// `type_reclassification_log` with source='crawler_promote' so future audits
+// can answer "when did Bidcliq flip from buying to sales?" with a row instead
+// of a stdout-grep. The disagreement event itself is what the audit log
+// captures — the crawler does NOT auto-flip the stored type.
+// ─────────────────────────────────────────────────────────────────────────────
+
+vi.mock('../../src/db/client.js', () => ({
+  query: vi.fn().mockResolvedValue({ rows: [], rowCount: 0, command: '', oid: 0, fields: [] }),
+}));
+
+// Lazy-import after the mock so the module under test sees the mocked client.
+const importHelper = async () =>
+  (await import('../../src/db/type-reclassification-log-db.js')).insertTypeReclassification;
+
+describe('crawler disagreement → audit log', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('records source=crawler_promote with stored→inferred when disagreement decided', async () => {
+    const insertTypeReclassification = await importHelper();
+    const { query } = await import('../../src/db/client.js');
+    const mockedQuery = vi.mocked(query);
+
+    const knownType = 'buying';
+    const inferredType = 'sales';
+    const url = 'https://bidcliq.example/agent';
+
+    const { isDisagreement } = decide(knownType, inferredType);
+    expect(isDisagreement).toBe(true);
+
+    if (isDisagreement) {
+      await insertTypeReclassification({
+        agentUrl: url,
+        oldType: knownType,
+        newType: inferredType,
+        source: 'crawler_promote',
+        notes: { decision: 'logged_only_no_promote' },
+      });
+    }
+
+    expect(mockedQuery).toHaveBeenCalledTimes(1);
+    const [sql, params] = mockedQuery.mock.calls[0];
+    expect(sql).toMatch(/INSERT INTO type_reclassification_log/);
+    expect(params?.[0]).toBe(url);
+    expect(params?.[2]).toBe('buying');     // old_type
+    expect(params?.[3]).toBe('sales');      // new_type
+    expect(params?.[4]).toBe('crawler_promote');
+    expect(params?.[6]).toBe(JSON.stringify({ decision: 'logged_only_no_promote' }));
+  });
+
+  it('does NOT call the audit log when the policy decides "agree" (no flip, no row)', async () => {
+    const insertTypeReclassification = await importHelper();
+    const { query } = await import('../../src/db/client.js');
+    const mockedQuery = vi.mocked(query);
+
+    const { isDisagreement } = decide('sales', 'sales');
+    expect(isDisagreement).toBe(false);
+
+    // Same code path as in crawler.ts: only call insertTypeReclassification
+    // when the disagreement branch fires.
+    if (isDisagreement) {
+      await insertTypeReclassification({
+        agentUrl: 'https://a',
+        newType: 'sales',
+        source: 'crawler_promote',
+      });
+    }
+
+    expect(mockedQuery).not.toHaveBeenCalled();
+  });
+
+  it('does NOT call the audit log when the policy decides "promote" (promote is not a logged event)', async () => {
+    const insertTypeReclassification = await importHelper();
+    const { query } = await import('../../src/db/client.js');
+    const mockedQuery = vi.mocked(query);
+
+    const { canPromote, isDisagreement } = decide(undefined, 'sales');
+    expect(canPromote).toBe(true);
+    expect(isDisagreement).toBe(false);
+
+    if (isDisagreement) {
+      await insertTypeReclassification({
+        agentUrl: 'https://a',
+        newType: 'sales',
+        source: 'crawler_promote',
+      });
+    }
+
+    expect(mockedQuery).not.toHaveBeenCalled();
   });
 });

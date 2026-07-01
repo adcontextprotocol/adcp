@@ -3,6 +3,9 @@
   "$id": "/schemas/core/destination.json",
   "title": "Destination",
   "description": "A deployment target where signals can be activated (DSP, sales agent, etc.)",
+  "discriminator": {
+    "propertyName": "type"
+  },
   "oneOf": [
     {
       "type": "object",

@@ -44,6 +44,7 @@
 
 import { createLogger } from '../logger.js';
 import { query } from '../db/client.js';
+import { TIER_PRESERVING_STATUSES } from '../db/organization-db.js';
 import { costUsdMicros, type ClaudeUsage } from './claude-pricing.js';
 import { SYSTEM_USER_IDS } from './system-identities.js';
 import type { MemberContext } from './member-context.js';
@@ -71,20 +72,24 @@ const WINDOW_MS = 24 * 60 * 60 * 1000;
  * - `member_paid`: $25/day. Paying members get a generous ceiling
  *   that's still a real cap — a runaway automated session still
  *   trips it within an hour of sustained abuse.
+ * - `aao_team`: uncapped. AAO staff/admin/team users are operating
+ *   the service, not consuming member benefits, so they should not
+ *   hit a self-service spend ceiling while doing support or admin work.
  */
-export const DAILY_BUDGET_USD: Record<'anonymous' | 'member_free' | 'member_paid', number> = {
+export const DAILY_BUDGET_USD = {
   anonymous: 3,
   member_free: 5,
   member_paid: 25,
-};
+} as const satisfies Record<'anonymous' | 'member_free' | 'member_paid', number>;
 
-const DAILY_BUDGET_MICROS: Record<keyof typeof DAILY_BUDGET_USD, number> = {
+type CappedUserTier = keyof typeof DAILY_BUDGET_USD;
+const DAILY_BUDGET_MICROS: Record<CappedUserTier, number> = {
   anonymous: DAILY_BUDGET_USD.anonymous * MICROS_PER_DOLLAR,
   member_free: DAILY_BUDGET_USD.member_free * MICROS_PER_DOLLAR,
   member_paid: DAILY_BUDGET_USD.member_paid * MICROS_PER_DOLLAR,
 };
 
-export type UserTier = keyof typeof DAILY_BUDGET_USD;
+export type UserTier = CappedUserTier | 'aao_team';
 
 export interface CostCheckResult {
   ok: boolean;
@@ -177,6 +182,7 @@ export async function checkCostCap(
 ): Promise<CostCheckResult> {
   if (!userId) return { ok: true };
   if (SYSTEM_USER_IDS.has(userId)) return { ok: true };
+  if (tier === 'aao_team') return { ok: true, tier };
 
   const budgetMicros = DAILY_BUDGET_MICROS[tier];
   const { totalMicros, firstAtMs } = await store.sumInWindow(userId, WINDOW_MS);
@@ -232,25 +238,15 @@ export async function recordCost(
  */
 export function formatCapExceededMessage(result: CostCheckResult): string {
   const tier = result.tier ?? 'anonymous';
-  const capUsd = DAILY_BUDGET_USD[tier];
-  const spentUsd = ((result.spentCents ?? 0) / 100).toFixed(2);
-  // Render the wait as hours when a user trips the cap early in the
-  // window — "reset in ~1440 minutes" reads as noise. Minutes only
-  // below 2 hours; rounded hours beyond that. The number is already
-  // approximate (the user can retry sooner as individual charges
-  // drop out), so hours-as-round-numbers is honest.
-  const retryMs = result.retryAfterMs ?? 60_000;
-  const retryMinutes = Math.max(1, Math.ceil(retryMs / 60_000));
-  const humanReset = retryMinutes >= 120
-    ? `~${Math.ceil(retryMinutes / 60)} hour${retryMinutes >= 180 ? 's' : ''}`
-    : `~${retryMinutes} minute${retryMinutes === 1 ? '' : 's'}`;
+  if (tier === 'aao_team') {
+    return 'AAO team usage is uncapped.';
+  }
   return (
-    `You've hit today's Claude API usage cap (${capUsd} USD) — ` +
-    `spent ≈ $${spentUsd} in the last 24 hours. ` +
-    `The cap resets in ${humanReset}. ` +
+    `You've reached your daily conversation limit with Addie. ` +
+    `Please try again tomorrow. ` +
     (tier === 'member_paid'
-      ? 'Ping the AAO team if you need a higher ceiling for legitimate work.'
-      : 'Upgrade your membership at /membership for a higher daily ceiling.')
+      ? 'Ping the AgenticAdvertising.org team if you need a higher ceiling for legitimate work.'
+      : 'Upgrade your membership at https://agenticadvertising.org/dashboard/membership for a higher daily limit.')
   );
 }
 
@@ -261,9 +257,11 @@ export function formatCapExceededMessage(result: CostCheckResult): string {
  */
 export function resolveUserTier(opts: {
   isAnonymous?: boolean;
+  isAAOTeam?: boolean;
   hasActiveSubscription?: boolean;
 }): UserTier {
   if (opts.isAnonymous) return 'anonymous';
+  if (opts.isAAOTeam) return 'aao_team';
   return opts.hasActiveSubscription ? 'member_paid' : 'member_free';
 }
 
@@ -317,16 +315,17 @@ function writeCachedTier(userId: string, tier: UserTier): void {
  * (`slack:...`, `email:...`, etc.) can't resolve a real subscription
  * at call time, so they stay `member_free` regardless of the underlying
  * person's membership — upgrading those paths would need the caller to
- * have already mapped to a WorkOS id and passed *that* here. DB errors
- * fall back to `member_free` so a transient outage doesn't accidentally
- * grant the $25/day ceiling to unverified callers.
+ * have already mapped to a WorkOS id and passed *that* here. AAO team
+ * members (`aao-admin` governance group or AgenticAdvertising.org org
+ * membership) return `aao_team`, which is uncapped at the cost-gate
+ * boundary but still recorded for spend observability. DB errors fall
+ * back to `member_free` so a transient outage doesn't accidentally grant
+ * the $25/day ceiling or uncapped staff access to unverified callers.
  *
- * The SQL predicate here (`subscription_status = 'active' AND
- * subscription_canceled_at IS NULL`) matches `MEMBER_FILTER` in
- * `db/org-filters.ts` — the two must stay in sync so admin views and
- * the cap agree on who counts as a paying member. Trialing / past_due /
- * comped-$0 states all correctly fall through to `member_free`; if
- * future policy promotes any of those, update `MEMBER_FILTER` first.
+ * The SQL predicate here uses `TIER_PRESERVING_STATUSES`
+ * (active/past_due/trialing) so the cap agrees with billing entitlement
+ * policy. `past_due` keeps paid headroom during Stripe dunning instead
+ * of framing the member as unpaid mid-retry.
  *
  * This is the async, DB-touching counterpart to the pure
  * `resolveUserTier` above — the `FromDb` suffix is deliberate so a
@@ -342,17 +341,44 @@ export async function resolveUserTierFromDb(userId: string | null | undefined): 
   if (cached && cached.expiresAt > now) return cached.tier;
 
   try {
-    const { rows } = await query<{ exists: 1 }>(
-      `SELECT 1 AS exists
-         FROM organization_memberships om
-         JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
-        WHERE om.workos_user_id = $1
-          AND o.subscription_status = 'active'
-          AND o.subscription_canceled_at IS NULL
-        LIMIT 1`,
-      [userId],
+    const { rows } = await query<{
+      is_aao_team: boolean;
+      has_entitled_subscription: boolean;
+    }>(
+      `SELECT
+          (
+            EXISTS (
+              SELECT 1
+                FROM working_groups wg
+                JOIN working_group_memberships wgm ON wgm.working_group_id = wg.id
+               WHERE wg.slug = 'aao-admin'
+                 AND wg.status = 'active'
+                 AND wgm.workos_user_id = $1
+                 AND wgm.status = 'active'
+            )
+            OR EXISTS (
+              SELECT 1
+                FROM organization_memberships om
+                JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
+               WHERE om.workos_user_id = $1
+                 AND LOWER(o.name) = 'agenticadvertising.org'
+            )
+          ) AS is_aao_team,
+          EXISTS (
+            SELECT 1
+              FROM organization_memberships om
+              JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
+             WHERE om.workos_user_id = $1
+               AND o.subscription_status = ANY($2::text[])
+               AND o.subscription_canceled_at IS NULL
+          ) AS has_entitled_subscription`,
+      [userId, TIER_PRESERVING_STATUSES],
     );
-    const tier: UserTier = rows.length > 0 ? 'member_paid' : 'member_free';
+    const row = rows[0];
+    const tier = resolveUserTier({
+      isAAOTeam: row?.is_aao_team === true,
+      hasActiveSubscription: row?.has_entitled_subscription === true,
+    });
     writeCachedTier(userId, tier);
     return tier;
   } catch (err) {

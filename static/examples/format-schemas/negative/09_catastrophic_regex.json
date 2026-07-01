@@ -1,0 +1,27 @@
+{
+  "test_id": "fetch-contract-neg-09-catastrophic-regex",
+  "category": "compile_budget",
+  "description": "Schema contains a 'pattern' regex with exponential backtracking (e.g., ^(a+)+$ against aaaaaaaaaaaaaaaaaaaaX). Evaluating this regex pins a CPU forever; SDK MUST use a non-backtracking engine (re2) or per-pattern timeout.",
+  "setup": {
+    "request_uri": "https://creative.adcontextprotocol.org/extensions/bad_regex",
+    "declared_digest": "sha256:<computed>",
+    "response_status": 200,
+    "response_body": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "$id": "/schemas/test/bad-regex.json",
+      "type": "object",
+      "properties": {
+        "input": {
+          "type": "string",
+          "pattern": "^(a+)+$"
+        }
+      }
+    },
+    "response_headers": {
+      "Content-Type": "application/json"
+    }
+  },
+  "expected_outcome": "fail:budget_exceeded",
+  "expected_error_code": "FORMAT_PROJECTION_FAILED",
+  "rationale": "Schema-compile bounds: compiled-schema keyword count <= 10 000, patterns evaluated via re2 OR per-pattern timeout, per-manifest validation budget <= 250 ms. Without these, a 'valid' schema with catastrophic backtracking is a DoS vector."
+}

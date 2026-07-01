@@ -5,6 +5,7 @@
 
 import { query } from './client.js';
 import { createLogger } from '../logger.js';
+import { redactSupportSecrets } from '../services/support-redaction.js';
 
 const logger = createLogger('escalation-db');
 
@@ -61,8 +62,24 @@ export interface Escalation {
    *  with the same key are folded into the existing open escalation rather
    *  than creating a new one. See `createEscalation` and migration 459. */
   dedup_key: string | null;
+  /** Last time the SLA enforcement job re-surfaced this escalation to admins. */
+  sla_admin_last_notified_at: Date | null;
+  /** Last time the SLA enforcement job wrote a requester-visible follow-up. */
+  sla_requester_last_notified_at: Date | null;
+  /** Count of SLA follow-up cycles that touched this escalation. */
+  sla_follow_up_count: number;
   created_at: Date;
   updated_at: Date;
+}
+
+export interface EscalationUpdate {
+  id: number;
+  escalation_id: number;
+  author_type: 'requester' | 'admin' | 'system';
+  author_user_id: string | null;
+  body: string;
+  visible_to_requester: boolean;
+  created_at: Date;
 }
 
 export interface EscalationInput {
@@ -86,6 +103,14 @@ export interface EscalationInput {
   dedup_key?: string;
 }
 
+export interface EscalationSlaState {
+  age_hours: number;
+  hours_since_update: number;
+  needs_follow_up: boolean;
+  label: string | null;
+  threshold_hours: number | null;
+}
+
 export interface EscalationFilters {
   status?: EscalationStatus;
   category?: EscalationCategory;
@@ -94,6 +119,56 @@ export interface EscalationFilters {
 }
 
 // ============== Escalation Operations ==============
+
+const ACTIVE_ESCALATION_STATUSES = new Set<EscalationStatus>([
+  'open',
+  'acknowledged',
+  'in_progress',
+]);
+
+function hoursBetween(start: Date | string | null | undefined, end: Date): number {
+  if (!start) return 0;
+  const startMs = new Date(start).getTime();
+  if (!Number.isFinite(startMs)) return 0;
+  return Math.max(0, Math.round(((end.getTime() - startMs) / (60 * 60 * 1000)) * 10) / 10);
+}
+
+export function describeEscalationSla(
+  escalation: Pick<Escalation, 'status' | 'priority' | 'created_at' | 'updated_at'>,
+  now = new Date(),
+): EscalationSlaState {
+  const ageHours = hoursBetween(escalation.created_at, now);
+  const hoursSinceUpdate = hoursBetween(escalation.updated_at, now);
+
+  if (!ACTIVE_ESCALATION_STATUSES.has(escalation.status)) {
+    return {
+      age_hours: ageHours,
+      hours_since_update: hoursSinceUpdate,
+      needs_follow_up: false,
+      label: null,
+      threshold_hours: null,
+    };
+  }
+
+  if (escalation.status === 'open') {
+    const threshold = escalation.priority === 'urgent' ? 4 : 24;
+    return {
+      age_hours: ageHours,
+      hours_since_update: hoursSinceUpdate,
+      needs_follow_up: ageHours >= threshold,
+      label: ageHours >= threshold ? 'Needs pickup' : null,
+      threshold_hours: threshold,
+    };
+  }
+
+  return {
+    age_hours: ageHours,
+    hours_since_update: hoursSinceUpdate,
+    needs_follow_up: hoursSinceUpdate >= 24,
+    label: hoursSinceUpdate >= 24 ? 'Needs update' : null,
+    threshold_hours: 24,
+  };
+}
 
 /**
  * Create a new escalation. If `dedup_key` is set and an open, acknowledged,
@@ -107,6 +182,10 @@ export async function createEscalation(input: EscalationInput): Promise<Escalati
     const existing = await readOpenEscalationByDedupKey(input.dedup_key);
     if (existing) return existing;
   }
+
+  const summary = redactSupportSecrets(input.summary) ?? input.summary;
+  const originalRequest = redactSupportSecrets(input.original_request);
+  const addieContext = redactSupportSecrets(input.addie_context);
 
   try {
     const result = await query<Escalation>(
@@ -127,9 +206,9 @@ export async function createEscalation(input: EscalationInput): Promise<Escalati
         input.user_slack_handle || null,
         input.category,
         input.priority || 'normal',
-        input.summary,
-        input.original_request || null,
-        input.addie_context || null,
+        summary,
+        originalRequest || null,
+        addieContext || null,
         input.perspective_id || null,
         input.perspective_slug || null,
         input.dedup_key || null,
@@ -279,15 +358,25 @@ export async function countEscalations(
 export async function getEscalationStats(): Promise<{
   open: number;
   resolved_today: number;
+  needs_follow_up: number;
   by_category: Record<string, number>;
 }> {
-  const [openCount, resolvedToday, byCategory] = await Promise.all([
+  const [openCount, resolvedToday, needsFollowUp, byCategory] = await Promise.all([
     query<{ count: string }>(
       `SELECT COUNT(*) as count FROM addie_escalations WHERE status = 'open'`
     ),
     query<{ count: string }>(
       `SELECT COUNT(*) as count FROM addie_escalations
        WHERE status = 'resolved' AND resolved_at > NOW() - INTERVAL '24 hours'`
+    ),
+    query<{ count: string }>(
+      `SELECT COUNT(*) as count FROM addie_escalations
+       WHERE status IN ('open', 'acknowledged', 'in_progress')
+         AND (
+           (status = 'open' AND priority = 'urgent' AND created_at <= NOW() - INTERVAL '4 hours')
+           OR (status = 'open' AND priority <> 'urgent' AND created_at <= NOW() - INTERVAL '24 hours')
+           OR (status IN ('acknowledged', 'in_progress') AND updated_at <= NOW() - INTERVAL '24 hours')
+         )`
     ),
     query<{ category: string; count: string }>(
       `SELECT category, COUNT(*) as count FROM addie_escalations
@@ -304,6 +393,7 @@ export async function getEscalationStats(): Promise<{
   return {
     open: parseInt(openCount.rows[0]?.count || '0', 10),
     resolved_today: parseInt(resolvedToday.rows[0]?.count || '0', 10),
+    needs_follow_up: parseInt(needsFollowUp.rows[0]?.count || '0', 10),
     by_category: byCategoryMap,
   };
 }
@@ -331,6 +421,190 @@ export async function updateEscalationStatus(
     [id, status, resolvedBy || null, isResolved, notes || null]
   );
   return result.rows[0] || null;
+}
+
+/**
+ * Let the requester close their own active escalation from the dashboard.
+ * Internal/admin-only fields stay hidden; this only changes status.
+ */
+export async function resolveEscalationForUser(
+  id: number,
+  workosUserId: string,
+  slackUserId: string | null | undefined,
+  notes?: string,
+): Promise<Escalation | null> {
+  const resolutionNotes = notes?.trim()
+    ? `Closed by requester: ${notes.trim()}`
+    : 'Closed by requester from dashboard.';
+
+  const result = await query<Escalation>(
+    `UPDATE addie_escalations
+     SET status = 'resolved',
+         resolved_by = $2,
+         resolved_at = NOW(),
+         resolution_notes = $4,
+         updated_at = NOW()
+     WHERE id = $1
+       AND (workos_user_id = $2 OR ($3::text IS NOT NULL AND slack_user_id = $3))
+       AND status IN ('open', 'acknowledged', 'in_progress')
+     RETURNING *`,
+    [id, workosUserId, slackUserId || null, resolutionNotes],
+  );
+  return result.rows[0] || null;
+}
+
+export async function addRequesterEscalationUpdate(
+  escalationId: number,
+  workosUserId: string,
+  slackUserId: string | null | undefined,
+  body: string,
+): Promise<EscalationUpdate | null> {
+  const note = body.trim();
+  if (!note) return null;
+
+  const result = await query<EscalationUpdate>(
+    `WITH owned AS (
+     SELECT id
+     FROM addie_escalations
+     WHERE id = $1
+         AND (workos_user_id = $2 OR ($3::text IS NOT NULL AND slack_user_id = $3))
+         AND status IN ('open', 'acknowledged', 'in_progress')
+     )
+     INSERT INTO addie_escalation_updates
+       (escalation_id, author_type, author_user_id, body, visible_to_requester)
+     SELECT id, 'requester', $2, $4, TRUE
+     FROM owned
+     RETURNING *`,
+    [escalationId, workosUserId, slackUserId || null, note],
+  );
+
+  return result.rows[0] || null;
+}
+
+export async function addSystemEscalationUpdate(
+  escalationId: number,
+  body: string,
+  visibleToRequester = false,
+): Promise<EscalationUpdate | null> {
+  const note = body.trim();
+  if (!note) return null;
+
+  const result = await query<EscalationUpdate>(
+    `INSERT INTO addie_escalation_updates
+       (escalation_id, author_type, author_user_id, body, visible_to_requester)
+     SELECT id, 'system', NULL, $2, $3
+     FROM addie_escalations
+     WHERE id = $1
+       AND status IN ('open', 'acknowledged', 'in_progress')
+     RETURNING *`,
+    [escalationId, note, visibleToRequester],
+  );
+
+  return result.rows[0] || null;
+}
+
+export async function listPublicEscalationUpdates(
+  escalationIds: number[],
+): Promise<Record<number, EscalationUpdate[]>> {
+  if (escalationIds.length === 0) return {};
+
+  const result = await query<EscalationUpdate>(
+    `SELECT *
+     FROM addie_escalation_updates
+     WHERE escalation_id = ANY($1::int[])
+       AND visible_to_requester = TRUE
+     ORDER BY escalation_id ASC, created_at ASC`,
+    [escalationIds],
+  );
+
+  const byEscalation: Record<number, EscalationUpdate[]> = {};
+  for (const update of result.rows) {
+    if (!byEscalation[update.escalation_id]) byEscalation[update.escalation_id] = [];
+    byEscalation[update.escalation_id].push(update);
+  }
+  return byEscalation;
+}
+
+export async function listEscalationsForSlaEnforcement(limit = 50): Promise<Escalation[]> {
+  const result = await query<Escalation>(
+    `SELECT e.*,
+            s.admin_last_notified_at AS sla_admin_last_notified_at,
+            s.requester_last_notified_at AS sla_requester_last_notified_at,
+            COALESCE(s.follow_up_count, 0) AS sla_follow_up_count
+     FROM addie_escalations e
+     LEFT JOIN addie_escalation_sla_notifications s ON s.escalation_id = e.id
+     WHERE e.status IN ('open', 'acknowledged', 'in_progress')
+       AND (
+         (
+           (
+             e.status = 'open'
+             AND (
+               (e.priority = 'urgent' AND e.created_at <= NOW() - INTERVAL '4 hours')
+               OR (e.priority <> 'urgent' AND e.created_at <= NOW() - INTERVAL '24 hours')
+             )
+           )
+           OR (
+             e.status IN ('acknowledged', 'in_progress')
+             AND e.updated_at <= NOW() - INTERVAL '24 hours'
+           )
+         )
+         AND (
+           s.admin_last_notified_at IS NULL
+           OR s.admin_last_notified_at <= NOW() - INTERVAL '4 hours'
+         )
+         OR (
+           e.created_at <= NOW() - INTERVAL '24 hours'
+           AND (
+             s.requester_last_notified_at IS NULL
+             OR s.requester_last_notified_at <= NOW() - INTERVAL '24 hours'
+           )
+         )
+       )
+     ORDER BY
+       CASE e.priority
+         WHEN 'urgent' THEN 1
+         WHEN 'high' THEN 2
+         WHEN 'normal' THEN 3
+         WHEN 'low' THEN 4
+       END,
+       e.created_at ASC
+     LIMIT $1`,
+    [limit],
+  );
+  return result.rows;
+}
+
+export async function markEscalationSlaNotified(
+  id: number,
+  options: { admin?: boolean; requester?: boolean },
+): Promise<void> {
+  if (!options.admin && !options.requester) return;
+
+  await query(
+    `INSERT INTO addie_escalation_sla_notifications (
+       escalation_id,
+       admin_last_notified_at,
+       requester_last_notified_at,
+       follow_up_count
+     )
+     VALUES (
+       $1,
+       CASE WHEN $2 THEN NOW() ELSE NULL END,
+       CASE WHEN $3 THEN NOW() ELSE NULL END,
+       1
+     )
+     ON CONFLICT (escalation_id) DO UPDATE
+       SET admin_last_notified_at = CASE
+             WHEN $2 THEN NOW()
+             ELSE addie_escalation_sla_notifications.admin_last_notified_at
+           END,
+           requester_last_notified_at = CASE
+             WHEN $3 THEN NOW()
+             ELSE addie_escalation_sla_notifications.requester_last_notified_at
+           END,
+           follow_up_count = addie_escalation_sla_notifications.follow_up_count + 1`,
+    [id, options.admin === true, options.requester === true],
+  );
 }
 
 /**

@@ -1,0 +1,736 @@
+#!/usr/bin/env node
+/**
+ * Tests for the storyboard validations[].path lint (companion to
+ * lint-storyboard-context-output-paths.test.cjs). Concerns:
+ *   1. Source-tree guard — every real storyboard under
+ *      static/compliance/source passes the lint. Regression guard.
+ *   2. The `path_not_in_schema` rule fires when a path-bearing check
+ *      asserts on a path that doesn't resolve in the response schema.
+ *   3. Non-path-bearing checks (error_code, response_schema, http_status,
+ *      etc.) are silently skipped — they have no path to validate.
+ *   4. The path resolver follows $ref / oneOf / anyOf / allOf / items.
+ *   5. Pure extension points (additionalProperties: true with no
+ *      properties / variants — like core/context.json and error.details)
+ *      accept any further segments without flagging.
+ *   6. The allowlist mechanism suppresses entries with documented reasons.
+ */
+
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const yaml = require('js-yaml');
+
+const {
+  lint,
+  lintDoc,
+  pathResolves,
+  pathResolvesAgainstResponseOrEnvelope,
+  parsePath,
+  loadSchema,
+  loadAllowlist,
+  isEnvelopeProperty,
+  findArmByDiscriminator,
+  findErrorArm,
+  resolveExpectedArmSchema,
+  PATH_BEARING_CHECKS,
+} = require('../scripts/lint-storyboard-validations-paths.cjs');
+
+const REPO_ROOT = path.resolve(__dirname, '..');
+
+test('source tree passes the validations-path lint', () => {
+  const violations = lint();
+  assert.deepEqual(
+    violations,
+    [],
+    'real storyboards have validations[].path violations:\n' +
+      violations
+        .map((v) => `  ${v.filePath}:${v.stepId} — ${v.validationPath} (${v.rule})`)
+        .join('\n'),
+  );
+});
+
+test('path_not_in_schema fires for typo on field_present check', () => {
+  const doc = {
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 'create_buy',
+            task: 'create_media_buy',
+            response_schema_ref: 'media-buy/create-media-buy-response.json',
+            validations: [
+              { check: 'field_present', path: 'media_buy_oid', description: 'typo' },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  const violations = lintDoc(doc, '/synth/test.yaml');
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].rule, 'path_not_in_schema');
+  assert.equal(violations[0].validationPath, 'media_buy_oid');
+  assert.equal(violations[0].check, 'field_present');
+});
+
+test('path_not_in_schema does not fire for field_present on a defined property', () => {
+  const doc = {
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 'create_buy',
+            task: 'create_media_buy',
+            response_schema_ref: 'media-buy/create-media-buy-response.json',
+            validations: [
+              { check: 'field_present', path: 'media_buy_id', description: 'real field' },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  const violations = lintDoc(doc, '/synth/test.yaml');
+  assert.deepEqual(violations, []);
+});
+
+test('field_contains accepts wildcard paths that resolve through array items', () => {
+  const doc = {
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 'get_buy',
+            task: 'get_media_buys',
+            response_schema_ref: 'media-buy/get-media-buys-response.json',
+            validations: [
+              {
+                check: 'field_contains',
+                path: 'media_buys[0].impairments[0].package_ids[*]',
+                value: 'package_a',
+                description: 'package appears anywhere',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  const violations = lintDoc(doc, '/synth/test.yaml');
+  assert.deepEqual(violations, []);
+});
+
+test('dependency_impairment verify_impaired matches impairment entries without index coupling', () => {
+  const filePath = path.join(
+    REPO_ROOT,
+    'static/compliance/source/protocols/media-buy/scenarios/dependency_impairment.yaml',
+  );
+  const doc = yaml.load(fs.readFileSync(filePath, 'utf8'));
+  const phase = doc.phases.find((p) => p.id === 'verify_impaired');
+  const step = phase.steps.find((s) => s.id === 'get_buy_impaired');
+  const validations = step.validations ?? [];
+
+  const match = validations.find(
+    (v) => v.check === 'field_contains' && v.path === 'media_buys[0].impairments[*]',
+  );
+
+  assert.deepEqual(match?.value, {
+    resource_type: 'creative',
+    resource_id: 'acme_dep_banner_001',
+    package_ids: ['$context.package_id'],
+    transition: { to: 'rejected' },
+  });
+
+  const positionalMatchChecks = validations
+    .filter((v) => typeof v.path === 'string')
+    .filter((v) => /^media_buys\[0\]\.impairments\[0\]\.(resource_type|resource_id|package_ids|transition)/.test(v.path))
+    .map((v) => v.path);
+
+  assert.deepEqual(
+    positionalMatchChecks,
+    [],
+    'verify_impaired must not require the matching impairment entry to be at impairments[0]',
+  );
+});
+
+test('wildcard paths are rejected for checks without wildcard runtime semantics', () => {
+  const doc = {
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 'get_buy',
+            task: 'get_media_buys',
+            response_schema_ref: 'media-buy/get-media-buys-response.json',
+            validations: [
+              {
+                check: 'field_value',
+                path: 'media_buys[0].impairments[0].package_ids[*]',
+                value: 'package_a',
+                description: 'unsupported wildcard',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  const violations = lintDoc(doc, '/synth/test.yaml');
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].rule, 'wildcard_unsupported_check');
+  assert.equal(violations[0].check, 'field_value');
+});
+
+test('non-path-bearing checks are silently skipped', () => {
+  const doc = {
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 's',
+            task: 'create_media_buy',
+            response_schema_ref: 'media-buy/create-media-buy-response.json',
+            validations: [
+              { check: 'response_schema', description: 'no path' },
+              { check: 'error_code', value: 'INVALID_REQUEST' },
+              { check: 'http_status', value: 200 },
+              { check: 'http_status_in', allowed_values: [200, 202] },
+              { check: 'any_of', clauses: [] },
+              { check: 'on_401_require_header' },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  const violations = lintDoc(doc, '/synth/test.yaml');
+  assert.deepEqual(violations, []);
+});
+
+test('pure extension points (context.correlation_id) accept any further segments', () => {
+  const doc = {
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 's',
+            task: 'create_media_buy',
+            response_schema_ref: 'media-buy/create-media-buy-response.json',
+            validations: [
+              {
+                check: 'field_value',
+                path: 'context.correlation_id',
+                value: 'test-correlation-id',
+              },
+              {
+                check: 'field_value',
+                path: 'context.session_id.nested.deeper',
+                value: 'whatever',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  const violations = lintDoc(doc, '/synth/test.yaml');
+  assert.deepEqual(violations, []);
+});
+
+test('pure extension points only loosen when there are no defined properties', () => {
+  // si-get-offering-response.json has properties (available, offering_token,
+  // etc.) AND additionalProperties: true. That's mixed — strict rule applies
+  // because the schema declares specific fields, and `additionalProperties:
+  // true` is forward-compat extension, not an open container.
+  const schema = loadSchema('sponsored-intelligence/si-get-offering-response.json');
+  assert.ok(schema, 'fixture loads');
+  // `offering.offering_id` resolves through a defined property
+  assert.equal(pathResolves(schema, parsePath('offering.offering_id')), true);
+  // `not_a_real_field` does NOT resolve — additionalProperties: true at the
+  // root doesn't make typos legal because `properties` is non-empty
+  assert.equal(pathResolves(schema, parsePath('not_a_real_field')), false);
+});
+
+test('pathResolves descends through error.json $ref for errors[0].code', () => {
+  const schema = loadSchema('media-buy/create-media-buy-response.json');
+  assert.equal(pathResolves(schema, parsePath('errors[0].code')), true);
+  assert.equal(pathResolves(schema, parsePath('errors[0].field')), true);
+});
+
+test('envelope-aware resolution: replayed and adcp_error resolve via protocol-envelope.json', () => {
+  // Both fields are defined on core/protocol-envelope.json (replayed line 30,
+  // adcp_error added in this PR). The envelope's top-level description states
+  // "Task response schemas should NOT include these fields - they are
+  // protocol-level concerns," so they don't appear on per-task response
+  // schemas. The lint falls back to the envelope when a top-level segment
+  // isn't found in the payload schema.
+  const schema = loadSchema('media-buy/create-media-buy-response.json');
+  assert.equal(
+    pathResolvesAgainstResponseOrEnvelope(schema, parsePath('replayed')),
+    true,
+    'replayed should resolve via envelope fallback',
+  );
+  assert.equal(
+    pathResolvesAgainstResponseOrEnvelope(schema, parsePath('adcp_error.code')),
+    true,
+    'adcp_error.code should resolve via envelope fallback into core/error.json',
+  );
+  assert.equal(
+    pathResolvesAgainstResponseOrEnvelope(schema, parsePath('status')),
+    true,
+    'status should resolve via envelope fallback',
+  );
+});
+
+test('runtime test-kit response refs allow envelope-only path assertions', () => {
+  const violations = lintDoc({
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 'webhook_replay',
+            task: '$test_kit.operations.primary_webhook_emitter',
+            response_schema_ref: '$test_kit.schemas.primary_response',
+            validations: [
+              {
+                check: 'field_value',
+                path: 'replayed',
+                value: true,
+                description: 'Replay resolves from the idempotency cache',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }, '/synth/test.yaml');
+
+  assert.deepEqual(violations, []);
+});
+
+test('runtime test-kit response refs still flag non-envelope path assertions', () => {
+  const violations = lintDoc({
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 'webhook_replay',
+            task: '$test_kit.operations.primary_webhook_emitter',
+            response_schema_ref: '$test_kit.schemas.primary_response',
+            validations: [
+              {
+                check: 'field_present',
+                path: 'media_buy_id',
+                description: 'Body fields require a concrete response schema',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }, '/synth/test.yaml');
+
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].rule, 'runtime_response_schema_unresolved_path');
+  assert.equal(violations[0].validationPath, 'media_buy_id');
+});
+
+test('source tree allows envelope_field_absent for protocol-envelope forbidden fields', () => {
+  const violations = lintDoc({
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 's',
+            task: 'get_adcp_capabilities',
+            response_schema_ref: 'protocol/get-adcp-capabilities-response.json',
+            validations: [
+              {
+                check: 'envelope_field_absent',
+                path: 'task_status',
+                description: 'legacy v2 field must be absent',
+              },
+              {
+                check: 'envelope_field_absent',
+                path: 'response_status',
+                description: 'legacy v2 field must be absent',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }, '/synth/envelope-absent.yaml');
+  assert.deepEqual(violations, []);
+});
+
+test('field_absent does not use the envelope-forbidden exemption', () => {
+  const violations = lintDoc({
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 's',
+            task: 'get_adcp_capabilities',
+            response_schema_ref: 'protocol/get-adcp-capabilities-response.json',
+            validations: [
+              {
+                check: 'field_absent',
+                path: 'task_status',
+                description: 'wrong check kind for an envelope field',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }, '/synth/envelope-absent-wrong-kind.yaml');
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].rule, 'path_not_in_schema');
+  assert.equal(violations[0].check, 'field_absent');
+});
+
+test('envelope_field_absent does not accept payload-only paths', () => {
+  const violations = lintDoc({
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 's',
+            task: 'get_adcp_capabilities',
+            response_schema_ref: 'protocol/get-adcp-capabilities-response.json',
+            validations: [
+              {
+                check: 'envelope_field_absent',
+                path: 'adcp',
+                description: 'payload field is not an envelope field',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }, '/synth/envelope-absent-payload-path.yaml');
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].rule, 'path_not_in_schema');
+  assert.equal(violations[0].check, 'envelope_field_absent');
+});
+
+test('envelope_field_pattern resolves only against envelope fields', () => {
+  const ok = lintDoc({
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 's',
+            task: 'get_adcp_capabilities',
+            response_schema_ref: 'protocol/get-adcp-capabilities-response.json',
+            validations: [
+              {
+                check: 'envelope_field_pattern',
+                path: 'adcp_version',
+                pattern: '^\\d+\\.\\d+$',
+                description: 'version envelope field',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }, '/synth/envelope-pattern-ok.yaml');
+  assert.deepEqual(ok, []);
+
+  const bad = lintDoc({
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 's',
+            task: 'get_adcp_capabilities',
+            response_schema_ref: 'protocol/get-adcp-capabilities-response.json',
+            validations: [
+              {
+                check: 'envelope_field_pattern',
+                path: 'adcp.supported_versions[0]',
+                pattern: '^\\d+\\.\\d+$',
+                description: 'payload field is not an envelope field',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }, '/synth/envelope-pattern-payload-path.yaml');
+  assert.equal(bad.length, 1);
+  assert.equal(bad[0].rule, 'path_not_in_schema');
+  assert.equal(bad[0].check, 'envelope_field_pattern');
+});
+
+test('isEnvelopeProperty identifies envelope fields', () => {
+  assert.equal(isEnvelopeProperty('replayed'), true);
+  assert.equal(isEnvelopeProperty('adcp_error'), true);
+  assert.equal(isEnvelopeProperty('adcp_version'), true);
+  assert.equal(isEnvelopeProperty('adcp_major_version'), true);
+  assert.equal(isEnvelopeProperty('status'), true);
+  assert.equal(isEnvelopeProperty('task_id'), true);
+  assert.equal(isEnvelopeProperty('context_id'), true);
+  assert.equal(isEnvelopeProperty('made_up_field'), false);
+});
+
+test('envelope fallback only fires when first segment is an envelope property', () => {
+  // A typo on a non-envelope-shaped path should still fail — the envelope
+  // fallback is keyed on the first segment matching an envelope property.
+  const schema = loadSchema('media-buy/create-media-buy-response.json');
+  assert.equal(
+    pathResolvesAgainstResponseOrEnvelope(schema, parsePath('definitely_not_real')),
+    false,
+    'non-envelope typos should still fail',
+  );
+});
+
+test('PATH_BEARING_CHECKS is the documented set', () => {
+  assert.ok(PATH_BEARING_CHECKS.has('field_present'));
+  assert.ok(PATH_BEARING_CHECKS.has('field_value'));
+  assert.ok(PATH_BEARING_CHECKS.has('field_value_or_absent'));
+  assert.ok(PATH_BEARING_CHECKS.has('field_absent'));
+  assert.ok(PATH_BEARING_CHECKS.has('field_pattern'));
+  assert.ok(PATH_BEARING_CHECKS.has('field_contains'));
+  assert.ok(PATH_BEARING_CHECKS.has('envelope_field_present'));
+  assert.ok(PATH_BEARING_CHECKS.has('envelope_field_absent'));
+  assert.ok(PATH_BEARING_CHECKS.has('envelope_field_pattern'));
+  assert.ok(!PATH_BEARING_CHECKS.has('error_code'));
+  assert.ok(!PATH_BEARING_CHECKS.has('response_schema'));
+});
+
+test('allowlist suppresses violations for documented exceptions', () => {
+  const doc = {
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 'allowed',
+            task: 'noop',
+            response_schema_ref: 'media-buy/create-media-buy-response.json',
+            validations: [{ check: 'field_present', path: 'definitely_not_real' }],
+          },
+        ],
+      },
+    ],
+  };
+
+  const allowlist = [
+    {
+      file: 'tests/synth/allowed.yaml',
+      step: 'allowed',
+      path: 'definitely_not_real',
+      reason: 'synthesized for test',
+    },
+  ];
+
+  const path = require('node:path');
+  const ROOT = path.resolve(__dirname, '..');
+  const filePath = path.join(ROOT, 'tests', 'synth', 'allowed.yaml');
+
+  const violations = lintDoc(doc, filePath, allowlist);
+  assert.deepEqual(violations, []);
+});
+
+test('allowlist entries still reproduce unresolved path drift without the allowlist', () => {
+  const allowlist = loadAllowlist();
+  const stale = [];
+
+  for (const entry of allowlist) {
+    const filePath = path.join(REPO_ROOT, entry.file);
+    const doc = yaml.load(fs.readFileSync(filePath, 'utf8'));
+    const violations = lintDoc(doc, filePath, []);
+    const stillViolates = violations.some(
+      (violation) =>
+        violation.stepId === entry.step &&
+        violation.validationPath === entry.path &&
+        violation.rule === 'path_not_in_schema',
+    );
+    if (!stillViolates) stale.push(`${entry.file}:${entry.step} — ${entry.path}`);
+  }
+
+  assert.deepEqual(
+    stale,
+    [],
+    'validations path allowlist entries are stale; remove entries whose paths now resolve:\n' +
+      stale.map((entry) => `  ${entry}`).join('\n'),
+  );
+});
+
+test('expected_arm restricts path resolution to the matching oneOf arm', () => {
+  const schema = loadSchema('brand/acquire-rights-response.json');
+  const acquired = findArmByDiscriminator(schema, 'acquired');
+  assert.ok(acquired, 'acquired arm found');
+  // `terms` is on the Acquired arm only
+  assert.equal(pathResolves(acquired, parsePath('terms')), true);
+  // `reason` is only on the Rejected arm — NOT on Acquired, so should fail
+  assert.equal(pathResolves(acquired, parsePath('reason')), false);
+
+  const rejected = findArmByDiscriminator(schema, 'rejected');
+  assert.ok(rejected, 'rejected arm found');
+  assert.equal(pathResolves(rejected, parsePath('reason')), true);
+  assert.equal(pathResolves(rejected, parsePath('terms')), false);
+});
+
+test('findErrorArm finds the errors[]-required branch with no const discriminator', () => {
+  const schema = loadSchema('brand/acquire-rights-response.json');
+  const errorArm = findErrorArm(schema);
+  assert.ok(errorArm, 'error arm found');
+  // Error arm has `errors` required and no const status
+  assert.equal(pathResolves(errorArm, parsePath('errors[0].code')), true);
+  // Error arm has no rights_id
+  assert.equal(pathResolves(errorArm, parsePath('rights_id')), false);
+});
+
+test('expect_error: true without expected_arm restricts to the Error arm', () => {
+  const doc = {
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 's',
+            task: 'acquire_rights',
+            response_schema_ref: 'brand/acquire-rights-response.json',
+            expect_error: true,
+            // rights_id is on Acquired/PendingApproval/Rejected but NOT on Error.
+            // With expect_error: true, the lint should restrict to Error and flag this.
+            validations: [{ check: 'field_present', path: 'rights_id' }],
+          },
+        ],
+      },
+    ],
+  };
+
+  const violations = lintDoc(doc, '/synth/test.yaml');
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].rule, 'path_not_in_schema');
+});
+
+test('expect_error: true paths to errors[].code resolve correctly', () => {
+  const doc = {
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 's',
+            task: 'acquire_rights',
+            response_schema_ref: 'brand/acquire-rights-response.json',
+            expect_error: true,
+            validations: [{ check: 'field_present', path: 'errors[0].code' }],
+          },
+        ],
+      },
+    ],
+  };
+
+  const violations = lintDoc(doc, '/synth/test.yaml');
+  assert.deepEqual(violations, []);
+});
+
+test('expected_arm: "acquired" restricts path resolution', () => {
+  const docOk = {
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 's',
+            task: 'acquire_rights',
+            response_schema_ref: 'brand/acquire-rights-response.json',
+            expected_arm: 'acquired',
+            validations: [{ check: 'field_present', path: 'terms' }],
+          },
+        ],
+      },
+    ],
+  };
+  assert.deepEqual(lintDoc(docOk, '/synth/test.yaml'), []);
+
+  const docWrongArm = {
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 's',
+            task: 'acquire_rights',
+            response_schema_ref: 'brand/acquire-rights-response.json',
+            expected_arm: 'acquired',
+            // `reason` is on the Rejected arm, NOT on Acquired
+            validations: [{ check: 'field_present', path: 'reason' }],
+          },
+        ],
+      },
+    ],
+  };
+  const violations = lintDoc(docWrongArm, '/synth/test.yaml');
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].rule, 'path_not_in_schema');
+});
+
+test('unknown_expected_arm fires when no oneOf branch matches', () => {
+  const doc = {
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 's',
+            task: 'acquire_rights',
+            response_schema_ref: 'brand/acquire-rights-response.json',
+            expected_arm: 'no_such_arm_value',
+            validations: [{ check: 'field_present', path: 'terms' }],
+          },
+        ],
+      },
+    ],
+  };
+  const violations = lintDoc(doc, '/synth/test.yaml');
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].rule, 'unknown_expected_arm');
+  assert.equal(violations[0].expectedArm, 'no_such_arm_value');
+});
+
+test('resolveExpectedArmSchema returns full schema when no annotation present', () => {
+  const schema = loadSchema('brand/acquire-rights-response.json');
+  const result = resolveExpectedArmSchema(schema, null, false);
+  assert.equal(result.schema, schema);
+  assert.equal(result.error, undefined);
+});
+
+test('loadAllowlist enforces a reason field', () => {
+  const allowlist = loadAllowlist();
+  assert.ok(Array.isArray(allowlist), 'allowlist is an array');
+  for (const entry of allowlist) {
+    assert.ok(entry.reason, `every allowlist entry MUST carry a reason: ${JSON.stringify(entry)}`);
+    assert.ok(entry.file && entry.step && entry.path, `entry MUST identify file/step/path: ${JSON.stringify(entry)}`);
+  }
+});

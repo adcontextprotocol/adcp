@@ -1,0 +1,279 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.14/media-buy/get-products-request.json",
+  "title": "Get Products Request",
+  "description": "Request parameters for discovering or refining advertising products. buying_mode declares the buyer's intent: 'brief' for curated discovery, 'wholesale' for raw wholesale product feed access, or 'refine' to iterate on known products and proposals.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/3.1.0-rc.14/core/version-envelope.json"
+    },
+    {
+      "description": "Conditional wholesale feed version requests are only valid for wholesale product feed reads.",
+      "if": {
+        "anyOf": [
+          {
+            "required": [
+              "if_wholesale_feed_version"
+            ]
+          },
+          {
+            "required": [
+              "if_pricing_version"
+            ]
+          }
+        ]
+      },
+      "then": {
+        "properties": {
+          "buying_mode": {
+            "const": "wholesale"
+          }
+        },
+        "required": [
+          "buying_mode"
+        ]
+      }
+    }
+  ],
+  "properties": {
+    "buying_mode": {
+      "type": "string",
+      "enum": [
+        "brief",
+        "wholesale",
+        "refine"
+      ],
+      "description": "Declares buyer intent for this request. 'brief': publisher curates product recommendations from the provided brief. 'wholesale': buyer requests raw product inventory to apply their own audiences — brief must not be provided, and proposals are omitted. 'refine': iterate on products and proposals from a previous get_products response using the refine array of change requests. v3 clients MUST include buying_mode. Sellers receiving requests from pre-v3 clients without buying_mode SHOULD default to 'brief'. Timing semantics: 'wholesale' is a wholesale product feed read — sellers SHOULD return a synchronous response and MUST NOT route a 'wholesale' request through the async/Submitted arm; partial completion is signalled via the response's incomplete[] field (with optional estimated_wait), not via a task-handoff envelope. 'brief' and 'refine' MAY complete synchronously, or MAY return a Submitted envelope (see get-products-async-response-submitted.json) when curation requires upstream-system queries or HITL review the seller cannot complete inside time_budget. Buyers needing predictable fast wholesale product feed access MUST use 'wholesale'; buyers open to slower curation use 'brief' or 'refine'."
+    },
+    "brief": {
+      "type": "string",
+      "description": "Natural language description of campaign requirements. Required when buying_mode is 'brief'. Must not be provided when buying_mode is 'wholesale' or 'refine'."
+    },
+    "refine": {
+      "type": "array",
+      "description": "Array of change requests for iterating on products and proposals from a previous get_products response. Each entry declares a scope (request, product, or proposal) and what the buyer is asking for. Only valid when buying_mode is 'refine'. The seller responds to each entry via refinement_applied in the response, matched by position.\n\nFinalize-exclusivity rule: if any entry has `action: 'finalize'`, ALL entries in the array MUST be proposal-scoped with `action: 'finalize'` — mixing finalize entries with `include`/`omit` entries or with request- / product-scoped entries MUST be rejected by the seller with `INVALID_REQUEST`. Finalize is a commit, not a refinement; the buyer expressing intent to commit means refinements have already converged. Buyers needing to refine AND commit in close succession sequence the calls: first a refine call (no finalize), then a finalize call against the resulting `proposal_id`(s).\n\nMulti-finalize semantics: multiple finalize entries against different `proposal_id` values in a single call are allowed and MUST be **atomic at the observation point** — sellers MUST NOT return a success response unless every named proposal has both completed and been persisted as committed. Pre-commit validation runs before any side-effects (inventory pull, terms lock, governance attestation); if any proposal fails validation, the seller MUST reject the entire call without committing any of the named proposals. There is no rollback operation in the spec — an `unfinalize` would itself be a new mutation surface; the atomicity guarantee runs entirely on the seller's pre-commit validation gate, not on post-commit reversal. Sellers that cannot guarantee atomic pre-commit validation MUST reject multi-finalize arrays with `MULTI_FINALIZE_UNSUPPORTED` (preferred — distinguishes seller-side capability gap from a malformed request) or `INVALID_REQUEST` (acceptable fallback for sellers on a pre-3.1 error catalog). If a mid-commit failure occurs *after* validation passed but before all proposals persist (e.g., a downstream ad server fails between commits one and two), the seller MUST return `INTERNAL_ERROR` with `refinement_applied[]` carrying per-position outcomes — the spec does NOT define a recovery path for this case, and buyers SHOULD treat the resulting state as undefined and re-read via `get_media_buys` / equivalent before retrying. Buyers MUST NOT assume multi-finalize support without a successful first attempt — there is no capability flag for this; the failure response is the discovery surface. Buyers whose intent specifically requires atomic commit (e.g., budget-shared proposals where one finalizing without the other is incoherent) MUST be prepared to abandon the intent if the seller returns `MULTI_FINALIZE_UNSUPPORTED` — there is no recovery for that loss of buyer intent beyond sequencing single-finalize calls and accepting the looser commit guarantee.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "discriminator": {
+          "propertyName": "scope"
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "scope": {
+                "type": "string",
+                "const": "request",
+                "description": "Change scoped to the overall request — direction for the selection as a whole."
+              },
+              "ask": {
+                "type": "string",
+                "minLength": 1,
+                "description": "What the buyer is asking for at the request level (e.g., 'more video options and less display', 'suggest how to combine these products')."
+              }
+            },
+            "required": [
+              "scope",
+              "ask"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "properties": {
+              "scope": {
+                "type": "string",
+                "const": "product",
+                "description": "Change scoped to a specific product."
+              },
+              "product_id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Product ID from a previous get_products response."
+              },
+              "action": {
+                "type": "string",
+                "enum": [
+                  "include",
+                  "omit",
+                  "more_like_this"
+                ],
+                "default": "include",
+                "description": "'include' (default): return this product with updated pricing and data. 'omit': exclude this product from the response. 'more_like_this': find additional products similar to this one (the original is also returned). Optional — when omitted, the seller treats the entry as action: 'include'."
+              },
+              "ask": {
+                "type": "string",
+                "minLength": 1,
+                "description": "What the buyer is asking for on this product. For 'include': specific changes to request (e.g., 'add 16:9 format'). For 'more_like_this': what 'similar' means (e.g., 'same audience but video format'). Ignored when action is 'omit'."
+              }
+            },
+            "required": [
+              "scope",
+              "product_id"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "properties": {
+              "scope": {
+                "type": "string",
+                "const": "proposal",
+                "description": "Change scoped to a specific proposal."
+              },
+              "proposal_id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Proposal ID from a previous get_products response."
+              },
+              "action": {
+                "type": "string",
+                "enum": [
+                  "include",
+                  "omit",
+                  "finalize"
+                ],
+                "default": "include",
+                "description": "'include' (default): return this proposal with updated allocations and pricing. 'omit': exclude this proposal from the response. 'finalize': request firm pricing and inventory hold — transitions a draft proposal to committed with an expires_at hold window. May trigger seller-side approval (HITL). The buyer should not set a time_budget for finalize requests — they represent a commitment to wait for the result. Optional — when omitted, the seller treats the entry as action: 'include'.\n\nFinalize is exclusive within the parent `refine[]` array: see the array-level description for the finalize-exclusivity rule (mixing finalize with non-finalize entries is rejected) and multi-finalize atomicity contract."
+              },
+              "ask": {
+                "type": "string",
+                "minLength": 1,
+                "description": "What the buyer is asking for on this proposal (e.g., 'shift more budget toward video', 'reduce total by 10%'). Ignored when action is 'omit'."
+              }
+            },
+            "required": [
+              "scope",
+              "proposal_id"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "brand": {
+      "$ref": "/schemas/3.1.0-rc.14/core/brand-ref.json",
+      "description": "Brand reference for product discovery context. Resolved to full brand identity at execution time."
+    },
+    "catalog": {
+      "$ref": "/schemas/3.1.0-rc.14/core/catalog.json",
+      "description": "Catalog of items the buyer wants to promote. The seller matches catalog items against its inventory and returns products where matches exist. Supports all catalog types: a job catalog finds job ad products, a product catalog finds sponsored product slots. Reference a synced catalog by catalog_id, or provide inline items."
+    },
+    "account": {
+      "$ref": "/schemas/3.1.0-rc.14/core/account-ref.json",
+      "description": "Account for product lookup. Returns products with pricing specific to this account's rate card."
+    },
+    "preferred_delivery_types": {
+      "type": "array",
+      "description": "Delivery types the buyer prefers, in priority order. Unlike filters.delivery_type which excludes non-matching products, this signals preference for curation — the publisher may still include other delivery types when they match the brief well.",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.14/enums/delivery-type.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "filters": {
+      "$ref": "/schemas/3.1.0-rc.14/core/product-filters.json"
+    },
+    "property_list": {
+      "$ref": "/schemas/3.1.0-rc.14/core/property-list-ref.json",
+      "description": "[AdCP 3.0] Reference to an externally managed property list. When provided, the sales agent should filter products to only those available on properties in the list."
+    },
+    "fields": {
+      "type": "array",
+      "description": "Specific product fields to include in the response. When omitted, all fields are returned. Use for lightweight discovery calls where only a subset of product data is needed (e.g., just IDs and pricing for comparison). Required fields (product_id, name) are always included regardless of selection.",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": [
+          "product_id",
+          "name",
+          "description",
+          "publisher_properties",
+          "channels",
+          "video_placement_types",
+          "audio_distribution_types",
+          "sponsored_placement_types",
+          "social_placement_surfaces",
+          "format_ids",
+          "format_options",
+          "placements",
+          "delivery_type",
+          "exclusivity",
+          "pricing_options",
+          "forecast",
+          "outcome_measurement",
+          "delivery_measurement",
+          "reporting_capabilities",
+          "creative_policy",
+          "catalog_types",
+          "metric_optimization",
+          "conversion_tracking",
+          "data_provider_signals",
+          "included_signals",
+          "signal_targeting_allowed",
+          "signal_targeting_options",
+          "signal_targeting_rules",
+          "max_optimization_goals",
+          "catalog_match",
+          "collections",
+          "collection_targeting_allowed",
+          "installments",
+          "brief_relevance",
+          "expires_at",
+          "product_card",
+          "product_card_detailed",
+          "enforced_policies",
+          "trusted_match"
+        ]
+      }
+    },
+    "time_budget": {
+      "allOf": [
+        {
+          "$ref": "/schemas/3.1.0-rc.14/core/duration.json"
+        }
+      ],
+      "description": "Maximum time the buyer will commit to this request. The seller returns the best results achievable within this budget and does not start processes (human approvals, expensive external queries) that cannot complete in time. When omitted, the seller decides timing."
+    },
+    "push_notification_config": {
+      "$ref": "/schemas/3.1.0-rc.14/core/push-notification-config.json",
+      "description": "Optional webhook configuration for async terminal completion/failure notifications on curated discovery. Meaningful only for `buying_mode: \"brief\"` and `buying_mode: \"refine\"` requests that enter the async lifecycle. Submitted envelopes with `task_id` remain pollable through `get_task_status` (legacy `tasks/get`) whether or not this field is present. If a brief/refine request includes this field and the seller returns a Submitted envelope, the seller MUST deliver at least the terminal completion/failure notification to the configured URL; intermediate progress notifications are MAY. If the seller cannot honor the webhook channel, it MUST reject the request with a structured error instead of silently accepting. This field does not change wholesale timing semantics: sellers MUST NOT route `buying_mode: \"wholesale\"` requests through the async/Submitted arm or emit async delivery solely because `push_notification_config` is present; partial wholesale completion is reported via `incomplete[]`."
+    },
+    "pagination": {
+      "$ref": "/schemas/3.1.0-rc.14/core/pagination-request.json"
+    },
+    "if_wholesale_feed_version": {
+      "type": "string",
+      "description": "Opaque wholesale_feed_version token returned by a prior wholesale-mode get_products response from this agent. Only valid when buying_mode is wholesale. When provided, the seller compares against its current wholesale product feed version for the buyer's cache_scope and MAY return an unchanged: true response (with products omitted) if nothing has changed. The token is scope-keyed: buyers cache `(cache_scope, wholesale_feed_version)` pairs. Scoping dimensions: (agent, buying_mode, filters, property_list, catalog) for cache_scope: 'public'; that tuple plus account_id for cache_scope: 'account'. pagination.cursor is NOT part of the scoping tuple. Backward-compatible: pre-v3.1 agents that ignore this field simply return the full payload, same as the unchanged-server path. See specs/wholesale-feed-webhooks.md for the full sync pattern."
+    },
+    "if_pricing_version": {
+      "type": "string",
+      "description": "Opaque pricing_version token from a prior get_products response. MUST only be sent together with if_wholesale_feed_version — pricing version has no structural baseline to compare against on its own. Evaluation order: (1) if_wholesale_feed_version mismatch → seller returns the full payload (pricing is implicitly stale); (2) if_wholesale_feed_version matches but if_pricing_version mismatches → seller returns the full payload so the buyer sees updated pricing_options; (3) both match → seller MAY return unchanged: true. Agents that don't track pricing separately ignore if_pricing_version and fall back to if_wholesale_feed_version semantics. Useful for storefronts that re-price compositions far more often than they re-render product mirrors."
+    },
+    "context": {
+      "$ref": "/schemas/3.1.0-rc.14/core/context.json"
+    },
+    "required_policies": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Registry policy IDs that the buyer requires to be enforced for products in this response. Sellers filter products to only those that comply with or already enforce the requested policies."
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-rc.14/core/ext.json"
+    }
+  },
+  "required": [
+    "buying_mode"
+  ],
+  "dependencies": {
+    "catalog": [
+      "brand"
+    ],
+    "if_pricing_version": [
+      "if_wholesale_feed_version"
+    ]
+  },
+  "additionalProperties": true
+}

@@ -6,6 +6,9 @@ on:
       - main
       - '3.0.x'
       - '2.6.x'
+      # '2.5-maintenance' is security-only until 2026-08-01; remove after that
+      # date unless we extend the v2 support window.
+      - '2.5-maintenance'
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
@@ -29,7 +32,7 @@ jobs:
       # release-docs snapshot. Closes #3417.
       - name: Mint AAO Release Bot installation token
         id: app-token
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@v3.2.0
         with:
           app-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
@@ -37,7 +40,7 @@ jobs:
           repositories: adcp
 
       - name: Checkout Repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.0
         with:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
@@ -48,17 +51,70 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      - name: Detect release-relevant push
+        id: release-relevance
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v${VERSION}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+          changed_files="$(git show --format= --name-only --no-renames "${GITHUB_SHA}")"
+          if grep -Eq '^(\.changeset/|package(-lock)?[.]json$|dist/(schemas|compliance|protocol)/|static/(schemas|compliance)/source/|server/src/training-agent/|scripts/(build-schemas[.]cjs|build-compliance[.]cjs|build-protocol-tarball[.]cjs|sign-protocol-tarball[.]sh|run-storyboards-[^/]+[.]sh|run-storyboards-matrix[.]sh|stage-sdk-schema-bundle[.]sh|overlay-compliance-cache[.]sh)|[.]github/workflows/(release|training-agent-storyboards)[.]yml$)' <<< "${changed_files}"; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            echo "Release-relevant files changed."
+            exit 0
+          fi
+
+          echo "relevant=false" >> "$GITHUB_OUTPUT"
+          echo "No release-relevant changes detected; skipping release job body."
+
       - name: Install cosign
+        if: steps.release-relevance.outputs.relevant == 'true'
         uses: sigstore/cosign-installer@v3
         with:
           cosign-release: 'v2.4.1'
 
       - name: Install Dependencies
+        if: steps.release-relevance.outputs.relevant == 'true'
         run: npm ci
         env:
           PUPPETEER_SKIP_DOWNLOAD: 'true'
 
+      - name: Verify current storyboard coverage
+        if: steps.release-relevance.outputs.relevant == 'true' && github.ref_name == 'main'
+        run: npm run test:storyboards
+
+      - name: Verify 3.0 storyboard compatibility
+        if: steps.release-relevance.outputs.relevant == 'true' && (github.ref_name == 'main' || github.ref_name == '3.0.x')
+        run: npm run test:storyboards:3.0-compat
+        env:
+          ADCP_RELEASE_BASE_REF: 3.0.x
+
+      - name: Detect committed release artifacts
+        if: steps.release-relevance.outputs.relevant == 'true'
+        id: release-artifacts
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v${VERSION}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+          changed_files="$(git show --format= --name-only --no-renames "${GITHUB_SHA}")"
+          if grep -Eq "^dist/(schemas|compliance)/${VERSION}/|^dist/protocol/${VERSION}[.]" <<< "${changed_files}"; then
+            echo "has_release_artifacts=true" >> "$GITHUB_OUTPUT"
+            echo "Detected committed release artifact changes for ${VERSION}."
+          else
+            echo "has_release_artifacts=false" >> "$GITHUB_OUTPUT"
+            echo "No committed release artifacts detected for ${VERSION}."
+          fi
+
       - name: Create Release Pull Request or Tag Release
+        if: steps.release-relevance.outputs.relevant == 'true' && steps.release-artifacts.outputs.has_release_artifacts != 'true'
         id: changesets
         uses: changesets/action@v1
         with:
@@ -69,3 +125,164 @@ jobs:
           createGithubReleases: true
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      - name: Sign local protocol tarball if needed
+        if: steps.changesets.outputs.published == 'true' || steps.release-artifacts.outputs.has_release_artifacts == 'true'
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.release-artifacts.outputs.version }}"
+          TARBALL="dist/protocol/${VERSION}.tgz"
+          if [ ! -f "${TARBALL}" ]; then
+            echo "::error::Tarball not found at ${TARBALL}. Did npm run version fail upstream?"
+            exit 1
+          fi
+          if [ ! -f "${TARBALL}.sig" ] || [ ! -f "${TARBALL}.crt" ]; then
+            npm run sign:protocol-tarball
+          fi
+          test -f "${TARBALL}.sig"
+          test -f "${TARBALL}.crt"
+
+      - name: Verify local protocol tarball before publication
+        if: steps.changesets.outputs.published == 'true' || steps.release-artifacts.outputs.has_release_artifacts == 'true'
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.release-artifacts.outputs.version }}"
+          cd dist/protocol
+          TARBALL="${VERSION}.tgz"
+          shasum -a 256 -c "${TARBALL}.sha256"
+          cosign verify-blob \
+            --signature "${TARBALL}.sig" \
+            --certificate "${TARBALL}.crt" \
+            --certificate-identity-regexp '^https://github\.com/adcontextprotocol/adcp/\.github/workflows/release\.yml@refs/heads/.*$' \
+            --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+            "${TARBALL}"
+
+      # Attach the protocol tarball + signature sidecars to the GitHub
+      # Release. For packages with real publish output, changesets/action may
+      # create the GitHub Release first. For this private repo, Version
+      # Packages commits can already contain the release artifacts while
+      # changesets/action reports "All changesets are empty"; create the
+      # release here if needed.
+      #
+      # Tarballs and sidecars (.sha256, .sig, .crt) are written to
+      # dist/protocol/${VERSION}.tgz{,.sha256,.sig,.crt} by `npm run version`
+      # in the Version Packages PR (build-protocol-tarball +
+      # sign-protocol-tarball).
+      # Without this step the artifacts ship to the repo's dist/ tree but
+      # are never attached as Release assets, leaving adopters who pin via
+      # release URL with a 404. v3.0.0 had assets only because they were
+      # uploaded manually; v3.0.1, v3.0.2, v3.0.3 all shipped empty.
+      - name: Upload protocol tarball to GitHub Release
+        if: steps.changesets.outputs.published == 'true' || steps.release-artifacts.outputs.has_release_artifacts == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.release-artifacts.outputs.version }}"
+          TAG="v${VERSION}"
+          TARBALL="dist/protocol/${VERSION}.tgz"
+          if [ ! -f "${TARBALL}" ]; then
+            echo "::error::Tarball not found at ${TARBALL}. Did npm run version fail upstream?"
+            exit 1
+          fi
+          if ! gh release view "${TAG}" >/dev/null 2>&1; then
+            release_args=()
+            if [[ "${VERSION}" == *-* ]]; then
+              release_args+=(--prerelease)
+            fi
+            gh release create "${TAG}" \
+              --target "${GITHUB_SHA}" \
+              --title "${TAG}" \
+              --notes "AdCP ${VERSION}" \
+              "${release_args[@]}"
+          fi
+
+          upload_asset_if_missing() {
+            local path="$1"
+            local name
+            name="$(basename "${path}")"
+            local remote_name
+            remote_name="$(gh release view "${TAG}" --json assets --jq ".assets[] | select(.name == \"${name}\") | .name" || true)"
+            local remote_digest
+            remote_digest="$(gh release view "${TAG}" --json assets --jq ".assets[] | select(.name == \"${name}\") | .digest" || true)"
+
+            if [ -n "${remote_name}" ]; then
+              if [[ "${remote_digest}" == sha256:* && "${name}" != *.sig && "${name}" != *.crt ]]; then
+                local local_digest
+                local_digest="sha256:$(shasum -a 256 "${path}" | awk '{print $1}')"
+                if [ "${local_digest}" != "${remote_digest}" ]; then
+                  echo "::error::Release asset ${name} already exists on ${TAG} with digest ${remote_digest}, but local digest is ${local_digest}. Refusing to overwrite immutable release asset."
+                  exit 1
+                fi
+              fi
+              echo "Release asset ${name} already exists on ${TAG}; leaving it untouched."
+              return 0
+            fi
+
+            gh release upload "${TAG}" "${path}"
+          }
+
+          upload_asset_if_missing "${TARBALL}"
+          upload_asset_if_missing "${TARBALL}.sha256"
+          upload_asset_if_missing "${TARBALL}.sig"
+          upload_asset_if_missing "${TARBALL}.crt"
+
+      - name: Publish release artifacts to R2
+        if: steps.changesets.outputs.published == 'true' || steps.release-artifacts.outputs.has_release_artifacts == 'true'
+        env:
+          ADCP_ARTIFACT_R2_BUCKET: ${{ vars.ADCP_ARTIFACT_R2_BUCKET || 'adcp-artifacts' }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID || secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY || secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${R2_ACCOUNT_ID:-}" ] || [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+            echo "::error::Missing R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, or R2_SECRET_ACCESS_KEY secret."
+            exit 1
+          fi
+          latest_args=()
+          if [ "${GITHUB_REF_NAME}" != "main" ]; then
+            latest_args=(--skip-latest)
+          fi
+          npm run backfill:cdn-artifacts -- --bucket "${ADCP_ARTIFACT_R2_BUCKET}" --quiet "${latest_args[@]}"
+
+      - name: Verify published protocol tarball from CDN
+        if: steps.changesets.outputs.published == 'true' || steps.release-artifacts.outputs.has_release_artifacts == 'true'
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.release-artifacts.outputs.version }}"
+          BASE_URL="https://adcontextprotocol.org/protocol"
+          workdir="$(mktemp -d)"
+          trap 'rm -rf "${workdir}"' EXIT
+          cd "${workdir}"
+
+          verify_once() {
+            local attempt="$1"
+            local bust="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${attempt}-$(date +%s)"
+            rm -f "${VERSION}.tgz" "${VERSION}.tgz.sha256" "${VERSION}.tgz.sig" "${VERSION}.tgz.crt"
+            curl -fsSLo "${VERSION}.tgz" "${BASE_URL}/${VERSION}.tgz?cache_bust=${bust}"
+            curl -fsSLo "${VERSION}.tgz.sha256" "${BASE_URL}/${VERSION}.tgz.sha256?cache_bust=${bust}"
+            curl -fsSLo "${VERSION}.tgz.sig" "${BASE_URL}/${VERSION}.tgz.sig?cache_bust=${bust}"
+            curl -fsSLo "${VERSION}.tgz.crt" "${BASE_URL}/${VERSION}.tgz.crt?cache_bust=${bust}"
+            shasum -a 256 -c "${VERSION}.tgz.sha256"
+            cosign verify-blob \
+              --signature "${VERSION}.tgz.sig" \
+              --certificate "${VERSION}.tgz.crt" \
+              --certificate-identity-regexp '^https://github\.com/adcontextprotocol/adcp/\.github/workflows/release\.yml@refs/heads/.*$' \
+              --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+              "${VERSION}.tgz"
+          }
+
+          for attempt in 1 2 3 4 5; do
+            if verify_once "${attempt}"; then
+              echo "Verified published protocol tarball ${VERSION} on attempt ${attempt}."
+              exit 0
+            fi
+            if [ "${attempt}" != "5" ]; then
+              echo "Protocol tarball verification failed on attempt ${attempt}; retrying full tuple."
+              sleep $((attempt * 10))
+            fi
+          done
+
+          echo "::error::Published protocol tarball ${VERSION} failed checksum/cosign verification after retries."
+          exit 1

@@ -7,7 +7,7 @@ description: Authoritative message type definitions, field tables, privacy requi
 # Trusted Match Protocol Specification
 
 <Note>
-**Experimental.** The Trusted Match Protocol is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing TMP MUST declare `trusted_match.core` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
+**Experimental.** The Trusted Match Protocol is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing TMP MUST declare `trusted_match.core` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract. Fields on this surface are not subject to deprecation cycles until 3.0.0 GA.
 </Note>
 
 This is the authoritative reference for the Trusted Match Protocol (TMP). For conceptual introductions, see the [overview](/docs/trusted-match/) and [core concepts](/docs/trusted-match/context-and-identity).
@@ -24,9 +24,9 @@ Specific areas expected to evolve include TMPX exposure tokens, country-partitio
 | **Offer** | A buyer's response to a context match request. Ranges from simple activation (package_id only) to rich proposals with brand, price, summary, and creative manifest. |
 | **Available package** | A package from an active media buy that is eligible for evaluation on a given placement. Package metadata — including the originating seller agent — is synced at media buy time. See [Package Sync](#package-sync). |
 | **Seller agent** | The buyer-side agent that sold the package into a publisher. Identified by the agent URL declared in the publisher's `adagents.json` `authorized_agents[].url`. Every `AvailablePackage` is bound to exactly one seller agent at sync time. |
-| **Eligibility** | List of eligible package IDs returned by Identity Match, plus a TTL caching contract. The buyer computes eligibility from frequency caps, audience membership, and other signals; the reasons are opaque to the publisher. |
+| **Eligibility** | List of eligible package IDs returned by Identity Match, plus a serve-window throttle. The buyer computes eligibility from frequency caps, audience membership, and other signals; the reasons are opaque to the publisher. |
 | **Artifact** | A typed content reference associated with a publisher property (article URL, episode EIDR, show Gracenote ID, music ISRC, product GTIN, conversation turn). Each artifact has a `type` and `value`. Referenced in context match requests. |
-| **Temporal decorrelation** | Random delay introduced between Context Match and Identity Match requests to prevent timing-based correlation. |
+| **Temporal decorrelation** | Random delay and random ordering between Context Match and Identity Match requests, preventing timing- and order-based correlation. |
 
 ## Message Types
 
@@ -51,8 +51,9 @@ Sent by the publisher (via router) to buyer agents. Contains content context. MU
 | `request_id` | string | Yes | Unique request identifier for logging. MUST NOT correlate with any Identity Match request_id. |
 | `property_rid` | UUID | Yes | Property catalog UUID (v7). Globally unique, stable. |
 | `property_id` | string | No | Publisher's human-readable slug. Optional when `property_rid` is present. |
-| `property_type` | enum | Yes | One of: `website`, `mobile_app`, `ctv_app`, `desktop_app`, `dooh`, `podcast`, `radio`, `streaming_audio`, `ai_assistant`. See `property-type` enum. |
+| `property_type` | enum | Yes | One of: `website`, `mobile_app`, `ctv_app`, `desktop_app`, `dooh`, `podcast`, `radio`, `linear_tv`, `streaming_audio`, `ai_assistant`. See `property-type` enum. |
 | `placement_id` | string | Yes | Placement identifier from the publisher's placement registry in `adagents.json`. One placement per request. |
+| `seller_agent_url` | string (URI) | Yes | API endpoint URL of the seller agent issuing this request. The provider resolves the active package set it has synced for this seller against it; an unsynced seller MUST yield an empty offer set, never a fall-back to another seller's set. A single per-placement value carrying no user identity. Compared with AdCP URL canonicalization. Consistent with `seller_agent_url` on the Identity Match request and `agent_url` in `adagents.json`. |
 | `artifact` | Artifact | No | Full content artifact adjacent to this ad opportunity. Same schema as content standards evaluation. The publisher sends the full artifact when they want the buyer to evaluate the actual content. Contractual protections govern buyer use. TEE deployment upgrades contractual trust to cryptographic verification. |
 | `artifact_refs` | List\<ArtifactRef\> | No | Public content references the buyer can resolve independently. Each has a `type` (one of: `url`, `url_hash`, `eidr`, `gracenote`, `isrc`, `gtin`, `rss_guid`, `isbn`, `custom`) and a `value`. For URL-addressable content, the buyer may have pre-classified these. Use `url_hash` when the publisher prefers not to reveal the URL (contextual clean room). |
 | `context_signals` | ContextSignals | No | Pre-computed classifier outputs for the content environment. Use when content is ephemeral (conversation turns, search queries) or to supplement artifact-based matching. Can replace `artifact_refs` entirely. Raw content MUST NOT be included — only classified outputs. The publisher is the classifier boundary. |
@@ -132,6 +133,7 @@ Returned by the buyer agent. Contains offers for matched packages and optional r
 | `type` | string | Yes | `"context_match_response"`. Message type discriminator for deserialization. |
 | `request_id` | string | Yes | Echo of the request's `request_id`. |
 | `offers` | List\<Offer\> | Yes | Offers from the buyer, one per activated package. Empty list means no packages matched. |
+| `cache_ttl` | integer | No | Provider override (in seconds) for the router's default Context Match response cache TTL. When present, routers MUST use this value instead of their default. `0` disables caching (e.g., when targeting configuration has just changed); schema-enforced maximum is 86400 seconds. See [Caching](#caching). |
 | `signals` | Signals | No | Response-level targeting signals for ad server pass-through. Not per-offer — applies to the response as a whole. In the GAM case, these carry the key-value pairs that trigger line items. |
 
 #### Offer
@@ -174,40 +176,72 @@ Response-level targeting signals for ad server pass-through.
 
 ### IdentityMatchRequest
 
-Sent by the publisher (via router) to buyer agents. Contains one or more opaque identity tokens and package IDs. MUST NOT contain page context.
+Sent by the publisher (via router) to buyer agents. Contains the seller agent URL, one or more opaque identity tokens, and an optional package ID list. MUST NOT contain page context.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `type` | string | Yes | `"identity_match_request"`. Message type discriminator for deserialization. |
 | `protocol_version` | string | No | TMP protocol version. Default: `1.0`. |
 | `request_id` | string | Yes | Unique request identifier. MUST NOT correlate with any Context Match request_id. |
+| `seller_agent_url` | string (URI) | Yes | API endpoint URL of the seller agent issuing this request. The buyer's identity-match service uses this to resolve the active package set it has registered for this seller; when `package_ids` is omitted, evaluation occurs against that full set. Compared using the [AdCP URL canonicalization rules](/docs/reference/url-canonicalization), not byte-equality. Consistent with `seller_agent.agent_url` on `AvailablePackage` and `agent_url` in `adagents.json`. |
 | `identities` | List\<Identity\> | Yes | One or more identity tokens for the user. Publishers SHOULD include every token they have available — the buyer resolves on whichever graph matches, maximizing match rate. Each entry is an independent identifier for the same user; buyers MUST NOT treat the combination as a new correlated identity. |
 | `consent` | Consent | No | Privacy consent signals. Buyers in regulated jurisdictions MUST NOT process identity tokens without consent information. |
-| `package_ids` | List\<string\> | Yes | ALL active packages for this buyer at this publisher. MUST include every active package, not just those on the current page, to prevent set-correlation with Context Match. |
+| `package_ids` | List\<string\> | No | When omitted, the buyer evaluates eligibility against the full set of active packages it has registered for `seller_agent_url`. When provided, composition MUST be statistically independent of the current placement. Two acceptable modes: **all-active** (every active package for this buyer at this publisher) or **fuzzed** (a random sample of active packages, optionally padded with synthetic non-existent IDs, drawn from a distribution that does not depend on the current placement). The page-specific subset is forbidden — it would let the buyer correlate with Context Match by comparing package sets. |
 | `country` | string | No | ISO 3166-1 alpha-2 country code. Routing directive — the router uses this to select the correct regional provider. The router MUST strip this field before forwarding to the buyer agent. Not an identity signal. |
+| `sealed_credentials` | List\<SealedCredential\> | No | **Experimental (`trusted_match.verified_identity`).** HPKE-sealed verified-identity credentials addressed to specific audiences — the network-as-RP carrier. Opaque pass-through for the publisher. See [Verified Identity Attestation](#verified-identity-attestation). |
 
-Each entry in `identities` is an `{user_token, uid_type}` pair:
+Each entry in `identities` is a `{user_token, uid_type, attestation?}` triple:
 
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `user_token` | string | Yes | Opaque token from an identity provider (ID5, LiveRamp, UID2) or publisher-generated. Buyer may map to internal identity graph but cannot reverse to PII. |
-| `uid_type` | enum | Yes | Type of user identifier: `uid2`, `rampid`, `id5`, `euid`, `pairid`, `maid`, `hashed_email`, `publisher_first_party`, `other`. Tells the buyer which identity graph to resolve against. See `uid-type` enum. |
+| `uid_type` | enum | Yes | Type of user identifier: `uid2`, `rampid`, `id5`, `euid`, `pairid`, `maid`, `hashed_email`, `publisher_first_party`, `world_id_nullifier`, `other`. Tells the buyer which identity graph to resolve against. See `uid-type` enum. |
+| `attestation` | Attestation | No | **Experimental (`trusted_match.verified_identity`).** Verifiable proof *about* this identity (proof-of-personhood and/or age). The receiver MUST verify it and treat an unverifiable attestation as absent — never as asserted-true. See [Verified Identity Attestation](#verified-identity-attestation). |
 
 ### IdentityMatchResponse
 
-Returned by the buyer agent. A list of eligible package IDs with a caching TTL.
+Returned by the buyer agent. A list of eligible package IDs with a serve-window throttle.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `type` | string | Yes | `"identity_match_response"`. Message type discriminator for deserialization. |
 | `request_id` | string | Yes | Echo of the request's `request_id`. |
 | `eligible_package_ids` | List\<string\> | Yes | Package IDs the user is eligible for. Packages not listed are ineligible. |
-| `ttl_sec` | integer | Yes | How long the router should cache this response, in seconds. A value of `0` means do not cache — re-query on every request. |
-| `tmpx` | string | No | HPKE-encrypted exposure token containing resolved user identity tokens. The publisher substitutes this into creative tracking URLs as `{TMPX}`. The buyer's impression pixel receives the token, enabling real-time per-user frequency state updates. Wire format: `kid.base64url_nopad(ciphertext)` (unpadded, no `=` characters). Publishers MUST treat this value as opaque pass-through data. |
+| `serve_window_sec` | integer | Yes | Per-package single-shot fcap window, in seconds. Range: 1–300. Default: 60. After serving the user one impression on each eligible package within this window, the publisher MUST re-query Identity Match before serving from those packages again. This is **not** a router response cache TTL — it is a buyer-asserted serve throttle. Multi-impression frequency caps are handled separately by the buyer's impression tracker, which writes cap-fire events to the IdentityMatch cap-state store at the boundary regardless of this window — see [Frequency-Cap Data Flow](/docs/trusted-match/identity-match-implementation). |
+| `tmpx_macros` | List\<TmpxMacro\> | No | Provider-emitted (identity-agent-side field). The agent's ordered TMPX chunks paired with the ad-server macro name each chunk fills. Names MUST be drawn from the provider's registered `tmpx_macros` list (see [Provider Registration](#provider-registration)) in the same order. Capped at 2 entries in v1. Each `value` is an opaque URL-safe wire string the publisher substitutes verbatim — publishers MUST NOT parse, decode, transform, or choose an encoding. Consumers reading the router's merged response SHOULD consume `tmpx_providers` and ignore `tmpx_macros` at the root. |
+| `tmpx_providers` | Map\<string, \{ macros: List\<TmpxMacro\> \}\> | No | Router-populated. TMPX macro/value pairs grouped by the originating identity provider's `provider_id`, so the publisher fires each provider's tokens through that provider's specific ad-server macros (e.g. `PIN_TMPX_1`, `PIN_TMPX_2` for one provider; `NOVA_TMPX_1` for another — configured per provider in GAM / VAST URL / DOOH play log). Required by router conformance when any identity provider emitted TMPX in this request; collapsing per-provider tokens into a single string loses attribution and breaks per-provider impression accounting. Macro names MUST come from each provider's registered `tmpx_macros` — publishers MUST NOT derive macro names from `provider_id` at runtime. SHAPE CHANGE from the experimental v1 surface that shipped in #5689 (which used `Map<provider_id, string>`); sanctioned by the experimental contract. |
+| `tmpx` | string | No | DEPRECATED in favor of `tmpx_providers`. Single HPKE-encrypted exposure token. Routers MAY continue to populate this field for back-compat with consumers that only know the single-token shape; when both fields are present, `tmpx_providers` is authoritative. Wire format: `kid.base64url_nopad(ciphertext)` (unpadded, no `=` characters). Removed in 4.0. |
 
-The response includes eligible package IDs, a TTL, and an optional `tmpx` field. The TMPX token is an HPKE-encrypted exposure token that flows through creative tracking URLs to the buyer's impression pixel, enabling real-time per-user frequency state updates without exposing user identity to the publisher. The buyer computes eligibility from whatever identity signals they have (frequency caps, audience membership, purchase history) and returns only the packages that pass. The publisher does not need to know why a package was excluded — just which packages are eligible.
+#### TmpxMacro
 
-The `ttl_sec` field is a caching contract. The buyer is saying: "Cache this for N seconds." The router caches the `eligible_package_ids` list and returns it for subsequent requests during the window — it does not track which packages have been served. The publisher enforces allocation rules (at most one ad per package, competitive separation, pod composition) using the cached eligibility as input. This eliminates the need for pod-specific or batch-specific protocol semantics — the router has cached eligibility and the publisher allocates across whatever placements exist during the TTL window (a CTV ad pod, a web page with 20 slots, a single pre-roll). The buyer doesn't need to know the allocation details.
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | Yes | Ad-server macro name as configured in the publisher's ad server (e.g. `PIN_TMPX_1`). MUST appear in the emitting provider's registered `tmpx_macros` list. Pattern: `^[A-Z][A-Z0-9_]*$`. Provider-namespaced so the publisher can target distinct slots per provider. |
+| `value` | string | Yes | Opaque, URL-safe wire string the publisher substitutes verbatim into the named macro slot. Length capped at 1024 characters — comfortably above the 255-char GAM key-value limit and large enough for HPKE-overhead + chunked payloads. Publishers MUST NOT parse, decode, or transform this value. The protocol fixes the wire format so platforms interoperate; a platform that can carry raw bytes MAY optimize privately but the wire contract remains the URL-safe string. |
+
+The response includes eligible package IDs, a serve-window throttle, and the per-provider TMPX shape (`tmpx_providers` after router merge, or `tmpx_macros` at the per-provider level). By convention, provider→router payloads populate `tmpx_macros` and leave `tmpx_providers` absent; router→publisher payloads populate `tmpx_providers` (built by collecting each provider's `tmpx_macros`). A router response MUST NOT carry `tmpx_macros` at the root — leaking an upstream provider's root array alongside `tmpx_providers` would give the publisher no schema signal for which to read and risks double-firing the same value into one slot, corrupting the per-provider accounting the map exists to protect. The schema cannot enforce this (the same schema serves both hops) so it lives as a router-conformance invariant; routers MUST drop `tmpx_macros` from outbound responses. Each TMPX value is an HPKE-encrypted exposure token that flows through creative tracking URLs to the buyer's impression pixel, enabling real-time per-user frequency state updates without exposing user identity to the publisher. The buyer computes eligibility from whatever identity signals they have (frequency caps, audience membership, purchase history) and returns only the packages that pass. The publisher does not need to know why a package was excluded — just which packages are eligible.
+
+**TMPX macro trafficking.** Macro names are part of operational setup, not protocol-synthesized identifiers. Each identity provider registers its stable, provider-namespaced macro names in `tmpx_macros` on its provider-registration entry (e.g. Pinnacle registers `["PIN_TMPX_1", "PIN_TMPX_2"]`; Nova registers `["NOVA_TMPX_1"]`). Publishers configure those exact names in their ad server (GAM key-values, VAST URL macros, DOOH play-log fields). When the response arrives, the publisher fires each provider's `macros[].value` into the matching `macros[].name` slot — the contract is "substitute this exact string into this exact macro." Ordered multi-chunk support lets a single TMPX exceed one macro slot (capped at 2 chunks per provider in v1 and MAY be raised without a shape change). Deriving macro names from `provider_id` at runtime would break this trafficking model because GAM/ad-server line items are configured against the registered names ahead of time, not against runtime-synthesized strings.
+
+`tmpx_providers` keys macro/value pairs by `provider_id` so the router preserves attribution when its fan-out reaches multiple identity providers. The legacy `tmpx` field remains supported through 3.x for consumers that haven't migrated; when both fields are present, `tmpx_providers` is authoritative and the singular field SHOULD reflect one provider's first-slot value solely as a transitional convenience.
+
+The `serve_window_sec` field is a **per-package single-shot fcap**, not a router cache TTL. The buyer is saying: "After you serve the user one impression on each eligible package, re-query me before serving from those packages again." The router MAY still cache the response for an internal deduplication/cost-saving window, but the binding contract on the publisher side is "one impression per eligible package per window." Multi-impression frequency caps (5 per day per campaign, 100 per month per advertiser, etc.) live in the buyer's impression tracker and surface to the IdentityMatch service as cap-fire events at the boundary regardless of `serve_window_sec`.
+
+The publisher enforces allocation rules (competitive separation, pod composition) using the eligibility list as input. This eliminates the need for pod-specific or batch-specific protocol semantics — the publisher allocates across whatever placements exist during the serve window (a CTV ad pod, a web page with 20 slots, a single pre-roll), honoring the one-impression-per-package contract.
+
+#### Conformance invariants for IdentityMatch eligibility
+
+A conformant IdentityMatch service MUST compute `eligible_package_ids` such that, for each `package_id ∈ request.package_ids`, the package is included in `eligible_package_ids` if and only if **all** of the following hold:
+
+1. **Audience eligibility.** Either the package has no audience requirement, OR there exists at least one audience identifier `a` such that `a` is in the package's required audience set AND `a` is in the audience-membership of at least one identity `i ∈ request.identities` (the union across the user's resolved identities intersects the package's required audiences).
+2. **Frequency cap eligibility.** No `(identity, package)` cap-state entry exists for any identity `i ∈ request.identities` against the package. Cap-state entries are written by the buyer's impression tracker when it determines an impression has exhausted a cap and carry an expiration timestamp; an entry is "present" until that timestamp. The protocol does not constrain how the impression tracker counts impressions, evaluates windows, or decides when a cap fires — only the boundary contract (cap-fire entries flow into the cap-state store; the IdentityMatch service checks presence at query time). See [Frequency-Cap Data Flow](/docs/trusted-match/identity-match-implementation) for the boundary contract.
+3. **Active state.** Packages or policies marked inactive MUST be treated as if absent.
+4. **Audience freshness.** If the buyer's audience pipeline publishes a freshness deadline and the current time is past it, that audience-membership entry MUST NOT contribute to (1).
+5. **Age eligibility** (experimental — applies only when `trusted_match.verified_identity` is in effect). Either the package requires no age policy, OR some identity `i ∈ request.identities` carries a **verified** `attestation` (per the [Verified Identity Attestation](#verified-identity-attestation) conformance rules) with an age claim ≥ the threshold resolved from `(the package's required age policy, request geo)`. An unverified or absent attestation does not satisfy this clause. When the feature is not in effect this clause is vacuously true, so core conformance is unchanged.
+
+The TMPX returned with the response MUST encode the resolved identities so the out-of-band impression tracker can update fcap policy state and signal cap-fire events to the IdentityMatch cap-state store — see § TMPX tokens and [Frequency-Cap Data Flow](/docs/trusted-match/identity-match-implementation).
+
+Storage backend (valkey, Aerospike, DynamoDB, in-memory, anything) is implementation. Two services with different storage backends that satisfy these invariants for the same inputs MUST return the same eligibility output.
 
 #### Consent
 
@@ -219,6 +253,64 @@ Privacy consent signals for the identity match. Publishers MUST include consent 
 | `tcf_consent` | string | No | IAB TCF v2.2 consent string. Present when `gdpr` is true. |
 | `gpp` | string | No | IAB Global Privacy Platform string. |
 | `us_privacy` | string | No | US Privacy string (CCPA). Deprecated in favor of GPP but still widely used. |
+
+### Verified Identity Attestation
+
+**Experimental — declare `trusted_match.verified_identity` in `experimental_features`** (separate from `trusted_match.core`, so buyers can detect support independently). Lets a publisher — or a network/issuer acting as the relying party — carry a **verifiable** proof *about* a user (proof-of-personhood and/or age) so the buyer verifies the claim cryptographically rather than trusting an assertion. Issuer-agnostic: World ID is the first scheme; mDL / VC-style issuers use the same shape. Design rationale: `specs/tmp-verified-identity-attestation.md`.
+
+This widens `identity-match-request.json`, which is otherwise `additionalProperties: false`. The widening is deliberate: an attestation is proof on the **identity** side of the privacy boundary — not page context — so it does not breach the boundary the strict schema protects.
+
+#### Topologies
+
+| Topology | Relying party | Carrier |
+|---|---|---|
+| Publisher-as-RP | Publisher | `attestation` on an `identities[]` entry (per-publisher pseudonym) |
+| Network-as-RP / issuer-as-RP | A network, or the issuer itself | `sealed_credentials[]` (HPKE-sealed to the audience's key) |
+
+#### Attestation
+
+Optional object on each `identities[]` entry.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `issuer` | BrandRef | Yes | Identity issuer / attestation authority as a vendor BrandRef (e.g. `{"domain": "world.org"}`) — the same shape AdCP uses for measurement/signals vendors. Domain is the anchor; `brand.json` hosting is optional. `scheme` selects the verifier version. |
+| `scheme` | string | Yes | Proof scheme and version, e.g. `world_id_v4`. |
+| `relying_party_id` | string | No | Relying-party id the proof was minted for. Checked against the `relying_party_id` owner's published `identity_relying_parties[]` in `brand.json` (provenance). |
+| `action` | string | No | Issuer action/scope the proof was bound to. |
+| `claims` | List\<enum\> | Yes | Closed, issuer-agnostic set: `unique_human`, `age_over_13`, `age_over_16`, `age_over_18`, `age_over_21`. See `attestation-claim` enum. |
+| `verification_level` | enum | No | `orb` \| `device` \| `document`. Credential strength. |
+| `signal_binding` | string | No | Hash of the signal the proof commits to (replay defense). |
+| `proof` | object | Yes | Scheme-specific verifiable proof material; opaque to this schema. |
+| `expires_at` | string (date-time) | No | Validity horizon; receivers MUST reject when past. |
+
+#### SealedCredential
+
+Entry in the top-level `sealed_credentials[]`.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `audience_kid` | string | Yes | Key id of the recipient (network / relying party) whose HPKE private key opens `payload`. |
+| `payload` | string | Yes | HPKE-sealed attestation in the TMPX envelope format `kid.base64url_nopad(ciphertext)`. Opaque pass-through for the publisher. |
+
+#### Conformance invariants (verified attestation)
+
+A receiver that accepts attestations MUST:
+
+1. **Verify before trust.** Verify the proof for every `scheme` it accepts. An attestation that fails verification — or `signal_binding`, or `relying_party_id` provenance, or `expires_at` — MUST be treated as **absent** (no attestation), never as an asserted-true claim.
+2. **No silent upgrade.** Never treat an unverified or unverifiable attestation as `true`.
+3. **relying_party_id provenance.** Confirm the attestation's `relying_party_id` belongs to the entity claiming the traffic before trusting it. The owner's `brand.json` `identity_relying_parties[]` is the v1 discovery surface, but it is self-published over HTTPS — the authoritative root is the issuer's own relying-party registry (e.g. World ID's on-chain registry), against which `brand.json` is a cross-check. A receiver MUST NOT trust a `relying_party_id` solely because some `brand.json` lists it absent an issuer-side anchor; the bidirectional issuer-metadata cross-check is a tracked open item.
+4. **Sealed credentials.** Decrypt only `sealed_credentials[]` entries whose `audience_kid` the receiver holds a key for; ignore the rest.
+5. **Bound resources.** Bound attestation and sealed-credential count and size to prevent DoS.
+
+**Replay (v1 limitation).** Verifying a proof establishes that *a* credential holder produced it, not that it was produced for *this* impression. Without an enforced `signal_binding` freshness window and nullifier-reuse tracking — both left to the verifier in v1 (the freshness policy is WG-open) — this surface provides at most daily-epoch replay resistance (via `request_id` dedup). Receivers SHOULD bind `signal_binding` to a fresh, receiver-checkable value and track nullifier reuse, and MUST NOT over-trust an attestation as a per-impression liveness signal until they do.
+
+#### Router handling of `sealed_credentials[]`
+
+The router MUST forward each `sealed_credentials[]` entry only to the provider that owns its `audience_kid` (route-by-audience, not broadcast). The tamper-evidence and cache-partitioning rules are defined canonically in [Identity Match signed fields](#identity-match-signed-fields) and [Caching](#caching): `sealed_credentials` is folded into the per-provider re-signature canonical bytes (so an injected or swapped blob breaks the request signature) and `sealed_credentials_hash` is part of the dedup cache key (so a network-credential change repartitions the cache rather than serving a stale response). The same canonical-identities bytes already cover any per-identity `attestation`.
+
+#### Age as eligibility
+
+A verified age claim (`age_over_N`) resolves to `eligible_package_ids` — it is **never** carried as a cleartext age or date of birth. The verifying party maps `(required age policy, geo) → required threshold claim` and includes a package only when the attestation carries a claim ≥ the required threshold. The jurisdiction → threshold tables are maintained in the [AdCP Policy Registry](/docs/governance/policy-registry) (a package requires an age policy via `required_policies`); sub-country (e.g. US state) resolution happens where finer geo is available, since the Identity Match `country` field is coarse and stripped before forwarding.
 
 ### Error Response
 
@@ -237,11 +329,11 @@ The router SHOULD exclude providers that return errors from the merged response 
 
 TMP providers are registered with the router via publisher configuration. The publisher specifies which providers the router should call, along with each provider's endpoint and supported capabilities. This is an operational relationship — the publisher trusts the provider to run code in their ad decisioning path.
 
-The standard registration path is **static configuration** — the publisher declares providers in their Prebid module config, router YAML, or equivalent surface-specific configuration. Dynamic registration (API-driven, database-backed) is an equally valid variant for publishers who manage many providers or need runtime updates. Both approaches use the same provider registration schema (`/schemas/tmp/provider-registration.json`).
+The standard registration path is **static configuration** — the publisher declares providers in their Prebid module config, router YAML, or equivalent surface-specific configuration. Dynamic registration (API-driven, database-backed) is an equally valid variant for publishers who manage many providers or need runtime updates. Both approaches use the same provider registration schema (`/schemas/trusted-match/provider-registration.json`).
 
 | Setting | Type | Required | Description |
 |---|---|---|---|
-| `provider_id` | string | Yes | Stable identifier for this provider registration. Used in logs, metrics, and cache keys. |
+| `provider_id` | string | Yes | Stable identifier for this provider registration. Used in logs, metrics, cache keys, and as the key in `tmpx_providers` on the identity-match response so the publisher can route each provider's TMPX `macros[]` to that provider's pre-configured ad-server slots (registered in `tmpx_macros` — macro names MUST NOT be derived from `provider_id` at runtime). Pattern: `^[A-Za-z0-9_]+$`, max length 64 — a safe alphanumeric/underscore charset so the value can appear in operational surfaces (logs, metrics, dashboards) without quoting. |
 | `endpoint` | URL | Yes | Provider's base URL. The router appends `/context` or `/identity` when dispatching. |
 | `context_match` | bool | No | Provider handles Context Match requests. At least one of `context_match` or `identity_match` must be true. |
 | `identity_match` | bool | No | Provider handles Identity Match requests. At least one of `context_match` or `identity_match` must be true. |
@@ -250,6 +342,7 @@ The standard registration path is **static configuration** — the publisher dec
 | `properties` | List\<UUID\> | No | Property RIDs this provider serves. When absent, the provider serves all properties. |
 | `timeout_ms` | integer | No | Per-provider timeout in milliseconds. Must be ≤ the router's overall `latency_budget_ms`. Default: 50. |
 | `priority` | integer | No | Provider ordering for merge conflict resolution. Lower values = higher priority. Default: 0. |
+| `tmpx_macros` | List\<string\> | No | Stable, provider-namespaced ad-server macro names this provider's TMPX response fills, ordered (e.g. `["PIN_TMPX_1", "PIN_TMPX_2"]`). Publishers traffic these exact names in their ad server; the router places each provider's TMPX chunks into the matching slots on the identity-match response. Names MUST match pattern `^[A-Z][A-Z0-9_]*$`. Capped at 2 entries in v1; the cap MAY rise without a shape change. A provider that emits TMPX (i.e. populates `tmpx_macros` on its identity-match response) MUST also register this list, otherwise the router has no slot names to forward into `tmpx_providers`; the schema cannot enforce this because "emits TMPX" is not a schema-visible predicate. Macro names MUST NOT be derived from `provider_id` at runtime — trafficking is configured against these registered names ahead of time. |
 | `status` | enum | No | Provider lifecycle status: `active`, `inactive`, or `draining`. Default: `active`. |
 
 At least one of `context_match` or `identity_match` must be true — a provider that handles neither operation is invalid. When `identity_match` is true, `countries` and `uid_types` are **required** — the router cannot perform country-partitioned identity routing without them. The schema enforces both constraints.
@@ -329,11 +422,11 @@ TMP providers cache packages from many seller agents against many publishers. Th
 
 The canonical seller identity in AdCP is the agent URL declared in the property publisher's [adagents.json](https://adcontextprotocol.org/schemas/v3/adagents.json) `authorized_agents[].url` entry. TMP reuses that URL directly rather than introducing a parallel identifier space. The `id` slot on `SellerAgentRef` is reserved for a future registry-assigned opaque identifier and is not used today.
 
-**Placement rationale.** `seller_agent` lives on the cached `AvailablePackage` (sync time), not on `context_match_request` or `identity_match_request`:
+**Placement rationale.** Both `context_match_request` and `identity_match_request` carry `seller_agent_url`. It is the key the receiving agent uses to resolve the active package set it has registered for the asking seller: the provider on the context path, the buyer agent on the identity path. When `package_ids` is omitted, evaluation runs against that seller's full active set; a `seller_agent_url` the receiver has not synced packages for MUST yield an empty result rather than a fall-back to another seller's set.
 
-- Sync time is when a provider first learns about a package; the binding is established once and reused for every subsequent evaluation.
-- Putting `seller_agent` on the request would either duplicate the sync-time binding (redundant) or open a path for request-time seller filtering, which re-introduces the identity- and allocation-leakage failure modes [Package set decorrelation](#package-set-decorrelation) exists to prevent.
-- Publishers and routers can derive seller identity from `media_buy_id` via their own stores; providers cannot. Keeping attribution on the package serves the actor that actually needs it on the wire.
+`seller_agent` also lives on the cached `AvailablePackage` (sync time) for attribution — that binding is the source of truth for which seller owns a package, and the offer echo below reads from it. The two carry different jobs: the request-side `seller_agent_url` selects which seller's set to evaluate; the package-side `seller_agent` attributes an individual package. Sync time remains when a provider first learns about a package; that binding is established once and reused for every subsequent evaluation.
+
+`seller_agent_url` does not interact with the [Package set decorrelation](#package-set-decorrelation) guarantee. That guarantee constrains data that varies per user — chiefly `package_ids`, whose composition MUST be independent of the current placement. `seller_agent_url` is a single stable value identifying the asking seller; it is identical for every user on a given placement and carries no user identity, so it adds no per-user signal on which context and identity requests could be correlated. This is receiver-side active-set scoping, not a per-user filter.
 
 **Offer echo.** `seller_agent` MAY appear on `offer.json` as an echo from the cached package, for publisher-side log pipelines that want one-hop attribution without rejoining to the media-buy store. The echo is non-authoritative — the cached `AvailablePackage` binding is source of truth. Providers and routers MUST overwrite a disagreeing echo with the cached binding before logging, forwarding, or emitting the offer downstream, and MUST NOT use the echo value in any field consumed for billing, reporting, or dispute resolution. A disagreement SHOULD be counted to a `seller_agent_echo_mismatch` metric for anomaly detection. Routers MAY stamp `seller_agent` on merge when providers omit it.
 
@@ -357,12 +450,12 @@ Providers SHOULD validate `seller_agent.agent_url` against the property publishe
 |---|---|---|
 | **Seller agent** | Include its own adagents-registered `agent_url` as `seller_agent.agent_url` on every `AvailablePackage` it syncs. MUST be the URL the publisher has attested in `authorized_agents[].url`. | No new behavior. The offer MAY echo `seller_agent`; omitting it is fine — the router can stamp from cache. |
 | **Publisher** | Keep `authorized_agents` in adagents.json accurate, including scope constraints (`property_ids`, `placement_ids`, `countries`, effective windows). | No new behavior. |
-| **Router** | No new behavior. | MAY stamp `seller_agent` on offers that arrive without it, using its cached package→seller binding. MUST NOT forward `seller_agent` into `context_match_request` or `identity_match_request`. |
+| **Router** | No new behavior. | MAY stamp `seller_agent` on offers that arrive without it, using its cached package→seller binding. Both `context_match_request` and `identity_match_request` carry `seller_agent_url` directly per their schemas; the router MUST forward it unchanged and MUST NOT use it to filter or re-route the request. |
 | **Provider** | Validate `seller_agent.agent_url` against the property's adagents.json per [Sync-Time Validation](#sync-time-validation). Reject unauthorized packages with `seller_not_authorized`. Store the binding with the cached package. | Echo `seller_agent` on offers it produces. The cached binding is immutable for an in-flight decision, but providers MUST treat packages whose authorization has expired (removal from `authorized_agents` or `effective_until` passed) as `unknown_package` on subsequent requests until the package is re-synced. |
 
 ### What This Is Not
 
-- **Not a request-time filter.** Publishers, routers, and providers MUST NOT use `seller_agent` to scope, filter, or route `context_match_request` or `identity_match_request`. `package_ids` remains the only scoping mechanism.
+- **Not a per-user filter.** `seller_agent_url` selects which seller's registered active set the receiver evaluates — it is the same value for every user on a placement and carries no user identity. Publishers, routers, and providers MUST NOT use it as a per-user or per-request filter, nor to re-route the request; doing so would reintroduce the per-user variation [Package set decorrelation](#package-set-decorrelation) exists to prevent. The package-side `seller_agent` attribution likewise MUST NOT be used to scope or filter a request — it exists for offer attribution only.
 - **Not a sellers.json bridge.** IAB sellers.json `seller_id` and TAG-IDs serve a distinct financial-audit identity space. They remain on `adagents.json` `contact` — TMP does not duplicate them.
 - **Not a cryptographic attestation.** The binding is publisher-attested via adagents.json over HTTPS. Signed TMP seller claims are a future enhancement and can layer onto `SellerAgentRef` through the reserved `id` slot or an `ext` field without breaking changes. When a future release populates both `agent_url` and `id`, `agent_url` remains authoritative and `id` is advisory — a disagreement between the two MUST NOT be used to upgrade trust above what the URL's adagents.json binding provides.
 
@@ -380,13 +473,17 @@ The following requirements use RFC 2119 keywords (MUST, SHOULD, MAY).
 ### Package set decorrelation
 
 - Context Match MUST NOT be filtered by user identity or audience. The provider evaluates its synced package set for the placement — the same packages for every user. No per-request package list is sent, so the publisher cannot accidentally leak identity through package filtering.
-- Identity Match `package_ids` MUST include ALL active packages for the buyer at this publisher, not just those available on the current page. Sending only the page-specific subset would allow a buyer to correlate Identity Match with Context Match by comparing package sets.
-- The publisher SHOULD maintain a cached list of all active package IDs per buyer and send the full set on every Identity Match request.
+- The publisher SHOULD omit `package_ids` from Identity Match and let the buyer evaluate against the full active set it has registered for `seller_agent_url`. When `package_ids` IS provided, its composition MUST be statistically independent of the current placement — sending only the page-specific subset would allow a buyer to correlate Identity Match with Context Match by comparing package sets. Two acceptable modes:
+  - **All-active.** Include every active package this buyer has at this publisher.
+  - **Fuzzed.** Include a random sample of active packages, optionally padded with synthetic non-existent IDs, drawn from a distribution that does not depend on the current placement. The silent-drop rule below makes synthetic-ID padding safe — unknown IDs do not affect response shape and cannot leak registry membership.
+- When both `seller_agent_url` and `package_ids` are present, the buyer evaluates against the intersection of its registered active set and `package_ids`; unknown IDs in `package_ids` MUST be silently ignored (not error-surfaced) so the response does not leak registry membership back to the publisher.
+- A publisher that maintains a cached list of all active package IDs per buyer MAY send the full set on every Identity Match request as a defense in depth, but the buyer-side resolution from `seller_agent_url` is the primary mechanism.
 - The publisher performs the intersection of context match offers and identity match eligibility locally, after both responses arrive.
 
 ### Temporal decorrelation
 
 - Publishers SHOULD introduce a random delay between Context Match and Identity Match requests. Recommended: 100-2000ms, uniformly distributed.
+- Publishers SHOULD also randomize the order of Context Match and Identity Match: each opportunity SHOULD have a roughly equal probability of Context Match being sent first or Identity Match being sent first. A fixed order — e.g., Identity Match always after Context Match — leaks the pairing through ordering even when the delay is randomized.
 - Publishers MAY batch Identity Match requests across multiple page views.
 - Publishers MAY route Context Match and Identity Match through different network paths.
 
@@ -416,6 +513,8 @@ The router signs all requests using Ed25519. Both Context Match and Identity Mat
 
 Signatures bind the request to a specific provider. The router signs a separate signature per fan-out target using the provider's endpoint URL from the router's provider registration. Providers MUST verify that the signed `provider_endpoint_url` matches their own advertised endpoint and reject the request otherwise. This prevents a captured signature from being replayed against a different provider in the registry within the epoch.
 
+Signatures also bind to `seller_agent_url`, the asking seller's agent URL. `seller_agent_url` selects which seller's registered active package set the receiver evaluates against (see [Seller Agent Attribution](#seller-agent-attribution)) and is the lookup key receivers use to resolve the publisher's signing keys for verification. Including it in the signed bytes prevents a captured signature from being replayed under a different seller's identity to read another seller's offers or active package set.
+
 The daily epoch provides replay protection — a captured signature is valid for at most ~48 hours (current + previous epoch accepted by verifiers).
 
 ### Signature envelope
@@ -434,6 +533,7 @@ Concatenated in this order, UTF-8, newline-separated:
 | Field | Source |
 |---|---|
 | `type` | `context_match_request` |
+| `seller_agent_url` | From the request body, compared using the [AdCP URL canonicalization rules](/docs/reference/url-canonicalization). Binds the signature to the asking seller — reusing a signature under a different `seller_agent_url` fails verification. |
 | `property_rid` | From the request body |
 | `placement_id` | From the request body |
 | `package_ids` | Sorted, comma-separated list of active package IDs |
@@ -442,7 +542,7 @@ Concatenated in this order, UTF-8, newline-separated:
 
 When `package_ids` is absent from the request, the signature MUST use an empty string for that field in the signed payload.
 
-Because the signed fields are static per placement per provider, the same signature can be cached and reused for all requests to the same `(placement_id, provider_endpoint_url)` pair within a 24-hour epoch. Cache keys MUST include `provider_endpoint_url` — reusing a signature across providers violates the binding and will fail verification.
+Because the signed fields are static per seller per placement per provider, the same signature can be cached and reused for all requests to the same `(seller_agent_url, placement_id, provider_endpoint_url)` triple within a 24-hour epoch. Cache keys MUST include `seller_agent_url` and `provider_endpoint_url` — reusing a signature across sellers or providers violates the binding and will fail verification.
 
 #### Identity Match signed fields
 
@@ -452,13 +552,17 @@ The signed input is the hex-encoded SHA-256 of the [RFC 8785 JCS](https://datatr
 |---|---|
 | `type` | `"identity_match_request"` |
 | `request_id` | From the request body |
+| `seller_agent_url` | From the request body, compared using the [AdCP URL canonicalization rules](/docs/reference/url-canonicalization). Binds the signature to the asking seller — reusing a signature under a different `seller_agent_url` fails verification. |
 | `identities_hash` | Hex-encoded SHA-256 of the canonical `identities` bytes (see below) |
 | `consent` | The request's `consent` object verbatim, or `null` when absent |
 | `package_ids` | The request's `package_ids` sorted lexicographically by UTF-8 byte order |
+| `sealed_credentials_hash` | Hex-encoded SHA-256 of the canonical `sealed_credentials` bytes (see below), or `null` when absent. **Experimental (`trusted_match.verified_identity`).** |
 | `provider_endpoint_url` | Provider's registered endpoint URL (exact string match with provider registration, no trailing slash). Binds the signature to a specific provider — reusing a signature across providers fails verification. |
 | `daily_epoch` | `floor(unix_timestamp / 86400)` as a JSON integer |
 
-**Canonical `identities` bytes:** deduplicate on `(uid_type, user_token)` using byte-exact match (no case folding, no trimming), sort entries by `uid_type` (UTF-8 byte order), then by `user_token` (UTF-8 byte order), then serialize the resulting array as [RFC 8785 JCS](https://datatracker.ietf.org/doc/html/rfc8785). SHA-256 the UTF-8 bytes; hex-encode for the signed input, use raw bytes for cache keys (both conventions hash the same preimage).
+**Canonical `identities` bytes:** deduplicate on `(uid_type, user_token)` using byte-exact match (no case folding, no trimming) — this collapses duplicate tokens only — sort entries by `uid_type` (UTF-8 byte order), then by `user_token` (UTF-8 byte order), then serialize the resulting array of **complete identity objects** as [RFC 8785 JCS](https://datatracker.ietf.org/doc/html/rfc8785). Each object is serialized in full, **including any `attestation`** — so the signature covers the attestation, and a stripped, swapped, or injected per-identity attestation breaks signature verification (the dedup key on `(uid_type, user_token)` is for collapsing duplicate tokens, not a statement that `attestation` is excluded from the hash). SHA-256 the UTF-8 bytes; hex-encode for the signed input, use raw bytes for cache keys (both conventions hash the same preimage).
+
+**Canonical `sealed_credentials` bytes** (experimental, `trusted_match.verified_identity`): sort entries by `audience_kid` (UTF-8 byte order), serialize the resulting array as [RFC 8785 JCS](https://datatracker.ietf.org/doc/html/rfc8785), SHA-256 the UTF-8 bytes. When the request carries no `sealed_credentials`, `sealed_credentials_hash` is `null`. Because `sealed_credentials` is part of the signed input, an injected or swapped sealed blob breaks signature verification; because `sealed_credentials_hash` is part of the dedup cache key (see [Caching](#caching)), a network-credential change repartitions the cache so stale eligibility is not served. The router re-signs over each provider's forwarded set after [route-by-`audience_kid`](#verified-identity-attestation) filtering.
 
 The router filters `identities` per provider before forwarding (see [Identity Match fan-out](/docs/trusted-match/router-architecture#identity-match-fan-out)). The signature is computed over each provider's filtered `identities` set — the router re-signs per outbound forward. The same filtered `identities_hash` value is used in the cache key (see [Caching](#caching)), so each provider has its own cache partition keyed on the subset it actually received.
 
@@ -565,8 +669,11 @@ The TMPX plaintext is a compact binary structure. The type ID implicitly defines
 | 7 | pairid | 32 bytes |
 | 8 | hashed_email | 32 bytes |
 | 9 | publisher_first_party | 32 bytes |
+| 10 | world_id_nullifier | 48 bytes (16-byte relying-party digest + 32-byte nullifier) |
 
 Type IDs are stable — new types append, existing IDs never change. Tokens are stored in binary (UUIDs as 16 bytes, base64-encoded tokens decoded). RampID has two entries because maintained (XY, 32 bytes) and derived (Xi, 48 bytes) forms differ in size.
+
+`world_id_nullifier` is **relying-party-scoped**: its token is the 16-byte SHA-256 digest of the proof's `relying_party_id` followed by the 32-byte nullifier. This entry is produced only from a **verified** attestation — the verifier-derived nullifier under the receiver-confirmed `rp_id` (see [Verified Identity Attestation](#verified-identity-attestation)). A sender-asserted `world_id_nullifier` in `identities[]` carries no trust and is never resolved or sealed; it cannot even form this token, since it lacks a verified `rp_id`. Unlike `uid2`/`id5`/`rampid`, the entry is not a graph identifier the buyer resolves — it is a proof-of-personhood pseudonym, valid only with an accompanying verified attestation. A World ID nullifier is meaningful only within the `rp_id` it was minted for, and that `rp_id` rides the request-side `attestation`, which does not round-trip into the token. Carrying the `rp_id` digest in the token lets the out-of-band impression tracker attribute the nullifier to its relying party — by matching the digest against the relying parties it accepts — and key frequency state on the `(rp_id, nullifier)` pair, so a nullifier under one relying party never shares cap state with another. The token carries no `rp_id` cleartext, and the digest width is a working-group open item.
 
 If a parser encounters an unknown Type ID, it MUST stop parsing and treat the remaining entries as absent. The header Count field indicates total entries, but implementations MUST NOT assume all entries are parseable — forward compatibility requires graceful degradation when newer Type IDs are present.
 
@@ -592,9 +699,9 @@ The 8-byte random nonce enables deduplication at the master. The master stores n
 
 ### Caching behavior
 
-The TMPX token is generated once per Identity Match evaluation and cached alongside the eligibility response for `ttl_sec` seconds. All impressions within the TTL window share the same TMPX value (same nonce, same tokens).
+The TMPX token is generated once per Identity Match evaluation and accompanies the eligibility response for the `serve_window_sec` window. All impressions on eligible packages within that window share the same TMPX value (same nonce, same tokens).
 
-The buyer's master MUST NOT deduplicate by TMPX value or nonce within a TTL window — each pixel fire is one impression. Multiple ads served to the same user in a CTV pod or a web page with multiple ad units all produce distinct pixel fires with the same TMPX token. The nonce deduplication only prevents replay of the same TMPX token *after* the TTL window expires — if the same nonce appears outside its original TTL window, it is a replay and MUST be rejected.
+The buyer's master MUST NOT deduplicate by TMPX value or nonce within a serve window — each pixel fire is one impression. Multiple ads served to the same user in a CTV pod or a web page with multiple ad units all produce distinct pixel fires with the same TMPX token. The nonce deduplication only prevents replay of the same TMPX token *after* the serve window expires — if the same nonce appears outside its original window, it is a replay and MUST be rejected.
 
 ### Publisher obligations
 
@@ -602,9 +709,11 @@ Publishers MUST NOT parse, decrypt, or make decisions based on TMPX values. The 
 
 ### Inventory-specific behavior
 
-- **Web, mobile, CTV (SSAI), audio (DAI):** Standard impression pixel — `{TMPX}` substituted at serve time.
-- **CTV (client-side VAST):** Publisher substitutes `{TMPX}` before the VAST document reaches the player.
-- **DOOH:** Play-log-based — the TMPX token is logged by the DOOH player and included in play log records rather than pixel URLs.
+For each terminal surface the publisher trafficks the macro names each identity provider declared in its `tmpx_macros` registration entry (e.g. `PIN_TMPX_1`, `NOVA_TMPX_1`) — those names are the operational contract the ad-server line items target. At serve time, the publisher walks `tmpx_providers[provider_id].macros[]` from the response and substitutes each entry's `value` verbatim into the slot named by its `name`. The legacy `{TMPX}` macro (from the deprecated singular `tmpx` field) remains supported for consumers that haven't migrated.
+
+- **Web, mobile, CTV (SSAI), audio (DAI):** Standard impression pixel — substitute each `tmpx_providers[*].macros[].value` into the matching ad-server macro slot.
+- **CTV (client-side VAST):** Publisher performs the same per-macro substitution before the VAST document reaches the player.
+- **DOOH:** Play-log-based — TMPX values are logged by the DOOH player and included in play log records rather than pixel URLs. Per-provider macro/value pairs MUST be logged with their `provider_id` so the buyer can route to the correct decryption master.
 
 ## Transport
 
@@ -641,9 +750,9 @@ Context Match responses are cacheable because the same packages are evaluated fo
 
 - Routers SHOULD cache Context Match responses with a TTL of **5 minutes**.
 - Providers MAY include a `cache_ttl` field (integer, seconds) in Context Match responses to override the default. Routers MUST respect this value when present.
-- Identity Match responses are cached per the `ttl_sec` value in the response. Cache key: `{identities_hash, provider_id, package_ids_hash, consent_hash}`, where `identities_hash` is the SHA-256 of the canonical `identities` bytes defined in [Identity Match signed fields](#identity-match-signed-fields) (computed over the per-provider filtered subset); `package_ids_hash` is SHA-256 over the JCS serialization of the sorted `package_ids` array; `consent_hash` is SHA-256 over the JCS serialization of the request's `consent` object (or JCS `null` when the field is absent — this distinguishes "consent unknown" from an explicit-empty consent object). JCS framing prevents delimiter-injection: raw consent strings or package IDs containing `|`, `,`, or `\n` cannot collide two distinct inputs. Including the identity set ensures that adding or removing tokens produces a distinct cache entry. Including the package list hash ensures cached responses are invalidated when the active package set changes (e.g., a new media buy activates). Including the consent hash prevents eligibility decisions taken under one consent state from being served under another.
-- When a provider's targeting configuration changes (new packages, updated targeting rules), the provider SHOULD return `"cache_ttl": 0` until the change has propagated, then resume normal caching.
-- Both `ttl_sec` and `cache_ttl` have a schema-enforced maximum of 86400 seconds (24 hours). Routers SHOULD clamp buyer-provided values to a configured maximum (recommended: 3600 seconds) to limit the blast radius of stale caches.
+- Identity Match responses are bound by `serve_window_sec` (per-package single-shot fcap, max 300s, default 60s). Routers MAY apply an internal deduplication cache keyed on `{identities_hash, provider_id, package_ids_hash, consent_hash, sealed_credentials_hash}`, where `identities_hash` is the SHA-256 of the canonical `identities` bytes defined in [Identity Match signed fields](#identity-match-signed-fields) (computed over the per-provider filtered subset); `package_ids_hash` is SHA-256 over the JCS serialization of the sorted `package_ids` array; `consent_hash` is SHA-256 over the JCS serialization of the request's `consent` object (or JCS `null` when the field is absent — this distinguishes "consent unknown" from an explicit-empty consent object); and `sealed_credentials_hash` (experimental, `trusted_match.verified_identity`) is the SHA-256 of the canonical `sealed_credentials` bytes defined in [Identity Match signed fields](#identity-match-signed-fields), or `null` when absent — so a network-credential change that shifts eligibility repartitions the cache rather than serving a stale response. JCS framing prevents delimiter-injection: raw consent strings or package IDs containing `|`, `,`, or `\n` cannot collide two distinct inputs. Including the identity set ensures that adding or removing tokens produces a distinct cache entry. Including the package list hash ensures cached responses are invalidated when the active package set changes (e.g., a new media buy activates). Including the consent hash prevents eligibility decisions taken under one consent state from being served under another. The publisher's binding contract is the serve-window throttle, not the router's internal cache window.
+- When a provider's targeting configuration changes (new packages, updated targeting rules), the provider SHOULD return `"cache_ttl": 0` (Context Match) or `"serve_window_sec": 1` (Identity Match) until the change has propagated, then resume normal values.
+- `cache_ttl` (Context Match) has a schema-enforced maximum of 86400 seconds. `serve_window_sec` is bounded at 300 seconds — longer windows make per-package fcap too coarse for typical campaigns, shorter than the IdentityMatch round-trip wastes the throttle.
 
 ## Conformance Levels
 

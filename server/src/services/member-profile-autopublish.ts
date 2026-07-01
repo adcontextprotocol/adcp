@@ -13,6 +13,7 @@
 
 import { createLogger } from '../logger.js';
 import { MemberDatabase } from '../db/member-db.js';
+import type { MemberProfile } from '../types.js';
 import { recordProfilePublishedIfNeeded } from './profile-publish-event.js';
 import { slugify } from './collection-feed-sync.js';
 
@@ -122,6 +123,57 @@ export async function ensureMemberProfilePublished(params: {
   }
 
   throw new Error(`Failed to auto-publish member profile for org ${orgId} after ${MAX_CREATE_RETRIES} attempts`);
+}
+
+/**
+ * Ensure a member_profile row exists for the given org without publishing it.
+ *
+ * Used by paths that need to attach data to the profile (e.g. registering an
+ * agent through Addie's `save_agent` tool) but must not flip the org into the
+ * public directory. The Stripe-webhook autopublish path remains the only
+ * place that sets `is_public: true`.
+ *
+ * Returns the existing profile when one is present; otherwise creates a
+ * minimal private profile with a unique slug. Throws on persistent failure
+ * so the caller can surface an honest error rather than silently no-op.
+ */
+export async function ensureMemberProfileExists(params: {
+  orgId: string;
+  orgName: string;
+  source: string;
+}): Promise<{ profile: MemberProfile; created: boolean }> {
+  const { orgId, orgName, source } = params;
+
+  const memberDb = new MemberDatabase();
+  const existing = await memberDb.getProfileByOrgId(orgId);
+  if (existing) return { profile: existing, created: false };
+
+  if (!orgName || !orgName.trim()) {
+    throw new Error(`Cannot create member profile for org ${orgId} — no org name available`);
+  }
+
+  for (let attempt = 1; attempt <= MAX_CREATE_RETRIES; attempt++) {
+    const slug = await pickAvailableSlug(orgName, memberDb);
+    try {
+      const created = await memberDb.createProfile({
+        workos_organization_id: orgId,
+        display_name: orgName,
+        slug,
+        is_public: false,
+      });
+      logger.info({ orgId, profileId: created.id, slug, source }, 'Auto-created private member profile');
+      return { profile: created, created: true };
+    } catch (err) {
+      if (!isUniqueViolation(err)) throw err;
+
+      const concurrent = await memberDb.getProfileByOrgId(orgId);
+      if (concurrent) return { profile: concurrent, created: false };
+
+      logger.warn({ orgId, attempt, source }, 'Slug collision creating private profile — retrying');
+    }
+  }
+
+  throw new Error(`Failed to create member profile for org ${orgId} after ${MAX_CREATE_RETRIES} attempts`);
 }
 
 async function pickAvailableSlug(orgName: string, memberDb: MemberDatabase): Promise<string> {

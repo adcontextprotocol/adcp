@@ -31,7 +31,7 @@ const { stopSessionCleanup } = await import('../../src/training-agent/state.js')
 
 function postList(app: express.Application, authHeader: string | undefined) {
   const req = request(app)
-    .post('/api/training-agent/mcp')
+    .post('/api/training-agent/sales/mcp')
     .set('Content-Type', 'application/json')
     .set('Accept', 'application/json, text/event-stream');
   if (authHeader) req.set('Authorization', authHeader);

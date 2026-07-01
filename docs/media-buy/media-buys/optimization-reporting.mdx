@@ -31,6 +31,150 @@ The typical optimization cycle follows this pattern:
 4. **Track Changes**: Monitor impact of optimizations
 5. **Iterate**: Continuous improvement through regular analysis
 
+## Metric lifecycle
+
+Every optimization metric in AdCP — whether seller-native (clicks, views, reach), graduated vendor-attested (viewability), or vendor-defined (attention, brand lift, emissions) — flows through the same set of surfaces. Buyers reason about a metric by asking three questions in order:
+
+- **Can you?** — Is the product capable of optimizing for this metric? *(Discovery)*
+- **Will you?** — For this package, are you committing to optimize and report it? *(Commitment)*
+- **Did you?** — In delivery, what was the value, and did you meet the commitment? *(Reporting)*
+
+Each question maps to a specific protocol surface. The same `metric_id` (or `(vendor, metric_id)` tuple for vendor-attested metrics) flows through every layer — discovery, capability declarations, package commitments, and delivery — so buyers reconciling delivery against a goal never need a translation table.
+
+### Standard metric flow (e.g., `clicks`, `viewable_rate`)
+
+| Question | Surface | Field |
+|---|---|---|
+| Can the product report it? | Product capability | `reporting_capabilities.available_metrics` |
+| Can the product optimize for it? | Product capability | `metric_optimization.supported_metrics` |
+| Will the seller commit to reporting it? | Package | `committed_metrics[]` (scope: `standard`) |
+| Does the buyer want it optimized? | Package | `optimization_goals[]` (kind: `metric`) |
+| Does the buyer want accountability? | Package | `performance_standards[]` |
+| What was the value? | Delivery | Standard scalar (e.g., `clicks`, `viewability.viewable_rate`) |
+| Did the seller fail to deliver a committed metric? | Delivery | `missing_metrics[]` (scope: `standard`) |
+
+### Vendor-attested metric flow (e.g., Adelaide attention, Scope3 emissions, Kantar brand lift)
+
+Same lifecycle, with the `(vendor, metric_id)` tuple replacing the plain `metric_id` everywhere:
+
+| Question | Surface | Field |
+|---|---|---|
+| Does the vendor define this metric? | Vendor's capabilities | `get_adcp_capabilities.measurement.metrics[]` |
+| Can the product report this vendor metric? | Product capability | `reporting_capabilities.vendor_metrics[]` |
+| Can the product optimize for this vendor metric? | Product capability | `vendor_metric_optimization.supported_metrics[]` |
+| Will the seller commit to reporting it? | Package | `committed_metrics[]` (scope: `vendor`) |
+| Does the buyer want it optimized? | Package | `optimization_goals[]` (kind: `vendor_metric`) |
+| Does the buyer want accountability? | Package | `performance_standards[]` (with `vendor` field) |
+| What was the value? | Delivery | `vendor_metric_values[]` |
+| Did the seller fail to deliver a committed metric? | Delivery | `missing_metrics[]` (scope: `vendor`) |
+
+### Why both flows matter
+
+The two flows aren't a duplication — they encode the difference between *standardized* and *vendor-specific* measurement. Clicks mean the same thing across every seller; attention does not. Vendor binding is the wire-level evidence that the buyer and seller agreed on *which* attention model is being optimized and reported. See [`measurement/taxonomy.mdx`](/docs/measurement/taxonomy) for the Tier 0 → Tier 1 graduation policy that decides which flow a given metric uses.
+
+### Required coherence between layers
+
+Three rules connect the layers and prevent orphaned goals:
+
+1. **Optimization requires capability.** A package's `optimization_goals[]` entry MUST match a product capability — `metric_optimization.supported_metrics` for `kind: "metric"`, or `vendor_metric_optimization.supported_metrics` for `kind: "vendor_metric"`. Sellers reject mismatches with `TERMS_REJECTED`.
+
+2. **Optimization requires reporting commitment.** For `kind: "vendor_metric"` goals, the matching `(vendor, metric_id)` MUST also appear in the package's `committed_metrics[]`. Optimizing for a metric the seller isn't committed to reporting is unverifiable — the buyer has no way to grade the goal. Sellers reject uncommitted vendor_metric goals with `TERMS_REJECTED`. (This rule is normative for vendor metrics specifically; for seller-native `metric` goals, the metric is usually always reported by virtue of being seller-native, so the coherence is implicit.) A third precondition — discovery, that `metric_id` appears in the vendor's published `measurement.metrics[]` catalog — is SHOULD this minor and tightens to MUST at the next minor while measurement-vendor adoption of AdCP-conformant capability publication catches up.
+
+3. **Performance accountability is independent.** `performance_standards[]` lives in parallel — buyers MAY add a threshold commitment on any metric the seller commits to reporting, regardless of whether they also set an optimization goal on it. The three surfaces (goal / commitment / standard) compose:
+   - Goal only — "push toward this," no accountability floor
+   - Standard only — "you owe me ≥ X," seller decides how to hit it
+   - Both — optimization steers; standard backstops
+
+4. **Priority is ordinal, lowest-value-first.** When `optimization_goals[]` carry explicit `priority` values, the seller treats the goal with the **lowest** priority value as primary — even when no goal is `priority: 1` (priorities of `2` and `3` mean `2` is primary). When `priority` is omitted, sellers may use array position. Duplicate priority values are undefined.
+
+### Worked example: Adelaide attention end-to-end
+
+A buyer wants to optimize against Adelaide's `attention_score` with a threshold of 70. Here's how the four surfaces line up:
+
+**1. Product capability** (discovered via `get_products`):
+
+```json
+{
+  "product_id": "premium_ctv_video",
+  "vendor_metric_optimization": {
+    "supported_metrics": [
+      {
+        "vendor": { "domain": "adelaidemetrics.com" },
+        "metric_id": "attention_score",
+        "supported_targets": ["cost_per", "threshold_rate"]
+      }
+    ]
+  },
+  "reporting_capabilities": {
+    "vendor_metrics": [
+      { "vendor": { "domain": "adelaidemetrics.com" }, "metric_id": "attention_score" }
+    ]
+  }
+}
+```
+
+**2. Package proposal on `create_media_buy`** — the buyer commits to reporting AND sets the optimization goal (both required by the reporting-coherence rule):
+
+```json
+{
+  "product_id": "premium_ctv_video",
+  "committed_metrics": [
+    {
+      "scope": "vendor",
+      "vendor": { "domain": "adelaidemetrics.com" },
+      "metric_id": "attention_score"
+    }
+  ],
+  "optimization_goals": [
+    {
+      "kind": "vendor_metric",
+      "vendor": { "domain": "adelaidemetrics.com" },
+      "metric_id": "attention_score",
+      "target": { "kind": "threshold_rate", "value": 70 },
+      "priority": 1
+    }
+  ]
+}
+```
+
+A `performance_standard` MAY be layered on top if the buyer wants a contractual floor — e.g., `{ "metric": "attention_score", "vendor": { "domain": "adelaidemetrics.com" }, "threshold": 65 }` — but it's independent of the goal.
+
+**3. Delivery** (`get_media_buy_delivery` response):
+
+```json
+{
+  "vendor_metric_values": [
+    {
+      "vendor": { "domain": "adelaidemetrics.com" },
+      "metric_id": "attention_score",
+      "value": 73.2,
+      "measurable_impressions": 420000
+    }
+  ]
+}
+```
+
+The seller's bidding stack steered toward higher Adelaide attention scores; the reported value `73.2` is above the threshold `70`, so the goal is met. The `measurable_impressions` denominator (`420000` out of, say, 1M delivered impressions) is the coverage figure for Adelaide's measurement — vendor SDKs rarely fire on 100% of delivered impressions, and attention-vendor coverage on CTV today is typically 30–60% depending on app-SDK presence. Always compute coverage from `measurable_impressions / impressions` before reasoning about the reported value.
+
+**4. Accountability gap reporting** (also in the `get_media_buy_delivery` response, when commitment isn't met):
+
+```json
+{
+  "by_package": [{
+    "package_id": "...",
+    "missing_metrics": [
+      {
+        "scope": "vendor",
+        "vendor": { "domain": "adelaidemetrics.com" },
+        "metric_id": "attention_score"
+      }
+    ]
+  }]
+}
+```
+
+If Adelaide's coverage on the inventory dropped below the seller's confidence threshold and they couldn't populate `vendor_metric_values` for this period, the same `(vendor, metric_id)` shows up in `missing_metrics` — same key across the entire lifecycle, so buyer reconciliation is a row-level join.
+
 ## Performance Monitoring
 
 ### Real-Time Metrics
@@ -142,15 +286,16 @@ Buyers receive the intersection of both. `impressions` and `spend` are always re
 - **`cost_per_acquisition`**: Cost per conversion
 - **`new_to_brand_rate`**: Fraction of conversions from first-time brand buyers
 - **`leads`**: Leads generated
-- **`reach`**: Unique reach (paired with `reach_unit`)
-- **`frequency`**: Average frequency per reach unit
+- **`reach`**: Unique reach (paired with `reach_unit`). Measurement window declared via `reach_window` (`cumulative` / `period` / `rolling`). When `reach_window` is omitted, the window is unspecified — buyers MUST NOT sum reach across rows.
+- **`reach_window`**: Window semantics for reach/frequency — object with `kind` (`cumulative` since campaign start, `period` for non-overlapping snapshot, `rolling` for trailing window) and `period: Duration` (required for `period` and `rolling`)
+- **`frequency`**: Average frequency per reach unit, measured over `reach_window`
 - **`grps`**: Gross Rating Points (for CPP billing)
 - **`engagements`**: Direct ad interactions beyond viewing (reactions, taps, opens)
 - **`engagement_rate`**: Platform-specific engagement rate
-- **`follows`**: New followers/subscribes attributed to delivery
+- **`follows`**: New followers, page likes, artist/podcast/channel follows, or free channel/feed subscribes attributed to delivery. Paid subscriptions are conversion events with `event_type: "subscribe"`.
 - **`saves`**: Saves, bookmarks, playlist adds attributed to delivery (platforms vary in name — Pinterest "repins", TikTok "video_saves" — all report under this canonical key)
 - **`profile_visits`**: Visits to the brand's in-platform page
-- **`viewability`**: Viewability data (measurable_impressions, viewable_impressions, viewable_rate, standard). Separates MRC and GroupM standards.
+- **`viewability`**: Viewability data (measurable_impressions, viewable_impressions, viewable_rate, viewed_seconds, standard, vendor). Separates MRC and GroupM standards. `viewed_seconds` is the average in-view duration per measurable impression — reporting-side counterpart to the `viewed_seconds` optimization goal, governed by the same `standard` threshold as `viewable_rate`. The optional `vendor` field carries a `BrandRef` so the row is self-describing — buyer agents reading delivery in isolation can attribute the numbers to a measurement vendor without joining back to `package.committed_metrics` or `package.performance_standards`.
 - **`quartile_data`**: Video quartile completion data (q1-q4)
 - **`dooh_metrics`**: DOOH-specific metrics (loop plays, screens, venue breakdown)
 - **`cost_per_click`**: Cost per click (`spend / clicks`)
@@ -177,7 +322,7 @@ The standard `available_metrics` enum is the closed protocol vocabulary. Vendor-
 
 - **Promotion path**: when the industry converges on a metric via a published standard, the spec adds it to the closed `available_metrics` enum and the vendor extensions become historical aliases. Promotion is anchored on standards-body publication, not on ad-hoc vendor convergence counts.
 
-- **v1 accountability scope**: standard `available_metrics` are subject to the `missing_metrics` contract on `get_media_buy_delivery`. Vendor metrics are advisory in v1 — buyers verify out-of-band via `measurable_impressions` coverage and direct calls to the vendor's measurement agent. The asymmetry reflects what the seller can credibly attest to: SSPs typically don't have proprietary measurement numbers in their delivery pipeline; those flow from the vendor's own infrastructure.
+- **Accountability scope**: when the seller stamps a vendor metric in `package.committed_metrics` (with `scope: "vendor"`), it is subject to the same `missing_metrics` contract on `get_media_buy_delivery` as standard metrics. Sellers who can't credibly attest to a vendor metric SHOULD NOT stamp it in `committed_metrics`; absence keeps the metric advisory and reconciliation falls back to `vendor_metric_values.measurable_impressions` coverage plus out-of-band verification via the vendor's measurement agent. The advisory-vs-accountable distinction is now explicit at the contract layer rather than asymmetric across metric scopes.
 
 #### Publisher Commitment
 
@@ -191,13 +336,49 @@ When a reporting webhook is configured, publishers commit to sending:
 
 #### Webhook Payload
 
-Reporting webhooks use the same payload structure as [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) with additional metadata:
+Reporting webhooks send a full MCP webhook envelope. The delivery report itself uses the same payload structure as [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) with additional metadata, but it is nested under `result`. Do not send the inner delivery object as the top-level POST body.
+
+```json
+{
+  "idempotency_key": "whk_20240205_example_000005",
+  "operation_id": "delivery_report_mb001_2024_02_05",
+  "task_id": "delivery_report_mb001_2024_02_05_000005",
+  "task_type": "media_buy_delivery",
+  "status": "completed",
+  "timestamp": "2024-02-06T08:00:00Z",
+  "message": "Scheduled media buy delivery report available",
+  "result": {
+    "notification_type": "scheduled",
+    "sequence_number": 5,
+    "next_expected_at": "2024-02-06T08:00:00Z",
+    "reporting_period": {
+      "start": "2024-02-05T00:00:00Z",
+      "end": "2024-02-05T23:59:59Z"
+    },
+    "currency": "USD",
+    "media_buy_deliveries": [
+      {
+        "media_buy_id": "mb_001",
+        "status": "active",
+        "totals": {
+          "impressions": 125000,
+          "spend": 5625.0,
+          "clicks": 250,
+          "ctr": 0.002
+        },
+        "by_package": []
+      }
+    ]
+  }
+}
+```
+
+The inner `result` object can be shown or stored separately, but this shape is not valid as the top-level webhook POST body:
 
 ```json
 {
   "notification_type": "scheduled",
   "sequence_number": 5,
-  "next_expected_at": "2024-02-06T08:00:00Z",
   "reporting_period": {
     "start": "2024-02-05T00:00:00Z",
     "end": "2024-02-05T23:59:59Z"
@@ -209,21 +390,24 @@ Reporting webhooks use the same payload structure as [`get_media_buy_delivery`](
       "status": "active",
       "totals": {
         "impressions": 125000,
-        "spend": 5625.00,
-        "clicks": 250,
-        "ctr": 0.002
+        "spend": 5625.0
       },
-      "by_package": [...]
+      "by_package": []
     }
   ]
 }
 ```
 
 **Fields:**
+- **`idempotency_key`**: Unique per webhook event and stable across retries of that same event. Receivers dedupe by this field.
+- **Top-level `status`**: Async webhook status, such as `"completed"` for a delivered report.
 - **`notification_type`**: `"scheduled"` (regular update), `"final"` (campaign complete), or `"delayed"` (data not yet available)
 - **`sequence_number`**: Sequential notification number (starts at 1)
 - **`next_expected_at`**: ISO 8601 timestamp for next notification (omitted for final notifications)
+- **`media_buy_deliveries[].status`**: Media buy lifecycle or reporting status, distinct from the top-level async webhook status.
 - **`media_buy_deliveries`**: Array of media buy delivery data (may contain multiple media buys aggregated by publisher)
+
+Webhook signatures and content digests are computed over the exact raw bytes of the full envelope being sent, not over a reserialized `result` object.
 
 #### Timezone Handling
 
@@ -281,6 +465,8 @@ For channels where billing-grade data is produced in **phases** rather than arri
 | Podcast | `downloads_7d` → `downloads_30d` (guarantee basis) |
 
 Each window's numbers supersede the previous one. One window is typically the `is_guarantee_basis` — the number both sides reconcile against. The measurement vendor's processing time is captured in `expected_availability_days` on each window (it includes both accumulation and processing).
+
+For broadcast, delayed or sparse early-window data is usually a measurement-vendor settlement issue, not a seller-side metadata problem. Nielsen, Comscore, VideoAmp, or another named vendor may publish Live, C3, C7, Live+5, or market-level results in waves. During that period, sellers should label delivery as provisional or awaiting measurement-vendor finalization, preserve the `measurement_window`, and use `is_final`, `finalized_at`, `supersedes_window`, and delayed/window-update notifications to show what changed. Buyers should not fork creative records or product metadata to represent partial affiliate or station visibility; aggregate the seller's delivery rows by market, placement, daypart, creative, and measurement window instead.
 
 Sellers set `expected_delay_minutes` on their products to reflect the first-available data pipeline. The `measurement_windows` array on `reporting_capabilities` provides per-window timelines.
 
@@ -753,7 +939,7 @@ Row-oriented format with embedded schema. Self-describing — readers don't need
 {
   "type": "record",
   "name": "MediaBuyDelivery",
-  "namespace": "org.adcp.reporting",
+  "namespace": "org.example.reporting",
   "fields": [
     {"name": "notification_type", "type": "string"},
     {"name": "sequence_number", "type": "int"},
@@ -1003,7 +1189,7 @@ See [Conversion Tracking](/docs/media-buy/conversion-tracking/) for the complete
 ### Creative optimization
 - **Performance analysis** by creative asset via [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) with by-creative breakdowns
 - **A/B testing** — assign multiple creatives with weights via `creative_assignments`
-- **Refresh strategies** — swap creatives via [`sync_creatives`](/docs/creative/task-reference/sync_creatives) to prevent fatigue
+- **Refresh strategies** — swap creatives via [`sync_creatives`](/docs/creative/task-reference/sync_creatives) for library-backed sellers, or inline `packages[].creatives` on [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) for inline-only sellers, to prevent fatigue
 
 ### Targeting refinement
 - **Geographic optimization** — adjust `targeting_overlay` based on delivery data by region
@@ -1066,15 +1252,17 @@ Publishers can leverage performance indices to:
 
 Delivery data can be broken down across multiple dimensions within each package. Buyers request specific breakdowns via the `reporting_dimensions` parameter on `get_media_buy_delivery`. Each breakdown appears as a `by_*` array within `by_package` items, following the same composition pattern as `by_creative`.
 
-| Dimension | Breakdown field | Key fields | Capability flag |
-|-----------|----------------|------------|-----------------|
-| Geography | `by_geo` | `geo_level`, `geo_code`, `geo_name` | `supports_geo_breakdown` (object — declares available levels/systems) |
-| Device type | `by_device_type` | `device_type` | `supports_device_type_breakdown` |
-| Device platform | `by_device_platform` | `device_platform` | `supports_device_platform_breakdown` |
-| Audience | `by_audience` | `audience_id`, `audience_source`, `audience_name` | `supports_audience_breakdown` |
-| Placement | `by_placement` | `placement_id`, `placement_name` | `supports_placement_breakdown` |
+| Dimension | Breakdown field | Required fields | Additional fields | Capability declaration |
+|-----------|----------------|-----------------|-------------------|------------------------|
+| Geography | `by_geo` | `geo_level`, `geo_code`, `impressions`, `spend` | `system`, `country`, `geo_name` | `supports_geo_breakdown` |
+| Device type | `by_device_type` | `device_type`, `impressions`, `spend` | — | `supports_device_type_breakdown` |
+| Device platform | `by_device_platform` | `device_platform`, `impressions`, `spend` | — | `supports_device_platform_breakdown` |
+| Audience | `by_audience` | `audience_id`, `audience_source`, `impressions`, `spend` | `audience_name` | `supports_audience_breakdown` |
+| Placement | `by_placement` | `placement_id`, `impressions`, `spend` | `publisher_domain`, `placement_name` | `supports_placement_breakdown` |
 
-Each breakdown entry inherits all fields from `delivery-metrics` (impressions, spend, clicks, conversions, etc.) plus its dimension-specific identifier fields. Every entry requires at minimum its identifier(s), `impressions`, and `spend`.
+Each breakdown entry inherits all fields from `delivery-metrics` (clicks, conversions, and other optional metrics) plus its dimension-specific fields. Every entry requires the fields shown in the required fields column. Check `reporting_capabilities` on the product to discover which dimensions are available; product-level capabilities are authoritative because different products from the same seller may support different breakdowns. `supports_geo_breakdown` is an object that declares available levels and systems; the other capability declarations in this table are boolean flags. Within `supports_geo_breakdown`, `country` and `region` are booleans, while `metro` is keyed by `metro-system` values and native `postal_area` is keyed by ISO 3166-1 alpha-2 country with arrays of country-local `postal-system` values. Geo rows use `system` for `geo_level: "metro"` and `"postal_area"`; native postal rows also include `country`. Deprecated country-fused postal systems remain accepted for compatibility.
+
+Placement identity is publisher-scoped. Placement rows MAY carry `publisher_domain`, the publisher namespace from the product's `placements[]` entry, so buyers can treat `{publisher_domain, placement_id}` as the stable placement identity for multi-publisher products when it is present. Sellers SHOULD emit `publisher_domain` whenever the product placement carries it (always true for `kind: "publisher_ref"`); sellers MAY omit it only for `kind: "seller_inline"` placements in a legacy single-publisher context where the seller agent's own domain is the namespace. When `publisher_domain` is omitted, buyers MAY interpret `placement_id` relative to the seller agent's own publisher domain only in that legacy single-publisher context; otherwise buyers should not infer a cross-publisher placement key. `publisher_domain` is single-valued because each placement belongs to exactly one publisher namespace.
 
 Breakdowns are opt-in — no dimension data is returned unless explicitly requested. Sellers that don't support a requested dimension silently omit it. Each breakdown array has a sibling `by_*_truncated` boolean indicating whether additional rows exist beyond the requested `limit`.
 

@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/error-details/billing-not-supported.json",
+  "title": "Billing Not Supported Details",
+  "description": "Recommended details shape for BILLING_NOT_SUPPORTED errors. Returned when the seller declines the requested `billing` value either at the seller-wide capability level or at the per-account-relationship level. The shape lets callers dispatch on the gate that fired without parsing prose. The `scope` field MUST be omitted when the seller is responding on the unauthenticated/unestablished-identity path required by the uniform-response rule for `BILLING_NOT_PERMITTED_FOR_AGENT` — emitting `scope: \"account\"` to a caller whose agent identity is not established would itself act as a per-account-relationship oracle (same shape the uniform-response rule closes for the per-agent code).",
+  "type": "object",
+  "properties": {
+    "scope": {
+      "type": "string",
+      "enum": ["capability", "account"],
+      "description": "Which gate fired. `\"capability\"` — the seller's `supported_billing` capability does not include the requested value (advice: choose from `supported_billing` and retry). `\"account\"` — the seller's capability accepts the value generally but not for the specific operator on this account (advice: try the next-most-permissive value the capability allows). Registered subset of the shared discriminator vocabulary in `enums/error-scope.json` — the per-agent scope is reserved for `BILLING_NOT_PERMITTED_FOR_AGENT` (which carries no explicit `scope` field) and for `PERMISSION_DENIED` with `error-details/agent-permission-denied.json`. Sellers MUST omit this field when the response is being returned to a caller whose agent identity has not been established (signed-request derivation or credential-to-agent mapping); see the uniform-response requirement in error-handling.mdx Billing and Account Setup."
+    },
+    "supported_billing": {
+      "type": "array",
+      "description": "Echoed copy of the seller's `supported_billing` capability for the caller's convenience — saves a `get_adcp_capabilities` round-trip when `scope` is `\"capability\"`. Sellers MAY omit this field; callers MUST treat absence as \"call `get_adcp_capabilities`\" rather than \"any value is permitted.\"",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.0/enums/billing-party.json"
+      },
+      "minItems": 1
+    }
+  },
+  "additionalProperties": true,
+  "examples": [
+    {
+      "scope": "capability",
+      "supported_billing": ["operator", "agent"]
+    },
+    {
+      "scope": "account"
+    }
+  ]
+}

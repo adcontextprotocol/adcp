@@ -74,6 +74,14 @@ phases:
           - check: field_present
             path: "supported_protocols"
             description: "Agent declares supported protocols"
+          - check: field_contains
+            path: "supported_protocols[*]"
+            value: "brand"
+            description: "Agent declares brand protocol support"
+          - check: field_contains
+            path: "specialisms[*]"
+            value: "brand-rights"
+            description: "Agent declares brand-rights specialism"
 
           - check: field_present
             path: "context"
@@ -237,8 +245,8 @@ phases:
         stateful: true
         expected: |
           Return the acquired rights grant:
-          - rights_grant_id: unique identifier
-          - status: active
+          - rights_id: unique identifier
+          - status: acquired
           - Generation credentials
           - Expiration date and usage limits
           - Terms and constraints
@@ -257,8 +265,8 @@ phases:
             uses:
               - "likeness"
               - "commercial"
-            start_date: "2026-04-01"
-            end_date: "2026-06-30"
+            start_date: "2099-04-01"
+            end_date: "2099-06-30"
           revocation_webhook:
             url: "https://pinnacle-agency.example/webhooks/revocation"
             authentication:
@@ -270,7 +278,7 @@ phases:
           context:
             correlation_id: "brand_rights--acquire_rights"
         context_outputs:
-          - path: "rights_grant_id"
+          - path: "rights_id"
             key: "rights_grant_id"
 
         validations:

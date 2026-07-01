@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-rc.10/error-details/authorization-required.json",
+  "title": "Authorization Required Details",
+  "description": "Recommended details shape for AUTHORIZATION_REQUIRED errors. The caller's AdCP credential was accepted, but the seller cannot complete the requested action until one or more downstream platform connections or grants are completed, restored, or refreshed.",
+  "type": "object",
+  "properties": {
+    "required_connections": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.10/core/downstream-connection-requirement.json"
+      },
+      "description": "Complete set of downstream connections known to be required for the relevant product, format, or request."
+    },
+    "missing_connections": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/3.1.0-rc.10/core/downstream-connection-requirement.json"
+      },
+      "description": "Subset of downstream connections that blocked the current request. Sellers SHOULD populate this array when the caller needs to route a human through a connections flow. Entries with `status` of `missing`, `pending`, `expired`, or `revoked` MUST include either `provider` or `authorization_url` so the buyer can route the remediation unambiguously."
+    },
+    "authorization_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "General recovery URL when there is a single obvious authorization step or when the seller has its own connection-management page."
+    },
+    "authorization_instructions": {
+      "type": "string",
+      "description": "Human-readable recovery instructions. Use `missing_connections[].authorization_instructions` when instructions differ per downstream connection."
+    },
+    "reference_authorization": {
+      "type": "object",
+      "description": "Legacy or provider-specific authorization hint for the referenced object. Prefer `missing_connections[]` for new implementations.",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true,
+  "examples": [
+    {
+      "missing_connections": [
+        {
+          "provider": "social.example",
+          "connection_type": "publisher_identity",
+          "required_for": ["sync_creatives"],
+          "scope": "identity",
+          "status": "missing",
+          "resource_ref": {
+            "post_url": "https://social.example/@acme/post/12345"
+          },
+          "authorization_url": "https://seller.example/connections/social/authorize?post=12345",
+          "authorization_instructions": "Connect the creator or page that owns the source post."
+        }
+      ]
+    }
+  ]
+}

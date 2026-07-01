@@ -65,7 +65,7 @@
   }
 
   .rail-preview--dark .member-logos-label {
-    color: var(--color-gray-400);
+    color: var(--color-text-muted);
   }
 
   .rail-preview--dark .member-logos-bar img {
@@ -149,7 +149,7 @@
   }
 
   .logo-card__preview--dark .logo-card__preview--empty {
-    color: var(--color-gray-500);
+    color: var(--color-text-secondary);
   }
 
   .logo-card__bg-label {
@@ -163,7 +163,7 @@
   }
 
   .logo-card__preview--dark .logo-card__bg-label {
-    color: var(--color-gray-500);
+    color: var(--color-text-secondary);
   }
 
   .logo-card__meta {
@@ -265,7 +265,7 @@
     <div class="rail-preview rail-preview--dark" id="rail-dark">
       <p class="member-logos-label">Our members</p>
       <div class="member-logos-bar" id="rail-dark-logos">
-        <div class="loading-state" style="color: var(--color-gray-400)">Loading...</div>
+        <div class="loading-state" style="color: var(--color-text-muted)">Loading...</div>
       </div>
     </div>
   </section>
@@ -368,7 +368,7 @@
         }).join('');
       } else {
         railLightEl.innerHTML = '<div class="empty-state">No carousel members with logos found</div>';
-        railDarkEl.innerHTML = '<div class="empty-state" style="color: var(--color-gray-400)">No carousel members with logos found</div>';
+        railDarkEl.innerHTML = '<div class="empty-state" style="color: var(--color-text-muted)">No carousel members with logos found</div>';
       }
 
       // Logo cards
@@ -423,7 +423,7 @@
       document.getElementById('rail-light-logos').innerHTML =
         '<div class="empty-state">Failed to load</div>';
       document.getElementById('rail-dark-logos').innerHTML =
-        '<div class="empty-state" style="color: var(--color-gray-400)">Failed to load</div>';
+        '<div class="empty-state" style="color: var(--color-text-muted)">Failed to load</div>';
     }
   });
 </script>

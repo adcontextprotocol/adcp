@@ -32,6 +32,14 @@ export interface FeedResult {
   events: CatalogEvent[];
   cursor: string | null;
   has_more: boolean;
+  freshness: FeedFreshness;
+}
+
+export interface FeedFreshness {
+  generated_at: string;
+  latest_event_created_at: string | null;
+  lag_seconds: number | null;
+  retention_days: number;
 }
 
 export interface FeedError {
@@ -65,24 +73,36 @@ export class CatalogEventsDatabase {
   /**
    * Write multiple events in a single transaction.
    */
-  async writeEvents(inputs: WriteEventInput[]): Promise<string[]> {
+  async writeEvents(
+    inputs: WriteEventInput[],
+    client?: { query: (text: string, params?: unknown[]) => Promise<unknown> },
+  ): Promise<string[]> {
     if (inputs.length === 0) return [];
 
-    const client = await getClient();
-    try {
-      await client.query('BEGIN');
+    if (client) {
       const ids: string[] = [];
       for (const input of inputs) {
         const id = await this.writeEvent(input, client);
         ids.push(id);
       }
-      await client.query('COMMIT');
+      return ids;
+    }
+
+    const dbClient = await getClient();
+    try {
+      await dbClient.query('BEGIN');
+      const ids: string[] = [];
+      for (const input of inputs) {
+        const id = await this.writeEvent(input, dbClient);
+        ids.push(id);
+      }
+      await dbClient.query('COMMIT');
       return ids;
     } catch (err) {
-      await client.query('ROLLBACK');
+      await dbClient.query('ROLLBACK');
       throw err;
     } finally {
-      client.release();
+      dbClient.release();
     }
   }
 
@@ -112,15 +132,15 @@ export class CatalogEventsDatabase {
       if (check.rows[0].status === 'expired' || check.rows[0].status === 'unknown') {
         return {
           error: 'cursor_expired',
-          message: `Cursor is older than ${RETENTION_DAYS_DEFAULT}-day retention window. Re-bootstrap from /registry/agents/search and /catalog/sync.`,
+          message: `Cursor is older than ${RETENTION_DAYS_DEFAULT}-day retention window. Re-bootstrap from /registry/agents/search, /catalog, and /catalog/collections/sync.`,
         };
       }
     }
 
     // Build query
-    const conditions: string[] = [];
-    const params: unknown[] = [];
-    let paramIdx = 1;
+    const conditions: string[] = [`created_at >= NOW() - INTERVAL '1 day' * $1`];
+    const params: unknown[] = [RETENTION_DAYS_DEFAULT];
+    let paramIdx = 2;
 
     if (cursor) {
       conditions.push(`event_id > $${paramIdx}`);
@@ -153,8 +173,41 @@ export class CatalogEventsDatabase {
     const hasMore = result.rows.length > effectiveLimit;
     const events = hasMore ? result.rows.slice(0, effectiveLimit) : result.rows;
     const lastCursor = events.length > 0 ? events[events.length - 1].event_id : cursor;
+    const freshness = await this.getFreshness(types);
 
-    return { events, cursor: lastCursor, has_more: hasMore };
+    return { events, cursor: lastCursor, has_more: hasMore, freshness };
+  }
+
+  private async getFreshness(types: string[] | null): Promise<FeedFreshness> {
+    const generatedAt = new Date();
+    const conditions: string[] = [`created_at >= NOW() - INTERVAL '1 day' * $1`];
+    const params: unknown[] = [RETENTION_DAYS_DEFAULT];
+    let paramIdx = 2;
+
+    if (types && types.length > 0) {
+      const typeConditions = types.map(t => {
+        const pattern = escapeLikePattern(t).replace(/\*/g, '%');
+        params.push(pattern);
+        return `event_type LIKE $${paramIdx++}`;
+      });
+      conditions.push(`(${typeConditions.join(' OR ')})`);
+    }
+
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const result = await query<{ latest_event_created_at: Date | null }>(
+      `SELECT MAX(created_at) AS latest_event_created_at
+       FROM catalog_events
+       ${where}`,
+      params
+    );
+    const latest = result.rows[0]?.latest_event_created_at ?? null;
+
+    return {
+      generated_at: generatedAt.toISOString(),
+      latest_event_created_at: latest ? latest.toISOString() : null,
+      lag_seconds: latest ? Math.max(0, Math.floor((generatedAt.getTime() - latest.getTime()) / 1000)) : null,
+      retention_days: RETENTION_DAYS_DEFAULT,
+    };
   }
 
   /**

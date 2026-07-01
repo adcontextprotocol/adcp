@@ -3,6 +3,7 @@ import { buildDigestContent, hasMinimumContent, generateDigestSubject } from '..
 import {
   createDigest,
   getDigestByDate,
+  getLatestApprovedDigest,
   setReviewMessage,
   updateDigestContent,
   markSent,
@@ -57,11 +58,16 @@ function getTodayEditionDate(): string {
   return formatter.format(new Date());
 }
 
+function getEditionDateString(date: Date | string): string {
+  return new Date(date).toISOString().split('T')[0];
+}
+
 /**
  * Main weekly digest job runner.
  * Runs hourly. Uses newsletter config cadence (biweekly Tuesdays).
  * - generateHourET: Generates a draft and posts to Editorial channel for review
  * - sendHourET+: Sends the digest if approved, or nudges if still waiting
+ * - catch-up: Sends any previously approved edition that missed its cadence
  */
 export async function runWeeklyDigestJob(): Promise<WeeklyDigestResult> {
   const result: WeeklyDigestResult = { generated: false, sent: 0, skipped: false };
@@ -70,12 +76,26 @@ export async function runWeeklyDigestJob(): Promise<WeeklyDigestResult> {
   const { thePromptConfig } = await import('../../newsletters/the-prompt/index.js');
   const cadence = thePromptConfig.cadence;
 
+  const etHour = getETHour();
+  const editionDate = getTodayEditionDate();
+
+  // Catch up approved editions that missed their original send window. This
+  // also keeps the normal same-day approval behavior: today's edition still
+  // waits until the configured send hour.
+  const approvedDigest = await getLatestApprovedDigest();
+  if (approvedDigest) {
+    const approvedEditionDate = getEditionDateString(approvedDigest.edition_date);
+    const isTodaysEdition = approvedEditionDate === editionDate;
+    if (!isTodaysEdition || etHour >= cadence.sendHourET) {
+      const sendResult = await sendDigest(approvedDigest);
+      result.sent = sendResult.sent;
+      return result;
+    }
+  }
+
   if (!cadence.shouldRunToday()) {
     return result;
   }
-
-  const etHour = getETHour();
-  const editionDate = getTodayEditionDate();
 
   // Phase 1: Generate draft
   if (etHour >= cadence.generateHourET && etHour < cadence.generateHourET + 1) {

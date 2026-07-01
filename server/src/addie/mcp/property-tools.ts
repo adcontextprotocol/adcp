@@ -14,6 +14,7 @@ import { registryRequestsDb } from '../../db/registry-requests-db.js';
 import { PropertyCheckService } from '../../services/property-check.js';
 import { PropertyCheckDatabase } from '../../db/property-check-db.js';
 import { enhanceProperty } from '../../services/property-enhancement.js';
+import { syncHostedPropertyToFederatedIndex } from '../../services/hosted-property-sync.js';
 import { fileDispute } from '../../services/catalog-governance.js';
 import type { DisputeType } from '../../db/catalog-disputes-db.js';
 import { AAO_HOST } from '../../config/aao.js';
@@ -30,8 +31,8 @@ const propertyCheckDb = new PropertyCheckDatabase();
 export const PROPERTY_TOOLS: AddieTool[] = [
   {
     name: 'validate_adagents',
-    description: 'Validate a domain\'s /.well-known/adagents.json file. Returns validation results including any errors or warnings.',
-    usage_hints: 'Use when asked to check if a publisher has set up adagents.json, or to validate a domain\'s agent authorizations.',
+    description: 'Validate a domain\'s /.well-known/adagents.json file with a live fetch. Returns validation results including any errors or warnings.',
+    usage_hints: 'Use when asked to check if a publisher has set up adagents.json, or to validate a domain\'s agent authorizations. If check_publisher_authorization disagrees after a recent file update, rerun that tool with force_refresh: true because it uses a short authorization cache.',
     input_schema: {
       type: 'object',
       properties: {
@@ -90,6 +91,20 @@ export const PROPERTY_TOOLS: AddieTool[] = [
             },
           },
           description: 'Array of properties (inventory types)',
+        },
+        catalog_etag: {
+          type: 'string',
+          description: 'Optional adagents.json catalog_etag cache/version token',
+        },
+        formats: {
+          type: 'array',
+          items: { type: 'object' },
+          description: 'Optional adagents.json formats[] publisher catalog entries',
+        },
+        placements: {
+          type: 'array',
+          items: { type: 'object' },
+          description: 'Optional adagents.json placements[] entries',
         },
         contact: {
           type: 'object',
@@ -385,6 +400,9 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
 
     const authorizedAgents = args.authorized_agents as Array<{ url: string; authorized_for?: string }> || [];
     const properties = args.properties as Array<{ type: string; name: string }> || [];
+    const catalogEtag = args.catalog_etag as string | undefined;
+    const formats = args.formats as Array<Record<string, unknown>> | undefined;
+    const placements = args.placements as Array<Record<string, unknown>> | undefined;
     const contact = args.contact as { name?: string; email?: string } | undefined;
     const sourceType = (args.source_type as string) || 'community';
 
@@ -394,8 +412,17 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
       properties: properties,
     };
 
+    if (catalogEtag) {
+      adagentsJson.catalog_etag = catalogEtag;
+    }
     if (contact) {
       adagentsJson.contact = contact;
+    }
+    if (formats) {
+      adagentsJson.formats = formats;
+    }
+    if (placements) {
+      adagentsJson.placements = placements;
     }
 
     // Check if property already exists
@@ -425,6 +452,15 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
         if (!args.properties && existingAdagents.properties) {
           mergedAdagents.properties = existingAdagents.properties;
         }
+        if (!args.catalog_etag && existingAdagents.catalog_etag) {
+          mergedAdagents.catalog_etag = existingAdagents.catalog_etag;
+        }
+        if (!args.formats && existingAdagents.formats) {
+          mergedAdagents.formats = existingAdagents.formats;
+        }
+        if (!args.placements && existingAdagents.placements) {
+          mergedAdagents.placements = existingAdagents.placements;
+        }
         if (!args.contact && existingAdagents.contact) {
           mergedAdagents.contact = existingAdagents.contact;
         }
@@ -436,6 +472,12 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
             domain: publisherDomain,
           });
         }
+
+        // Approval flips is_public=true; mirror the now-public document
+        // into the federated index. approveAndPublishProperty returns
+        // boolean only, so re-read the row to hand sync a typed object.
+        const approved = await propertyDb.getHostedPropertyByDomain(publisherDomain);
+        if (approved) await syncHostedPropertyToFederatedIndex(approved);
 
         return JSON.stringify({
           success: true,
@@ -452,6 +494,7 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
         editor_email: 'addie@agenticadvertising.org',
         editor_name: 'Addie',
       });
+      await syncHostedPropertyToFederatedIndex(property);
 
       return JSON.stringify({
         success: true,
@@ -469,6 +512,7 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
       is_public: true,
       review_status: 'approved',
     });
+    await syncHostedPropertyToFederatedIndex(saved);
 
     return JSON.stringify({
       success: true,

@@ -28,6 +28,8 @@ import { safeFetch } from '../utils/url-security.js';
 import { generateIllustration } from '../services/illustration-generator.js';
 import { createIllustration, approveIllustration } from '../db/illustration-db.js';
 import { resolveEscalationsForPerspective } from '../db/escalation-db.js';
+import { listMyContent as listMyContentService, MyContentError } from '../services/my-content-service.js';
+import { checkContentSubmissionTier } from '../services/membership-tiers.js';
 
 const logger = createLogger('content-routes');
 
@@ -91,6 +93,7 @@ interface ProposeContentRequest {
   category?: string;
   tags?: string[];
   author_title?: string;
+  byline?: string;
   featured_image_url?: string;
   content_origin?: 'official' | 'member' | 'external';
   collection: {
@@ -377,6 +380,7 @@ export async function proposeContentForUser(
     category,
     tags = [],
     author_title: requestAuthorTitle,
+    byline: requestByline,
     featured_image_url,
     content_origin = 'member',
     collection,
@@ -396,6 +400,20 @@ export async function proposeContentForUser(
     };
   }
 
+  // Membership tier gate — Professional+ required for content submission.
+  // System users (system:* prefix) and site admins are exempt, matching the
+  // rate-limiter carve-out and the existing admin bypass pattern below.
+  if (!user.id.startsWith('system:') && !(await isWebUserAAOAdmin(user.id))) {
+    const eligible = await checkContentSubmissionTier(user.id);
+    if (!eligible) {
+      logger.warn({ userId: user.id }, 'proposeContentForUser blocked — insufficient membership tier');
+      return {
+        success: false,
+        error: 'Publishing perspectives is a benefit of Professional, Builder, Partner, or Leader membership. To submit content, upgrade at https://agenticadvertising.org/dashboard/membership.',
+      };
+    }
+  }
+
   // Validate required fields
   if (!title) {
     return { success: false, error: 'title is required' };
@@ -413,6 +431,9 @@ export async function proposeContentForUser(
   }
   if (requestAuthorTitle && requestAuthorTitle.length > 255) {
     return { success: false, error: `author_title is too long (max 255 characters; got ${requestAuthorTitle.length})` };
+  }
+  if (requestByline && requestByline.length > 255) {
+    return { success: false, error: `byline is too long (max 255 characters; got ${requestByline.length})` };
   }
   if (external_site_name && external_site_name.length > 255) {
     return { success: false, error: `external_site_name is too long (max 255 characters; got ${external_site_name.length})` };
@@ -504,9 +525,10 @@ export async function proposeContentForUser(
   const publishedAt = status === 'published' ? new Date().toISOString() : null;
   const proposedAt = new Date().toISOString();
 
-  // Get author info for display
+  // Get author info for display; byline overrides the profile name when provided
   const userInfo = await getUserInfo(user.id);
-  const authorName = userInfo?.name || user.email?.split('@')[0] || 'Unknown';
+  const profileName = userInfo?.name || user.email?.split('@')[0] || 'Unknown';
+  const authorName = requestByline?.trim() || profileName;
 
   // Insert the content
   const result = await pool.query(
@@ -658,6 +680,8 @@ export interface PendingContentItem {
   content_type: string;
   external_url: string | null;
   external_site_name: string | null;
+  status: 'pending_review' | 'needs_revisions';
+  revision_notes: string | null;
   proposer: { id: string; name: string };
   proposed_at: string;
   collection: {
@@ -706,7 +730,7 @@ export async function listPendingContentForUser(
   let query = `
     SELECT
       p.id, p.title, p.subtitle, p.excerpt, p.content, p.slug, p.content_type,
-      p.external_url, p.external_site_name,
+      p.external_url, p.external_site_name, p.status, p.revision_notes,
       p.proposer_user_id, p.proposed_at, p.working_group_id,
       wg.name as committee_name, wg.slug as committee_slug,
       u.first_name, u.last_name, u.email as proposer_email,
@@ -718,7 +742,7 @@ export async function listPendingContentForUser(
     FROM perspectives p
     LEFT JOIN working_groups wg ON wg.id = p.working_group_id
     LEFT JOIN users u ON u.workos_user_id = p.proposer_user_id
-    WHERE p.status = 'pending_review'
+    WHERE p.status IN ('pending_review', 'needs_revisions')
   `;
   const params: (string | string[])[] = [];
 
@@ -744,6 +768,8 @@ export async function listPendingContentForUser(
     content_type: row.content_type,
     external_url: row.external_url,
     external_site_name: row.external_site_name,
+    status: row.status,
+    revision_notes: row.revision_notes,
     proposer: {
       id: row.proposer_user_id,
       name: row.first_name && row.last_name
@@ -776,7 +802,8 @@ export type ContentReviewError =
 
 export interface ContentReviewResult {
   success: boolean;
-  status?: 'published' | 'draft' | 'rejected';
+  /** 'needs_revisions' is non-terminal — author can resubmit. 'pending_review' is returned by resubmit. */
+  status?: 'published' | 'draft' | 'rejected' | 'needs_revisions' | 'pending_review';
   message?: string;
   error?: ContentReviewError;
   error_message?: string;
@@ -807,11 +834,11 @@ export async function approveContentForUser(
 
   const content = contentResult.rows[0];
 
-  if (content.status !== 'pending_review') {
+  if (content.status !== 'pending_review' && content.status !== 'needs_revisions') {
     return {
       success: false,
       error: 'invalid_status',
-      error_message: `Content is not pending review (current status: ${content.status})`,
+      error_message: `Content is not in a reviewable state (current status: ${content.status})`,
     };
   }
 
@@ -939,11 +966,11 @@ export async function rejectContentForUser(
 
   const content = contentResult.rows[0];
 
-  if (content.status !== 'pending_review') {
+  if (content.status !== 'pending_review' && content.status !== 'needs_revisions') {
     return {
       success: false,
       error: 'invalid_status',
-      error_message: `Content is not pending review (current status: ${content.status})`,
+      error_message: `Content is not in a reviewable state (current status: ${content.status})`,
     };
   }
 
@@ -976,6 +1003,128 @@ export async function rejectContentForUser(
   }, 'Content rejected');
 
   return { success: true, status: 'rejected', message: 'Content rejected' };
+}
+
+/**
+ * Request revisions on pending content — non-terminal alternative to rejection.
+ * Sets status to 'needs_revisions' and stores notes in revision_notes.
+ * The author can resubmit via POST /api/content/:id/resubmit.
+ */
+export async function requestRevisionsForUser(
+  user: ContentUser,
+  contentId: string,
+  notes: string
+): Promise<ContentReviewResult> {
+  if (!notes) {
+    return {
+      success: false,
+      error: 'missing_reason',
+      error_message: 'Revision notes are required when requesting revisions',
+    };
+  }
+
+  const pool = getPool();
+
+  const contentResult = await pool.query(
+    `SELECT p.*, wg.slug as committee_slug
+     FROM perspectives p
+     LEFT JOIN working_groups wg ON wg.id = p.working_group_id
+     WHERE p.id = $1`,
+    [contentId]
+  );
+
+  if (contentResult.rows.length === 0) {
+    return { success: false, error: 'not_found', error_message: `No content found with id: ${contentId}` };
+  }
+
+  const content = contentResult.rows[0];
+
+  if (content.status !== 'pending_review') {
+    return {
+      success: false,
+      error: 'invalid_status',
+      error_message: `Revisions can only be requested on pending content (current status: ${content.status})`,
+    };
+  }
+
+  const userIsAdmin = await isWebUserAAOAdmin(user.id);
+  const userIsLead = content.working_group_id
+    ? await isCommitteeLead(content.working_group_id, user.id)
+    : false;
+
+  if (!userIsAdmin && !userIsLead) {
+    return {
+      success: false,
+      error: 'permission_denied',
+      error_message: 'You do not have permission to request revisions on this content',
+    };
+  }
+
+  await pool.query(
+    `UPDATE perspectives
+     SET status = 'needs_revisions', revision_notes = $1,
+         revision_requested_at = NOW(), reviewed_by_user_id = $2, reviewed_at = NOW()
+     WHERE id = $3`,
+    [notes, user.id, contentId]
+  );
+
+  logger.info({
+    contentId,
+    reviewerId: user.id,
+    committeeSlug: content.committee_slug,
+  }, 'Content revision requested');
+
+  return { success: true, status: 'needs_revisions', message: 'Revision request sent to author' };
+}
+
+/**
+ * Resubmit content after revisions — author-only action.
+ * Moves status from 'needs_revisions' back to 'pending_review'.
+ */
+export async function resubmitContentForUser(
+  user: ContentUser,
+  contentId: string
+): Promise<ContentReviewResult> {
+  const pool = getPool();
+
+  const contentResult = await pool.query(
+    `SELECT * FROM perspectives WHERE id = $1`,
+    [contentId]
+  );
+
+  if (contentResult.rows.length === 0) {
+    return { success: false, error: 'not_found', error_message: `No content found with id: ${contentId}` };
+  }
+
+  const content = contentResult.rows[0];
+
+  if (content.status !== 'needs_revisions') {
+    return {
+      success: false,
+      error: 'invalid_status',
+      error_message: `Only content in needs_revisions state can be resubmitted (current status: ${content.status})`,
+    };
+  }
+
+  // Only the original proposer can resubmit
+  if (content.proposer_user_id !== user.id) {
+    return {
+      success: false,
+      error: 'permission_denied',
+      error_message: 'Only the original proposer can resubmit content for review',
+    };
+  }
+
+  await pool.query(
+    `UPDATE perspectives
+     SET status = 'pending_review', proposed_at = NOW(), revision_notes = NULL
+     WHERE id = $1`,
+    [contentId]
+  );
+
+  logger.info({ contentId, proposerId: user.id }, 'Content resubmitted after revisions');
+
+  return { success: true, status: 'pending_review', message: 'Content resubmitted for review' };
 }
 
 /**
@@ -1053,12 +1202,13 @@ export function createContentRouter(): Router {
 
       if (!result.success) {
         // Map errors to appropriate HTTP status codes
+        const isTierGate = result.error?.includes('/dashboard/membership');
         const status = result.error?.includes('not found') ? 404
-                     : result.error?.includes('must be a member') ? 403
+                     : (result.error?.includes('must be a member') || isTierGate) ? 403
                      : 400;
         return res.status(status).json({
           error: status === 404 ? 'Collection not found'
-               : status === 403 ? 'Not a member'
+               : status === 403 ? 'Membership required'
                : 'Validation error',
           message: result.error,
         });
@@ -1260,6 +1410,69 @@ export function createContentRouter(): Router {
     }
   });
 
+  // POST /api/content/:id/request-revisions - Request revisions (non-terminal)
+  router.post('/:id/request-revisions', requireAuth, async (req, res) => {
+    try {
+      const user = req.user!;
+      const { id } = req.params;
+      const { notes } = req.body;
+
+      const result = await requestRevisionsForUser(
+        { id: user.id, email: user.email },
+        id,
+        notes
+      );
+
+      if (!result.success) {
+        const httpStatus = result.error === 'not_found' ? 404
+                         : result.error === 'permission_denied' ? 403
+                         : 400;
+        return res.status(httpStatus).json({
+          error: result.error === 'not_found' ? 'Content not found'
+               : result.error === 'permission_denied' ? 'Permission denied'
+               : result.error === 'missing_reason' ? 'Missing revision notes'
+               : 'Invalid status',
+          message: result.error_message,
+        });
+      }
+
+      res.json({ success: true, status: result.status, message: result.message });
+    } catch (error) {
+      logger.error({ err: error }, 'POST /api/content/:id/request-revisions error');
+      res.status(500).json({ error: 'Failed to request revisions' });
+    }
+  });
+
+  // POST /api/content/:id/resubmit - Author resubmits after revisions
+  router.post('/:id/resubmit', requireAuth, async (req, res) => {
+    try {
+      const user = req.user!;
+      const { id } = req.params;
+
+      const result = await resubmitContentForUser(
+        { id: user.id, email: user.email },
+        id
+      );
+
+      if (!result.success) {
+        const httpStatus = result.error === 'not_found' ? 404
+                         : result.error === 'permission_denied' ? 403
+                         : 400;
+        return res.status(httpStatus).json({
+          error: result.error === 'not_found' ? 'Content not found'
+               : result.error === 'permission_denied' ? 'Permission denied'
+               : 'Invalid status',
+          message: result.error_message,
+        });
+      }
+
+      res.json({ success: true, status: result.status, message: result.message });
+    } catch (error) {
+      logger.error({ err: error }, 'POST /api/content/:id/resubmit error');
+      res.status(500).json({ error: 'Failed to resubmit content' });
+    }
+  });
+
   // =========================================================================
   // PERSPECTIVE ASSET UPLOAD
   // =========================================================================
@@ -1389,144 +1602,24 @@ export function createMyContentRouter(): Router {
       const status = req.query.status as string | undefined;
       const collection = req.query.collection as string | undefined;
       const relationship = req.query.relationship as string | undefined;
-      const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
-      const pool = getPool();
-
-      // Get committees user leads (for "owner" relationship)
-      const leaderResult = await pool.query(
-        `SELECT working_group_id FROM working_group_leaders WHERE user_id = $1`,
-        [user.id]
-      );
-      const ledCommitteeIds = leaderResult.rows.map(r => r.working_group_id);
-
-      // Admins can see every perspective here so they can edit anything
-      // (including content that predates them, has no proposer, or belongs to a
-      // committee they don't lead). Relationships are still computed so the UI
-      // can still distinguish their own contributions.
-      const userIsAdmin = await isWebUserAAOAdmin(user.id);
-
-      // Build the query
-      let query = `
-        SELECT DISTINCT ON (p.id)
-          p.id, p.slug, p.content_type, p.title, p.subtitle, p.category, p.excerpt,
-          p.content, p.tags, p.featured_image_url,
-          p.external_url, p.external_site_name, p.status, p.published_at,
-          p.created_at, p.updated_at, p.working_group_id, p.proposer_user_id,
-          wg.name as committee_name, wg.slug as committee_slug,
-          -- Determine relationships
-          CASE WHEN p.proposer_user_id = $1 THEN true ELSE false END as is_proposer,
-          CASE WHEN EXISTS (SELECT 1 FROM content_authors ca WHERE ca.perspective_id = p.id AND ca.user_id = $1) THEN true ELSE false END as is_author,
-          CASE WHEN p.working_group_id = ANY($2) THEN true ELSE false END as is_lead,
-          -- Get authors
-          (SELECT json_agg(json_build_object(
-            'user_id', ca.user_id,
-            'display_name', ca.display_name,
-            'display_title', ca.display_title
-          ) ORDER BY ca.display_order)
-          FROM content_authors ca WHERE ca.perspective_id = p.id) as authors
-        FROM perspectives p
-        LEFT JOIN working_groups wg ON wg.id = p.working_group_id
-        WHERE (
-          $3::boolean = true
-          OR p.proposer_user_id = $1
-          OR EXISTS (SELECT 1 FROM content_authors ca WHERE ca.perspective_id = p.id AND ca.user_id = $1)
-          OR p.working_group_id = ANY($2)
-        )
-      `;
-      const params: (string | string[] | number | boolean)[] = [user.id, ledCommitteeIds, userIsAdmin];
-
-      // Apply filters
-      if (status && status !== 'all') {
-        const validStatuses = ['draft', 'pending_review', 'published', 'archived', 'rejected'];
-        if (!validStatuses.includes(status)) {
-          return res.status(400).json({
-            error: 'Invalid status',
-            message: `status must be one of: ${validStatuses.join(', ')}, or 'all'`,
-          });
-        }
-        params.push(status);
-        query += ` AND p.status = $${params.length}`;
-      }
-
-      if (collection) {
-        if (collection === 'personal') {
-          query += ` AND p.working_group_id IS NULL`;
-        } else {
-          // Assume it's a committee slug
-          params.push(collection);
-          query += ` AND wg.slug = $${params.length}`;
-        }
-      }
-
-      query += ` ORDER BY p.id, p.created_at DESC`;
-      params.push(limit);
-      query += ` LIMIT $${params.length}`;
-
-      const result = await pool.query(query, params);
-
-      // Format response with relationships
-      const items = result.rows.map(row => {
-        const relationships: string[] = [];
-        if (row.is_author) relationships.push('author');
-        if (row.is_proposer) relationships.push('proposer');
-        if (row.is_lead) relationships.push('owner');
-
-        return {
-          id: row.id,
-          slug: row.slug,
-          title: row.title,
-          subtitle: row.subtitle,
-          content_type: row.content_type,
-          category: row.category,
-          excerpt: row.excerpt,
-          content: row.content,
-          tags: row.tags,
-          featured_image_url: row.featured_image_url,
-          external_url: row.external_url,
-          external_site_name: row.external_site_name,
-          status: row.status,
-          collection: {
-            type: row.working_group_id ? 'committee' : 'personal',
-            committee_name: row.committee_name,
-            committee_slug: row.committee_slug,
-          },
-          relationships,
-          authors: row.authors || [],
-          published_at: row.published_at,
-          created_at: row.created_at,
-          updated_at: row.updated_at,
-        };
-      }).filter(item => {
-        // Apply relationship filter if specified
-        if (!relationship) return true;
-        return item.relationships.includes(relationship);
+      const limit = parseInt(req.query.limit as string);
+      const result = await listMyContentService({
+        userId: user.id,
+        status,
+        collection,
+        relationship,
+        limit: Number.isFinite(limit) ? limit : undefined,
       });
-
-      const publishedPaths = items
-        .filter(item => item.status === 'published' && typeof item.slug === 'string' && item.slug.length > 0)
-        .map(item => `/perspectives/${item.slug}`);
-
-      const pageviewCounts = await fetchPathPageviewCounts(publishedPaths, 30);
-
-      const itemsWithPerformance = items.map(item => {
-        if (item.status !== 'published' || !item.slug || !pageviewCounts) {
-          return item;
-        }
-
-        return {
-          ...item,
-          performance: {
-            pageviews_last_30d: pageviewCounts[`/perspectives/${item.slug}`] ?? 0,
-          },
-        };
-      });
-
-      res.json({ items: itemsWithPerformance });
+      res.json({ items: result.items });
     } catch (error) {
+      if (error instanceof MyContentError && error.is('invalid_status')) {
+        return res.status(400).json({
+          error: 'Invalid status',
+          message: `status must be one of: ${error.meta.valid.join(', ')}, or 'all'`,
+        });
+      }
       logger.error({ err: error }, 'GET /api/me/content error');
-      res.status(500).json({
-        error: 'Failed to get content',
-      });
+      res.status(500).json({ error: 'Failed to get content' });
     }
   });
 
@@ -1623,7 +1716,8 @@ export function createMyContentRouter(): Router {
         updates.push(`tags = $${paramIndex++}`);
         values.push(tags);
       }
-      if (author_name !== undefined) {
+      const authorNameUpdated = author_name !== undefined && (isProposer || contentItem.author_user_id === user.id || userIsAdmin);
+      if (authorNameUpdated) {
         updates.push(`author_name = $${paramIndex++}`);
         values.push(author_name);
       }
@@ -1640,7 +1734,7 @@ export function createMyContentRouter(): Router {
       // committee — otherwise an unrelated co-author could resurrect a
       // rejected item without going through the rejecter (see #2713).
       if (requestedStatus !== undefined) {
-        const allowedStatuses = ['draft', 'pending_review', 'published', 'archived'];
+        const allowedStatuses = ['draft', 'pending_review', 'published', 'archived', 'needs_revisions'];
         if (allowedStatuses.includes(requestedStatus)) {
           // Non-admins can only set draft or pending_review
           if (!userIsAdmin && !['draft', 'pending_review'].includes(requestedStatus)) {
@@ -1650,8 +1744,8 @@ export function createMyContentRouter(): Router {
             });
           }
           // Moving out of `rejected` or `archived` requires admin or the
-          // lead of the item's committee. Prevents a co-author on an
-          // unrelated committee from resurrecting a rejected item.
+          // lead of the item's committee. Moving out of `needs_revisions`
+          // is allowed for the proposer (resubmit flow) or lead/admin.
           const currentStatus = contentItem.status as string;
           if (
             (currentStatus === 'rejected' || currentStatus === 'archived')
@@ -1662,6 +1756,18 @@ export function createMyContentRouter(): Router {
             return res.status(403).json({
               error: 'Permission denied',
               message: `Only an admin or a lead of this item's committee can move it out of ${currentStatus}`,
+            });
+          }
+          if (
+            currentStatus === 'needs_revisions'
+            && requestedStatus !== currentStatus
+            && !isProposer
+            && !userIsAdmin
+            && !userIsLead
+          ) {
+            return res.status(403).json({
+              error: 'Permission denied',
+              message: 'Only the original proposer, a committee lead, or an admin can resubmit content from needs_revisions',
             });
           }
           updates.push(`status = $${paramIndex++}`);
@@ -1687,6 +1793,15 @@ export function createMyContentRouter(): Router {
          RETURNING *`,
         values
       );
+
+      // Keep the primary author's content_authors display_name in sync when the byline changes
+      if (authorNameUpdated && author_name && contentItem.author_user_id) {
+        await pool.query(
+          `UPDATE content_authors SET display_name = $1
+           WHERE perspective_id = $2 AND user_id = $3 AND display_order = 0`,
+          [author_name, id, contentItem.author_user_id]
+        );
+      }
 
       logger.info({ contentId: id, userId: user.id }, 'Content updated');
 

@@ -1,0 +1,68 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.1/collection/collection-list.json",
+  "title": "Collection List",
+  "description": "A managed collection list with optional filters for dynamic evaluation. Lists are resolved at setup time and cached by orchestrators/sellers for real-time use. Collections represent programs, shows, and other content entities independent of which properties carry them.",
+  "type": "object",
+  "properties": {
+    "list_id": {
+      "type": "string",
+      "description": "Unique identifier for this collection list",
+      "x-entity": "collection_list"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name for the list"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of the list's purpose"
+    },
+    "account": {
+      "$ref": "/schemas/3.1.0-beta.1/core/account-ref.json",
+      "description": "Account that owns this list. Returned as account_id form (seller-assigned identifier)."
+    },
+    "base_collections": {
+      "type": "array",
+      "description": "Array of collection sources to evaluate. Each entry is a discriminated union: distribution_ids (platform-independent identifiers), publisher_collections (publisher_domain + collection_ids), or publisher_genres (publisher_domain + genres). If omitted, queries the agent's entire collection database.",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.1/collection/base-collection-source.json"
+      }
+    },
+    "filters": {
+      "$ref": "/schemas/3.1.0-beta.1/collection/collection-list-filters.json",
+      "description": "Dynamic filters applied when resolving the list"
+    },
+    "brand": {
+      "$ref": "/schemas/3.1.0-beta.1/core/brand-ref.json",
+      "description": "Brand reference used to automatically apply appropriate rules. Resolved to full brand identity at execution time."
+    },
+    "webhook_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to receive notifications when the resolved list changes"
+    },
+    "cache_duration_hours": {
+      "type": "integer",
+      "description": "Recommended cache duration for resolved list. Consumers should re-fetch after this period. Defaults to 168 (one week) because collection metadata changes less frequently than property metadata.",
+      "minimum": 1,
+      "default": 168
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the list was created"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the list was last modified"
+    },
+    "collection_count": {
+      "type": "integer",
+      "description": "Number of collections in the resolved list (at time of last resolution)"
+    }
+  },
+  "required": ["list_id", "name"],
+  "additionalProperties": false
+}

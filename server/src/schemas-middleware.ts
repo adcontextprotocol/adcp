@@ -8,6 +8,27 @@ const logger = createLogger("schemas-middleware");
 
 // Alias paths like "/v2/...", "/v2.5/...", "/v12/..." (v1 is a special case → latest).
 const ALIAS_PATH = /^\/v(\d+)(?:\.(\d+))?(\/.*)?$/;
+const LEGACY_TMP_SCHEMA_PATH =
+  /^\/(latest|\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\/tmp\/([A-Za-z0-9._-]+\.json)$/;
+const TRUSTED_MATCH_SCHEMA_FILENAMES = [
+  "available-package.json",
+  "context-match-request.json",
+  "context-match-response.json",
+  "error.json",
+  "identity-match-request.json",
+  "identity-match-response.json",
+  "offer-price.json",
+  "offer.json",
+  "provider-registration.json",
+] as const;
+
+type TrustedMatchSchemaFilename = (typeof TRUSTED_MATCH_SCHEMA_FILENAMES)[number];
+
+type LegacyTmpSchemaPath = {
+  version: string;
+  filename: TrustedMatchSchemaFilename;
+  trustedMatchPath: string;
+};
 
 function isPinnedVersionPath(requestPath: string): boolean {
   // /X.Y.Z(-prerelease)?/... where the first segment is a valid semver.
@@ -64,10 +85,127 @@ export function findMatchingVersion(
   return versions.find((v) => {
     const parsed = semver.parse(v);
     if (!parsed) return false;
+    if (parsed.prerelease.length > 0) return false;
     if (parsed.major !== requestedMajor) return false;
     if (requestedMinor !== undefined && parsed.minor !== requestedMinor) return false;
     return true;
   });
+}
+
+function latestStableVersion(versions: string[]): string | null {
+  return versions.find((v) => {
+    const parsed = semver.parse(v);
+    return parsed && parsed.prerelease.length === 0;
+  }) ?? null;
+}
+
+function legacyTmpPathInfo(requestPath: string): LegacyTmpSchemaPath | null {
+  const match = requestPath.match(LEGACY_TMP_SCHEMA_PATH);
+  if (!match) return null;
+  const [, version, filename] = match;
+  const trustedMatchFilename = TRUSTED_MATCH_SCHEMA_FILENAMES.find(
+    (candidate) => candidate === filename,
+  );
+  if (!trustedMatchFilename) return null;
+  return {
+    version,
+    filename: trustedMatchFilename,
+    trustedMatchPath: `/${version}/trusted-match/${trustedMatchFilename}`,
+  };
+}
+
+async function legacyTmpSchemaFileExists(
+  rootPath: string,
+  version: string,
+  filename: TrustedMatchSchemaFilename,
+): Promise<boolean> {
+  if (semver.valid(version) === null) return false;
+
+  try {
+    const stat = await fs.stat(`${rootPath}/${version}/tmp/${filename}`);
+    return stat.isFile();
+  } catch {
+    return false;
+  }
+}
+
+async function legacyTmpSchemaFileExistsForPath(
+  rootPath: string,
+  getSchemaVersions: () => Promise<string[]>,
+  legacyPath: LegacyTmpSchemaPath,
+): Promise<boolean> {
+  if (legacyPath.version === "latest") return false;
+
+  try {
+    const versions = await getSchemaVersions();
+    const resolvedVersion = versions.find((version) => version === legacyPath.version);
+    return resolvedVersion
+      ? legacyTmpSchemaFileExists(rootPath, resolvedVersion, legacyPath.filename)
+      : false;
+  } catch {
+    return false;
+  }
+}
+
+function versionEntry(version: string, mountPath: string) {
+  const parsed = semver.parse(version);
+  const prerelease = !!parsed && parsed.prerelease.length > 0;
+  const label = prerelease ? String(parsed.prerelease[0]).toLowerCase() : "";
+  return {
+    version,
+    stability: prerelease
+      ? (label === "rc" || label === "beta" ? label : "prerelease")
+      : "stable",
+    prerelease,
+    deprecated: false,
+    path: `${mountPath}/${version}/`,
+  };
+}
+
+/**
+ * Resolve a pinned semver path whose exact version directory does NOT exist to
+ * the nearest published release it should map to.
+ *
+ * This covers docs-only version bumps: when a docs snapshot is cut at a version
+ * whose schema content was unchanged from the last published release on the
+ * same line (e.g. a 3.0.19 docs snapshot built against the existing 3.0.18
+ * schemas), no 3.0.19 schema directory is ever produced. The snapshot's link
+ * rewrite still pins schema URLs to /schemas/3.0.19/..., which would 404
+ * without this fallback.
+ *
+ * Resolution prefers the highest release at-or-below the requested version
+ * within the SAME major.minor line, falling back to the highest at-or-below
+ * release in the same major. Staying at-or-below keeps a frozen 3.0.x doc
+ * pointing at 3.0.x schemas rather than jumping forward to a newer minor.
+ *
+ * When the requested version is stable, prerelease candidates are excluded so
+ * a missing stable pin (e.g. /schemas/3.0.0/...) never silently resolves to a
+ * release candidate; when the requested version is itself a prerelease, lower
+ * prereleases (and stables) on the line are eligible. Returns undefined when
+ * nothing in the same major qualifies.
+ */
+export function resolvePinnedFallback(
+  versions: string[],
+  requested: string,
+): string | undefined {
+  const parsed = semver.parse(requested);
+  if (!parsed) return undefined;
+
+  const wantStable = parsed.prerelease.length === 0;
+  const eligible = (v: string): boolean => {
+    const p = semver.parse(v);
+    if (!p || p.major !== parsed.major) return false;
+    if (wantStable && p.prerelease.length > 0) return false;
+    return semver.lte(v, requested);
+  };
+
+  const sameMinor = versions
+    .filter((v) => eligible(v) && semver.parse(v)!.minor === parsed.minor)
+    .sort(semver.rcompare);
+  if (sameMinor[0]) return sameMinor[0];
+
+  const sameMajor = versions.filter(eligible).sort(semver.rcompare);
+  return sameMajor[0];
 }
 
 /**
@@ -172,7 +310,7 @@ export function mountProtocolRoutes(app: Application, protocolPath: string): voi
           certificate_identity_regexp:
             "^https://github\\.com/adcontextprotocol/adcp/\\.github/workflows/release\\.yml@refs/heads/.*$",
           certificate_oidc_issuer: "https://token.actions.githubusercontent.com",
-          docs: "/docs/building/schemas-and-sdks#verifying-protocol-bundle-signatures",
+          docs: "/docs/building/by-layer/L0/schemas#verifying-protocol-bundle-signatures",
         },
         versions: versioned.map((name) => {
           const sidecars = sidecarsFor(name);
@@ -267,20 +405,68 @@ function mountVersionedStaticRoutes(
       }
     }
 
-    // 2. Set cache-control based on the original request path:
-    //    - Pinned semver (client asked for an immutable version): 1-year immutable.
-    //    - /latest/ and aliases (/v2, /v2.5, ...): no-cache + ETag, so shared
-    //      caches revalidate on every request and pick up retargeting immediately.
-    //      Without this, edge caches can serve different versions from different
-    //      POPs within their TTL window and cause drift for consumers generating
-    //      types from the schemas.
+    // 2. Pinned semver path whose exact version directory is missing: resolve
+    //    to the nearest published release on the same line (e.g. a 3.0.19 docs
+    //    snapshot's links to /schemas/3.0.19/... resolve to the 3.0.18 schemas
+    //    they were built against). Without this, frozen doc snapshots that pin
+    //    schema links to a docs-only version bump 404. Tracks whether the
+    //    original request was an exact published directory hit so the cache
+    //    policy below stays correct.
+    let exactPinnedHit = false;
     if (!isAlias && isPinnedVersionPath(originalPath)) {
+      const requestedVersion = originalPath.split("/")[1];
+      try {
+        const versions = await getSchemaVersions();
+        const exactVersion = versions.find((version) => version === requestedVersion);
+        if (exactVersion) {
+          exactPinnedHit = true;
+        } else {
+          const fallback = resolvePinnedFallback(versions, requestedVersion);
+          if (fallback) {
+            req.url = "/" + fallback + originalPath.slice(requestedVersion.length + 1);
+          }
+        }
+      } catch {
+        // Fall through; static handler below will produce the 404.
+      }
+    }
+
+    // 3. Set cache-control based on the original request path:
+    //    - Exact pinned semver hit (client asked for an immutable version that
+    //      exists): 1-year immutable.
+    //    - /latest/, aliases (/v2, /v2.5, ...) and resolved pinned fallbacks:
+    //      no-cache + ETag, so shared caches revalidate on every request and
+    //      pick up retargeting immediately. Without this, edge caches can serve
+    //      different versions from different POPs within their TTL window and
+    //      cause drift for consumers generating types from the schemas. A
+    //      resolved fallback is treated like an alias because what it points at
+    //      can change as new patches land on the line.
+    if (exactPinnedHit) {
       res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
     } else {
       res.setHeader("Cache-Control", "public, no-cache, must-revalidate");
     }
 
-    // 3. Redirect bare version directories to their index.json.
+    // 4. Compatibility fallback: old Trusted Match schema URLs used `/tmp/`.
+    // Keep existing released `/tmp/` files authoritative when present, but
+    // allow latest/future releases to serve the canonical `/trusted-match/`
+    // files without keeping a misleading source directory alive.
+    if (mountPath === "/schemas") {
+      const currentPath = req.path;
+      const legacyPath = legacyTmpPathInfo(currentPath);
+      if (legacyPath) {
+        const legacyFileExists = await legacyTmpSchemaFileExistsForPath(
+          rootPath,
+          getSchemaVersions,
+          legacyPath,
+        );
+        if (!legacyFileExists) {
+          req.url = legacyPath.trustedMatchPath + req.url.slice(currentPath.length);
+        }
+      }
+    }
+
+    // 5. Redirect bare version directories to their index.json.
     if (matchVersionedDir(req.path)) {
       return res.redirect(mountPath + req.path + "index.json");
     }
@@ -291,14 +477,16 @@ function mountVersionedStaticRoutes(
   app.get(mountPath + "/", async (_req, res) => {
     try {
       const versions = await getSchemaVersions();
+      const latestPerMajor: Record<string, string> = {};
       const latestPerMinor: Record<string, string> = {};
-      let latestMajorVersion: string | undefined;
 
       for (const version of versions) {
         const parsed = semver.parse(version);
         if (!parsed) continue;
+        if (parsed.prerelease.length > 0) continue;
+        const majorKey = `${parsed.major}`;
         const minorKey = `${parsed.major}.${parsed.minor}`;
-        if (!latestMajorVersion) latestMajorVersion = version;
+        if (!latestPerMajor[majorKey]) latestPerMajor[majorKey] = version;
         if (!latestPerMinor[minorKey]) latestPerMinor[minorKey] = version;
       }
 
@@ -308,15 +496,12 @@ function mountVersionedStaticRoutes(
         path: string;
       }> = [];
 
-      if (latestMajorVersion) {
-        const major = semver.parse(latestMajorVersion)?.major;
-        if (major !== undefined) {
-          aliases.push({
-            alias: `v${major}`,
-            resolves_to: latestMajorVersion,
-            path: `${mountPath}/v${major}/`,
-          });
-        }
+      for (const [major, version] of Object.entries(latestPerMajor)) {
+        aliases.push({
+          alias: `v${major}`,
+          resolves_to: version,
+          path: `${mountPath}/v${major}/`,
+        });
       }
 
       for (const [minorKey, version] of Object.entries(latestPerMinor)) {
@@ -332,8 +517,9 @@ function mountVersionedStaticRoutes(
       );
 
       res.json({
-        versions: versions.map((v) => ({ version: v, path: `${mountPath}/${v}/` })),
+        versions: versions.map((v) => versionEntry(v, mountPath)),
         aliases,
+        latest_stable: latestStableVersion(versions),
         latest: {
           path: `${mountPath}/latest/`,
           note: "Development version, may differ from released versions",

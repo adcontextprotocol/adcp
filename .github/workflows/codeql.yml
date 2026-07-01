@@ -2,9 +2,9 @@ name: CodeQL
 
 on:
   push:
-    branches: [main]
+    branches: [main, '3.0.x']
   pull_request:
-    branches: [main]
+    branches: [main, '3.0.x']
   schedule:
     - cron: "0 0 * * 0"
 
@@ -17,7 +17,7 @@ jobs:
       actions: read
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.0
       - uses: github/codeql-action/init@v4
         with:
           languages: javascript-typescript

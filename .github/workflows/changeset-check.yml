@@ -2,16 +2,45 @@ name: Changeset Check
 
 on:
   pull_request:
-    branches: [main, '2.6.x']
+    branches: [main, '3.0.x', '2.6.x', '2.5-maintenance']
 
 jobs:
+  pr-title:
+    name: Check PR title
+    runs-on: ubuntu-latest
+    # Keep the release-machinery exceptions aligned with the changeset check below.
+    if: ${{ !startsWith(github.head_ref, 'changeset-release/') && !startsWith(github.head_ref, 'forward-merge/') && !startsWith(github.head_ref, 'auto/docs-v') }}
+    steps:
+      - uses: actions/checkout@v7.0.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Check PR title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: node scripts/check-pr-title.cjs "$PR_TITLE"
+
   check:
     name: Check for changeset
     runs-on: ubuntu-latest
-    # Skip changeset check on Version Packages PR (created by changesets/action)
-    if: github.head_ref != 'changeset-release/main'
+    # Skip changeset check on:
+    # - Version Packages PRs (`changeset-release/<branch>`) — changesets/action consumes
+    #   .changeset files into a CHANGELOG bump, so by the time CI runs there are no
+    #   pending changesets to find.
+    # - Forward-merge PRs (`forward-merge/*`) — they merge a release branch (3.0.x)
+    #   whose changesets were already consumed by its own Version Packages cut.
+    #   From main's perspective, the merge brings package-changing commits with no
+    #   .changeset/*.md files to explain them; the changes are explained by the
+    #   3.0.x branch's CHANGELOG, not by a new changeset on main. Without this skip
+    #   every forward-merge PR fails this check (see #4306, #4310).
+    # - Release docs snapshot PRs (`auto/docs-v*`) — they freeze docs for an
+    #   already-published version and do not represent a new package release.
+    if: ${{ !startsWith(github.head_ref, 'changeset-release/') && !startsWith(github.head_ref, 'forward-merge/') && !startsWith(github.head_ref, 'auto/docs-v') }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.0
         with:
           fetch-depth: 0
 
@@ -20,5 +49,17 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Check changeset protocol scope
+        run: node scripts/check-changeset-protocol-scope.cjs origin/${{ github.base_ref }}
+
       - name: Check for changeset
-        run: npx --yes @changesets/cli@^2.31.0 status --since=origin/main
+        run: |
+          if node scripts/check-changeset-protocol-scope.cjs origin/${{ github.base_ref }} --is-status-exempt-maintenance; then
+            echo "Skipping changesets status for changeset policy maintenance."
+            exit 0
+          fi
+          if ! node scripts/check-changeset-protocol-scope.cjs origin/${{ github.base_ref }} --has-protocol-scoped-changes; then
+            echo "Skipping changesets status because this PR does not touch the protocol release surface."
+            exit 0
+          fi
+          npx --yes @changesets/cli@^2.31.0 status --since=origin/${{ github.base_ref }}

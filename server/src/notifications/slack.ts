@@ -347,7 +347,7 @@ export async function notifyWorkingGroupPost(data: {
 }): Promise<boolean> {
   const emoji = data.contentType === 'link' ? '🔗' : '📝';
   const typeLabel = data.contentType === 'link' ? 'Link' : 'Article';
-  const postUrl = `https://agenticadvertising.org/working-groups/${data.workingGroupSlug}#post-${data.postSlug}`;
+  const postUrl = `https://agenticadvertising.org/working-groups/${data.workingGroupSlug}/posts/${data.postSlug}`;
   const groupUrl = `https://agenticadvertising.org/working-groups/${data.workingGroupSlug}`;
 
   return sendSlackMessage({
@@ -409,7 +409,7 @@ export async function notifyWorkingGroupSlackChannel(data: {
 
   const emoji = data.contentType === 'link' ? '🔗' : '📝';
   const headerText = data.contentType === 'link' ? 'New Link Shared' : 'New Post Published';
-  const postUrl = `${APP_URL}/working-groups/${data.workingGroupSlug}#post-${data.postSlug}`;
+  const postUrl = `${APP_URL}/working-groups/${data.workingGroupSlug}/posts/${data.postSlug}`;
 
   // Build message blocks
   const message: SlackBlockMessage = {
@@ -702,7 +702,7 @@ export async function sendSocialAmplificationDM(data: {
     return false;
   }
 
-  const postUrl = `${APP_URL}/working-groups/${data.workingGroupSlug}#post-${data.postSlug}`;
+  const postUrl = `${APP_URL}/working-groups/${data.workingGroupSlug}/posts/${data.postSlug}`;
   const socialText = data.excerpt || data.subtitle || '';
 
   // LinkedIn: use excerpt/subtitle with URL and hashtags

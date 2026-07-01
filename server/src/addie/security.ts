@@ -11,6 +11,7 @@ import { createLogger } from '../logger.js';
 
 const logger = createLogger('addie-security');
 import type { SanitizationResult, AddieInteractionLog } from './types.js';
+import { PERSONA_COLLAPSE_PATTERNS } from './response-postprocess.js';
 
 /**
  * Patterns that might indicate prompt injection attempts
@@ -26,6 +27,9 @@ const SUSPICIOUS_PATTERNS = [
   /pretend\s+(?:you\s+are|to\s+be)/i,
   /act\s+as\s+(?:if|though)/i,
   /role\s*play\s+as/i,
+
+  // Identity-substitution: "you are actually Claude / really ChatGPT / in fact an AI model"
+  /you(?:['’]?re|\s+are)\s+(?:actually|really|secretly|in\s+fact|truly)\s+(?:claude|chatgpt|gpt-?\d*|gemini|llama|bard|an?\s+(?:ai|a\.i\.|artificial\s+intelligence|language\s+model))/i,
 
   // Trying to extract system prompt
   /what\s+(?:are|is)\s+your\s+(?:system\s)?instructions?/i,
@@ -56,6 +60,11 @@ const FORBIDDEN_OUTPUT_PATTERNS = [
   /xoxb-[a-zA-Z0-9-]+/,
   /ghp_[a-zA-Z0-9]{36}/,
   /AKIA[0-9A-Z]{16}/,
+
+  // Model/provider self-disclosure. The deterministic rewrite in
+  // response-postprocess.ts removes these before delivery; flagging them here
+  // is the audit canary that tells us when a leak slipped past the rewrite.
+  ...PERSONA_COLLAPSE_PATTERNS,
 ];
 
 /**
@@ -213,12 +222,19 @@ export async function resolveSlackMentions(
 }
 
 /**
- * Wrap bare URLs in Slack explicit link format to preserve fragments.
+ * Wrap bare URLs in Slack explicit link format to preserve fragments and stop
+ * Slack's auto-linker from sweeping wrapping punctuation into the link target.
  *
- * Slack's auto-linker can drop URL fragments (the #... portion),
- * which breaks Stripe checkout URLs that require the fragment for the
- * encrypted session data. Wrapping in <url> ensures Slack preserves
- * the full URL including fragments.
+ * Slack's auto-linker has two failure modes:
+ *  1. It drops URL fragments (#...), which breaks Stripe checkout URLs that
+ *     require the fragment for the encrypted session data.
+ *  2. It includes trailing punctuation in the link target, so a model that
+ *     emits `**URL**` produces a click to `URL**` and 404s.
+ *
+ * Wrapping in `<url>` Slack-explicit-link syntax fixes both — but only if our
+ * URL boundary regex stops at the same characters Slack would otherwise use
+ * as wrappers. The character class below excludes whitespace and the
+ * characters that wrap URLs in chat output: `>`, `)`, backtick, `*`, `"`, `'`.
  *
  * Only wraps URLs not already inside Slack link syntax (< >).
  */
@@ -227,7 +243,7 @@ export function wrapUrlsForSlack(text: string): string {
   // Use negative lookbehind for < and ensure URL isn't followed by >
   // Also skip URLs inside backtick code spans
   return text.replace(
-    /(?<![<`])(https?:\/\/[^\s>)`]+)/g,
+    /(?<![<`])(https?:\/\/[^\s>)`*"']+)/g,
     (match, url, offset) => {
       // Check if we're inside a backtick code span
       const before = text.substring(0, offset);

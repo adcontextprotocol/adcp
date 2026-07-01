@@ -21,6 +21,9 @@ narrative: |
   those boundaries are exceeded, the system escalates to humans rather than blocking
   entirely. The audit trail provides accountability for every decision in the chain.
 
+context:
+  governance_agent_url: "https://test-agent.adcontextprotocol.org"
+
 agent:
   interaction_model: media_buy_seller
   capabilities:
@@ -76,8 +79,8 @@ fixtures:
         currency: "USD"
         reallocation_threshold: 20000
       flight:
-        start: "2027-04-01T00:00:00Z"
-        end: "2027-06-30T23:59:59Z"
+        start: "2020-01-01T00:00:00Z"
+        end: "2099-06-30T23:59:59Z"
       countries: ["US"]
       custom_policies:
         - policy_id: "weekly_reporting_over_10k"
@@ -196,7 +199,7 @@ phases:
                   domain: "acmeoutdoor.example"
                 operator: "pinnacle-agency.example"
               governance_agents:
-                - url: "https://governance.pinnacle-agency.example"
+                - url: "$context.governance_agent_url"
                   authentication:
                     schemes: ["Bearer"]
                     credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
@@ -246,7 +249,7 @@ phases:
           - human_review_required: set when the plan mandates escalation
 
         sample_request:
-          idempotency_key: "media-buy-governance-escalation-sync-plans-v1"
+          idempotency_key: "$generate:uuid_v4#gov-escalation-sync"
           plans:
             - plan_id: "gov_acme_q2_2027"
               brand:
@@ -257,8 +260,8 @@ phases:
                 currency: "USD"
                 reallocation_threshold: 20000
               flight:
-                start: "2027-04-01T00:00:00Z"
-                end: "2027-06-30T23:59:59Z"
+                start: "2020-01-01T00:00:00Z"
+                end: "2099-06-30T23:59:59Z"
               countries: ["US"]
               custom_policies:
                 - policy_id: "weekly_reporting_over_10k"
@@ -325,6 +328,15 @@ phases:
 
           context:
             correlation_id: "media_buy_governance_escalation--get_products_brief"
+        context_outputs:
+          - name: product_1_id
+            path: "products[0].product_id"
+          - name: pricing_option_1_id
+            path: "products[0].pricing_options[0].pricing_option_id"
+          - name: product_2_id
+            path: "products[1].product_id"
+          - name: pricing_option_2_id
+            path: "products[1].pricing_options[0].pricing_option_id"
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
@@ -393,15 +405,15 @@ phases:
               operator: "pinnacle-agency.example"
             brand:
               domain: "acmeoutdoor.example"
-            start_time: "2027-01-01T00:00:00Z"
-            end_time: "2027-03-31T23:59:59Z"
+            start_time: "2099-01-01T00:00:00Z"
+            end_time: "2099-03-31T23:59:59Z"
             packages:
-              - product_id: "sports_ctv_q2"
+              - product_id: "$context.product_1_id"
                 budget: 30000
-                pricing_option_id: "cpm_standard"
-              - product_id: "outdoor_video_q2"
+                pricing_option_id: "$context.pricing_option_1_id"
+              - product_id: "$context.product_2_id"
                 budget: 20000
-                pricing_option_id: "cpm_standard"
+                pricing_option_id: "$context.pricing_option_2_id"
 
           context:
             correlation_id: "media_buy_governance_escalation--check_governance_denied"
@@ -409,8 +421,8 @@ phases:
           - check: response_schema
             description: "Response matches check-governance-response.json schema"
           - check: field_present
-            path: "status"
-            description: "Response contains a governance decision"
+            path: "verdict"
+            description: "Response contains a governance verdict"
           - check: field_present
             path: "findings"
             description: "Response contains findings explaining the denial"
@@ -468,15 +480,15 @@ phases:
               operator: "pinnacle-agency.example"
             brand:
               domain: "acmeoutdoor.example"
-            start_time: "2027-01-01T00:00:00Z"
-            end_time: "2027-03-31T23:59:59Z"
+            start_time: "2099-01-01T00:00:00Z"
+            end_time: "2099-03-31T23:59:59Z"
             packages:
-              - product_id: "sports_ctv_q2"
+              - product_id: "$context.product_1_id"
                 budget: 30000
-                pricing_option_id: "cpm_standard"
-              - product_id: "outdoor_video_q2"
+                pricing_option_id: "$context.pricing_option_1_id"
+              - product_id: "$context.product_2_id"
                 budget: 20000
-                pricing_option_id: "cpm_standard"
+                pricing_option_id: "$context.pricing_option_2_id"
 
           context:
             correlation_id: "media_buy_governance_escalation--check_governance_approved"
@@ -487,8 +499,8 @@ phases:
           - check: response_schema
             description: "Response matches check-governance-response.json schema"
           - check: field_present
-            path: "status"
-            description: "Response contains an approved governance decision"
+            path: "verdict"
+            description: "Response contains an approved governance verdict"
           - check: field_present
             path: "conditions"
             description: "Approval includes conditions"
@@ -541,17 +553,17 @@ phases:
           brand:
             domain: "acmeoutdoor.example"
           governance_context: "gov_ctx_acme_q2_approved"
-          start_time: "2026-04-01T00:00:00Z"
-          end_time: "2026-06-30T23:59:59Z"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
           packages:
-            - product_id: "sports_ctv_q2"
+            - product_id: "$context.product_1_id"
               budget: 30000
-              pricing_option_id: "cpm_guaranteed"
+              pricing_option_id: "$context.pricing_option_1_id"
               creative_assignments:
                 - creative_id: "video_30s_trail_pro"
-            - product_id: "outdoor_video_q2"
+            - product_id: "$context.product_2_id"
               budget: 20000
-              pricing_option_id: "cpm_standard"
+              pricing_option_id: "$context.pricing_option_2_id"
               creative_assignments:
                 - creative_id: "video_15s_trail_pro"
 
@@ -598,7 +610,7 @@ phases:
           - plan_id: the governance plan
           - media_buy_id: the buy that was created
           - governance_context: the approval that authorized it
-          - status: recorded
+          - outcome_state: accepted
 
         sample_request:
           plan_id: "$context.plan_id"

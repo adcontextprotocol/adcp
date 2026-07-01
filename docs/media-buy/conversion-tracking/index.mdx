@@ -43,16 +43,17 @@ This shows the recommended order. In practice, media buys can be created before 
 
 ## Event source
 
-An event source represents a channel through which conversion events are collected — a website pixel, mobile SDK, server-to-server integration, or CRM import.
+An event source represents a channel through which conversion or marketing events are collected — a website pixel, mobile SDK, server-to-server integration, CRM import, or seller- or platform-native owned property such as a channel, profile, feed, podcast, or newsletter list.
 
-Configure event sources with [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources). You provide an `event_source_id`, optional `name`, `event_types`, and `allowed_domains`. The response includes additional fields for each source:
+Configure event sources with [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources). You provide an `event_source_id`, optional `name`, `event_types`, `action_source`, `surface`, and `allowed_domains`. The response includes additional fields for each source:
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `seller_id` | string | Seller-assigned identifier in their ad platform |
 | `action` | string | What happened: `created`, `updated`, `unchanged`, `deleted`, `failed` |
 | `managed_by` | string | `buyer` (you configured it) or `seller` (always-on, seller-managed) |
-| `action_source` | [ActionSource](#action-sources) | Type of event source (website pixel, app SDK, etc.) |
+| `action_source` | [ActionSource](#action-sources) | Flat source type for legacy and broad compatibility (website pixel, app SDK, in-store, etc.) |
+| `surface` | [EventSurface](#event-surfaces) | Optional structured surface, such as an owned channel, profile, feed, podcast, newsletter list, website, app, or store |
 | `setup` | object | Implementation details — snippet code, snippet type, instructions |
 
 ### Buyer-managed vs seller-managed
@@ -107,6 +108,7 @@ Send events with [`log_event`](/docs/media-buy/task-reference/log_event):
 | `user_match` | [UserMatch](#user-match) | No | User identifiers for attribution matching |
 | `custom_data` | [CustomData](#custom-data) | No | Event-specific data (value, currency, items) |
 | `action_source` | [ActionSource](#action-sources) | No | Where the event occurred |
+| `surface` | [EventSurface](#event-surfaces) | No | Structured surface context for the event, such as an owned channel, profile, feed, podcast, newsletter list, website, app, or store |
 | `event_source_url` | uri | No | URL where the event occurred (required when action_source is `website`) |
 | `custom_event_name` | string | No | Name for custom events (when event_type is `custom`) |
 
@@ -174,6 +176,8 @@ Event-specific data for attribution and reporting. For purchase events, always i
 | `content_category` | string | Category of the product or content |
 | `num_items` | integer | Number of items in the event |
 | `search_string` | string | Search query (for search events) |
+| `progress_percent` | number | Content progress percentage reached, primarily for `watch_milestone` events |
+| `progress_seconds` | number | Content progress duration reached in seconds, primarily for time-based `watch_milestone` events |
 | `contents` | Content[] | Per-item details: `id` (required), `quantity`, `price`, `brand` |
 
 ## Event types
@@ -201,7 +205,10 @@ Standard marketing event types, aligned with IAB ECAPI:
 | `close_convert_lead` | Lead converted to a customer or closed deal |
 | `disqualify_lead` | Lead disqualified or marked as not viable |
 | `complete_registration` | User completed account registration |
-| `subscribe` | User subscribed to a service or newsletter |
+| `subscribe` | User started a paid subscription or paid membership |
+| `follow` | User made a free, durable opt-in to an account, channel, feed, list, podcast, or similar owned property |
+| `content_view` | User meaningfully consumed a content unit, such as a watch, listen, stream, episode play, or read |
+| `watch_milestone` | User reached a content progress threshold, such as 25%, 50%, 75%, 100%, or a seconds-viewed milestone |
 | `start_trial` | User started a free trial |
 | `app_install` | User installed an application |
 | `app_launch` | User launched an application |
@@ -210,6 +217,8 @@ Standard marketing event types, aligned with IAB ECAPI:
 | `donate` | User made a donation |
 | `submit_application` | User submitted an application (loan, job, etc.) |
 | `custom` | Custom event type (specify in `custom_event_name`) |
+
+Use `view_content` for a product, article, or page content view where the view is mostly context for a lower-funnel goal. Use `content_view` when meaningful consumption of the content unit is itself the event being optimized or attributed. For `watch_milestone`, put the threshold in `custom_data.progress_percent` or `custom_data.progress_seconds`; reserve `custom_data.value` for monetary event value.
 
 ## Action sources
 
@@ -226,6 +235,31 @@ Where the conversion event originated:
 | `in_store` | Event occurred at a physical retail location |
 | `system_generated` | Event generated by an automated system |
 | `other` | Other source (specify in `ext`) |
+
+## Event surfaces
+
+`action_source` stays intentionally flat for compatibility. Use `surface` when the optimization-relevant source needs more structure, especially for creator and content engagement on owned platform properties.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/event-surface.json",
+  "category": "owned_property",
+  "property_type": "channel",
+  "namespace": "video_platform",
+  "property_id": "channel_123"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `category` | enum | Closed generic category: `owned_property`, `website`, `app`, `offline`, `phone_call`, `chat`, `email`, `in_store`, `system_generated`, or `other` |
+| `property_type` | string | Open vocabulary for the property kind, such as `channel`, `profile`, `feed`, `list`, `podcast`, `playlist`, or `newsletter` |
+| `namespace` | string | Free-form platform, publisher, or system namespace, such as `video_platform`, `short_video_app`, or `audio_service`; this is not an enum |
+| `property_id` | string | Optional identifier for the property within `namespace` |
+
+For `owned_property`, set both `property_type` and `namespace`, and include `property_id` whenever the platform exposes a stable property identifier.
+
+When `surface.category` matches an `action_source` value, producers should set `action_source` to the same value. For `owned_property`, keep the closest compatible flat value for older consumers, commonly `system_generated` for platform-native events or `other` when no closer value applies. Platform-native details such as a raw conversion origin can still ride in `ext`, but shared optimization meaning belongs in `event_type`, `action_source`, and `surface`.
 
 ## Event source health
 
@@ -447,13 +481,14 @@ Optimize for a seller-tracked delivery metric. No event source needed — the se
 }
 ```
 
-**Minimum attention time**:
+**Minimum attention from a specific vendor** (the `attention_seconds` / `attention_score` enum values on `kind: "metric"` are deprecated — vendor-attested metrics use `kind: "vendor_metric"` instead, which binds the goal to a specific measurement vendor):
 
 ```json
 {
-  "kind": "metric",
-  "metric": "attention_seconds",
-  "target": { "kind": "threshold_rate", "value": 5.0 },
+  "kind": "vendor_metric",
+  "vendor": { "domain": "adelaidemetrics.com" },
+  "metric_id": "attention_score",
+  "target": { "kind": "threshold_rate", "value": 70 },
   "priority": 3
 }
 ```
@@ -495,25 +530,63 @@ Optimize for a seller-tracked delivery metric. No event source needed — the se
 | `clicks` | count/impression | 0.001 (0.1% CTR) | Link clicks, swipe-throughs, CTA taps that navigate away |
 | `views` | count/impression | 0.70 (70% viewability) | Viewable impressions |
 | `completed_views` | count/impression | 0.85 (85% VCR) | Video or audio completions. Use `view_duration_seconds` to control the qualifying threshold (e.g., 2s, 6s, 15s). |
-| `viewed_seconds` | seconds/impression | 3.0 (3s in view) | Time in view per impression |
-| `attention_seconds` | seconds/impression | 5.0 (5s attention) | Attention time per impression |
-| `attention_score` | score/impression | 40.0 (vendor-specific) | Attention score per impression |
+| `viewed_seconds` | seconds/impression | 3.0 (3s in view) | Time in view per impression. Reported via `viewability.viewed_seconds`; governed by the viewability `standard` (MRC threshold). |
+| `attention_seconds` | seconds/impression | — | **Deprecated** — has no industry-graduated definition. Use `kind: "vendor_metric"` with `vendor` + `metric_id: "attention_seconds"` instead. |
+| `attention_score` | score/impression | — | **Deprecated** — has no industry-graduated definition. Use `kind: "vendor_metric"` with `vendor` + `metric_id: "attention_score"` instead. |
 | `engagements` | count/impression | — | Direct interaction beyond viewing — social reactions/comments/shares, story/unit opens, interactive overlay taps on CTV, companion banner interactions on audio |
-| `follows` | count/impression | — | New followers, page likes, artist/podcast/channel subscribes |
+| `follows` | count/impression | — | New followers, page likes, artist/podcast/channel follows, or free channel/feed subscribes |
 | `saves` | count/impression | — | Saves, bookmarks, playlist adds, pins — signals of intent to return |
 | `profile_visits` | count/impression | — | Visits to the brand's in-platform page — profile, artist page, channel, or storefront. Does not include external website clicks (use `clicks` for that). |
 | `reach` | unique entities/window | — | Unique audience reach within a frequency window. Requires `reach_unit` (e.g., `households`, `individuals`). Use `target_frequency` to set the frequency band for optimization. |
 
+### kind: vendor_metric
+
+For vendor-attested measurement where the metric has no industry-graduated definition — attention (DoubleVerify, IAS, Adelaide, TVision, Lumen), panel-based brand lift (Kantar, Upwave, Cint), emissions (Scope3, Good-Loop — see polarity caveat below), retail-media partner metrics — the goal binds a specific vendor + `metric_id` end-to-end. The seller's bidding stack steers toward that vendor's measurement; delivery reports the value via `vendor_metric_values[]` with the same `(vendor, metric_id)` key.
+
+**Direction polarity** (upward-pushing only this minor). `cost_per` and `threshold_rate` are upward-pushing targets — the seller steers delivery toward higher metric values, or toward meeting a minimum threshold. Metrics where the buyer wants to *minimize* (emissions, IVT, latency) currently rely on seller-side polarity interpretation per the vendor's metric definition. First-class minimize semantics (a `direction: "minimize"` field on the goal or a `target.kind: "ceiling_rate"`) are under WG discussion — see [#4644](https://github.com/adcontextprotocol/adcp/issues/4644).
+
+```json
+{
+  "kind": "vendor_metric",
+  "vendor": { "domain": "adelaidemetrics.com" },
+  "metric_id": "attention_score",
+  "target": {
+    "kind": "threshold_rate",
+    "value": 70
+  },
+  "priority": 1
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `kind` | `"vendor_metric"` | Yes | Discriminator |
+| `vendor` | BrandRef | Yes | Vendor that defines and computes this metric. Anchored on the vendor's `brand.json` `agents[type='measurement']`. Same shape used across `vendor_metric_values`, `reporting_capabilities.vendor_metrics`, `committed_metrics` (vendor-scope entries), and `performance_standards.vendor`. |
+| `metric_id` | string | Yes | Identifier in the vendor's vocabulary (e.g., `attention_score`, `awareness_lift`, `gco2e_per_impression`). MUST be in the vendor's published `measurement.metrics[]` catalog. |
+| `target.kind` | `"cost_per"` \| `"threshold_rate"` | No | Target type. When omitted, the seller maximizes metric value within budget. |
+| `target.value` | number | Yes (if target set) | Cost per metric unit (currency) or minimum per-impression value. Units are vendor-defined. |
+| `priority` | integer | No | 1 = highest priority. When omitted, sellers use array position. |
+
+**Three preconditions for goal acceptance.** Sellers MUST reject `vendor_metric` goals that fail the capability or reporting-coherence preconditions; sellers SHOULD verify the discovery precondition:
+
+1. **Discovery** (SHOULD this minor; MUST at next minor) — `metric_id` is in the vendor's published `measurement.metrics[]` catalog (queried from the vendor's `brand.json` measurement agent). Softened to SHOULD while measurement-vendor adoption of AdCP-conformant capability publication catches up; tightens to MUST once two-plus vendors ship conformant agents.
+2. **Capability** — the `(vendor, metric_id)` pair is in the product's `vendor_metric_optimization.supported_metrics[]`, and the goal's `target.kind` is in the matching entry's `supported_targets`.
+3. **Reporting coherence** — the package's `committed_metrics[]` includes a matching `{ scope: "vendor", vendor, metric_id }` entry. **Optimization without committed reporting is unverifiable** — the buyer can't grade performance against a goal whose value the seller isn't contractually obligated to populate. This precondition is what makes the goal meaningful; the seller MUST reject (with `TERMS_REJECTED`) any goal whose metric isn't also committed for reporting on the same package.
+
+**Distinct from `metric` kind.** The `metric` kind is for seller-native measurement (clicks, views, completed_views, reach, engagements, etc.) where no vendor binding is needed — the seller measures the metric natively. The `vendor_metric` kind is for vendor-attested measurement where the same metric name means different things across vendors and must be reconciled to a specific source. The deprecated `attention_seconds` / `attention_score` values on the `metric` kind enum predate this split and route through `vendor_metric` going forward.
+
+**Full lifecycle reference.** See [Metric lifecycle](/docs/media-buy/media-buys/optimization-reporting#metric-lifecycle) for the complete capability → commitment → optimization → delivery picture across both standard and vendor metric flows.
+
 ### Target kinds
 
-All target kinds across both goal types:
+All target kinds across the three goal kinds:
 
-| `target.kind` | Metric goals | Event goals | Description |
-|---|---|---|---|
-| `cost_per` | Cost per click/view/etc. | Cost per conversion event | `spend / count` |
-| `threshold_rate` | Minimum per-impression value | — | `at least X per impression` |
-| `per_ad_spend` | — | Target return on ad spend | `sum(value_field * value_factor) / spend` |
-| `maximize_value` | — | Maximize total conversion value | Steers spend toward higher-value conversions. Requires `value_field`. |
+| `target.kind` | Metric goals | Vendor metric goals | Event goals | Description |
+|---|---|---|---|---|
+| `cost_per` | Cost per click/view/etc. | Cost per vendor metric unit | Cost per conversion event | `spend / count` |
+| `threshold_rate` | Minimum per-impression value | Minimum per-impression vendor metric value | — | `at least X per impression` |
+| `per_ad_spend` | — | — | Target return on ad spend | `sum(value_field * value_factor) / spend` |
+| `maximize_value` | — | — | Maximize total conversion value | Steers spend toward higher-value conversions. Requires `value_field`. |
 
 ### Choosing a strategy
 
@@ -527,11 +600,12 @@ All target kinds across both goal types:
 | Target cost per click | Specific cost per click | `kind: "metric"`, `metric: "clicks"` + `target: { kind: "cost_per", value: 2.0 }` |
 | Target CTR | Minimum click-through rate | `kind: "metric"`, `metric: "clicks"` + `target: { kind: "threshold_rate", value: 0.001 }` |
 | Target viewability | Minimum viewability rate | `kind: "metric"`, `metric: "views"` + `target: { kind: "threshold_rate", value: 0.70 }` |
-| Target attention | Minimum attention time | `kind: "metric"`, `metric: "attention_seconds"` + `target: { kind: "threshold_rate", value: 5.0 }` |
+| Target attention (vendor-bound) | Minimum attention from a specific vendor | `kind: "vendor_metric"`, `vendor: { domain: "adelaidemetrics.com" }`, `metric_id: "attention_score"` + `target: { kind: "threshold_rate", value: 70 }` |
+| Target brand lift (vendor-bound) | Maximize awareness lift from a specific panel provider | `kind: "vendor_metric"`, `vendor: { domain: "kantar.com" }`, `metric_id: "awareness_lift"`, no target (maximize) |
 | Target VCR | Minimum video completion rate | `kind: "metric"`, `metric: "completed_views"` + `target: { kind: "threshold_rate", value: 0.85 }` |
 | Completed views with duration | Video views with specific duration threshold | `kind: "metric"`, `metric: "completed_views"` + `view_duration_seconds: 6` |
 | Max engagements | Maximize social interactions within budget | `kind: "metric"`, `metric: "engagements"`, no target |
-| Max follows | Maximize new followers/subscribers | `kind: "metric"`, `metric: "follows"`, no target |
+| Max follows | Maximize new followers, page likes, or free channel/feed subscribes | `kind: "metric"`, `metric: "follows"`, no target |
 | Max saves | Maximize saves/bookmarks/playlist adds | `kind: "metric"`, `metric: "saves"`, no target |
 | Max profile visits | Drive traffic to brand page/profile | `kind: "metric"`, `metric: "profile_visits"`, no target |
 | Max unique reach | Maximize unique audience within budget | `kind: "metric"`, `metric: "reach"` + `reach_unit: "households"`, no target |
@@ -592,7 +666,7 @@ Most event types are positive signals — a purchase, lead, or install is someth
 
 | Polarity | Event types | Notes |
 |----------|-------------|-------|
-| Positive | `purchase`, `lead`, `qualify_lead`, `close_convert_lead`, `app_install`, `complete_registration`, `subscribe`, `start_trial`, `contact`, `schedule`, `donate`, `submit_application` | Safe as standalone optimization targets |
+| Positive | `purchase`, `lead`, `qualify_lead`, `close_convert_lead`, `app_install`, `complete_registration`, `subscribe`, `follow`, `content_view`, `watch_milestone`, `start_trial`, `contact`, `schedule`, `donate`, `submit_application` | Safe as standalone optimization targets when the event has enough volume and is the buyer's desired outcome |
 | Upper funnel | `page_view`, `view_content`, `select_content`, `select_item`, `search`, `add_to_cart`, `viewed_cart`, `add_to_wishlist`, `initiate_checkout`, `add_payment_info`, `share`, `app_launch` | Valid optimization targets but typically used as proxy signals (`priority: 2`) when lower-funnel data is sparse |
 | Observation | `refund`, `remove_from_cart`, `disqualify_lead` | Include in `event_sources` for attribution accuracy and ROAS adjustment, not as standalone optimization targets |
 

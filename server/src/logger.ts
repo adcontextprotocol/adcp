@@ -197,16 +197,34 @@ export function createLogger(context: string | Record<string, unknown>) {
  * - error: Unexpected failures — operation failed but app continues
  * - fatal: Critical errors (app cannot continue)
  *
- * IMPORTANT: `logger.error()` and `logger.fatal()` (level >= 50) trigger the
- * Slack `#aao-errors` alert and a PostHog `$exception` capture via the pino
- * hook in this file (and `notifyErrorChannel` in `utils/posthog.ts`). Use
- * `error` for failures that should page an operator. For *expected* failures
- * — third-party 4xx, validation errors, anything where the caller already
- * returns a friendly user-facing message — use `warn` so the alert path is
- * not taken.
+ * # Three-tier failure handling
  *
- * Tool handlers in `addie/mcp/` are the most common source of confusion:
- * if your handler catches a failure and returns a "Failed to do X" string
- * to the user, that should be `logger.warn`, not `logger.error`. Reserve
- * `error` for catch blocks of network/parse failures that "shouldn't happen".
+ * The pino hook in this file forwards `error+` to Slack `#aao-errors` and
+ * PostHog `$exception` (via `notifyErrorChannel` in `utils/posthog.ts`).
+ * `warn` and below stay in stdout / OTel only. Operational signals that
+ * need human action but not paging go through the escalation queue
+ * (`db/escalation-db.ts`). Pick the right tier:
+ *
+ * 1. **`logger.error`** — *unexpected* failure that pages on-call.
+ *    Network glitches in catch blocks, unexpected exception types,
+ *    "this should never happen" assertions. Default for true bugs.
+ *
+ * 2. **`logger.warn`** (no escalation) — *expected* third-party state
+ *    we accept and shrug at. Deactivated Slack user, archived channel,
+ *    GitHub 404 on a cleaned-up resource, validation 4xx whose caller
+ *    already returns a friendly user-facing message. No human action.
+ *
+ * 3. **`logger.warn` + `createEscalation({ category: 'needs_human_action',
+ *    dedup_key: '...' })`** — *actionable but not page-worthy.* Bot is
+ *    not in a Slack channel it's being asked to invite users to (someone
+ *    has to invite the bot or fix the calling code). User OAuth token is
+ *    missing required scopes (user has to reconnect). Use a stable
+ *    `dedup_key` so repeat occurrences fold into one open escalation;
+ *    see `addie_escalations.dedup_key` (migration 459) and the example
+ *    in `slack/client.ts:inviteToChannel`.
+ *
+ * Tool handlers in `addie/mcp/` are the most common place to get this
+ * wrong: a handler that catches a failure and returns a "Failed to do X"
+ * string to the user should be tier 2 or 3, not tier 1. Reserve
+ * `logger.error` for the truly-unexpected case.
  */

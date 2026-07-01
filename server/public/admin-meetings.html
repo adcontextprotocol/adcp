@@ -115,7 +115,7 @@
     .badge-scheduled { background: var(--color-info-100); color: var(--color-info-700); }
     .badge-completed { background: var(--color-success-100); color: var(--color-success-700); }
     .badge-cancelled { background: var(--color-error-100); color: var(--color-error-700); }
-    .badge-draft { background: var(--color-gray-200); color: var(--color-gray-700); }
+    .badge-draft { background: var(--color-bg-button-secondary); color: var(--color-text); }
     .btn {
       padding: var(--space-2) var(--space-4);
       border: none;
@@ -128,8 +128,8 @@
     .btn-primary { background: var(--color-brand); color: white; }
     .btn-primary:hover { background: var(--color-primary-700); }
     .btn-primary:disabled { background: var(--color-gray-400); cursor: not-allowed; }
-    .btn-secondary { background: var(--color-gray-200); color: var(--color-text-heading); }
-    .btn-secondary:hover { background: var(--color-gray-300); }
+    .btn-secondary { background: var(--color-bg-button-secondary); color: var(--color-text-heading); }
+    .btn-secondary:hover { background: var(--color-bg-button-secondary-hover); }
     .btn-danger { background: var(--color-error-500); color: white; }
     .btn-danger:hover { background: var(--color-error-600); }
     .modal-overlay {
@@ -227,10 +227,10 @@
     }
     .tab:hover {
       color: var(--color-text-heading);
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
     }
     .tab.active {
-      border-color: var(--color-gray-200);
+      border-color: var(--color-border);
       background: var(--color-bg-card);
       color: var(--color-brand);
     }
@@ -245,7 +245,7 @@
       align-items: center;
       gap: var(--space-1);
       padding: var(--space-1) var(--space-2);
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
       border-radius: var(--radius-sm);
       font-size: var(--text-xs);
     }
@@ -345,16 +345,7 @@
           </div>
           <div class="form-group">
             <label>Timezone</label>
-            <select id="timezone">
-              <option value="America/New_York">Eastern Time (ET)</option>
-              <option value="America/Chicago">Central Time (CT)</option>
-              <option value="America/Denver">Mountain Time (MT)</option>
-              <option value="America/Los_Angeles">Pacific Time (PT)</option>
-              <option value="UTC">UTC</option>
-              <option value="Europe/London">London (GMT/BST)</option>
-              <option value="Europe/Paris">Paris (CET)</option>
-              <option value="Asia/Tokyo">Tokyo (JST)</option>
-            </select>
+            <select id="timezone"></select>
           </div>
         </div>
 
@@ -951,8 +942,42 @@
       return text.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
     }
 
+    // Populate a <select> with all IANA timezones, labelled with current UTC offset, sorted by offset.
+    function populateTimezoneSelect(selectEl, defaultValue) {
+      if (!selectEl) return;
+      const zones = (typeof Intl.supportedValuesOf === 'function')
+        ? Intl.supportedValuesOf('timeZone')
+        : ['UTC','America/New_York','America/Chicago','America/Denver','America/Los_Angeles','Europe/London','Europe/Paris','Asia/Tokyo','Asia/Singapore','Asia/Hong_Kong','Asia/Shanghai','Asia/Kolkata','Asia/Dubai','Australia/Sydney'];
+
+      const now = new Date();
+      const entries = zones.map(tz => {
+        let offsetMin = 0;
+        try {
+          const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'shortOffset' }).formatToParts(now);
+          const tzName = parts.find(p => p.type === 'timeZoneName')?.value || 'GMT';
+          const m = tzName.match(/GMT([+-])(\d{1,2})(?::?(\d{2}))?/);
+          if (m) {
+            const sign = m[1] === '-' ? -1 : 1;
+            offsetMin = sign * (parseInt(m[2], 10) * 60 + parseInt(m[3] || '0', 10));
+          }
+        } catch (_) { /* skip unsupported zone */ }
+        const sign = offsetMin < 0 ? '-' : '+';
+        const abs = Math.abs(offsetMin);
+        const hh = String(Math.floor(abs / 60)).padStart(2, '0');
+        const mm = String(abs % 60).padStart(2, '0');
+        const label = `(UTC${sign}${hh}:${mm}) ${tz.replace(/_/g, ' ')}`;
+        return { tz, offsetMin, label };
+      }).sort((a, b) => a.offsetMin - b.offsetMin || a.tz.localeCompare(b.tz));
+
+      selectEl.innerHTML = entries.map(e =>
+        `<option value="${e.tz}">${e.label}</option>`
+      ).join('');
+      if (defaultValue) selectEl.value = defaultValue;
+    }
+
     // Initialize
     async function init() {
+      populateTimezoneSelect(document.getElementById('timezone'), 'America/New_York');
       await loadWorkingGroups();
       await loadMeetings();
 

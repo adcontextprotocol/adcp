@@ -72,7 +72,13 @@ Cryptographic signatures for supply chain verification. How platforms validate a
     Identity, authorization, and data enrichment for participants in AdCP.
   </Card>
   <Card title="AdAgents.json" icon="file-code" href="/docs/governance/property/adagents">
-    Agent discovery and declaration — verifiable identity for every agent.
+    Publisher authorization for which agents may sell or enrich inventory.
+  </Card>
+  <Card title="Seller setup" icon="store" href="/docs/brand-protocol/seller-setup">
+    How brand.json and adagents.json work together for seller identity and supply path verification.
+  </Card>
+  <Card title="Seller verification" icon="shield-halved" href="/docs/verification/overview">
+    Buyer-side walkthrough of signatures, seller brand.json, publisher adagents.json, and mutual assertion.
   </Card>
   <Card title="Authorized properties" icon="key" href="/docs/governance/property/authorized-properties">
     How publishers declare authorized sellers, and how buyers verify them.
@@ -99,8 +105,8 @@ Cryptographic signatures for supply chain verification. How platforms validate a
 
 ### Key concepts
 
-- **Agent identity verification** — domain ownership, cryptographic signatures, organizational registration
-- **Supply path transparency** — full visibility into which agents handled each transaction
+- **Agent identity verification** — seller `brand.json` declares the operator, sales endpoints, and signing-key discovery; publisher `adagents.json` declares which agents are authorized for which properties
+- **Supply path transparency** — buyer agents verify both sides of the relationship: the operator claims the sales path in `brand.json`, and the publisher confirms it in `adagents.json`
 - **ads.cert relationship** — extending cryptographic verification from RTB to agent-to-agent interactions
 - **Campaign governance architecture** — implement three-party validation: sync governance agents via `sync_governance`, call `check_governance` before executing, handle all statuses
 - **Policy registry integration** — resolve policies by ID, integrate natural language policy text and exemplars into governance agent evaluation
@@ -152,7 +158,7 @@ How AdCP coexists with existing programmatic infrastructure. Migration strategie
 ### Key concepts
 
 - **Coexistence strategy** — run AdCP alongside OpenRTB, gradually migrating workflows
-- **TMP as the bridge** — TMP connects planning-time media buys to serve-time decisions through two structurally separated operations (Context Match and Identity Match). The TMP Router fans out to configured providers in parallel and the publisher joins responses locally. This is how cross-publisher frequency capping, suppression, and suitability work at impression time
+- **TMP as the bridge** — TMP connects planning-time media buys to serve-time decisions through two structurally separated operations (Context Match and Identity Match). The TMP Router fans out to configured providers in parallel and the publisher joins responses locally. This is how cross-publisher frequency capping, suppression, and suitability work at impression time. TMP is an [experimental surface](/docs/reference/experimental-status) in AdCP 3.0 (feature id `trusted_match.core`); router, exposure-token, and identity-match details may change between 3.x releases with at least 6 weeks' notice.
 - **Router deployment and fan-out patterns** — how the TMP Router is deployed, provider configuration, and parallel fan-out to multiple match providers
 - **Platform-specific migration** — DSPs wrap bidding logic, SSPs expose inventory, exchanges translate
 - **Performance benchmarking** — compare agentic vs traditional on campaign performance, efficiency, cost
@@ -167,7 +173,7 @@ How AdCP coexists with existing programmatic infrastructure. Migration strategie
 
 **~45 min** | Prerequisite: D3
 
-Build working AdCP infrastructure using any AI coding assistant (Claude Code, Cursor, Copilot) with the [`@adcp/client`](/docs/building/schemas-and-sdks) SDK. Point your coding assistant at a [skill file](/docs/building/build-an-agent) — choose `build-seller-agent` or `build-signals-agent` depending on what you want to build. This is the most ambitious build project.
+Build working AdCP infrastructure using any AI coding assistant (Claude Code, Cursor, Copilot) with the [`@adcp/sdk`](/docs/building/schemas-and-sdks) SDK. Point your coding assistant at a [skill file](/docs/building/build-an-agent) — choose `build-seller-agent` or `build-signals-agent` depending on what you want to build. This is the most ambitious build project.
 
 ### What you'll build
 
@@ -182,7 +188,7 @@ Build working AdCP infrastructure using any AI coding assistant (Claude Code, Cu
 Run the matching storyboard against your running agent:
 
 ```bash
-npx @adcp/client@latest storyboard run my-agent media_buy_seller
+npx @adcp/sdk@latest storyboard run my-agent media_buy_seller
 ```
 
 The storyboard validates protocol compliance across the complete workflow. See [Validate Your Agent](/docs/building/validate-your-agent) for setup, debugging, and the full CLI reference.

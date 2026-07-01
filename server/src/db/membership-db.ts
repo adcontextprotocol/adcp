@@ -6,11 +6,13 @@
  */
 
 import type { WorkOS } from '@workos-inc/node';
+import type { PoolClient } from 'pg';
 import { getPool, getClient } from './client.js';
 import { findPayingOrgForDomain } from './org-filters.js';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('membership-db');
+const OWNERLESS_PROMOTION_LOCK_TIMEOUT_MS = 5_000;
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -45,23 +47,79 @@ export interface MembershipUpsertResult {
   assigned_role: string;
 }
 
+async function withOwnerlessOrgPromotionLock<T>(
+  organizationId: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const client = await getClient();
+  let callbackCompleted = false;
+
+  try {
+    await client.query('BEGIN');
+    await client.query("SELECT set_config('lock_timeout', $1, true)", [
+      `${OWNERLESS_PROMOTION_LOCK_TIMEOUT_MS}ms`,
+    ]);
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+      `membership-ownerless-promote:${organizationId}`,
+    ]);
+
+    const result = await fn();
+    callbackCompleted = true;
+
+    try {
+      await client.query('COMMIT');
+    } catch (err) {
+      logger.warn(
+        { err, orgId: organizationId },
+        'Failed to commit ownerless-org promotion advisory lock transaction',
+      );
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackErr) {
+        logger.warn(
+          { err: rollbackErr, orgId: organizationId },
+          'Failed to rollback ownerless-org promotion advisory lock transaction after commit failure',
+        );
+      }
+    }
+
+    return result;
+  } catch (err) {
+    if (!callbackCompleted) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackErr) {
+        logger.warn(
+          { err: rollbackErr, orgId: organizationId },
+          'Failed to rollback ownerless-org promotion advisory lock transaction',
+        );
+      }
+    }
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 // ── Upsert ───────────────────────────────────────────────────────────
 
 /**
- * Insert or update an organization membership.
+ * Insert or update an organization membership. Writes the role exactly as
+ * given — auto-promote decisioning lives in the webhook handler now, so
+ * WorkOS is the source of truth and local can never disagree.
  *
- * Auto-promotes to owner when the org has no admin/owner and the incoming
- * role is 'member'. The NOT EXISTS subquery is race-safe.
- *
- * Returns the role that was actually written (may differ from the input
- * role if auto-promotion fired).
+ * History: this used to auto-promote inside the SQL via CASE/NOT-EXISTS,
+ * with the webhook handler pushing the promotion to WorkOS afterward and
+ * rolling back local on failure. The rollback is best-effort; a missed
+ * rollback left at least one prod org with role='owner' locally and
+ * role='member' in WorkOS for months (see ozoneproject incident, 2026-05).
+ * The webhook handler now resolves the role against WorkOS BEFORE calling
+ * this function, so local never gets ahead of WorkOS.
  */
 export async function upsertOrganizationMembership(
   params: MembershipUpsertParams,
 ): Promise<MembershipUpsertResult> {
   const pool = getPool();
-
-  const effectiveRole = params.role === 'member' ? '__auto__' : params.role;
 
   const result = await pool.query<{ role: string }>(
     `INSERT INTO organization_memberships (
@@ -76,18 +134,7 @@ export async function upsertOrganizationMembership(
       provisioning_source,
       synced_at
     ) VALUES (
-      $1, $2, $3, $4, $5, $6,
-      CASE
-        WHEN $7 = '__auto__' AND NOT EXISTS (
-          SELECT 1 FROM organization_memberships
-          WHERE workos_organization_id = $2::varchar
-            AND role IN ('admin', 'owner')
-            AND workos_user_id != $1::varchar
-        ) THEN 'owner'
-        WHEN $7 = '__auto__' THEN 'member'
-        ELSE $7
-      END,
-      $8, $10, NOW()
+      $1, $2, $3, $4, $5, $6, $7, $8, $10, NOW()
     )
     ON CONFLICT (workos_user_id, workos_organization_id)
     DO UPDATE SET
@@ -113,7 +160,7 @@ export async function upsertOrganizationMembership(
       params.email,
       params.first_name,
       params.last_name,
-      effectiveRole,
+      params.role,
       params.seat_type,
       params.has_explicit_seat_type,
       params.provisioning_source ?? null,
@@ -132,6 +179,102 @@ export async function upsertOrganizationMembership(
   return { assigned_role };
 }
 
+/**
+ * Resolve the role to assign for an incoming membership, promoting to
+ * 'owner' in WorkOS first when the org has no other admin/owner. This
+ * is the new home for ownerless-org safety-net promotion — performing
+ * the WorkOS write *before* the local upsert guarantees local can never
+ * disagree with WorkOS, even if the process crashes mid-flight.
+ *
+ * Returns:
+ *   { role, promoted, error? }
+ *
+ * `promoted: true` indicates that WorkOS was successfully updated to
+ * 'owner'; the caller should write an audit row. `error` is set on
+ * promotion attempts that failed — caller writes a failure audit row
+ * and falls back to the input role for the local write.
+ */
+export async function resolveRoleWithWorkosFirstPromote(args: {
+  workos: WorkOS;
+  membershipId: string;
+  userId: string;
+  organizationId: string;
+  incomingRole: string;
+}): Promise<{
+  role: string;
+  promoted: boolean;
+  promotionError?: unknown;
+}> {
+  const { workos, membershipId, userId, organizationId, incomingRole } = args;
+
+  // Only the 'member' input is eligible for ownerless-org promotion. Any
+  // explicit role from WorkOS passes through unchanged.
+  if (incomingRole !== 'member') {
+    return { role: incomingRole, promoted: false };
+  }
+
+  try {
+    return await withOwnerlessOrgPromotionLock(organizationId, async () => {
+      // Source-of-truth check: page through WorkOS memberships and look for
+      // an existing admin/owner that isn't this same user.
+      let hasOtherAdmin = false;
+      try {
+        let after: string | undefined;
+        do {
+          const page = await workos.userManagement.listOrganizationMemberships({
+            organizationId,
+            statuses: ['active'],
+            limit: 100,
+            after,
+          });
+          for (const m of page.data) {
+            if (m.userId === userId) continue;
+            const slug = m.role?.slug;
+            if (slug === 'admin' || slug === 'owner') {
+              hasOtherAdmin = true;
+              break;
+            }
+          }
+          if (hasOtherAdmin) break;
+          after = page.listMetadata?.after ?? undefined;
+        } while (after);
+      } catch (err) {
+        // Can't verify WorkOS state — refuse to promote. Writing 'owner' locally
+        // when we don't know what WorkOS thinks is exactly the drift this rewrite
+        // is fixing.
+        logger.warn({ err, orgId: organizationId, userId },
+          'Could not list WorkOS memberships for ownerless-org check — assigning member');
+        return { role: 'member', promoted: false, promotionError: err };
+      }
+
+      if (hasOtherAdmin) {
+        return { role: 'member', promoted: false };
+      }
+
+      // No other admin/owner — promote this membership to owner in WorkOS.
+      // If WorkOS rejects the update (role not configured, transient 5xx, etc.)
+      // we fall back to writing 'member' locally so the two sides stay aligned.
+      try {
+        await workos.userManagement.updateOrganizationMembership(membershipId, {
+          roleSlug: 'owner',
+        });
+      } catch (err) {
+        logger.warn({ err, orgId: organizationId, userId, membershipId },
+          'Failed to promote member to owner in WorkOS — falling back to member locally');
+        return { role: 'member', promoted: false, promotionError: err };
+      }
+
+      return { role: 'owner', promoted: true };
+    });
+  } catch (err) {
+    logger.warn(
+      { err, orgId: organizationId, userId, membershipId },
+      'Could not acquire ownerless-org promotion lock — assigning member',
+    );
+    return { role: 'member', promoted: false, promotionError: err };
+  }
+}
+
 // ── Delete ───────────────────────────────────────────────────────────
 
 /**
@@ -142,17 +285,27 @@ export async function upsertOrganizationMembership(
  * a stale pointer would let resolvePrimaryOrganization keep returning a
  * removed-org id, which read sites use as an authorization scope. Next
  * read backfills via resolvePreferredOrganization.
+ *
+ * @param externalClient — when provided, the caller owns the transaction;
+ *   we run only the DELETE+UPDATE on that client without BEGIN/COMMIT.
+ *   The caller MUST have already issued BEGIN on this client — otherwise
+ *   the DELETE and UPDATE run as separate auto-commit statements and the
+ *   atomic guarantee this helper exists to provide silently regresses.
+ *   Lets a multi-step caller (admin transfer-member) wrap this with a
+ *   sibling write in one atomic unit.
  */
 export async function deleteOrganizationMembership(
   userId: string,
   organizationId: string,
+  externalClient?: PoolClient,
 ): Promise<string | null> {
   // Atomic: DELETE membership and clear the cached pointer in one transaction.
   // If the DELETE succeeded but the pointer-clear UPDATE failed, we'd recreate
   // the exact stale-pointer state the integrity invariant exists to catch.
-  const client = await getClient();
+  const client = externalClient ?? await getClient();
+  const ownsTransaction = externalClient === undefined;
   try {
-    await client.query('BEGIN');
+    if (ownsTransaction) await client.query('BEGIN');
     const result = await client.query<{ role: string }>(
       `DELETE FROM organization_memberships
        WHERE workos_user_id = $1 AND workos_organization_id = $2
@@ -164,13 +317,15 @@ export async function deleteOrganizationMembership(
        WHERE workos_user_id = $1 AND primary_organization_id = $2`,
       [userId, organizationId],
     );
-    await client.query('COMMIT');
+    if (ownsTransaction) await client.query('COMMIT');
     return result.rows[0]?.role ?? null;
   } catch (err) {
-    try { await client.query('ROLLBACK'); } catch { /* swallow */ }
+    if (ownsTransaction) {
+      try { await client.query('ROLLBACK'); } catch { /* swallow */ }
+    }
     throw err;
   } finally {
-    client.release();
+    if (ownsTransaction) client.release();
   }
 }
 
@@ -362,10 +517,10 @@ export async function autoLinkByVerifiedDomain(
   );
 
   // Always create as member. Auto-promotion to owner for ownerless orgs is
-  // handled atomically by upsertOrganizationMembership when the
-  // organization_membership.created webhook fires — that path uses a NOT EXISTS
-  // subquery against the live membership table, which is race-safe and not
-  // vulnerable to the local-cache skew that a `has_admin` lookup here would be.
+  // handled by resolveRoleWithWorkosFirstPromote when the
+  // organization_membership.created webhook fires — that path pages WorkOS for
+  // existing admin/owner memberships before promoting, so it reflects live state
+  // rather than the local cache.
   try {
     await workos.userManagement.createOrganizationMembership({
       userId,

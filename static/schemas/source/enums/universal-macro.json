@@ -59,6 +59,7 @@
     "INSTALLMENT_ID",
     "AUDIO_DURATION",
     "TMPX",
+    "IMPRESSION_ID",
     "AXEM",
     "CATALOG_ID",
     "SKU",
@@ -73,7 +74,12 @@
     "PROGRAM_ID",
     "DESTINATION_ID",
     "CREATIVE_VARIANT_ID",
-    "APP_ITEM_ID"
+    "APP_ITEM_ID",
+    "ITEM_NAME",
+    "ITEM_DESCRIPTION",
+    "ITEM_TAGLINE",
+    "ITEM_PRICE",
+    "ITEM_PRICE_CURRENCY"
   ],
   "enumDescriptions": {
     "MEDIA_BUY_ID": "AdCP media buy identifier",
@@ -130,6 +136,7 @@
     "INSTALLMENT_ID": "Installment identifier (podcast episode, print issue, etc.)",
     "AUDIO_DURATION": "Audio content duration in seconds",
     "TMPX": "TMP exposure token — HPKE-encrypted identity tokens for per-user exposure tracking. Produced by Identity Match, substituted into creative tracking URLs, received by the buyer's impression pixel.",
+    "IMPRESSION_ID": "Opaque, collision-resistant identifier for one impression opportunity. Used for impression deduplication, cross-vendor reconciliation, pixel-retry dedup, and TMP cross-identity exposure dedup. Minted by the publisher, ad-decision layer, or buyer at {TMPX} decode; required upstream for TMP context-only impressions where {TMPX} is absent.",
     "AXEM": "AXE contextual metadata (encoded blob). Legacy — in TMP, use Offer macros for dynamic creative values and TMPX for exposure tracking.",
     "CATALOG_ID": "Buyer-defined catalog identifier from the catalog's catalog_id field",
     "SKU": "Product SKU identifier for the catalog item being rendered",
@@ -144,6 +151,11 @@
     "PROGRAM_ID": "Education program identifier for the catalog item being rendered",
     "DESTINATION_ID": "Travel destination identifier for the catalog item being rendered",
     "CREATIVE_VARIANT_ID": "Seller-assigned creative variant identifier, passed through at serve time",
-    "APP_ITEM_ID": "Mobile app identifier for the catalog item being rendered"
+    "APP_ITEM_ID": "Mobile app identifier for the catalog item being rendered",
+    "ITEM_NAME": "Name/title of the catalog item being rendered (catalog_field: name). Catalog content macro — scalar text value substituted under the catalog-item substitution-safety rules.",
+    "ITEM_DESCRIPTION": "Description of the catalog item being rendered (catalog_field: description). Catalog content macro — scalar text value substituted under the catalog-item substitution-safety rules.",
+    "ITEM_TAGLINE": "Short promotional tagline of the catalog item being rendered (catalog_field: tagline). Catalog content macro — scalar text value substituted under the catalog-item substitution-safety rules.",
+    "ITEM_PRICE": "Price amount of the catalog item being rendered (catalog_field: price.amount). Catalog content macro — scalar text value substituted under the catalog-item substitution-safety rules.",
+    "ITEM_PRICE_CURRENCY": "ISO 4217 currency code of the catalog item being rendered (catalog_field: price.currency). Catalog content macro — scalar text value substituted under the catalog-item substitution-safety rules."
   }
 }

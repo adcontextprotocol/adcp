@@ -7,6 +7,9 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     }
   ],
   "x-status": "experimental",
@@ -42,6 +45,10 @@
     "mcp_resource_uri": {
       "type": "string",
       "description": "MCP resource URI for hosts with MCP Apps support (e.g., ui://si/session-abc123)"
+    },
+    "sponsored_context": {
+      "$ref": "/schemas/sponsored-intelligence/si-sponsored-context.json",
+      "description": "Declaration for sponsored context carried by this brand-agent response. Hosts MUST either honor the declared context_use and disclosure_obligation or reject the context before presenting, comparing, or otherwise using it."
     },
     "session_status": {
       "$ref": "/schemas/enums/si-session-status.json",

@@ -12,6 +12,7 @@ import { createLogger } from '../logger.js';
 import { CompanyTypeValue } from '../config/company-types.js';
 import type { Agreement } from '../types.js';
 import { OrgKnowledgeDatabase } from './org-knowledge-db.js';
+import { upsertWorkosDomain } from './organization-domains-db.js';
 
 // Re-export Agreement for backwards compatibility
 export type { Agreement };
@@ -223,6 +224,29 @@ export function tierFromLookupKey(lookupKey: string | null | undefined): Members
 }
 
 /**
+ * Resolve tier from a Stripe product's `metadata.tier` field. Used for
+ * founding-era prices that Stripe auto-created (e.g., from manual invoice
+ * lines or Payment Links): the price's `lookup_key` is locked, so the
+ * tier convention had to move to the parent product. The product's
+ * metadata also carries `category=membership` for classification; this
+ * helper decodes the tier value separately.
+ *
+ * Returns null when metadata is missing, `tier` is unset, or the value
+ * isn't a recognized `MembershipTier`. Conservative on unknown strings
+ * so a typo on the Stripe side can't grant the wrong entitlement.
+ */
+export function tierFromProductMetadata(
+  metadata: Record<string, string> | null | undefined,
+): MembershipTier | null {
+  if (!metadata) return null;
+  const raw = metadata.tier;
+  if (!raw) return null;
+  return (VALID_MEMBERSHIP_TIERS as readonly string[]).includes(raw)
+    ? (raw as MembershipTier)
+    : null;
+}
+
+/**
  * Input shape for `resolveMembershipTier`. Kept as a named type so the
  * companion SQL helpers below can declare a matching row type, and so
  * a future resolver change that needs a new column surfaces every
@@ -256,15 +280,42 @@ export const MEMBERSHIP_TIER_COLUMNS = [
 
 /**
  * Resolve the effective membership tier for an organization.
- * Fallback chain: cached tier → stored lookup key → amount inference.
+ * Fallback chain: stored lookup key → cached tier → amount inference.
  * Only falls back for tier-preserving statuses (active, past_due, trialing).
+ *
+ * Lookup key is per-price Stripe evidence and can correct stale tier columns.
+ * Amount inference is intentionally only a fallback when no tier column exists,
+ * because discounts/special pricing can make amount lower than the real tier.
  */
 export function resolveMembershipTier(org: MembershipTierRow | null | undefined): MembershipTier | null {
   if (!org) return null;
-  if (org.membership_tier) return org.membership_tier as MembershipTier;
   if (!(TIER_PRESERVING_STATUSES as readonly string[]).includes(org.subscription_status ?? '')) return null;
-  return tierFromLookupKey(org.subscription_price_lookup_key)
-    ?? inferMembershipTier(org.subscription_amount, org.subscription_interval, org.is_personal);
+  const lookupTier = tierFromLookupKey(org.subscription_price_lookup_key);
+  if (lookupTier) return lookupTier;
+  if (org.membership_tier) return org.membership_tier as MembershipTier;
+  return inferMembershipTier(org.subscription_amount, org.subscription_interval, org.is_personal);
+}
+
+/**
+ * Decide the tier to write for a live subscription update.
+ *
+ * Stripe webhook payloads can occasionally be missing the price/product
+ * signals needed to resolve a tier. If the subscription is still entitled,
+ * preserve the existing authoritative tier instead of clobbering it to null.
+ * Non-entitled statuses still clear the tier.
+ */
+export function resolveMembershipTierForSubscriptionWrite(
+  update: Pick<SubscriptionUpdatePayload, 'subscription_status' | 'membership_tier'>,
+  currentMembershipTier: MembershipTier | string | null | undefined,
+): MembershipTier | null {
+  if (
+    update.membership_tier === null &&
+    (TIER_PRESERVING_STATUSES as readonly string[]).includes(update.subscription_status)
+  ) {
+    return (currentMembershipTier ?? null) as MembershipTier | null;
+  }
+
+  return update.membership_tier;
 }
 
 /**
@@ -342,6 +393,18 @@ export interface SubscriptionUpdatePayload {
 /**
  * Extract subscription fields from a Stripe subscription object.
  * Single source of truth for tier resolution — all write paths should use this.
+ *
+ * Tier resolver chain:
+ *   1. `lookup_key` on the price (fast path, modern convention)
+ *   2. `metadata.tier` on the product (for founding-era prices Stripe
+ *      auto-created with locked lookup_keys; metadata is editable on the
+ *      product so we move the convention there)
+ *   3. amount-based inference from price unit_amount + interval + is_personal
+ *
+ * The `productMetadata` arg is optional — webhook handlers that have an
+ * inline-expanded product on the sub get it for free; callers that fetch
+ * the product separately (admin /sync) pass it explicitly. Without it,
+ * the resolver gracefully falls through to amount inference.
  */
 export function buildSubscriptionUpdate(
   subscription: {
@@ -354,11 +417,12 @@ export function buildSubscriptionUpdate(
       currency: string;
       recurring: { interval: string } | null;
       id: string;
-      product: string | { id: string; name?: string };
+      product: string | { id: string; name?: string; metadata?: Record<string, string> };
       lookup_key: string | null;
     } }> };
   },
   isPersonal: boolean,
+  productMetadata?: Record<string, string> | null,
 ): SubscriptionUpdatePayload {
   const priceData = subscription.items?.data?.[0]?.price;
   const amount = priceData?.unit_amount ?? null;
@@ -369,8 +433,15 @@ export function buildSubscriptionUpdate(
   const productId = typeof productRef === 'string' ? productRef : productRef?.id ?? null;
   const productName = typeof productRef === 'object' ? productRef?.name ?? null : null;
 
+  // Prefer caller-supplied metadata; otherwise read from an inline-expanded
+  // product object if present.
+  const effectiveMetadata = productMetadata
+    ?? (typeof productRef === 'object' ? productRef?.metadata ?? null : null);
+
   const membershipTier = (TIER_PRESERVING_STATUSES as readonly string[]).includes(subscription.status)
-    ? (tierFromLookupKey(lookupKey) ?? inferMembershipTier(amount, interval, isPersonal))
+    ? (tierFromLookupKey(lookupKey)
+        ?? tierFromProductMetadata(effectiveMetadata)
+        ?? inferMembershipTier(amount, interval, isPersonal))
     : null;
 
   return {
@@ -475,8 +546,8 @@ export async function canAddSeat(
     const used = seatType === 'contributor' ? usage.contributor : usage.community_only;
 
     if (limit === -1) return { allowed: true };
-    if (limit === 0) return { allowed: false, reason: `Your membership tier does not include ${seatType === 'contributor' ? 'contributor' : 'community'} seats. Upgrade at /membership.` };
-    if (used >= limit) return { allowed: false, reason: `All ${limit} ${seatType === 'contributor' ? 'contributor' : 'community'} seats are in use. Upgrade at /membership to add more.` };
+    if (limit === 0) return { allowed: false, reason: `Your membership tier does not include ${seatType === 'contributor' ? 'contributor' : 'community'} seats. Upgrade at https://agenticadvertising.org/dashboard/membership.` };
+    if (used >= limit) return { allowed: false, reason: `All ${limit} ${seatType === 'contributor' ? 'contributor' : 'community'} seats are in use. Upgrade at https://agenticadvertising.org/dashboard/membership to add more.` };
     return { allowed: true };
   } catch (error) {
     await client.query('ROLLBACK');
@@ -794,11 +865,13 @@ export class OrganizationDatabase {
     company_type?: CompanyType;
     revenue_tier?: RevenueTier;
     membership_tier?: MembershipTier;
+    email_domain?: string;
   }): Promise<Organization> {
     const pool = getPool();
+    const normalizedDomain = data.email_domain?.trim().toLowerCase() || null;
     const result = await pool.query(
-      `INSERT INTO organizations (workos_organization_id, name, is_personal, company_type, revenue_tier, membership_tier)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO organizations (workos_organization_id, name, is_personal, company_type, revenue_tier, membership_tier, email_domain)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING *`,
       [
         data.workos_organization_id,
@@ -807,6 +880,7 @@ export class OrganizationDatabase {
         data.company_type || null,
         data.revenue_tier || null,
         data.membership_tier || null,
+        data.is_personal ? null : normalizedDomain,
       ]
     );
     return result.rows[0];
@@ -961,7 +1035,14 @@ export class OrganizationDatabase {
        FROM organizations o
        LEFT JOIN member_profiles mp ON mp.workos_organization_id = o.workos_organization_id
        LEFT JOIN LATERAL (
-         SELECT brand_manifest AS brand_json FROM brands WHERE domain = mp.primary_brand_domain LIMIT 1
+         SELECT od.domain
+           FROM organization_domains od
+          WHERE od.workos_organization_id = o.workos_organization_id
+            AND od.is_primary = true
+          LIMIT 1
+       ) pd ON true
+       LEFT JOIN LATERAL (
+         SELECT brand_manifest AS brand_json FROM brands WHERE domain = pd.domain LIMIT 1
        ) hb ON true
        WHERE ${conditions.join(' AND ')}
        ORDER BY o.name ASC
@@ -1134,6 +1215,20 @@ export class OrganizationDatabase {
     stripe_customer_id: string,
     options?: { force?: boolean }
   ): Promise<void> {
+    const targetOrg = await this.getOrganization(workos_organization_id);
+    if (!targetOrg) {
+      throw new Error(`Organization ${workos_organization_id} not found`);
+    }
+    if (
+      targetOrg.stripe_customer_id &&
+      targetOrg.stripe_customer_id !== stripe_customer_id &&
+      !options?.force
+    ) {
+      throw new Error(
+        `Organization ${workos_organization_id} is already linked to Stripe customer ${targetOrg.stripe_customer_id}. Use force option or resolve the conflict manually.`
+      );
+    }
+
     // Check if this customer ID is already assigned to another org
     const existingOrg = await this.getOrganizationByStripeCustomerId(stripe_customer_id);
     if (existingOrg && existingOrg.workos_organization_id !== workos_organization_id) {
@@ -1557,6 +1652,18 @@ export class OrganizationDatabase {
   }
 
   /**
+   * Get organization by stripe_subscription_id
+   */
+  async getOrganizationByStripeSubscriptionId(stripeSubscriptionId: string): Promise<Organization | null> {
+    const pool = getPool();
+    const result = await pool.query(
+      'SELECT * FROM organizations WHERE stripe_subscription_id = $1',
+      [stripeSubscriptionId]
+    );
+    return result.rows[0] || null;
+  }
+
+  /**
    * Check if user has accepted specific agreement
    */
   async hasUserAcceptedAgreement(
@@ -1613,58 +1720,16 @@ export class OrganizationDatabase {
   }
 
   /**
-   * Sync organizations from WorkOS to local database.
-   * This should be called during server startup to ensure all WorkOS orgs exist locally.
-   * Only creates missing orgs - does not update existing ones.
-   */
-  async syncFromWorkOS(workos: WorkOS): Promise<{ synced: number; existing: number }> {
-    let synced = 0;
-    let existing = 0;
-
-    try {
-      // Paginate through all organizations from WorkOS (limit is per-page max)
-      let after: string | undefined;
-      do {
-        const orgs = await workos.organizations.listOrganizations({
-          limit: 100,
-          after,
-        });
-
-        for (const workosOrg of orgs.data) {
-          const localOrg = await this.getOrganization(workosOrg.id);
-
-          if (!localOrg) {
-            // organizations.name is VARCHAR(255); a few WorkOS orgs have
-            // longer names and would crash the whole sync on INSERT.
-            const name = workosOrg.name.slice(0, 255);
-            await this.createOrganization({
-              workos_organization_id: workosOrg.id,
-              name,
-            });
-            synced++;
-            logger.info({ orgId: workosOrg.id, name }, 'Synced organization from WorkOS');
-          } else {
-            existing++;
-          }
-        }
-
-        after = orgs.listMetadata?.after ?? undefined;
-      } while (after);
-
-      if (synced > 0) {
-        logger.info({ synced, existing }, 'WorkOS organization sync complete');
-      }
-
-      return { synced, existing };
-    } catch (error) {
-      logger.error({ error }, 'Failed to sync organizations from WorkOS');
-      throw error;
-    }
-  }
-
-  /**
    * Ensure a local organizations row exists for a WorkOS organization.
-   * Fetches the org from WorkOS (for its name) and creates the local row if missing.
+   * Fetches the org from WorkOS (for its name + domains) and creates the
+   * local row if missing, mirroring the WorkOS domain list into
+   * `organization_domains` and seeding `email_domain` from the primary.
+   *
+   * Without the domain mirror, this path would produce orphans invisible to
+   * findPayingOrgForDomain / findClaimableProspectOrgForDomain /
+   * resolveOrgByDomain — same class of bug as the pre-#4132 admin/domains.ts
+   * INSERT paths and Migration 481's Spotify case.
+   *
    * Safe to call on every login — cheap no-op when the row already exists.
    */
   async ensureOrganizationExists(
@@ -1675,16 +1740,49 @@ export class OrganizationDatabase {
     if (existing) return existing;
 
     const workosOrg = await workos.organizations.getOrganization(workos_organization_id);
+    const name = workosOrg.name.slice(0, 255);
+    // Only mirror DNS-verified WorkOS domains. Pending/failed domains carry no
+    // proof-of-control — a user can submit `gmail.com` as a pending domain on
+    // their own org and we'd otherwise plant a `gmail.com` row in
+    // organization_domains, stealing it from any later legit owner via
+    // upsertWorkosDomain's WorkOS-authoritative conflict semantics. The
+    // webhook-driven syncOrganizationDomains path will pick the pending
+    // domain up once WorkOS verifies it.
+    const verifiedDomains = (workosOrg.domains ?? []).filter((d) => d.state === 'verified');
+    const primaryDomain = verifiedDomains[0]?.domain;
+
     try {
-      const name = workosOrg.name.slice(0, 255);
       const created = await this.createOrganization({
         workos_organization_id,
         name,
+        email_domain: primaryDomain,
       });
       logger.info(
-        { orgId: workos_organization_id, name },
+        { orgId: workos_organization_id, name, primaryDomain, verifiedDomainCount: verifiedDomains.length },
         'Lazily created local organization row from WorkOS'
       );
+
+      // Mirror each verified WorkOS domain into organization_domains so the
+      // auto-link and claim lookups can find this org by domain. A mirror
+      // failure here re-opens the orphan class this PR fixes, so emit
+      // `logger.error` (auto-routed to #admin-errors) rather than .warn —
+      // we want immediate visibility, not a silent re-orphan.
+      for (const d of verifiedDomains) {
+        try {
+          await upsertWorkosDomain({
+            orgId: workos_organization_id,
+            domain: d.domain,
+            verified: true,
+            isPrimary: d.domain === primaryDomain,
+          });
+        } catch (domainErr) {
+          logger.error(
+            { err: domainErr, orgId: workos_organization_id, domain: d.domain },
+            'Failed to mirror WorkOS domain during ensureOrganizationExists — org may be partially orphaned'
+          );
+        }
+      }
+
       return created;
     } catch (error) {
       // Race: another request may have created it between our check and insert.
@@ -1696,8 +1794,9 @@ export class OrganizationDatabase {
 
   /**
    * Sync Stripe customer IDs to local organization records.
-   * This should be called during server startup after WorkOS sync.
-   * Only updates orgs that exist locally but are missing stripe_customer_id.
+   * Called during server startup. Only updates orgs that already exist
+   * locally and are missing stripe_customer_id; orgs not yet present locally
+   * are skipped and will be filled in lazily on first login.
    */
   async syncStripeCustomers(): Promise<{ synced: number; skipped: number; conflicts: number }> {
     let synced = 0;
@@ -1711,7 +1810,8 @@ export class OrganizationDatabase {
       const localOrg = await this.getOrganization(workosOrgId);
 
       if (!localOrg) {
-        // Org doesn't exist locally - skip (WorkOS sync should have created it)
+        // Org doesn't exist locally yet — will be created lazily at first
+        // login via ensureOrganizationExists, then picked up on next sync.
         skipped++;
         continue;
       }

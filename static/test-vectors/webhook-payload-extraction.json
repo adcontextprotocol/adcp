@@ -7,14 +7,19 @@
       "description": "MCP webhook — completed with result data",
       "format": "mcp",
       "payload": {
+        "idempotency_key": "whk_01HW9D3H8FZP2N6R8T0V4X6Z9B",
+        "operation_id": "op_001",
         "task_id": "task_001",
         "task_type": "create_media_buy",
-        "domain": "media-buy",
+        "protocol": "media-buy",
         "status": "completed",
         "timestamp": "2025-01-22T10:30:00Z",
         "message": "Media buy created successfully",
         "result": {
           "media_buy_id": "mb_12345",
+          "media_buy_status": "active",
+          "confirmed_at": "2025-01-22T10:30:00Z",
+          "revision": 1,
           "packages": [
             {"package_id": "pkg_001", "status": "active"}
           ]
@@ -23,6 +28,9 @@
       "expected_format": "mcp",
       "expected_data": {
         "media_buy_id": "mb_12345",
+        "media_buy_status": "active",
+        "confirmed_at": "2025-01-22T10:30:00Z",
+        "revision": 1,
         "packages": [
           {"package_id": "pkg_001", "status": "active"}
         ]
@@ -33,7 +41,10 @@
       "description": "MCP webhook — failed with adcp_error in result",
       "format": "mcp",
       "payload": {
+        "idempotency_key": "whk_01HW9D5N9TQV4M6P8R0T2V4X6Z",
+        "operation_id": "op_002",
         "task_id": "task_002",
+        "task_type": "create_media_buy",
         "status": "failed",
         "timestamp": "2025-01-22T10:31:00Z",
         "message": "Rate limit exceeded",
@@ -61,7 +72,10 @@
       "description": "MCP webhook — working status with progress data",
       "format": "mcp",
       "payload": {
+        "idempotency_key": "whk_01HW9D4K5RMS7P8T2V4X6Z8B0D",
+        "operation_id": "op_003",
         "task_id": "task_003",
+        "task_type": "get_products",
         "status": "working",
         "timestamp": "2025-01-22T10:30:15Z",
         "message": "Processing inventory search...",
@@ -81,7 +95,10 @@
       "description": "MCP webhook — input-required status",
       "format": "mcp",
       "payload": {
+        "idempotency_key": "whk_01HW9D2T3VXQ5M7K9N1P3R5S7U",
+        "operation_id": "op_004",
         "task_id": "task_004",
+        "task_type": "create_media_buy",
         "status": "input-required",
         "timestamp": "2025-01-22T10:30:30Z",
         "message": "Budget exceeds auto-approval limit",
@@ -114,6 +131,9 @@
               "kind": "data",
               "data": {
                 "media_buy_id": "mb_12345",
+                "media_buy_status": "active",
+                "confirmed_at": "2025-01-22T10:30:00Z",
+                "revision": 1,
                 "packages": [
                   {"package_id": "pkg_001", "status": "active"}
                 ]
@@ -125,6 +145,9 @@
       "expected_format": "a2a",
       "expected_data": {
         "media_buy_id": "mb_12345",
+        "media_buy_status": "active",
+        "confirmed_at": "2025-01-22T10:30:00Z",
+        "revision": 1,
         "packages": [
           {"package_id": "pkg_001", "status": "active"}
         ]

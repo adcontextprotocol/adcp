@@ -1,5 +1,6 @@
 import { getPool } from './client.js';
 import { createLogger } from '../logger.js';
+import { resolveMembershipTier, TIER_PRESERVING_STATUSES, type MembershipTierRow } from './organization-db.js';
 
 const logger = createLogger('org-filters');
 
@@ -25,6 +26,9 @@ const logger = createLogger('org-filters');
 /** Organization has an active, non-canceled subscription */
 export const MEMBER_FILTER = `subscription_status = 'active' AND subscription_canceled_at IS NULL`;
 
+/** Not a member (for prospect/non-member queries) */
+export const NOT_MEMBER = `(subscription_status IS DISTINCT FROM 'active' OR subscription_canceled_at IS NOT NULL)`;
+
 /**
  * TS-side mirror of MEMBER_FILTER for callers that already have the row in
  * memory and don't want to round-trip through SQL. A canceled-but-still-in-
@@ -36,6 +40,21 @@ export function isPayingMembership(row: {
   subscription_canceled_at: Date | null;
 }): boolean {
   return row.subscription_status === 'active' && row.subscription_canceled_at === null;
+}
+
+/**
+ * Subscription statuses that keep member entitlements available. This is
+ * intentionally broader than `isPayingMembership`: `past_due` and `trialing`
+ * preserve tiers during Stripe dunning/trial windows.
+ */
+function hasEntitledSubscription(row: {
+  subscription_status: string | null;
+  subscription_canceled_at: Date | null;
+}): boolean {
+  return (
+    (TIER_PRESERVING_STATUSES as readonly string[]).includes(row.subscription_status ?? '') &&
+    row.subscription_canceled_at === null
+  );
 }
 
 /** Organization has at least one user (site account or Slack user) */
@@ -71,13 +90,10 @@ export const HAS_ENGAGED_USER = `(
 )`;
 
 /** Engaged tier: not a member, but has engaged users */
-export const ENGAGED_FILTER = `NOT (${MEMBER_FILTER}) AND ${HAS_ENGAGED_USER}`;
+export const ENGAGED_FILTER = `${NOT_MEMBER} AND ${HAS_ENGAGED_USER}`;
 
 /** Registered tier: not a member, no engaged users, but has at least one user */
-export const REGISTERED_FILTER = `NOT (${MEMBER_FILTER}) AND NOT ${HAS_ENGAGED_USER} AND ${HAS_USER}`;
-
-/** Not a member (for prospect/non-member queries) */
-export const NOT_MEMBER = `NOT (${MEMBER_FILTER})`;
+export const REGISTERED_FILTER = `${NOT_MEMBER} AND NOT ${HAS_ENGAGED_USER} AND ${HAS_USER}`;
 
 // =============================================================================
 // Aliased filters (for use with 'o' alias, common in admin routes)
@@ -85,6 +101,9 @@ export const NOT_MEMBER = `NOT (${MEMBER_FILTER})`;
 
 /** Organization has an active, non-canceled subscription (aliased) */
 export const MEMBER_FILTER_ALIASED = `o.subscription_status = 'active' AND o.subscription_canceled_at IS NULL`;
+
+/** Not a member (for prospect/non-member queries) (aliased) */
+export const NOT_MEMBER_ALIASED = `(o.subscription_status IS DISTINCT FROM 'active' OR o.subscription_canceled_at IS NOT NULL)`;
 
 /** Organization has at least one user (site account or Slack user) (aliased) */
 export const HAS_USER_ALIASED = `(
@@ -119,13 +138,10 @@ export const HAS_ENGAGED_USER_ALIASED = `(
 )`;
 
 /** Engaged tier: not a member, but has engaged users (aliased) */
-export const ENGAGED_FILTER_ALIASED = `NOT (${MEMBER_FILTER_ALIASED}) AND ${HAS_ENGAGED_USER_ALIASED}`;
+export const ENGAGED_FILTER_ALIASED = `${NOT_MEMBER_ALIASED} AND ${HAS_ENGAGED_USER_ALIASED}`;
 
 /** Registered tier: not a member, no engaged users, but has at least one user (aliased) */
-export const REGISTERED_FILTER_ALIASED = `NOT (${MEMBER_FILTER_ALIASED}) AND NOT ${HAS_ENGAGED_USER_ALIASED} AND ${HAS_USER_ALIASED}`;
-
-/** Not a member (for prospect/non-member queries) (aliased) */
-export const NOT_MEMBER_ALIASED = `NOT (${MEMBER_FILTER_ALIASED})`;
+export const REGISTERED_FILTER_ALIASED = `${NOT_MEMBER_ALIASED} AND NOT ${HAS_ENGAGED_USER_ALIASED} AND ${HAS_USER_ALIASED}`;
 
 // =============================================================================
 // Helper types
@@ -186,8 +202,9 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
  * Resolve effective membership for an organization, including inheritance
  * through the brand registry hierarchy (house_domain chain).
  *
- * If the org itself is a paying member, returns direct membership.
- * Otherwise, walks up the house_domain chain looking for a paying ancestor.
+ * If the org itself has an entitlement-preserving subscription, returns direct
+ * membership. Otherwise, walks up the house_domain chain looking for an
+ * entitled/paying ancestor.
  *
  * Trust gates on inheritance — same shape as findPayingOrgForDomain so the
  * pre-link auto-provisioning path and post-link is_member resolution agree
@@ -196,7 +213,7 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
  *   - cycle protection via visited-domain array
  *   - only edges classified at confidence='high' (LLM classifier output)
  *   - 180-day TTL on the brand classification
- *   - inherited match only counts if the paying ancestor has opted into
+ *   - inherited match only counts if the entitled/paying ancestor has opted into
  *     auto_provision_brand_hierarchy_children (default false). Without
  *     opt-in, the child org's is_member stays false even if the brand
  *     registry says it's a subsidiary.
@@ -222,6 +239,10 @@ export async function resolveEffectiveMembership(orgId: string): Promise<Effecti
       subscription_status: string | null;
       subscription_canceled_at: Date | null;
       membership_tier: string | null;
+      subscription_price_lookup_key: string | null;
+      subscription_amount: number | null;
+      subscription_interval: string | null;
+      is_personal: boolean;
       auto_provision_hierarchy: boolean;
       depth: number;
     }>(`
@@ -229,7 +250,8 @@ export async function resolveEffectiveMembership(orgId: string): Promise<Effecti
         -- Start: the org in question
         SELECT o.workos_organization_id, o.email_domain, o.name,
                o.subscription_status, o.subscription_canceled_at,
-               o.membership_tier,
+               o.membership_tier, o.subscription_price_lookup_key,
+               o.subscription_amount, o.subscription_interval, o.is_personal,
                COALESCE(o.auto_provision_brand_hierarchy_children, false) AS auto_provision_hierarchy,
                1 as depth,
                ARRAY[o.email_domain]::TEXT[] as visited
@@ -242,7 +264,8 @@ export async function resolveEffectiveMembership(orgId: string): Promise<Effecti
         -- findPayingOrgForDomain — high-confidence only, 180-day freshness.
         SELECT parent_o.workos_organization_id, parent_o.email_domain, parent_o.name,
                parent_o.subscription_status, parent_o.subscription_canceled_at,
-               parent_o.membership_tier,
+               parent_o.membership_tier, parent_o.subscription_price_lookup_key,
+               parent_o.subscription_amount, parent_o.subscription_interval, parent_o.is_personal,
                COALESCE(parent_o.auto_provision_brand_hierarchy_children, false) AS auto_provision_hierarchy,
                oc.depth + 1,
                oc.visited || parent_o.email_domain
@@ -258,7 +281,9 @@ export async function resolveEffectiveMembership(orgId: string): Promise<Effecti
       )
       SELECT workos_organization_id, email_domain, name,
              subscription_status, subscription_canceled_at,
-             membership_tier, auto_provision_hierarchy, depth
+             membership_tier, subscription_price_lookup_key,
+             subscription_amount, subscription_interval, is_personal,
+             auto_provision_hierarchy, depth
       FROM org_chain
       ORDER BY depth ASC
     `, [orgId]);
@@ -279,26 +304,26 @@ export async function resolveEffectiveMembership(orgId: string): Promise<Effecti
     }
 
     // Check the org itself first (depth 1) — opt-in flag does not apply to
-    // self; an org's own paying subscription always counts.
+    // self; an org's own entitlement-preserving subscription always counts.
     const self = rows[0];
-    if (self.subscription_status === 'active' && !self.subscription_canceled_at) {
+    if (hasEntitledSubscription(self)) {
       const directResult: EffectiveMembership = {
         is_member: true,
         is_inherited: false,
         paying_org_id: self.workos_organization_id,
         paying_org_name: self.name,
         hierarchy_chain: [self.email_domain].filter(Boolean) as string[],
-        membership_tier: self.membership_tier,
+        membership_tier: resolveMembershipTier(self as MembershipTierRow),
       };
       membershipCache.set(orgId, { result: directResult, expires_at: Date.now() + CACHE_TTL_MS });
       return directResult;
     }
 
-    // Check ancestors (depth > 1) for a paying member that has opted into
+    // Check ancestors (depth > 1) for an entitled/paying member that has opted into
     // hierarchy inheritance. An ancestor that didn't consent to children
     // auto-joining doesn't grant is_member to those children either.
     for (const row of rows.slice(1)) {
-      if (row.subscription_status === 'active' && !row.subscription_canceled_at && row.auto_provision_hierarchy) {
+      if (hasEntitledSubscription(row) && row.auto_provision_hierarchy) {
         const chain = rows
           .filter(r => r.depth <= row.depth)
           .map(r => r.email_domain)
@@ -310,14 +335,14 @@ export async function resolveEffectiveMembership(orgId: string): Promise<Effecti
           paying_org_id: row.workos_organization_id,
           paying_org_name: row.name,
           hierarchy_chain: chain,
-          membership_tier: row.membership_tier,
+          membership_tier: resolveMembershipTier(row as MembershipTierRow),
         };
         membershipCache.set(orgId, { result: inheritedResult, expires_at: Date.now() + CACHE_TTL_MS });
         return inheritedResult;
       }
     }
 
-    // No paying member in chain
+    // No entitled/paying member in chain
     const noMemberResult: EffectiveMembership = {
       is_member: false,
       is_inherited: false,
@@ -376,13 +401,13 @@ export interface DomainOwnerOrg {
 }
 
 /**
- * Find the paying organization that "owns" a raw email domain — directly via a
- * verified `organization_domains` row or transitively up the brand registry's
- * `house_domain` chain.
+ * Find the entitled/paying organization that "owns" a raw email domain —
+ * directly via a verified `organization_domains` row or transitively up the
+ * brand registry's `house_domain` chain.
  *
  * Returns the closest match: a direct verified-domain hit on the input wins
  * over an inherited one. When two ancestors at different depths both have
- * paying orgs, the shallower one wins.
+ * entitled/paying orgs, the shallower one wins.
  *
  * Trust gates on the inheritance walk:
  *   - max 4 hops up from the input domain
@@ -448,13 +473,13 @@ export async function findPayingOrgForDomain(domain: string): Promise<DomainOwne
         JOIN organization_domains od ON LOWER(od.domain) = LOWER(dc.domain)
         JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
         WHERE od.verified = true
-          AND o.subscription_status = 'active'
+          AND o.subscription_status = ANY($2::text[])
           AND o.subscription_canceled_at IS NULL
         ORDER BY dc.depth ASC  -- direct match (depth 1) wins over inherited
         LIMIT 1
       )
       SELECT * FROM paying_match
-    `, [normalizedDomain]);
+    `, [normalizedDomain, TIER_PRESERVING_STATUSES]);
 
     if (result.rows.length === 0) return null;
 
@@ -495,6 +520,104 @@ export async function findPayingOrgForDomain(domain: string): Promise<DomainOwne
     };
   } catch (error) {
     logger.error({ err: error, domain: normalizedDomain }, 'Failed to find paying org for domain');
+    return null;
+  }
+}
+
+// =============================================================================
+// Find claimable prospect org for a domain (sales-touched but unmembered)
+// =============================================================================
+
+export interface ClaimableProspectOrg {
+  organization_id: string;
+  organization_name: string;
+  /** The domain row that matched (already lowercased). */
+  matched_domain: string;
+  /** True if the org has a Stripe customer (sales has touched it). */
+  has_stripe_customer: boolean;
+  /** When the prospect was created — surfaced in UI to give the user context. */
+  created_at: Date;
+}
+
+/**
+ * Find a non-personal org that the user could plausibly claim — a prospect
+ * org owned by a verified domain matching the user's email, with no existing
+ * members and no active subscription.
+ *
+ * Distinct from findPayingOrgForDomain: that helper is the auto-link path
+ * (silently joins the user to a paying org). This one is the user-prompted
+ * claim path: surface the unjoined prospect at signup so the user can choose
+ * to claim it instead of silently being routed to a personal workspace, the
+ * way Voise Tech's employees were.
+ *
+ * Anti-hijack guards:
+ *   - Only matches non-personal orgs.
+ *   - Only matches if the org has zero existing organization_memberships
+ *     rows. The first claimer becomes the owner; once anyone has joined, the
+ *     org is theirs to invite from.
+ *   - Only matches if the org has no active subscription (paying orgs are
+ *     handled by findPayingOrgForDomain's auto-link path).
+ *   - Domain match goes through organization_domains.verified=true OR
+ *     organizations.email_domain. We don't walk brand-hierarchy here —
+ *     prospect orgs don't have the trust gates a paying parent does.
+ *
+ * The caller (POST /api/organizations/:orgId/claim) re-validates these
+ * conditions transactionally before adding the WorkOS membership.
+ */
+export async function findClaimableProspectOrgForDomain(
+  domain: string,
+): Promise<ClaimableProspectOrg | null> {
+  const normalizedDomain = domain.trim().toLowerCase();
+  if (!normalizedDomain) return null;
+
+  const pool = getPool();
+
+  try {
+    const result = await pool.query<{
+      workos_organization_id: string;
+      name: string;
+      matched_domain: string;
+      has_stripe_customer: boolean;
+      created_at: Date;
+    }>(
+      `SELECT
+         o.workos_organization_id,
+         o.name,
+         LOWER(COALESCE(od.domain, o.email_domain)) AS matched_domain,
+         (o.stripe_customer_id IS NOT NULL) AS has_stripe_customer,
+         o.created_at
+       FROM organizations o
+       LEFT JOIN organization_domains od
+         ON od.workos_organization_id = o.workos_organization_id
+        AND LOWER(od.domain) = $1
+        AND od.verified = true
+       WHERE o.is_personal = FALSE
+         AND (LOWER(o.email_domain) = $1 OR od.workos_organization_id IS NOT NULL)
+         AND o.subscription_status IS NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM organization_memberships m
+           WHERE m.workos_organization_id = o.workos_organization_id
+         )
+       ORDER BY o.created_at ASC
+       LIMIT 1`,
+      [normalizedDomain],
+    );
+
+    if (result.rows.length === 0) return null;
+
+    const row = result.rows[0];
+    return {
+      organization_id: row.workos_organization_id,
+      organization_name: row.name,
+      matched_domain: row.matched_domain,
+      has_stripe_customer: row.has_stripe_customer,
+      created_at: row.created_at,
+    };
+  } catch (error) {
+    logger.error(
+      { err: error, domain: normalizedDomain },
+      'Failed to find claimable prospect org for domain',
+    );
     return null;
   }
 }

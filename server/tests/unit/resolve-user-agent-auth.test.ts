@@ -63,17 +63,42 @@ describe('resolveUserAgentAuth', () => {
     expect(auth).toEqual({ type: 'basic', username, password });
   });
 
-  it('falls back to bearer when basic auth has no colon separator', async () => {
-    // Documents the malformed-basic behavior: we don't silently fail or pass
-    // through to OAuth — we hand the raw token to the agent as a bearer and
-    // let it return a clear 401 if the format is wrong.
-    const malformed = Buffer.from('no_separator_here').toString('base64');
-    db.getAuthInfoByOrgAndUrl.mockResolvedValueOnce({ token: malformed, authType: 'basic' });
+  it('decodes static basic auth with an empty password', async () => {
+    const encoded = Buffer.from('test-user:', 'utf8').toString('base64');
+    db.getAuthInfoByOrgAndUrl.mockResolvedValueOnce({ token: encoded, authType: 'basic' });
 
     const auth = await call();
 
-    expect(auth).toEqual({ type: 'bearer', token: malformed });
+    expect(auth).toEqual({ type: 'basic', username: 'test-user', password: '' });
     expect(db.getByOrgAndUrl).not.toHaveBeenCalled();
+  });
+
+  it('prefers static basic auth with an empty password over OAuth', async () => {
+    const encoded = Buffer.from('test-user:', 'utf8').toString('base64');
+    db.getAuthInfoByOrgAndUrl.mockResolvedValueOnce({ token: encoded, authType: 'basic' });
+    db.getByOrgAndUrl.mockResolvedValueOnce({ id: 'ctx_1', has_oauth_token: true });
+    db.getOAuthTokensByOrgAndUrl.mockResolvedValueOnce({
+      access_token: 'access',
+      refresh_token: 'refresh',
+    });
+    db.getOAuthClient.mockResolvedValueOnce(null);
+
+    const auth = await call();
+
+    expect(auth).toEqual({ type: 'basic', username: 'test-user', password: '' });
+    expect(db.getByOrgAndUrl).not.toHaveBeenCalled();
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it('returns undefined when basic auth has no colon separator and no fallback auth exists', async () => {
+    const malformed = Buffer.from('no_separator_here').toString('base64');
+    db.getAuthInfoByOrgAndUrl.mockResolvedValueOnce({ token: malformed, authType: 'basic' });
+    db.getByOrgAndUrl.mockResolvedValueOnce(null);
+
+    const auth = await call();
+
+    expect(auth).toBeUndefined();
+    expect(db.getByOrgAndUrl).toHaveBeenCalledWith(ORG, URL);
   });
 
   it('returns full oauth shape when refresh token and client are saved', async () => {

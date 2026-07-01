@@ -1,10 +1,26 @@
 import dns from 'dns/promises';
 import { lookup as dnsLookup, type LookupAddress, type LookupOptions } from 'dns';
 import { isIP, type LookupFunction } from 'net';
-import { Agent, type Dispatcher } from 'undici';
+import { Agent, fetch as undiciFetch, type Dispatcher } from 'undici';
+import { getDomain } from 'tldts';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('url-security');
+
+const TRANSIENT_DNS_CODES = new Set(['EAI_AGAIN', 'ESERVFAIL', 'ETIMEOUT', 'ECONNREFUSED']);
+const PERMANENT_DNS_CODES = new Set(['ENOTFOUND', 'EAI_NONAME', 'ENODATA', 'ENONAME', 'EAI_NODATA']);
+const DNS_CODE_RE = /\b(EAI_AGAIN|ESERVFAIL|ETIMEOUT|ECONNREFUSED|ENOTFOUND|EAI_NONAME|ENODATA|ENONAME|EAI_NODATA)\b/i;
+
+interface DnsResolutionFailureCause {
+  code?: string;
+  codes: string[];
+  hostname: string;
+}
+
+const fetchWithDispatcher = undiciFetch as unknown as (
+  input: string | URL,
+  init?: RequestInit & { dispatcher: Dispatcher },
+) => Promise<Response>;
 
 /**
  * The SSRF-safe dispatcher in `safeFetch` enforces private-IP rejection at TCP
@@ -38,16 +54,58 @@ if (proxyEnvVars.length > 0) {
 }
 
 /**
+ * Canonicalize an IPv6 address to 8 lowercase hex groups with no `::`
+ * shorthand and no leading zeros — `0:0:0:0:0:0:0:1`, not `::1` or
+ * `0000:0000:...:0001`. Returns null for non-IPv6 input.
+ *
+ * Used by `isPrivateHostname` to make prefix matching robust against
+ * shorthand variants of the same address (e.g. expanded `::1`, padded
+ * `0000:...:0001`, deprecated site-local `fec0::1`). The previous
+ * literal-string checks (`hostname === '::1'`) only caught the canonical
+ * shorthand, leaving the expanded forms as an SSRF bypass.
+ */
+function canonicalizeIPv6(addr: string): string | null {
+  if (isIP(addr) !== 6) return null;
+  // Strip zone id (`fe80::1%eth0`) — the address bytes are what matter.
+  const noZone = addr.split('%')[0];
+  let parts: string[];
+  if (noZone.includes('::')) {
+    const sides = noZone.split('::');
+    if (sides.length !== 2) return null;
+    const left = sides[0] ? sides[0].split(':') : [];
+    const right = sides[1] ? sides[1].split(':') : [];
+    // IPv4-mapped (e.g. ::ffff:1.2.3.4) keeps the dotted-quad as the last group;
+    // expand into two 16-bit groups.
+    const last = right[right.length - 1];
+    if (last && last.includes('.')) {
+      const v4 = last.split('.').map(Number);
+      if (v4.length !== 4 || v4.some((n) => !Number.isFinite(n) || n < 0 || n > 255)) return null;
+      right.splice(-1, 1, ((v4[0] << 8) | v4[1]).toString(16), ((v4[2] << 8) | v4[3]).toString(16));
+    }
+    const fill = 8 - left.length - right.length;
+    if (fill < 0) return null;
+    parts = [...left, ...new Array(fill).fill('0'), ...right];
+  } else {
+    parts = noZone.split(':');
+    // Tail might be embedded IPv4 (e.g. 0:0:0:0:0:ffff:1.2.3.4).
+    const last = parts[parts.length - 1];
+    if (last && last.includes('.')) {
+      const v4 = last.split('.').map(Number);
+      if (v4.length !== 4 || v4.some((n) => !Number.isFinite(n) || n < 0 || n > 255)) return null;
+      parts.splice(-1, 1, ((v4[0] << 8) | v4[1]).toString(16), ((v4[2] << 8) | v4[3]).toString(16));
+    }
+  }
+  if (parts.length !== 8) return null;
+  return parts.map((p) => parseInt(p, 16).toString(16)).join(':');
+}
+
+/**
  * Check if a hostname or IP address points to a private/internal network.
  * Used to prevent SSRF attacks in server-side fetch operations.
  */
 export function isPrivateHostname(hostname: string): boolean {
   if (!hostname || hostname === 'localhost') return true;
   if (hostname.endsWith('.local') || hostname.endsWith('.internal')) return true;
-
-  // IPv4-mapped IPv6 (e.g., ::ffff:127.0.0.1)
-  const v4mapped = hostname.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
-  if (v4mapped) return isPrivateHostname(v4mapped[1]);
 
   // IPv4 private/reserved ranges
   if (/^0\./.test(hostname)) return true;           // 0.0.0.0/8 (routes to localhost on many systems)
@@ -58,14 +116,95 @@ export function isPrivateHostname(hostname: string): boolean {
   if (/^169\.254\./.test(hostname)) return true;     // 169.254.0.0/16 link-local
   if (/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(hostname)) return true; // 100.64.0.0/10 CGNAT
 
-  // IPv6 loopback and private
-  if (hostname === '::1' || hostname === '::') return true;
-  // fe80: link-local, fc00:/fd00: ULA (unique local address) ranges
-  if (hostname.startsWith('fe80:') || hostname.startsWith('fc00:') || hostname.startsWith('fd00:')) {
-    return true;
+  // IPv6: canonicalize first so all shorthands of the same address compare
+  // equal. Without this, `::1` is caught but `0:0:0:0:0:0:0:1` and
+  // `0000:0000:0000:0000:0000:0000:0000:0001` slip through, and ULAs like
+  // `fc12::1` (only `fc00:` was matched) and link-local `fe81::1`
+  // (only `fe80:` was matched) bypass too.
+  const canonical = canonicalizeIPv6(hostname);
+  if (canonical) {
+    const groups = canonical.split(':').map((g) => parseInt(g, 16));
+    // ::, ::1, and any other IPv6 loopback in the all-zeros + tail-bit prefix
+    if (groups.slice(0, 7).every((n) => n === 0) && (groups[7] === 0 || groups[7] === 1)) return true;
+    // IPv4-mapped IPv6 (::ffff:x.y.z.w) — dotted form is in groups[6:7].
+    if (
+      groups.slice(0, 5).every((n) => n === 0) &&
+      groups[5] === 0xffff
+    ) {
+      const v4 = `${(groups[6] >> 8) & 0xff}.${groups[6] & 0xff}.${(groups[7] >> 8) & 0xff}.${groups[7] & 0xff}`;
+      if (isPrivateHostname(v4)) return true;
+    }
+    // fe80::/10 link-local — first group is fe80..febf
+    if ((groups[0] & 0xffc0) === 0xfe80) return true;
+    // fc00::/7 unique local address — first group is fc00..fdff
+    if ((groups[0] & 0xfe00) === 0xfc00) return true;
+    // fec0::/10 deprecated site-local (RFC 3879) — first group is fec0..feff
+    if ((groups[0] & 0xffc0) === 0xfec0) return true;
+    // Deprecated IPv4-compatible ::a.b.c.d (RFC 4291 §2.5.5.1) — high 96 bits
+    // zero (and not ::ffff:, handled above); classify the embedded v4 so a
+    // private v4 tunneled through the compatible form is rejected.
+    if (groups.slice(0, 6).every((n) => n === 0)) {
+      const v4 = `${(groups[6] >> 8) & 0xff}.${groups[6] & 0xff}.${(groups[7] >> 8) & 0xff}.${groups[7] & 0xff}`;
+      if (isPrivateHostname(v4)) return true;
+    }
+    // 6to4 2002:V4::/16 (RFC 3056) — the embedded v4 is groups[1:2].
+    if (groups[0] === 0x2002) {
+      const v4 = `${(groups[1] >> 8) & 0xff}.${groups[1] & 0xff}.${(groups[2] >> 8) & 0xff}.${groups[2] & 0xff}`;
+      if (isPrivateHostname(v4)) return true;
+    }
+    // NAT64 well-known 64:ff9b::/96 (RFC 6052) — embedded v4 in groups[6:7];
+    // classify it so a NAT64-wrapped private v4 is rejected while a wrapped
+    // public v4 stays reachable.
+    if (groups[0] === 0x0064 && groups[1] === 0xff9b && groups.slice(2, 6).every((n) => n === 0)) {
+      const v4 = `${(groups[6] >> 8) & 0xff}.${groups[6] & 0xff}.${(groups[7] >> 8) & 0xff}.${groups[7] & 0xff}`;
+      if (isPrivateHostname(v4)) return true;
+    }
+    // Scope: this classifier covers private/internal *reachability*. Multicast
+    // (ff00::/8) and documentation (2001:db8::/32) are intentionally NOT flagged
+    // here — they aren't reachable internal targets, and the dns-rebind suite
+    // asserts ff00::1 is allowed. Don't add them without updating that test.
   }
 
   return false;
+}
+
+function extractDnsErrorCode(reason: unknown): string | undefined {
+  if (!reason || typeof reason !== 'object') return undefined;
+  const err = reason as { code?: unknown; message?: unknown };
+  if (typeof err.code === 'string') return err.code.toUpperCase();
+  if (typeof err.message === 'string') {
+    const match = err.message.match(DNS_CODE_RE);
+    if (match) return match[1].toUpperCase();
+  }
+  return undefined;
+}
+
+function dnsResolutionFailureCause(
+  hostname: string,
+  results: readonly PromiseSettledResult<string[]>[],
+): DnsResolutionFailureCause | undefined {
+  const codes = results
+    .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+    .map((result) => extractDnsErrorCode(result.reason))
+    .filter((code): code is string => !!code);
+
+  if (codes.length === 0) return undefined;
+
+  return {
+    hostname,
+    codes,
+    code:
+      codes.find((code) => TRANSIENT_DNS_CODES.has(code)) ??
+      codes.find((code) => PERMANENT_DNS_CODES.has(code)) ??
+      codes[0],
+  };
+}
+
+function unresolvedHostnameError(hostname: string, results: readonly PromiseSettledResult<string[]>[]): Error {
+  const err = new Error('Could not resolve hostname') as Error & { cause?: DnsResolutionFailureCause };
+  const cause = dnsResolutionFailureCause(hostname, results);
+  if (cause) err.cause = cause;
+  return err;
 }
 
 /**
@@ -92,7 +231,7 @@ export async function validateHostResolution(hostname: string): Promise<void> {
   ];
 
   if (allAddresses.length === 0) {
-    throw new Error('Could not resolve hostname');
+    throw unresolvedHostnameError(hostname, [ipv4Result, ipv6Result]);
   }
 
   for (const address of allAddresses) {
@@ -276,9 +415,29 @@ export function buildSsrfSafeDispatcher(): Dispatcher {
  * SNI/cert verification continue to use the original hostname, so TLS still
  * authenticates the public cert.
  */
+const DEFAULT_MAX_REQUEST_BYTES = 64 * 1024;
+
 export async function safeFetch(
   url: string,
-  options?: { headers?: Record<string, string>; maxRedirects?: number; method?: 'GET' | 'HEAD'; signal?: AbortSignal },
+  options?: {
+    headers?: Record<string, string>;
+    maxRedirects?: number;
+    method?: 'GET' | 'HEAD' | 'POST';
+    body?: string | Uint8Array;
+    maxRequestBytes?: number;
+    signal?: AbortSignal;
+    /**
+     * Restrict redirect-following to the originally-requested registrable
+     * domain (eTLD+1), HTTPS only. Cross-registrable-domain or scheme-downgrade
+     * hops throw instead of being followed. Used for the `/.well-known/adagents.json`
+     * discovery fetch, where standard apex→www hosting redirects MUST resolve but a
+     * cross-domain hop is an unscoped delegation signal that MUST be refused — see
+     * docs/governance/property/managed-networks#why-not-http-redirects. The
+     * comparison is anchored on the original request URL at every hop, not the
+     * previous hop, so a same→cross two-hop chain cannot escape it.
+     */
+    sameSiteRedirectsOnly?: boolean;
+  },
 ): Promise<Response> {
   const parsedUrl = new URL(url);
   await validateFetchUrl(parsedUrl);
@@ -286,8 +445,46 @@ export async function safeFetch(
   const headers = options?.headers ?? {};
   const maxRedirects = options?.maxRedirects ?? 5;
   const method = options?.method ?? 'GET';
+  const body = options?.body;
+  const maxRequestBytes = options?.maxRequestBytes ?? DEFAULT_MAX_REQUEST_BYTES;
   const signal = options?.signal;
+  const sameSiteRedirectsOnly = options?.sameSiteRedirectsOnly ?? false;
+  // Same-site mode preserves HTTPS across the whole chain, including hop 0 —
+  // assert it up front so the invariant holds regardless of caller discipline.
+  if (sameSiteRedirectsOnly && parsedUrl.protocol !== 'https:') {
+    throw new Error(
+      `sameSiteRedirectsOnly requires an HTTPS origin, got ${parsedUrl.protocol}//${parsedUrl.hostname}`,
+    );
+  }
+  // Anchor the same-site check on the ORIGINAL request domain, never the
+  // previous hop — otherwise a same→cross two-hop chain bypasses the rule.
+  // allowPrivateDomains:true so the PSL PRIVATE section (github.io, pages.dev,
+  // herokuapp.com, …) is the registrant boundary; without it two unrelated
+  // tenants on shared hosting collapse to one registrable domain and a
+  // cross-tenant redirect would be wrongly trusted.
+  const originRegistrableDomain = sameSiteRedirectsOnly
+    ? getDomain(parsedUrl.hostname, { allowPrivateDomains: true })
+    : null;
   const dispatcher = buildSsrfSafeDispatcher();
+
+  // POST without a body would surprise downstream agent endpoints; reject
+  // up-front rather than emit an empty-body request.
+  if (method === 'POST' && body === undefined) {
+    throw new Error('safeFetch POST requires a body');
+  }
+  // GET/HEAD with a body is malformed per HTTP semantics; same.
+  if ((method === 'GET' || method === 'HEAD') && body !== undefined) {
+    throw new Error(`safeFetch ${method} cannot carry a body`);
+  }
+  // Bound the request body so a future caller can't pass a multi-MB blob to a
+  // hostile redirect target (DoS / amplification). The default 64KB covers
+  // every current call site (MCP preflight is ~80 bytes) with headroom.
+  if (body !== undefined) {
+    const size = typeof body === 'string' ? Buffer.byteLength(body, 'utf-8') : body.byteLength;
+    if (size > maxRequestBytes) {
+      throw new Error(`safeFetch body exceeds ${maxRequestBytes} byte cap (got ${size})`);
+    }
+  }
 
   // The dispatcher's `lookup` re-checks the resolved IP at TCP connect time —
   // a hostile DNS server cannot rebind to a private IP between validation and dial.
@@ -295,9 +492,11 @@ export async function safeFetch(
   // Response body is a stream the caller consumes after this function returns;
   // closing here would tear down the underlying socket mid-stream. Connections
   // are reaped by undici's idle timeout (the same lifecycle as the global agent).
-  let response = await fetch(sanitizeUrl(parsedUrl), {
+  let currentUrl = parsedUrl;
+  let response = await fetchWithDispatcher(sanitizeUrl(currentUrl), {
     method,
     headers,
+    body,
     redirect: 'manual',
     signal,
     // Node fetch accepts undici dispatcher; types aren't on the standard RequestInit.
@@ -308,15 +507,183 @@ export async function safeFetch(
     const location = response.headers.get('location');
     if (!location) throw new Error('Redirect with no Location header');
     // Pre-flight check on the redirect hop, then dial through the same SSRF-safe dispatcher.
-    const redirectUrl = await validateRedirectTarget(location, parsedUrl);
-    response = await fetch(sanitizeUrl(redirectUrl), {
-      method,
-      headers,
+    const redirectUrl = await validateRedirectTarget(location, currentUrl);
+    if (sameSiteRedirectsOnly) {
+      // HTTPS-preserving: refuse any downgrade away from HTTPS.
+      if (redirectUrl.protocol !== 'https:') {
+        throw new Error(
+          `Refused non-HTTPS redirect on same-site fetch: ${currentUrl.hostname} -> ${redirectUrl.protocol}//${redirectUrl.hostname}`,
+        );
+      }
+      // Same registrable domain (eTLD+1), anchored on the ORIGINAL request.
+      const targetRegistrableDomain = getDomain(redirectUrl.hostname, { allowPrivateDomains: true });
+      if (!originRegistrableDomain || targetRegistrableDomain !== originRegistrableDomain) {
+        throw new Error(
+          `Refused cross-registrable-domain redirect: ${currentUrl.hostname} -> ${redirectUrl.hostname}`,
+        );
+      }
+    }
+    // Per RFC 7231 §6.4.4 a 303 ALWAYS rewrites to GET; for 301/302 most
+    // clients also rewrite for non-idempotent verbs even though the spec
+    // only mandates user confirmation. We rewrite POST→GET on 301/302/303
+    // and drop the body, matching axios's `redirect: 'follow'` behaviour
+    // and node-fetch's defaults. 307/308 preserve the method.
+    const redirectMethod = (response.status === 307 || response.status === 308) ? method : (method === 'POST' ? 'GET' : method);
+    const redirectBody = redirectMethod === method ? body : undefined;
+    // When the body is dropped on POST→GET, the request-body headers we
+    // copied from the original request (Content-Type, Content-Length) no
+    // longer describe the payload and would leak the original intent to
+    // the redirect target. Strip them on body-drop redirects.
+    const redirectHeaders = redirectBody === undefined && body !== undefined
+      ? Object.fromEntries(
+          Object.entries(headers).filter(([k]) => {
+            const lower = k.toLowerCase();
+            return lower !== 'content-type' && lower !== 'content-length';
+          }),
+        )
+      : headers;
+    response = await fetchWithDispatcher(sanitizeUrl(redirectUrl), {
+      method: redirectMethod,
+      headers: redirectHeaders,
+      body: redirectBody,
       redirect: 'manual',
       signal,
       dispatcher,
     } as RequestInit & { dispatcher: Dispatcher });
+    currentUrl = redirectUrl;
   }
 
   return response;
+}
+
+/**
+ * Convenience wrapper around `safeFetch` that returns an axios-shaped
+ * `{status, data, headers}` triple. Used by call sites being migrated
+ * off `axios.get` — preserves their parsing semantics (response data
+ * as `Buffer` so callers can decode UTF-8 themselves regardless of the
+ * server-declared charset, matching the previous `responseType:
+ * 'arraybuffer'` behaviour) without forcing each one to also rewrite
+ * its post-fetch logic.
+ *
+ * `validateStatus` is the axios escape hatch for "don't throw on
+ * non-2xx" — `safeFetch` already doesn't throw on non-2xx, so this
+ * helper just hands the status back. Callers that previously branched
+ * on `response.status` continue to work unchanged.
+ *
+ * Body is bounded by `maxResponseBytes` (default 10 MB to comfortably
+ * cover well-known files; callers that download larger content should
+ * stream from `safeFetch` directly).
+ */
+export interface SafeFetchAxiosLike {
+  status: number;
+  data: Buffer;
+  headers: Record<string, string>;
+  /**
+   * Final URL after following redirects (per Fetch Response.url). Lets
+   * callers audit the post-redirect TLS chain — important for
+   * publisher-page verification chrome where a /.well-known fetch may
+   * 30x to a CDN or partner host. May equal the input URL when no
+   * redirects were followed.
+   */
+  url: string;
+}
+
+const DEFAULT_MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
+
+export async function safeFetchAxiosLike(
+  url: string,
+  options?: {
+    method?: 'GET' | 'HEAD' | 'POST';
+    headers?: Record<string, string>;
+    body?: string | Uint8Array;
+    timeoutMs?: number;
+    maxResponseBytes?: number;
+    maxRedirects?: number;
+    sameSiteRedirectsOnly?: boolean;
+  },
+): Promise<SafeFetchAxiosLike> {
+  const controller = new AbortController();
+  const timeoutMs = options?.timeoutMs ?? 10_000;
+  const cap = options?.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await safeFetch(url, {
+      method: options?.method,
+      headers: options?.headers,
+      body: options?.body,
+      maxRedirects: options?.maxRedirects,
+      sameSiteRedirectsOnly: options?.sameSiteRedirectsOnly,
+      signal: controller.signal,
+    });
+
+    // Stream-read up to `cap` bytes so a large response can't OOM the
+    // process. Throws when the body exceeds cap so the caller sees an
+    // error rather than a silently truncated body.
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    const reader = res.body?.getReader();
+    if (reader) {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > cap) {
+          await reader.cancel();
+          throw new Error(`Response exceeded ${cap} bytes`);
+        }
+        chunks.push(value);
+      }
+    }
+    const data = Buffer.concat(chunks);
+
+    const headers: Record<string, string> = {};
+    res.headers.forEach((v, k) => { headers[k.toLowerCase()] = v; });
+
+    return { status: res.status, data, headers, url: res.url };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Classify a thrown error from `safeFetch` / `safeFetchAxiosLike` into the
+ * user-visible buckets the AAO validators emit. Centralised so the regex
+ * patterns and SSRF-gate detection stay consistent across call sites.
+ *
+ * Buckets:
+ *   - `timeout`    — AbortError from the timeout signal, or message matches /aborted|timeout/i.
+ *   - `connection` — DNS / ECONNREFUSED, OR the SSRF gate rejected the host
+ *     (private/loopback/link-local). Bucketing SSRF rejection here rather
+ *     than echoing the exact message avoids leaking internal-network probe
+ *     intent to unauthenticated callers.
+ *   - `network`    — anything else with a message.
+ *   - `unknown`    — message-less error.
+ */
+export type SafeFetchErrorField = 'timeout' | 'connection' | 'network' | 'unknown';
+
+export function classifySafeFetchError(
+  error: unknown,
+  domain: string,
+): { field: SafeFetchErrorField; message: string } {
+  const err = error as Error & { name?: string; cause?: { code?: string; message?: string } };
+  const code = err.cause?.code;
+  const msg = err.message ?? '';
+  const causeMsg = err.cause?.message ?? '';
+  const combined = `${msg} ${causeMsg}`;
+
+  if (err.name === 'AbortError' || /aborted|timeout/i.test(combined)) {
+    return { field: 'timeout', message: 'Request timed out' };
+  }
+  if (
+    code === 'ENOTFOUND' ||
+    code === 'ECONNREFUSED' ||
+    /ENOTFOUND|ECONNREFUSED|EAI_/i.test(combined) ||
+    /private or internal/i.test(combined)
+  ) {
+    return { field: 'connection', message: `Cannot connect to ${domain}` };
+  }
+  if (msg) {
+    return { field: 'network', message: msg };
+  }
+  return { field: 'unknown', message: 'Unknown error occurred' };
 }

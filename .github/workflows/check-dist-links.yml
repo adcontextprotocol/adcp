@@ -11,7 +11,7 @@ jobs:
   check-dist-links:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.0
 
       - name: Check for unversioned links in dist docs
         run: |
@@ -25,19 +25,35 @@ jobs:
           for version_dir in dist/docs/*/; do
             VERSION=$(basename "$version_dir")
 
-            # Markdown links pointing to unversioned /docs/
-            MARKDOWN_LINKS=$(grep -rl --include="*.md" --include="*.mdx" '](/docs/' "$version_dir" 2>/dev/null | wc -l | tr -d ' ')
+            # Markdown links pointing to unversioned /docs/.
+            # Exception: /docs/<section>/api-reference/<page> stays unversioned
+            # because OpenAPI-generated pages aren't included in snapshots —
+            # Mintlify generates them at runtime against static/openapi/*.yaml.
+            # See scripts/rewrite-dist-links.sh Phase 1b for the matching
+            # rewriter logic.
+            MARKDOWN_LINKS=$(grep -rln --include="*.md" --include="*.mdx" '](/docs/' "$version_dir" 2>/dev/null \
+              | xargs -I{} grep -Hn '](/docs/' {} 2>/dev/null \
+              | grep -vE '\]\(/docs/[^)]*/api-reference/' \
+              | wc -l | tr -d ' ')
             if [ "$MARKDOWN_LINKS" -gt 0 ]; then
-              echo "::error::$VERSION: $MARKDOWN_LINKS file(s) contain unversioned markdown links (](/docs/). Run: bash scripts/rewrite-dist-links.sh $VERSION"
-              grep -rn --include="*.md" --include="*.mdx" '](/docs/' "$version_dir" | head -5
+              echo "::error::$VERSION: $MARKDOWN_LINKS unversioned markdown link(s) found (](/docs/). Run: bash scripts/rewrite-dist-links.sh $VERSION"
+              grep -rn --include="*.md" --include="*.mdx" '](/docs/' "$version_dir" \
+                | grep -vE '\]\(/docs/[^)]*/api-reference/' \
+                | head -5
               ERRORS=$((ERRORS + 1))
             fi
 
-            # JSX/HTML href links pointing to unversioned /docs/
-            HREF_LINKS=$(grep -rl --include="*.md" --include="*.mdx" 'href="/docs/' "$version_dir" 2>/dev/null | wc -l | tr -d ' ')
+            # JSX/HTML href links pointing to unversioned /docs/. Same
+            # api-reference exception applies as for markdown links above.
+            HREF_LINKS=$(grep -rln --include="*.md" --include="*.mdx" 'href="/docs/' "$version_dir" 2>/dev/null \
+              | xargs -I{} grep -Hn 'href="/docs/' {} 2>/dev/null \
+              | grep -vE 'href="/docs/[^"]*/api-reference/' \
+              | wc -l | tr -d ' ')
             if [ "$HREF_LINKS" -gt 0 ]; then
-              echo "::error::$VERSION: $HREF_LINKS file(s) contain unversioned href links (href=\"/docs/\"). Run: bash scripts/rewrite-dist-links.sh $VERSION"
-              grep -rn --include="*.md" --include="*.mdx" 'href="/docs/' "$version_dir" | head -5
+              echo "::error::$VERSION: $HREF_LINKS unversioned href link(s) found (href=\"/docs/\"). Run: bash scripts/rewrite-dist-links.sh $VERSION"
+              grep -rn --include="*.md" --include="*.mdx" 'href="/docs/' "$version_dir" \
+                | grep -vE 'href="/docs/[^"]*/api-reference/' \
+                | head -5
               ERRORS=$((ERRORS + 1))
             fi
 

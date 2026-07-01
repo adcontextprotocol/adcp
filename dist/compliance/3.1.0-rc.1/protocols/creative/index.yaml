@@ -1,0 +1,339 @@
+id: creative_lifecycle
+version: "1.0.0"
+title: "Creative lifecycle"
+category: creative_lifecycle
+summary: "Baseline creative lifecycle on a stateful platform: sync display creatives, list with filtering, and preview renderings."
+track: creative
+required_tools:
+  - list_creative_formats
+
+narrative: |
+  You run a creative platform with a persistent library — an ad server, creative management
+  platform, or publisher that accepts and stores creative assets. A buyer agent pushes
+  display creatives, queries the library, and previews renderings before launch.
+
+  This storyboard covers the complete creative lifecycle from the buyer's perspective:
+  uploading a display asset, browsing the library, and previewing the deliverable.
+
+  The individual creative storyboards (template, ad server, native, sales agent) cover
+  specific interaction models and sub-modalities. This storyboard keeps the generic
+  creative baseline display-safe; video tag generation is covered by the
+  creative-ad-server specialism.
+
+agent:
+  interaction_model: stateful_push
+  capabilities:
+    - has_creative_library
+  examples:
+    - "Publisher creative intake platforms"
+    - "Retail media creative libraries"
+    - "Display ad management platforms"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The caller needs display creative assets and a brand identity. The test kit provides
+    sample assets at standard ad dimensions.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      The buyer calls get_adcp_capabilities to confirm the agent supports creative operations before browsing or previewing creatives.
+
+    steps:
+      - id: get_capabilities
+        title: "Check agent capabilities"
+        narrative: |
+          Verify that the agent declares the expected protocol support before
+          proceeding with domain-specific operations.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring creative in supported_protocols, confirming the agent handles creative operations.
+        sample_request:
+          context:
+            correlation_id: "creative_lifecycle--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_lifecycle--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+  - id: discover_formats
+    title: "Discover accepted formats"
+    narrative: |
+      Before pushing any creatives, the buyer discovers what formats your platform accepts.
+      This determines which assets to prepare and what dimensions and specs to target.
+
+    steps:
+      - id: list_formats
+        title: "List creative formats"
+        narrative: |
+          The buyer calls list_creative_formats to discover what your platform accepts.
+          The response defines format specs: dimensions, asset requirements, mime types,
+          and any platform-specific constraints.
+        task: list_creative_formats
+        schema_ref: "creative/list-creative-formats-request.json"
+        response_schema_ref: "creative/list-creative-formats-response.json"
+        doc_ref: "/creative/task-reference/list_creative_formats"
+        comply_scenario: creative_lifecycle
+        stateful: false
+        expected: |
+          Return the first page of creative formats your platform accepts:
+          - format_id with your agent_url and unique id
+          - Asset requirements (dimensions, file sizes, mime types)
+          - Render dimensions
+          - Up to five formats on this compliance request; callers paginate for the rest when needed
+
+        sample_request:
+          pagination:
+            max_results: 5
+          context:
+            correlation_id: "creative_lifecycle--list_formats"
+
+        validations:
+          - check: response_schema
+            description: "Response matches list-creative-formats-response.json schema"
+          - check: field_present
+            path: "formats"
+            description: "Response contains formats array"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_lifecycle--list_formats"
+            description: "Context correlation_id returned unchanged"
+          - check: field_present
+            path: "formats[0].format_id.agent_url"
+            description: "Format IDs include agent_url"
+          - check: field_present
+            path: "formats[0].format_id.id"
+            description: "Format IDs include id — must match those in get_products"
+  - id: sync_multiple
+    title: "Sync display creative"
+    narrative: |
+      The buyer pushes a display banner to your platform. Your platform validates the
+      creative against its format specs and returns per-creative status.
+
+    steps:
+      - id: sync_creatives
+        title: "Push a display creative"
+        narrative: |
+          The buyer syncs a 300x250 display banner. Your platform validates it against
+          its format specs and returns per-creative action and status.
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_lifecycle
+        stateful: true
+        expected: |
+          Accept and validate the display creative:
+          - Per-creative action: created
+          - Per-creative status: accepted or pending_review
+          - Validation results for the creative
+          - Platform-assigned IDs if applicable
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          creatives:
+            - creative_id: "display_trail_pro_300x250"
+              name: "Trail Pro 3000 - Display 300x250"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "display_300x250"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://cdn.pinnacle-agency.example/trail-pro-300x250.png"
+                  width: 300
+                  height: 250
+                  mime_type: "image/png"
+          idempotency_key: "$generate:uuid_v4#creative_lifecycle_sync_multiple_sync_creatives"
+          context:
+            correlation_id: "creative_lifecycle--sync_creatives"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_present
+            path: "creatives"
+            description: "Response contains per-creative results"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_lifecycle--sync_creatives"
+            description: "Context correlation_id returned unchanged"
+  - id: list_and_filter
+    title: "List creatives with filtering"
+    narrative: |
+      The buyer queries the creative library to see their synced creatives. First a broad
+      list, then filtered by format. This verifies the library correctly stores and indexes
+      the pushed creatives.
+
+    steps:
+      - id: list_all
+        title: "List all creatives in library"
+        narrative: |
+          The buyer calls list_creatives with no filters to see all creatives in the
+          library for their account. The response includes the display creative synced
+          in the previous phase.
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives"
+        comply_scenario: creative_lifecycle
+        stateful: true
+        expected: |
+          Return creatives in the library:
+          - creatives array containing the synced items
+          - Each creative includes: creative_id, name, format_id, status
+          - At least one creative from the sync phase
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+
+          context:
+            correlation_id: "creative_lifecycle--list_all"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json schema"
+          - check: field_present
+            path: "creatives"
+            description: "Response contains creatives array"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_lifecycle--list_all"
+            description: "Context correlation_id returned unchanged"
+      - id: list_filtered
+        title: "List creatives filtered by format"
+        narrative: |
+          The buyer lists creatives filtered to a specific format (display only). The
+          response should only include creatives matching that format.
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives"
+        comply_scenario: creative_lifecycle
+        stateful: true
+        expected: |
+          Return only creatives matching the format filter:
+          - creatives array filtered to display format
+          - Should include display_trail_pro_300x250
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          filters:
+            format_ids:
+              - agent_url: "https://your-platform.example.com"
+                id: "display_300x250"
+
+          context:
+            correlation_id: "creative_lifecycle--list_filtered"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json schema"
+          - check: field_present
+            path: "creatives"
+            description: "Response contains filtered creatives"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_lifecycle--list_filtered"
+            description: "Context correlation_id returned unchanged"
+  - id: build_and_preview
+    title: "Preview display creative"
+    narrative: |
+      The buyer previews renderings for the synced display creative. Video/VAST tag
+      generation is covered by the creative-ad-server specialism, where the agent has
+      explicitly claimed that sub-modality.
+
+    steps:
+      - id: preview_display
+        title: "Preview the display creative"
+        narrative: |
+          The buyer calls preview_creative for the display banner to see how it renders
+          in the platform's environment before going live.
+        task: preview_creative
+        schema_ref: "creative/preview-creative-request.json"
+        response_schema_ref: "creative/preview-creative-response.json"
+        doc_ref: "/creative/task-reference/preview_creative"
+        comply_scenario: creative_flow
+        stateful: true
+        expected: |
+          Return a preview of the display creative:
+          - preview_url: rendered preview the buyer can inspect
+          - render_dimensions: matches the 300x250 format
+          - status: preview available
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          request_type: "single"
+          creative_manifest:
+            creative_id: "display_trail_pro_300x250"
+            format_id:
+              agent_url: "https://your-platform.example.com"
+              id: "display_300x250"
+            assets:
+              image:
+                asset_type: "image"
+                url: "https://test-assets.adcontextprotocol.org/acme-outdoor/banner_300x250.jpg"
+                width: 300
+                height: 250
+              click_url:
+                asset_type: "url"
+                url: "https://acmeoutdoor.example/trail-pro"
+
+          context:
+            correlation_id: "creative_lifecycle--preview_display"
+        validations:
+          - check: response_schema
+            description: "Response matches preview-creative-response.json schema"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_lifecycle--preview_display"
+            description: "Context correlation_id returned unchanged"

@@ -10,7 +10,10 @@ import {
   complianceResultToDbInput,
   classifyCapabilityResolutionError,
   presentCapabilityResolutionError,
+  badgeEligibleVersionsForTargetSelection,
+  selectComplianceTargetForAgentSelection,
   type ComplyOptions,
+  type ComplianceTargetSelection,
 } from '../services/compliance-testing.js';
 import { ComplianceDatabase, type LifecycleStage } from '../../db/compliance-db.js';
 import { query } from '../../db/client.js';
@@ -19,14 +22,16 @@ import { notifySystemError } from '../error-notifier.js';
 import { logger as baseLogger } from '../../logger.js';
 import { logOutboundRequest } from '../../db/outbound-log-db.js';
 import { AAO_UA_COMPLIANCE } from '../../config/user-agents.js';
-import { processAgentBadges } from '../../services/badge-issuance.js';
+import { revokeUnsupportedPublicBadges, runBadgeFanOut } from '../../services/badge-issuance.js';
 import { adaptAuthForSdk } from '../../services/sdk-auth-adapter.js';
-import { API_ACCESS_TIERS, ACTIVE_SUBSCRIPTION_STATUSES } from '../../services/membership-tiers.js';
-import { SUPPORTED_BADGE_VERSIONS } from '../../services/adcp-taxonomy.js';
-import { getStoryboardIdsForVersion } from '../../services/storyboards.js';
+import {
+  hostedComplianceTarget,
+  HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
+} from '../../services/hosted-compliance-version.js';
 
 const logger = baseLogger.child({ module: 'compliance-heartbeat' });
 const complianceDb = new ComplianceDatabase();
+const fallbackComplianceTarget = hostedComplianceTarget();
 
 interface HeartbeatOptions {
   limit?: number;
@@ -51,29 +56,47 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
 
   logger.debug({ count: agentsDue.length }, 'Agents due for compliance check');
 
-  // Mark agents as in-progress to prevent concurrent pickup by overlapping runs
+  // Mark agents as in-progress to prevent concurrent pickup by overlapping runs.
+  // Agents are processed serially, so the lock must outlive the worst-case batch
+  // runtime — otherwise an agent late in the loop has its lock expire before the
+  // loop reaches it and an overlapping run re-picks it (duplicate assessment,
+  // double badge fan-out). Worst case is batchSize × the full-comply budget, plus
+  // headroom for per-agent target selection. recordComplianceRun() stamps the
+  // real last_checked_at on success or failure — this is only a concurrency lock,
+  // so a mid-loop process crash re-queues the agent after this TTL rather than
+  // waiting the full check_interval (default 12 h).
   const urls = agentsDue.map(a => a.agent_url);
+  const lockSeconds = urls.length * (HOSTED_FULL_COMPLIANCE_TIMEOUT_MS / 1000) + 300;
   await query(
     `INSERT INTO agent_compliance_status (agent_url, status, last_checked_at)
-     SELECT unnest($1::text[]), 'unknown', NOW()
-     ON CONFLICT (agent_url) DO UPDATE SET last_checked_at = NOW()`,
-    [urls],
+     SELECT unnest($1::text[]), 'unknown', NOW() + make_interval(secs => $2)
+     ON CONFLICT (agent_url) DO UPDATE SET last_checked_at = NOW() + make_interval(secs => $2)`,
+    [urls, lockSeconds],
   );
 
   for (const agent of agentsDue) {
     const startTime = Date.now();
+    let runTarget = fallbackComplianceTarget;
+    let runTargetSelection: ComplianceTargetSelection = { target: fallbackComplianceTarget, confirmed: false };
     try {
       const auth = await complianceDb.resolveOwnerAuth(agent.agent_url);
       const sdkAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `heartbeat:${agent.agent_url}` });
 
       const complyOptions: ComplyOptions = {
         test_session_id: `heartbeat-${Date.now()}`,
-        timeout_ms: 60_000,
+        timeout_ms: HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
         auth: sdkAuth,
         userAgent: AAO_UA_COMPLIANCE,
       };
 
-      const complianceResult = await comply(agent.agent_url, complyOptions);
+      runTargetSelection = await selectComplianceTargetForAgentSelection(
+        agent.agent_url,
+        complyOptions,
+        fallbackComplianceTarget,
+        'canonical',
+      );
+      runTarget = runTargetSelection.target;
+      const complianceResult = await comply(agent.agent_url, complyOptions, runTarget);
 
       logOutboundRequest({
         agent_url: agent.agent_url,
@@ -89,7 +112,8 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         agent.lifecycle_stage as LifecycleStage,
         'heartbeat',
       );
-      const { statusTransition, storyboardStatuses } = await complianceDb.recordComplianceRun(dbInput);
+      dbInput.dry_run = false;
+      const { run, statusTransition, storyboardStatuses } = await complianceDb.recordComplianceRun(dbInput);
 
       result.checked++;
       if (dbInput.overall_status === 'passing') {
@@ -119,87 +143,31 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
       }
 
       // Process AAO Verified badges — fan out per supported AdCP version.
-      // One comply() run produced a flat storyboard_statuses list; for each
-      // version we filter to that version's applicable storyboards and run
-      // processAgentBadges with that version. Each version's badge issues
-      // and revokes independently — see #3524 stage 2.
+      // Issuance is shared with owner_test and single-storyboard run paths;
+      // heartbeat is the only caller that follows it up with a Slack
+      // notification, since owner-driven runs already have a chat response.
       const declaredSpecialisms = complianceResult.agent_profile?.specialisms ?? [];
+      const badgeEligibleAdcpVersions = [
+        ...badgeEligibleVersionsForTargetSelection(runTargetSelection, complianceResult.agent_profile),
+      ];
 
-      if (declaredSpecialisms.length > 0 && storyboardStatuses.length > 0) {
+      if (declaredSpecialisms.length > 0 && badgeEligibleAdcpVersions.length > 0) {
         try {
-          // Resolve membership org for this agent — only orgs with an active
-          // API-access tier qualify for badge issuance. If the org downgrades
-          // or cancels, processAgentBadges will see undefined here and revoke
-          // any existing badges (across every version).
-          const orgResult = await query(
-            `SELECT mp.workos_organization_id
-             FROM member_profiles mp
-             JOIN organizations o ON o.workos_organization_id = mp.workos_organization_id
-             WHERE mp.agents @> $1::jsonb
-               AND o.membership_tier = ANY($2::text[])
-               AND o.subscription_status = ANY($3::text[])
-             ORDER BY mp.created_at ASC
-             LIMIT 1`,
-            [
-              JSON.stringify([{ url: agent.agent_url }]),
-              [...API_ACCESS_TIERS],
-              [...ACTIVE_SUBSCRIPTION_STATUSES],
-            ],
-          );
-          const membershipOrgId = orgResult.rows[0]?.workos_organization_id;
+          const badgeResult = await runBadgeFanOut({
+            complianceDb,
+            agentUrl: agent.agent_url,
+            declaredSpecialisms,
+            runId: run.id,
+            adcpVersions: badgeEligibleAdcpVersions,
+            supportedVersions: complianceResult.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
+          });
 
-          const aggregatedIssued: Array<{ role: string; specialisms: string[]; adcp_version: string }> = [];
-          const aggregatedRevoked: Array<{ role: string; reason: string; adcp_version: string }> = [];
-
-          for (const adcpVersion of SUPPORTED_BADGE_VERSIONS) {
-            // Per-version try/catch: a failure on 3.1 must not poison the
-            // notification for an already-completed 3.0 issuance, and a
-            // persistent per-version failure must surface via system-error
-            // alerts rather than disappear into a non-fatal warn.
-            try {
-              // Restrict storyboard statuses to the IDs that exist at this
-              // version. With a single supported version (3.0) this filter is
-              // a no-op since every storyboard's `introduced_in` is unset
-              // ("always applied"). When 3.1 ships with new storyboards, this
-              // is what isolates 3.0 badge issuance from 3.1-only fixtures.
-              const versionStoryboardIds = new Set(getStoryboardIdsForVersion(adcpVersion));
-              const versionScopedStatuses = storyboardStatuses.filter(s => versionStoryboardIds.has(s.storyboard_id));
-
-              const badgeResult = await processAgentBadges(
-                complianceDb,
-                agent.agent_url,
-                declaredSpecialisms,
-                versionScopedStatuses,
-                dbInput.overall_status === 'passing',
-                membershipOrgId,
-                adcpVersion,
-              );
-
-              for (const issued of badgeResult.issued) aggregatedIssued.push(issued);
-              for (const revoked of badgeResult.revoked) aggregatedRevoked.push(revoked);
-            } catch (versionError) {
-              const errorMessage = versionError instanceof Error ? versionError.message : String(versionError);
-              logger.error(
-                { versionError, agentUrl: agent.agent_url, adcpVersion },
-                'Badge processing failed for one AdCP version — continuing with remaining versions',
-              );
-              notifySystemError({
-                source: 'compliance-badge-issuance',
-                errorMessage: `Per-version badge processing failed for ${agent.agent_url} at AdCP ${adcpVersion}: ${errorMessage}`,
-              });
-            }
-          }
-
-          // Notify on badge changes from the versions that completed —
-          // skipping versions that threw above. A partial result that
-          // ships only completed-version notifications is correct: the
-          // system-error alert above carries the failure signal.
-          if (aggregatedIssued.length > 0 || aggregatedRevoked.length > 0) {
+          if (badgeResult.issued.length > 0 || badgeResult.revoked.length > 0) {
             try {
               await notifyVerificationChange({
                 agentUrl: agent.agent_url,
-                issued: aggregatedIssued,
-                revoked: aggregatedRevoked,
+                issued: badgeResult.issued,
+                revoked: badgeResult.revoked,
               });
             } catch (notifyError) {
               logger.error({ notifyError, agentUrl: agent.agent_url }, 'Failed to send verification notification');
@@ -212,10 +180,28 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
             errorMessage: `Badge processing setup failed for ${agent.agent_url}: ${badgeError instanceof Error ? badgeError.message : String(badgeError)}`,
           });
         }
+      } else {
+        try {
+          const badgeResult = await revokeUnsupportedPublicBadges({
+            complianceDb,
+            agentUrl: agent.agent_url,
+            supportedVersions: complianceResult.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
+          });
+          if (badgeResult.revoked.length > 0) {
+            await notifyVerificationChange({
+              agentUrl: agent.agent_url,
+              issued: [],
+              revoked: badgeResult.revoked,
+            });
+          }
+        } catch (badgeError) {
+          logger.error({ badgeError, agentUrl: agent.agent_url }, 'Unsupported public badge revocation failed');
+        }
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       const isAgentTimeout = /timed?\s*out/i.test(errorMessage);
+      const isSavedAuthConfigError = /step\.auth\.basic\.username must be a non-empty string/i.test(errorMessage);
       const capsError = classifyCapabilityResolutionError(error);
 
       // Classify failure. Timeouts and capability-config faults are expected
@@ -228,11 +214,17 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
       let observationSeverity: 'warning' | 'error';
       let observationMessage: string;
       if (isAgentTimeout) {
-        headline = 'Timed out: agent did not respond within 60s';
+        headline = `Timed out: assessment did not complete within ${HOSTED_FULL_COMPLIANCE_TIMEOUT_MS / 1000}s`;
         observationCategory = 'connectivity';
         observationSeverity = 'warning';
         observationMessage = headline;
         logger.warn({ agentUrl: agent.agent_url }, `Compliance check timed out for agent: ${agent.agent_url}`);
+      } else if (isSavedAuthConfigError) {
+        headline = 'Saved Basic auth credentials are malformed';
+        observationCategory = 'authentication';
+        observationSeverity = 'warning';
+        observationMessage = 'The saved Basic auth credentials for this agent must include a non-empty username.';
+        logger.warn({ agentUrl: agent.agent_url }, 'Compliance check skipped Basic auth due to malformed saved credentials');
       } else if (capsError) {
         const presentation = presentCapabilityResolutionError(capsError);
         headline = presentation.headline;
@@ -259,8 +251,11 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
 
       // Record failure so stale passing data doesn't persist
       try {
+        const badgeEligibleAdcpVersions = [...badgeEligibleVersionsForTargetSelection(runTargetSelection)];
         await complianceDb.recordComplianceRun({
           agent_url: agent.agent_url,
+          requested_compliance_target: runTarget.requested,
+          adcp_version: runTarget.version,
           lifecycle_stage: agent.lifecycle_stage as LifecycleStage,
           overall_status: 'failing',
           headline,
@@ -271,8 +266,57 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
           tracks_partial: 0,
           observations_json: [{ category: observationCategory, severity: observationSeverity, message: observationMessage }],
           triggered_by: 'heartbeat',
-          dry_run: true,
+          dry_run: false,
+          replace_storyboard_statuses: true,
         });
+
+        if (badgeEligibleAdcpVersions.length > 0) {
+          const eligibleBadgeVersions = new Set(badgeEligibleAdcpVersions);
+          const existingBadges = await complianceDb.getBadgesForAgent(agent.agent_url);
+          const revoked = [];
+          for (const badge of existingBadges) {
+            if (!eligibleBadgeVersions.has(badge.adcp_version)) continue;
+            await complianceDb.revokeBadge(
+              agent.agent_url,
+              badge.role,
+              badge.adcp_version,
+              'Authoritative compliance run failed before storyboard verification',
+            );
+            revoked.push({
+              role: badge.role,
+              reason: 'Authoritative compliance run failed',
+              adcp_version: badge.adcp_version,
+            });
+          }
+          if (revoked.length > 0) {
+            try {
+              await notifyVerificationChange({
+                agentUrl: agent.agent_url,
+                issued: [],
+                revoked,
+              });
+            } catch (notifyError) {
+              logger.error({ notifyError, agentUrl: agent.agent_url }, 'Failed to send verification revocation notification');
+            }
+          }
+        } else if (runTargetSelection.confirmed) {
+          const badgeResult = await revokeUnsupportedPublicBadges({
+            complianceDb,
+            agentUrl: agent.agent_url,
+            supportedVersions: runTargetSelection.supportedVersions,
+          });
+          if (badgeResult.revoked.length > 0) {
+            try {
+              await notifyVerificationChange({
+                agentUrl: agent.agent_url,
+                issued: [],
+                revoked: badgeResult.revoked,
+              });
+            } catch (notifyError) {
+              logger.error({ notifyError, agentUrl: agent.agent_url }, 'Failed to send verification revocation notification');
+            }
+          }
+        }
       } catch (recordError) {
         logger.error({ recordError, agentUrl: agent.agent_url }, 'Failed to record compliance failure');
       }
@@ -280,7 +324,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
       // Timeouts and capability-config faults are valid per-agent results
       // (not skips) — they need to surface in checked/failed so the heartbeat
       // summary reflects reality.
-      if (isAgentTimeout || capsError) {
+      if (isAgentTimeout || isSavedAuthConfigError || capsError) {
         result.checked++;
         result.failed++;
       } else {

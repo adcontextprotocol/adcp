@@ -394,4 +394,29 @@ describe("wrapUrlsForSlack", () => {
     const text = "[Click here](https://example.com/checkout)";
     expect(wrapUrlsForSlack(text)).toBe("[Click here](<https://example.com/checkout>)");
   });
+
+  // The asterisk-wrapped-URL case observed in production: when Claude emitted
+  // `**https://...connect/github**`, Slack's auto-linker swept the trailing `**`
+  // into the link target and routed the click to `/connect/github*` — 404.
+  // The wrapper must stop the URL match at the trailing wrapping character so
+  // the asterisks stay outside `<...>`.
+  it("should not include trailing asterisks inside the wrapped URL", () => {
+    const text = "**https://example.com/path**";
+    expect(wrapUrlsForSlack(text)).toBe("**<https://example.com/path>**");
+  });
+
+  it("should not include a trailing single asterisk inside the wrapped URL", () => {
+    const text = "*https://example.com/path*";
+    expect(wrapUrlsForSlack(text)).toBe("*<https://example.com/path>*");
+  });
+
+  it("should not include trailing double quotes inside the wrapped URL", () => {
+    const text = 'See "https://example.com/path" for details';
+    expect(wrapUrlsForSlack(text)).toBe('See "<https://example.com/path>" for details');
+  });
+
+  it("should not include trailing single quotes inside the wrapped URL", () => {
+    const text = "See 'https://example.com/path' for details";
+    expect(wrapUrlsForSlack(text)).toBe("See '<https://example.com/path>' for details");
+  });
 });
