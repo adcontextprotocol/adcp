@@ -159,6 +159,10 @@
       "$ref": "/schemas/core/property-list-ref.json",
       "description": "Reference to a property list for targeting specific properties within this product. The package runs on the intersection of the product's publisher_properties and this list. Sellers SHOULD return a validation error if the product has property_targeting_allowed: false."
     },
+    "property_list_exclude": {
+      "$ref": "/schemas/core/property-list-ref.json",
+      "description": "Reference to a property list whose properties must not carry the buyer's ads. Matched properties are removed from delivery. Use for brand-safety do-not-run lists (apps, sites). Exclude wins on overlap with property_list, and applies regardless of the product's property_targeting_allowed flag. Seller must declare support in get_adcp_capabilities."
+    },
     "collection_list": {
       "$ref": "/schemas/core/collection-list-ref.json",
       "description": "Reference to a collection list for including specific collections (programs, shows) within this product. The package runs on the intersection of matched collections and this list. Use for inclusion-based collection targeting. Seller must declare support in get_adcp_capabilities."
