@@ -51,6 +51,41 @@ try {
   fs.closeSync(idempotencyFd);
 }
 
+for (const rel of [
+  path.join('protocols', 'media-buy', 'scenarios', 'measurement_terms_rejected.yaml'),
+  path.join('domains', 'media-buy', 'scenarios', 'measurement_terms_rejected.yaml'),
+]) {
+  const measurementTermsPath = path.join(bundleDir, rel);
+  let measurementTermsFd;
+  try {
+    measurementTermsFd = fs.openSync(measurementTermsPath, 'r+');
+  } catch (err) {
+    if (err && err.code === 'ENOENT') continue;
+    throw err;
+  }
+
+  // The frozen 3.0.19 measurement_terms_rejected storyboard hard-codes a
+  // 2026-07-01 flight start. Once that date became stale, create_media_buy
+  // correctly rejected the past start_time with INVALID_REQUEST before it
+  // could exercise the intended TERMS_REJECTED branch. Patch only the temp
+  // compatibility bundle so this legacy fixture keeps testing measurement
+  // term negotiation instead of calendar drift.
+  try {
+    const before = fs.readFileSync(measurementTermsFd, 'utf8');
+    const after = before
+      .replace(/\bstart_time: "2026-07-01T00:00:00Z"/g, 'start_time: "2099-07-01T00:00:00Z"')
+      .replace(/\bend_time: "2026-09-30T23:59:59Z"/g, 'end_time: "2099-09-30T23:59:59Z"');
+
+    if (after !== before) {
+      fs.ftruncateSync(measurementTermsFd, 0);
+      fs.writeSync(measurementTermsFd, after, 0, 'utf8');
+      console.log(`Patched stale 3.0 compatibility dates in ${measurementTermsPath}`);
+    }
+  } finally {
+    fs.closeSync(measurementTermsFd);
+  }
+}
+
 const schemaValidationPath = path.join(bundleDir, 'universal', 'schema-validation.yaml');
 let schemaValidationFd;
 try {
