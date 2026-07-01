@@ -161,3 +161,89 @@ registry.registerPath({
     404: { description: 'Dispute not found', content: { 'application/json': { schema: ErrorSchema } } },
   },
 });
+
+// ── GET /api/registry/catalog (browse) ──────────────────────────
+// The read/consume side of the fact loop: resolve identifiers → sync/browse
+// the catalog locally → build lists.
+
+const CatalogBrowseEntrySchema = z.object({
+  property_rid: z.string(),
+  property_id: z.string().nullable(),
+  classification: z.string().openapi({ example: 'property' }),
+  source: z.string().openapi({ example: 'adagents_json' }),
+  status: z.string().openapi({ example: 'active' }),
+  identifiers: z.array(CatalogIdentifierSchema),
+}).openapi('CatalogBrowseEntry');
+
+const CatalogBrowseResponseSchema = z.object({
+  entries: z.array(CatalogBrowseEntrySchema),
+  total: z.number().int(),
+  next_cursor: z.string().nullable().openapi({ description: 'Opaque cursor for the next page; null when exhausted.' }),
+}).openapi('CatalogBrowseResponse');
+
+registry.registerPath({
+  method: 'get',
+  path: '/api/registry/catalog',
+  operationId: 'browseCatalog',
+  summary: 'Browse the property catalog',
+  description:
+    'Browse the property fact-graph with filters. Cursor-paginated (opaque `cursor` → `next_cursor`). Each entry carries the property\'s identifiers. `property_rid` is a non-authoritative join/match handle, never an authorization credential.',
+  tags: ['Property Catalog'],
+  request: {
+    query: z.object({
+      classification: z.string().optional().openapi({ example: 'property' }),
+      source: z.string().optional(),
+      status: z.string().optional().openapi({ example: 'active' }),
+      identifier_type: z.string().optional().openapi({ example: 'domain' }),
+      search: z.string().optional(),
+      min_resolves: z.string().optional().openapi({ description: 'Minimum lifetime resolve count (integer).' }),
+      active_since: z.string().optional().openapi({ description: 'ISO 8601 — only properties with resolve activity since this time.' }),
+      limit: z.string().optional().openapi({ description: 'Page size (integer).' }),
+      cursor: z.string().optional().openapi({ description: 'Opaque pagination cursor from a prior `next_cursor`.' }),
+    }),
+  },
+  responses: {
+    200: { description: 'Catalog page', content: { 'application/json': { schema: CatalogBrowseResponseSchema } } },
+  },
+});
+
+// ── GET /api/registry/catalog/sync (delta) ──────────────────────
+
+const CatalogSyncEntrySchema = z.object({
+  property_rid: z.string(),
+  property_id: z.string().nullable(),
+  classification: z.string(),
+  source: z.string(),
+  status: z.string(),
+  adagents_url: z.string().nullable(),
+  created_by: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+  source_updated_at: z.string(),
+}).openapi('CatalogSyncEntry');
+
+const CatalogSyncResponseSchema = z.object({
+  entries: z.array(CatalogSyncEntrySchema),
+  server_timestamp: z.string().openapi({ description: 'Watermark to pass as `since` on the next sync (avoids clock skew).' }),
+  next_cursor: z.string().nullable(),
+}).openapi('CatalogSyncResponse');
+
+registry.registerPath({
+  method: 'get',
+  path: '/api/registry/catalog/sync',
+  operationId: 'syncCatalog',
+  summary: 'Sync catalog changes since a watermark',
+  description:
+    'Delta sync for local mirrors: returns catalog entries created/updated since `since` (a prior `server_timestamp`), capped at 10,000 per page. Pagination is by the returned `server_timestamp` watermark, distinct from browseCatalog\'s opaque cursor.',
+  tags: ['Property Catalog'],
+  request: {
+    query: z.object({
+      since: z.string().openapi({ description: 'Watermark from a prior response `server_timestamp` (required).', example: '2026-03-27T10:00:00Z' }),
+      limit: z.string().optional().openapi({ description: 'Page size, capped at 10,000.' }),
+    }),
+  },
+  responses: {
+    200: { description: 'Catalog delta', content: { 'application/json': { schema: CatalogSyncResponseSchema } } },
+    400: { description: 'Missing required `since` parameter', content: { 'application/json': { schema: ErrorSchema } } },
+  },
+});
