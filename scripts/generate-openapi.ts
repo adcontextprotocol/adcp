@@ -25,6 +25,7 @@ process.env.RESEND_API_KEY ??= "re_dummy_openapi_only";
 await import("../server/src/routes/registry-api.js");
 await import("../server/src/schemas/member-agents-openapi.js");
 await import("../server/src/schemas/onboarding-openapi.js");
+await import("../server/src/schemas/catalog-openapi.js");
 const { registry } = await import("../server/src/schemas/registry.js");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -112,6 +113,7 @@ const TAG_DESCRIPTIONS: Record<string, string> = {
   "Brand Discovery": "Discover and crawl brand.json files across domains.",
   "Agent Compliance": "Agent compliance status, storyboard test results, and compliance history.",
   "Policy Registry": "Browse, resolve, and contribute governance policies for campaign compliance.",
+  "Property Catalog": "Contribute facts to the property fact-graph: resolve identifiers to stable property_rids (which also contributes them, with provenance) and dispute catalog claims.",
 };
 
 const TAG_ORDER = Object.keys(TAG_DESCRIPTIONS);
