@@ -32,7 +32,7 @@ const VALIDATE_INPUT_SCHEMA = {
 export function validateInputTool(options: Partial<TrainingContext> = {}) {
   return customToolFor(
     'validate_input',
-    'Dry-run a creative manifest against canonical formats, seeded products, or third-party format references without registering a creative.',
+    'Preflight a creative manifest against canonical formats, seeded products, or third-party format references without registering a creative. For seller trafficking acceptance of the actual sync_creatives request, call sync_creatives with dry_run: true.',
     VALIDATE_INPUT_SCHEMA,
     (args, ctx) => {
       const versionResolution = resolveServedAdcpVersionForTool('validate_input', args as unknown as Record<string, unknown>);

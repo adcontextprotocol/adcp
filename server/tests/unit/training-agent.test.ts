@@ -4332,6 +4332,54 @@ describe('sync_creatives handler', () => {
     expect(assignments).toHaveLength(1);
     expect(assignments[0].status).toBe('assigned');
   });
+
+  it('validates assignments during dry_run without persisting creatives', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    const { result: buyResult } = await simulateCallTool(server, 'create_media_buy', {
+      account: { brand: { domain: 'dryrun-assign.example' }, operator: 'dryrun-assign.example' },
+      brand: { domain: 'dryrun-assign.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 10000,
+      }],
+    });
+    const mediaBuyId = buyResult.media_buy_id as string;
+
+    const { result } = await simulateCallTool(server, 'sync_creatives', {
+      account: { brand: { domain: 'dryrun-assign.example' }, operator: 'dryrun-assign.example' },
+      dry_run: true,
+      creatives: [{
+        creative_id: 'cr_dryrun_assignment',
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+      }],
+      assignments: [{
+        media_buy_id: mediaBuyId,
+        package_id: 'pkg_missing',
+        creative_id: 'cr_dryrun_assignment',
+      }],
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.dry_run).toBe(true);
+    expect((result.creatives as Array<Record<string, unknown>>)[0].action).toBe('created');
+    const assignments = result.assignments as Array<Record<string, unknown>>;
+    expect(assignments).toHaveLength(1);
+    expect(assignments[0].status).toBe('error');
+    expect(assignments[0].message).toContain('Package not found');
+
+    const { result: listResult } = await simulateCallTool(server, 'list_creatives', {
+      account: { brand: { domain: 'dryrun-assign.example' }, operator: 'dryrun-assign.example' },
+      creative_ids: ['cr_dryrun_assignment'],
+    });
+    expect(listResult.creatives).toEqual([]);
+  });
 });
 
 // ── get_media_buys handler ─────────────────────────────────────────
