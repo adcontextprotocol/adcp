@@ -3213,6 +3213,208 @@ components:
         - 250m_1b
         - 1b_plus
       description: Annual revenue band, USD. Drives membership-tier eligibility for company-tier seats.
+    ResolveResponse:
+      type: object
+      properties:
+        resolved:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResolvedEntry"
+        summary:
+          type: object
+          properties:
+            total:
+              type: integer
+            resolved:
+              type: integer
+            created:
+              type: integer
+            excluded:
+              type: integer
+            not_found:
+              type: integer
+          required:
+            - total
+            - resolved
+            - created
+            - excluded
+            - not_found
+        server_timestamp:
+          type: string
+      required:
+        - resolved
+        - summary
+        - server_timestamp
+    ResolvedEntry:
+      type: object
+      properties:
+        identifier:
+          $ref: "#/components/schemas/CatalogIdentifier"
+        property_rid:
+          type:
+            - string
+            - "null"
+          description: Stable catalog handle for joining/dedup and TMP matching. NOT an authorization credential. `null` for excluded (ad_infra / publisher_mask) or unresolved-in-lookup identifiers.
+        classification:
+          type: string
+          example: property
+        status:
+          type: string
+          enum:
+            - existing
+            - created
+            - excluded
+        source:
+          type:
+            - string
+            - "null"
+      required:
+        - identifier
+        - property_rid
+        - classification
+        - status
+        - source
+    CatalogIdentifier:
+      type: object
+      properties:
+        type:
+          type: string
+          example: domain
+        value:
+          type: string
+          example: nytimes.com
+      required:
+        - type
+        - value
+    ResolveRequest:
+      type: object
+      properties:
+        identifiers:
+          type: array
+          items:
+            $ref: "#/components/schemas/CatalogIdentifier"
+          minItems: 1
+          maxItems: 10000
+          description: Identifiers to resolve (and, in resolve mode, contribute). Max 10,000 per call for all callers.
+        provenance:
+          $ref: "#/components/schemas/FactProvenance"
+        mode:
+          type: string
+          enum:
+            - resolve
+            - lookup
+          default: resolve
+          description: "`resolve` (default) contributes the identifiers, auto-creates missing catalog entries, logs demand activity, and returns rids — requires authentication. `lookup` is a pure read: no write, no activity log, no auth."
+      required:
+        - identifiers
+        - provenance
+    FactProvenance:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+            - agency_allowlist
+            - publisher_declaration
+            - impression_log
+            - ssp_inventory
+            - deal_history
+            - crawl
+            - data_partner
+            - member_assertion
+          description: How the caller knows these identifiers — the trust/audit envelope on the fact. Determines the confidence the catalog assigns. `crawl` is reserved for server-side pipelines; callers use the others.
+        context:
+          type: string
+          example: unilever_q3
+          description: Optional free-text annotation (campaign, dataset).
+      required:
+        - type
+    CatalogDisputeTriageResult:
+      type: object
+      properties:
+        dispute_id:
+          type: string
+        action_taken:
+          type: string
+          enum:
+            - link_suspended
+            - queued_for_review
+            - escalated
+          description: "What filing the dispute did: a medium/weak link is suspended immediately; otherwise the dispute is queued or escalated for review."
+        reason:
+          type: string
+      required:
+        - dispute_id
+        - action_taken
+        - reason
+    CatalogDisputeRequest:
+      type: object
+      properties:
+        dispute_type:
+          type: string
+          enum:
+            - identifier_link
+            - classification
+            - property_data
+            - false_merge
+        subject_type:
+          type: string
+          example: identifier
+          description: What is being disputed — e.g. `identifier` or `property_rid`.
+        subject_value:
+          type: string
+          example: com.example.app
+        claim:
+          type: string
+          minLength: 10
+          maxLength: 2000
+          description: The dispute claim (10–2000 chars).
+        evidence:
+          type: string
+          maxLength: 5000
+          description: Optional supporting evidence (≤5000 chars).
+      required:
+        - dispute_type
+        - subject_type
+        - subject_value
+        - claim
+    CatalogDisputeRecord:
+      type: object
+      properties:
+        id:
+          type: string
+        dispute_type:
+          type: string
+          enum:
+            - identifier_link
+            - classification
+            - property_data
+            - false_merge
+        subject_type:
+          type: string
+        subject_value:
+          type: string
+        claim:
+          type: string
+        evidence:
+          type:
+            - string
+            - "null"
+        status:
+          type: string
+          example: suspended
+          description: Current dispute status.
+        created_at:
+          type: string
+      required:
+        - id
+        - dispute_type
+        - subject_type
+        - subject_value
+        - claim
+        - status
+        - created_at
+      additionalProperties: {}
     AdagentsJson:
       type: object
       properties:
@@ -10350,6 +10552,101 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/registry/resolve:
+    post:
+      operationId: resolveIdentifiers
+      summary: Resolve identifiers to property_rids (and contribute them)
+      description: The primary fact-contribution path. Takes identifiers plus a provenance envelope and returns stable `property_rid`s. In `resolve` mode (default) it auto-creates missing catalog entries and logs demand activity — so resolving your own identifier list IS the contribution. `property_rid` is a non-authoritative join/match handle, never an authorization credential. Re-resolving is idempotent on the identifier→rid mapping but additive on the activity log.
+      tags:
+        - Property Catalog
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolveRequest"
+      responses:
+        "200":
+          description: Resolve/lookup result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResolveResponse"
+        "400":
+          description: Invalid request (bad identifiers, unknown provenance type, batch > 10,000)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required for resolve mode
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/catalog/disputes:
+    post:
+      operationId: fileCatalogDispute
+      summary: Dispute a catalog fact
+      description: "Challenge or correct a catalog claim — the community disavow/challenge verb. Adding links is hard; suspending suspicious ones is easy: a disputed medium/weak link is suspended immediately (`action_taken: 'link_suspended'`); stronger claims queue for review. Poll status with getCatalogDispute."
+      tags:
+        - Property Catalog
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CatalogDisputeRequest"
+      responses:
+        "200":
+          description: Dispute filed and triaged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogDisputeTriageResult"
+        "400":
+          description: Invalid dispute request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/catalog/disputes/{id}:
+    get:
+      operationId: getCatalogDispute
+      summary: Get a catalog dispute
+      description: Fetch the current state of a filed dispute by id.
+      tags:
+        - Property Catalog
+      parameters:
+        - schema:
+            type: string
+            example: 019539a0-b1c2-7d3e-8f4a-5b6c7d8e9f0a
+          required: true
+          name: id
+          in: path
+      responses:
+        "200":
+          description: Dispute record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogDisputeRecord"
+        "404":
+          description: Dispute not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 tags:
   - name: Onboarding
     description: Explicitly bootstrap a third-party integration into the AAO registry. Most callers don't need this tag — `POST /api/me/agents` auto-creates the org (for fresh users) and the member profile (for first-time agent registration) without a separate round trip. Use `POST /api/organizations` only when you need to override the auto-derived org name / company_type / revenue_tier. Tier transitions happen via the billing flow only; the Stripe webhook is the sole writer of `organizations.membership_tier`.
@@ -10379,3 +10676,5 @@ tags:
     description: Agent compliance status, storyboard test results, and compliance history.
   - name: Policy Registry
     description: Browse, resolve, and contribute governance policies for campaign compliance.
+  - name: Property Catalog
+    description: "Contribute facts to the property fact-graph: resolve identifiers to stable property_rids (which also contributes them, with provenance) and dispute catalog claims."
