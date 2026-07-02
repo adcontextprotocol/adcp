@@ -143,14 +143,7 @@ jobs:
           # Mirror every source file onto the cache. New files (storyboards,
           # specialisms) get added; existing files are overwritten so the
           # branch's edits always win.
-          #
-          # Exclude specialisms/sales-guaranteed/index.yaml on 3.0.x: the
-          # source version uses context_outputs.path "task_completion.media_buy_id"
-          # which requires tasks/get polling added after @adcp/client@5.21.1.
-          # Keep the bundled version so the v5.21.1 runner's direct-SUCCESS
-          # extraction still works.
-          (cd "$SRC" && find . -type f \
-            ! -path "./specialisms/sales-guaranteed/index.yaml") | while read -r rel; do
+          (cd "$SRC" && find . -type f) | while read -r rel; do
             target="$DST/${rel#./}"
             mkdir -p "$(dirname "$target")"
             cp "$SRC/${rel#./}" "$target"

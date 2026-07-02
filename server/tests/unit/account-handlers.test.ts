@@ -238,6 +238,24 @@ describe('sync_accounts', () => {
     expect(entity.address).toBe('123 Main St');
     expect(entity.bank).toBeUndefined();
   });
+
+  it('list_accounts returns synced accounts when the request has no account scope', async () => {
+    const { result: syncResult } = await simulateCallTool(server, 'sync_accounts', {
+      accounts: [{
+        brand: { domain: 'list-visible.example', name: 'List Visible' },
+        operator: 'agency-one',
+        billing: 'operator',
+        sandbox: true,
+      }],
+    });
+    const synced = (syncResult.accounts as Record<string, unknown>[])[0];
+
+    const { result } = await simulateCallTool(server, 'list_accounts', {});
+
+    const accounts = result.accounts as Record<string, unknown>[];
+    expect(accounts.some(account => account.account_id === synced.account_id)).toBe(true);
+    expect(accounts.some(account => account.account_id === 'acc_pagination_integrity_1')).toBe(false);
+  });
 });
 
 // ── sync_governance ────────────────────────────────────────────────

@@ -32,6 +32,12 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Check release compliance artifacts
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          ADCP_SKIP_RELEASE_GIT_ADD=1 npm run build:compliance -- --release
+          node scripts/check-generated-artifact-diff.cjs "dist/compliance/$VERSION" dist/compliance/latest
+
       - name: Server unit tests
         run: npm run test:server-unit
 

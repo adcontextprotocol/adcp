@@ -1731,7 +1731,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       end_time: pkg.endTime,
       ...(pkg.formatIds && { format_ids: pkg.formatIds }),
       ...(pkg.targeting && { targeting_overlay: pkg.targeting }),
-      creative_assignments: [],
+      creative_assignments: pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
     })),
   };
 }
@@ -2842,6 +2842,22 @@ export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext)
         errors: [{
           code: 'GOVERNANCE_DENIED',
           message: `governance_context "${governanceContext}" does not match any governance check. Call check_governance first.`,
+        }] as TaskError[],
+      };
+    }
+    if (!latestCheck && syncedGovernanceAgents.length > 0) {
+      const msg = `Signal activation requires governance approval. governance_context "${governanceContext}" does not match any governance check, and a governance agent is registered for this account.`;
+      return {
+        errors: [{
+          code: 'PERMISSION_DENIED',
+          message: msg,
+          details: {
+            findings: [{
+              category_id: 'governance_context',
+              severity: 'critical',
+              explanation: msg,
+            }],
+          },
         }] as TaskError[],
       };
     }

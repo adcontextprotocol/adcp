@@ -737,14 +737,18 @@ function main() {
     console.log(`📋 Updating latest/ to match release`);
     buildTo(path.join(DIST_DIR, 'latest'), 'latest', SOURCE_DIR);
 
-    console.log(`📝 Staging dist/compliance/${version}/ for git commit`);
-    try {
-      execSync(`git add dist/compliance/${version}/`, {
-        cwd: path.join(__dirname, '..'),
-        stdio: 'inherit'
-      });
-    } catch {
-      console.log(`   (git add skipped — not in git context)`);
+    if (process.env.ADCP_SKIP_RELEASE_GIT_ADD === '1') {
+      console.log(`⏭  Skipping git add for dist/compliance/${version}/`);
+    } else {
+      console.log(`📝 Staging dist/compliance/${version}/ for git commit`);
+      try {
+        execSync(`git add dist/compliance/${version}/`, {
+          cwd: path.join(__dirname, '..'),
+          stdio: 'inherit'
+        });
+      } catch {
+        console.log(`   (git add skipped — not in git context)`);
+      }
     }
 
     console.log('');
