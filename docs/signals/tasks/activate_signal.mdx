@@ -27,6 +27,13 @@ The `activate_signal` task handles the entire activation lifecycle, including:
 | `destinations` | Destination[] | Yes | Target destination(s) for activation (see Destination Object below) |
 | `account` | [AccountRef](/docs/building/integration/accounts-and-agents#account-references) | No | Account for this activation. Associates with a commercial relationship established via `sync_accounts`. |
 | `pricing_option_id` | string | Yes (if signal has pricing options) | The pricing option selected from `pricing_options` in the [`get_signals`](/docs/signals/tasks/get_signals) response. Records the buyer's pricing commitment at activation time. Pass this same value in subsequent `report_usage` calls. |
+| `governance_context` | string | Conditional | Opaque approval context returned by [`check_governance`](/docs/governance/campaign/tasks/check_governance) for this activation. Required when the activation account has a registered governance agent. |
+
+## Governance
+
+Signal activation is a spend-commit event when the selected signal carries activation, usage, or CPM fees. For governed accounts, the buyer-side orchestrator MUST call `check_governance` before `activate_signal` with `purchase_type: "signal_activation"` and a normalized activation payload that includes the spend basis, such as `total_budget` or `budget`.
+
+When `check_governance` approves the activation, pass the returned `governance_context` into `activate_signal`. If the account has a governance agent registered via `sync_governance` and the request omits a valid `governance_context`, the signal agent MUST reject the request with `PERMISSION_DENIED`. If `check_governance` denies the activation, the buyer MUST NOT call `activate_signal`.
 
 ### Destination Object
 

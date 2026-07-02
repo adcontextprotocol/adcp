@@ -691,6 +691,7 @@ import {
   SUPPORTED_BILLINGS,
   handleListAccounts,
   resolveAccountIdForRef,
+  resolveGovernanceAgentsForAccount,
   handleSyncAccounts,
   handleSyncGovernance,
 } from './account-handlers.js';
@@ -6449,7 +6450,10 @@ export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext)
   const pricingOptionId = req.pricing_option_id;
   const rawGovCtx = (req as unknown as Record<string, unknown>).governance_context;
   const governanceContext = typeof rawGovCtx === 'string' && rawGovCtx.length <= 4096 ? rawGovCtx : undefined;
-  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
+  const session = await getSession(sessionKey);
+  const registeredGovernanceAgents = resolveGovernanceAgentsForAccount(sessionKey, ctx.principal, req.account);
+  const hasRegisteredGovernanceAgent = registeredGovernanceAgents.length > 0;
 
   if (!segmentId) {
     return { errors: [{ code: 'INVALID_REQUEST', message: 'signal_agent_segment_id is required' }] };
@@ -6470,10 +6474,10 @@ export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext)
     };
   }
 
-  // Enforce governance: if governance plans or governance agents exist in the session,
-  // the activation requires prior approval via check_governance. Mirrors the
-  // create_media_buy guard — a strict $100 plan (as in the governance_denied storyboard)
-  // should deny activate_signal the same way it denies a media buy.
+  // Enforce governance: if the account has a registered governance agent, the
+  // activation requires a valid approval token from check_governance. Fall back
+  // to session plans for legacy storyboard setup where the governance agent was
+  // called in-process but sync_governance was omitted.
   if (governanceContext) {
     let latestCheck: import('./types.js').GovernanceCheckState | undefined;
     for (const check of session.governanceChecks.values()) {
@@ -6488,27 +6492,38 @@ export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext)
         }] as TaskError[],
       };
     }
-    if (!latestCheck && session.governancePlans.size > 0) {
+    if (latestCheck?.status === 'conditions') {
       return {
         errors: [{
           code: 'GOVERNANCE_DENIED',
-          message: `governance_context "${governanceContext}" does not match any governance check. Call check_governance first.`,
+          message: latestCheck.explanation || 'Governance check returned conditions; re-call check_governance with an adjusted activation payload before activating this signal.',
+          details: governanceErrorDetails(latestCheck),
         }] as TaskError[],
       };
     }
-  } else if (session.governancePlans.size > 0) {
-    const msg = `Signal activation requires governance approval. Call check_governance first — a governance plan is registered for this account.`;
+    if (!latestCheck && (hasRegisteredGovernanceAgent || session.governancePlans.size > 0)) {
+      return {
+        errors: [{
+          code: 'PERMISSION_DENIED',
+          message: `governance_context "${governanceContext}" does not match any governance approval for this account. Call check_governance first.`,
+        }] as TaskError[],
+      };
+    }
+  } else if (hasRegisteredGovernanceAgent || session.governancePlans.size > 0) {
+    const msg = hasRegisteredGovernanceAgent
+      ? `Signal activation requires governance approval. Call check_governance first — a governance agent is registered for this account.`
+      : `Signal activation requires governance approval. Call check_governance first — a governance plan is registered for this account.`;
     return {
       errors: [{
-        code: 'GOVERNANCE_DENIED',
+        code: hasRegisteredGovernanceAgent ? 'PERMISSION_DENIED' : 'GOVERNANCE_DENIED',
         message: msg,
         details: {
           findings: [{
-            category_id: 'budget_authority',
+            category_id: hasRegisteredGovernanceAgent ? 'governance_context' : 'budget_authority',
             severity: 'critical',
             explanation: msg,
           }],
-          plan_id: [...session.governancePlans.keys()][0],
+          ...(session.governancePlans.size > 0 && { plan_id: [...session.governancePlans.keys()][0] }),
         },
       }] as TaskError[],
     };
