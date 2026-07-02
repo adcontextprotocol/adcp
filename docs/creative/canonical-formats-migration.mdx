@@ -285,9 +285,9 @@ Override fields take precedence over `brand.json` for the call carrying this Bra
 | Tool | v1 | v2 |
 |---|---|---|
 | `get_products` | Returns products with `format_ids` | Returns products with either `format_ids` (v1 path) or `format` (v2 inline) |
-| `sync_creatives` | Submit creative manifest | Unchanged. Sales agents accept manifests with `assets` keyed by slot name per the format's `slots` declaration. |
+| `sync_creatives` | Submit creative manifest | Unchanged. Sales agents accept manifests with `assets` keyed by slot name per the format's `slots` declaration. Use `dry_run: true` to rehearse the actual upload/update operation without mutating the library. |
 | `preview_creative` | Submit manifest, get preview | Same surface; preview shows output regardless of whether the slots ship rendered creative (image/video/audio) or production content (script/brief/video_brief). The single-render hoist in #3268 lands alongside v2. |
-| `validate_input` | (didn't exist) | New buyer dry-run primitive. Validates a manifest against canonical formats and/or specific products without committing to a render. Cheap; `predicted` field carries pre-flight estimates. |
+| `validate_input` | (didn't exist) | New buyer manifest-preflight primitive. Validates a manifest against canonical formats and/or specific products without committing to a render. It does not rehearse `sync_creatives` library mutations, IDs, assignments, or account gates. Cheap; `predicted` field carries pre-flight estimates. |
 | `build_creative` | Generative tool on creative agents | Same role; creative-agent surface only. Sales agents do **not** expose `build_creative`. Creative agents may **also** expose `sync_creatives` for ad-server use cases. |
 | `list_creative_formats` | Both sales and creative agents | Deprecated. Sales agents migrate to `get_products`; creative agents to `creative.supported_formats`. v1 tool stays functional through 4.x. |
 
@@ -480,7 +480,7 @@ Three implementation considerations specific to creative agents in v2:
 ### Buyers / DSPs
 
 1. Update your client to read either `format_ids` (v1) or `format` (v2 inline) on products.
-2. Use `validate_input` for cheap dry-run validation before committing to renders.
+2. Use `validate_input` for cheap manifest preflight before committing to renders or comparing product targets. Use `sync_creatives` with `dry_run: true` when the question is whether the seller would accept the actual upload/update request.
 3. Use the canonical [`asset_group_id` vocabulary](https://adcontextprotocol.org/schemas/v3/core/asset-group-vocabulary.json) when constructing manifests; the registry's `aliases` field maps v1-era slot names to canonical equivalents.
 4. Submit creative via `sync_creatives` as before. For products whose slots accept production content (host-read podcasts ship a `script` text asset; generative video ships a `creative_brief` and `video_brief`), either pre-produce via a creative agent's `build_creative` to get back a manifest with rendered assets OR submit the production-content assets directly and let the seller produce internally — both flows are valid.
 

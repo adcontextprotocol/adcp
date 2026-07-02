@@ -2455,7 +2455,7 @@ const TOOLS = [
   },
   {
     name: 'validate_input',
-    description: 'Dry-run a creative manifest against canonical formats, seeded products, or third-party format references. Returns per-target validated_pass, validated_fail, or unvalidatable_nondeterministic without registering a creative.',
+    description: 'Preflight a creative manifest against canonical formats, seeded products, or third-party format references. Returns per-target validated_pass, validated_fail, or unvalidatable_nondeterministic without registering a creative. For seller trafficking acceptance of the actual sync_creatives request, use sync_creatives with dry_run: true.',
     annotations: { readOnlyHint: true, idempotentHint: true },
     execution: { taskSupport: 'forbidden' as const },
     inputSchema: {
@@ -2573,7 +2573,7 @@ const TOOLS = [
   },
   {
     name: 'sync_creatives',
-    description: 'Upload or update creative assets and optionally assign them to packages. Validates format_id against list_creative_formats. Not for listing existing creatives (use list_creatives). Creative content is not validated — only format_id is checked.',
+    description: 'Upload or update creative assets and optionally assign them to packages. Use dry_run: true to rehearse the actual seller upload/update without mutating the library. Not for manifest-only preflight against canonical/product targets (use validate_input) or listing existing creatives (use list_creatives).',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     execution: { taskSupport: 'optional' as const },
     inputSchema: {
@@ -5437,9 +5437,14 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     });
   }
 
-  // Process creative assignments
+  // Process creative assignments. Dry runs validate the same assignment
+  // references but skip the package mutation.
   const assignmentResults: AssignmentResult[] = [];
-  if (req.assignments?.length && !isDryRun) {
+  if (req.assignments?.length) {
+    const availableCreativeIds = new Set(session.creatives.keys());
+    for (const result of results) {
+      if (result.action !== 'failed') availableCreativeIds.add(result.creative_id);
+    }
     for (const assignment of req.assignments) {
       const mediaBuyId = (assignment as unknown as CreativeAssignmentInput).media_buy_id;
       const packageId = assignment.package_id;
@@ -5455,11 +5460,11 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
         assignmentResults.push({ creative_id: creativeId, package_id: packageId, status: 'error', message: `Package not found: ${packageId}` });
         continue;
       }
-      if (!session.creatives.has(creativeId)) {
+      if (!availableCreativeIds.has(creativeId)) {
         assignmentResults.push({ creative_id: creativeId, package_id: packageId, status: 'error', message: `Creative not found: ${creativeId}` });
         continue;
       }
-      if (!pkg.creativeAssignments.includes(creativeId)) {
+      if (!isDryRun && !pkg.creativeAssignments.includes(creativeId)) {
         pkg.creativeAssignments.push(creativeId);
       }
       assignmentResults.push({ creative_id: creativeId, package_id: packageId, status: 'assigned' });
