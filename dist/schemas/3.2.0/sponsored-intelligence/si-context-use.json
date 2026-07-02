@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.2.0/sponsored-intelligence/si-context-use.json",
+  "title": "SI Context Use",
+  "description": "Declared use mode for sponsored context crossing into a Sponsored Intelligence host boundary. This is a boundary declaration, not a claim that AdCP can inspect hidden model reasoning after the host receives the context.",
+  "x-status": "experimental",
+  "type": "string",
+  "enum": [
+    "presentation_only",
+    "comparison_set",
+    "reasoning_context"
+  ],
+  "enumDescriptions": {
+    "presentation_only": "The sponsored context is intended to be rendered or offered as a distinct labeled unit, not used as comparison candidates or folded into host model reasoning.",
+    "comparison_set": "The sponsored context is intended to form or influence a candidate set used for comparison, ranking, or selection; individual candidates may or may not be rendered.",
+    "reasoning_context": "The sponsored context is intended to be available to the host model or orchestration layer as context for answer generation, planning, ranking, or other reasoning."
+  }
+}
