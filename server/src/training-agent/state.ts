@@ -109,7 +109,7 @@ export async function flushDirtySessions(): Promise<void> {
   const store = getStore();
   const errors: Array<{ key: string; err: unknown }> = [];
   for (const [key, session] of ctx.sessions) {
-    const current = serializeSession(session);
+    const current = serializeSession(session, key);
     const currentJson = stableStringify(current);
     const snapshotJson = ctx.snapshots.get(key);
     if (snapshotJson === currentJson) continue;
@@ -226,9 +226,10 @@ export function getComplianceCreative(id: string): CreativeState | undefined {
  * Serialize a SessionState via the SDK's `structuredSerialize` (tagged
  * envelopes for Map/Date). Returns a JSON-safe Record.
  */
-function serializeSession(session: SessionState): Record<string, unknown> {
+function serializeSession(session: SessionState, key?: string): Record<string, unknown> {
   const persisted = {
     ...session,
+    ...(key && { __sessionKey: key }),
     // `products` is deterministic from the catalog — dropped from persistence
     // so callers re-derive on the next request. Only `proposals` (session-
     // specific drafts from refine workflows) ride along.
@@ -257,7 +258,8 @@ function serializeSession(session: SessionState): Record<string, unknown> {
  * matching line here or it will hydrate as a raw envelope object.
  */
 function deserializeSession(data: Record<string, unknown>): SessionState {
-  const hydrated = structuredDeserialize(data) as Partial<SessionState> & { lastGetProductsContext?: unknown };
+  const hydratedWithMeta = structuredDeserialize(data) as Partial<SessionState> & { lastGetProductsContext?: unknown; __sessionKey?: unknown };
+  const { __sessionKey: _sessionKey, ...hydrated } = hydratedWithMeta;
   const fresh = createSession();
   const asMap = <V>(v: unknown, fallback: Map<string, V>): Map<string, V> =>
     v instanceof Map ? (v as Map<string, V>) : fallback;
@@ -328,7 +330,7 @@ export async function getSession(key: string): Promise<SessionState> {
     // Snapshot the round-trip shape (serialize after deserialize) so any
     // normalization done by (de)serialize doesn't register as a mutation.
     // stableStringify drops lastAccessedAt so "touch-only" reads don't flush.
-    ctx.snapshots.set(key, stableStringify(serializeSession(session)));
+    ctx.snapshots.set(key, stableStringify(serializeSession(session, key)));
   }
   return session;
 }
@@ -472,8 +474,15 @@ export async function findSessionMatching(predicate: (s: SessionState) => boolea
   try {
     const page = await store.list<Record<string, unknown>>(SESSIONS_COLLECTION, { limit: 100 });
     for (const row of page.items ?? []) {
+      const sessionKey = typeof row.__sessionKey === 'string' ? row.__sessionKey : undefined;
       const session = deserializeSession(row);
-      if (predicate(session)) return session;
+      if (predicate(session)) {
+        if (ctx && sessionKey) {
+          ctx.sessions.set(sessionKey, session);
+          ctx.snapshots.set(sessionKey, stableStringify(serializeSession(session, sessionKey)));
+        }
+        return session;
+      }
     }
   } catch (err) {
     logger.warn({ err }, 'findSessionMatching: store list failed');
@@ -487,6 +496,15 @@ export function findMediaBuyAcrossSessions(mediaBuyId: string): Promise<SessionS
 
 export function findGovernancePlanAcrossSessions(planId: string): Promise<SessionState | null> {
   return findSessionMatching(s => s.governancePlans.has(planId));
+}
+
+export function findGovernanceCheckAcrossSessions(governanceContext: string): Promise<SessionState | null> {
+  return findSessionMatching(s => {
+    for (const check of s.governanceChecks.values()) {
+      if (check.governanceContext === governanceContext) return true;
+    }
+    return false;
+  });
 }
 
 /** Clear all sessions (tests only). */
@@ -505,4 +523,3 @@ export async function clearSessions(): Promise<void> {
   }
   // Other AdcpStateStore implementations: no-op. Tests should inject a known store.
 }
-

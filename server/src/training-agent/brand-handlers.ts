@@ -209,6 +209,17 @@ const TALENT: TalentEntry[] = [
             overage_cpm: 4.00,
             description: 'Monthly exclusive license for likeness + voice, up to 100K impressions',
           },
+          {
+            pricing_option_id: 'standard_monthly',
+            model: 'flat_rate',
+            price: 350,
+            currency: 'EUR',
+            period: 'monthly',
+            uses: ['likeness', 'voice'],
+            impression_cap: 100000,
+            overage_cpm: 4.00,
+            description: 'Monthly standard license alias for 3.0.x rights storyboards',
+          },
         ],
         content_restrictions: ['approval_required'],
         preview_assets: [
@@ -670,7 +681,7 @@ export function handleGetBrandIdentity(
 
   const talent = BRAND_MAP.get(brandId);
   if (!talent) {
-    return { errors: [{ code: 'brand_not_found', message: `No brand with id '${brandId}'` }] };
+    return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: `No brand with id '${brandId}'` }] };
   }
 
   const requested = fields ?? [...ALL_FIELDS];
@@ -930,16 +941,16 @@ export async function handleAcquireRights(
   }
 
   if (!talent || !offering) {
-    return { errors: [{ code: 'rights_not_found', message: `No rights offering with id '${rightsId}'` }] };
+    return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: `No rights offering with id '${rightsId}'` }] };
   }
 
   const pricingOption = offering.pricing_options.find(p => p.pricing_option_id === pricingOptionId);
   if (!pricingOption) {
-    return { errors: [{ code: 'invalid_pricing_option', message: `No pricing option '${pricingOptionId}' in offering '${rightsId}'` }] };
+    return { errors: [{ code: 'INVALID_REQUEST', message: `No pricing option '${pricingOptionId}' in offering '${rightsId}'` }] };
   }
 
   if (!campaign?.description) {
-    return { errors: [{ code: 'invalid_request', message: 'campaign.description is required' }] };
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'campaign.description is required' }] };
   }
 
   if (campaign.end_date) {
@@ -1138,7 +1149,7 @@ export function handleUpdateRights(
   }
 
   if (!talent || !offering) {
-    return { errors: [{ code: 'rights_not_found', message: `No active grant with id '${rightsId}'` }] };
+    return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: `No active grant with id '${rightsId}'` }] };
   }
 
   const defaultWindow = defaultRightsWindow();
@@ -1238,7 +1249,7 @@ export function handleCreativeApproval(
     t.rights_offerings.some(r => r.rights_id === rightsId)
   );
   if (!isKnownOffering) {
-    return { errors: [{ code: 'rights_not_found', message: `No rights offering with id '${rightsId}'. Acquire rights first using acquire_rights.` }] };
+    return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: `No rights offering with id '${rightsId}'. Acquire rights first using acquire_rights.` }] };
   }
 
   const creativeUrl = req.creative_url || req.creative?.assets?.[0]?.url;

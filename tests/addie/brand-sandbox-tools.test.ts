@@ -82,7 +82,7 @@ describe('brand protocol tools (training agent)', () => {
     it('returns error for unknown brand', async () => {
       const result = await call('get_brand_identity', { brand_id: 'nonexistent' });
       expect(result.errors).toBeDefined();
-      expect((result.errors as Array<{ code: string }>)[0].code).toBe('brand_not_found');
+      expect((result.errors as Array<{ code: string }>)[0].code).toBe('REFERENCE_NOT_FOUND');
     });
 
     it('omits available_fields when talent lacks the requested authorized field', async () => {
@@ -351,7 +351,7 @@ describe('brand protocol tools (training agent)', () => {
         buyer: baseBuyer,
         campaign: { description: 'test', uses: ['likeness'] },
       });
-      expect((result.errors as Array<{ code: string }>)[0].code).toBe('rights_not_found');
+      expect((result.errors as Array<{ code: string }>)[0].code).toBe('REFERENCE_NOT_FOUND');
     });
 
     it('returns error for invalid pricing option', async () => {
@@ -361,7 +361,7 @@ describe('brand protocol tools (training agent)', () => {
         buyer: baseBuyer,
         campaign: { description: 'test', uses: ['likeness'] },
       });
-      expect((result.errors as Array<{ code: string }>)[0].code).toBe('invalid_pricing_option');
+      expect((result.errors as Array<{ code: string }>)[0].code).toBe('INVALID_REQUEST');
     });
 
     it('returns error when buyer is missing', async () => {
@@ -454,7 +454,7 @@ describe('brand protocol tools (training agent)', () => {
         rights_id: 'nonexistent',
       });
       expect(result.errors).toBeDefined();
-      expect((result.errors as Array<{ code: string }>)[0].code).toBe('rights_not_found');
+      expect((result.errors as Array<{ code: string }>)[0].code).toBe('REFERENCE_NOT_FOUND');
       expect((result.errors as Array<{ message: string }>)[0].message).toContain('nonexistent');
     });
 

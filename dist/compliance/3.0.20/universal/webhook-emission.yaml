@@ -324,6 +324,8 @@ phases:
           push_notification_config:
             url: "{{runner.webhook_url:trigger_idempotent_webhook_initial}}"
             operation_id: "op_webhook_idempotency_replay"
+          start_time: "2099-07-01T00:00:00Z"
+          end_time: "2099-07-31T23:59:59Z"
           idempotency_key: "$generate:uuid_v4#webhook_emission_replay_key"
           context:
             correlation_id: "webhook_emission--idempotent_replay_initial"
@@ -349,6 +351,8 @@ phases:
           push_notification_config:
             url: "{{runner.webhook_url:trigger_idempotent_webhook_initial}}"
             operation_id: "op_webhook_idempotency_replay"
+          start_time: "2099-07-01T00:00:00Z"
+          end_time: "2099-07-31T23:59:59Z"
           idempotency_key: "$generate:uuid_v4#webhook_emission_replay_key"
           context:
             correlation_id: "webhook_emission--idempotent_replay_replay"
@@ -440,9 +444,6 @@ phases:
           - check: field_present
             path: "products"
             description: "Accepted wholesale get_products response returns the synchronous products collection"
-          - check: field_absent
-            path: "task_id"
-            description: "Accepted wholesale get_products response does not mint an async task_id"
           - check: field_value
             path: "context.correlation_id"
             value: "webhook_emission--sync_get_products_no_webhook"

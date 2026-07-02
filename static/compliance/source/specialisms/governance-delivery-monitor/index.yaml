@@ -259,6 +259,9 @@ phases:
             path: "context.correlation_id"
             value: "governance_delivery_monitor--check_governance_approved"
             description: "Context correlation_id returned unchanged"
+        context_outputs:
+          - name: governance_context
+            path: "governance_context"
   - id: create_buy
     title: "Create media buy under governance approval"
     narrative: |
@@ -292,7 +295,7 @@ phases:
             operator: "pinnacle-agency.example"
           brand:
             domain: "acmeoutdoor.example"
-          governance_context: "gov_ctx_acme_delivery_approved"
+          governance_context: "$context.governance_context"
           start_time: "2099-04-01T00:00:00Z"
           end_time: "2099-06-30T23:59:59Z"
           packages:
@@ -408,7 +411,7 @@ phases:
           plan_id: "$context.plan_id"
           caller: "https://pinnacle-agency.example"
           phase: "delivery"
-          governance_context: "gov_ctx_acme_delivery_approved"
+          governance_context: "$context.governance_context"
           delivery_metrics:
             reporting_period:
               start: "2099-05-01T00:00:00Z"

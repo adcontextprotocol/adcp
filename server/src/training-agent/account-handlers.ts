@@ -79,6 +79,28 @@ function getAccountMap(sessionKey: string): Map<string, AccountState> {
   return map;
 }
 
+function accountStoreSessionKey(
+  args: ToolArgs & {
+    accounts?: Array<{
+      brand?: { domain?: string; brand_id?: string; name?: string };
+      account?: AccountRef;
+    }>;
+  },
+  ctx: TrainingContext,
+): string {
+  const key = sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId);
+  if (key !== 'open:default') return key;
+
+  const first = args.accounts?.find(item => item.account?.brand?.domain || item.account?.account_id || item.brand?.domain);
+  if (first?.account) {
+    return sessionKeyFromArgs({ account: first.account }, ctx.mode, ctx.userId, ctx.moduleId);
+  }
+  if (first?.brand?.domain) {
+    return sessionKeyFromArgs({ brand: { domain: first.brand.domain } }, ctx.mode, ctx.userId, ctx.moduleId);
+  }
+  return key;
+}
+
 function accountKey(brand: { domain: string; brand_id?: string }, operator: string): string {
   const brandPart = brand.brand_id ? `${brand.domain}:${brand.brand_id}` : brand.domain;
   return `${brandPart}::${operator}`;
@@ -95,6 +117,15 @@ function findAccountByRef(accounts: Map<string, AccountState>, ref: AccountRef):
     return accounts.get(accountKey(ref.brand, ref.operator));
   }
   return undefined;
+}
+
+export function getSyncedGovernanceAgents(args: ToolArgs, ctx: TrainingContext): GovernanceAgentEntry[] {
+  const sessionKey = accountStoreSessionKey(args, ctx);
+  const accounts = getAccountMap(sessionKey);
+  if (args.account) {
+    return findAccountByRef(accounts, args.account)?.governanceAgents ?? [];
+  }
+  return Array.from(accounts.values()).flatMap(account => account.governanceAgents);
 }
 
 /** Exported for testing — clear all account state */
@@ -322,7 +353,7 @@ export function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
     };
   }
 
-  const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
+  const sessionKey = accountStoreSessionKey(req, ctx);
   const accounts = getAccountMap(sessionKey);
   const agentUrl = getAgentUrl();
   const now = new Date().toISOString();
@@ -505,7 +536,7 @@ export function handleSyncGovernance(args: ToolArgs, ctx: TrainingContext) {
     };
   }
 
-  const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
+  const sessionKey = accountStoreSessionKey(req, ctx);
   const accounts = getAccountMap(sessionKey);
   const results: Record<string, unknown>[] = [];
 

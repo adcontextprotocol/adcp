@@ -48,6 +48,11 @@
       "description": "The phase of the governed action's lifecycle. 'purchase': initial commitment (create_media_buy, acquire_rights, activate_signal). 'modification': update to existing commitment. 'delivery': periodic delivery or usage reporting. Defaults to 'purchase' if omitted.",
       "default": "purchase"
     },
+    "human_approval": {
+      "type": "object",
+      "description": "Human approval data from an off-protocol escalation flow. Present when a prior denied check required human review and the buyer is re-checking the same governed action after approval.",
+      "additionalProperties": true
+    },
     "planned_delivery": {
       "$ref": "/schemas/3.0.20/core/planned-delivery.json",
       "description": "What the seller will actually deliver. Present on execution checks."

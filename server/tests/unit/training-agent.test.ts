@@ -7182,7 +7182,7 @@ describe('get_brand_identity handler', () => {
       brand_id: 'does_not_exist',
     });
 
-    expect(result.code).toBe('brand_not_found');
+    expect(result.code).toBe('REFERENCE_NOT_FOUND');
   });
 });
 

@@ -95,6 +95,7 @@ interface PackageInput {
   format_ids?: FormatID[];
   targeting?: PackageTargeting;
   targeting_overlay?: PackageTargeting;
+  creative_assignments?: Array<string | { creative_id?: string }>;
 }
 
 interface CreativeAssignmentInput {
@@ -172,6 +173,7 @@ import {
   getSession, sessionKeyFromArgs,
   runWithSessionContext, flushDirtySessions,
   getComplianceCreatives, getComplianceCreative,
+  findGovernanceCheckAcrossSessions,
   MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION, MAX_USAGE_RECORDS_PER_SESSION,
 } from './state.js';
 import { getAgentUrl } from './config.js';
@@ -210,6 +212,7 @@ import {
 } from './content-standards-handlers.js';
 import {
   ACCOUNT_TOOLS,
+  getSyncedGovernanceAgents,
   handleListAccounts,
   handleSyncAccounts,
   handleSyncGovernance,
@@ -1276,7 +1279,7 @@ export async function handleListCreativeFormats(args: ToolArgs, _ctx: TrainingCo
 
 export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as CreateMediaBuyRequest & ToolArgs;
-  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  let session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
 
   // Consume any single-shot directive registered by
   // comply_test_controller.force_create_media_buy_arm. Runs before all other
@@ -1336,6 +1339,17 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     for (const check of session.governanceChecks.values()) {
       if (check.governanceContext === govCtx) {
         latestCheck = check;
+      }
+    }
+    if (!latestCheck) {
+      const fallback = await findGovernanceCheckAcrossSessions(govCtx);
+      if (fallback) {
+        session = fallback;
+        for (const check of session.governanceChecks.values()) {
+          if (check.governanceContext === govCtx) {
+            latestCheck = check;
+          }
+        }
       }
     }
     if (latestCheck?.status === 'denied') {
@@ -1639,6 +1653,11 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     if (errors.length > 0) continue;
 
     const resolvedStart = startTime === 'asap' ? new Date().toISOString() : startTime;
+    const creativeAssignments = Array.isArray(pkg.creative_assignments)
+      ? pkg.creative_assignments
+        .map(assignment => typeof assignment === 'string' ? assignment : assignment?.creative_id)
+        .filter((creativeId): creativeId is string => typeof creativeId === 'string' && creativeId.length > 0)
+      : [];
 
     createdPackages.push({
       packageId: `pkg-${i}`,
@@ -1651,7 +1670,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       startTime: resolvedStart,
       endTime,
       formatIds: pkg.format_ids,
-      creativeAssignments: [],
+      creativeAssignments,
       targeting: targetingResult.targeting,
     });
   }
@@ -2779,6 +2798,7 @@ export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext)
   const rawGovCtx = (req as unknown as Record<string, unknown>).governance_context;
   const governanceContext = typeof rawGovCtx === 'string' && rawGovCtx.length <= 4096 ? rawGovCtx : undefined;
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const syncedGovernanceAgents = getSyncedGovernanceAgents(req, ctx);
 
   if (!segmentId) {
     return { errors: [{ code: 'INVALID_REQUEST', message: 'signal_agent_segment_id is required' }] };
@@ -2838,6 +2858,21 @@ export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext)
             explanation: msg,
           }],
           plan_id: [...session.governancePlans.keys()][0],
+        },
+      }] as TaskError[],
+    };
+  } else if (syncedGovernanceAgents.length > 0) {
+    const msg = `Signal activation requires governance approval. Call check_governance first — a governance agent is registered for this account.`;
+    return {
+      errors: [{
+        code: 'PERMISSION_DENIED',
+        message: msg,
+        details: {
+          findings: [{
+            category_id: 'governance_context',
+            severity: 'critical',
+            explanation: msg,
+          }],
         },
       }] as TaskError[],
     };
