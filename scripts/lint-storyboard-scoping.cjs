@@ -80,8 +80,12 @@ const TENANT_SCOPED_TASKS = new Set([
  *     `sync_event_sources`.
  *
  * (b) Global discovery / catalog reads. `get_adcp_capabilities`,
- *     `list_creative_formats`, `get_brand_identity`, `get_rights`,
- *     `update_rights`, `comply_test_controller`.
+ *     `list_creative_formats`, `list_accounts`, `get_brand_identity`,
+ *     `get_rights`, `update_rights`, `comply_test_controller`. `list_accounts`
+ *     belongs here despite the per-tenant return shape — the request itself
+ *     carries no scoping ID (it's the chicken-and-egg discovery call that
+ *     produces the IDs other tasks consume), so envelope-identity routing
+ *     would be circular.
  *
  * (c) Identity implicit via one or more required globally-unique IDs in the
  *     request schema (either a single scalar or an `anyOf` across several ID
@@ -116,6 +120,7 @@ const EXEMPT_FROM_LINT = new Set([
   // (b) Global discovery
   'get_adcp_capabilities',
   'list_creative_formats',
+  'list_accounts',
   // (b) Global brand/rights catalog reads
   'get_brand_identity',
   'get_rights',

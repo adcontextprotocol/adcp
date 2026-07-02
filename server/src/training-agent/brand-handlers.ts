@@ -896,6 +896,14 @@ interface AcquireRightsArgs {
   };
 }
 
+function defaultRightsWindow() {
+  const year = new Date(Date.now()).getUTCFullYear() + 1;
+  return {
+    startDate: `${year}-04-01`,
+    endDate: `${year}-06-30`,
+  };
+}
+
 export async function handleAcquireRights(
   args: ToolArgs,
   ctx: TrainingContext,
@@ -1032,8 +1040,9 @@ export async function handleAcquireRights(
   }
 
   const talentName = getTalentName(talent);
-  const startDate = campaign.start_date || '2026-04-01';
-  const endDate = campaign.end_date || '2026-06-30';
+  const defaultWindow = defaultRightsWindow();
+  const startDate = campaign.start_date || defaultWindow.startDate;
+  const endDate = campaign.end_date || defaultWindow.endDate;
 
   const generationCredentials: GenerationCredential[] = [];
   const campaignUses = campaign.uses || pricingOption.uses;
@@ -1132,8 +1141,9 @@ export function handleUpdateRights(
     return { errors: [{ code: 'rights_not_found', message: `No active grant with id '${rightsId}'` }] };
   }
 
-  const currentEndDate = '2026-06-30';
-  const currentStartDate = '2026-04-01';
+  const defaultWindow = defaultRightsWindow();
+  const currentEndDate = defaultWindow.endDate;
+  const currentStartDate = defaultWindow.startDate;
   if (endDate && endDate < currentEndDate) {
     return { errors: [{ code: 'invalid_update', message: 'New end_date must be >= current end_date' }] };
   }

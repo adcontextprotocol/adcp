@@ -21,6 +21,14 @@ async function call(tool: string, args: Record<string, unknown>): Promise<Record
   return await handlers[tool](args, ctx);
 }
 
+function rightsTestDates() {
+  const year = new Date(Date.now()).getUTCFullYear() + 1;
+  return {
+    extensionEndDate: `${year}-09-30`,
+    beforeCurrentEndDate: `${year}-01-01`,
+  };
+}
+
 describe('brand protocol tools (training agent)', () => {
 
   describe('get_brand_identity', () => {
@@ -317,6 +325,9 @@ describe('brand protocol tools (training agent)', () => {
     });
 
     it('rights_constraint uses date-time format', async () => {
+      const year = new Date(Date.now()).getUTCFullYear() + 1;
+      const startDate = `${year}-04-01`;
+      const endDate = `${year}-06-30`;
       const result = await call('acquire_rights', {
         rights_id: 'janssen_likeness_voice',
         pricing_option_id: 'monthly_exclusive',
@@ -324,13 +335,13 @@ describe('brand protocol tools (training agent)', () => {
         campaign: {
           description: 'Restaurant food campaign',
           uses: ['likeness'],
-          start_date: '2026-04-01',
-          end_date: '2026-06-30',
+          start_date: startDate,
+          end_date: endDate,
         },
       });
       const constraint = result.rights_constraint as { valid_from: string; valid_until: string };
-      expect(constraint.valid_from).toBe('2026-04-01T00:00:00Z');
-      expect(constraint.valid_until).toBe('2026-06-30T23:59:59Z');
+      expect(constraint.valid_from).toBe(`${startDate}T00:00:00Z`);
+      expect(constraint.valid_until).toBe(`${endDate}T23:59:59Z`);
     });
 
     it('returns error for unknown rights_id', async () => {
@@ -380,12 +391,13 @@ describe('brand protocol tools (training agent)', () => {
   describe('update_rights', () => {
 
     it('returns updated terms with extended end_date', async () => {
+      const { extensionEndDate } = rightsTestDates();
       const result = await call('update_rights', {
         rights_id: 'janssen_likeness_voice',
-        end_date: '2026-09-30',
+        end_date: extensionEndDate,
       });
       expect(result.rights_id).toBe('janssen_likeness_voice');
-      expect((result.terms as { end_date: string }).end_date).toBe('2026-09-30');
+      expect((result.terms as { end_date: string }).end_date).toBe(extensionEndDate);
     });
 
     it('returns updated impression cap', async () => {
@@ -398,24 +410,26 @@ describe('brand protocol tools (training agent)', () => {
     });
 
     it('returns re-issued generation credentials', async () => {
+      const { extensionEndDate } = rightsTestDates();
       const result = await call('update_rights', {
         rights_id: 'janssen_likeness_voice',
-        end_date: '2026-09-30',
+        end_date: extensionEndDate,
       });
       const creds = result.generation_credentials as Array<{ expires_at: string; rights_key: string }>;
       expect(creds.length).toBeGreaterThan(0);
-      expect(creds[0].expires_at).toBe('2026-09-30T23:59:59Z');
+      expect(creds[0].expires_at).toBe(`${extensionEndDate}T23:59:59Z`);
       expect(creds[0].rights_key).toMatch(/^rk_mj_sandbox_/);
     });
 
     it('returns updated rights_constraint', async () => {
+      const { extensionEndDate } = rightsTestDates();
       const result = await call('update_rights', {
         rights_id: 'janssen_likeness_voice',
-        end_date: '2026-09-30',
+        end_date: extensionEndDate,
         impression_cap: 200000,
       });
       const constraint = result.rights_constraint as { valid_until: string; impression_cap: number; rights_id: string };
-      expect(constraint.valid_until).toBe('2026-09-30T23:59:59Z');
+      expect(constraint.valid_until).toBe(`${extensionEndDate}T23:59:59Z`);
       expect(constraint.impression_cap).toBe(200000);
       expect(constraint.rights_id).toBe('janssen_likeness_voice');
     });
