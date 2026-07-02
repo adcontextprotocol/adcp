@@ -50,7 +50,7 @@ interface AccountState {
   syncedAt: string;
 }
 
-interface GovernanceAgentEntry {
+export interface GovernanceAgentEntry {
   url: string;
 }
 
@@ -451,6 +451,23 @@ export function resolveAccountIdForRef(
   const account = findAccountByRef(getAccountMap(sessionKey, principal), ref)
     ?? (ref.account_id ? findAccountByIdAcrossSessions(ref.account_id, principal) : undefined);
   return account?.accountId;
+}
+
+export function resolveGovernanceAgentsForAccount(
+  sessionKey: string,
+  principal: string | undefined,
+  ref: AccountRef | undefined,
+): GovernanceAgentEntry[] {
+  if (!ref) return [];
+  for (const accounts of accountMapsForPrincipal(sessionKey, principal)) {
+    const account = findAccountByRef(accounts, ref);
+    if (account) return [...account.governanceAgents];
+  }
+  if (ref.account_id) {
+    const account = findAccountByIdAcrossSessions(ref.account_id, principal);
+    if (account) return [...account.governanceAgents];
+  }
+  return [];
 }
 
 export function seedAccountFixture(

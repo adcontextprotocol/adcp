@@ -185,10 +185,6 @@ const THREE_ZERO_COMPAT_KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new M
     'brand_rights/acquire_rights',
     '3.0.13 compatibility run under @adcp/sdk 8.1 beta.13: frozen brand-rights response schema rejects the current training-agent rights envelope. Current-source brand coverage remains graded by the current matrix.',
   ],
-  [
-    'signal_marketplace/governance_denied/activate_signal_denied',
-    'latest 3.0.x compatibility run under @adcp/sdk 9.6.2: the frozen linked governance-denial storyboard skips governance setup on the signals tenant because sync_plans is not advertised, but still grades activate_signal_denied, where the current signals tenant no longer emits the frozen GOVERNANCE_DENIED shape. Current-source signal governance-denial coverage remains graded by the current matrix.',
-  ],
 ]);
 
 const THREE_ZERO_SIGNED_POSITIVE_VECTOR_IDS = [
@@ -325,6 +321,46 @@ function patchThreeZeroStoryboard(sb: Storyboard): Storyboard {
       for (const step of phase.steps ?? []) {
         if (step.id === 'acquire_rights') {
           step.validations = (step.validations ?? []).filter(validation => validation.check !== 'response_schema');
+        }
+      }
+    }
+    return patched;
+  }
+
+  if (sb.id === 'signal_marketplace/governance_denied') {
+    patched.context = {
+      ...((patched.context ?? {}) as Record<string, unknown>),
+      governance_agent_url: 'https://test-agent.adcontextprotocol.org',
+    };
+    patched.phases = (patched.phases ?? []).filter(phase => phase.id !== 'governance_plan_setup');
+    for (const phase of patched.phases ?? []) {
+      for (const step of phase.steps ?? []) {
+        if (step.id !== 'activate_signal_denied') continue;
+        step.title = 'activate_signal — missing governance approval';
+        step.expected = [
+          'Signal agent rejects with:',
+          '- code: PERMISSION_DENIED',
+          '- findings explaining that check_governance must run first',
+        ].join('\n');
+        step.sample_response = {
+          status: 'failed',
+          errors: [{
+            code: 'PERMISSION_DENIED',
+            message: 'Signal activation requires governance approval. Call check_governance first — a governance agent is registered for this account.',
+            details: {
+              findings: [{
+                category_id: 'governance_context',
+                severity: 'critical',
+                explanation: 'Signal activation requires governance approval. Call check_governance first — a governance agent is registered for this account.',
+              }],
+            },
+          }],
+        };
+        for (const validation of step.validations ?? []) {
+          if (validation.check === 'error_code') {
+            validation.value = 'PERMISSION_DENIED';
+            validation.description = 'Error code is PERMISSION_DENIED';
+          }
         }
       }
     }
