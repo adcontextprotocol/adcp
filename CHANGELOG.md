@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.0.21
+
+### Patch Changes
+
+- Fix 3.0.20 governance approval, account listing, signal activation, webhook idempotency, and release artifact checks.
+
 ## 3.0.20
 
 ### Patch Changes

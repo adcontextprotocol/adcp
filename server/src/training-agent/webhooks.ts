@@ -138,6 +138,14 @@ export function deriveWebhookOperationId(
   return `${principal}|${toolName}.${randomUUID()}`;
 }
 
+export function deriveRegisteredWebhookDeliveryOperationId(
+  toolName: string,
+  registeredOperationId: string,
+  principal: string,
+): string {
+  return deriveWebhookOperationId(toolName, {}, registeredOperationId, principal);
+}
+
 /**
  * Fire a completion webhook for a successful tool call if the buyer supplied
  * `push_notification_config.url` and the tool maps to a webhook task type.
@@ -173,12 +181,15 @@ export function maybeEmitCompletionWebhook(opts: {
   const tool = opts.toolName as WebhookEmittingTool;
 
   const emitter = getWebhookEmitter();
-  const operationId = extractRegisteredOperationId(opts.args)
-    ?? deriveWebhookOperationId(opts.toolName, opts.response, opts.requestIdempotencyKey, opts.principal);
+  const registeredOperationId = extractRegisteredOperationId(opts.args);
+  const deliveryOperationId = registeredOperationId
+    ? deriveRegisteredWebhookDeliveryOperationId(opts.toolName, registeredOperationId, opts.principal)
+    : deriveWebhookOperationId(opts.toolName, opts.response, opts.requestIdempotencyKey, opts.principal);
+  const payloadOperationId = registeredOperationId ?? deliveryOperationId;
   const webhookTaskId = (opts.response.task_id as string | undefined)
-    ?? `tsk_${operationId.slice(0, 32).replace(/[^A-Za-z0-9_.:-]/g, '_')}`;
+    ?? `tsk_${payloadOperationId.slice(0, 32).replace(/[^A-Za-z0-9_.:-]/g, '_')}`;
   const payload: Record<string, unknown> = {
-    operation_id: operationId,
+    operation_id: payloadOperationId,
     task_id: webhookTaskId,
     task_type: TOOL_TO_TASK_TYPE[tool],
     protocol: TOOL_TO_PROTOCOL[tool],
@@ -186,7 +197,7 @@ export function maybeEmitCompletionWebhook(opts: {
     timestamp: new Date().toISOString(),
     result: opts.response,
   };
-  void emitter.emit({ url: webhookUrl, payload, operation_id: operationId })
+  void emitter.emit({ url: webhookUrl, payload, operation_id: deliveryOperationId })
     .catch(err => logger.warn({ err, tool: opts.toolName, url: webhookUrl }, 'Webhook emission failed'));
 }
 

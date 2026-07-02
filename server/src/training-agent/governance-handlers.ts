@@ -630,7 +630,12 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
   const tool = req.tool;
   const payload = req.payload;
   const governanceContext = req.governance_context;
-  const hasEscalationContext = typeof governanceContext === 'string' && governanceContext.length > 0;
+  const ext = (req as unknown as { ext?: unknown }).ext;
+  const extHumanApproval = ext && typeof ext === 'object' && !Array.isArray(ext)
+    ? (ext as { human_approval?: unknown }).human_approval
+    : undefined;
+  const humanApproval = req.human_approval ?? extHumanApproval;
+  const hasHumanApproval = typeof humanApproval === 'object' && humanApproval !== null;
   const phase = req.phase || req.governance_phase || 'purchase';
   const plannedDelivery = req.planned_delivery;
   const deliveryMetrics = req.delivery_metrics;
@@ -796,7 +801,7 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
       }
 
       // Commitment exceeds the reallocation threshold — requires human approval.
-      if (payloadBudget > plan.budget.reallocationThreshold && !req.human_approval && !hasEscalationContext) {
+      if (payloadBudget > plan.budget.reallocationThreshold && !hasHumanApproval) {
         humanReviewRequired = true;
         humanReviewReason =
           `Budget commitment exceeds reallocation_threshold of $${plan.budget.reallocationThreshold}.`;
@@ -804,7 +809,7 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     }
 
     // Plan-level human review (Annex III / Art 22) — every action needs human approval regardless of spend.
-    if (plan.humanReviewRequired && !req.human_approval && !hasEscalationContext) {
+    if (plan.humanReviewRequired && !hasHumanApproval) {
       humanReviewRequired = true;
       humanReviewReason =
         'Plan has human_review_required = true; every action requires human approval.';
@@ -1101,8 +1106,10 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
   const explanation = buildExplanation(status, findings, conditions, humanReviewRequired);
 
   const checkId = `chk_${randomUUID().slice(0, 8)}`;
-  // Generate or reuse governance_context for lifecycle correlation
-  const effectiveContext = (status === 'approved' || status === 'conditions')
+  // Generate or reuse governance_context for lifecycle correlation. Human-review
+  // denials also need a context so the buyer can bind the off-protocol approval
+  // to the re-check that carries human_approval.
+  const effectiveContext = (status === 'approved' || status === 'conditions' || humanReviewRequired)
     ? (governanceContext || randomUUID())
     : governanceContext;
   const check: GovernanceCheckState = {

@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { deriveWebhookOperationId } from '../../src/training-agent/webhooks.js';
+import {
+  deriveRegisteredWebhookDeliveryOperationId,
+  deriveWebhookOperationId,
+} from '../../src/training-agent/webhooks.js';
 
 describe('deriveWebhookOperationId', () => {
   it('prefixes the operation_id with the caller principal so two buyers on the shared sandbox token producing the same response entity id get distinct webhook idempotency_keys', () => {
@@ -48,5 +51,13 @@ describe('deriveWebhookOperationId', () => {
     const a = deriveWebhookOperationId('create_media_buy', { media_buy_id: 'mb_1' }, undefined, 'a|b');
     const b = deriveWebhookOperationId('create_media_buy', { media_buy_id: 'mb_1' }, undefined, 'a');
     expect(a).not.toBe(b);
+  });
+
+  it('scopes caller-registered operation ids for webhook delivery idempotency', () => {
+    const a = deriveRegisteredWebhookDeliveryOperationId('create_media_buy', 'buyer-op-1', 'static:publicb:buyer-a.example');
+    const b = deriveRegisteredWebhookDeliveryOperationId('create_media_buy', 'buyer-op-1', 'static:publicb:buyer-b.example');
+    expect(a).not.toBe(b);
+    expect(a).toContain('buyer-op-1');
+    expect(b).toContain('buyer-op-1');
   });
 });

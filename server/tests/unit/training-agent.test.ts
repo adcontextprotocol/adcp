@@ -19,6 +19,7 @@ import {
   invalidateCache,
   clearTaskStore,
 } from '../../src/training-agent/task-handlers.js';
+import { clearAccountStore } from '../../src/training-agent/account-handlers.js';
 import {
   MUTATING_TOOLS,
 } from '../../src/training-agent/idempotency.js';
@@ -1359,6 +1360,27 @@ describe('create_media_buy handler', () => {
     expect(result.status).toBe('pending_creatives');
     // Error field should not be present on success
     expect(result.errors).toBeUndefined();
+  });
+
+  it('echoes package creative_assignments in the create response', async () => {
+    const { productId, pricingOptionId } = getFirstProductAndPricing();
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_media_buy', {
+      account: { brand: { domain: 'create-assign.example' }, operator: 'create-assign.example' },
+      brand: { domain: 'create-assign.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 50000,
+        creative_assignments: [{ creative_id: 'cr_preassigned' }],
+      }],
+    });
+
+    const packages = result.packages as Array<Record<string, unknown>>;
+    expect(packages[0].creative_assignments).toEqual([{ creative_id: 'cr_preassigned' }]);
+    expect(result.status).toBe('pending_start');
   });
 
   it('derives status from flight dates', async () => {
@@ -4232,11 +4254,13 @@ describe('activate_signal handler', () => {
 
   beforeEach(() => {
     clearSessions();
+    clearAccountStore();
     invalidateCache();
   });
 
   afterEach(() => {
     clearSessions();
+    clearAccountStore();
     stopSessionCleanup();
 
     stopSessionCleanup();
@@ -4370,6 +4394,42 @@ describe('activate_signal handler', () => {
     expect(deployments[0].platform).toBe('the-trade-desk');
     expect(deployments[0].account).toBe('agency-123');
     expect(deployments[0].is_live).toBe(true);
+  });
+
+  it('requires governance approval for account_id-scoped registered governance agents', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: syncResult } = await simulateCallTool(server, 'sync_accounts', {
+      accounts: [{
+        brand: { domain: 'signal-gov-account.example' },
+        operator: 'signal-gov-operator.example',
+        billing: 'operator',
+        sandbox: true,
+      }],
+    });
+    const syncedAccount = (syncResult.accounts as Array<Record<string, unknown>>)[0];
+    const accountId = syncedAccount.account_id as string;
+
+    await simulateCallTool(server, 'sync_governance', {
+      accounts: [{
+        account: { account_id: accountId },
+        governance_agents: [{
+          url: 'https://governance.example.com/mcp',
+          authentication: { schemes: ['bearer'], credentials: 'tok' },
+          categories: ['signal_activation'],
+        }],
+      }],
+    });
+
+    const { result } = await simulateCallTool(server, 'activate_signal', {
+      account: { account_id: accountId },
+      governance_context: 'fabricated-context',
+      signal_agent_segment_id: 'trident_likely_ev_buyers',
+      pricing_option_id: 'po_trident_ev_cpm',
+      destinations: [{ type: 'agent', agent_url: 'https://test.example' }],
+    });
+
+    expect(result.code).toBe('PERMISSION_DENIED');
+    expect(result.message).toContain('governance approval');
   });
 });
 
@@ -4703,6 +4763,69 @@ describe('governance tools share session via account.brand.domain', () => {
 
     expect(result.status).toBe('approved');
     expect(result.findings).toBeUndefined();
+  });
+});
+
+describe('check_governance human approval', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('does not treat governance_context alone as human approval', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_plans', {
+      plans: [{
+        plan_id: 'plan-human-review',
+        brand: { name: 'Test' },
+        objectives: 'require human approval for large commitments',
+        budget: { total: 100000, currency: 'USD', reallocation_threshold: 1000 },
+        flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+      }],
+    });
+
+    const baseCheck = {
+      plan_id: 'plan-human-review',
+      binding: 'proposed',
+      caller: 'https://buyer.example',
+      governance_context: 'ctx-human-review',
+      tool: 'create_media_buy',
+      payload: {
+        total_budget: 5000,
+      },
+    };
+
+    const { result: denied } = await simulateCallTool(server, 'check_governance', baseCheck);
+    expect(denied.status).toBe('denied');
+    const findings = denied.findings as Array<Record<string, unknown>>;
+    expect(findings.some(f => f.category_id === 'human_review')).toBe(true);
+
+    const { result: approved } = await simulateCallTool(server, 'check_governance', {
+      ...baseCheck,
+      human_approval: {
+        approved_by: 'human-reviewer-1',
+        approved_at: '2027-01-02T00:00:00Z',
+      },
+    });
+    expect(approved.status).toBe('approved');
+    expect(approved.governance_context).toBe('ctx-human-review');
+
+    const { result: approvedViaExt } = await simulateCallTool(server, 'check_governance', {
+      ...baseCheck,
+      governance_context: 'ctx-human-review-ext',
+      ext: {
+        human_approval: {
+          approved_by: 'human-reviewer-1',
+          approved_at: '2027-01-02T00:00:00Z',
+        },
+      },
+    });
+    expect(approvedViaExt.status).toBe('approved');
+    expect(approvedViaExt.governance_context).toBe('ctx-human-review-ext');
   });
 });
 

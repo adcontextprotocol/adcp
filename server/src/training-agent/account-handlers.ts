@@ -132,6 +132,21 @@ function findAccountByRefWithFallback(accounts: Map<string, AccountState>, ref: 
   return findAccountByRef(accounts, ref) ?? findAccountByRefAcrossStores(ref);
 }
 
+function getListAccountStates(sessionKey: string, ctx: TrainingContext): AccountState[] {
+  const accountMap = getAccountMap(sessionKey);
+  if (accountMap.size > 0 || ctx.mode !== 'open' || sessionKey !== 'open:default') {
+    return Array.from(accountMap.values());
+  }
+
+  const byId = new Map<string, AccountState>();
+  for (const accounts of accountStore.values()) {
+    for (const account of accounts.values()) {
+      byId.set(account.accountId, account);
+    }
+  }
+  return Array.from(byId.values());
+}
+
 export function getSyncedGovernanceAgents(args: ToolArgs, ctx: TrainingContext): GovernanceAgentEntry[] {
   const sessionKey = accountStoreSessionKey(args, ctx);
   const accounts = getAccountMap(sessionKey);
@@ -504,10 +519,10 @@ interface ListAccountsRequest extends ToolArgs {
 export function handleListAccounts(args: ToolArgs, ctx: TrainingContext): object {
   const req = args as unknown as ListAccountsRequest;
   const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
-  const accountMap = getAccountMap(sessionKey);
+  const accountStates = getListAccountStates(sessionKey, ctx);
 
-  let accounts: AccountWireShape[] = accountMap.size > 0
-    ? Array.from(accountMap.values()).map(accountStateToWire)
+  let accounts: AccountWireShape[] = accountStates.length > 0
+    ? accountStates.map(accountStateToWire)
     : getComplianceAccounts();
 
   if (req.status) {
