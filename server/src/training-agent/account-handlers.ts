@@ -119,11 +119,24 @@ function findAccountByRef(accounts: Map<string, AccountState>, ref: AccountRef):
   return undefined;
 }
 
+function findAccountByRefAcrossStores(ref: AccountRef): AccountState | undefined {
+  if (!ref.account_id) return undefined;
+  for (const accounts of accountStore.values()) {
+    const acct = findAccountByRef(accounts, ref);
+    if (acct) return acct;
+  }
+  return undefined;
+}
+
+function findAccountByRefWithFallback(accounts: Map<string, AccountState>, ref: AccountRef): AccountState | undefined {
+  return findAccountByRef(accounts, ref) ?? findAccountByRefAcrossStores(ref);
+}
+
 export function getSyncedGovernanceAgents(args: ToolArgs, ctx: TrainingContext): GovernanceAgentEntry[] {
   const sessionKey = accountStoreSessionKey(args, ctx);
   const accounts = getAccountMap(sessionKey);
   if (args.account) {
-    return findAccountByRef(accounts, args.account)?.governanceAgents ?? [];
+    return findAccountByRefWithFallback(accounts, args.account)?.governanceAgents ?? [];
   }
   return Array.from(accounts.values()).flatMap(account => account.governanceAgents);
 }
@@ -542,7 +555,7 @@ export function handleSyncGovernance(args: ToolArgs, ctx: TrainingContext) {
 
   for (const input of req.accounts) {
     const acctRef = input.account;
-    const acct = findAccountByRef(accounts, acctRef);
+    const acct = findAccountByRefWithFallback(accounts, acctRef);
 
     if (!acct) {
       // Account not found — return a useful error
