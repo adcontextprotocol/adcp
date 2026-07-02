@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.2.0
+
+### Minor Changes
+
+- e75f12f: Add `property_list_exclude` to the targeting overlay: a reference to a property list whose properties must not carry the buyer's ads, for brand-safety do-not-run lists (apps and sites). Mirrors `collection_list_exclude` and reuses `property-list-ref.json`. Exclude wins on overlap with `property_list` and applies regardless of the product's `property_targeting_allowed` flag. Sellers declare support via the property/collection list entries in the `get_adcp_capabilities` targeting table.
+
+### Patch Changes
+
+- 4eda22a: Clarify the boundary between `validate_input` manifest preflight and `sync_creatives` dry-run trafficking rehearsal.
+- 19a6447: Move stale active-window dates in compliance fixtures and 3.0 compatibility bundles forward so storyboard runs continue to exercise protocol behavior instead of calendar drift.
+- a335070: Clarify and enforce governed signal activation: `activate_signal` now documents `governance_context`, signal agents fail closed on governed accounts without a valid approval context, and signal governance compliance checks no longer require the signals tenant to own `sync_plans`.
+
 ## 3.1.1
 
 ### Patch Changes
