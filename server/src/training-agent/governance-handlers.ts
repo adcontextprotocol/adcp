@@ -674,6 +674,12 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
   const tool = req.tool;
   const payload = req.payload;
   const governanceContext = req.governance_context;
+  const ext = (req as unknown as { ext?: unknown }).ext;
+  const extHumanApproval = ext && typeof ext === 'object' && !Array.isArray(ext)
+    ? (ext as { human_approval?: unknown }).human_approval
+    : undefined;
+  const humanApproval = req.human_approval ?? extHumanApproval;
+  const hasHumanApproval = typeof humanApproval === 'object' && humanApproval !== null;
   const phase = req.phase || req.governance_phase || 'purchase';
   const plannedDelivery = req.planned_delivery;
   const deliveryMetrics = req.delivery_metrics;
@@ -839,7 +845,7 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
       }
 
       // Commitment exceeds the reallocation threshold — requires human approval.
-      if (payloadBudget > plan.budget.reallocationThreshold) {
+      if (payloadBudget > plan.budget.reallocationThreshold && !hasHumanApproval) {
         humanReviewRequired = true;
         humanReviewReason =
           `Budget commitment exceeds reallocation_threshold of $${plan.budget.reallocationThreshold}.`;
@@ -847,7 +853,7 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     }
 
     // Plan-level human review (Annex III / Art 22) — every action needs human approval regardless of spend.
-    if (plan.humanReviewRequired) {
+    if (plan.humanReviewRequired && !hasHumanApproval) {
       humanReviewRequired = true;
       humanReviewReason =
         'Plan has human_review_required = true; every action requires human approval.';
@@ -1171,7 +1177,9 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
   // `intent` rather than emit a structurally-valid-but-step-12-rejected
   // token.
   let effectiveContext: string | undefined;
-  if (status === 'approved' || status === 'conditions') {
+  // Human-review denials also need a context so the buyer can bind the
+  // off-protocol approval to the re-check that carries human_approval.
+  if (status === 'approved' || status === 'conditions' || humanReviewRequired) {
     const requestedPhase: GovernancePhase = GOVERNANCE_PHASES.has(phase as GovernancePhase)
       ? (phase as GovernancePhase)
       : 'purchase';

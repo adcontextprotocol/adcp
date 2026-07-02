@@ -211,18 +211,21 @@ phases:
             path: "plans[0].plan_id"
             description: "Governance agent assigns plan_id — must be echoed in check_governance"
   - id: initial_approval
-    title: "Initial governance check — approved"
+    title: "Initial governance check — human-approved"
     narrative: |
-      The buyer proposes a media buy within authority. The governance agent approves
-      the buy with the delivery monitoring conditions active.
+      The buyer proposes a media buy whose initial commitment exceeds the plan's
+      reallocation threshold. A human reviewer approves that initial commitment
+      off-protocol, and the governance agent returns a context with delivery
+      monitoring conditions active.
 
     steps:
       - id: check_governance_approved
-        title: "Pre-buy governance check (approved)"
+        title: "Pre-buy governance check (approved after human review)"
         narrative: |
-          The buyer calls check_governance with a media buy within authority. The governance
-          agent approves and notes that delivery monitoring is active with the 20% drift
-          threshold.
+          The buyer calls check_governance with a media buy above the plan's
+          reallocation threshold and includes the human approval obtained outside
+          the protocol. The governance agent approves the initial commitment and
+          notes that delivery monitoring is active with the 20% drift threshold.
         task: check_governance
         schema_ref: "governance/check-governance-request.json"
         response_schema_ref: "governance/check-governance-response.json"
@@ -239,6 +242,11 @@ phases:
           plan_id: "$context.plan_id"
           caller: "https://pinnacle-agency.example"
           tool: "create_media_buy"
+          ext:
+            human_approval:
+              approved_by: "human-reviewer-1"
+              approved_at: "2099-03-15T12:00:00Z"
+              approval_reference: "delivery-monitor-initial-commitment"
           payload:
             account:
               brand:
