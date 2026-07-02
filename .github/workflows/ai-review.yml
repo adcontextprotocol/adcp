@@ -172,18 +172,27 @@ jobs:
             });
 
       # ─────────────────────────────────────────────────────────────────────
-      # Workflow-modification gate.
+      # Sensitive-path modification gate.
       #
-      # If this PR modifies `.github/ai-review/**` or `.github/workflows/
-      # ai-review.yml`, Argus may be reviewing the review system itself. Even
-      # though pull_request_target keeps this run on the base-branch prompt and
-      # workflow, a human should own those changes. Bail with a --comment
-      # requiring human review.
+      # A human must own any PR touching paths that shape agent behavior or
+      # release/CI infrastructure. These are the paths CODEOWNERS previously
+      # protected, enforced here so Argus abstains from auto-approving:
+      #
+      #   .github/ai-review/**, .github/workflows/**  — the review system and
+      #     all CI; Argus may otherwise review/approve changes to itself.
+      #   .agents/**              — agent prompts & context (prompt-injection
+      #     would target these to expand the agent's capabilities).
+      #   static/schemas/source/** — protocol source of truth for the spec.
+      #   .changeset/**           — release tooling.
+      #
+      # Even though pull_request_target keeps this run on the base-branch
+      # prompt and workflow, a human should own these changes. Bail with a
+      # --comment requiring human review.
       #
       # `paths-ignore` at the workflow level only fires when ALL changed
       # paths are ignored — this step handles the mixed case.
       # ─────────────────────────────────────────────────────────────────────
-      - name: Check for review-workflow modifications
+      - name: Check for sensitive-path modifications
         id: workflow-mod
         if: steps.review-route.outputs.skip != 'true'
         shell: bash
@@ -199,7 +208,7 @@ jobs:
           MODIFIED=""
           while IFS= read -r f; do
             case "$f" in
-              .github/ai-review/*|.github/workflows/ai-review.yml)
+              .github/ai-review/*|.github/workflows/ai-review.yml|.agents/*|.github/workflows/*|static/schemas/source/*|.changeset/*)
                 MODIFIED="${MODIFIED}${f}"$'\n'
                 ;;
             esac
@@ -215,7 +224,7 @@ jobs:
             echo "modified=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Comment and skip when PR modifies review workflow
+      - name: Comment and skip when PR modifies sensitive paths
         if: steps.review-route.outputs.skip != 'true' && steps.workflow-mod.outputs.modified == 'true'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
@@ -229,7 +238,7 @@ jobs:
               repo: context.repo.repo,
               pull_number: context.issue.number,
               event: 'COMMENT',
-              body: `Argus is **not auto-reviewing** this PR because it modifies the review workflow itself (${files}). A human reviewer should review and merge this PR; Argus will resume on subsequent PRs once these changes land on \`main\`.`
+              body: `Argus is **not auto-reviewing** this PR because it modifies protected paths that require human review (${files}). A human reviewer should review and merge this PR; Argus will resume on subsequent PRs once these changes land on \`main\`.`
             });
 
       # ─────────────────────────────────────────────────────────────────────
