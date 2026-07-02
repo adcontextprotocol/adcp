@@ -1,0 +1,122 @@
+---
+title: Managing Response Size
+sidebarTitle: Managing Response Size
+description: "How to keep AdCP responses lean: field selection, pagination, buying modes, truncation flags, and the wire-vs-context distinction that matters most."
+"og:title": "AdCP — Managing Response Size"
+---
+
+When a buyer agent calls an AdCP seller, the response can range from a handful of curated products to a full wholesale catalog with detailed cards, signal metadata, and placement specs. This page covers the controls AdCP already provides to keep responses right-sized — and the architectural insight that makes most token-budget concerns a client-side problem, not a protocol problem.
+
+## Wire response ≠ model context
+
+The single most important point: **the bytes on the wire are not what your model has to consume.**
+
+AdCP responses are structured data. An MCP response arrives as `structuredContent` — typed JSON that the client parses before any model sees it. An A2A response pairs a human-readable `TextPart` with an authoritative `DataPart`. In both cases, a well-built client stores the full response and projects or summarizes it before prompting the next model turn.
+
+```
+Seller agent → structured response (full data)
+                    ↓
+Client stores raw response
+                    ↓
+Client projects / summarizes → model context (lean)
+```
+
+If your agent is forwarding raw tool results into the model context unchanged, the fix is in the client, not the protocol. Store the response, extract what the model needs for its next decision, and reference the stored data by ID when details are needed later.
+
+<Warning>
+  **Naive-host caveat.** Some MCP hosts pass the entire `structuredContent` blob into the model context as-is. If you control the host, project before prompting. If you don't, the controls below become your primary defense against oversized context.
+</Warning>
+
+## Ask the seller to curate — don't pull the feed
+
+Use `buying_mode: "brief"` with a tight `pagination.max_results` to get curated recommendations:
+
+```json
+{
+  "buying_mode": "brief",
+  "brief": "Premium video placements for a CPG brand targeting US adults 25-54",
+  "pagination": { "max_results": 5 }
+}
+```
+
+The seller returns its best matches — ranked, priced, and ready to execute. This is the lightweight path.
+
+**Avoid `buying_mode: "wholesale"` unless you're building a catalog mirror.** Wholesale enumerates the seller's entire product feed, paginated. It exists for storefronts and feed synchronization, not for discovery. If your agent is paginating through hundreds of wholesale results to find a few good ones, switch to `brief` mode and let the seller do the filtering.
+
+Use `buying_mode: "refine"` when iterating on a previous `brief` response — adjusting budget, narrowing geography, or swapping out products. Refine operates on the seller's existing curation rather than re-running discovery from scratch.
+
+## `fields` selector for lightweight discovery
+
+When you only need a subset of product data, pass `fields` to restrict the response:
+
+```json
+{
+  "buying_mode": "brief",
+  "brief": "Sports streaming inventory for Q4",
+  "fields": ["product_id", "name", "pricing_options"]
+}
+```
+
+This is useful when:
+- Your agent is scanning multiple sellers and only needs IDs and prices for initial comparison
+- You want to skip heavy fields like `product_card`, `product_card_detailed`, `placements`, or signal metadata
+- You're building a summary view before drilling into specific products
+
+Without `fields`, the seller returns the full product object — including visual card definitions, placement specs, and any bundled signal metadata. For a first-pass discovery across multiple sellers, that's more data than you need.
+
+## Pagination for cardinality control
+
+All `get_products` modes support cursor-based pagination:
+
+| Parameter | Description |
+|---|---|
+| `pagination.max_results` | Maximum products per page (1–100, default 50) |
+| `pagination.cursor` | Opaque cursor from the previous response |
+
+Response:
+
+| Field | Description |
+|---|---|
+| `pagination.has_more` | Whether additional pages exist |
+| `pagination.cursor` | Cursor for the next page |
+| `pagination.total_count` | Total products in the result set (optional) |
+
+**For brief and refine modes**, set `max_results` to the number of options your agent can actually reason about. Five curated products are more useful than fifty if the model is going to compare them anyway.
+
+**For wholesale mode**, pagination walks the feed. Pass `cursor` from each response to get the next page. If you're maintaining a mirror, check [`wholesale_feed_versioning`](/dist/docs/3.0.20/media-buy/task-reference/get_products#wholesale-feed-versioning) to skip unchanged feeds entirely.
+
+## Truncation flags on delivery
+
+[`get_media_buy_delivery`](/dist/docs/3.0.20/media-buy/task-reference/get_media_buy_delivery) returns breakdown arrays (by geo, by creative, by day, etc.) that can grow large. Each breakdown array has a sibling boolean flag — `by_geo_truncated`, `by_creative_truncated`, etc. — that tells you whether the returned rows are the complete set or just the top-N:
+
+| Flag value | Meaning |
+|---|---|
+| `false` | All rows are present |
+| `true` | Additional rows exist beyond what was returned |
+
+When a flag is `true`, the returned rows are sorted by the requested metric descending — you have the most significant breakdowns, and the tail is omitted. This is by design: delivery breakdowns are for optimization decisions, not archival reporting. If you need the full dataset, use the seller's native reporting API.
+
+## Putting it together
+
+A token-efficient AdCP integration follows this pattern:
+
+1. **Discover with `brief` + `fields` + tight `max_results`.** Get curated products with only the fields you need for initial comparison.
+2. **Refine with `refine` mode.** Iterate on the seller's curation rather than re-querying.
+3. **Store raw responses client-side.** Don't feed full product objects into the model context. Extract what matters, summarize the rest.
+4. **Read truncation flags before paginating delivery.** If `by_geo_truncated: false`, you already have everything — no need for follow-up calls.
+5. **Use wholesale only for feed sync.** If your use case is catalog mirroring, wholesale + conditional versioning is the right tool. For everything else, `brief` is cheaper.
+
+<CardGroup cols={2}>
+  <Card title="get_products reference" icon="magnifying-glass" href="/dist/docs/3.0.20/media-buy/task-reference/get_products">
+    Full request/response schema including `fields`, `buying_mode`, and pagination.
+  </Card>
+  <Card title="Delivery reporting" icon="chart-line" href="/dist/docs/3.0.20/media-buy/task-reference/get_media_buy_delivery">
+    Breakdown arrays, truncation flags, and sort semantics.
+  </Card>
+  <Card title="How agents communicate" icon="arrows-left-right" href="/dist/docs/3.0.20/building/concepts/how-agents-communicate">
+    MCP vs A2A transport and how responses are structured.
+  </Card>
+  <Card title="Media products" icon="box" href="/dist/docs/3.0.20/media-buy/product-discovery/media-products">
+    Product structure, `product_card` vs `product_card_detailed`, and rendering.
+  </Card>
+</CardGroup>

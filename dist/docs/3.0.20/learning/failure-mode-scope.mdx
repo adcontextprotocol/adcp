@@ -1,0 +1,218 @@
+---
+title: "Failure-mode competency scope"
+sidebarTitle: "Failure modes"
+description: Curriculum scoping document — which failure modes belong in which certification modules, depth target, and assessment approach. Authoring is a follow-up issue per module.
+"og:title": "AdCP — Failure-mode competency scope"
+---
+
+# Failure-mode competency scope
+
+This document maps each AdCP failure-mode scenario to the certification module(s) where it belongs, specifies the depth target per tier, and defines the assessment approach. It is a scoping artifact — authoring of the actual content in each module is tracked in follow-up issues per module.
+
+**Depth levels used below:**
+
+| Level | Meaning |
+|---|---|
+| Surface / recognize | Knows the failure mode exists; can name it when prompted |
+| Diagnose / explain | Can describe the cause, the affected protocol surface, and the correct recovery path |
+| Resolve / demonstrate | Can execute recovery hands-on using protocol tools against a sandbox agent |
+| Evaluate / create | Can reason about multi-domain conflicts, adjudicate competing rules, and construct novel scenarios |
+
+---
+
+## FM-1 — Idempotency replay / conflict / expired
+
+**Status:** Partially covered. `#2346` and `#2367` established idempotency in the training agent. This entry consolidates the assessment scope.
+
+| Module | Depth | Assessment approach |
+|---|---|---|
+| **S1** (Media buy) | Resolve / demonstrate | Spot-the-error: three-call transcript — (1) retry with same key + same payload → `replayed: true`; (2) re-plan with new payload + same key → `IDEMPOTENCY_CONFLICT`; (3) key used after TTL → `IDEMPOTENCY_EXPIRED`. Learner identifies which caller violated the contract and explains correct behavior for all three. |
+| A2 | Surface / recognize | Learner explains that `idempotency_key` makes agent retries safe for real money — no deeper troubleshooting required. |
+| C4 (Build project) | Resolve / demonstrate | Learner's submitted agent generates idempotency keys correctly and handles retries without re-planning. |
+
+**Gap to close before authoring:** Confirm S1 lab exercise 7 ("Lifecycle management") stages all three error states in sandbox, not just `NOT_CANCELLABLE`. If not, extend exercise 7 to cover `IDEMPOTENCY_CONFLICT` and `IDEMPOTENCY_EXPIRED`.
+
+---
+
+## FM-2 — Creative compliance failure post-launch
+
+**Status:** Not yet in any module. Prerequisite reading is present in S2 and S4, but no lab exercise walks the post-launch discovery path.
+
+| Module | Depth | Assessment approach |
+|---|---|---|
+| **S2** (Creative) | Diagnose / explain + demonstrate | Scenario: a creative passes `preview_creative` compliance at build time, but `validate_content_delivery` returns a violation after flight start (e.g., served variant omits a regulatory disclosure present in the preview render). Learner uses `get_media_buy_artifacts` to retrieve the audit artifact, explains the discrepancy, and describes the remediation options (pause and swap vs. cancel). |
+| S4 (secondary) | Diagnose / explain | Learner explains how `get_media_buy_artifacts` and `validate_content_delivery` connect to the governance audit trail. |
+| C2 | Surface / recognize | Learner knows that creative compliance can fail post-launch and that the discovery path is distinct from pre-launch checks. |
+
+**Gap to close before authoring:** Add a numbered lab exercise to S2 that explicitly stages a post-launch compliance failure using `validate_content_delivery`. The prerequisite reading card is present; the exercise is not. Without a staged scenario, assessment relies entirely on conversation and cannot satisfy IACET Element 7 (demonstrable competency evidence). The authoring issue must specify three things to prevent a reading card from being filed as a lab exercise: (a) the sandbox agent must be configured to return a `validate_content_delivery` violation on a specific creative ID after a simulated flight-start event; (b) the learner must invoke `get_media_buy_artifacts` within the same session and correlate the audit artifact to the violation; (c) this constitutes a required demonstration with a stable criterion ID (e.g., `s2_postlaunch_sc0`) — the recertification machinery only fires if the ID exists.
+
+---
+
+## FM-3 — Payment / settlement reconciliation differences
+
+**Status:** Not yet in any module. Schema being finalized in `#2391` (billing reconciliation, AdCP 3.1). Scoped now against current delivery and accountability-terms surfaces; depth will expand when `#2391` lands.
+
+| Module | Depth | Assessment approach |
+|---|---|---|
+| **S1** (Media buy) | Diagnose / explain | Scenario: `get_media_buy_delivery` shows reported impressions 12% below the guaranteed commitment at flight midpoint, and a `billing_measurement` vendor entry that differs from the `measurement_terms` accepted at buy creation. Learner (a) identifies the discrepancy type — delivery shortfall vs. measurement vendor mismatch; (b) names the correct remediation for each — `update_media_buy` to adjust pacing vs. escalating the measurement vendor discrepancy per `measurement_terms` negotiation; (c) identifies which protocol artifact is the settlement record. |
+
+**Flag for authoring:** Assign a stable criterion ID (e.g., `s1_recon_sc0`) at authoring time. When `#2391` ships a reconciliation schema, S1 credentials issued under the current criteria must be flagged for targeted recertification — the recertification machinery in the instructional design framework only fires if the criterion ID exists. Do not leave this implicit.
+
+**Depth TBD pending `#2391`:** Once the billing reconciliation schema lands, add a second criterion (`s1_recon_sc1`) covering the new settlement fields. Credentials issued before that addition are candidates for recertification per the protocol-triggered recertification policy.
+
+---
+
+## FM-4 — Governance token mismatch / authorization revoked mid-lifecycle
+
+**Status:** Partially covered. S4 covers `GOVERNANCE_DENIED` recovery, the 15-step JWS verification, and the `governance_context` correlation model. Mid-lifecycle revocation is distinct from denial at check time and is not yet named as a scenario.
+
+| Module | Depth | Assessment approach |
+|---|---|---|
+| **S4** (Governance) | Resolve / demonstrate | Scenario: a `governance_context` token was issued at campaign launch; mid-flight, the governance agent revokes authorization (brand exits a market, rights grant expires). Seller's execution-phase `check_governance` returns a revocation status. Spot-the-error: a seller implementation that silently continues serving after receiving revocation. Learner identifies the failure, explains correct behavior (halt execution, webhook orchestrator, re-run `sync_plans` with updated parameters), and explains which step in the 15-step JWS verification catches key compromise vs. a valid revocation. |
+| C2 | Surface / recognize | Learner knows that a governance token can be revoked mid-lifecycle and that the seller's obligation is to halt, not continue. |
+
+**Gap to close before authoring:** S4's "What you'll demonstrate" section covers the 15-step JWS verification and `governance_context` correlation model but does not name mid-lifecycle revocation as a discrete scenario. Add it as a demonstration item and extend lab exercise 7 ("GOVERNANCE_DENIED recovery") with a revocation-during-execution variant.
+
+---
+
+## FM-5 — Lifecycle state stuck (media buy, creative, account, SI session, catalog)
+
+**Status:** Not yet in any module as an explicit failure-mode scenario. S1 lab exercise 6 covers forced rejection from `pending_start` but not timeout without response. S5 covers normal SI session management but not stuck or expired sessions.
+
+| Module | Depth | Assessment approach |
+|---|---|---|
+| **S1** (Media buy) | Resolve / demonstrate | Scenario: a media buy has been in `pending_start` for 36 hours with no seller-initiated transition and no webhook. Learner (a) uses `get_media_buys` to read `valid_actions` and confirm state; (b) identifies that `cancel` is available from `pending_start`; (c) explains why `pause` is not valid from `pending_start`; (d) describes the webhook the seller MUST send at flight start and what happens when it is absent. |
+| **S2** (Creative — sync stuck) | Diagnose / explain | Scenario: `sync_creatives` call returns `accepted` but creative approval status never updates and the buy stays in `pending_creatives`. Learner reads `valid_actions` on the buy, identifies the seller-side obligation, and describes the escalation path. |
+| **S5** (SI — session stuck) | Diagnose / explain | Scenario: an SI Chat Protocol session has no `session_end` event after the expected TTL. Learner explains session expiry semantics, what the host must do, and what state risk a non-terminated session creates. |
+| D1 / D3 (Platform track) | Surface / recognize | Learner knows that async protocol operations can stall and explains the polling-vs-webhook reconciliation pattern. |
+
+**Gap to close before authoring:**
+- S5's current "What you'll demonstrate" covers normal session management only. Add session expiry and stuck-session recovery as explicit demonstration items.
+- S1 lab exercise 6 should be extended (or a variant added) for the timeout-without-response case, distinct from the forced rejection already staged.
+
+---
+
+## FM-6 — Webhook delivery failure / retries
+
+**Status:** Not yet in any module as a failure scenario. D3 prerequisite reading references error handling but no lab exercise or assessment dimension covers webhook failure.
+
+| Module | Depth | Assessment approach |
+|---|---|---|
+| **D3** (Platform) | Diagnose / explain + configure | Scenario: a seller's `active` → `paused` transition is lost — the webhook endpoint returned 503 on first attempt and the retry backoff exceeded the buyer's expectation window. Learner (a) describes correct retry semantics (exponential backoff, idempotency of delivery events); (b) identifies what the buyer agent should do when the expected webhook doesn't arrive (poll `get_media_buys`); (c) explains the tradeoff between webhook-driven and poll-driven state reconciliation. |
+| S1 (secondary) | Diagnose / explain (consumer perspective) | Learner explains how to detect a missing webhook, when to poll instead, and how this affects campaign state management. |
+| B3 (Publisher track) | Surface / recognize | Learner knows that webhooks can fail and that sellers must implement retries. |
+
+**Gap to close before authoring:** Add a scenario within D3's error-handling discussion (not necessarily a full new exercise) that walks a webhook delivery failure end-to-end. D3 currently lists the error-handling docs as prerequisite reading but has no lab exercise or assessment item that tests operational recovery.
+
+---
+
+## FM-7 — Signed-request validation failure
+
+**Status:** Not yet in any module as a failure scenario. S1 covers the buyer-identity resolution chain (signature → JWKS → agent entry → brand.json) conceptually, but no module tests a fail-closed implementation.
+
+| Module | Depth | Assessment approach |
+|---|---|---|
+| **D2** (Platform) | Resolve / demonstrate (implementation) | Spot-the-error: a seller implementation accepts a request where `iss` matches a known brand but the JWKS fetch fails with a network error, and the implementation falls back to trusting the `iss` claim. Learner (a) identifies the vulnerability — accepting identity claims without key verification; (b) explains correct behavior — fail closed, reject the request, do not fall back; (c) describes the SSRF risk in the JWKS fetch and the mitigation. |
+| S1 (secondary) | Diagnose / explain (reasoning) | Learner explains what each link in the identity chain defends against and why a JWKS fetch failure must not trigger a fall-through to bare `iss` trust. |
+| B2 (Publisher track) | Surface / recognize | Learner knows that incoming requests must be signature-verified and that validation failures must reject, not accept. |
+
+**Note on criterion IDs:** Assign separate criterion IDs for D2 (`d2_sig_sc0`) and S1 (`s1_sig_sc0`) at authoring time so that a future change to RFC 9421 request signing triggers recertification in both modules independently.
+
+**Related (FM-C below):** `adagents.json` / `brand.json` authorization failure at agent discovery is a closely related onboarding failure mode scoped separately.
+
+---
+
+## FM-8 — TMP provider integration failure
+
+**Status:** Reclassified from "TMP attestation failure." TMP cryptographic attestation is a SHOULD (not a MUST) in AdCP 3.0 and is marked "future enhancement" in the specification — the current conformance model is publisher-attested via `adagents.json` over HTTPS. Teaching cryptographic attestation failure as a certification topic before the mechanism is stable would credential knowledge of a future feature rather than current protocol behavior. The operationally real failure modes today are: (1) `adagents.json` binding failure — provider not listed, `seller_agent` URL mismatch, or bypass-mode misconfiguration; (2) TMP Router provider configuration failure; (3) Identity Match returning no result due to integration misconfiguration, causing the frequency-cap logic to fall back to no-cap behavior. Home is S1, not S3 — TMP is a media buy execution mechanism, not a signals/audiences topic.
+
+**Deferred:** Cryptographic attestation failure scenarios will be added when TMP moves out of experimental status.
+
+| Module | Depth | Assessment approach |
+|---|---|---|
+| **S1** (Media buy) | Diagnose / explain | Scenario: a TMP Identity Match request returns no result because the `adagents.json` entry for the match provider does not list the seller's `seller_agent` URL, or the bypass mode is misconfigured. The orchestrator's frequency-cap logic falls back to no-cap behavior, resulting in over-delivery. Learner (a) explains what `adagents.json` binding proves — that responses come from a registered TMP provider without exposing user data; (b) describes correct fallback behavior — conservative: treat user as unknown, apply default frequency cap; (c) explains why Context Match and Identity Match are structurally separated and how this failure affects frequency capping but not creative selection. |
+| D3 (secondary) | Diagnose / explain (router config) | Learner identifies a provider-configuration gap in the TMP Router setup: `adagents.json` entry missing or `seller_agent` URL mismatch. Explains the diagnostic steps and the configuration change to recover. |
+| S3 (tertiary) | Surface / recognize | Learner knows that TMP integration failure degrades identity matching — not context matching — and that the fallback is conservative frequency behavior. |
+
+**Gap to close before authoring:** Add a failure variant to S1 lab exercise 9 — same cross-publisher suppression scenario, but Identity Match returns no result due to `adagents.json` misconfiguration. This is an extension of an existing exercise, not a new one.
+
+---
+
+## FM-9 — Cross-protocol policy conflicts
+
+
+**Status:** Not yet in any module. S4 covers composing governance domains (campaign, property, collection, content standards, creative) but does not include a scenario where rules from multiple domains conflict and must be adjudicated.
+
+| Module | Depth | Assessment approach |
+|---|---|---|
+| **S4** (Governance) | Evaluate / create | Open-ended exam question (no lab): A campaign plan specifies `policy_categories: ['fair_housing']` with `restricted_attributes: ['zip_code']`. The creative governance feature evaluation (`get_creative_features`) passes a creative referencing a zip-code-adjacent geo signal. The signals activation (`activate_signal`) for a geo/mobility provider includes a trade-area segment derived from zip codes but not labeled with `restricted_attributes`. Which governance domain has precedence, what is the buyer agent's obligation, and what would a correct implementation do? Learner must reason across campaign governance (plan-level constraint), creative governance (feature evaluation), and signals governance (restricted attributes on signal metadata). |
+| S1, S2, S5 | Cross-reference | Each module's "What you'll demonstrate" section should cross-reference S4 as the authoritative home for cross-domain policy adjudication. No independent assessment in S1/S2/S5. |
+
+**Rationale for S4 (not a new cross-domain section):** S4 already covers governance domains composing, including their interaction across campaign, property, collection, content standards, and creative. The cross-protocol scenario is an extension of existing S4 scope, assessable with S4 + S3 prerequisite knowledge. A new module section would require authoring scope that this issue explicitly defers.
+
+**Flag for `#2391`:** If billing reconciliation introduces a governance dimension to payment authorization (e.g., a plan that constrains spend must validate against billing reconciliation rules), add a second criterion ID in S4 for that interaction when `#2391` closes.
+
+---
+
+## FM-A — Account payment required blocking active buys
+
+**Status:** Not in the original candidate list. Identified during curriculum review as a real, high-frequency operational failure. The account state machine allows an account to transition to `payment_required`, which blocks new spend but does not terminate in-flight campaigns. Buyer agents that treat all authorization failures as transient will over-retry; agents that treat them as fatal will stop managing campaigns that can still be modified. Neither behavior is correct.
+
+| Module | Depth | Assessment approach |
+|---|---|---|
+| **S1** (Media buy) | Diagnose / explain | Scenario: a `create_media_buy` returns `ACCOUNT_PAYMENT_REQUIRED`. A second call on the same account to `update_media_buy` (modifying an existing buy) succeeds. Learner (a) explains the distinction between new-spend authorization failure and modification-of-existing-commitment; (b) describes the buyer agent's correct behavior — stop new buys, do not abandon existing ones, surface the payment status to the orchestrator. |
+
+---
+
+## FM-B — report_usage pricing mismatch
+
+**Status:** Not in the original candidate list. Identified as a billing dispute trigger: the buyer reports a `pricing_option_id` in `report_usage` that does not match the rate negotiated at buy time, and the seller agent rejects it. This is operationally painful for CPA and performance-priced campaigns where the pricing option ID changes between the buy and the reporting call.
+
+| Module | Depth | Assessment approach |
+|---|---|---|
+| **S1** (Media buy) | Diagnose / explain | Scenario: a `report_usage` call returns an error because the `pricing_option_id` in the report does not match the `pricing_option_id` accepted at `create_media_buy`. Learner explains where the authoritative pricing option ID is recorded (in the accepted buy response, not the original product listing), why reporting a different ID is a protocol error, and the correct recovery (re-read the buy, extract the accepted pricing option, re-submit the report). |
+
+**Scope note:** If `#2391` introduces a formal billing reconciliation mechanism, this failure mode may merge with FM-3 into a unified settlement module. Flag for review when `#2391` closes.
+
+---
+
+## FM-C — adagents.json / brand.json authorization failure at discovery
+
+**Status:** Not in the original candidate list. Identified as the most common onboarding failure for new integrations: a buyer agent discovers a sales agent via `get_adcp_capabilities`, attempts OAuth authentication, and the seller rejects the token because the buyer's `adagents.json` does not declare the correct `authorized_agents[]` relationship — or the `brand.json` entry does not match the agent identity presented in the signed request.
+
+| Module | Depth | Assessment approach |
+|---|---|---|
+| **D2** (Platform) | Resolve / demonstrate | Lab scenario: a buyer agent cannot authenticate to a newly integrated seller. Learner reads the seller's error, checks the buyer's `adagents.json` for the `authorized_agents[]` entry, verifies the `brand.json` agent identity, and traces the resolution chain. Correctly identifies which of the three common root causes applies: missing entry, URL mismatch, or expired authorization. |
+| S1 (secondary) | Diagnose / explain | Learner explains what `adagents.json` and `brand.json` encode in the discovery and authorization flow, why a mismatch produces a rejection, and how to diagnose it from the buyer side. |
+| S4 (secondary) | Diagnose / explain | Learner explains how a `brand.json` authorization failure interacts with the governance token chain — specifically, why a buyer without a valid `authorized_agents[]` entry cannot obtain a governance context token and what the escalation path is. |
+
+---
+
+## Open items tracker
+
+| Item | Status | Unblocks |
+|---|---|---|
+| Billing reconciliation schema (`#2391`) | Active / in-flight (3.1 scoping) | FM-3 depth expansion, FM-9 `#2391` flag |
+| Idempotency coverage confirmed in training agent (`#2346`, `#2367`) | Shipped | FM-1 authoring (verify lab exercise extension only) |
+| Lifecycle state stuck issues (`#1612`–`#1616`) | Open | FM-5 S1/S5 scenario detail |
+
+---
+
+## Module impact summary
+
+The table below shows which specialist and practitioner modules need authoring follow-ups. Each ✦ is a new lab exercise or demonstration item; each ✧ is a new exam scenario or cross-reference.
+
+| Module | New lab exercises | New exam scenarios | Cross-refs to add |
+|---|---|---|---|
+| **S1** | FM-1 (idempotency states), FM-5 (stuck `pending_start`), FM-8 (TMP provider variant) | FM-3 (delivery reconciliation), FM-6 (webhook consumer), FM-A (payment_required), FM-B (pricing mismatch) | FM-9 → S4, FM-C (adagents.json) |
+| **S2** | FM-2 (post-launch compliance — required for IACET), FM-5 (creative sync stuck) | — | FM-2 → S1 (state machine cross-ref), FM-9 → S4 |
+| **S3** | — | — | FM-8 (TMP provider surface) |
+| **S4** | FM-4 (revocation-during-execution variant) | FM-9 (cross-protocol adjudication) | FM-C (adagents.json / governance chain) |
+| **S5** | FM-5 (SI session stuck/expired) | — | FM-9 → S4 |
+| **D2** | FM-C (adagents.json/brand.json lab) | FM-7 (signed-request fail-closed) | — |
+| **D3** | FM-6 (webhook delivery failure), FM-8 (TMP Router config) | — | — |
+| **B2** | — | — | FM-7 (surface/recognize) |
+| **B3** | — | — | FM-6 (surface/recognize) |
+| **C2** | — | — | FM-2, FM-4 (surface/recognize) |
+| **C4** | FM-1 (idempotency resolve/demonstrate) | — | — |
+| **A2** | — | — | FM-1 (surface/recognize) |
