@@ -14,14 +14,16 @@
 import express from 'express';
 import http from 'node:http';
 import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import YAML from 'yaml';
 import {
   listAllComplianceStoryboards,
   runStoryboard,
   getComplianceCacheDir,
+  injectContext,
 } from '@adcp/client/testing';
-import type { StoryboardResult, Storyboard, StoryboardRunOptions } from '@adcp/client/testing';
+import type { StoryboardResult, Storyboard, StoryboardRunOptions, StoryboardStep, StoryboardContext } from '@adcp/client/testing';
 import {
   StaticJwksResolver,
   InMemoryReplayStore,
@@ -41,7 +43,49 @@ if (!process.env.LOG_STORYBOARDS) process.env.LOG_LEVEL = 'silent';
 
 const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
 const { stopSessionCleanup, clearSessions } = await import('../../src/training-agent/state.js');
+const { clearAccountStore } = await import('../../src/training-agent/account-handlers.js');
 const { getPublicJwks } = await import('../../src/training-agent/webhooks.js');
+
+type RequestBuilderModule = {
+  enrichRequest: (
+    step: StoryboardStep,
+    context: StoryboardContext,
+    options: StoryboardRunOptions,
+    runnerVars?: Parameters<typeof injectContext>[2],
+  ) => Record<string, unknown>;
+};
+
+const require = createRequire(import.meta.url);
+const testingEntry = require.resolve('@adcp/client/testing');
+const requestBuilder = require(join(dirname(testingEntry), 'storyboard/request-builder.js')) as RequestBuilderModule;
+const originalEnrichRequest = requestBuilder.enrichRequest;
+
+requestBuilder.enrichRequest = (step, context, options, runnerVars) => {
+  const request = originalEnrichRequest(step, context, options, runnerVars);
+  if (step.task !== 'create_media_buy' || !step.sample_request) return request;
+
+  // @adcp/client 5.21's create_media_buy enricher keeps discovery-dependent
+  // fields but drops top-level authored fixture fields. The webhook-emission
+  // universal relies on those fields (`push_notification_config`,
+  // `idempotency_key`, `context`) to reach the wire. Preserve fixture fields
+  // that are orthogonal to product/pricing/date enrichment for this frozen
+  // 3.0 runner; fix the SDK builder on 3.1+.
+  const fixture = injectContext({ ...step.sample_request }, context, runnerVars);
+  const {
+    account: _account,
+    brand: _brand,
+    start_time: _startTime,
+    end_time: _endTime,
+    packages: _packages,
+    ...preservedFixtureFields
+  } = fixture;
+  const forceStartTime = (step as StoryboardStep & { __forceStartTime?: unknown }).__forceStartTime;
+  return {
+    ...request,
+    ...preservedFixtureFields,
+    ...(typeof forceStartTime === 'string' && { start_time: forceStartTime }),
+  };
+};
 
 const args = process.argv.slice(2);
 const verbose = args.includes('--verbose');
@@ -126,6 +170,31 @@ function loadTestKit(sb: Storyboard): LoadedTestKit | undefined {
 function brandFromKit(kit: LoadedTestKit | undefined): StoryboardRunOptions['brand'] | undefined {
   const domain = kit?.brand?.house?.domain;
   return domain ? { domain } : undefined;
+}
+
+function storyboardForPinnedRunner(sb: Storyboard): Storyboard {
+  if (sb.id !== 'media_buy_state_machine') return sb;
+
+  const clone = JSON.parse(JSON.stringify(sb)) as Storyboard;
+  const activeStart = new Date(Date.now() - 60_000).toISOString();
+  for (const phase of clone.phases) {
+    for (const step of phase.steps) {
+      if (
+        step.id === 'create_buy'
+        && step.task === 'create_media_buy'
+        && step.sample_request?.start_time === 'asap'
+      ) {
+        // @adcp/client 5.21's fixture-aware create_media_buy enricher treats
+        // non-ISO `asap` as "use default future start", which makes this
+        // state-machine setup buy correctly derive pending_start instead of
+        // the authored active state. Normalize only this setup fixture for the
+        // frozen 3.0 runner while preserving the agent's lifecycle semantics.
+        step.sample_request.start_time = activeStart;
+        (step as StoryboardStep & { __forceStartTime?: string }).__forceStartTime = activeStart;
+      }
+    }
+  }
+  return clone;
 }
 
 /**
@@ -220,6 +289,7 @@ async function main() {
   const jwksResolver = new StaticJwksResolver(getPublicJwks().keys as AdcpJsonWebKey[]);
 
   for (const sb of all) {
+    const storyboard = storyboardForPinnedRunner(sb);
     // Isolate storyboards from each other: a previous storyboard may have
     // seeded governance plans, media buys, creatives, etc. into a session
     // keyed by the same brand domain. Without this reset the next
@@ -227,9 +297,10 @@ async function main() {
     // from `media_buy_seller/governance_denied` silently intercepts a
     // $50K buy in `sales_guaranteed`.
     await clearSessions();
+    clearAccountStore();
     process.stdout.write(`  ${sb.id.padEnd(40)} `);
     try {
-      const kit = loadTestKit(sb);
+      const kit = loadTestKit(storyboard);
       const brand = brandFromKit(kit);
       const testKit = testKitOptionsFromKit(kit);
       // The default `/mcp` route is the public sandbox (bearer OR signed,
@@ -240,10 +311,10 @@ async function main() {
       // cap that actually advertises `required_for: [create_media_buy]`;
       // every other storyboard stays on `/mcp` so bearer-authed unsigned
       // calls keep working.
-      const targetUrl = sb.id === 'signed_requests'
+      const targetUrl = storyboard.id === 'signed_requests'
         ? agentUrl.replace(/\/mcp$/, '/mcp-strict')
         : agentUrl;
-      const result = await runStoryboard(targetUrl, sb, {
+      const result = await runStoryboard(targetUrl, storyboard, {
         auth: { type: 'bearer', token: AUTH_TOKEN },
         allow_http: true,
         contracts: ['webhook_receiver_runner'],
@@ -270,10 +341,13 @@ async function main() {
           ],
           skipRateAbuse: true,
         },
+        context: {
+          ...((storyboard as unknown as { context?: StoryboardRunOptions['context'] }).context ?? {}),
+        },
         ...(brand && { brand }),
         ...(testKit && { test_kit: testKit }),
       });
-      const summary = summarize(sb, result);
+      const summary = summarize(storyboard, result);
       results.push(summary);
       const pill = summary.failed === 0
         ? `✓ ${summary.passed}P / ${summary.skipped}S / ${summary.not_applicable}N/A`
@@ -281,7 +355,7 @@ async function main() {
       // eslint-disable-next-line no-console
       console.log(pill);
     } catch (err) {
-      const summary = summarize(sb, { error: err instanceof Error ? err.message : String(err) });
+      const summary = summarize(storyboard, { error: err instanceof Error ? err.message : String(err) });
       results.push(summary);
       // eslint-disable-next-line no-console
       console.log(`⚠ ${summary.error}`);
@@ -301,7 +375,7 @@ async function main() {
       if (r.error) console.log(`    ! ${r.error}`);
       for (const f of r.failures.slice(0, verbose ? undefined : 5)) {
         // eslint-disable-next-line no-console
-        console.log(`    × ${f.step}: ${f.error.slice(0, 160)}`);
+        console.log(`    × ${f.step}: ${verbose ? f.error : f.error.slice(0, 160)}`);
       }
       if (!verbose && r.failures.length > 5) {
         // eslint-disable-next-line no-console

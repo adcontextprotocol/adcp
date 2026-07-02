@@ -103,6 +103,14 @@ function extractWebhookUrl(args: Record<string, unknown>): string | undefined {
   return typeof pnc.url === 'string' && pnc.url.length > 0 ? pnc.url : undefined;
 }
 
+function extractRegisteredOperationId(args: Record<string, unknown>): string | undefined {
+  const pnc = args.push_notification_config as { operation_id?: unknown } | undefined;
+  if (!pnc || typeof pnc !== 'object') return undefined;
+  return typeof pnc.operation_id === 'string' && pnc.operation_id.length > 0
+    ? pnc.operation_id
+    : undefined;
+}
+
 /** Derive a stable logical event id for webhook idempotency. Two emissions
  *  with the same operation_id reuse the same `idempotency_key` across retries.
  *  Prefers a buyer-facing entity id from the response so retries from the same
@@ -165,10 +173,12 @@ export function maybeEmitCompletionWebhook(opts: {
   const tool = opts.toolName as WebhookEmittingTool;
 
   const emitter = getWebhookEmitter();
-  const operationId = deriveWebhookOperationId(opts.toolName, opts.response, opts.requestIdempotencyKey, opts.principal);
+  const operationId = extractRegisteredOperationId(opts.args)
+    ?? deriveWebhookOperationId(opts.toolName, opts.response, opts.requestIdempotencyKey, opts.principal);
   const webhookTaskId = (opts.response.task_id as string | undefined)
     ?? `tsk_${operationId.slice(0, 32).replace(/[^A-Za-z0-9_.:-]/g, '_')}`;
   const payload: Record<string, unknown> = {
+    operation_id: operationId,
     task_id: webhookTaskId,
     task_type: TOOL_TO_TASK_TYPE[tool],
     protocol: TOOL_TO_PROTOCOL[tool],

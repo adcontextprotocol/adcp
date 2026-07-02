@@ -896,6 +896,36 @@ export function buildCatalog(): CatalogProduct[] {
       pricingAliases: ['cpm_guaranteed'],
     },
     {
+      id: 'sports_preroll_q2',
+      name: 'Sports Preroll Q2 (storyboard fixture)',
+      source: catalog.find(cp => cp.publisherId === guaranteedCtvPublisher.id && (cp.product.channels ?? []).includes('ctv')),
+      pricingAliases: ['cpm_guaranteed'],
+    },
+    {
+      id: 'outdoor_display_q2',
+      name: 'Outdoor Display Q2 (storyboard fixture)',
+      source: catalog.find(cp => cp.publisherId === firstPublisher.id && (cp.product.channels ?? []).includes('display')),
+      pricingAliases: ['cpm_standard', 'cpm_guaranteed'],
+    },
+    {
+      id: 'lifestyle_display_q2',
+      name: 'Lifestyle Display Q2 (storyboard fixture)',
+      source: catalog.find(cp => cp.publisherId === firstPublisher.id && (cp.product.channels ?? []).includes('display')),
+      pricingAliases: ['cpm_standard'],
+    },
+    {
+      id: 'outdoor_video_q2',
+      name: 'Outdoor Video Q2 (storyboard fixture)',
+      source: catalog.find(cp => cp.publisherId === ctvPublisher.id && (cp.product.channels ?? []).includes('ctv')),
+      pricingAliases: ['cpm_standard', 'cpm_guaranteed'],
+    },
+    {
+      id: 'async_signed_io_q2',
+      name: 'Async Signed IO Q2 (storyboard fixture)',
+      source: catalog.find(cp => cp.publisherId === guaranteedCtvPublisher.id && (cp.product.channels ?? []).includes('ctv')),
+      pricingAliases: ['cpm_guaranteed'],
+    },
+    {
       id: 'outdoor_ctv_q2',
       name: 'Outdoor CTV Q2 (storyboard fixture)',
       source: catalog.find(cp => cp.publisherId === ctvPublisher.id && (cp.product.channels ?? []).includes('ctv')),

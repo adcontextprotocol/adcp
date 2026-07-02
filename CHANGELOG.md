@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.0.20
+
+### Patch Changes
+
+- Fix the 3.0.x signal marketplace governance storyboard so it tests the public approval-context contract instead of relying on `/signals` to set up governance plans, and refresh compliance fixture active-window dates so released 3.0 storyboards do not age out.
+
 ## 3.0.19
 
 ### Patch Changes
