@@ -1,0 +1,92 @@
+---
+title: "Migrating to `media_buy_status` (3.1)"
+description: "Move from body-level `status` to `media_buy_status` on create_media_buy and update_media_buy success responses. Additive in 3.1; legacy field removed in 3.2; nested status cascade follows in 4.0."
+"og:title": "AdCP — Migrating to media_buy_status"
+---
+
+# Migrating to `media_buy_status` (3.1)
+
+AdCP 3.1 splits two enums that 3.0 collided at the same response root key:
+
+- **Envelope `status`** — TaskStatus (`submitted` / `working` / `input-required` / `completed` / `canceled` / `failed` / `rejected` / `auth-required` / `unknown`). Required from beta.2 ([#4876](https://github.com/adcontextprotocol/adcp/issues/4876)).
+- **Body `media_buy_status`** — MediaBuyStatus (`pending_creatives` / `pending_start` / `active` / `paused` / `completed` / `rejected` / `canceled`). **New in 3.1.**
+
+Under MCP flat-on-the-wire serialization both fields share the response root. In 3.0 they were both named `status`; the body-level MediaBuyStatus was silently destroyed when the envelope stamped a TaskStatus at the same path. No validator caught it. 3.1 splits them.
+
+## What changed
+
+| Surface | 3.0 | 3.1 |
+|---------|-----|-----|
+| `create_media_buy` success response | `status` (MediaBuyStatus) at root | `media_buy_status` (MediaBuyStatus) at root; legacy `status` is `deprecated: true` |
+| `update_media_buy` success response | Same | Same |
+| `get_media_buys` items | `media_buys[].status` (MediaBuyStatus) | Unchanged in 3.1 — renamed to `media_buys[].media_buy_status` in 4.0 ([#4905](https://github.com/adcontextprotocol/adcp/issues/4905)) |
+| `get_media_buy_delivery` items | `media_buy_deliveries[].status` (MediaBuyStatus) | Unchanged in 3.1 — renamed in 4.0 ([#4905](https://github.com/adcontextprotocol/adcp/issues/4905)) |
+| `core/media-buy.json` | `status` (MediaBuyStatus) | Unchanged in 3.1 — renamed in 4.0 ([#4905](https://github.com/adcontextprotocol/adcp/issues/4905)) |
+
+## Before (3.0)
+
+```json
+{
+  "status": "completed",
+  "media_buy_id": "mb_12345",
+  "status": "active",
+  "packages": [...]
+}
+```
+
+Two keys named `status` collide at the JSON root under MCP flat serialization — the body-level `MediaBuyStatus: 'active'` value is silently destroyed by the envelope `TaskStatus: 'completed'`. No validator catches it.
+
+## After (3.1)
+
+```json
+{
+  "status": "completed",
+  "media_buy_id": "mb_12345",
+  "media_buy_status": "active",
+  "packages": [...]
+}
+```
+
+Two distinct fields. Envelope `status` carries the task-lifecycle state at the root; body `media_buy_status` carries the buy's lifecycle state alongside.
+
+## 3.1 conformance
+
+- **Sellers** SHOULD emit `media_buy_status` on `create_media_buy` and `update_media_buy` success responses. MAY continue emitting the deprecated top-level `status: MediaBuyStatus` during the 3.1 deprecation window.
+- **Buyers** MUST prefer `media_buy_status` when present. MAY fall back to legacy `status` for compatibility with sellers still on the legacy form.
+- **3.0 sellers and buyers** continue to work unchanged. No `required[]` swap, no rename, no breakage.
+- **Compliance storyboards** assert `path: "media_buy_status"`. A 3.1 seller emitting only the legacy `status` is schema-valid but fails 3.1 storyboard certification. The storyboard is the binding conformance check; the schema `deprecated: true` marker is advisory.
+- **Sellers emitting both fields** MUST emit identical values for `media_buy_status` and the deprecated `status`. Divergent emission (e.g., `status: "active", media_buy_status: "paused"`) passes JSON Schema validation but is a conformance violation — 3.1 storyboards enforce equality via `field_value_or_absent` assertions on `status` alongside the canonical `media_buy_status` checks. The `if/then` JSON Schema constraint was evaluated and deferred: the migration window is short, codegen toolchain compat is uncertain, and the storyboard gate is sufficient. See [#4908](https://github.com/adcontextprotocol/adcp/issues/4908).
+
+## SDK behavior
+
+The legacy `status` field carries `deprecated: true` (JSON Schema 2020-12). Propagation through codegen varies:
+
+| Toolchain | Propagation |
+|-----------|-------------|
+| TypeScript (`json-schema-to-typescript`) | `@deprecated` JSDoc on the field. Reliable. |
+| Python (`datamodel-code-generator` v2+) | `deprecated=True` on the `Field(...)` arg. Older pinned versions silently drop it. |
+| Go (`quicktype` and similar) | Generally not propagated. |
+| `@adcp/client` 3.1+, Python `adcp` SDK, `adcp-go` | Canonical `media_buy_status` is the typed shape SDK users consume. |
+
+If your toolchain doesn't surface the deprecation, the storyboard gate is your enforcement signal.
+
+## When the legacy field disappears
+
+- **3.2** ([#4906](https://github.com/adcontextprotocol/adcp/issues/4906)): the deprecated top-level `status: MediaBuyStatus` is **removed** from `CreateMediaBuySuccess` and `UpdateMediaBuySuccess`. After 3.2, top-level `status` on these responses unambiguously carries envelope TaskStatus only. The deprecation window is short by design — the storyboard gate already forces 3.1-conformant sellers off the legacy field.
+- **4.0** ([#4905](https://github.com/adcontextprotocol/adcp/issues/4905)): the nested `status` cascade lands — `media_buys[].status` on `get-media-buys-response`, `media_buy_deliveries[].status` on `get-media-buy-delivery-response`, and `status` on `core/media-buy.json` rename to `media_buy_status`. Genuinely breaking (a `required[]` swap), held to the major.
+
+## Forward-compatible buyer code
+
+Code that needs to span 3.0, 3.1, and 4.0 sellers:
+
+```js
+// Prefer media_buy_status (3.1+), fall back to status (3.0 + 4.0 nested-surface compat)
+const mediaBuyStatus = response.media_buy_status ?? response.status;
+const buyLifecycleStatus = mediaBuy.media_buy_status ?? mediaBuy.status;
+```
+
+## Related
+
+- [create_media_buy reference](/dist/docs/3.0.21/media-buy/task-reference/create_media_buy) — canonical response examples
+- [Media buy lifecycle](/dist/docs/3.0.21/media-buy/media-buys/lifecycle) — the MediaBuyStatus state machine
+- [Envelope task-status](/dist/docs/3.0.21/building/by-layer/L3/task-lifecycle) — TaskStatus semantics
