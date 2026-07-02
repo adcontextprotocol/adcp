@@ -670,10 +670,7 @@ export function handleGetBrandIdentity(
 
   const talent = BRAND_MAP.get(brandId);
   if (!talent) {
-    const code = ctx.storyboardCompat?.version === '3.0'
-      ? 'BRAND_NOT_FOUND'
-      : 'REFERENCE_NOT_FOUND';
-    return { errors: [{ code, message: `No brand with id '${brandId}'`, field: 'brand_id' }] };
+    return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: `No brand with id '${brandId}'`, field: 'brand_id' }] };
   }
 
   const requested = fields ?? [...ALL_FIELDS];
