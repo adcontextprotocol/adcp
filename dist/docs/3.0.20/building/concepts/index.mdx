@@ -1,0 +1,116 @@
+---
+title: Why AdCP
+description: "Why AdCP exists: the fragmentation problem across RTB, platform APIs, and direct IO — and how a universal agent protocol for advertising solves it."
+"og:title": "AdCP — Why AdCP"
+---
+
+## Allocation, Not Day Trading
+
+RTB treats advertising like day trading: *"What is this impression worth?"* It works for fungible inventory but commoditizes everything.
+
+AdCP enables portfolio-level allocation: *"How should I invest my ad budget?"* This mirrors how advertisers actually think—they buy outcomes, not impressions.
+
+<Card title="Agentic Advertising is for Allocation" icon="book-open" href="https://bokonads.com/p/agentic-advertising-is-for-allocation">
+  Why the RTB mental model doesn't fit how advertisers actually make decisions.
+</Card>
+
+## The Structural Problem
+
+Programmatic advertising defaults to a single question: *"What is this impression worth right now?"* That framing embeds CPM-based, auction-centric assumptions into the transaction layer — assumptions that do not hold for most global ad spend. Direct deals, sponsorships, broadcast, out-of-home, and retail media all operate on different pricing models, different timelines, and different success metrics. They are not edge cases; they are the majority.
+
+AdCP sits at the **campaign-workflow layer**, above the auction. It does not replace OpenRTB or compete with serve-time decisioning — it coordinates the planning, negotiation, proposal, and deal-creation steps that happen before and after the auction fires. The [protocol comparison](/dist/docs/3.0.20/building/concepts/adcp-vs-openrtb) explains how AdCP and OpenRTB coexist.
+
+By structuring these workflow steps as protocol-level tasks, AdCP enables agents to apply [brand identity](/dist/docs/3.0.20/brand-protocol/brand-json), [content standards](/dist/docs/3.0.20/governance/content-standards/), and governance checks at decision time — not as an afterthought. Agents that use these tasks can reason about brand suitability, creative fit, and compliance as part of the buying process rather than bolting them on post-execution. The protocol makes this possible; individual agents decide how much of it to use.
+
+## The Fragmentation Problem
+
+Today, advertisers face three completely different buying systems:
+
+| Paradigm | Era | How It Works |
+|----------|-----|--------------|
+| **RTB/Biddable** | Legacy web | Real-time bidding via OpenRTB |
+| **API-based** | Modern social, AI | Platform-specific APIs (Meta, TikTok) |
+| **Direct IO** | Legacy | Insertion orders, manual deals |
+
+Each requires different integrations, tools, workflows, and expertise. 90% of ad spend never touches RTB—it lives in walled gardens, direct deals, and premium inventory.
+
+AdCP creates a **universal API standard** that unifies all three under one umbrella.
+
+## Omnichannel By Design
+
+Buying billboards is fundamentally different from buying social links:
+
+- **Different pricing**: Flat rate vs CPM vs engagement-based
+- **Different creatives**: Static images vs dynamic video vs conversational AI
+- **Different measurement**: Impressions vs engagement vs footfall
+
+AdCP creates a conceptual layer that abstracts these differences while preserving what makes each channel unique. One protocol, any channel.
+
+## Why Agents?
+
+Intelligent agents reduce the cost of managing complex, negotiated deals:
+
+- **Adapt to nuances** without over-specifying everything in code
+- **Handle variability** across platforms and channels
+- **Natural language** lets buyers describe intent, not configure parameters
+- **Scale relationships** from 3-5 platforms to 20+ without scaling teams
+
+## The Protocol Layer for AI
+
+AdCP isn't just unifying legacy systems—it's the protocol layer for emerging AI surfaces.
+
+### Sponsored Intelligence
+
+Like VAST defined video ad serving, SI defines conversational brand experiences in AI assistants. When an AI says *"Delta has flights to Boston—want me to connect you with their assistant?"*—SI defines what happens next.
+
+<Card title="Sponsored Intelligence and the Trillion Dollar Sentence" icon="book-open" href="https://bokonads.com/p/sponsored-intelligence-and-the-trillion">
+  How conversational AI changes the economics of advertising.
+</Card>
+
+### Brand identity
+
+Standardized brand identity for AI-powered creative generation. Brands express who they are—colors, tone, assets—in formats AI systems can consume.
+
+Together, these support fully AI-powered systems like Performance Max that need structured brand inputs, not manual campaign configuration.
+
+<CardGroup cols={2}>
+  <Card title="Sponsored Intelligence" icon="message-bot" href="/dist/docs/3.0.20/sponsored-intelligence/overview">
+    Monetizing AI surfaces — the reversed data flow, product spectrum, and SI Chat Protocol.
+  </Card>
+  <Card title="Brand identity" icon="palette" href="/dist/docs/3.0.20/brand-protocol/brand-json">
+    Standardized brand identity for AI creative generation.
+  </Card>
+</CardGroup>
+
+## Design Implications
+
+These goals drive AdCP's technical design:
+
+- **Asynchronous**: Deals take time. This is not a real-time protocol—operations may take minutes to days.
+- **Human-in-the-loop**: Some decisions need human approval. Publishers can require manual sign-off.
+- **Multiple transports**: MCP and A2A provide the same tasks through different protocols.
+
+## The Protocol Family
+
+| Protocol | Purpose | Key Tasks |
+|----------|---------|-----------|
+| **Media Buy** | Campaign execution | `get_products`, `create_media_buy` |
+| **Signals** | Audience targeting | `get_signals`, `activate_signal` |
+| **Creative** | Ad creative management | `build_creative`, `sync_creatives` |
+| **Governance** | Brand suitability, quality, compliance | Property lists, content standards |
+| **Sponsored Intelligence** | Conversational brand experiences | `si_initiate_session` |
+| **Curation** | Inventory packaging | Coming soon |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Protocol Comparison" icon="code-compare" href="/dist/docs/3.0.20/building/concepts/protocol-comparison">
+    MCP vs A2A—when to use which, and what's the same.
+  </Card>
+  <Card title="Security Model" icon="shield-halved" href="/dist/docs/3.0.20/building/concepts/security-model">
+    Why agentic advertising raises the stakes, what AdCP defends against, and a checklist for brand IT and CISOs.
+  </Card>
+  <Card title="Client SDKs" icon="rocket" href="/dist/docs/3.0.20/building/by-layer/L4/choose-your-sdk">
+    JavaScript and Python libraries for AdCP.
+  </Card>
+</CardGroup>
