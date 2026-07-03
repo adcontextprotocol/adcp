@@ -842,6 +842,11 @@ issue payload. The routine itself does all the comment/label work.
     open-ended work (MCP tool design, threat models, curriculum architecture).
     Opt-in; not for triage. Nine roles have a `-deep` counterpart; the rest
     are checker-only or advisor-only by intent.
+- **WG constitution and panel seats** live in `.agents/wg/` (`constitution.md`,
+  `seats.md`) — the operating rules for every review/triage/secretary desk (the
+  AAO Secretariat). Decision records live in `governance/decisions/`; desks cite
+  them by `DR-NNNN` and treat contradicting a record as spec drift. See
+  `specs/spec-guardian.md` for the architecture.
 - **Prompt shortcuts** live in `.agents/shortcuts/`.
 - **Generated outputs** (don't edit by hand) — `scripts/import-claude-agents.mjs`
   syncs `.agents/roles/` to:
