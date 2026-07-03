@@ -671,6 +671,27 @@
         margin: 0;
       }
 
+      .edit-public-warning {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-1);
+        margin-bottom: var(--space-5);
+        padding: var(--space-4);
+        border: var(--border-2) solid var(--color-warning-500);
+        border-left: var(--border-4) solid var(--color-warning-500);
+        border-radius: var(--radius-md);
+        background: var(--color-warning-bg);
+        color: var(--color-warning-fg);
+        font-size: var(--text-sm);
+        line-height: var(--leading-relaxed);
+      }
+
+      .edit-public-warning strong {
+        font-size: var(--text-base);
+        font-weight: var(--font-bold);
+        color: var(--color-warning-fg);
+      }
+
       .edit-form-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -1315,6 +1336,10 @@
             <span class="section-icon" style="width: 28px; height: 28px; font-size: var(--text-sm); background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-primary-500) 100%); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center;">&#9998;</span>
             <h3>Edit brand details</h3>
           </div>
+          <div id="edit-public-warning" class="edit-public-warning" role="alert">
+            <strong>Warning: public registry edit.</strong>
+            <span id="edit-public-warning-body">This brand is not claimed or owner-managed. Saving changes updates the public registry entry and hosted brand.json for everyone.</span>
+          </div>
           <div class="edit-form-grid">
             <div class="edit-form-field">
               <label class="edit-form-label" for="edit-brand-name">Brand name</label>
@@ -1441,7 +1466,7 @@
           <input type="hidden" id="edit-summary">
 
           <div class="edit-form-actions">
-            <button id="save-edit-btn" class="btn btn-primary" onclick="saveEdit()">Save Changes</button>
+            <button id="save-edit-btn" class="btn btn-primary" onclick="saveEdit()">Save to public registry</button>
             <button class="btn btn-ghost" onclick="hideEditForm()">Cancel</button>
           </div>
         </div>
@@ -1621,8 +1646,10 @@
       let brandData = null;
       let currentBrandId = null;
       let currentEditStatus = null;
+      let currentOwnershipStatus = null;
       let currentDomain = '';
       let uploadFile = null;
+      const SAVE_EDIT_LABEL = 'Save to public registry';
 
       const LOGO_TAGS = {
         'Variant': ['icon', 'wordmark', 'full-lockup', 'symbol', 'primary', 'secondary'],
@@ -1767,11 +1794,26 @@
         return String(name).replace(/[;"'<>&]/g, '');
       }
 
+      function updateEditWarning() {
+        const body = document.getElementById('edit-public-warning-body');
+        if (!body) return;
+
+        if (currentOwnershipStatus?.status === 'verified') {
+          body.textContent = 'Saving changes updates this brand page in the public registry. Use owner-managed brand settings for official brand-owned changes when available.';
+        } else if (currentOwnershipStatus?.status === 'orphaned') {
+          body.textContent = 'This brand is awaiting adoption. Saving changes updates the public registry entry and hosted brand.json for everyone.';
+        } else {
+          body.textContent = 'This brand is not claimed or owner-managed. Saving changes updates the public registry entry and hosted brand.json for everyone.';
+        }
+      }
+
       function showEditForm() {
         const form = document.getElementById('edit-form-section');
         form.classList.remove('hidden');
         document.getElementById('edit-brand-btn').classList.add('hidden');
         document.getElementById('upload-logo-hero-btn')?.classList.add('hidden');
+        updateEditWarning();
+        document.getElementById('save-edit-btn').textContent = SAVE_EDIT_LABEL;
 
         // Pre-fill form from currentEditStatus
         const manifest = currentEditStatus?.brand_manifest || {};
@@ -2227,7 +2269,7 @@
         const editSummary = editFormDirty ? generateEditSummary() : 'No changes';
         if (!editFormDirty) {
           saveBtn.textContent = 'No changes';
-          setTimeout(() => { saveBtn.textContent = 'Save Changes'; }, 1500);
+          setTimeout(() => { saveBtn.textContent = SAVE_EDIT_LABEL; }, 1500);
           return;
         }
         saveBtn.disabled = true;
@@ -2385,7 +2427,7 @@
             const err = await resp.json();
             alert(err.error || 'Failed to save');
             saveBtn.disabled = false;
-            saveBtn.textContent = 'Save Changes';
+            saveBtn.textContent = SAVE_EDIT_LABEL;
             return;
           }
 
@@ -2399,7 +2441,7 @@
           saveBtn.textContent = 'Failed to save';
           saveBtn.disabled = false;
           setTimeout(() => {
-            saveBtn.textContent = 'Save Changes';
+            saveBtn.textContent = SAVE_EDIT_LABEL;
             saveBtn.style.background = '';
           }, 2000);
         }
@@ -2491,6 +2533,8 @@
           const resp = await fetch(`/api/brands/${encodeURIComponent(domain)}/ownership`);
           if (!resp.ok) return;
           const data = await resp.json();
+          currentOwnershipStatus = data;
+          updateEditWarning();
 
           const labels = {
             verified: data.owner?.name ? `Verified — owned by ${data.owner.name}` : 'Verified',
@@ -2518,6 +2562,54 @@
           row.classList.remove('hidden');
         } catch (err) {
           // Non-fatal — leave the row hidden.
+        }
+      }
+
+      async function rollbackBrandRevision(revisionNumber, newerRevisionCount, button) {
+        const newerWarning = newerRevisionCount > 0
+          ? `\n\nThis will also undo ${newerRevisionCount} newer revision${newerRevisionCount === 1 ? '' : 's'}.`
+          : '';
+        const confirmed = confirm(
+          `Restore the public registry entry to the snapshot saved before revision ${revisionNumber}?${newerWarning}\n\nThis creates a new rollback revision and overwrites the current brand fields.`
+        );
+        if (!confirmed) return;
+
+        const originalText = button?.textContent || 'Restore';
+        if (button) {
+          button.disabled = true;
+          button.textContent = 'Restoring...';
+        }
+
+        try {
+          const resp = await fetch(`/api/brands/discovered/${encodeURIComponent(currentDomain)}/rollback`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ to_revision: revisionNumber }),
+          });
+
+          if (!resp.ok) {
+            let message = 'Failed to restore revision';
+            try {
+              const err = await resp.json();
+              message = err.error || message;
+            } catch { /* ignore parse errors */ }
+            alert(message);
+            if (button) {
+              button.disabled = false;
+              button.textContent = originalText;
+            }
+            return;
+          }
+
+          if (button) button.textContent = 'Restored';
+          setTimeout(() => window.location.reload(), 800);
+        } catch {
+          alert('Failed to restore revision');
+          if (button) {
+            button.disabled = false;
+            button.textContent = originalText;
+          }
         }
       }
 
@@ -3331,7 +3423,7 @@
 
           // Show edit button if editable and user is logged in
           const user = window.__APP_CONFIG__?.user;
-          if (editStatus.editable && user) {
+          if (editStatus.editable && user?.isMember) {
             document.getElementById('edit-brand-btn').classList.remove('hidden');
           }
 
@@ -3496,14 +3588,18 @@
           const list = document.getElementById('revisions-list');
 
           if (revisions && revisions.length > 0) {
+            const canRollback = editStatus.editable && (user?.isMember || user?.isAdmin);
             list.innerHTML = revisions.map(rev => `
               <div style="padding: var(--space-3) 0; border-bottom: var(--border-1) solid var(--color-border);">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); flex-wrap: wrap;">
                   <div>
                     <strong>Revision ${rev.revision_number}</strong>
                     ${rev.is_rollback ? '<span style="color: var(--color-warning-600); font-size: var(--text-xs); margin-left: 4px;">ROLLBACK</span>' : ''}
                   </div>
-                  <span style="color: var(--color-text-muted); font-size: var(--text-xs);">${new Date(rev.created_at).toLocaleString()}</span>
+                  <div style="display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;">
+                    <span style="color: var(--color-text-muted); font-size: var(--text-xs);">${new Date(rev.created_at).toLocaleString()}</span>
+                    ${canRollback ? `<button type="button" class="btn btn-sm btn-ghost" style="font-size: var(--text-xs); padding: 3px 8px;" onclick="rollbackBrandRevision(${Number(rev.revision_number)}, ${Math.max(0, total - Number(rev.revision_number))}, this)">Restore</button>` : ''}
+                  </div>
                 </div>
                 <div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-top: var(--space-1);">
                   ${escapeHtml(rev.edit_summary)}
