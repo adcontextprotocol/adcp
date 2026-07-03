@@ -68,7 +68,7 @@ describe('upsertFilePr', () => {
     expect(result).toEqual({ prUrl: 'https://github.com/acme/spec/pull/7', prNumber: 7, created: false });
 
     const patchCall = fetchMock.mock.calls[2];
-    expect(patchCall[0]).toContain('/git/refs/heads/addie%2Fwg-slack-context'.replace('%2F', '/'));
+    expect(patchCall[0]).toContain('/git/refs/heads/addie/wg-slack-context');
     expect(JSON.parse(patchCall[1].body as string)).toEqual({ sha: 'base-sha', force: true });
 
     const putBody = JSON.parse(fetchMock.mock.calls[4][1].body as string);
