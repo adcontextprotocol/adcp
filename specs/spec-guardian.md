@@ -186,6 +186,37 @@ Lazy consensus is the key throughput unlock: it uses the charter's existing asyn
 ballot window but inverts the default, so silence means the staff recommendation
 stands. The human WG retains full veto at zero standing cost.
 
+## Knowledge bridge: Slack → Secretariat
+
+Important spec context lives in Slack (#wg-adcp, domain channels) — positions,
+objections, implementer experience that never makes it into the issue thread.
+Today the GitHub desks review blind to it. The design rule: **knowledge enters
+through the secretary, not through the review desks directly**, because the
+desks post publicly and Slack content is both member-private (leak surface) and
+untrusted input (prompt-injection surface for a bot that can approve PRs).
+
+- **Phase 1 — distilled context file.** A new Addie scheduled job
+  (`wg-slack-context`) sweeps WG-relevant channels via her existing
+  `search_slack` / `get_channel_activity` index and distills spec-relevant
+  threads into `.agents/wg/slack-context.md` via the open-PR flow the
+  context-refresh routine already uses. Per topic: state of discussion,
+  positions summarized *without attribution*, Slack permalink (members can
+  follow; non-members only learn a thread exists), related issues/PRs. Desks
+  simply Read it from the repo — no new auth surface, and the distillation
+  step is simultaneously the privacy filter and the injection boundary (a
+  diffable artifact instead of a raw feed).
+- **Phase 2 — live queries (Stage 3).** The Addie server exposes a read-only,
+  token-authed knowledge endpoint (MCP) — `search_slack`, `search_docs`,
+  `get_doc` — to the **triage routine and secretary jobs only**. Argus stays
+  on repo artifacts: it holds approve power, so its input surface stays
+  reviewable.
+- **Rules** live in the constitution (§Information sources and the record):
+  never quote or attribute; Slack informs, GitHub decides; a load-bearing
+  argument that exists only in Slack becomes an on-record info request.
+- **Channel scope** respects Addie's existing privacy tiers
+  (`server/src/addie/rules/constraints.md`): member-visible community channels
+  only; admin and private channels never feed the distillation.
+
 ## The 3.2 release train
 
 Addie as release manager, using machinery that already exists (runbooks in
@@ -300,7 +331,8 @@ Editorial-class scope quarterly.
 - Remaining for Brian (ops): create the "AAO Secretariat" GitHub App (or rename
   `aao-release-bot`), swap workflow secrets, update `ARGUS_BOT_LOGIN`.
 - Next: Stage 2 shadow-mode Normative ratification; 3.2 scope-gate pass;
-  Stage 3 secretary tools in Addie.
+  `wg-slack-context` distillation job (knowledge bridge Phase 1); Stage 3
+  secretary tools in Addie.
 
 ## Open questions
 
