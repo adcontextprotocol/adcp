@@ -195,21 +195,36 @@ through the secretary, not through the review desks directly**, because the
 desks post publicly and Slack content is both member-private (leak surface) and
 untrusted input (prompt-injection surface for a bot that can approve PRs).
 
-- **Phase 1 — distilled context file.** A new Addie scheduled job
-  (`wg-slack-context`) sweeps WG-relevant channels via her existing
-  `search_slack` / `get_channel_activity` index and distills spec-relevant
-  threads into `.agents/wg/slack-context.md` via the open-PR flow the
-  context-refresh routine already uses. Per topic: state of discussion,
-  positions summarized *without attribution*, Slack permalink (members can
-  follow; non-members only learn a thread exists), related issues/PRs. Desks
-  simply Read it from the repo — no new auth surface, and the distillation
-  step is simultaneously the privacy filter and the injection boundary (a
-  diffable artifact instead of a raw feed).
-- **Phase 2 — live queries (Stage 3).** The Addie server exposes a read-only,
-  token-authed knowledge endpoint (MCP) — `search_slack`, `search_docs`,
-  `get_doc` — to the **triage routine and secretary jobs only**. Argus stays
-  on repo artifacts: it holds approve power, so its input surface stays
-  reviewable.
+- **The distilled context file (permanent mechanism, not a phase).** A new
+  Addie scheduled job (`wg-slack-context`) sweeps WG-relevant channels via her
+  existing `search_slack` / `get_channel_activity` index and distills
+  spec-relevant threads into `.agents/wg/slack-context.md` via the open-PR
+  flow the context-refresh routine already uses. Per topic: state of
+  discussion, positions summarized *without attribution*, Slack permalink
+  (members can follow; non-members only learn a thread exists), related
+  issues/PRs. Desks simply Read it from the repo — no new auth surface, and
+  the distillation step is simultaneously the privacy filter and the injection
+  boundary (a diffable artifact instead of a raw feed).
+
+  This is the *only* Slack channel compatible with Argus: what Argus reads at
+  base SHA is content a human already saw merge, and a PR cannot mutate it for
+  its own review. No live mechanism has that property. It also carries the
+  knowledge a query tool structurally misses — **ambient** context ("sellers
+  have been grumbling about retry semantics for two weeks") that should color
+  many reviews but that no targeted query would surface. And it adds no
+  runtime dependency or secret to CI: a live endpoint would make
+  `pull_request_target` runs depend on the Fly.io server and widen that
+  workflow's trust surface.
+- **Ask the secretary (demand-driven addition, not a commitment).** If triage
+  demonstrably misses context the file doesn't carry, add a token-authed
+  endpoint on the Addie server for the **triage routine and secretary jobs
+  only** — shaped as *ask-the-secretary*: question in, synthesized answer out,
+  **never raw messages**. Raw search results would shift privacy filtering
+  and attribution-stripping onto the consuming prompt (the weak place for it);
+  a synthesized answer keeps the boundary inside Addie — and a safe endpoint
+  is the distiller behind an API anyway, so the file costs almost nothing
+  extra on the way. Argus never gets this surface: it holds approve power, so
+  its input stays limited to reviewable repo artifacts.
 - **Rules** live in the constitution (§Information sources and the record):
   never quote or attribute; Slack informs, GitHub decides; a load-bearing
   argument that exists only in Slack becomes an on-record info request.
@@ -331,7 +346,7 @@ Editorial-class scope quarterly.
 - Remaining for Brian (ops): create the "AAO Secretariat" GitHub App (or rename
   `aao-release-bot`), swap workflow secrets, update `ARGUS_BOT_LOGIN`.
 - Next: Stage 2 shadow-mode Normative ratification; 3.2 scope-gate pass;
-  `wg-slack-context` distillation job (knowledge bridge Phase 1); Stage 3
+  `wg-slack-context` distillation job (the knowledge bridge); Stage 3
   secretary tools in Addie.
 
 ## Open questions

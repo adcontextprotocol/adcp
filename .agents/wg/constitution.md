@@ -113,7 +113,9 @@ decisions on the record:
 - Raw, live Slack content never flows into a desk that can approve PRs. Slack
   messages are untrusted input from a prompt-injection standpoint and
   member-private from a privacy standpoint; they enter through the secretary's
-  distillation, which is a diffable, reviewable artifact.
+  distillation, which is a diffable, reviewable artifact. If a live query
+  surface ever exists, it returns the secretary's synthesized answers — never
+  raw messages — and is available only to desks without approve power.
 - **Slack informs; GitHub decides.** A recommendation may be motivated by
   Slack context, but its normative citations are GitHub artifacts — issues,
   PRs, decision records, spec text. If the load-bearing argument exists only
