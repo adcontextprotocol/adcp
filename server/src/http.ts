@@ -3366,18 +3366,46 @@ export class HTTPServer {
       }
     });
 
-    // POST /api/brands/discovered/:domain/rollback - Rollback to a previous revision (admin only)
+    // POST /api/brands/discovered/:domain/rollback - Rollback to a previous revision.
+    // AAO members can roll back editable community/enriched brands. Admins retain
+    // access for moderation and support.
     this.app.post('/api/brands/discovered/:domain/rollback', requireAuth, async (req, res) => {
       try {
         const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
-        if (!isAdmin) {
-          return res.status(403).json({ error: 'Admin access required' });
+        await enrichUserWithMembership(req.user as any);
+        if (!isAdmin && !(req.user as any)?.isMember) {
+          return res.status(403).json({ error: 'Membership required to roll back brands' });
+        }
+        if ((req as any).apiKey || req.user?.id === 'admin_api_key' || req.user?.id?.startsWith('api_key_')) {
+          return res.status(403).json({ error: 'Human user session required to roll back brands' });
         }
 
         const domain = decodeURIComponent(req.params.domain).toLowerCase();
+        if (!domainPattern.test(domain)) {
+          return res.status(400).json({ error: 'Invalid domain format' });
+        }
+
         const { to_revision } = req.body;
-        if (!to_revision || typeof to_revision !== 'number') {
-          return res.status(400).json({ error: 'to_revision (number) required' });
+        if (!Number.isInteger(to_revision) || to_revision < 1) {
+          return res.status(400).json({ error: 'to_revision (positive integer) required' });
+        }
+
+        const currentBrand = await this.brandDb.getDiscoveredBrandByDomain(domain);
+        if (!currentBrand) {
+          return res.status(404).json({ error: 'Resource not found' });
+        }
+        if (currentBrand.source_type === 'brand_json') {
+          return res.status(403).json({ error: 'Managed by brand owner via brand.json' });
+        }
+        if (currentBrand.review_status === 'pending') {
+          return res.status(403).json({ error: 'Cannot roll back brand pending review' });
+        }
+
+        if (!isAdmin) {
+          const banCheck = await this.bansDb.isUserBannedFromRegistry('registry_brand', req.user!.id, domain);
+          if (banCheck.banned) {
+            return res.status(403).json({ error: 'You are banned from editing this brand', reason: banCheck.ban?.reason });
+          }
         }
 
         const { brand, revision_number } = await this.brandDb.rollbackBrand(domain, to_revision, {
@@ -3399,6 +3427,10 @@ export class HTTPServer {
         if (error.message?.includes('not found')) {
           logger.warn({ err: error, path: req.path }, 'Brand not found during rollback');
           return res.status(404).json({ error: 'Resource not found' });
+        }
+        if (error.message?.includes('Cannot roll back')) {
+          logger.warn({ err: error, path: req.path }, 'Access denied rolling back brand');
+          return res.status(403).json({ error: 'Access denied' });
         }
         logger.error({ error }, 'Failed to rollback brand');
         return res.status(500).json({ error: 'Failed to rollback brand' });

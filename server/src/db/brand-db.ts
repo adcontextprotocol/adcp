@@ -1459,6 +1459,13 @@ export class BrandDatabase {
       if (currentResult.rows.length === 0) {
         throw new Error(`Brand not found: ${domain}`);
       }
+      const current = currentResult.rows[0];
+      if (current.source_type === 'brand_json') {
+        throw new Error('Cannot roll back authoritative brand (managed via brand.json)');
+      }
+      if (current.review_status === 'pending') {
+        throw new Error('Cannot roll back brand pending review');
+      }
 
       // Get next revision number
       const revResult = await client.query<{ next_rev: number }>(
@@ -1477,7 +1484,7 @@ export class BrandDatabase {
         [
           domain.toLowerCase(),
           revisionNumber,
-          JSON.stringify(sanitizeBrandSnapshot(currentResult.rows[0] as unknown as Record<string, unknown>)),
+          JSON.stringify(sanitizeBrandSnapshot(current as unknown as Record<string, unknown>)),
           editor.user_id,
           editor.email || null,
           editor.name || null,

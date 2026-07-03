@@ -331,12 +331,27 @@ jobs:
             exit 1
           fi
           PROMPT_BODY="$(git show "${BASE_SHA}:.github/ai-review/expert-adcp-reviewer.md")"
+          # The WG constitution is also loaded from the base SHA — the PR
+          # cannot mutate the rules it is reviewed under. Absent at base
+          # (e.g., older maintenance lines) it is simply omitted.
+          CONSTITUTION=""
+          if git cat-file -e "${BASE_SHA}:.agents/wg/constitution.md" 2>/dev/null; then
+            CONSTITUTION="$(git show "${BASE_SHA}:.agents/wg/constitution.md")"
+          fi
           # Randomize the heredoc sentinel so a future prompt change can't
           # smuggle the static sentinel into the body and break framing.
           SENTINEL="ARGUS_$(openssl rand -hex 8)_EOF"
           {
             echo "ARGUS_PROMPT<<${SENTINEL}"
             echo "$PROMPT_BODY"
+            if [ -n "$CONSTITUTION" ]; then
+              echo ''
+              echo '---'
+              echo ''
+              echo '## WG constitution (loaded from base SHA)'
+              echo ''
+              echo "$CONSTITUTION"
+            fi
             echo ''
             echo '---'
             echo ''

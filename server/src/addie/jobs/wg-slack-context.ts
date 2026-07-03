@@ -1,0 +1,281 @@
+/**
+ * WG Slack context distiller.
+ *
+ * Sweeps public working-group Slack channels, distills spec-relevant
+ * discussion into `.agents/wg/slack-context.md`, and ships the refresh
+ * as a pull request. The distilled file is the only Slack channel into
+ * the Secretariat's review desks (`.agents/wg/constitution.md`
+ * §Information sources and the record): positions are summarized
+ * without attribution, and the refresh PR crosses the sensitive-path
+ * gate so a human sees every version before a desk reads it.
+ */
+
+import Anthropic from '@anthropic-ai/sdk';
+import { createLogger } from '../../logger.js';
+import { ModelConfig } from '../../config/models.js';
+import { WorkingGroupDatabase } from '../../db/working-group-db.js';
+import { getChannelHistory, getChannelInfo } from '../../slack/client.js';
+import type { SlackHistoryMessage } from '../../slack/client.js';
+import { getFileContent, upsertFilePr } from './github-pr.js';
+
+const logger = createLogger('wg-slack-context');
+
+const SLACK_WORKSPACE_URL = process.env.SLACK_WORKSPACE_URL || 'https://agenticads.slack.com';
+export const CONTEXT_FILE_PATH = '.agents/wg/slack-context.md';
+const PR_BRANCH = 'addie/wg-slack-context';
+const NO_CONTENT_SENTINEL = 'NO_SPEC_RELEVANT_DISCUSSION';
+const MAX_THREAD_TEXT_CHARS = 900;
+
+export interface WgSlackContextOptions {
+  /** How far back to sweep. Default 14 days. */
+  windowDays?: number;
+  /** Threads per channel fed to the distiller. Default 8. */
+  maxThreadsPerChannel?: number;
+}
+
+export interface WgSlackContextResult {
+  channelsScanned: number;
+  channelsSkippedPrivate: number;
+  threadsDistilled: number;
+  prUrl?: string;
+  prCreated?: boolean;
+  skipped?:
+    | 'missing-env'
+    | 'no-channels'
+    | 'no-activity'
+    | 'no-spec-content'
+    | 'no-material-change'
+    | 'pr-failed';
+}
+
+interface SourceThread {
+  groupName: string;
+  channelId: string;
+  ts: string;
+  text: string;
+  replyCount: number;
+  permalink: string;
+}
+
+/**
+ * Strip Slack markup that carries identity or noise: user mentions,
+ * channel refs, and link syntax. Exported for tests.
+ */
+export function cleanSlackText(text: string): string {
+  return text
+    .replace(/<@[UW][A-Z0-9]+(\|[^>]*)?>/g, 'a member')
+    .replace(/<#[A-Z0-9]+\|([^>]*)>/g, '#$1')
+    .replace(/<(https?:\/\/[^|>]+)\|([^>]*)>/g, '$2')
+    .replace(/<(https?:\/\/[^>]+)>/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Defense-in-depth on model output: no raw Slack user mentions may
+ * survive into the digest. Exported for tests.
+ */
+export function stripResidualMentions(text: string): string {
+  return text.replace(/<@[UW][A-Z0-9]+(\|[^>]*)?>/g, 'a member');
+}
+
+/** The topic body below the metadata divider; used for change detection. */
+function extractBody(fileContent: string): string {
+  const idx = fileContent.indexOf('\n---\n');
+  return idx === -1 ? fileContent.trim() : fileContent.slice(idx + 5).trim();
+}
+
+function buildDistillerPrompt(threads: SourceThread[]): string {
+  const byChannel = new Map<string, SourceThread[]>();
+  for (const t of threads) {
+    const list = byChannel.get(t.groupName) ?? [];
+    list.push(t);
+    byChannel.set(t.groupName, list);
+  }
+
+  const corpus = [...byChannel.entries()]
+    .map(([group, list]) => {
+      const items = list
+        .map(
+          (t) =>
+            `- [${new Date(Number(t.ts.split('.')[0]) * 1000).toISOString().slice(0, 10)}] ` +
+            `(replies: ${t.replyCount}) ${t.permalink}\n  ${t.text}`
+        )
+        .join('\n');
+      return `## Channel: ${group}\n${items}`;
+    })
+    .join('\n\n');
+
+  return `You are the AAO Secretariat's Slack distiller. Below are recent threads from AdCP working-group Slack channels. Produce a markdown digest of SPEC-RELEVANT discussion for the protocol's review agents.
+
+Hard rules:
+- NEVER name, quote, or otherwise identify a participant: no personal names, no Slack handles, no company names used as attribution. Describe positions by role when useful ("a seller-side member", "an SDK implementer").
+- Never quote a message verbatim. Summarize in third person.
+- Only include discussion relevant to the AdCP specification, schemas, SDKs, conformance, or governance process. Omit social chatter, event logistics, job posts, and admin topics.
+- If an issue or PR number (#NNNN) appears in a thread, carry it into Related.
+
+Output format, one section per topic:
+### <Short topic title>
+- **Status:** active | resolved | parked
+- **Summary:** 2-4 sentences, no quotes, no attribution.
+- **Related:** #NNNN, #NNNN (omit this line if none)
+- **Thread:** <permalink of the source thread(s), copied from the source list>
+
+Order topics by relevance to current spec work. If nothing is spec-relevant, output exactly: ${NO_CONTENT_SENTINEL}
+
+Source threads:
+
+${corpus}`;
+}
+
+function composeFile(body: string, meta: { channels: number; skippedPrivate: number; windowDays: number }): string {
+  return `# WG Slack Context
+
+<!-- Generated by the wg-slack-context job. Do not edit by hand. -->
+
+**Background only.** Summarized from member-visible working-group Slack
+channels per \`.agents/wg/constitution.md\` §Information sources and the
+record: never quote or attribute this content in public output; Slack
+informs, GitHub decides.
+
+- Generated: ${new Date().toISOString().slice(0, 10)}
+- Window: last ${meta.windowDays} days
+- Channels: ${meta.channels} public WG channels swept (${meta.skippedPrivate} private excluded)
+
+---
+
+${body}
+`;
+}
+
+export async function runWgSlackContextJob(
+  options: WgSlackContextOptions = {}
+): Promise<WgSlackContextResult> {
+  const windowDays = options.windowDays ?? 14;
+  const maxThreadsPerChannel = options.maxThreadsPerChannel ?? 8;
+
+  const result: WgSlackContextResult = {
+    channelsScanned: 0,
+    channelsSkippedPrivate: 0,
+    threadsDistilled: 0,
+  };
+
+  if (!process.env.ANTHROPIC_API_KEY || !process.env.GITHUB_TOKEN) {
+    logger.warn('ANTHROPIC_API_KEY or GITHUB_TOKEN not set; skipping');
+    result.skipped = 'missing-env';
+    return result;
+  }
+
+  const wgDb = new WorkingGroupDatabase();
+  const groups = await wgDb.listWorkingGroupsWithSlackChannel();
+  if (groups.length === 0) {
+    result.skipped = 'no-channels';
+    return result;
+  }
+
+  const oldest = String(Math.floor((Date.now() - windowDays * 24 * 60 * 60 * 1000) / 1000));
+  const threads: SourceThread[] = [];
+
+  for (const group of groups) {
+    const channelId = group.slack_channel_id!;
+    // Fail closed on privacy: only channels the Slack API confirms are
+    // public feed a file that lands in a public repo.
+    const info = await getChannelInfo(channelId);
+    if (!info || info.is_private !== false) {
+      result.channelsSkippedPrivate++;
+      continue;
+    }
+    result.channelsScanned++;
+
+    try {
+      const history = await getChannelHistory(channelId, { oldest, limit: 100 });
+      const substantive = history.messages
+        .filter(
+          (m: SlackHistoryMessage) =>
+            m.text && !m.bot_id && !m.subtype && ((m.reply_count ?? 0) >= 2 || m.text.length >= 80)
+        )
+        .sort((a, b) => (b.reply_count ?? 0) - (a.reply_count ?? 0) || Number(b.ts) - Number(a.ts))
+        .slice(0, maxThreadsPerChannel);
+
+      for (const msg of substantive) {
+        threads.push({
+          groupName: group.name,
+          channelId,
+          ts: msg.ts,
+          text: cleanSlackText(msg.text!).slice(0, MAX_THREAD_TEXT_CHARS),
+          replyCount: msg.reply_count ?? 0,
+          permalink: `${SLACK_WORKSPACE_URL}/archives/${channelId}/p${msg.ts.replace('.', '')}`,
+        });
+      }
+    } catch (err) {
+      logger.warn({ err, channelId, group: group.name }, 'Channel sweep failed; continuing');
+    }
+  }
+
+  if (threads.length === 0) {
+    result.skipped = 'no-activity';
+    return result;
+  }
+  result.threadsDistilled = threads.length;
+
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const response = await client.messages.create({
+    model: ModelConfig.primary,
+    max_tokens: 3000,
+    messages: [{ role: 'user', content: buildDistillerPrompt(threads) }],
+  });
+  const raw = response.content[0]?.type === 'text' ? response.content[0].text.trim() : '';
+
+  if (!raw || raw.includes(NO_CONTENT_SENTINEL)) {
+    result.skipped = 'no-spec-content';
+    return result;
+  }
+
+  const body = stripResidualMentions(raw);
+
+  let currentBody: string | null = null;
+  try {
+    const current = await getFileContent(CONTEXT_FILE_PATH, 'main');
+    currentBody = current === null ? null : extractBody(current);
+  } catch (err) {
+    logger.warn({ err }, 'Could not read current slack-context from main; proceeding');
+  }
+  if (currentBody !== null && currentBody === body.trim()) {
+    result.skipped = 'no-material-change';
+    return result;
+  }
+
+  const content = composeFile(body, {
+    channels: result.channelsScanned,
+    skippedPrivate: result.channelsSkippedPrivate,
+    windowDays,
+  });
+
+  const pr = await upsertFilePr({
+    branch: PR_BRANCH,
+    path: CONTEXT_FILE_PATH,
+    content,
+    commitMessage: 'chore(agents): refresh WG slack-context digest',
+    prTitle: 'chore(agents): refresh WG slack-context digest',
+    prBody:
+      `Automated refresh of \`${CONTEXT_FILE_PATH}\` from the last ${windowDays} days of ` +
+      `public working-group Slack channels (${result.channelsScanned} channels, ` +
+      `${result.threadsDistilled} threads distilled, positions summarized without attribution).\n\n` +
+      `This file is the Secretariat's only Slack input; the sensitive-path gate holds it for ` +
+      `human review by design — merging is the review (see ` +
+      `\`.agents/wg/constitution.md\` §Information sources and the record).`,
+  });
+
+  if (!pr) {
+    result.skipped = 'pr-failed';
+    return result;
+  }
+
+  result.prUrl = pr.prUrl;
+  result.prCreated = pr.created;
+  logger.info(
+    { prUrl: pr.prUrl, created: pr.created, threads: result.threadsDistilled },
+    'WG slack-context refresh PR ready'
+  );
+  return result;
+}

@@ -439,6 +439,16 @@
       "pullRequestNo": 5675,
       "comment_id": 4787411756,
       "comment_url": "https://github.com/adcontextprotocol/adcp/pull/5675#issuecomment-4787411756"
+    },
+    {
+      "name": "sliss",
+      "id": 3977547,
+      "created_at": "2026-07-02T22:34:06Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 5807,
+      "comment_id": 4871007311,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/5807#issuecomment-4871007311"
     }
   ]
 }
