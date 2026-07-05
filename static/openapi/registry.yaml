@@ -2292,13 +2292,13 @@ components:
             event_type:
               type: string
               enum:
-                - brand.resolved
+                - agent.verification_earned
             entity_type:
               type: string
             entity_id:
               type: string
             payload:
-              $ref: "#/components/schemas/BrandEventPayload"
+              $ref: "#/components/schemas/AgentEventPayload"
             actor:
               type: string
             created_at:
@@ -2320,97 +2320,13 @@ components:
             event_type:
               type: string
               enum:
-                - brand.updated
+                - agent.verification_lost
             entity_type:
               type: string
             entity_id:
               type: string
             payload:
-              $ref: "#/components/schemas/BrandEventPayload"
-            actor:
-              type: string
-            created_at:
-              type: string
-              format: date-time
-          required:
-            - event_id
-            - event_type
-            - entity_type
-            - entity_id
-            - payload
-            - actor
-            - created_at
-        - type: object
-          properties:
-            event_id:
-              type: string
-              format: uuid
-            event_type:
-              type: string
-              enum:
-                - brand.removed
-            entity_type:
-              type: string
-            entity_id:
-              type: string
-            payload:
-              $ref: "#/components/schemas/BrandEventPayload"
-            actor:
-              type: string
-            created_at:
-              type: string
-              format: date-time
-          required:
-            - event_id
-            - event_type
-            - entity_type
-            - entity_id
-            - payload
-            - actor
-            - created_at
-        - type: object
-          properties:
-            event_id:
-              type: string
-              format: uuid
-            event_type:
-              type: string
-              enum:
-                - brand.deleted
-            entity_type:
-              type: string
-            entity_id:
-              type: string
-            payload:
-              $ref: "#/components/schemas/BrandEventPayload"
-            actor:
-              type: string
-            created_at:
-              type: string
-              format: date-time
-          required:
-            - event_id
-            - event_type
-            - entity_type
-            - entity_id
-            - payload
-            - actor
-            - created_at
-        - type: object
-          properties:
-            event_id:
-              type: string
-              format: uuid
-            event_type:
-              type: string
-              enum:
-                - brand.hierarchy_updated
-            entity_type:
-              type: string
-            entity_id:
-              type: string
-            payload:
-              $ref: "#/components/schemas/BrandEventPayload"
+              $ref: "#/components/schemas/AgentEventPayload"
             actor:
               type: string
             created_at:
@@ -2489,6 +2405,62 @@ components:
               type: string
               enum:
                 - property.merged
+            entity_type:
+              type: string
+            entity_id:
+              type: string
+            payload:
+              $ref: "#/components/schemas/PropertyEventPayload"
+            actor:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+          required:
+            - event_id
+            - event_type
+            - entity_type
+            - entity_id
+            - payload
+            - actor
+            - created_at
+        - type: object
+          properties:
+            event_id:
+              type: string
+              format: uuid
+            event_type:
+              type: string
+              enum:
+                - property.stale
+            entity_type:
+              type: string
+            entity_id:
+              type: string
+            payload:
+              $ref: "#/components/schemas/PropertyEventPayload"
+            actor:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+          required:
+            - event_id
+            - event_type
+            - entity_type
+            - entity_id
+            - payload
+            - actor
+            - created_at
+        - type: object
+          properties:
+            event_id:
+              type: string
+              format: uuid
+            event_type:
+              type: string
+              enum:
+                - property.reactivated
             entity_type:
               type: string
             entity_id:
@@ -2684,6 +2656,34 @@ components:
             event_type:
               type: string
               enum:
+                - authorization.modified
+            entity_type:
+              type: string
+            entity_id:
+              type: string
+            payload:
+              $ref: "#/components/schemas/AuthorizationEventPayload"
+            actor:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+          required:
+            - event_id
+            - event_type
+            - entity_type
+            - entity_id
+            - payload
+            - actor
+            - created_at
+        - type: object
+          properties:
+            event_id:
+              type: string
+              format: uuid
+            event_type:
+              type: string
+              enum:
                 - publisher.adagents_changed
             entity_type:
               type: string
@@ -2758,11 +2758,19 @@ components:
           type: array
           items:
             type: string
+        category_taxonomy:
+          type:
+            - string
+            - "null"
         tags:
           type: array
           items:
             type: string
         delivery_types:
+          type: array
+          items:
+            type: string
+        format_ids:
           type: array
           items:
             type: string
@@ -2772,6 +2780,13 @@ components:
           type: integer
         has_tmp:
           type: boolean
+        updated_at:
+          type: string
+        changed_fields:
+          type: array
+          items:
+            type: string
+          minItems: 1
         inventory_profile:
           type: object
           additionalProperties: {}
@@ -2785,28 +2800,67 @@ components:
         current_status:
           type: string
           description: "On agent.compliance_changed: new compliance/verification status."
-      required:
-        - agent_url
-    BrandEventPayload:
-      type: object
-      properties:
-        domain:
-          type: string
-          description: Brand domain; brand.* events are identified by entity_id (the brand) and carry hierarchy context here.
-        chain:
+        headline:
+          type:
+            - string
+            - "null"
+          description: "On agent.compliance_changed: human-readable summary of the compliance transition."
+        tracks:
+          type: object
+          additionalProperties:
+            type: string
+            enum:
+              - pass
+              - fail
+              - partial
+              - skip
+              - silent
+              - warning
+              - unknown
+              - skipped
+          description: "On agent.compliance_changed: map of compliance track id to track status."
+        storyboards_passing:
+          type: integer
+          minimum: 0
+        storyboards_total:
+          type: integer
+          minimum: 0
+        storyboards:
           type: array
           items:
             type: object
+            properties:
+              storyboard_id:
+                type: string
+              status:
+                type: string
+              steps_passed:
+                type: integer
+                minimum: 0
+              steps_total:
+                type: integer
+                minimum: 0
+            required:
+              - storyboard_id
+              - status
             additionalProperties: {}
-          description: "On brand.resolved/hierarchy_updated: the resolved brand chain (root → leaf)."
-        ancestor_domains:
+        role:
+          type: string
+          description: "On agent.verification_earned/lost: verified role affected by the badge transition."
+        verified_specialisms:
           type: array
           items:
             type: string
-        domains:
-          type: array
-          items:
-            type: string
+          description: "On agent.verification_earned: specialisms covered by the earned badge."
+        reason:
+          type: string
+          description: "On agent.verification_lost: reason the badge was revoked."
+        adcp_version:
+          type: string
+          description: "On agent.verification_earned/lost: AdCP version the badge applies to, when known."
+      required:
+        - agent_url
+      additionalProperties: {}
     PropertyEventPayload:
       type: object
       properties:
@@ -2821,6 +2875,30 @@ components:
             $ref: "#/components/schemas/PropertyIdentifier"
         classification:
           type: string
+        source:
+          type: string
+          enum:
+            - authoritative
+            - enriched
+            - contributed
+        property:
+          type: object
+          additionalProperties: {}
+          description: Optional full post-change property object when available.
+        changed_fields:
+          type: array
+          items:
+            type: string
+          minItems: 1
+        last_resolved_at:
+          type: string
+          description: "On property.stale: last successful resolution timestamp."
+        reactivated_at:
+          type: string
+          description: "On property.reactivated: reactivation timestamp when available."
+        reason:
+          type: string
+          description: "On property.stale: reason the property aged out of active resolution."
         alias_rid:
           type: string
           description: "On property.merged: the RID merged away."
@@ -2829,6 +2907,7 @@ components:
           description: "On property.merged: the surviving RID."
         evidence:
           type: string
+      additionalProperties: {}
     CollectionEventPayload:
       type: object
       properties:
@@ -2872,6 +2951,11 @@ components:
         collection:
           type: object
           additionalProperties: {}
+        changed_fields:
+          type: array
+          items:
+            type: string
+          minItems: 1
         alias_rid:
           type: string
           description: "On collection.merged: the RID merged away."
@@ -2880,11 +2964,19 @@ components:
           description: "On collection.merged: the surviving RID."
         evidence:
           type: string
+      additionalProperties: {}
     AuthorizationEventPayload:
       type: object
       properties:
+        id:
+          type: string
+          format: uuid
+          description: Registry authorization row id when the event is backed by a materialized effective authorization row.
         agent_url:
           type: string
+        agent_url_canonical:
+          type: string
+          description: Registry-canonicalized form of agent_url for equality checks.
         publisher_domain:
           type: string
           description: Publisher domain the authorization applies to; the routing key for authorization.* events.
@@ -2892,7 +2984,9 @@ components:
           type: string
           description: Present on authorization.granted; authorization.revoked carries only agent_url + publisher_domain.
         authorized_for:
-          type: string
+          type:
+            - string
+            - "null"
         property_ids:
           type: array
           items:
@@ -2901,6 +2995,26 @@ components:
           type: array
           items:
             type: string
+        properties:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        publisher_properties:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        property_rid:
+          type:
+            - string
+            - "null"
+          description: Catalog property_rid for materialized per-property authorization rows. Null for publisher-wide rows.
+        property_id_slug:
+          type:
+            - string
+            - "null"
+          description: Publisher-local property id for materialized per-property authorization rows.
         placement_ids:
           type: array
           items:
@@ -2916,11 +3030,15 @@ components:
             properties:
               publisher_domain:
                 type: string
-              collection_id:
-                type: string
+              collection_ids:
+                type: array
+                items:
+                  type: string
+                minItems: 1
             required:
               - publisher_domain
-              - collection_id
+              - collection_ids
+            additionalProperties: {}
         countries:
           type: array
           items:
@@ -2938,15 +3056,59 @@ components:
           items:
             type: object
             additionalProperties: {}
+        evidence:
+          type: string
+        disputed:
+          type: boolean
+        created_by:
+          type:
+            - string
+            - "null"
+        expires_at:
+          type:
+            - string
+            - "null"
+        created_at:
+          type:
+            - string
+            - "null"
+        updated_at:
+          type:
+            - string
+            - "null"
+        override_applied:
+          type: boolean
+        override_reason:
+          type:
+            - string
+            - "null"
       required:
         - agent_url
         - publisher_domain
+      additionalProperties: {}
     PublisherEventPayload:
       type: object
       properties:
         publisher_domain:
           type: string
           description: Publisher domain whose adagents.json was discovered/changed; the routing key for publisher.* events.
+        domain:
+          type: string
+          description: Legacy alias for publisher_domain retained for early feed examples.
+        properties_added:
+          type: integer
+          minimum: 0
+        properties_removed:
+          type: integer
+          minimum: 0
+        agents_added:
+          type: array
+          items:
+            type: string
+        agents_removed:
+          type: array
+          items:
+            type: string
         agent_count:
           type: integer
         property_count:
@@ -2961,8 +3123,7 @@ components:
             - "null"
         source:
           type: string
-      required:
-        - publisher_domain
+      additionalProperties: {}
     AgentComplianceDetail:
       type: object
       properties:
@@ -4313,6 +4474,26 @@ components:
         - created_at
         - updated_at
         - source_updated_at
+    BrandEventPayload:
+      type: object
+      properties:
+        domain:
+          type: string
+          description: Brand domain; brand.* events are identified by entity_id (the brand) and carry hierarchy context here.
+        chain:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+          description: "On brand.resolved/hierarchy_updated: the resolved brand chain (root → leaf)."
+        ancestor_domains:
+          type: array
+          items:
+            type: string
+        domains:
+          type: array
+          items:
+            type: string
     AdagentsJson:
       type: object
       properties:
