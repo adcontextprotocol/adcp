@@ -2170,6 +2170,799 @@ components:
         - policy_id
         - total
         - revisions
+    RegistryFeedEvent:
+      oneOf:
+        - type: object
+          properties:
+            event_id:
+              type: string
+              format: uuid
+            event_type:
+              type: string
+              enum:
+                - agent.discovered
+            entity_type:
+              type: string
+            entity_id:
+              type: string
+            payload:
+              $ref: "#/components/schemas/AgentEventPayload"
+            actor:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+          required:
+            - event_id
+            - event_type
+            - entity_type
+            - entity_id
+            - payload
+            - actor
+            - created_at
+        - type: object
+          properties:
+            event_id:
+              type: string
+              format: uuid
+            event_type:
+              type: string
+              enum:
+                - agent.removed
+            entity_type:
+              type: string
+            entity_id:
+              type: string
+            payload:
+              $ref: "#/components/schemas/AgentEventPayload"
+            actor:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+          required:
+            - event_id
+            - event_type
+            - entity_type
+            - entity_id
+            - payload
+            - actor
+            - created_at
+        - type: object
+          properties:
+            event_id:
+              type: string
+              format: uuid
+            event_type:
+              type: string
+              enum:
+                - agent.profile_updated
+            entity_type:
+              type: string
+            entity_id:
+              type: string
+            payload:
+              $ref: "#/components/schemas/AgentEventPayload"
+            actor:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+          required:
+            - event_id
+            - event_type
+            - entity_type
+            - entity_id
+            - payload
+            - actor
+            - created_at
+        - type: object
+          properties:
+            event_id:
+              type: string
+              format: uuid
+            event_type:
+              type: string
+              enum:
+                - agent.compliance_changed
+            entity_type:
+              type: string
+            entity_id:
+              type: string
+            payload:
+              $ref: "#/components/schemas/AgentEventPayload"
+            actor:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+          required:
+            - event_id
+            - event_type
+            - entity_type
+            - entity_id
+            - payload
+            - actor
+            - created_at
+        - type: object
+          properties:
+            event_id:
+              type: string
+              format: uuid
+            event_type:
+              type: string
+              enum:
+                - brand.resolved
+            entity_type:
+              type: string
+            entity_id:
+              type: string
+            payload:
+              $ref: "#/components/schemas/BrandEventPayload"
+            actor:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+          required:
+            - event_id
+            - event_type
+            - entity_type
+            - entity_id
+            - payload
+            - actor
+            - created_at
+        - type: object
+          properties:
+            event_id:
+              type: string
+              format: uuid
+            event_type:
+              type: string
+              enum:
+                - brand.updated
+            entity_type:
+              type: string
+            entity_id:
+              type: string
+            payload:
+              $ref: "#/components/schemas/BrandEventPayload"
+            actor:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+          required:
+            - event_id
+            - event_type
+            - entity_type
+            - entity_id
+            - payload
+            - actor
+            - created_at
+        - type: object
+          properties:
+            event_id:
+              type: string
+              format: uuid
+            event_type:
+              type: string
+              enum:
+                - brand.removed
+            entity_type:
+              type: string
+            entity_id:
+              type: string
+            payload:
+              $ref: "#/components/schemas/BrandEventPayload"
+            actor:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+          required:
+            - event_id
+            - event_type
+            - entity_type
+            - entity_id
+            - payload
+            - actor
+            - created_at
+        - type: object
+          properties:
+            event_id:
+              type: string
+              format: uuid
+            event_type:
+              type: string
+              enum:
+                - brand.deleted
+            entity_type:
+              type: string
+            entity_id:
+              type: string
+            payload:
+              $ref: "#/components/schemas/BrandEventPayload"
+            actor:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+          required:
+            - event_id
+            - event_type
+            - entity_type
+            - entity_id
+            - payload
+            - actor
+            - created_at
+        - type: object
+          properties:
+            event_id:
+              type: string
+              format: uuid
+            event_type:
+              type: string
+              enum:
+                - brand.hierarchy_updated
+            entity_type:
+              type: string
+            entity_id:
+              type: string
+            payload:
+              $ref: "#/components/schemas/BrandEventPayload"
+            actor:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+          required:
+            - event_id
+            - event_type
+            - entity_type
+            - entity_id
+            - payload
+            - actor
+            - created_at
+        - type: object
+          properties:
+            event_id:
+              type: string
+              format: uuid
+            event_type:
+              type: string
+              enum:
+                - property.created
+            entity_type:
+              type: string
+            entity_id:
+              type: string
+            payload:
+              $ref: "#/components/schemas/PropertyEventPayload"
+            actor:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+          required:
+            - event_id
+            - event_type
+            - entity_type
+            - entity_id
+            - payload
+            - actor
+            - created_at
+        - type: object
+          properties:
+            event_id:
+              type: string
+              format: uuid
+            event_type:
+              type: string
+              enum:
+                - property.updated
+            entity_type:
+              type: string
+            entity_id:
+              type: string
+            payload:
+              $ref: "#/components/schemas/PropertyEventPayload"
+            actor:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+          required:
+            - event_id
+            - event_type
+            - entity_type
+            - entity_id
+            - payload
+            - actor
+            - created_at
+        - type: object
+          properties:
+            event_id:
+              type: string
+              format: uuid
+            event_type:
+              type: string
+              enum:
+                - property.merged
+            entity_type:
+              type: string
+            entity_id:
+              type: string
+            payload:
+              $ref: "#/components/schemas/PropertyEventPayload"
+            actor:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+          required:
+            - event_id
+            - event_type
+            - entity_type
+            - entity_id
+            - payload
+            - actor
+            - created_at
+        - type: object
+          properties:
+            event_id:
+              type: string
+              format: uuid
+            event_type:
+              type: string
+              enum:
+                - collection.created
+            entity_type:
+              type: string
+            entity_id:
+              type: string
+            payload:
+              $ref: "#/components/schemas/CollectionEventPayload"
+            actor:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+          required:
+            - event_id
+            - event_type
+            - entity_type
+            - entity_id
+            - payload
+            - actor
+            - created_at
+        - type: object
+          properties:
+            event_id:
+              type: string
+              format: uuid
+            event_type:
+              type: string
+              enum:
+                - collection.updated
+            entity_type:
+              type: string
+            entity_id:
+              type: string
+            payload:
+              $ref: "#/components/schemas/CollectionEventPayload"
+            actor:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+          required:
+            - event_id
+            - event_type
+            - entity_type
+            - entity_id
+            - payload
+            - actor
+            - created_at
+        - type: object
+          properties:
+            event_id:
+              type: string
+              format: uuid
+            event_type:
+              type: string
+              enum:
+                - collection.merged
+            entity_type:
+              type: string
+            entity_id:
+              type: string
+            payload:
+              $ref: "#/components/schemas/CollectionEventPayload"
+            actor:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+          required:
+            - event_id
+            - event_type
+            - entity_type
+            - entity_id
+            - payload
+            - actor
+            - created_at
+        - type: object
+          properties:
+            event_id:
+              type: string
+              format: uuid
+            event_type:
+              type: string
+              enum:
+                - collection.removed
+            entity_type:
+              type: string
+            entity_id:
+              type: string
+            payload:
+              $ref: "#/components/schemas/CollectionEventPayload"
+            actor:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+          required:
+            - event_id
+            - event_type
+            - entity_type
+            - entity_id
+            - payload
+            - actor
+            - created_at
+        - type: object
+          properties:
+            event_id:
+              type: string
+              format: uuid
+            event_type:
+              type: string
+              enum:
+                - authorization.granted
+            entity_type:
+              type: string
+            entity_id:
+              type: string
+            payload:
+              $ref: "#/components/schemas/AuthorizationEventPayload"
+            actor:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+          required:
+            - event_id
+            - event_type
+            - entity_type
+            - entity_id
+            - payload
+            - actor
+            - created_at
+        - type: object
+          properties:
+            event_id:
+              type: string
+              format: uuid
+            event_type:
+              type: string
+              enum:
+                - authorization.revoked
+            entity_type:
+              type: string
+            entity_id:
+              type: string
+            payload:
+              $ref: "#/components/schemas/AuthorizationEventPayload"
+            actor:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+          required:
+            - event_id
+            - event_type
+            - entity_type
+            - entity_id
+            - payload
+            - actor
+            - created_at
+        - type: object
+          properties:
+            event_id:
+              type: string
+              format: uuid
+            event_type:
+              type: string
+              enum:
+                - publisher.adagents_changed
+            entity_type:
+              type: string
+            entity_id:
+              type: string
+            payload:
+              $ref: "#/components/schemas/PublisherEventPayload"
+            actor:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+          required:
+            - event_id
+            - event_type
+            - entity_type
+            - entity_id
+            - payload
+            - actor
+            - created_at
+        - type: object
+          properties:
+            event_id:
+              type: string
+              format: uuid
+            event_type:
+              type: string
+              enum:
+                - publisher.adagents_discovered
+            entity_type:
+              type: string
+            entity_id:
+              type: string
+            payload:
+              $ref: "#/components/schemas/PublisherEventPayload"
+            actor:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+          required:
+            - event_id
+            - event_type
+            - entity_type
+            - entity_id
+            - payload
+            - actor
+            - created_at
+    AgentEventPayload:
+      type: object
+      properties:
+        agent_url:
+          type: string
+          description: Canonical agent URL; the routing key for agent.* events (agents span many publishers).
+        name:
+          type: string
+        type:
+          type: string
+        channels:
+          type: array
+          items:
+            type: string
+        property_types:
+          type: array
+          items:
+            type: string
+        markets:
+          type: array
+          items:
+            type: string
+        categories:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+        delivery_types:
+          type: array
+          items:
+            type: string
+        property_count:
+          type: integer
+        publisher_count:
+          type: integer
+        has_tmp:
+          type: boolean
+        inventory_profile:
+          type: object
+          additionalProperties: {}
+          description: "On agent.profile_updated: the agent's refreshed inventory profile."
+        compliance_summary:
+          type: object
+          additionalProperties: {}
+        previous_status:
+          type: string
+          description: "On agent.compliance_changed: prior compliance/verification status."
+        current_status:
+          type: string
+          description: "On agent.compliance_changed: new compliance/verification status."
+      required:
+        - agent_url
+    BrandEventPayload:
+      type: object
+      properties:
+        domain:
+          type: string
+          description: Brand domain; brand.* events are identified by entity_id (the brand) and carry hierarchy context here.
+        chain:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+          description: "On brand.resolved/hierarchy_updated: the resolved brand chain (root → leaf)."
+        ancestor_domains:
+          type: array
+          items:
+            type: string
+        domains:
+          type: array
+          items:
+            type: string
+    PropertyEventPayload:
+      type: object
+      properties:
+        property_rid:
+          type: string
+        publisher_domain:
+          type: string
+          description: Publisher domain that owns the property; the routing key for property.* events.
+        identifiers:
+          type: array
+          items:
+            $ref: "#/components/schemas/PropertyIdentifier"
+        classification:
+          type: string
+        alias_rid:
+          type: string
+          description: "On property.merged: the RID merged away."
+        canonical_rid:
+          type: string
+          description: "On property.merged: the surviving RID."
+        evidence:
+          type: string
+    CollectionEventPayload:
+      type: object
+      properties:
+        collection_rid:
+          type: string
+        publisher_domain:
+          type: string
+          description: Publisher domain that owns the collection; the routing key for collection.* events.
+        collection_id:
+          type:
+            - string
+            - "null"
+        name:
+          type:
+            - string
+            - "null"
+        kind:
+          type:
+            - string
+            - "null"
+        source:
+          type: string
+        status:
+          type: string
+        identifiers:
+          type: array
+          items:
+            type: object
+            properties:
+              publisher_domain:
+                type: string
+              type:
+                type: string
+              value:
+                type: string
+            required:
+              - publisher_domain
+              - type
+              - value
+          description: Distribution identifiers; the per-identifier publisher_domain (e.g. youtube.com) is the distribution surface, distinct from the owning publisher_domain above.
+        collection:
+          type: object
+          additionalProperties: {}
+        alias_rid:
+          type: string
+          description: "On collection.merged: the RID merged away."
+        canonical_rid:
+          type: string
+          description: "On collection.merged: the surviving RID."
+        evidence:
+          type: string
+    AuthorizationEventPayload:
+      type: object
+      properties:
+        agent_url:
+          type: string
+        publisher_domain:
+          type: string
+          description: Publisher domain the authorization applies to; the routing key for authorization.* events.
+        authorization_type:
+          type: string
+          description: Present on authorization.granted; authorization.revoked carries only agent_url + publisher_domain.
+        authorized_for:
+          type: string
+        property_ids:
+          type: array
+          items:
+            type: string
+        property_tags:
+          type: array
+          items:
+            type: string
+        placement_ids:
+          type: array
+          items:
+            type: string
+        placement_tags:
+          type: array
+          items:
+            type: string
+        collections:
+          type: array
+          items:
+            type: object
+            properties:
+              publisher_domain:
+                type: string
+              collection_id:
+                type: string
+            required:
+              - publisher_domain
+              - collection_id
+        countries:
+          type: array
+          items:
+            type: string
+        delegation_type:
+          type: string
+        exclusive:
+          type: boolean
+        effective_from:
+          type: string
+        effective_until:
+          type: string
+        signing_keys:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+      required:
+        - agent_url
+        - publisher_domain
+    PublisherEventPayload:
+      type: object
+      properties:
+        publisher_domain:
+          type: string
+          description: Publisher domain whose adagents.json was discovered/changed; the routing key for publisher.* events.
+        agent_count:
+          type: integer
+        property_count:
+          type: integer
+        collection_count:
+          type: integer
+        discovery_method:
+          type: string
+        manager_domain:
+          type:
+            - string
+            - "null"
+        source:
+          type: string
+      required:
+        - publisher_domain
     AgentComplianceDetail:
       type: object
       properties:
@@ -6913,35 +7706,7 @@ paths:
                   events:
                     type: array
                     items:
-                      type: object
-                      properties:
-                        event_id:
-                          type: string
-                          format: uuid
-                        event_type:
-                          type: string
-                          example: property.created
-                        entity_type:
-                          type: string
-                          example: property
-                        entity_id:
-                          type: string
-                        payload:
-                          type: object
-                          additionalProperties: {}
-                        actor:
-                          type: string
-                        created_at:
-                          type: string
-                          format: date-time
-                      required:
-                        - event_id
-                        - event_type
-                        - entity_type
-                        - entity_id
-                        - payload
-                        - actor
-                        - created_at
+                      $ref: "#/components/schemas/RegistryFeedEvent"
                   cursor:
                     type:
                       - string

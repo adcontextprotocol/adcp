@@ -1967,16 +1967,150 @@ const RegistryFeedFreshnessSchema = z.object({
   }),
 });
 
-const RegistryFeedPageSchema = z.object({
-  events: z.array(z.object({
+// --- Feed event payloads, typed per event family ---------------------------
+// The change feed carries one `payload` shape per event family. Typing them
+// (rather than an opaque object) lets consumers route on `publisher_domain` /
+// `agent_url` without hand-casting. Fields that appear on only some members of
+// a family (e.g. `*.merged` carries `alias_rid`/`canonical_rid` in place of
+// `identifiers`) are optional on the family schema.
+
+const AgentEventPayloadSchema = z
+  .object({
+    agent_url: z.string().openapi({ description: "Canonical agent URL; the routing key for agent.* events (agents span many publishers)." }),
+    name: z.string().optional(),
+    type: z.string().optional(),
+    channels: z.array(z.string()).optional(),
+    property_types: z.array(z.string()).optional(),
+    markets: z.array(z.string()).optional(),
+    categories: z.array(z.string()).optional(),
+    tags: z.array(z.string()).optional(),
+    delivery_types: z.array(z.string()).optional(),
+    property_count: z.number().int().optional(),
+    publisher_count: z.number().int().optional(),
+    has_tmp: z.boolean().optional(),
+    inventory_profile: z.record(z.string(), z.unknown()).optional().openapi({ description: "On agent.profile_updated: the agent's refreshed inventory profile." }),
+    compliance_summary: z.record(z.string(), z.unknown()).optional(),
+    previous_status: z.string().optional().openapi({ description: "On agent.compliance_changed: prior compliance/verification status." }),
+    current_status: z.string().optional().openapi({ description: "On agent.compliance_changed: new compliance/verification status." }),
+  })
+  .openapi("AgentEventPayload");
+
+const BrandEventPayloadSchema = z
+  .object({
+    domain: z.string().optional().openapi({ description: "Brand domain; brand.* events are identified by entity_id (the brand) and carry hierarchy context here." }),
+    chain: z.array(z.record(z.string(), z.unknown())).optional().openapi({ description: "On brand.resolved/hierarchy_updated: the resolved brand chain (root → leaf)." }),
+    ancestor_domains: z.array(z.string()).optional(),
+    domains: z.array(z.string()).optional(),
+  })
+  .openapi("BrandEventPayload");
+
+const PropertyEventPayloadSchema = z
+  .object({
+    property_rid: z.string().optional(),
+    publisher_domain: z.string().optional().openapi({ description: "Publisher domain that owns the property; the routing key for property.* events." }),
+    identifiers: z.array(PropertyIdentifierSchema).optional(),
+    classification: z.string().optional(),
+    alias_rid: z.string().optional().openapi({ description: "On property.merged: the RID merged away." }),
+    canonical_rid: z.string().optional().openapi({ description: "On property.merged: the surviving RID." }),
+    evidence: z.string().optional(),
+  })
+  .openapi("PropertyEventPayload");
+
+const CollectionEventPayloadSchema = z
+  .object({
+    collection_rid: z.string().optional(),
+    publisher_domain: z.string().optional().openapi({ description: "Publisher domain that owns the collection; the routing key for collection.* events." }),
+    collection_id: z.string().nullable().optional(),
+    name: z.string().nullable().optional(),
+    kind: z.string().nullable().optional(),
+    source: z.string().optional(),
+    status: z.string().optional(),
+    identifiers: z
+      .array(z.object({ publisher_domain: z.string(), type: z.string(), value: z.string() }))
+      .optional()
+      .openapi({ description: "Distribution identifiers; the per-identifier publisher_domain (e.g. youtube.com) is the distribution surface, distinct from the owning publisher_domain above." }),
+    collection: z.record(z.string(), z.unknown()).optional(),
+    alias_rid: z.string().optional().openapi({ description: "On collection.merged: the RID merged away." }),
+    canonical_rid: z.string().optional().openapi({ description: "On collection.merged: the surviving RID." }),
+    evidence: z.string().optional(),
+  })
+  .openapi("CollectionEventPayload");
+
+const AuthorizationEventPayloadSchema = z
+  .object({
+    agent_url: z.string(),
+    publisher_domain: z.string().openapi({ description: "Publisher domain the authorization applies to; the routing key for authorization.* events." }),
+    authorization_type: z.string().optional().openapi({ description: "Present on authorization.granted; authorization.revoked carries only agent_url + publisher_domain." }),
+    authorized_for: z.string().optional(),
+    property_ids: z.array(z.string()).optional(),
+    property_tags: z.array(z.string()).optional(),
+    placement_ids: z.array(z.string()).optional(),
+    placement_tags: z.array(z.string()).optional(),
+    collections: z
+      .array(z.object({ publisher_domain: z.string(), collection_id: z.string() }))
+      .optional(),
+    countries: z.array(z.string()).optional(),
+    delegation_type: z.string().optional(),
+    exclusive: z.boolean().optional(),
+    effective_from: z.string().optional(),
+    effective_until: z.string().optional(),
+    signing_keys: z.array(z.record(z.string(), z.unknown())).optional(),
+  })
+  .openapi("AuthorizationEventPayload");
+
+const PublisherEventPayloadSchema = z
+  .object({
+    publisher_domain: z.string().openapi({ description: "Publisher domain whose adagents.json was discovered/changed; the routing key for publisher.* events." }),
+    agent_count: z.number().int().optional(),
+    property_count: z.number().int().optional(),
+    collection_count: z.number().int().optional(),
+    discovery_method: z.string().optional(),
+    manager_domain: z.string().nullable().optional(),
+    source: z.string().optional(),
+  })
+  .openapi("PublisherEventPayload");
+
+// One arm per event_type, discriminated on `event_type`. Each arm ties the
+// literal type to its family payload so consumers narrow `payload` by switching
+// on `event_type`.
+const feedEventArm = <T extends string>(eventType: T, payload: z.ZodTypeAny) =>
+  z.object({
     event_id: z.string().uuid(),
-    event_type: z.string().openapi({ example: "property.created" }),
-    entity_type: z.string().openapi({ example: "property" }),
+    event_type: z.literal(eventType),
+    entity_type: z.string(),
     entity_id: z.string(),
-    payload: z.record(z.string(), z.unknown()),
+    payload,
     actor: z.string(),
     created_at: z.string().datetime(),
-  })),
+  });
+
+const RegistryFeedEventSchema = z
+  .discriminatedUnion("event_type", [
+    feedEventArm("agent.discovered", AgentEventPayloadSchema),
+    feedEventArm("agent.removed", AgentEventPayloadSchema),
+    feedEventArm("agent.profile_updated", AgentEventPayloadSchema),
+    feedEventArm("agent.compliance_changed", AgentEventPayloadSchema),
+    feedEventArm("brand.resolved", BrandEventPayloadSchema),
+    feedEventArm("brand.updated", BrandEventPayloadSchema),
+    feedEventArm("brand.removed", BrandEventPayloadSchema),
+    feedEventArm("brand.deleted", BrandEventPayloadSchema),
+    feedEventArm("brand.hierarchy_updated", BrandEventPayloadSchema),
+    feedEventArm("property.created", PropertyEventPayloadSchema),
+    feedEventArm("property.updated", PropertyEventPayloadSchema),
+    feedEventArm("property.merged", PropertyEventPayloadSchema),
+    feedEventArm("collection.created", CollectionEventPayloadSchema),
+    feedEventArm("collection.updated", CollectionEventPayloadSchema),
+    feedEventArm("collection.merged", CollectionEventPayloadSchema),
+    feedEventArm("collection.removed", CollectionEventPayloadSchema),
+    feedEventArm("authorization.granted", AuthorizationEventPayloadSchema),
+    feedEventArm("authorization.revoked", AuthorizationEventPayloadSchema),
+    feedEventArm("publisher.adagents_changed", PublisherEventPayloadSchema),
+    feedEventArm("publisher.adagents_discovered", PublisherEventPayloadSchema),
+  ])
+  .openapi("RegistryFeedEvent");
+
+const RegistryFeedPageSchema = z.object({
+  events: z.array(RegistryFeedEventSchema),
   cursor: z.string().uuid().nullable().openapi({ description: "Pass as cursor in the next request to continue polling" }),
   has_more: z.boolean(),
   freshness: RegistryFeedFreshnessSchema,
