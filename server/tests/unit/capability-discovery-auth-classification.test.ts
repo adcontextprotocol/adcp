@@ -64,4 +64,33 @@ describe('CapabilityDiscovery auth classification', () => {
     expect(profile.discovery_error).toBe('Unauthorized');
     expect(profile.oauth_required).toBe(false);
   });
+
+  it('serves a cached unauthed profile within the TTL by default', async () => {
+    getAgentInfoMock.mockResolvedValueOnce({ tools: [{ name: 'list_creative_formats' }] });
+
+    const discovery = new CapabilityDiscovery();
+    const first = await discovery.discoverCapabilities(AGENT);
+    expect(first.discovered_tools).toHaveLength(1);
+
+    const callsAfterFirst = getAgentInfoMock.mock.calls.length;
+
+    // Second call should hit the cache — getAgentInfo must not be called again.
+    const second = await discovery.discoverCapabilities(AGENT);
+    expect(getAgentInfoMock.mock.calls.length).toBe(callsAfterFirst);
+    expect(second).toBe(first);
+  });
+
+  it('bypasses the unauthed cache when forceRefresh is set (manual "Recheck Status")', async () => {
+    getAgentInfoMock.mockResolvedValueOnce({ tools: [{ name: 'list_creative_formats' }] });
+
+    const discovery = new CapabilityDiscovery();
+    await discovery.discoverCapabilities(AGENT);
+    const callsAfterFirst = getAgentInfoMock.mock.calls.length;
+
+    getAgentInfoMock.mockResolvedValueOnce({ tools: [] });
+    const refreshed = await discovery.discoverCapabilities(AGENT, undefined, true);
+
+    expect(getAgentInfoMock.mock.calls.length).toBe(callsAfterFirst + 1);
+    expect(refreshed.discovered_tools).toEqual([]);
+  });
 });

@@ -1073,8 +1073,13 @@ export class CrawlerService {
       ...(known?.health_check_url ? { health_check_url: known.health_check_url } : {}),
     };
 
+    // `forceRefresh: true` — this method backs the manual "Recheck Status"
+    // action, which must always hit the live endpoint. Without it, an agent
+    // with no saved owner auth would still read the shared 15-minute
+    // capability/health cache and keep reporting a fixed-then-redeployed
+    // issue as unresolved (#5777).
     const profile = await Promise.race([
-      this.capabilityDiscovery.discoverCapabilities(agent, auth),
+      this.capabilityDiscovery.discoverCapabilities(agent, auth, true),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('Probe timeout')), PROBE_TIMEOUT_MS)
       ),
@@ -1086,7 +1091,7 @@ export class CrawlerService {
 
     const [health, stats] = await Promise.all([
       Promise.race([
-        this.healthChecker.checkHealth(agentForHealth, auth),
+        this.healthChecker.checkHealth(agentForHealth, auth, true),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('Health timeout')), PROBE_TIMEOUT_MS)
         ),
@@ -1096,7 +1101,7 @@ export class CrawlerService {
         error: err instanceof Error ? err.message : 'health check failed',
       })),
       Promise.race([
-        this.healthChecker.getStats(agentForHealth, auth),
+        this.healthChecker.getStats(agentForHealth, auth, true),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('Stats timeout')), PROBE_TIMEOUT_MS)
         ),

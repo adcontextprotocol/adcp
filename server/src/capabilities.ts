@@ -266,11 +266,15 @@ export class CapabilityDiscovery {
     this.formatsService = new FormatsService();
   }
 
-  async discoverCapabilities(agent: Agent, auth?: SdkAuth): Promise<AgentCapabilityProfile> {
+  async discoverCapabilities(agent: Agent, auth?: SdkAuth, forceRefresh = false): Promise<AgentCapabilityProfile> {
     // Skip cache when auth is provided — manual owner-triggered refresh
     // wants fresh data and may previously have cached an unauthed
     // discovery_error result. Periodic crawls (no auth) keep the cache.
-    if (!auth) {
+    // `forceRefresh` covers the same manual-refresh intent for agents with
+    // no saved auth (e.g. the "Recheck Status" button on an unowned/public
+    // agent) — without it, a fresh probe would still be shadowed by a stale
+    // unauthed cache entry for up to CACHE_TTL_MS.
+    if (!auth && !forceRefresh) {
       const cached = this.cache.get(agent.url);
       if (cached && Date.now() - new Date(cached.last_discovered).getTime() < this.CACHE_TTL_MS) {
         return cached;
@@ -304,7 +308,7 @@ export class CapabilityDiscovery {
         profile.standard_operations = this.analyzeSalesCapabilities(tools);
       }
       if (CapabilityDiscovery.CREATIVE_TOOLS.some(t => toolNames.has(t))) {
-        profile.creative_capabilities = await this.analyzeCreativeCapabilities(agent, tools, auth);
+        profile.creative_capabilities = await this.analyzeCreativeCapabilities(agent, tools, auth, forceRefresh);
       }
       if (CapabilityDiscovery.SIGNALS_TOOLS.some(t => toolNames.has(t))) {
         profile.signals_capabilities = this.analyzeSignalsCapabilities(tools);
@@ -487,14 +491,14 @@ export class CapabilityDiscovery {
     };
   }
 
-  private async analyzeCreativeCapabilities(agent: Agent, tools: ToolCapability[], auth?: SdkAuth): Promise<CreativeCapabilities> {
+  private async analyzeCreativeCapabilities(agent: Agent, tools: ToolCapability[], auth?: SdkAuth, forceRefresh = false): Promise<CreativeCapabilities> {
     const toolNames = new Set(tools.map((t) => t.name.toLowerCase()));
     const hasFormatTool = toolNames.has("list_creative_formats");
 
     let formats: string[] = [];
     if (hasFormatTool) {
       try {
-        const formatsProfile = await this.formatsService.getFormatsForAgent(agent, auth);
+        const formatsProfile = await this.formatsService.getFormatsForAgent(agent, auth, forceRefresh);
         formats = formatsProfile.formats.map(f => f.name);
       } catch (error: any) {
         logger.debug({ url: agent.url, error: error.message }, 'Format discovery failed');
