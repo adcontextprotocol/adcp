@@ -32,16 +32,73 @@ import {
   TokenExchangeError,
   discoverOAuthMetadata,
 } from '@adcp/sdk/auth';
+import {
+  discoverAuthorizationServerMetadata,
+  discoverOAuthProtectedResourceMetadata,
+} from '@modelcontextprotocol/sdk/client/auth.js';
+import {
+  checkResourceAllowed,
+  resourceUrlFromServerUrl,
+} from '@modelcontextprotocol/sdk/shared/auth-utils.js';
 import { createLogger } from '../logger.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AgentContextDatabase } from '../db/agent-context-db.js';
 import { getWorkos } from '../auth/workos-client.js';
 import { createWebOAuthAdapters, AgentOAuthPendingFlowStore } from './helpers/web-oauth-stores.js';
+import { validateExternalUrl } from '../utils/url-security.js';
 
 const logger = createLogger('agent-oauth');
 
 const STATE_COOKIE = 'adcp_oauth_state';
 const STATE_COOKIE_TTL_MS = 10 * 60 * 1000;
+const OFFLINE_ACCESS_SCOPE = 'offline_access';
+const PRM_ABSENT_MARKER = 'does not implement OAuth 2.0 Protected Resource Metadata';
+
+export function buildDurableOAuthScopeHint(
+  scopes: readonly string[] | undefined,
+  allowOfflineAccess = true,
+): string | undefined {
+  const uniqueScopes = new Set<string>();
+  for (const scope of scopes ?? []) {
+    const trimmed = scope.trim();
+    if (trimmed) uniqueScopes.add(trimmed);
+  }
+  if (allowOfflineAccess) uniqueScopes.add(OFFLINE_ACCESS_SCOPE);
+  if (uniqueScopes.size === 0) return undefined;
+  return [...uniqueScopes].join(' ');
+}
+
+async function durableOAuthScopeHintForAgent(agentUrl: string): Promise<string | undefined> {
+  let resourceScopes: readonly string[] | undefined;
+  let authorizationServerUrl: string | undefined;
+  try {
+    const metadata = await discoverOAuthProtectedResourceMetadata(agentUrl);
+    if (
+      metadata.resource &&
+      !checkResourceAllowed({
+        requestedResource: resourceUrlFromServerUrl(agentUrl),
+        configuredResource: metadata.resource,
+      })
+    ) {
+      return undefined;
+    }
+    resourceScopes = metadata.scopes_supported;
+    authorizationServerUrl = metadata.authorization_servers?.[0];
+  } catch (err) {
+    if (!(err instanceof Error) || !err.message.includes(PRM_ABSENT_MARKER)) {
+      // Let startWebOAuthFlow perform canonical discovery and surface the
+      // actionable third-party OAuth error; this preflight only enriches scope.
+      return undefined;
+    }
+  }
+  if (authorizationServerUrl && !validateExternalUrl(authorizationServerUrl)) {
+    return undefined;
+  }
+  const asMetadata = await discoverAuthorizationServerMetadata(authorizationServerUrl ?? agentUrl);
+  const supportedScopes = asMetadata?.scopes_supported;
+  const allowOfflineAccess = !supportedScopes || supportedScopes.includes(OFFLINE_ACCESS_SCOPE);
+  return buildDurableOAuthScopeHint(resourceScopes, allowOfflineAccess);
+}
 
 function isValidUUID(id: string): boolean {
   return uuidValidate(id);
@@ -238,12 +295,15 @@ export function createAgentOAuthRouter(): Router {
         ...(returnTo && { return_to: returnTo }),
       };
 
+      const scopeHint = await durableOAuthScopeHintForAgent(agent.agent_uri);
       const { authorizationUrl, state } = await startWebOAuthFlow({
         agent,
         redirectUri,
         pendingFlowStore,
         agentStorage,
         carry,
+        ...(scopeHint && { scopeHint }),
+        ...(scopeHint && { clientMetadata: { scope: scopeHint } }),
       });
 
       // Browser-binding for CSRF (SEP-835 §state guidance). The cookie
