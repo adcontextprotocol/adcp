@@ -299,6 +299,12 @@
                 "simid": {
                   "type": "boolean",
                   "description": "SIMID support for interactive video ads"
+                },
+                "vast_validation": {
+                  "type": "string",
+                  "enum": ["structural", "document", "wrapper"],
+                  "default": "structural",
+                  "description": "Level of VAST asset validation the seller performs at sync_creatives (including dry_run): 'structural' checks manifest shape and format requirements only and never inspects the VAST document; 'document' additionally parses the VAST document and can return VAST_PARSE_FAILED / VAST_VERSION_MISMATCH; 'wrapper' additionally resolves the wrapper chain and can return VAST_WRAPPER_DEPTH_EXCEEDED. Absent means 'structural'. See the VAST Validation section of the video channel documentation for the normative checks at each level."
                 }
               }
             },

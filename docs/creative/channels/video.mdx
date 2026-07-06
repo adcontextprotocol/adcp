@@ -756,6 +756,44 @@ AdCP supports all VAST versions:
 - **VAST 4.1** - Enhanced ad pod support
 - **VAST 4.2** - Latest specification (recommended)
 
+### VAST Validation
+
+Format-layer validation of `vast` assets is structural: the manifest must satisfy the format's `requirements` (today, `vast_version`), and [`validate_input`](/docs/creative/canonical-formats#validation-flow--validate_input) checks manifest shape only. The VAST document itself is opaque at that level, so a structurally valid manifest can still carry an unplayable tag that fails silently at serve time.
+
+AdCP defines three validation levels for `vast` assets. Sellers declare the level they perform via `creative_specs.vast_validation` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities); absent means `structural`. Validation runs at `sync_creatives` time, including `dry_run`. `validate_input` remains manifest-structure-only at every level.
+
+| Level | What the seller checks |
+|-------|------------------------|
+| `structural` (default) | Manifest shape and format `requirements` only. The VAST document is not inspected. |
+| `document` | Everything in `structural`, plus the VAST document itself. |
+| `wrapper` | Everything in `document`, plus wrapper-chain resolution. |
+
+**Document-level validation.** Sellers declaring `document` or `wrapper`:
+
+- MUST parse the document (inline `content`, or one response fetched from `url`) as XML and reject unparseable documents with `VAST_PARSE_FAILED` (`error.details.reason: "not_xml"`).
+- MUST reject documents whose root element is not `<VAST>` with `VAST_PARSE_FAILED` (`error.details.reason: "no_vast_root"`).
+- MUST reject documents whose `<VAST version>` attribute is missing or does not match the asset's declared `vast_version`, the format's `vast_version` requirement, or the seller's declared `creative_specs.vast_versions`, with `VAST_VERSION_MISMATCH` (`error.details.supported_versions` lists the accepted versions).
+- SHOULD reject documents containing no `<Ad>` element, and `<InLine>` linear creatives carrying no `<MediaFile>`, with `VAST_PARSE_FAILED` (`error.details.reason: "no_ad"` / `"no_media_file"`).
+- SHOULD verify that media, tracking, and click URLs use HTTPS.
+- MUST treat unresolved ad-server macros in URLs (`[MACRO]`, `${MACRO}`, `{UNIVERSAL_MACRO}`) as opaque tokens, never as validation failures. Macro correctness and substitution verification are out of scope for this contract.
+
+**Wrapper-chain validation.** Sellers declaring `wrapper` additionally:
+
+- MUST resolve `<Wrapper>` redirects via `<VASTAdTagURI>` up to the format's declared `max_wrapper_depth` (when present) and reject deeper chains with `VAST_WRAPPER_DEPTH_EXCEEDED` (`error.details.reason: "depth"`).
+- MUST reject chains that revisit a `<VASTAdTagURI>` already seen (a loop) with `VAST_WRAPPER_DEPTH_EXCEEDED` (`error.details.reason: "loop"`).
+- SHOULD apply a per-hop timeout, rejecting with `VAST_WRAPPER_DEPTH_EXCEEDED` (`error.details.reason: "timeout"`), and MUST fetch wrapper hops over HTTPS only.
+- MUST apply document-level checks to the terminal `<InLine>` document and reject with the corresponding document-level code on failure.
+
+**Preflight, not approval.** A VAST endpoint can return a different document per request (decisioning, rotation, macros). Passing validation at sync time is a preflight of the tag's shape at that moment, not a guarantee about future responses. Sellers MUST NOT treat a passing preflight as approval of all future responses and MAY re-validate during delivery. Sellers fetching `url` assets or wrapper hops SHOULD apply the same server-side request protections (private-address blocking, redirect and size limits) they apply to any other agent-supplied URL fetch.
+
+**Error codes.** In all cases `error.field` identifies the offending asset path in the manifest.
+
+| Code | Meaning |
+|------|---------|
+| `VAST_PARSE_FAILED` | Document is not well-formed XML, has no `<VAST>` root, no `<Ad>`, or an inline linear creative has no `<MediaFile>` |
+| `VAST_VERSION_MISMATCH` | Document's `<VAST version>` disagrees with the declared `vast_version`, the format requirement, or the seller's supported versions |
+| `VAST_WRAPPER_DEPTH_EXCEEDED` | Wrapper chain exceeds `max_wrapper_depth`, loops, or a hop timed out |
+
 ### VPAID Support
 
 VPAID (Video Player Ad-Serving Interface Definition) enables interactive video ads:

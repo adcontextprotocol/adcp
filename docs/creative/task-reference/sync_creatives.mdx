@@ -832,6 +832,8 @@ Poll `tasks/get` or wait for the webhook. The completion artifact carries the `c
 | `FORMAT_MISMATCH`         | Assets don't match format requirements            | Verify asset types and specifications match format definition        |
 | `CREATIVE_IN_ACTIVE_DELIVERY` | Creative is assigned to an active, non-paused package (blocks updates and `delete_missing` deletions) | Pause the package first, or create a new creative version        |
 
+Sellers that declare `creative_specs.vast_validation` of `document` or `wrapper` additionally validate `vast` assets at sync time (including `dry_run`) and can return `VAST_PARSE_FAILED`, `VAST_VERSION_MISMATCH`, or `VAST_WRAPPER_DEPTH_EXCEEDED`. See [VAST Validation](/docs/creative/channels/video#vast-validation).
+
 ## Best practices
 
 1. **Use upsert semantics** - Same `creative_id` updates existing creative rather than creating duplicates. This allows iterative creative development. Note: updates are blocked for creatives in active delivery (see #7).
