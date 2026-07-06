@@ -42,6 +42,26 @@ components:
             profile: User profile information
             email: User email address
   schemas:
+    BrandEventPayload:
+      type: object
+      properties:
+        domain:
+          type: string
+          description: Brand domain; brand.* events are identified by entity_id (the brand) and carry hierarchy context here.
+        chain:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+          description: "On brand.resolved/hierarchy_updated: the resolved brand chain (root → leaf)."
+        ancestor_domains:
+          type: array
+          items:
+            type: string
+        domains:
+          type: array
+          items:
+            type: string
     ResolvedBrand:
       type: object
       properties:
@@ -4474,26 +4494,6 @@ components:
         - created_at
         - updated_at
         - source_updated_at
-    BrandEventPayload:
-      type: object
-      properties:
-        domain:
-          type: string
-          description: Brand domain; brand.* events are identified by entity_id (the brand) and carry hierarchy context here.
-        chain:
-          type: array
-          items:
-            type: object
-            additionalProperties: {}
-          description: "On brand.resolved/hierarchy_updated: the resolved brand chain (root → leaf)."
-        ancestor_domains:
-          type: array
-          items:
-            type: string
-        domains:
-          type: array
-          items:
-            type: string
     AdagentsJson:
       type: object
       properties:

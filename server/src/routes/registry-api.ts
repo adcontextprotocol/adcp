@@ -2118,6 +2118,21 @@ const PublisherEventPayloadSchema = z
   .passthrough()
   .openapi("PublisherEventPayload");
 
+registry.register(
+  "BrandEventPayload",
+  z.object({
+    domain: z.string().optional().openapi({
+      description: "Brand domain; brand.* events are identified by entity_id (the brand) and carry hierarchy context here.",
+    }),
+    chain: z
+      .array(z.record(z.string(), z.unknown()))
+      .optional()
+      .openapi({ description: "On brand.resolved/hierarchy_updated: the resolved brand chain (root → leaf)." }),
+    ancestor_domains: z.array(z.string()).optional(),
+    domains: z.array(z.string()).optional(),
+  }),
+);
+
 // One arm per event_type, discriminated on `event_type`. Each arm ties the
 // literal type to its family payload so consumers narrow `payload` by switching
 // on `event_type`.
@@ -6399,10 +6414,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
   router.post("/registry/agents/:encodedUrl/refresh", ...complianceWriteMiddleware, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
-      if (!validateAgentUrlParam(agentUrl)) {
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
       if (!req.user) {
         return res.status(401).json({ error: "Authentication required" });
       }
@@ -6697,10 +6713,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
   router.get("/registry/agents/:encodedUrl/auth-status", ...complianceWriteMiddleware, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
-      if (!validateAgentUrlParam(agentUrl)) {
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
 
       if (!req.user) {
         return res.status(401).json({ error: "Authentication required" });
@@ -6765,10 +6782,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
   router.put("/registry/agents/:encodedUrl/connect", brandCreationRateLimiter, ...complianceWriteMiddleware, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
-      if (!validateAgentUrlParam(agentUrl)) {
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
 
       if (!req.user) {
         return res.status(401).json({ error: "Authentication required" });
@@ -6885,10 +6903,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     ...complianceWriteMiddleware,
     async (req, res) => {
       try {
-        const agentUrl = decodeURIComponent(req.params.encodedUrl);
-        if (!validateAgentUrlParam(agentUrl)) {
+        const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateAgentUrlParam(rawAgentUrl)) {
           return res.status(400).json({ error: "Invalid agent URL" });
         }
+        const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
         if (!req.user) {
           return res.status(401).json({ error: "Authentication required" });
         }
@@ -6970,10 +6989,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     ...complianceWriteMiddleware,
     async (req, res) => {
       try {
-        const agentUrl = decodeURIComponent(req.params.encodedUrl);
-        if (!validateAgentUrlParam(agentUrl)) {
+        const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateAgentUrlParam(rawAgentUrl)) {
           return res.status(400).json({ error: "Invalid agent URL" });
         }
+        const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
         if (!req.user) {
           return res.status(401).json({ error: "Authentication required" });
         }
@@ -7068,10 +7088,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
   });
 
   router.get("/registry/agents/:encodedUrl/applicable-storyboards", storyboardEvalRateLimiter, ...complianceWriteMiddleware, async (req, res) => {
-    const agentUrl = decodeURIComponent(req.params.encodedUrl);
-    if (!validateAgentUrlParam(agentUrl)) {
+    const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+    if (!validateAgentUrlParam(rawAgentUrl)) {
       return res.status(400).json({ error: "Invalid agent URL" });
     }
+    const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
 
     if (!req.user) {
       return res.status(401).json({ error: "Authentication required" });

@@ -39,6 +39,7 @@ const ALL_OWNED_URLS = [
   ownedAgentUrl('paused'),
   ownedAgentUrl('rate-limit'),
   ownedAgentUrl('saved-bearer'),
+  ownedAgentUrl('canonical-saved-bearer'),
   ownedAgentUrl('badge-fanout'),
   ownedAgentUrl('static-admin'),
 ];
@@ -396,17 +397,49 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     const FAKE_BEARER = 'fake-test-bearer-do-not-use-in-prod';
     await db.saveAuthToken(context.id, FAKE_BEARER, 'bearer');
 
-    const res = await request(app).post(url(agentUrl)).send();
-    expect(res.status).toBe(200);
-    expect(refreshSingleAgentMock).toHaveBeenCalledWith(
-      agentUrl,
-      expect.objectContaining({
-        auth: { type: 'bearer', token: FAKE_BEARER },
-        ownerOrgId: TEST_ORG_ID,
-      }),
-    );
+    try {
+      const res = await request(app).post(url(agentUrl)).send();
+      expect(res.status).toBe(200);
+      expect(refreshSingleAgentMock).toHaveBeenCalledWith(
+        agentUrl,
+        expect.objectContaining({
+          auth: { type: 'bearer', token: FAKE_BEARER },
+          ownerOrgId: TEST_ORG_ID,
+        }),
+      );
+    } finally {
+      await pool.query('DELETE FROM agent_contexts WHERE id = $1', [context.id]);
+    }
+  });
 
-    await pool.query('DELETE FROM agent_contexts WHERE id = $1', [context.id]);
+  it('canonicalizes the requested URL before owner auth lookup and probe', async () => {
+    const agentUrl = ownedAgentUrl('canonical-saved-bearer');
+    const requestedUrl = agentUrl
+      .replace('https://', 'HTTPS://')
+      .replace('.example.com', '.EXAMPLE.COM') + '/';
+    const { AgentContextDatabase } = await import('../../src/db/agent-context-db.js');
+    const db = new AgentContextDatabase();
+    const context = await db.create({
+      organization_id: TEST_ORG_ID,
+      agent_url: agentUrl,
+      created_by: OWNER_USER_ID,
+    });
+    const FAKE_BEARER = 'fake-canonical-bearer-do-not-use-in-prod';
+    await db.saveAuthToken(context.id, FAKE_BEARER, 'bearer');
+
+    try {
+      const res = await request(app).post(url(requestedUrl)).send();
+      expect(res.status).toBe(200);
+      expect(refreshSingleAgentMock).toHaveBeenCalledWith(
+        agentUrl,
+        expect.objectContaining({
+          auth: { type: 'bearer', token: FAKE_BEARER },
+          ownerOrgId: TEST_ORG_ID,
+        }),
+      );
+    } finally {
+      await pool.query('DELETE FROM agent_contexts WHERE id = $1', [context.id]);
+    }
   });
 
   it('fans out badge issuance for an owner refresh with a passing specialism', async () => {
