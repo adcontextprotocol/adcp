@@ -279,7 +279,7 @@ Buyers receive the intersection of both. `impressions` and `spend` are always re
 - **`ctr`**: Click-through rate
 - **`views`**: Views at platform-defined threshold
 - **`completed_views`**: Video/audio completions (or threshold-based completion when an optimization goal sets a custom view duration)
-- **`completion_rate`**: Completion rate (`completed_views` / `impressions`)
+- **`completion_rate`**: Completion rate (`completed_views` / `impressions`); `null` when not applicable (e.g. a non-video buy)
 - **`conversions`**: Post-click or post-view conversions
 - **`conversion_value`**: Monetary value of attributed conversions
 - **`roas`**: Return on ad spend
@@ -296,7 +296,7 @@ Buyers receive the intersection of both. `impressions` and `spend` are always re
 - **`saves`**: Saves, bookmarks, playlist adds attributed to delivery (platforms vary in name — Pinterest "repins", TikTok "video_saves" — all report under this canonical key)
 - **`profile_visits`**: Visits to the brand's in-platform page
 - **`viewability`**: Viewability data (measurable_impressions, viewable_impressions, viewable_rate, viewed_seconds, standard, vendor). Separates MRC and GroupM standards. `viewed_seconds` is the average in-view duration per measurable impression — reporting-side counterpart to the `viewed_seconds` optimization goal, governed by the same `standard` threshold as `viewable_rate`. The optional `vendor` field carries a `BrandRef` so the row is self-describing — buyer agents reading delivery in isolation can attribute the numbers to a measurement vendor without joining back to `package.committed_metrics` or `package.performance_standards`.
-- **`quartile_data`**: Video quartile completion data (q1-q4)
+- **`quartile_data`**: Video quartile completion data (q1-q4); `null` when not applicable (e.g. a non-video buy)
 - **`dooh_metrics`**: DOOH-specific metrics (loop plays, screens, venue breakdown)
 - **`cost_per_click`**: Cost per click (`spend / clicks`)
 - **`cost_per_completed_view`**: Cost per completed view (`spend / completed_views`); CPCV pricing scalar for video/audio inventory
@@ -307,6 +307,8 @@ Buyers receive the intersection of both. `impressions` and `spend` are always re
 - **`plays`**: Raw play count for DOOH/broadcast inventory (mirrors `forecastable-metric.plays`); distinct from `dooh_metrics.loop_plays` (per-screen rotation) and `impressions` (multiplied audience figure)
 
 Buyers can optionally request a subset via `requested_metrics` to reduce payload size and focus on relevant KPIs.
+
+For `completion_rate` and `quartile_data`, sellers MAY return `null` to signal the metric does not apply (e.g. on a non-video buy), and clients MUST accept `null` as a valid value for these two fields. Every other metric signals "not applicable" by omission — sellers omit it rather than sending `null`.
 
 #### Vendor-Defined Metrics
 
