@@ -1,0 +1,93 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/registry/normative-statements/schema.json",
+  "title": "Normative Statement Registry Entry",
+  "description": "One normative guarantee (a MUST/MUST NOT/SHOULD) or one security claim in the AdCP spec, tagged with where it is enforced. The registry makes 'prose MUST with no enforcement backing' countable. See specs/spec-anti-drift.md.",
+  "type": "object",
+  "required": ["id", "type", "class", "level", "statement", "source", "enforcement_layer", "status"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^NS-[A-Z]+-[0-9]{3}$",
+      "description": "Stable ID, NS-<CLASS>-<NNN>, e.g. NS-SIG-001. Never reused."
+    },
+    "type": {
+      "type": "string",
+      "enum": ["normative-statement", "claim"],
+      "description": "normative-statement = a MUST/SHOULD rule; claim = a 'defends against X' assertion in security-facing docs."
+    },
+    "class": {
+      "type": "string",
+      "enum": ["signing", "governance", "identity", "isolation", "idempotency", "privacy", "creative", "signals", "transport"],
+      "description": "The domain the statement belongs to. Drives the ID prefix and coverage grouping."
+    },
+    "level": {
+      "type": "string",
+      "enum": ["MUST", "MUST NOT", "SHOULD", "SHOULD NOT", "MAY"],
+      "description": "RFC 2119 level as written in the source prose."
+    },
+    "statement": {
+      "type": "string",
+      "minLength": 10,
+      "description": "The normative rule or claim, in one sentence, quoted or closely paraphrased from source."
+    },
+    "source": {
+      "type": "string",
+      "pattern": "^(docs|static)/.+:[0-9]+$",
+      "description": "file:line where the prose lives. Anchors the statement to its authoritative text."
+    },
+    "enforcement_layer": {
+      "type": "string",
+      "enum": [
+        "schema",
+        "lint",
+        "conformance-vector",
+        "executable-snippet",
+        "operator-responsibility",
+        "unenforceable-by-design",
+        "UNASSIGNED"
+      ],
+      "description": "The cheapest deterministic layer that should hold this check. UNASSIGNED = triage pending."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["enforced", "gap", "operator", "by-design"],
+      "description": "enforced = a linked check exists and passes; gap = known-unenforced (drift surface); operator = punted to operators by design; by-design = unenforceable, documented as such."
+    },
+    "enforced_by": {
+      "type": "array",
+      "description": "For normative-statements with status=enforced: repo-relative paths to the schema / test / vector that enforces it. Each path is checked to exist by the coverage linter.",
+      "items": {
+        "type": "string",
+        "pattern": "^(docs|static|scripts|tests|server|specs)/.+"
+      }
+    },
+    "demonstrated_by": {
+      "type": "array",
+      "description": "For claims with status=enforced: repo-relative paths to the test vector or threat-model entry that demonstrates the claim holds.",
+      "items": {
+        "type": "string",
+        "pattern": "^(docs|static|scripts|tests|server|specs)/.+"
+      }
+    },
+    "finding_ref": {
+      "type": "string",
+      "description": "Optional pointer to the audit finding that created this entry, e.g. audit-2026-07/T1-1."
+    },
+    "notes": {
+      "type": "string",
+      "description": "Optional context: why it is a gap, what the fix is, dependencies."
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "type": { "const": "normative-statement" } } },
+      "then": { "not": { "required": ["demonstrated_by"] } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "claim" } } },
+      "then": { "not": { "required": ["enforced_by"] } }
+    }
+  ]
+}

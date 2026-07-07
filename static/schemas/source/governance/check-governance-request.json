@@ -45,7 +45,7 @@
     },
     "phase": {
       "$ref": "/schemas/enums/governance-phase.json",
-      "description": "The phase of the governed action's lifecycle. 'purchase': initial commitment (create_media_buy, acquire_rights, activate_signal). 'modification': update to existing commitment. 'delivery': periodic delivery or usage reporting. Defaults to 'purchase' if omitted.",
+      "description": "The phase of the governed action's lifecycle. 'intent': buyer-side pre-seller check producing the intent-phase token attached to a spend-commit request (the token MUST carry phase 'intent'). 'purchase': initial commitment (create_media_buy, acquire_rights, activate_signal). 'modification': update to existing commitment. 'delivery': periodic delivery or usage reporting. Defaults to 'purchase' if omitted.",
       "default": "purchase"
     },
     "planned_delivery": {

@@ -1,0 +1,54 @@
+name: Normative Guarantees
+
+# Anti-drift gate for security-relevant normative guarantees.
+# Unlike check-testable-snippets (informational, diff-only), this workflow is
+# BLOCKING and runs whole-corpus. See specs/spec-anti-drift.md.
+#
+# SECURITY: the doctest lane executes PR-authored code (see scripts/run-doctests.cjs).
+# This job MUST NOT be given secrets and MUST NOT be converted to
+# `pull_request_target` — it runs under `pull_request`, so a fork PR gets a
+# read-only, secret-less token. run-doctests.cjs additionally scrubs the child
+# environment and refuses to run shell blocks; the residual exposure is
+# compute-only, the same envelope as the existing snippet lane.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      # Prose the doctest lane scans:
+      - 'docs/**/*.md'
+      - 'docs/**/*.mdx'
+      - 'specs/**/*.md'
+      # The registry and its linter:
+      - 'static/registry/normative-statements/**'
+      - 'scripts/check-normative-coverage.cjs'
+      - 'scripts/run-doctests.cjs'
+      # Enforcement targets referenced by enforced_by (so deleting one re-runs the gate):
+      - 'static/schemas/source/enums/**'
+      - 'tests/governance-phase-enum.test.cjs'
+      - '.github/workflows/normative-guarantees.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  normative-guarantees:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Doctest lane (deterministic, offline)
+        run: npm run test:doctests
+
+      - name: Schema-invariant guards
+        run: npm run test:governance-phase-enum
+
+      - name: Normative-statement coverage (registry well-formed; no enforced statement lost)
+        # One-way floor: counts ENFORCED statements, so adding a `gap` never fails.
+        # Bump the floor in the same PR that flips a registry row gap -> enforced.
+        run: node scripts/check-normative-coverage.cjs --min-enforced 3
