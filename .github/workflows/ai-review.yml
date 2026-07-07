@@ -1,20 +1,21 @@
 name: AI PR Review (Argus)
 
-# Argus is an LLM PR reviewer that posts an `--approve`, `--comment`, or
-# `--request-changes` review on every non-dependabot PR. It reads the diff,
-# delegates to AdCP subagents when relevant (ad-tech-protocol-expert,
-# security-reviewer, code-reviewer, etc.), and writes the review in
-# bokelley's voice.
+# Argus is the AAO Secretariat's review desk: an LLM PR reviewer that posts
+# an `--approve`, `--comment`, or `--request-changes` review on every
+# non-dependabot PR. It reads the diff, delegates to AdCP subagents when
+# relevant (ad-tech-protocol-expert, security-reviewer, code-reviewer,
+# etc.), and applies the WG constitution (.agents/wg/constitution.md) and
+# decision records (governance/decisions/).
 #
-# Reviews are posted as the AAO release/triage GitHub App, so they count
+# Reviews are posted as the AAO Secretariat GitHub App, so they count
 # toward the "1 review required" branch-protection check the same way a
-# human approval does. The same App is used for changeset releases — its
-# pull_requests:write scope already exists.
+# human approval does. Release machinery (changeset releases, forward
+# merges) stays on the separate release App — distinct trust surfaces.
 #
 # Required secrets:
-#   RELEASE_APP_ID           — GitHub App ID (already configured)
-#   RELEASE_APP_PRIVATE_KEY  — GitHub App private key PEM (already configured)
-#   ANTHROPIC_API_KEY        — Anthropic API key for claude-code-action
+#   SECRETARIAT_APP_ID          — AAO Secretariat GitHub App ID
+#   SECRETARIAT_APP_PRIVATE_KEY — AAO Secretariat App private key PEM
+#   ANTHROPIC_API_KEY           — Anthropic API key for claude-code-action
 #
 # Branch-protection assumption: "Require approval of the most recent
 # reviewable push" MUST be enabled on `main`. The bot's approval is
@@ -41,9 +42,9 @@ on:
 # Bot login that posts Argus reviews. Verifier pins on this to avoid
 # treating reviews from other bots (changesets-release[bot] etc.) as
 # Argus's. The App's user login in `pulls/<n>/reviews` includes the
-# `[bot]` suffix (`user.login: "aao-release-bot[bot]"`, `user.type: "Bot"`).
+# `[bot]` suffix (`user.login: "aao-secretariat[bot]"`, `user.type: "Bot"`).
 env:
-  ARGUS_BOT_LOGIN: aao-release-bot[bot]
+  ARGUS_BOT_LOGIN: aao-secretariat[bot]
 
 jobs:
   code_review:
@@ -76,8 +77,8 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ secrets.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          app-id: ${{ secrets.SECRETARIAT_APP_ID }}
+          private-key: ${{ secrets.SECRETARIAT_APP_PRIVATE_KEY }}
 
       # ─────────────────────────────────────────────────────────────────────
       # Route PR classes Argus should not try to review.

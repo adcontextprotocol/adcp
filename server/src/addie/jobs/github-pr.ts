@@ -1,13 +1,15 @@
 /**
  * GitHub single-file PR helper.
  *
- * Creates or refreshes a one-file pull request via the GitHub REST API
- * using the GITHUB_TOKEN env var (same auth seam as github-filer). The
- * working branch is force-reset to the base branch head on every call,
- * so the PR diff is always exactly "base + this file change".
+ * Creates or refreshes a one-file pull request via the GitHub REST API,
+ * authenticated through resolveGitHubToken() (Secretariat App token when
+ * configured, legacy PAT otherwise). The working branch is force-reset
+ * to the base branch head on every call, so the PR diff is always
+ * exactly "base + this file change".
  */
 
 import { createLogger } from '../../logger.js';
+import { resolveGitHubToken } from './github-app-token.js';
 
 const logger = createLogger('github-pr');
 
@@ -65,7 +67,7 @@ export async function getFileContent(
   ref: string,
   repo?: string
 ): Promise<string | null> {
-  const token = process.env.GITHUB_TOKEN;
+  const token = await resolveGitHubToken();
   if (!token) return null;
   const repoSlug = repo ?? process.env.GITHUB_REPO ?? 'adcontextprotocol/adcp';
   const resp = await ghFetch(
@@ -86,9 +88,9 @@ export async function getFileContent(
  * job callers can record the miss without throwing.
  */
 export async function upsertFilePr(input: UpsertFilePrInput): Promise<UpsertFilePrResult | null> {
-  const token = process.env.GITHUB_TOKEN;
+  const token = await resolveGitHubToken();
   if (!token) {
-    logger.warn('GITHUB_TOKEN not set; cannot open PR');
+    logger.warn('No GitHub credential available; cannot open PR');
     return null;
   }
   const repo = input.repo ?? process.env.GITHUB_REPO ?? 'adcontextprotocol/adcp';
