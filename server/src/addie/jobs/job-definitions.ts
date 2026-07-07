@@ -385,10 +385,12 @@ export function registerAllJobs(): void {
 
   // WG slack-context - distill public WG channel discussion into
   // .agents/wg/slack-context.md via PR (the Secretariat's Slack input).
-  // Hourly interval, not 24h: the business-hours gate silently skips
-  // ticks, and setInterval anchors tick time to boot time, so a 24h job
-  // that boots outside the window would never run. The job dedups
-  // itself to one refresh per day via the Generated date in the file.
+  // No business-hours gate: the community is global and the output is a
+  // PR that waits for review, not a human notification. Hourly interval,
+  // not 24h, because setInterval anchors tick time to boot time; the job
+  // dedups itself to one refresh per UTC day via the Generated date in
+  // the file, so the daily digest lands on the first tick after 00:00
+  // UTC.
   jobScheduler.register({
     name: 'wg-slack-context',
     description: 'Distill WG Slack discussion into .agents/wg/slack-context.md via PR',
@@ -396,7 +398,6 @@ export function registerAllJobs(): void {
     initialDelay: { value: 14, unit: 'minutes' },
     runner: runWgSlackContextJob,
     failureThreshold: 1,
-    businessHours: { startHour: 9, endHour: 17, skipWeekends: true },
     shouldLogResult: (r) => !!r.prUrl || r.skipped === 'pr-failed',
   });
 
