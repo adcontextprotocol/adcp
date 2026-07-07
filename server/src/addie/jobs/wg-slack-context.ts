@@ -41,6 +41,7 @@ export interface WgSlackContextResult {
   prCreated?: boolean;
   skipped?:
     | 'missing-env'
+    | 'already-ran-today'
     | 'no-channels'
     | 'no-activity'
     | 'no-spec-content'
@@ -164,6 +165,24 @@ export async function runWgSlackContextJob(
     logger.warn('ANTHROPIC_API_KEY or GITHUB_TOKEN not set; skipping');
     result.skipped = 'missing-env';
     return result;
+  }
+
+  // The scheduler's business-hours gate silently skips ticks, so this
+  // job runs on an hourly interval and dedups itself to one refresh per
+  // day: if today's digest already exists on the PR branch or on main,
+  // this tick is a no-op.
+  const today = new Date().toISOString().slice(0, 10);
+  for (const ref of [PR_BRANCH, 'main']) {
+    try {
+      const existing = await getFileContent(CONTEXT_FILE_PATH, ref);
+      if (existing?.includes(`- Generated: ${today}`)) {
+        result.skipped = 'already-ran-today';
+        return result;
+      }
+    } catch {
+      // Unreadable ref: fall through — the material-change gate still
+      // prevents duplicate PR content.
+    }
   }
 
   const wgDb = new WorkingGroupDatabase();
