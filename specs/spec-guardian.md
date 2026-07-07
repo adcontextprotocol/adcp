@@ -262,7 +262,7 @@ outcome:
 - **Overturn rate per class** = decisions later reversed by a human / total. Editorial
   autonomy is already de facto (Argus approves ~85% of PRs). Normative lazy-consensus
   starts *shadow-mode*: memos posted, but Brian ratifies manually for 4 weeks; if
-  overturn <5%, flip to true lazy consensus.
+  overturn &lt;5%, flip to true lazy consensus.
 - **KPIs on the weekly report**: median time-to-decision, Brian-touches per week
   (target: trending to ~3/week), info-request response rate, decision-record coverage
   (% of merged Normative+ changes with a record).
