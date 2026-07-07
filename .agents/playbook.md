@@ -514,6 +514,8 @@ Cutting 3.1.0 ends the 3.0.x ↔ main divergence and starts a new 3.0.x → 3.1.
 
 `release.yml`, `release-docs.yml`, and `forward-merge-3.0.yml` mint a GitHub App installation token via `actions/create-github-app-token@v3` (secrets `RELEASE_APP_ID` / `RELEASE_APP_PRIVATE_KEY`) instead of using the default `GITHUB_TOKEN`. App-token-triggered events (push, PR open, release publish) DO fire downstream workflows; `GITHUB_TOKEN`-triggered events don't (GitHub's recursion-blocking rule). Without this swap, the Version Packages PR's required CI never fires, the release-docs snapshot is never created on `release: published`, and the auto-snapshot PR's required CI never fires either.
 
+Two Apps, two trust surfaces: release machinery uses the release App above; the Secretariat (Argus reviews in `ai-review.yml`, server-side GitHub writes from Addie jobs) uses the **AAO Secretariat** App (`aao-secretariat[bot]`, secrets `SECRETARIAT_APP_ID` / `SECRETARIAT_APP_PRIVATE_KEY` — Actions secrets for the workflow, Fly secrets for the server). Server code mints installation tokens through `server/src/addie/jobs/github-app-token.ts`; `resolveGitHubToken()` is the single seam, and a configured-but-failing App fails closed rather than falling back to a PAT.
+
 #### Runbooks
 
 - `.agents/shortcuts/cut-patch.md` — cutting a `3.0.X` patch
