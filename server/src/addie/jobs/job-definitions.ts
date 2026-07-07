@@ -384,11 +384,15 @@ export function registerAllJobs(): void {
   });
 
   // WG slack-context - distill public WG channel discussion into
-  // .agents/wg/slack-context.md via PR (the Secretariat's Slack input)
+  // .agents/wg/slack-context.md via PR (the Secretariat's Slack input).
+  // Hourly interval, not 24h: the business-hours gate silently skips
+  // ticks, and setInterval anchors tick time to boot time, so a 24h job
+  // that boots outside the window would never run. The job dedups
+  // itself to one refresh per day via the Generated date in the file.
   jobScheduler.register({
     name: 'wg-slack-context',
     description: 'Distill WG Slack discussion into .agents/wg/slack-context.md via PR',
-    interval: { value: 24, unit: 'hours' },
+    interval: { value: 1, unit: 'hours' },
     initialDelay: { value: 14, unit: 'minutes' },
     runner: runWgSlackContextJob,
     failureThreshold: 1,

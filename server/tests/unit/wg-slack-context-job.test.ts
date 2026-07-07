@@ -67,6 +67,24 @@ describe('runWgSlackContextJob', () => {
     vi.unstubAllEnvs();
   });
 
+  it('skips when today\'s digest already exists on the PR branch', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    getFileContent.mockResolvedValue(`# WG Slack Context\n\n- Generated: ${today}\n\n---\n\nold body\n`);
+    const { runWgSlackContextJob } = await import('../../src/addie/jobs/wg-slack-context.js');
+    const result = await runWgSlackContextJob();
+    expect(result.skipped).toBe('already-ran-today');
+    expect(getChannelHistory).not.toHaveBeenCalled();
+    expect(messagesCreate).not.toHaveBeenCalled();
+  });
+
+  it('proceeds when the existing digest is from an earlier day', async () => {
+    getFileContent.mockResolvedValue('# WG Slack Context\n\n- Generated: 2020-01-01\n\n---\n\nold body\n');
+    const { runWgSlackContextJob } = await import('../../src/addie/jobs/wg-slack-context.js');
+    const result = await runWgSlackContextJob();
+    expect(result.skipped).toBeUndefined();
+    expect(result.prUrl).toBe('https://github.com/x/pr/1');
+  });
+
   it('skips entirely when env credentials are missing', async () => {
     vi.stubEnv('GITHUB_TOKEN', '');
     const { runWgSlackContextJob } = await import('../../src/addie/jobs/wg-slack-context.js');
