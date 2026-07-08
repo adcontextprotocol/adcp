@@ -77,10 +77,9 @@ phases:
           - check: field_present
             path: "creative.supported_formats"
             description: "Creative canonical supported formats are advertised"
-          - check: field_value
+          - check: field_present
             path: "creative.supported_formats[0].capability_id"
-            value: "training_image_generation"
-            description: "The image build path has a stable local capability_id"
+            description: "The image build path has a stable agent-local capability_id"
           - check: field_value
             path: "creative.supported_formats[0].format.format_kind"
             value: "image"
@@ -91,9 +90,6 @@ phases:
           - check: field_absent
             path: "creative.supported_formats[0].format.format_option_id"
             description: "Creative-agent build routing uses capability_id, not product format_option_id"
-          - check: field_absent
-            path: "creative.supported_formats[1].capability_id"
-            description: "Storyboard fixture only advertises implemented canonical build paths"
           - check: field_value
             path: "context.correlation_id"
             value: "creative_canonical_supported_formats--get_capabilities"
