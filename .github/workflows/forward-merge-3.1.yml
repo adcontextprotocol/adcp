@@ -1,0 +1,216 @@
+name: Forward-merge 3.1.x to main
+
+# Brings 3.1.x patches back into main so the next minor continues to include
+# all 3.1.x fixes. Direction is one-way: 3.1.x → main. Never the reverse.
+#
+# On every push to 3.1.x (typically a Version Packages merge or a
+# cherry-picked patch), this workflow merges 3.1.x into a fresh branch
+# off main and opens a PR. A human reviews and merges. If the merge has
+# conflicts, the workflow fails fast and the PR is not opened — a human
+# must resolve manually.
+#
+# The PR is opened with a GitHub App installation token (RELEASE_APP_ID),
+# so its open/sync events fire required `pull_request` workflows
+# (TypeScript Build, IPR Policy, Check for changeset). #3417 closed.
+
+on:
+  push:
+    branches:
+      - '3.1.x'
+  workflow_dispatch:
+
+concurrency:
+  group: forward-merge-3.1
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  forward-merge:
+    name: Forward-merge 3.1.x → main
+    runs-on: ubuntu-latest
+    steps:
+      # Mint a GitHub App installation token so the auto-opened PR fires
+      # required CI workflows (TypeScript Build, IPR Policy, Check for
+      # changeset). GITHUB_TOKEN-triggered events are blocked by GitHub's
+      # recursion rule. Closes #3417.
+      - name: Mint AAO Release Bot installation token
+        id: app-token
+        uses: actions/create-github-app-token@v3.2.0
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: adcontextprotocol
+          repositories: adcp
+
+      - name: Checkout main with full history
+        uses: actions/checkout@v7.0.0
+        with:
+          fetch-depth: 0
+          ref: main
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch 3.1.x
+        run: git fetch origin 3.1.x
+
+      - name: Create forward-merge branch and merge
+        id: merge
+        run: |
+          set -e
+          git checkout -B forward-merge/3.1.x origin/main
+
+          MERGE_MSG="Forward-merge 3.1.x@$(git rev-parse --short origin/3.1.x) → main"
+          if git merge --no-ff origin/3.1.x -m "$MERGE_MSG"; then
+            echo "Merge completed without conflicts."
+          else
+            CONFLICTS=$(git diff --name-only --diff-filter=U)
+            if [ -z "$CONFLICTS" ]; then
+              echo "::error::git merge failed but produced no conflicted files. Investigate manually."
+              git merge --abort 2>/dev/null || true
+              exit 1
+            fi
+            echo "Conflicts to auto-resolve:"
+            echo "$CONFLICTS"
+
+            UNEXPECTED=""
+            while IFS= read -r f; do
+              [ -z "$f" ] && continue
+              case "$f" in
+                # `.changeset/*.md` and `.changeset/pre.json`: preserve main's
+                # state. Main consumes changesets on its own schedule; 3.1.x
+                # consuming a changeset on its release line shouldn't delete
+                # the same file from main's pending pool.
+                .changeset/*.md|.changeset/pre.json)
+                  STATUS=$(git status --porcelain -- "$f" | head -c 2)
+                  case "$STATUS" in
+                    DU|DD|D*)
+                      git rm -f -- "$f" >/dev/null
+                      ;;
+                    *)
+                      git checkout --ours -- "$f"
+                      git add -- "$f"
+                      ;;
+                  esac
+                  ;;
+                # package.json / package-lock.json: keep main's.
+                # Main may carry structural changes (package renames, new deps)
+                # that 3.1.x doesn't. Main's version state is set by its own
+                # changeset schedule, not by 3.1.x's patch bumps.
+                package.json|package-lock.json)
+                  git checkout --ours -- "$f"
+                  git add -- "$f"
+                  ;;
+                # Schema source index files carry branch-local version
+                # metadata. Preserve main's copy.
+                static/schemas/source/index.json|static/schemas/source/registry/index.yaml)
+                  git checkout --ours -- "$f"
+                  git add -- "$f"
+                  ;;
+                # CHANGELOG.md: take 3.1.x's (canonical patch-line history);
+                # main's next Version Packages cut prepends its own entries.
+                CHANGELOG.md)
+                  git checkout --theirs -- "$f"
+                  git add -- "$f"
+                  ;;
+                # dist/ release artifacts: always take 3.1.x's. These are
+                # immutable per release; main only ever ADDS to its dist tree.
+                dist/schemas/*|dist/compliance/*|dist/protocol/*|dist/docs/*)
+                  git checkout --theirs -- "$f"
+                  git add -- "$f"
+                  ;;
+                *)
+                  UNEXPECTED="$UNEXPECTED $f"
+                  ;;
+              esac
+            done <<< "$CONFLICTS"
+
+            if [ -n "$UNEXPECTED" ]; then
+              echo "::error::Forward-merge has content conflicts that require human review:$UNEXPECTED"
+              echo "::error::Each conflict is a real decision about whether 3.1.x's change should land on main."
+              echo "::error::Resolve manually:"
+              echo "::error::  git fetch origin && git checkout -b forward-merge/3.1.x origin/main"
+              echo "::error::  git merge origin/3.1.x  # resolve conflicts in editor"
+              echo "::error::  git push origin forward-merge/3.1.x"
+              echo "::error::  gh pr create --base main --head forward-merge/3.1.x"
+              git merge --abort
+              exit 1
+            fi
+
+            REMAINING=$(git diff --name-only --diff-filter=U)
+            if [ -n "$REMAINING" ]; then
+              echo "::error::After auto-resolution, files still conflicted: $REMAINING"
+              git merge --abort
+              exit 1
+            fi
+
+            git commit --no-edit -m "$MERGE_MSG (auto-resolved divergent metadata)"
+            echo "Auto-resolution complete."
+
+            echo ""
+            echo "::group::Post-resolution git status"
+            git status --short
+            echo "::endgroup::"
+            echo ""
+            echo "::group::package.json diff vs origin/main"
+            git diff origin/main HEAD -- package.json package-lock.json || true
+            echo "::endgroup::"
+          fi
+
+          if git diff --quiet origin/main HEAD; then
+            echo "Forward-merge produced no tree change — main already has 3.1.x's content."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            git push --force origin "HEAD:refs/heads/forward-merge/3.1.x"
+          fi
+
+      - name: Create or update pull request
+        if: steps.merge.outputs.skip != 'true'
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          branch: forward-merge/3.1.x
+          base: main
+          title: "Forward-merge 3.1.x → main"
+          body: |
+            Auto-generated forward-merge of `3.1.x` into `main`.
+
+            Brings 3.1.x patches into main so the next minor continues to include
+            all 3.1.x fixes. **Direction is one-way**: `3.1.x → main`. Never the
+            reverse.
+
+            ## Auto-resolved divergent metadata
+
+            Conflicts on these always-divergent paths are resolved automatically:
+
+            - `package.json` / `package-lock.json` → preserve main's
+            - `.changeset/*.md` / `.changeset/pre.json` → preserve main's state
+            - `static/schemas/source/index.json`,
+              `static/schemas/source/registry/index.yaml` → preserve main's
+            - `CHANGELOG.md` → take 3.1.x's
+            - `dist/*` → take 3.1.x's (versioned release artifacts)
+
+            Any conflict outside this list fails the workflow loud.
+
+            ## Review checklist
+
+            - [ ] Diff matches what you'd expect from the 3.1.x patches
+            - [ ] No next-minor work has been pulled in by accident
+            - [ ] CI green
+
+            ## Source
+
+            See `.github/workflows/forward-merge-3.1.yml` for the trigger
+            and auto-resolution logic. See `.agents/playbook.md` § Release
+            lines for the cherry-pick convention.
+
+            🤖 Generated by `.github/workflows/forward-merge-3.1.yml`
+          labels: forward-merge
+          delete-branch: false
