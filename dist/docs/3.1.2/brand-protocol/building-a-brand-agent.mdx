@@ -1,0 +1,822 @@
+---
+title: Building a brand agent
+description: "Build an AdCP brand agent as an MCP server. Serve brand identity via get_brand_identity, license talent rights via get_rights and acquire_rights, with public and authorized data tiers."
+"og:title": "AdCP — Building a brand agent"
+---
+
+A brand agent is an MCP server that implements brand protocol tasks. DAMs, talent agencies, and brand portals build brand agents to make their data available to buyer agents over AdCP.
+
+The agent declares `supported_protocols: ["brand"]` in [`get_adcp_capabilities`](/dist/docs/3.1.2/protocol/get_adcp_capabilities). The specific tasks it implements define its role:
+
+| Role | Tasks | Example |
+|------|-------|---------|
+| Identity provider | `get_brand_identity` | Acme DAM serving brand assets and guidelines |
+| Identity + verification | `get_brand_identity` + `verify_brand_claim` | Nike, Inc. answering authoritative subsidiary, property, and trademark questions |
+| Rights manager | `get_rights` + `acquire_rights` | Pinnacle Agency licensing talent |
+| Full coverage | All five | Nova Talent managing identity, verification, and rights |
+
+## Server setup
+
+Every brand agent starts with an MCP server that registers AdCP tasks as tools.
+
+```typescript
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { z } from "zod";
+
+const server = new McpServer({
+  name: "acme-brand-agent",
+  version: "1.0.0",
+});
+```
+
+Register `get_adcp_capabilities` so buyer agents can discover your supported protocols:
+
+```typescript
+server.tool("get_adcp_capabilities", {}, async () => ({
+  content: [{
+    type: "text",
+    text: JSON.stringify({
+      supported_protocols: ["brand"],
+      supported_tasks: ["get_brand_identity"],
+    }),
+  }],
+}));
+```
+
+## Transport and HTTP setup
+
+Wire the MCP server to an HTTP endpoint so buyer agents can reach it over the network:
+
+```typescript
+import express from "express";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+
+const app = express();
+app.use(express.json());
+
+app.post("/mcp", async (req, res) => {
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined,
+  });
+  res.on("close", () => transport.close());
+  await server.connect(transport);
+  await transport.handleRequest(req, res, req.body);
+});
+
+app.listen(3000, () => console.log("Brand agent listening on port 3000"));
+```
+
+This gives you a stateless HTTP endpoint at `/mcp`. For production, add authentication middleware and CORS headers.
+
+## Tier 1: identity only
+
+Implement `get_brand_identity` to serve brand data from your DAM or brand portal.
+
+```typescript
+const FIELDS_ENUM = [
+  "description", "industries", "keller_type", "logos", "colors",
+  "fonts", "visual_guidelines", "tone", "tagline",
+  "voice_synthesis", "assets", "rights",
+] as const;
+
+server.tool(
+  "get_brand_identity",
+  "Returns brand identity data. Core fields are always public.",
+  {
+    brand_id: z.string().describe("Brand identifier"),
+    fields: z.array(z.enum(FIELDS_ENUM)).optional()
+      .describe("Sections to include. Omit for all authorized sections."),
+    use_case: z.string().optional()
+      .describe("Intended use case — agent tailors content accordingly"),
+  },
+  async ({ brand_id, fields, use_case }, extra) => {
+    const brand = await loadBrand(brand_id);
+    if (!brand) {
+      return {
+        content: [{ type: "text", text: JSON.stringify({
+          errors: [{ code: "brand_not_found", message: `No brand with id '${brand_id}'` }],
+        }) }],
+        isError: true,
+      };
+    }
+
+    const isAuthorized = await checkLinkedAccount(extra);
+    const response = buildIdentityResponse(brand, { fields, use_case, isAuthorized });
+
+    return { content: [{ type: "text", text: JSON.stringify(response) }] };
+  }
+);
+```
+
+## Public vs authorized data
+
+Every `get_brand_identity` response includes the public baseline: `brand_id`, `house`, `names`, `description`, `industries`, `keller_type`, basic `logos`, and `tagline`. No authentication required.
+
+Authorized callers — linked via [`sync_accounts`](/dist/docs/3.1.2/accounts/tasks/sync_accounts) — get deeper data on top of that baseline: high-res assets, voice synthesis configs, tone guidelines, and rights availability.
+
+```typescript
+function buildIdentityResponse(brand, { fields, use_case, isAuthorized }) {
+  // Core fields are always returned
+  const response = {
+    brand_id: brand.id,
+    house: brand.house,
+    names: brand.names,
+  };
+
+  // Determine which sections to include
+  const publicFields = ["description", "industries", "keller_type", "logos", "tagline"];
+  const authorizedFields = ["colors", "fonts", "visual_guidelines", "tone",
+                            "voice_synthesis", "assets", "rights"];
+
+  const requested = fields ?? [...publicFields, ...authorizedFields];
+  const withheld = [];
+
+  for (const field of requested) {
+    if (publicFields.includes(field)) {
+      response[field] = brand[field];
+    } else if (isAuthorized) {
+      response[field] = brand[field];
+    } else {
+      withheld.push(field);
+    }
+  }
+
+  // Signal what's behind auth
+  if (withheld.length > 0) {
+    response.available_fields = withheld;
+  }
+
+  return response;
+}
+```
+
+When a public caller requests `fields: ["logos", "tone"]`, they get logos but not tone. The response includes `available_fields: ["tone"]` so the caller knows what linking their account would unlock.
+
+## Adding verify_brand_claim
+
+[`verify_brand_claim`](/dist/docs/3.1.2/brand-protocol/tasks/verify_brand_claim) lets partners ask the brand-agent an authoritative yes/no question about its identity — "is this subsidiary yours", "is this property yours", "is this trademark yours". It's a layered capability on top of the identity tier: same brand data, plus the richer states (`pending_review`, `transferring`, `disputed`, `licensed_in`) the static `brand.json` can't express.
+
+The trust model is asymmetric by direction. Signed rejections (`disputed` / `not_ours`) are authoritative unilaterally — a brand has standing to refuse association without reciprocation. Signed assertions (`owned` / `pending_review` / `transferring` / `licensed_*`) are informative but NOT trust-extending alone; the reciprocating side must still confirm. This is the load-bearing concept — see [`brand.json` § Agent-augmented verification](/dist/docs/3.1.2/brand-protocol/brand-json#agent-augmented-verification) for the full normative table.
+
+### Capability declaration
+
+Advertise `verify_brand_claim` in `get_adcp_capabilities`, and declare which claim types you implement via the per-tool extension. A brand-agent MAY ship a slice (e.g., property only for creative-clearance, or subsidiary+parent for governance-trust extension) instead of all four.
+
+```typescript
+server.tool("get_adcp_capabilities", {}, async () => ({
+  content: [{
+    type: "text",
+    text: JSON.stringify({
+      supported_protocols: ["brand"],
+      supported_tasks: ["get_brand_identity", "verify_brand_claim"],
+      brand: {
+        verify_brand_claim: {
+          supported_claim_types: ["subsidiary", "parent", "property", "trademark"],
+        },
+      },
+    }),
+  }],
+}));
+```
+
+When `supported_claim_types` is omitted, the agent advertises support for all four. Consumers MUST check before relying on a specific claim type; unsupported types MUST return `UNSUPPORTED_CLAIM_TYPE`.
+
+### State model
+
+The agent needs internal data corresponding to each claim type. Treat `brand.json` as the public projection of these stores — the agent serves the same facts plus the richer lifecycle states.
+
+| Store | Backs | Mirrors in `brand.json` |
+|---|---|---|
+| Subsidiary portfolio | `claim_type: "subsidiary"` | `brand_refs[]` and inline `brands[]` |
+| Parent declaration | `claim_type: "parent"` | `house_domain` on the leaf's canonical document |
+| Property registry | `claim_type: "property"` | `properties[]` |
+| Trademark registry | `claim_type: "trademark"` | `trademarks[]` plus internal licensee-side records (which don't appear in `brand.json` today) |
+| Pending-claim queue | `pending_review` lifecycle | Not represented |
+| Archive | `archived` status | Not represented |
+
+```typescript
+type SubsidiaryRecord = {
+  subsidiary_brand_id: string;
+  subsidiary_domain: string;
+  status: "owned" | "pending_review" | "transferring" | "disputed" | "not_ours" | "archived";
+  first_observed_by_house_at: string;
+  expected_resolution_window_days?: number; // REQUIRED when status is "pending_review"
+};
+
+type PropertyRecord = {
+  type: "website" | "mobile_app" | "ctv_app" | "desktop_app" | "dooh" | "podcast" | "radio" | "streaming_audio";
+  identifier: string;
+  brand_id: string;
+  relationship: "owned" | "direct" | "delegated" | "ad_network";
+  regions: string[]; // ISO 3166-1 alpha-2 or ["global"]
+  status: "owned" | "transferring" | "disputed" | "not_ours" | "archived";
+  use_case_authorization?: Record<string, boolean>;
+};
+
+type TrademarkRecord = {
+  registry: string;
+  number: string;
+  mark: string;
+  registration_status: "active" | "pending" | "expired" | "cancelled";
+  countries: string[];
+  nice_classes: number[];
+  status: "owned" | "licensed_in" | "licensed_out" | "transferring" | "disputed" | "not_ours" | "archived";
+  licensor_domain?: string; // when status is "licensed_in"
+  use_case_authorization?: Record<string, boolean>;
+};
+```
+
+### Tool registration and request validation
+
+`verify_brand_claim` discriminates on `claim_type`. Validate the `claim` payload per type — required fields differ, and `INVALID_INPUT` is the right response when they're missing or malformed.
+
+```typescript
+import { z } from "zod";
+
+const SubsidiaryClaim = z.object({
+  subsidiary_domain: z.string().min(1),
+  subsidiary_brand_id: z.string().optional(),
+  observed_at: z.string().datetime().optional(),
+});
+
+const ParentClaim = z.object({
+  parent_domain: z.string().min(1),
+  claimant_says: z.string().optional(),
+  observed_at: z.string().datetime().optional(),
+});
+
+const PropertyClaim = z.object({
+  property: z.object({
+    type: z.enum(["website", "mobile_app", "ctv_app", "desktop_app", "dooh", "podcast", "radio", "streaming_audio"]),
+    identifier: z.string().min(1),
+    store: z.enum(["apple", "google", "amazon", "roku", "fire_tv", "samsung", "lg", "vizio", "other"]).optional(),
+    region: z.string().optional(),
+  }),
+  use_case: z.string().optional(),
+});
+
+const TrademarkClaim = z.object({
+  mark: z.string().min(1),
+  registry: z.string().optional(),
+  number: z.string().optional(),
+  countries: z.array(z.string().length(2)).optional(),
+});
+
+server.tool(
+  "verify_brand_claim",
+  "Answer an authoritative yes/no about a facet of brand identity",
+  {
+    claim_type: z.enum(["subsidiary", "parent", "property", "trademark"]),
+    claim: z.unknown(),
+  },
+  async ({ claim_type, claim }, extra) => {
+    const isAuthorized = await checkLinkedAccount(extra);
+    const callerId = await resolveCaller(extra);
+
+    if (await rateLimited(callerId, claim_type, claim)) {
+      return rateLimitedResponse(claim_type, callerId, claim);
+    }
+
+    switch (claim_type) {
+      case "subsidiary": {
+        const parsed = SubsidiaryClaim.safeParse(claim);
+        if (!parsed.success) return invalidInput(parsed.error);
+        return await answerSubsidiary(parsed.data, { isAuthorized });
+      }
+      case "parent": {
+        const parsed = ParentClaim.safeParse(claim);
+        if (!parsed.success) return invalidInput(parsed.error);
+        return await answerParent(parsed.data, { isAuthorized });
+      }
+      case "property": {
+        const parsed = PropertyClaim.safeParse(claim);
+        if (!parsed.success) return invalidInput(parsed.error);
+        return await answerProperty(parsed.data, { isAuthorized });
+      }
+      case "trademark": {
+        const parsed = TrademarkClaim.safeParse(claim);
+        if (!parsed.success) return invalidInput(parsed.error);
+        return await answerTrademark(parsed.data, { isAuthorized });
+      }
+    }
+  }
+);
+```
+
+### Per-claim-type response shaping
+
+The `details` field varies by `claim_type`. Build the typed response from your internal record, then strip authorized-only fields when the caller isn't linked.
+
+```typescript
+async function answerSubsidiary(claim, { isAuthorized, requestContext }) {
+  const record = await subsidiaries.findByDomain(claim.subsidiary_domain);
+
+  if (!record) {
+    return signedResponse({
+      claim_type: "subsidiary",
+      verification_status: "not_ours",
+      context_note: "We have no record of this brand.",
+    }, requestContext);
+  }
+
+  const details: Record<string, unknown> = {};
+
+  // Public fields
+  if (["owned", "pending_review", "transferring"].includes(record.status)) {
+    details.brand_id = record.subsidiary_brand_id;
+  }
+
+  // Authorized-only fields
+  if (isAuthorized) {
+    details.first_observed_by_house_at = record.first_observed_by_house_at;
+    if (record.expected_resolution_window_days != null) {
+      details.expected_resolution_window_days = record.expected_resolution_window_days;
+    }
+  }
+
+  // expected_resolution_window_days is REQUIRED when status is pending_review,
+  // even for unauthorized callers — surface the bound so they can age the answer.
+  if (record.status === "pending_review" && !isAuthorized) {
+    details.expected_resolution_window_days = record.expected_resolution_window_days;
+  }
+
+  return signedResponse({
+    claim_type: "subsidiary",
+    verification_status: record.status,
+    details,
+  }, requestContext);
+}
+```
+
+The same shaping pattern applies to `property` (omit `details.use_case_authorization` for public callers) and `trademark` (keep `matched_registration`, `licensor_domain`, `countries`, `nice_classes` public; gate `use_case_authorization` behind authorization).
+
+### Public vs authorized field gating
+
+Mirror the public/authorized split from `get_brand_identity`. The split per claim type:
+
+| Public | Authorized-only |
+|---|---|
+| `claim_type`, `verification_status`, `context_note` (always) | `details.first_observed_by_house_at` |
+| `details.brand_id`, `details.relationship`, `details.matched_registration`, `details.countries`, `details.nice_classes`, `details.regions` | `details.expected_resolution_window_days` (except when REQUIRED on `pending_review`) |
+| `details.licensor_domain` (when `verification_status` is `licensed_in`) | `details.use_case_authorization` |
+
+Queue position, ticket state, and team routing are never exposed at any tier.
+
+### Aging contract for pending_review
+
+The agent MUST transition a `pending_review` record to a terminal status (`owned`, `disputed`, `not_ours`, `transferring`, `archived`) or to `unknown` once its `expected_resolution_window_days` elapses. Consumers SHOULD treat a stale `pending_review` response as `unknown` and fall back to crawl-based verification — but the agent owes the transition either way.
+
+A cron-driven sweep is the simplest implementation:
+
+```typescript
+// Run hourly. Promotes timed-out pending_review records to unknown
+// unless a human reviewer has acted in the meantime.
+async function ageOutPendingClaims(): Promise<void> {
+  const now = Date.now();
+  const stale = await pendingClaims.findStale(now);
+
+  for (const record of stale) {
+    const elapsedDays = (now - Date.parse(record.first_observed_by_house_at)) / 86_400_000;
+    if (elapsedDays >= record.expected_resolution_window_days) {
+      await pendingClaims.update(record.id, {
+        status: "unknown",
+        aged_out_at: new Date(now).toISOString(),
+      });
+      logger.info("aged_out_pending_claim", { record_id: record.id, claim_type: record.claim_type });
+    }
+  }
+}
+
+setInterval(ageOutPendingClaims, 60 * 60 * 1000);
+```
+
+Event-driven implementations work too — schedule a deferred job at `first_observed_by_house_at + expected_resolution_window_days` when the record is created, and have the job check that no human action intervened before flipping to `unknown`.
+
+### Signing setup
+
+Responses are signed under the brand's `adcp_use: "response-signing"` JWK. **This is a distinct key from the `request-signing` key the agent uses for its own outbound calls** — per the keys-per-purpose convention, receivers enforce purpose at the JWK `adcp_use` level. Reusing a key across purposes is forbidden by the spec.
+
+The signature is a **JWS payload envelope** carried inside the response body (not RFC 9421 §2.2.9 transport response signing — that primitive is undefined in 3.x). `verify_brand_claim` and `verify_brand_claims` are the only tasks on the spec's [designated-task response-signing list](/dist/docs/3.1.2/building/by-layer/L1/security#designated-task-response-signing) — the closed-list rule and admission criterion live there.
+
+The envelope is carried in the response's `signed_response` field and follows [`response-payload-jws-envelope.json`](https://adcontextprotocol.org/schemas/3.1.2/core/response-payload-jws-envelope.json). Populate `brand_domain` from server-side tenant resolution, not from caller input. Shared multi-brand fleets also need distinct response-signing key material and distinct `kid` values per `brand_domain`; key reuse across brands defeats tenant-bound replay analysis and is non-conformant for `adcp_use: "response-signing"`.
+
+AdCP 3.1 conformance uses the normal task response plus nested `signed_response`. Pre-release examples that returned the JWS envelope as the entire response body are not 3.1-conformant; verifiers MAY accept that draft shape only during private migration and MUST NOT treat it as a conformant designated-task response.
+
+Publish the JWK in the agent's JWKS, referenced from the relevant `agents[]` entry in `brand.json`:
+
+```json
+// /.well-known/jwks.json on the brand-agent origin
+{
+  "keys": [
+    {
+      "kty": "EC", "crv": "P-256",
+      "kid": "brand-agent-response-2026-01",
+      "x": "...", "y": "...",
+      "use": "sig",
+      "key_ops": ["verify"],
+      "adcp_use": "response-signing"
+    },
+    {
+      "kty": "EC", "crv": "P-256",
+      "kid": "brand-agent-request-2026-01",
+      "x": "...", "y": "...",
+      "use": "sig",
+      "key_ops": ["verify"],
+      "adcp_use": "request-signing"
+    }
+  ]
+}
+```
+
+```json
+// /.well-known/brand.json — agents[] entry
+{
+  "agents": [
+    {
+      "type": "brand",
+      "url": "https://brand-agent.nikeinc.com/mcp",
+      "id": "nikeinc_brand_agent",
+      "jwks_uri": "https://brand-agent.nikeinc.com/.well-known/jwks.json"
+    }
+  ]
+}
+```
+
+In code, sign the response payload before returning it. The unsigned outer fields remain for ordinary task consumers; the signed payload is the canonical attestable object.
+
+```typescript
+import { createHash } from "node:crypto";
+import { jcsCanonicalize, signResponseEnvelope } from "./signing"; // your library of choice
+
+function sha256Base64Url(input: string) {
+  return createHash("sha256").update(input).digest("base64url");
+}
+
+function signedResponse(
+  body: Record<string, unknown>,
+  request: {
+    task: "verify_brand_claim" | "verify_brand_claims";
+    requestBody: unknown;
+    callerIdentity: string | null;
+    resolvedBrandDomain: string;
+    agentUrl: string;
+    maxAgeSeconds: number;
+  }
+) {
+  const now = Math.floor(Date.now() / 1000);
+  const requestBinding = {
+    task: request.task,
+    brand_domain: request.resolvedBrandDomain,
+    agent_url: request.agentUrl,
+    caller_identity: request.callerIdentity,
+    request: request.requestBody,
+  };
+  const payload = {
+    typ: "adcp-response-payload+jws",
+    task: request.task,
+    brand_domain: request.resolvedBrandDomain,
+    agent_url: request.agentUrl,
+    request_hash: `sha256:${sha256Base64Url(jcsCanonicalize(requestBinding))}`,
+    iat: now,
+    exp: now + request.maxAgeSeconds,
+    response: body,
+  };
+  const signed = signResponseEnvelope(payload, {
+    kid: "brand-agent-response-2026-01",
+    alg: "ES256",
+    typ: "adcp-response-payload+jws",
+    adcp_use: "response-signing",
+  });
+  return { content: [{ type: "text", text: JSON.stringify({ ...body, signed_response: signed }) }] };
+}
+```
+
+See [request-signing](/dist/docs/3.1.2/building/by-layer/L1/request-signing) for the keypair-generation and JWKS-publication pattern; the response-signing key follows the same shape with a different `adcp_use` tag.
+
+**Response-body middleware caveat.** The signed object is `signed_response.payload`, canonicalized with RFC 8785/JCS before signature verification. Whitespace and key-order changes outside that sub-object do not affect the signature, but middleware that changes `signed_response.payload`, `signed_response.protected`, or `signed_response.signature` breaks verification. If outer convenience fields are present, verifiers MUST reject the signed response when they disagree with `signed_response.payload.response`.
+
+### Rate limiting
+
+Rate-limit per `{caller_identity, claim_type, claim-target}` — a buyer hammering one trademark differs from a buyer surveying many properties, and conflating them invites either over- or under-blocking. On the limit, return `Retry-After` AND prefer returning a cached prior answer over a hard `RATE_LIMITED` error. The caller can act on a stale `owned`; they can't act on `429`.
+
+```typescript
+const RATE_LIMIT_WINDOW_SEC = 60;
+const RATE_LIMIT_MAX = 30;
+
+function rateLimitKey(callerId: string, claimType: string, claim: unknown): string {
+  const target = extractTarget(claimType, claim); // subsidiary_domain | property.identifier | mark+registry
+  return `${callerId}::${claimType}::${target}`;
+}
+
+async function rateLimited(callerId: string, claimType: string, claim: unknown): Promise<boolean> {
+  const key = rateLimitKey(callerId, claimType, claim);
+  const count = await counter.increment(key, RATE_LIMIT_WINDOW_SEC);
+  return count > RATE_LIMIT_MAX;
+}
+
+async function rateLimitedResponse(claimType: string, callerId: string, claim: unknown) {
+  const cached = await responseCache.get(rateLimitKey(callerId, claimType, claim));
+  if (cached) {
+    return { content: [{ type: "text", text: JSON.stringify({ ...cached, _from_cache: true }) }] };
+  }
+  return {
+    content: [{
+      type: "text",
+      text: JSON.stringify({
+        errors: [{ code: "RATE_LIMITED", message: "Rate limit exceeded for this claim." }],
+      }),
+    }],
+    _meta: { "retry-after": String(RATE_LIMIT_WINDOW_SEC) },
+    isError: true,
+  };
+}
+```
+
+### Cache headers per status
+
+Set `Cache-Control: max-age=N` on the response. Recommended values from the task page:
+
+| Status | max-age |
+|---|---|
+| `owned`, `not_ours`, `disputed` | 24–72h |
+| `pending_review` | ≤1h |
+| `transferring` | ≤4h |
+| `licensed_in`, `licensed_out` | 24h |
+| `unknown` | ≤1h |
+| `use_case_authorization` present | Re-check per session |
+
+Consumers MAY override downward but SHOULD NOT exceed agent-supplied `max-age`.
+
+### Notification loop for pending_review
+
+When a `verify_brand_claim` call lands on an unknown subsidiary/property/trademark and the agent's policy is "ask the portfolio team", the agent enqueues a `pending_review` record AND surfaces a notification to the team. Implementation is agent-side; common patterns:
+
+- **Email the portfolio team** at the address on `brand.json` `contact.email`.
+- **Open a ticket** in the brand's existing tracker (Jira, Linear, Zendesk).
+- **Slack notify** the portfolio channel.
+
+The notification carries the claim payload, the caller identity, and the `expected_resolution_window_days`. A reviewer's action — accept, reject, transfer, archive — flips the record's status and the next `verify_brand_claim` call on the same claim returns the terminal answer.
+
+```typescript
+async function enqueuePendingReview(claim: SubsidiaryClaim, callerId: string): Promise<SubsidiaryRecord> {
+  const record: SubsidiaryRecord = {
+    subsidiary_brand_id: claim.subsidiary_brand_id ?? "",
+    subsidiary_domain: claim.subsidiary_domain,
+    status: "pending_review",
+    first_observed_by_house_at: new Date().toISOString(),
+    expected_resolution_window_days: 14,
+  };
+  await subsidiaries.create(record);
+  await notifications.send({
+    channel: "portfolio_team",
+    subject: `New subsidiary claim: ${claim.subsidiary_domain}`,
+    body: { claim, caller: callerId, window_days: 14 },
+  });
+  return record;
+}
+```
+
+### UI considerations
+
+When your agent returns `disputed` or `not_ours`, consumers render the rejection in their own UIs (DSP inventory shopping, portfolio explorer, creative clearance). The agent owes a clear `context_note` — that string ends up in front of humans. See [UI guidance for rejected claims](/dist/docs/3.1.2/brand-protocol/ui-guidance) for the consumer-side conventions to keep in mind when writing your `context_note` text.
+
+## Tier 2: rights only
+
+Add `get_rights` and `acquire_rights` for rights discovery and licensing. This is the path for talent agencies and music sync platforms.
+
+```typescript
+server.tool(
+  "get_rights",
+  "Search for licensable rights with pricing",
+  {
+    query: z.string().describe("Natural language description of desired rights"),
+    uses: z.array(z.string()).describe("Rights uses: likeness, voice, name, endorsement"),
+    buyer_brand: z.object({
+      domain: z.string(),
+      brand_id: z.string().optional(),
+    }).optional(),
+    brand_id: z.string().optional(),
+    include_excluded: z.boolean().optional(),
+  },
+  async ({ query, uses, buyer_brand, brand_id, include_excluded }) => {
+    const matches = await searchRights({ query, uses, brand_id });
+
+    // Filter by buyer compatibility when buyer_brand is provided
+    const { rights, excluded } = buyer_brand
+      ? await filterByBuyerCompatibility(matches, buyer_brand)
+      : { rights: matches, excluded: [] };
+
+    const response = { rights };
+    if (include_excluded) response.excluded = excluded;
+
+    return { content: [{ type: "text", text: JSON.stringify(response) }] };
+  }
+);
+```
+
+`acquire_rights` follows the same pattern — accept a `rights_id` and `pricing_option_id` from `get_rights`, clear against existing contracts, and return terms with generation credentials. The response includes an authenticated `approval_webhook` (using [`push-notification-config`](https://adcontextprotocol.org/schemas/3.1.2/core/push-notification-config.json)) so buyers can submit creatives for review. See the [acquire_rights task reference](/dist/docs/3.1.2/brand-protocol/tasks/acquire_rights) for the full schema.
+
+## Confidential brand rules
+
+Brands often have rules they cannot disclose — public figure policies, internal exclusion lists, legal restrictions. Your agent evaluates these internally and returns a sanitized reason without revealing the rule itself.
+
+The protocol supports this through a simple convention: if the rejection includes `suggestions`, the buyer can fix the problem. If it doesn't, the rejection is final and the buyer should move on.
+
+```typescript
+async function evaluateAcquisition(request, talent) {
+  // Confidential rules — buyer never sees these
+  const confidentialResult = await evaluateConfidentialRules(request, talent);
+  if (confidentialResult.blocked) {
+    return {
+      status: "rejected",
+      reason: confidentialResult.sanitized_reason,
+      // No suggestions — this is final, nothing the buyer can change
+    };
+  }
+
+  // Actionable rejection — buyer can adjust their request
+  const exclusivityConflict = await checkExclusivity(request, talent);
+  if (exclusivityConflict) {
+    return {
+      status: "rejected",
+      reason: `Exclusive conflict in ${exclusivityConflict.country} through ${exclusivityConflict.end_date}`,
+      suggestions: [
+        `Available in ${exclusivityConflict.alternative_countries.join(", ")}`,
+        `Available after ${exclusivityConflict.end_date}`,
+      ],
+    };
+  }
+
+  // Approved — proceed with terms
+  return { status: "acquired", /* ... */ };
+}
+```
+
+The same pattern applies to `get_rights` exclusions: include `suggestions` on excluded results when the buyer can adjust their query (different market, different dates), omit them when the exclusion is non-negotiable.
+
+### Defending against probing
+
+A determined buyer agent could call `get_rights` with slight variations — different brands, industries, countries — to map out your confidential rules through the pattern of rejections. Mitigate this by:
+
+- **Using consistent generic language** across similar confidential rejections. If three different rules all produce "This conflicts with our talent lifestyle guidelines," the buyer learns nothing from repeated attempts.
+- **Returning the same reason regardless of which specific rule triggered it.** Don't vary the wording based on the rule — that creates a side channel.
+- **Rate limiting discovery calls** per buyer. Track query volume per `buyer_brand` and return progressively less specific reasons after a threshold.
+
+The `exclusivity_status.existing_exclusives` field in `get_rights` responses deserves special care. Populating it with specific deal terms ("exclusive with Acme Sports in NL through Q3") reveals competitive intelligence. Use vague descriptions ("exclusive commitment in this category") or omit the field entirely when confidentiality is a concern.
+
+## Field selection and use case
+
+The `fields` parameter lets callers request only the sections they need. Implement this efficiently — avoid loading expensive data (asset catalogs, voice configs) when not requested:
+
+```typescript
+async function loadBrandData(brand_id, fields) {
+  const brand = await db.getBrandCore(brand_id);
+  if (!fields || fields.includes("assets")) {
+    brand.assets = await db.getBrandAssets(brand_id);
+  }
+  if (!fields || fields.includes("voice_synthesis")) {
+    brand.voice_synthesis = await voiceProvider.getConfig(brand_id);
+  }
+  return brand;
+}
+```
+
+The `use_case` parameter is advisory — it tailors content within returned sections but does not override `fields`. A `"likeness"` use case prioritizes action photos in the `logos` section; a `"creative_production"` use case prioritizes vector logos and brand marks.
+
+## Multi-tenancy
+
+A single MCP endpoint can serve multiple brands. The `brand_id` parameter in every request disambiguates which brand the caller is asking about.
+
+```typescript
+// One agent, many brands
+const brands = {
+  "emma_torres": { house: { domain: "pinnacleagency.com", name: "Pinnacle Agency" }, ... },
+  "kai_nakamura": { house: { domain: "pinnacleagency.com", name: "Pinnacle Agency" }, ... },
+};
+
+async function loadBrand(brand_id) {
+  return brands[brand_id] ?? null;
+}
+```
+
+Each brand in your roster should also appear in your `brand.json` file's `brands` array so buyer agents can discover them before making MCP calls.
+
+## Account linking
+
+Buyers establish authorization by calling [`sync_accounts`](/dist/docs/3.1.2/accounts/tasks/sync_accounts) on your agent. After linking, their subsequent `get_brand_identity` requests are recognized as authorized.
+
+Implement the [accounts protocol](/dist/docs/3.1.2/accounts/overview) to support this. The linked account is identified by the caller's credentials in the MCP transport — you do not need to pass account IDs in brand protocol requests.
+
+### Extracting caller identity
+
+```typescript
+async function checkLinkedAccount(extra: any): Promise<boolean> {
+  // The caller's identity comes from your auth middleware.
+  // After sync_accounts links a buyer, store their credentials
+  // and check them on subsequent requests.
+  const sessionId = extra?.sessionId;
+  if (!sessionId) return false;
+  return await db.isLinkedAccount(sessionId);
+}
+```
+
+How you identify callers depends on your authentication setup. The MCP transport provides session information; your auth middleware maps that to a linked account. See the [authentication guide](/dist/docs/3.1.2/building/by-layer/L2/authentication) for patterns.
+
+## Rights and creative integration
+
+After a buyer acquires rights through `acquire_rights`, they receive `generation_credentials` and a `rights_constraint`. These connect the rights grant to creative production.
+
+### From the brand agent's perspective
+
+When implementing `acquire_rights`, return both pieces in the response:
+
+```typescript
+// In your acquire_rights handler, after approval:
+const response = {
+  status: "acquired",
+  rights_id: "rgt_dj_001",
+  terms: { /* ... pricing, dates, restrictions */ },
+  generation_credentials: [
+    {
+      provider: "midjourney",
+      rights_key: "rk_dj_likeness_2026_abc",
+      uses: ["likeness"],
+      expires_at: "2026-06-15T00:00:00Z",
+    },
+  ],
+  rights_constraint: {
+    rights_id: "rgt_dj_001",
+    rights_agent: { url: "https://rights.lotientertainment.com/mcp", id: "loti_entertainment" },
+    valid_from: "2026-03-15T00:00:00Z",
+    valid_until: "2026-06-15T23:59:59Z",
+    uses: ["likeness"],
+    countries: ["NL"],
+    impression_cap: 100000,
+    approval_status: "approved",
+  },
+};
+```
+
+### How buyers use these
+
+The buyer's orchestrator passes `generation_credentials` to their creative agent, which uses them with the AI provider. The `rights_constraint` is embedded in the creative manifest's `rights` array — it travels with the creative through the supply chain so every system in the chain knows the usage terms.
+
+```typescript
+// Buyer-side: passing rights to a creative agent
+const creative = await creativeAgent.callTool({
+  name: "build_creative",
+  arguments: {
+    brand: { domain: "bistro-oranje.nl" },
+    format_id: { agent_url: "https://ads.example.com", id: "video_social_1080x1920" },
+    brief: "15-second vertical video featuring Daan Janssen endorsing Bistro Oranje",
+    generation_credentials: acquireResponse.generation_credentials,
+    rights: [acquireResponse.rights_constraint],
+  },
+});
+```
+
+The creative agent uses the `generation_credentials` to authenticate with the AI provider (Midjourney, ElevenLabs, etc.) and produces the asset. The `rights` array becomes part of the creative manifest metadata — downstream systems (ad servers, verification vendors) can inspect it to confirm the creative is properly licensed.
+
+For the full creative manifest specification, see [creative manifests](/dist/docs/3.1.2/creative/creative-manifests).
+
+## Testing
+
+Use the `validate_brand_agent` MCP tool to verify your agent is reachable and responding correctly. For automated testing during development, use the MCP SDK's in-memory transport:
+
+```typescript
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+
+const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+
+const result = await client.callTool({
+  name: "get_brand_identity",
+  arguments: { brand_id: "emma_torres" },
+});
+```
+
+Key things to verify: core fields returned for public callers, deeper data for authorized callers, `available_fields` lists withheld sections, and `brand_not_found` errors for invalid IDs.
+
+## Deployment checklist
+
+- [ ] `brand.json` hosted at `/.well-known/brand.json` with `brand_agent.url` pointing to your MCP endpoint
+- [ ] `get_adcp_capabilities` returns `supported_protocols: ["brand"]`
+- [ ] `get_brand_identity` returns core fields for public callers
+- [ ] `get_brand_identity` returns deeper data for authorized callers
+- [ ] `available_fields` correctly lists withheld sections
+- [ ] Error responses use the `errors` array format
+- [ ] If implementing rights: `get_rights` returns pricing options and `acquire_rights` returns terms
+- [ ] If implementing verification: `get_adcp_capabilities` advertises `verify_brand_claim` and `supported_claim_types`, responses are signed under a distinct `adcp_use: "response-signing"` JWK, `pending_review` records age out per the declared window, rate-limited calls return `Retry-After` and prefer cached prior answers
+
+## Related
+
+- [Brand protocol overview](/dist/docs/3.1.2/brand-protocol/index) — How brand discovery works
+- [brand.json spec](/dist/docs/3.1.2/brand-protocol/brand-json) — File format for brand declaration
+- [get_brand_identity](/dist/docs/3.1.2/brand-protocol/tasks/get_brand_identity) — Identity task reference
+- [verify_brand_claim](/dist/docs/3.1.2/brand-protocol/tasks/verify_brand_claim) — Verification task reference
+- [UI guidance for rejected claims](/dist/docs/3.1.2/brand-protocol/ui-guidance) — Consumer-side rendering of `disputed` / `not_ours`
+- [get_rights](/dist/docs/3.1.2/brand-protocol/tasks/get_rights) — Rights discovery task reference
+- [acquire_rights](/dist/docs/3.1.2/brand-protocol/tasks/acquire_rights) — Rights acquisition task reference
+- [Accounts overview](/dist/docs/3.1.2/accounts/overview) — How account linking works
