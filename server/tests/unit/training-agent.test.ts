@@ -11554,6 +11554,51 @@ describe('human_review_required auto-flip and enforcement', () => {
     expect(humanReview?.explanation).toContain('reallocation_threshold');
   });
 
+  it('accepts ext.human_approval after a reallocation-threshold human review denial', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'approval.example' }, operator: 'test.example' };
+    await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: { ...PLAN_BASE.brand, domain: 'approval.example' },
+        budget: { total: 100000, currency: 'USD', reallocation_threshold: 10000 },
+      }],
+    });
+
+    const payload = { type: 'media_buy', account, total_budget: 50000 };
+    const { result: denied } = await simulateCallTool(server, 'check_governance', {
+      account,
+      plan_id: PLAN_BASE.plan_id,
+      caller: 'test.example',
+      payload,
+    });
+
+    expect(denied.status).toBe('denied');
+    expect(denied.check_id).toBeDefined();
+    expect(denied.governance_context).toBeDefined();
+
+    const { result: approved } = await simulateCallTool(server, 'check_governance', {
+      account,
+      plan_id: PLAN_BASE.plan_id,
+      caller: 'test.example',
+      governance_context: denied.governance_context,
+      ext: {
+        human_approval: {
+          approved_by: 'human-reviewer-1',
+          approved_at: '2099-03-15T12:00:00Z',
+          approval_reference: denied.check_id,
+        },
+      },
+      payload,
+    });
+
+    expect(approved.status).toBe('approved');
+    expect(approved.governance_context).toBeDefined();
+    const findings = (approved.findings ?? []) as Array<{ category_id: string }>;
+    expect(findings.every(f => f.category_id !== 'human_review')).toBe(true);
+  });
+
   it('emits critical contestation-missing finding when human review + no contestation', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const account = { brand: { domain: 'missing.example' }, operator: 'test.example' };

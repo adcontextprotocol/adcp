@@ -188,7 +188,7 @@ const TALENT: TalentEntry[] = [
         right_type: 'talent',
         available_uses: ['likeness', 'voice', 'name', 'endorsement', 'commercial', 'ai_generated_image'],
         countries: ['NL', 'BE', 'DE'],
-        exclusivity_status: { available: true, existing_exclusives: ['sportswear (NL) — through 2026-12-31'] },
+        exclusivity_status: { available: true, existing_exclusives: ['sportswear (NL) — through 2099-12-31'] },
         pricing_options: [
           {
             pricing_option_id: 'cpm_endorsement',
@@ -221,8 +221,8 @@ const TALENT: TalentEntry[] = [
       pending_approval: ['alcohol', 'gambling', 'pharmaceutical'],
       rejected: {
         sportswear: {
-          reason: 'Active exclusivity with another brand for sportswear in NL through 2026-12-31',
-          suggestions: ['Available for sportswear in BE and DE markets', 'Available in NL after 2027-01-01'],
+          reason: 'Active exclusivity with another brand for sportswear in NL through 2099-12-31',
+          suggestions: ['Available for sportswear in BE and DE markets', 'Available in NL after 2100-01-01'],
         },
       },
     },
@@ -319,7 +319,7 @@ const TALENT: TalentEntry[] = [
         right_type: 'talent',
         available_uses: ['likeness', 'name', 'endorsement', 'commercial', 'ai_generated_image'],
         countries: ['NL', 'BE', 'DE', 'FR'],
-        exclusivity_status: { available: true, existing_exclusives: ['cycling equipment (EU) — through 2027-03-31'] },
+        exclusivity_status: { available: true, existing_exclusives: ['cycling equipment (EU) — through 2099-03-31'] },
         pricing_options: [
           {
             pricing_option_id: 'cpm_likeness',
@@ -355,8 +355,8 @@ const TALENT: TalentEntry[] = [
         dairy: 'This conflicts with our talent lifestyle guidelines',
         fast_food: 'This conflicts with our talent lifestyle guidelines',
         cycling_equipment: {
-          reason: 'Active exclusivity with another brand for cycling equipment in EU through 2027-03-31',
-          suggestions: ['Available for cycling equipment outside EU', 'Available in EU after 2027-04-01'],
+          reason: 'Active exclusivity with another brand for cycling equipment in EU through 2099-03-31',
+          suggestions: ['Available for cycling equipment outside EU', 'Available in EU after 2099-04-01'],
         },
       },
     },
@@ -404,7 +404,7 @@ const TALENT: TalentEntry[] = [
         countries: ['JP', 'KR', 'US'],
         exclusivity_status: {
           available: false,
-          existing_exclusives: ['cosmetics (JP) — through 2027-06-30'],
+          existing_exclusives: ['cosmetics (JP) — through 2099-06-30'],
         },
         pricing_options: [
           {
@@ -438,8 +438,8 @@ const TALENT: TalentEntry[] = [
       pending_approval: ['fashion', 'technology', 'entertainment'],
       rejected: {
         cosmetics: {
-          reason: 'Active exclusivity with another brand for cosmetics in JP through 2027-06-30',
-          suggestions: ['Available for cosmetics outside JP', 'Available in JP after 2027-07-01'],
+          reason: 'Active exclusivity with another brand for cosmetics in JP through 2099-06-30',
+          suggestions: ['Available for cosmetics outside JP', 'Available in JP after 2099-07-01'],
         },
       },
     },
@@ -670,10 +670,7 @@ export function handleGetBrandIdentity(
 
   const talent = BRAND_MAP.get(brandId);
   if (!talent) {
-    const code = ctx.storyboardCompat?.version === '3.0'
-      ? 'BRAND_NOT_FOUND'
-      : 'REFERENCE_NOT_FOUND';
-    return { errors: [{ code, message: `No brand with id '${brandId}'`, field: 'brand_id' }] };
+    return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: `No brand with id '${brandId}'`, field: 'brand_id' }] };
   }
 
   const requested = fields ?? [...ALL_FIELDS];
@@ -899,6 +896,14 @@ interface AcquireRightsArgs {
   };
 }
 
+function defaultRightsWindow() {
+  const year = new Date(Date.now()).getUTCFullYear() + 1;
+  return {
+    startDate: `${year}-04-01`,
+    endDate: `${year}-06-30`,
+  };
+}
+
 export async function handleAcquireRights(
   args: ToolArgs,
   ctx: TrainingContext,
@@ -1045,8 +1050,9 @@ export async function handleAcquireRights(
   }
 
   const talentName = getTalentName(talent);
-  const startDate = campaign.start_date || '2026-04-01';
-  const endDate = campaign.end_date || '2026-06-30';
+  const defaultWindow = defaultRightsWindow();
+  const startDate = campaign.start_date || defaultWindow.startDate;
+  const endDate = campaign.end_date || defaultWindow.endDate;
 
   const generationCredentials: GenerationCredential[] = [];
   const campaignUses = campaign.uses || pricingOption.uses;
@@ -1146,8 +1152,9 @@ export function handleUpdateRights(
     return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: `No active grant with id '${rightsId}'` }] };
   }
 
-  const currentEndDate = '2026-06-30';
-  const currentStartDate = '2026-04-01';
+  const defaultWindow = defaultRightsWindow();
+  const currentEndDate = defaultWindow.endDate;
+  const currentStartDate = defaultWindow.startDate;
   if (endDate && endDate < currentEndDate) {
     return { errors: [{ code: 'INVALID_REQUEST', message: 'New end_date must be >= current end_date' }] };
   }

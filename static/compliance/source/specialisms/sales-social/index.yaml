@@ -840,7 +840,7 @@ phases:
           events:
             - event_type: "purchase"
               event_id: "evt_trail_pro_001"
-              event_time: "2026-04-05T14:30:00Z"
+              event_time: "2099-04-05T14:30:00Z"
               # user_match prevents adapters from injecting synthetic placeholder
               # identifiers to satisfy the upstream's required-field check.
               # The hashed_email here matches the sync_audiences add[]

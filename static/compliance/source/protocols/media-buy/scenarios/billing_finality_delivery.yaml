@@ -250,7 +250,7 @@ phases:
               amount: 180.00
               currency: "USD"
             is_final: true
-            finalized_at: "2026-08-03T12:00:00Z"
+            finalized_at: "2099-08-03T12:00:00Z"
             measurement_window: "post_sivt"
         validations:
           - check: field_value
@@ -324,8 +324,8 @@ phases:
             operator: "pinnacle-agency.example"
           idempotency_key: "$generate:uuid_v4#billing_finality_delivery_report_final_usage"
           reporting_period:
-            start: "2026-07-01T00:00:00Z"
-            end: "2026-07-31T23:59:59Z"
+            start: "2099-07-01T00:00:00Z"
+            end: "2099-07-31T23:59:59Z"
           usage:
             - account:
                 brand:
@@ -337,7 +337,7 @@ phases:
               vendor_cost: 1800.00
               currency: "USD"
               final: true
-              finalized_at: "2026-08-03T12:00:00Z"
+              finalized_at: "2099-08-03T12:00:00Z"
               measurement_window: "post_sivt"
           context:
             correlation_id: "billing_finality_delivery--report_usage"

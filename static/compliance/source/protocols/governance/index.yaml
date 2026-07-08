@@ -79,8 +79,8 @@ fixtures:
         currency: "USD"
         reallocation_threshold: 20000
       flight:
-        start: "2027-04-01T00:00:00Z"
-        end: "2027-06-30T23:59:59Z"
+        start: "2020-01-01T00:00:00Z"
+        end: "2099-06-30T23:59:59Z"
       countries: ["US"]
       custom_policies:
         - policy_id: "weekly_reporting_over_10k"
@@ -260,8 +260,8 @@ phases:
                 currency: "USD"
                 reallocation_threshold: 20000
               flight:
-                start: "2027-04-01T00:00:00Z"
-                end: "2027-06-30T23:59:59Z"
+                start: "2020-01-01T00:00:00Z"
+                end: "2099-06-30T23:59:59Z"
               countries: ["US"]
               custom_policies:
                 - policy_id: "weekly_reporting_over_10k"
@@ -405,8 +405,8 @@ phases:
               operator: "pinnacle-agency.example"
             brand:
               domain: "acmeoutdoor.example"
-            start_time: "2027-01-01T00:00:00Z"
-            end_time: "2027-03-31T23:59:59Z"
+            start_time: "2099-01-01T00:00:00Z"
+            end_time: "2099-03-31T23:59:59Z"
             packages:
               - product_id: "$context.product_1_id"
                 budget: 30000
@@ -417,6 +417,11 @@ phases:
 
           context:
             correlation_id: "media_buy_governance_escalation--check_governance_denied"
+        context_outputs:
+          - name: check_id
+            path: 'check_id'
+          - name: governance_context
+            path: 'governance_context'
         validations:
           - check: response_schema
             description: "Response matches check-governance-response.json schema"
@@ -470,7 +475,12 @@ phases:
         sample_request:
           plan_id: "$context.plan_id"
           caller: "https://pinnacle-agency.example"
-          governance_context: "gov_ctx_acme_q2_escalated"
+          governance_context: "$context.governance_context"
+          ext:
+            human_approval:
+              approved_by: "human-reviewer-1"
+              approved_at: "2099-03-15T12:00:00Z"
+              approval_reference: "$context.check_id"
           tool: "create_media_buy"
           payload:
             idempotency_key: "$generate:uuid_v4#media_buy_governance_escalation_check_governance_approved_payload"
@@ -480,8 +490,8 @@ phases:
               operator: "pinnacle-agency.example"
             brand:
               domain: "acmeoutdoor.example"
-            start_time: "2027-01-01T00:00:00Z"
-            end_time: "2027-03-31T23:59:59Z"
+            start_time: "2099-01-01T00:00:00Z"
+            end_time: "2099-03-31T23:59:59Z"
             packages:
               - product_id: "$context.product_1_id"
                 budget: 30000

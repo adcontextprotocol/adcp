@@ -84,8 +84,8 @@ fixtures:
         currency: "USD"
         reallocation_threshold: 8000
       flight:
-        start: "2027-01-01T00:00:00Z"
-        end: "2027-12-31T23:59:59Z"
+        start: "2020-01-01T00:00:00Z"
+        end: "2099-12-31T23:59:59Z"
       countries: ["US"]
       custom_policies:
         - policy_id: "drift_reevaluation"
@@ -98,8 +98,8 @@ fixtures:
         total: 40000
         currency: "USD"
       flight:
-        start: "2026-04-01T00:00:00Z"
-        end: "2026-06-30T23:59:59Z"
+        start: "2020-01-01T00:00:00Z"
+        end: "2099-06-30T23:59:59Z"
 
 phases:
   - id: capability_discovery
@@ -183,8 +183,8 @@ phases:
                 currency: "USD"
                 reallocation_threshold: 8000
               flight:
-                start: "2027-01-01T00:00:00Z"
-                end: "2027-12-31T23:59:59Z"
+                start: "2020-01-01T00:00:00Z"
+                end: "2099-12-31T23:59:59Z"
               countries: ["US"]
               custom_policies:
                 - policy_id: "drift_reevaluation"
@@ -211,18 +211,21 @@ phases:
             path: "plans[0].plan_id"
             description: "Governance agent assigns plan_id — must be echoed in check_governance"
   - id: initial_approval
-    title: "Initial governance check — approved"
+    title: "Initial governance check — human-approved"
     narrative: |
-      The buyer proposes a media buy within authority. The governance agent approves
-      the buy with the delivery monitoring conditions active.
+      The buyer proposes a media buy whose initial commitment exceeds the plan's
+      reallocation threshold. A human reviewer approves that initial commitment
+      off-protocol, and the governance agent returns a context with delivery
+      monitoring conditions active.
 
     steps:
       - id: check_governance_approved
-        title: "Pre-buy governance check (approved)"
+        title: "Pre-buy governance check (approved after human review)"
         narrative: |
-          The buyer calls check_governance with a media buy within authority. The governance
-          agent approves and notes that delivery monitoring is active with the 20% drift
-          threshold.
+          The buyer calls check_governance with a media buy above the plan's
+          reallocation threshold and includes the human approval obtained outside
+          the protocol. The governance agent approves the initial commitment and
+          notes that delivery monitoring is active with the 20% drift threshold.
         task: check_governance
         schema_ref: "governance/check-governance-request.json"
         response_schema_ref: "governance/check-governance-response.json"
@@ -239,6 +242,11 @@ phases:
           plan_id: "$context.plan_id"
           caller: "https://pinnacle-agency.example"
           tool: "create_media_buy"
+          ext:
+            human_approval:
+              approved_by: "human-reviewer-1"
+              approved_at: "2099-03-15T12:00:00Z"
+              approval_reference: "delivery-monitor-initial-commitment"
           payload:
             account:
               brand:
@@ -419,8 +427,8 @@ phases:
           governance_context: "gov_ctx_acme_delivery_approved"
           delivery_metrics:
             reporting_period:
-              start: "2026-05-01T00:00:00Z"
-              end: "2026-05-15T00:00:00Z"
+              start: "2099-05-01T00:00:00Z"
+              end: "2099-05-15T00:00:00Z"
             spend: 20000
             cumulative_spend: 20000
             channel_distribution:

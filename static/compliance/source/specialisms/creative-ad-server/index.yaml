@@ -391,8 +391,8 @@ phases:
             operator: "pinnacle-agency.example"
           idempotency_key: "$generate:uuid_v4#creative-ad-server-report-usage"
           reporting_period:
-            start: "2026-03-01T00:00:00Z"
-            end: "2026-03-31T23:59:59Z"
+            start: "2099-03-01T00:00:00Z"
+            end: "2099-03-31T23:59:59Z"
           usage:
             - account:
                 account_id: "acct_acme_creative"

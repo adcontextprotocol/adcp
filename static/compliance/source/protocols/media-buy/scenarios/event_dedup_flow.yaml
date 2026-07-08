@@ -290,7 +290,7 @@ phases:
           events:
             - event_type: "purchase"
               event_id: "evt_dedup_001"
-              event_time: "2026-06-05T14:30:00Z"
+              event_time: "2099-06-05T14:30:00Z"
               user_match:
                 hashed_email: "a000000000000000000000000000000000000000000000000000000000000010"
               custom_data:
@@ -322,7 +322,7 @@ phases:
           events:
             - event_type: "purchase"
               event_id: "evt_dedup_001"
-              event_time: "2026-06-05T14:30:00Z"
+              event_time: "2099-06-05T14:30:00Z"
               user_match:
                 hashed_email: "a000000000000000000000000000000000000000000000000000000000000010"
               custom_data:
