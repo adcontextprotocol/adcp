@@ -177,6 +177,31 @@ describe('resolveUserAgentAuth', () => {
     expect(db.getOAuthClient).not.toHaveBeenCalled();
   });
 
+  it('logs a divergence warning when has_oauth_token is set but the token row is unreadable', async () => {
+    // Flag-vs-row divergence: the context row reports a stored OAuth token, so
+    // GET /auth-status (which only inspects the has_oauth_token / expiry flags
+    // via hasValidOAuthTokens) shows `has_valid_oauth: true`. But the encrypted
+    // token bytes can't be resolved into a usable credential (missing IV,
+    // decrypt failure, or a row gap), so getOAuthTokensByOrgAndUrl yields null.
+    // Today resolveUserAgentAuth silently returns undefined, so the /refresh
+    // probe runs unauthenticated and reports a misleading `oauth_required`
+    // ("no auth") while auth-status insists auth is valid — with nothing in the
+    // logs to explain the contradiction. Surface the divergence.
+    db.getAuthInfoByOrgAndUrl.mockResolvedValueOnce(null);
+    db.getByOrgAndUrl.mockResolvedValueOnce({ id: 'ctx_1', has_oauth_token: true });
+    db.getOAuthTokensByOrgAndUrl.mockResolvedValueOnce(null);
+
+    const auth = await call();
+
+    expect(auth).toBeUndefined();
+    expect(logger.warn).toHaveBeenCalledWith(
+      // contextId rides in so the server-side row can be correlated (the
+      // maintainer's flag-vs-row SQL keys on agent_context_id).
+      expect.objectContaining({ agentUrl: URL, orgId: ORG, contextId: 'ctx_1' }),
+      expect.stringContaining('has_oauth_token set but no usable token resolved'),
+    );
+  });
+
   it('prefers static token over OAuth when both are present', async () => {
     // Symmetry with resolveOwnerAuth: a connect-form static token shortcircuits
     // the OAuth path entirely.

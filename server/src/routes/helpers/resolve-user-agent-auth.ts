@@ -76,6 +76,19 @@ export async function resolveUserAgentAuth(
         }
         return oauth;
       }
+
+      // The context row advertises a stored OAuth token (has_oauth_token is
+      // derived from `oauth_access_token_encrypted IS NOT NULL`), so GET
+      // /auth-status — which only inspects those flags via hasValidOAuthTokens
+      // — reports `has_valid_oauth: true`. Yet no usable token came back here
+      // (missing IV, a decrypt failure surfacing as null, or a row gap), so the
+      // probe would otherwise run unauthenticated and report a misleading
+      // `oauth_required`. Log the flag-vs-row divergence so the contradiction is
+      // diagnosable instead of silent (mirrors the catch-branch log below).
+      logger.warn(
+        { agentUrl, orgId, contextId: context.id },
+        'resolveUserAgentAuth: has_oauth_token set but no usable token resolved (flag-vs-row divergence)',
+      );
     }
 
     if (context.has_oauth_client_credentials) {
