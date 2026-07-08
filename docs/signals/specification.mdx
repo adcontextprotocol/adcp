@@ -157,6 +157,7 @@ Activate a signal for use on a decisioning platform. `activate_signal` is requir
 
 **Requirements:**
 - Orchestrators MUST include `signal_agent_segment_id` and `destinations`
+- For governed accounts, orchestrators MUST pass a valid `governance_context` from `check_governance`; signal agents MUST reject governed activations that omit or fabricate it
 - On success, signal agents MUST return a `deployments` array with `is_live` for each deployment
 - Signal agents MUST return `activation_key` when `is_live: true` AND caller has deployment access
 - On failure, signal agents MUST return an `errors` array (with no `deployments` array)

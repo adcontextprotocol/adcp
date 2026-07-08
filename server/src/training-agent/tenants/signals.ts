@@ -8,9 +8,9 @@
  *
  * sync_governance rides opts.customTools (same merge seam as creative_approval
  * on /brand) until the SDK promotes it to a first-class AccountStore method.
- * The tool stores governance agent URLs per-account; activate_signal consults
- * the shared session-level governance plans (keyed by brand.domain, shared
- * with /governance) to enforce the denial check.
+ * The tool stores governance agent URLs per-account; activate_signal requires
+ * a check_governance approval context when the activation account has one of
+ * those registered governance agents.
  */
 
 import { z } from 'zod';

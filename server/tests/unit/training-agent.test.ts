@@ -33,6 +33,7 @@ import {
   HUMAN_REVIEW_CATEGORIES,
   HUMAN_REVIEW_POLICY_IDS,
 } from '../../src/training-agent/governance-handlers.js';
+import { clearAccountStore } from '../../src/training-agent/account-handlers.js';
 import { TrainingSalesPlatform } from '../../src/training-agent/v6-sales-platform.js';
 
 // Valid channels per the enum schema at static/schemas/source/enums/channels.json
@@ -7634,16 +7635,41 @@ describe('get_signals handler', () => {
 
 describe('activate_signal handler', () => {
   const account = { brand: { domain: 'signal-test.example' }, operator: 'signal-test.example' };
+  const governanceAgentUrl = 'https://governance.signal-test.example/mcp';
+
+  async function syncGovernedAccount(server: ReturnType<typeof createTrainingAgentServer>) {
+    await simulateCallTool(server, 'sync_accounts', {
+      accounts: [{
+        brand: { domain: 'signal-test.example' },
+        operator: 'signal-test.example',
+        billing: 'operator',
+        payment_terms: 'net_30',
+      }],
+    });
+
+    await simulateCallTool(server, 'sync_governance', {
+      accounts: [{
+        account,
+        governance_agents: [{
+          url: governanceAgentUrl,
+          authentication: {
+            schemes: ['Bearer'],
+            credentials: 'test-governance-token',
+          },
+        }],
+      }],
+    });
+  }
 
   beforeEach(() => {
     clearSessions();
+    clearAccountStore();
     invalidateCache();
   });
 
   afterEach(() => {
     clearSessions();
-    stopSessionCleanup();
-
+    clearAccountStore();
     stopSessionCleanup();
   });
 
@@ -7691,6 +7717,87 @@ describe('activate_signal handler', () => {
 
     expect(result.code).toBeDefined();
     expect(result.code).toBe('INVALID_PRICING_MODEL');
+  });
+
+  it('requires governance_context when the account has a registered governance agent', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await syncGovernedAccount(server);
+
+    const { result } = await simulateCallTool(server, 'activate_signal', {
+      account,
+      signal_agent_segment_id: 'trident_likely_ev_buyers',
+      pricing_option_id: 'po_trident_ev_cpm',
+      destinations: [{ type: 'agent', agent_url: 'https://test.example' }],
+    });
+
+    expect(result.code).toBe('PERMISSION_DENIED');
+    expect(result.message).toContain('governance agent is registered');
+    const details = result.details as Record<string, unknown>;
+    const findings = details.findings as Array<Record<string, unknown>>;
+    expect(findings[0].category_id).toBe('governance_context');
+  });
+
+  it('rejects fabricated governance_context on a governed signal account', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await syncGovernedAccount(server);
+
+    const { result } = await simulateCallTool(server, 'activate_signal', {
+      account,
+      signal_agent_segment_id: 'trident_likely_ev_buyers',
+      pricing_option_id: 'po_trident_ev_cpm',
+      governance_context: 'fabricated-governance-context',
+      destinations: [{ type: 'agent', agent_url: 'https://test.example' }],
+    });
+
+    expect(result.code).toBe('PERMISSION_DENIED');
+    expect(result.message).toContain('does not match any governance approval');
+  });
+
+  it('accepts an approved governance_context for a governed signal account', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await syncGovernedAccount(server);
+
+    await simulateCallTool(server, 'sync_plans', {
+      account,
+      plans: [{
+        plan_id: 'plan-signal-activation',
+        brand: { domain: 'signal-test.example' },
+        objectives: 'Approve governed signal activation',
+        budget: { total: 10000, currency: 'USD', reallocation_threshold: 1000 },
+        flight: { start: '2099-01-01T00:00:00Z', end: '2099-12-31T23:59:59Z' },
+      }],
+    });
+
+    const { result: check } = await simulateCallTool(server, 'check_governance', {
+      account,
+      plan_id: 'plan-signal-activation',
+      binding: 'proposed',
+      caller: 'https://buyer.example',
+      purchase_type: 'signal_activation',
+      tool: 'activate_signal',
+      payload: {
+        signal_agent_segment_id: 'trident_likely_ev_buyers',
+        pricing_option_id: 'po_trident_ev_cpm',
+        total_budget: 50,
+        destinations: [{ type: 'agent', agent_url: 'https://test.example' }],
+      },
+    });
+
+    expect(check.status).toBe('approved');
+    expect(check.governance_context).toBeDefined();
+
+    const { result } = await simulateCallTool(server, 'activate_signal', {
+      account,
+      signal_agent_segment_id: 'trident_likely_ev_buyers',
+      pricing_option_id: 'po_trident_ev_cpm',
+      governance_context: check.governance_context,
+      destinations: [{ type: 'agent', agent_url: 'https://test.example' }],
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.governance_context).toBe(check.governance_context);
+    const deployments = result.deployments as Array<Record<string, unknown>>;
+    expect(deployments[0].is_live).toBe(true);
   });
 
   it('returns error when destinations is empty', async () => {

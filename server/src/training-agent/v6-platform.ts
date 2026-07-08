@@ -45,7 +45,12 @@ export interface TrainingMeta {
  */
 const trainingAccounts: AccountStore<TrainingMeta> = {
   resolution: 'explicit',
-  resolve: async (ref, _ctx) => {
+  resolve: async (ref, ctx) => {
+    const principal = ctx?.authInfo?.clientId;
+    const authInfo = {
+      kind: 'api_key' as const,
+      ...(principal && { principal }),
+    };
     if (ref == null) {
       return {
         id: 'public_sandbox',
@@ -54,7 +59,7 @@ const trainingAccounts: AccountStore<TrainingMeta> = {
         mode: 'sandbox',
         ctx_metadata: {},
         sandbox: true,
-        authInfo: { kind: 'public' },
+        authInfo: principal ? authInfo : { kind: 'public' as const },
       };
     }
     const brandDomain =
@@ -73,7 +78,7 @@ const trainingAccounts: AccountStore<TrainingMeta> = {
       ...('operator' in ref && typeof ref.operator === 'string' && { operator: ref.operator }),
       ctx_metadata: { brand_domain: brandDomain },
       sandbox: true,
-      authInfo: { kind: 'api_key' },
+      authInfo,
     };
   },
   upsert: syncAccountsUpsert,
@@ -104,21 +109,22 @@ function translateV5Result<T extends object>(result: unknown): T {
 }
 
 /**
- * Build a TrainingContext from a v6 RequestContext.Account.
+ * Build a TrainingContext from the v6 request context auth bridge.
  *
- * `accounts.resolve` stamps the AuthPrincipal onto the resolved Account's
- * `authInfo` field (training-agent's resolver uses `{ kind: 'api_key' }`
- * — no principal — so this path falls back to `'anonymous'` today). The
- * authoritative principal source for the v6 path is `ctx.authInfo.clientId`
- * on `ResolveContext`, populated by the tenant router's req.auth bridge —
- * see `v6-account-helpers.ts` `trainingCtxFromResolveCtx` for the shape
- * billing gates consume.
+ * `sync_accounts` persists v5 account state under the auth principal via
+ * v6-account-helpers. The synthetic resolver stamps that same value onto
+ * `ctx.account.authInfo.principal`; some SDK callback paths also expose it
+ * as `ctx.authInfo.clientId`, so prefer that when present.
  */
-function buildTrainingCtx(account: { authInfo?: { principal?: string } } | undefined): TrainingContext {
+function buildTrainingCtx(
+  ctx: { account?: { authInfo?: { principal?: string } }; authInfo?: { clientId?: string } } | undefined,
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): TrainingContext {
   return {
     mode: 'open',
     tenantId: 'signals',
-    principal: account?.authInfo?.principal ?? 'anonymous',
+    principal: ctx?.authInfo?.clientId ?? ctx?.account?.authInfo?.principal ?? 'anonymous',
+    ...(storyboardCompat && { storyboardCompat }),
   };
 }
 
@@ -172,13 +178,13 @@ export class TrainingPlatform implements DecisioningPlatform<TrainingConfig, Tra
 
   signals: SignalsPlatform<TrainingMeta> = {
     getSignals: async (req, ctx) => {
-      const trainingCtx = buildTrainingCtx(ctx.account);
+      const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat);
       const result = await handleGetSignals(req as ToolArgs, trainingCtx);
       return translateV5Result(result);
     },
 
     activateSignal: async (req, ctx) => {
-      const trainingCtx = buildTrainingCtx(ctx.account);
+      const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat);
       const result = await handleActivateSignal(req as ToolArgs, trainingCtx);
       const errs = (result as { errors?: unknown[] } | undefined)?.errors;
       if (Array.isArray(errs) && errs.length > 0) {

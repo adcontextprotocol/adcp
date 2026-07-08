@@ -3,13 +3,15 @@
  * exposes the tenant key.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import express from 'express';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import type { TrainingContext } from '../types.js';
+import { clearAccountStore } from '../account-handlers.js';
+import { clearSessions, stopSessionCleanup } from '../state.js';
 
 process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token';
 
@@ -123,6 +125,17 @@ async function callTenantTool(url: string, id: number, name: string, args: Recor
 }
 
 describe('tenant routing smoke', () => {
+  beforeEach(() => {
+    clearSessions();
+    clearAccountStore();
+  });
+
+  afterEach(() => {
+    clearSessions();
+    clearAccountStore();
+    stopSessionCleanup();
+  });
+
   it('serves brand.json with tenant public keys', async () => {
     const { baseUrl, close } = await bootServer();
     try {
@@ -198,6 +211,65 @@ describe('tenant routing smoke', () => {
       // Tenant should NOT expose mediaBuy / governance tools
       expect(toolNames).not.toContain('create_media_buy');
       expect(toolNames).not.toContain('sync_plans');
+    } finally {
+      await close();
+    }
+  }, 15000);
+
+  it('enforces sync_governance on /signals activations after framework sync_accounts', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/signals/mcp`;
+      await initializeTenant(url);
+
+      const syncAccounts = await callTenantTool(url, 2, 'sync_accounts', {
+        accounts: [{
+          brand: { domain: 'tenant-signal-gov.example' },
+          operator: 'pinnacle-agency.example',
+          billing: 'operator',
+          payment_terms: 'net_30',
+        }],
+        idempotency_key: 'tenant-signal-gov-sync-accounts',
+      }) as {
+        result?: { structuredContent?: { accounts?: Array<{ account_id?: string }> } };
+      };
+      expect(syncAccounts.result?.structuredContent?.accounts?.[0]?.account_id).toBeDefined();
+
+      const syncGovernance = await callTenantTool(url, 3, 'sync_governance', {
+        accounts: [{
+          account: {
+            brand: { domain: 'tenant-signal-gov.example' },
+            operator: 'pinnacle-agency.example',
+          },
+          governance_agents: [{
+            url: 'https://governance.tenant-signal-gov.example/mcp',
+            authentication: {
+              schemes: ['Bearer'],
+              credentials: 'gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+            },
+          }],
+        }],
+        idempotency_key: 'tenant-signal-gov-sync-governance',
+      }) as {
+        result?: { structuredContent?: { accounts?: Array<{ status?: string }> } };
+      };
+      expect(syncGovernance.result?.structuredContent?.accounts?.[0]?.status).toBe('synced');
+
+      const activation = await callTenantTool(url, 4, 'activate_signal', {
+        account: {
+          brand: { domain: 'tenant-signal-gov.example' },
+          operator: 'pinnacle-agency.example',
+        },
+        signal_agent_segment_id: 'trident_likely_ev_buyers',
+        pricing_option_id: 'po_trident_ev_cpm',
+        destinations: [{ type: 'agent', agent_url: 'https://seller.example/mcp' }],
+        idempotency_key: 'tenant-signal-gov-activate',
+      }) as {
+        result?: { structuredContent?: { errors?: Array<{ code?: string; details?: { findings?: Array<{ category_id?: string }> } }> } };
+      };
+      const error = activation.result?.structuredContent?.errors?.[0];
+      expect(error?.code).toBe('PERMISSION_DENIED');
+      expect(error?.details?.findings?.[0]?.category_id).toBe('governance_context');
     } finally {
       await close();
     }

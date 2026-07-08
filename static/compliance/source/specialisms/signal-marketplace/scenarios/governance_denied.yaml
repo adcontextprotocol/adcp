@@ -1,8 +1,8 @@
 id: signal_marketplace/governance_denied
 version: "1.0.0"
-title: "Signal agent rejects activation when governance denies"
+title: "Signal agent rejects activation without governance approval"
 category: signal_marketplace
-summary: "Verifies that a signal agent propagates GOVERNANCE_DENIED when the buyer's governance plan denies activation."
+summary: "Verifies that a signal agent requires a governance approval context before activating signals on governed accounts."
 track: signals
 required_tools:
   - sync_governance
@@ -12,13 +12,13 @@ required_tools:
 narrative: |
   Signal activation is a spending event: activating a third-party segment costs per-user
   or per-activation fees that must be authorized against the buyer's governance plan. The
-  signal agent must consult the registered governance agent before activation and deny
-  the request when governance returns denied.
+  buyer-side orchestrator must call check_governance before sending a governed activation
+  request. The signal agent enforces that contract by rejecting activations for governed
+  accounts when the request does not carry a valid governance_context.
 
-  This scenario sets up a strict $100 plan, registers that governance with the signal
-  agent via sync_governance, then attempts to activate a signal whose pricing exceeds
-  the plan. The signal agent must return GOVERNANCE_DENIED with findings propagated
-  from the governance agent.
+  This scenario registers a governance agent with the signal agent via sync_governance,
+  then attempts to activate a signal without the prior check_governance approval context.
+  The signal agent must fail closed with PERMISSION_DENIED.
 
   By default, the governance agent is the training agent at test-agent.adcontextprotocol.org.
   Override by supplying a different `governance_agent_url` in the run's initial context
@@ -40,46 +40,11 @@ caller:
 
 prerequisites:
   description: |
-    A governance agent that supports sync_plans and check_governance, and a signal
-    agent that supports sync_governance + activate_signal.
+    A governance agent URL to register, and a signal agent that supports
+    sync_governance + activate_signal.
   test_kit: "test-kits/acme-outdoor.yaml"
 
 phases:
-  - id: governance_plan_setup
-    title: "Set up strict governance plan"
-    narrative: |
-      Create a governance plan with a $100 budget — enough to block even a single
-      activation at typical CPM-for-segment pricing.
-
-    steps:
-      - id: sync_plans
-        title: "Create strict governance plan"
-        task: sync_plans
-        schema_ref: "governance/sync-plans-request.json"
-        response_schema_ref: "governance/sync-plans-response.json"
-        doc_ref: "/governance/campaign/tasks/sync_plans"
-        stateful: true
-        expected: |
-          The governance agent acknowledges the plan.
-        sample_request:
-          plans:
-            - plan_id: "comply-signal-gov-denied"
-              brand:
-                domain: "acmeoutdoor.example"
-              objectives: "Restricted plan — signals activation test"
-              budget:
-                total: 100
-                currency: "USD"
-                reallocation_threshold: 50
-              flight:
-                start: "2099-04-01T00:00:00Z"
-                end: "2099-06-30T23:59:59Z"
-              countries: ["US"]
-          idempotency_key: "$generate:uuid_v4#signal_marketplace_governance_denied_governance_plan_setup_sync_plans"
-        validations:
-          - check: response_schema
-            description: "Response matches sync-plans-response.json schema"
-
   - id: signal_agent_setup
     title: "Register account and governance with the signal agent"
     steps:
@@ -133,7 +98,7 @@ phases:
             description: "Response matches sync-governance-response.json schema"
 
   - id: activation_denied
-    title: "Attempt activation — governance denies"
+    title: "Attempt activation without governance context"
     steps:
       - id: get_signals_list
         title: "Discover a signal to activate"
@@ -162,7 +127,7 @@ phases:
             description: "Signal has an activation identifier"
 
       - id: activate_signal_denied
-        title: "activate_signal — governance denies"
+        title: "activate_signal — missing governance approval"
         task: activate_signal
         schema_ref: "signals/activate-signal-request.json"
         response_schema_ref: "signals/activate-signal-response.json"
@@ -173,8 +138,8 @@ phases:
         stateful: true
         expected: |
           Signal agent rejects with:
-          - code: GOVERNANCE_DENIED
-          - findings propagated from the governance agent
+          - code: PERMISSION_DENIED
+          - findings explaining that check_governance must run first
 
         sample_request:
           signal_agent_segment_id: "$context.signal_agent_segment_id"
@@ -193,18 +158,17 @@ phases:
         sample_response:
           status: "failed"
           errors:
-            - code: "GOVERNANCE_DENIED"
-              message: "Signal activation requires governance approval. Call check_governance first — a governance plan is registered for this account."
+            - code: "PERMISSION_DENIED"
+              message: "Signal activation requires governance approval. Call check_governance first — a governance agent is registered for this account."
               details:
                 findings:
-                  - category_id: "budget_authority"
+                  - category_id: "governance_context"
                     severity: "critical"
-                    explanation: "Signal activation requires governance approval. Call check_governance first — a governance plan is registered for this account."
-                plan_id: "comply-signal-gov-denied"
+                    explanation: "Signal activation requires governance approval. Call check_governance first — a governance agent is registered for this account."
         validations:
           - check: error_code
-            value: "GOVERNANCE_DENIED"
-            description: "Error code is GOVERNANCE_DENIED"
+            value: "PERMISSION_DENIED"
+            description: "Error code is PERMISSION_DENIED"
           - check: field_present
             path: "context"
             description: "Response echoes back the context object even on errors"

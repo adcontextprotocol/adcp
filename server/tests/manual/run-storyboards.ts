@@ -333,6 +333,46 @@ function patchThreeZeroStoryboard(sb: Storyboard): Storyboard {
     return patched;
   }
 
+  if (sb.id === 'signal_marketplace/governance_denied') {
+    patched.context = {
+      ...((patched.context ?? {}) as Record<string, unknown>),
+      governance_agent_url: 'https://test-agent.adcontextprotocol.org',
+    };
+    patched.phases = (patched.phases ?? []).filter(phase => phase.id !== 'governance_plan_setup');
+    for (const phase of patched.phases ?? []) {
+      for (const step of phase.steps ?? []) {
+        if (step.id !== 'activate_signal_denied') continue;
+        step.title = 'activate_signal — missing governance approval';
+        step.expected = [
+          'Signal agent rejects with:',
+          '- code: PERMISSION_DENIED',
+          '- findings explaining that check_governance must run first',
+        ].join('\n');
+        step.sample_response = {
+          status: 'failed',
+          errors: [{
+            code: 'PERMISSION_DENIED',
+            message: 'Signal activation requires governance approval. Call check_governance first — a governance agent is registered for this account.',
+            details: {
+              findings: [{
+                category_id: 'governance_context',
+                severity: 'critical',
+                explanation: 'Signal activation requires governance approval. Call check_governance first — a governance agent is registered for this account.',
+              }],
+            },
+          }],
+        };
+        for (const validation of step.validations ?? []) {
+          if (validation.check === 'error_code') {
+            validation.value = 'PERMISSION_DENIED';
+            validation.description = 'Error code is PERMISSION_DENIED';
+          }
+        }
+      }
+    }
+    return patched;
+  }
+
   if (sb.id === 'idempotency') {
     for (const phase of patched.phases ?? []) {
       for (const step of phase.steps ?? []) {
