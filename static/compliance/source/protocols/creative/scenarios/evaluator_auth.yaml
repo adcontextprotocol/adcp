@@ -111,7 +111,7 @@ phases:
   - id: evaluator_capability_contract
     title: "Confirm experimental feature declaration"
     optional: true
-    skip_if: "context.supports_evaluator != true"
+    skip_if: "!context.supports_evaluator"
     narrative: |
       Because evaluator support is experimental, agents that set
       `creative.supports_evaluator` must also list `creative.evaluator` in
@@ -162,7 +162,7 @@ phases:
   - id: reject_off_list_evaluator
     title: "Reject an off-list evaluator URL"
     optional: true
-    skip_if: "context.supports_evaluator != true || !context.build_capability_id || !context.creative_feature_id"
+    skip_if: "!context.supports_evaluator || !context.build_capability_id || !context.creative_feature_id"
     narrative: |
       The buyer supplies a well-formed external evaluator URL that is not in the
       seller's accepted verifier allowlist. The creative agent must reject it
@@ -219,7 +219,7 @@ phases:
   - id: reject_off_list_feature_agent
     title: "Reject an off-list feature_agent URL"
     optional: true
-    skip_if: "context.supports_evaluator != true || !context.build_capability_id || !context.creative_feature_id"
+    skip_if: "!context.supports_evaluator || !context.build_capability_id || !context.creative_feature_id"
     narrative: |
       The buyer supplies a well-formed `feature_agent.agent_url` alongside an
       account-arranged evaluator id. The nested feature agent uses the same
@@ -281,7 +281,7 @@ phases:
   - id: payload_credentials_advisory
     title: "Keep evaluator credentials out of the payload"
     optional: true
-    skip_if: "context.supports_evaluator != true || !context.build_capability_id || !context.creative_feature_id"
+    skip_if: "!context.supports_evaluator || !context.build_capability_id || !context.creative_feature_id"
     narrative: |
       The buyer attempts to pass an evaluator API key inside the evaluator
       object. The payload is schema-valid but non-conforming: evaluator
@@ -356,7 +356,7 @@ phases:
   - id: accepted_evaluator_invocation
     title: "Invoke an accepted evaluator"
     optional: true
-    skip_if: "context.supports_evaluator != true || !context.build_capability_id || !context.creative_feature_id"
+    skip_if: "!context.supports_evaluator || !context.build_capability_id || !context.creative_feature_id"
     narrative: |
       The buyer supplies an accepted external evaluator URL. The creative agent
       builds variants, calls the evaluator through the `get_creative_features`
@@ -433,7 +433,7 @@ phases:
   - id: accepted_evaluator_unavailable_degrades
     title: "Degrade when an accepted evaluator is unavailable"
     optional: true
-    skip_if: "context.supports_evaluator != true || !context.build_capability_id || !context.creative_feature_id"
+    skip_if: "!context.supports_evaluator || !context.build_capability_id || !context.creative_feature_id"
     narrative: |
       An accepted evaluator can be unreachable or can reject the producing
       agent's transport authentication. The buyer-visible build should not fail
