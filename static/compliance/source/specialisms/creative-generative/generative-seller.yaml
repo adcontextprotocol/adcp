@@ -8,9 +8,11 @@ required_tools:
   - sync_governance
   - get_products
   - create_media_buy
-  - list_creative_formats
   - sync_creatives
   - get_media_buy_delivery
+# list_creative_formats omitted from required_tools (AdCP #5779): 3.2 agents may
+# declare equivalent canonical-format discovery instead. Steps that call the tool
+# are gated with requires_tool so absence grades not_applicable.
 requires_scenarios:
   - media_buy_seller/refine_products
   - media_buy_seller/delivery_reporting
@@ -260,6 +262,7 @@ phases:
           bring their own assets. If you sell inventory, you should accept pre-built creatives
           too — the generative capability is additive.
         task: list_creative_formats
+        requires_tool: list_creative_formats
         schema_ref: "creative/list-creative-formats-request.json"
         response_schema_ref: "creative/list-creative-formats-response.json"
         doc_ref: "/creative/task-reference/list_creative_formats"

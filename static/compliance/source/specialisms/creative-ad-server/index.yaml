@@ -200,6 +200,7 @@ phases:
           VAST, native. The input formats are less relevant because creatives are already
           in your system.
         task: list_creative_formats
+        requires_tool: list_creative_formats
         schema_ref: "creative/list-creative-formats-request.json"
         response_schema_ref: "creative/list-creative-formats-response.json"
         doc_ref: "/creative/task-reference/list_creative_formats"

@@ -4,8 +4,11 @@ title: "Creative lifecycle"
 category: creative_lifecycle
 summary: "Baseline creative lifecycle on a stateful platform: sync display creatives, list with filtering, and preview renderings."
 track: creative
-required_tools:
-  - list_creative_formats
+# list_creative_formats is intentionally omitted from required_tools (AdCP #5779).
+# 3.2 agents may declare equivalent canonical-format discovery instead
+# (creative.supported_formats / product format_options[]). The discover_formats
+# step below is gated with requires_tool so absence grades not_applicable.
+required_tools: []
 
 narrative: |
   You run a creative platform with a persistent library — an ad server, creative management
@@ -88,8 +91,11 @@ phases:
         narrative: |
           The buyer calls list_creative_formats to discover what your platform accepts.
           The response defines format specs: dimensions, asset requirements, mime types,
-          and any platform-specific constraints.
+          and any platform-specific constraints. Preferred 3.2+ discovery is canonical
+          (creative.supported_formats / product format_options[]); this step exercises
+          the v1 compatibility path when the tool is still advertised.
         task: list_creative_formats
+        requires_tool: list_creative_formats
         schema_ref: "creative/list-creative-formats-request.json"
         response_schema_ref: "creative/list-creative-formats-response.json"
         doc_ref: "/creative/task-reference/list_creative_formats"
