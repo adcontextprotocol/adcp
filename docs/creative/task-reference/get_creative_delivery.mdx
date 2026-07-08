@@ -64,8 +64,8 @@ Fields available on both `creative.totals` and each `variant` entry. Commonly-us
 | `cost_per_click` | Cost per click (spend/clicks) |
 | `views` | Billable views — threshold varies by format and pricing model |
 | `completed_views` | Video/audio completions |
-| `completion_rate` | Completion rate (completed_views/impressions) |
-| `quartile_data` | Audio/video quartile completion data — object with `q1_views`, `q2_views`, `q3_views`, `q4_views` |
+| `completion_rate` | Completion rate (completed_views/impressions); `null` when not applicable (e.g. a non-video buy) |
+| `quartile_data` | Audio/video quartile completion data — object with `q1_views`, `q2_views`, `q3_views`, `q4_views`; `null` when not applicable (e.g. a non-video buy) |
 | `reach` | Unique reach in units specified by `reach_unit`. Measurement window declared via `reach_window`; without it, do not sum across rows |
 | `reach_unit` | Unit of measurement for `reach`; required when `reach` is present |
 | `reach_window` | Window semantics for reach/frequency — object with `kind` (`cumulative` for uniques since campaign start, `period` for non-overlapping snapshot, `rolling` for trailing window) and `period` (Duration, required for `period` and `rolling`). Optional but strongly recommended whenever `reach` is present |

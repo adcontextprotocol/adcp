@@ -37,8 +37,8 @@
       "minimum": 0
     },
     "completion_rate": {
-      "type": "number",
-      "description": "Completion rate (completed_views/impressions)",
+      "type": ["number", "null"],
+      "description": "Completion rate (completed_views/impressions). Null indicates the metric is not applicable to this package/buy (e.g. completion rate on a non-video buy).",
       "minimum": 0,
       "maximum": 1
     },
@@ -183,8 +183,8 @@
       "minimum": 0
     },
     "quartile_data": {
-      "type": "object",
-      "description": "Audio/video quartile completion data",
+      "type": ["object", "null"],
+      "description": "Audio/video quartile completion data. Null indicates the metric is not applicable to this package/buy (e.g. quartile data on a non-video buy).",
       "properties": {
         "q1_views": {
           "type": "number",
