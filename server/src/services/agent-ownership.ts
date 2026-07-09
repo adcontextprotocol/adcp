@@ -28,6 +28,7 @@
  */
 
 import { query } from '../db/client.js';
+import { canonicalizeAgentUrl } from '../db/publisher-db.js';
 
 /**
  * Find the org id of any org the user is a member of that owns the agent.
@@ -41,6 +42,7 @@ export async function findOwnerOrgForUser(
   agentUrl: string,
 ): Promise<string | null> {
   try {
+    const lookupAgentUrl = canonicalizeAgentUrl(agentUrl) ?? agentUrl;
     const result = await query<{ workos_organization_id: string }>(
       `SELECT mp.workos_organization_id
        FROM member_profiles mp
@@ -49,7 +51,7 @@ export async function findOwnerOrgForUser(
        WHERE mp.agents @> $1::jsonb
          AND om.workos_user_id = $2
        LIMIT 1`,
-      [JSON.stringify([{ url: agentUrl }]), userId],
+      [JSON.stringify([{ url: lookupAgentUrl }]), userId],
     );
     return result.rows[0]?.workos_organization_id ?? null;
   } catch {
@@ -73,6 +75,7 @@ export async function isOrgOwnerOfAgent(
   agentUrl: string,
 ): Promise<boolean> {
   try {
+    const lookupAgentUrl = canonicalizeAgentUrl(agentUrl) ?? agentUrl;
     const result = await query(
       `SELECT 1 FROM member_profiles mp
        JOIN organization_memberships om
@@ -81,7 +84,7 @@ export async function isOrgOwnerOfAgent(
          AND mp.agents @> $2::jsonb
          AND om.workos_user_id = $3
        LIMIT 1`,
-      [orgId, JSON.stringify([{ url: agentUrl }]), userId],
+      [orgId, JSON.stringify([{ url: lookupAgentUrl }]), userId],
     );
     return result.rows.length > 0;
   } catch {

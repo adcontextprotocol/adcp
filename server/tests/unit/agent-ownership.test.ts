@@ -53,6 +53,25 @@ describe('agent-ownership', () => {
       const result = await findOwnerOrgForUser('user_123', 'https://agent.example.com/mcp');
       expect(result).toBeNull();
     });
+
+    it('canonicalizes the lookup URL before matching stored member profile agents', async () => {
+      queryMock.mockResolvedValueOnce({
+        rows: [{ workos_organization_id: 'org_abc' }],
+        rowCount: 1,
+        command: 'SELECT',
+        oid: 0,
+        fields: [],
+      } as never);
+
+      const result = await findOwnerOrgForUser('user_123', 'HTTPS://Agent.Example.com/MCP///');
+
+      expect(result).toBe('org_abc');
+      const [, params] = queryMock.mock.calls[0];
+      expect(params).toEqual([
+        JSON.stringify([{ url: 'https://agent.example.com/mcp' }]),
+        'user_123',
+      ]);
+    });
   });
 
   describe('isOrgOwnerOfAgent', () => {
@@ -91,6 +110,26 @@ describe('agent-ownership', () => {
       queryMock.mockRejectedValueOnce(new Error('query failed'));
       const result = await isOrgOwnerOfAgent('org_abc', 'user_123', 'https://agent.example.com/mcp');
       expect(result).toBe(false);
+    });
+
+    it('canonicalizes the lookup URL before confirming a specific owning org', async () => {
+      queryMock.mockResolvedValueOnce({
+        rows: [{ '?column?': 1 }],
+        rowCount: 1,
+        command: 'SELECT',
+        oid: 0,
+        fields: [],
+      } as never);
+
+      const result = await isOrgOwnerOfAgent('org_abc', 'user_123', 'HTTPS://Agent.Example.com/MCP///');
+
+      expect(result).toBe(true);
+      const [, params] = queryMock.mock.calls[0];
+      expect(params).toEqual([
+        'org_abc',
+        JSON.stringify([{ url: 'https://agent.example.com/mcp' }]),
+        'user_123',
+      ]);
     });
   });
 
