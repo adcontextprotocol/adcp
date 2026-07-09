@@ -455,7 +455,7 @@ A conformant Creative Protocol consumer MUST:
 2. Validate manifests against format specifications before submission
 3. Handle validation errors appropriately
 4. Track visited URLs when recursively discovering formats to avoid infinite loops
-5. MUST NOT assume `list_creative_formats` is present on 3.2+ agents when equivalent canonical-format discovery is declared (`creative.supported_formats` and/or product `format_options[]`). Prefer those surfaces for new discovery; treat `list_creative_formats` as an optional v1 compatibility fallback through 4.x.
+5. Not assume `list_creative_formats` is present on 3.2+ agents when equivalent canonical-format discovery is declared (`creative.supported_formats` and/or product `format_options[]`). Prefer those surfaces for new discovery; treat `list_creative_formats` as an optional v1 compatibility fallback through 4.x.
 
 ## Implementation notes
 
