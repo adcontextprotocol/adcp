@@ -74,7 +74,10 @@ export async function adaptAuthForSdk(
  * authenticated probe / discovery / health calls. Bearer maps to
  * `auth_token`; basic maps to a pre-encoded `Authorization: Basic …`
  * header; oauth maps to the `oauth_tokens` + `oauth_client` shape the
- * SDK refreshes on 401.
+ * SDK refreshes on 401. For oauth, also duplicate the current access token
+ * into `auth_token`: @adcp/sdk runs MCP/A2A endpoint discovery before it
+ * attaches the OAuth provider, and that discovery preflight only reads the
+ * bearer field.
  */
 export type AgentConfigAuthFields = {
   auth_token?: string;
@@ -97,7 +100,10 @@ export function agentConfigAuthFields(auth: SdkAuth | undefined): AgentConfigAut
       return { headers: { Authorization: `Basic ${encoded}` } };
     }
     case 'oauth': {
-      const fields: AgentConfigAuthFields = { oauth_tokens: auth.tokens };
+      const fields: AgentConfigAuthFields = {
+        auth_token: auth.tokens.access_token,
+        oauth_tokens: auth.tokens,
+      };
       if (auth.client) fields.oauth_client = auth.client;
       return fields;
     }
