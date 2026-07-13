@@ -1497,6 +1497,31 @@ describe('get_products handler', () => {
     }
   });
 
+  it('filters by publisher_domain', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const targetDomain = PUBLISHERS[0].domain;
+    const { result } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      filters: { publisher_domain: targetDomain },
+    });
+
+    const products = result.products as Array<{ publisher_properties: Array<{ publisher_domain: string }> }>;
+    expect(products.length).toBeGreaterThan(0);
+    for (const p of products) {
+      expect(p.publisher_properties.some(pp => pp.publisher_domain === targetDomain)).toBe(true);
+    }
+  });
+
+  it('returns empty list when publisher_domain matches no products', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      filters: { publisher_domain: 'no-such-publisher.example' },
+    });
+
+    expect((result.products as unknown[]).length).toBe(0);
+  });
+
   it('keeps fixed-price filtering when brief mode falls back to suggestions', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'get_products', {

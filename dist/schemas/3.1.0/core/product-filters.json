@@ -513,6 +513,10 @@
         [{ "vendor": { "domain": "attentionvendor.example" } }, { "vendor": { "domain": "secondattentionvendor.example" } }]
       ]
     },
+    "publisher_domain": {
+      "type": "string",
+      "description": "Filter to products whose publisher_properties include the specified publisher domain. A product matches when at least one publisher_properties entry targets this domain exactly. Use for domain-aware product discovery — 'which products from this seller cover bbc.com?' Buyers receive exactly the products whose declared coverage includes the requested domain; subdomain matching is not applied. For storefront-level domain discovery (which sellers cover a domain at all), use the publisherDomain filter on the storefront list endpoint instead."
+    },
     "keywords": {
       "type": "array",
       "description": "Filter by keyword relevance for search and retail media platforms. Returns products that support keyword targeting for these terms. Allows the sell-side agent to assess keyword availability and recommend appropriate products. Use match_type to indicate the desired precision.",

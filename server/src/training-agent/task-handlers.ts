@@ -2942,6 +2942,14 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
         );
       });
     }
+    const publisherDomainFilter = (req.filters as { publisher_domain?: string }).publisher_domain;
+    if (publisherDomainFilter) {
+      products = products.filter(p =>
+        p.publisher_properties?.some(
+          (pp: { publisher_domain?: string }) => pp.publisher_domain === publisherDomainFilter,
+        ),
+      );
+    }
   }
   const filteredProducts = products;
 
