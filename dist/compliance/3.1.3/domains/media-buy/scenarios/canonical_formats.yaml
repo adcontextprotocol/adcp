@@ -1,0 +1,861 @@
+id: media_buy_seller/canonical_formats
+version: "1.0.0"
+title: "Canonical formats producer scenarios"
+category: media_buy_seller
+summary: "Validates that get_products can expose seeded canonical-format products through dual, v1-only, v2-only, custom, experimental, and divergent declaration shapes."
+track: products
+introduced_in: "3.1"
+required_tools:
+  - get_products
+  - create_media_buy
+  - comply_test_controller
+
+narrative: |
+  AdCP 3.1 introduces canonical product-bound format declarations on
+  `products[].format_options[]` while preserving the v1 `format_ids[]`
+  fallback during the migration window. Producers that dual-emit both shapes
+  MUST describe the same underlying creative requirement in each path.
+
+  This scenario is an opt-in canonical-format track, not a universal 3.x
+  requirement: 3.x products may still carry `format_ids`, `format_options`, or
+  both. It exercises the dual-emission contract only after the runner seeds a
+  product that deliberately carries both shapes.
+
+  The scenario seeds deterministic display products that declare unique vendor
+  metrics so the buyer can isolate each product with a structured filter. The
+  buyer requests the wholesale product feed and verifies that the seeded
+  products cover the migration shapes from the canonical-formats conformance
+  track: agreeing dual emission, v1-only emission, v2-only emission, custom
+  v2-only emission, experimental declarations, and divergent dual-emission
+  advisories.
+
+  After discovery, the buyer creates media buys against the seeded fixed-size
+  product to validate create-time format satisfaction: a legacy fixed MREC
+  selector satisfies the canonical declaration after normalization, while a
+  bare canonical image selector without dimensions does not satisfy a fixed
+  300x250 product.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - exposes_canonical_formats
+  examples:
+    - "Any media-buy seller adopting canonical product format declarations"
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness"
+
+prerequisites:
+  description: |
+    The runner seeds a canonical-format product before the product feed read.
+    Agents without deterministic seeding support skip this storyboard until
+    they expose a test surface that can merge seeded catalog entries.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "canonical_formats_mrec_display"
+      name: "Canonical Formats MREC Display"
+      description: "Seeded wholesale product for canonical image dual-emission validation."
+      publisher_properties:
+        - publisher_domain: "outdoormagazine.example"
+          selection_type: "all"
+      channels: ["display"]
+      delivery_type: "guaranteed"
+      format_ids:
+        - agent_url: "https://creative.adcontextprotocol.org/"
+          id: "display_300x250_image"
+      format_options:
+        - format_kind: "image"
+          format_option_id: "canonical_formats_image_mrec"
+          display_name: "Canonical Formats Image MREC"
+          v1_format_ref:
+            - agent_url: "https://creative.adcontextprotocol.org/"
+              id: "display_300x250_image"
+          params:
+            width: 300
+            height: 250
+            max_file_size_kb: 200
+            image_formats: ["jpg", "png"]
+            ssl_required: true
+            asset_source: "buyer_uploaded"
+            buyer_asset_acceptance: "accepted"
+            composition_model: "deterministic"
+            slots:
+              - asset_group_id: "image_main"
+                asset_type: "image"
+                required: true
+      pricing_options:
+        - pricing_option_id: "canonical_formats_mrec_cpm"
+          pricing_model: "cpm"
+          currency: "USD"
+          fixed_price: 12
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 60
+        timezone: "UTC"
+        supports_webhooks: false
+        available_metrics: ["impressions", "clicks", "spend"]
+        vendor_metrics:
+          - vendor:
+              domain: "prism.example"
+            metric_id: "canonical_format_storyboard_probe"
+        date_range_support: "date_range"
+    - product_id: "canonical_formats_ids_only_display"
+      name: "Canonical Formats IDs Only Display"
+      description: "Seeded wholesale product for v1-only format declaration validation."
+      publisher_properties:
+        - publisher_domain: "outdoormagazine.example"
+          selection_type: "all"
+      channels: ["display"]
+      delivery_type: "guaranteed"
+      format_ids:
+        - agent_url: "https://creative.adcontextprotocol.org/"
+          id: "display_728x90_image"
+      pricing_options:
+        - pricing_option_id: "canonical_formats_ids_only_cpm"
+          pricing_model: "cpm"
+          currency: "USD"
+          fixed_price: 10
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 60
+        timezone: "UTC"
+        supports_webhooks: false
+        available_metrics: ["impressions", "clicks", "spend"]
+        vendor_metrics:
+          - vendor:
+              domain: "prism.example"
+            metric_id: "canonical_format_storyboard_probe_ids_only"
+        date_range_support: "date_range"
+    - product_id: "canonical_formats_options_only_display"
+      name: "Canonical Formats Options Only Display"
+      description: "Seeded wholesale product for v2-only canonical image declaration validation."
+      publisher_properties:
+        - publisher_domain: "outdoormagazine.example"
+          selection_type: "all"
+      channels: ["display"]
+      delivery_type: "guaranteed"
+      format_options:
+        - format_kind: "image"
+          format_option_id: "canonical_formats_image_leaderboard"
+          display_name: "Canonical Formats Image Leaderboard"
+          params:
+            width: 728
+            height: 90
+            max_file_size_kb: 200
+            image_formats: ["jpg", "png"]
+            ssl_required: true
+            asset_source: "buyer_uploaded"
+            buyer_asset_acceptance: "accepted"
+            composition_model: "deterministic"
+            slots:
+              - asset_group_id: "image_main"
+                asset_type: "image"
+                required: true
+      pricing_options:
+        - pricing_option_id: "canonical_formats_options_only_cpm"
+          pricing_model: "cpm"
+          currency: "USD"
+          fixed_price: 11
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 60
+        timezone: "UTC"
+        supports_webhooks: false
+        available_metrics: ["impressions", "clicks", "spend"]
+        vendor_metrics:
+          - vendor:
+              domain: "prism.example"
+            metric_id: "canonical_format_storyboard_probe_options_only"
+        date_range_support: "date_range"
+    - product_id: "canonical_formats_custom_takeover"
+      name: "Canonical Formats Custom Takeover"
+      description: "Seeded wholesale product for custom v2-only format_schema declaration validation."
+      publisher_properties:
+        - publisher_domain: "outdoormagazine.example"
+          selection_type: "all"
+      channels: ["display"]
+      delivery_type: "guaranteed"
+      format_options:
+        - format_kind: "custom"
+          format_option_id: "canonical_formats_custom_takeover"
+          display_name: "Canonical Formats Custom Takeover"
+          canonical_formats_only: true
+          experimental: true
+          format_shape: "multi_placement_takeover"
+          format_schema:
+            uri: "https://creative.adcontextprotocol.org/translated/acme-outdoor/schemas/custom_takeover_v1"
+            digest: "sha256:a3f5b7c9d8e2f1a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2"
+          params:
+            placements:
+              - slot_id: "homepage_billboard"
+                width: 970
+                height: 250
+                required: true
+              - slot_id: "article_mrec"
+                width: 300
+                height: 250
+                required: true
+            asset_source: "buyer_uploaded"
+            buyer_asset_acceptance: "accepted"
+            composition_model: "deterministic"
+      pricing_options:
+        - pricing_option_id: "canonical_formats_custom_takeover_cpm"
+          pricing_model: "cpm"
+          currency: "USD"
+          fixed_price: 35
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 60
+        timezone: "UTC"
+        supports_webhooks: false
+        available_metrics: ["impressions", "clicks", "spend"]
+        vendor_metrics:
+          - vendor:
+              domain: "prism.example"
+            metric_id: "canonical_format_storyboard_probe_custom"
+        date_range_support: "date_range"
+    - product_id: "canonical_formats_experimental_display"
+      name: "Canonical Formats Experimental Display"
+      description: "Seeded wholesale product for experimental canonical declaration visibility."
+      publisher_properties:
+        - publisher_domain: "outdoormagazine.example"
+          selection_type: "all"
+      channels: ["display"]
+      delivery_type: "guaranteed"
+      format_ids:
+        - agent_url: "https://creative.adcontextprotocol.org/"
+          id: "display_300x250_image"
+      format_options:
+        - format_kind: "image"
+          format_option_id: "canonical_formats_experimental_image_mrec"
+          display_name: "Canonical Formats Experimental Image MREC"
+          experimental: true
+          v1_format_ref:
+            - agent_url: "https://creative.adcontextprotocol.org/"
+              id: "display_300x250_image"
+          params:
+            width: 300
+            height: 250
+            max_file_size_kb: 200
+            image_formats: ["jpg", "png"]
+            ssl_required: true
+            asset_source: "buyer_uploaded"
+            buyer_asset_acceptance: "accepted"
+            composition_model: "deterministic"
+            slots:
+              - asset_group_id: "image_main"
+                asset_type: "image"
+                required: true
+      pricing_options:
+        - pricing_option_id: "canonical_formats_experimental_cpm"
+          pricing_model: "cpm"
+          currency: "USD"
+          fixed_price: 9
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 60
+        timezone: "UTC"
+        supports_webhooks: false
+        available_metrics: ["impressions", "clicks", "spend"]
+        vendor_metrics:
+          - vendor:
+              domain: "prism.example"
+            metric_id: "canonical_format_storyboard_probe_experimental"
+        date_range_support: "date_range"
+    - product_id: "canonical_formats_divergent_display"
+      name: "Canonical Formats Divergent Display"
+      description: "Seeded wholesale product with intentionally divergent v1 and v2 references."
+      publisher_properties:
+        - publisher_domain: "outdoormagazine.example"
+          selection_type: "all"
+      channels: ["display"]
+      delivery_type: "guaranteed"
+      format_ids:
+        - agent_url: "https://creative.adcontextprotocol.org/"
+          id: "display_300x250_image"
+      format_options:
+        - format_kind: "image"
+          format_option_id: "canonical_formats_divergent_image"
+          display_name: "Canonical Formats Divergent Image"
+          v1_format_ref:
+            - agent_url: "https://creative.adcontextprotocol.org/"
+              id: "display_728x90_image"
+          params:
+            width: 728
+            height: 90
+            max_file_size_kb: 200
+            image_formats: ["jpg", "png"]
+            ssl_required: true
+            asset_source: "buyer_uploaded"
+            buyer_asset_acceptance: "accepted"
+            composition_model: "deterministic"
+            slots:
+              - asset_group_id: "image_main"
+                asset_type: "image"
+                required: true
+      pricing_options:
+        - pricing_option_id: "canonical_formats_divergent_cpm"
+          pricing_model: "cpm"
+          currency: "USD"
+          fixed_price: 8
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 60
+        timezone: "UTC"
+        supports_webhooks: false
+        available_metrics: ["impressions", "clicks", "spend"]
+        vendor_metrics:
+          - vendor:
+              domain: "prism.example"
+            metric_id: "canonical_format_storyboard_probe_divergent"
+        date_range_support: "date_range"
+
+phases:
+  - id: canonical_product_discovery
+    title: "Canonical product discovery"
+    narrative: |
+      The buyer reads the wholesale product feed with a vendor-metric filter
+      that isolates the seeded product. The returned product MUST be present
+      with both v1 and v2 format declarations: `format_ids[]` for legacy
+      buyers, `format_options[]` for canonical-format buyers.
+
+    steps:
+      - id: get_seeded_canonical_product
+        title: "Read products with canonical format declarations"
+        narrative: |
+          Request the wholesale product feed so seeded catalog entries are
+          returned without brief-mode ranking or curation. A required vendor
+          metric filter narrows the response to the seeded product. The
+          response schema validates the full product shape, while the field
+          checks verify the canonical declaration and its v1 projection link.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: schema_compliance
+        stateful: true
+        expected: |
+          Return products including the seeded canonical_formats_mrec_display
+          product with:
+          - format_ids[] containing the display_300x250_image v1 fallback from https://creative.adcontextprotocol.org/
+          - format_options[] containing an image declaration
+          - v1_format_ref[] linking the image declaration back to that fallback
+          - params.width = 300 and params.height = 250
+
+        sample_request:
+          buying_mode: "wholesale"
+          filters:
+            channels: ["display"]
+            delivery_type: "guaranteed"
+            required_vendor_metrics:
+              - vendor:
+                  domain: "prism.example"
+                metric_id: "canonical_format_storyboard_probe"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          context:
+            correlation_id: "canonical_formats--get_seeded_canonical_product"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_value
+            path: "products[0].product_id"
+            value: "canonical_formats_mrec_display"
+            description: "The vendor-metric filter isolates the seeded canonical-format product"
+          - check: field_value
+            path: "products[0].reporting_capabilities.vendor_metrics[0].vendor.domain"
+            value: "prism.example"
+            description: "Matched product declares the filtering vendor metric"
+          - check: field_value
+            path: "products[0].reporting_capabilities.vendor_metrics[0].metric_id"
+            value: "canonical_format_storyboard_probe"
+            description: "Matched product declares the filtering metric id"
+          - check: field_value
+            path: "products[0].format_ids[0].agent_url"
+            value: "https://creative.adcontextprotocol.org/"
+            description: "v1 fallback format_id names the AAO creative-format catalog"
+          - check: field_value
+            path: "products[0].format_ids[0].id"
+            value: "display_300x250_image"
+            description: "v1 fallback format_id is present"
+          - check: field_value
+            path: "products[0].format_options[0].format_kind"
+            value: "image"
+            description: "Seeded product advertises the image canonical"
+          - check: field_value
+            path: "products[0].format_options[0].format_option_id"
+            value: "canonical_formats_image_mrec"
+            description: "Seeded canonical declaration carries a stable format_option_id"
+          - check: field_value
+            path: "products[0].format_options[0].v1_format_ref[0].agent_url"
+            value: "https://creative.adcontextprotocol.org/"
+            description: "Canonical declaration links back to the AAO creative-format catalog"
+          - check: field_value
+            path: "products[0].format_options[0].v1_format_ref[0].id"
+            value: "display_300x250_image"
+            description: "Canonical declaration links back to the same v1 format identifier"
+          - check: field_value
+            path: "products[0].format_options[0].params.width"
+            value: 300
+            description: "Canonical image params include the expected width"
+          - check: field_value
+            path: "products[0].format_options[0].params.height"
+            value: 250
+            description: "Canonical image params include the expected height"
+          - check: refs_resolve
+            description: "Every v1_format_ref advertised by the returned product's format_options resolves to a format_id on that product"
+            source:
+              from: current_step
+              path: "products[0].format_options[*].v1_format_ref[*]"
+            target:
+              from: current_step
+              path: "products[0].format_ids[*]"
+            match_keys: [agent_url, id]
+            on_out_of_scope: fail
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "canonical_formats--get_seeded_canonical_product"
+            description: "Context correlation_id returned unchanged"
+
+      - id: get_seeded_v1_only_product
+        title: "Read v1-only format declarations"
+        narrative: |
+          Request the seeded product that intentionally publishes only
+          `format_ids[]` on the producer side. This remains a valid 3.x
+          product shape during the canonical-format migration window; this
+          producer storyboard MUST NOT require the seller to synthesize
+          `format_options[]` for that product.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: schema_compliance
+        stateful: true
+        expected: |
+          Return the seeded canonical_formats_ids_only_display product with a
+          v1 fallback format_id. No producer-side `format_options[]` projection
+          is required for v1-only products.
+        sample_request:
+          buying_mode: "wholesale"
+          filters:
+            channels: ["display"]
+            delivery_type: "guaranteed"
+            required_vendor_metrics:
+              - vendor:
+                  domain: "prism.example"
+                metric_id: "canonical_format_storyboard_probe_ids_only"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          context:
+            correlation_id: "canonical_formats--get_seeded_v1_only_product"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_value
+            path: "products[0].product_id"
+            value: "canonical_formats_ids_only_display"
+            description: "The vendor-metric filter isolates the v1-only seeded product"
+          - check: field_value
+            path: "products[0].format_ids[0].agent_url"
+            value: "https://creative.adcontextprotocol.org/"
+            description: "v1-only product names the AAO creative-format catalog"
+          - check: field_value
+            path: "products[0].format_ids[0].id"
+            value: "display_728x90_image"
+            description: "v1-only product carries the expected named format"
+
+      - id: get_seeded_v2_only_product
+        title: "Read v2-only format declarations"
+        narrative: |
+          Request the seeded product that intentionally publishes only
+          `format_options[]`. Producers can expose canonical product-bound
+          declarations without also carrying v1 named-format fallbacks.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: schema_compliance
+        stateful: true
+        expected: |
+          Return the seeded canonical_formats_options_only_display product with
+          an image canonical declaration and no format_ids fallback.
+        sample_request:
+          buying_mode: "wholesale"
+          filters:
+            channels: ["display"]
+            delivery_type: "guaranteed"
+            required_vendor_metrics:
+              - vendor:
+                  domain: "prism.example"
+                metric_id: "canonical_format_storyboard_probe_options_only"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          context:
+            correlation_id: "canonical_formats--get_seeded_v2_only_product"
+
+        validations:
+          - check: field_value
+            path: "products[0].product_id"
+            value: "canonical_formats_options_only_display"
+            description: "The vendor-metric filter isolates the v2-only seeded product"
+          - check: field_absent
+            path: "products[0].format_ids"
+            description: "v2-only product does not invent v1 named-format fallbacks"
+          - check: field_value
+            path: "products[0].format_options[0].format_kind"
+            value: "image"
+            description: "v2-only product advertises the image canonical"
+          - check: field_value
+            path: "products[0].format_options[0].format_option_id"
+            value: "canonical_formats_image_leaderboard"
+            description: "v2-only product carries a stable format_option_id"
+          - check: field_value
+            path: "products[0].format_options[0].params.width"
+            value: 728
+            description: "Canonical image params include the expected width"
+          - check: field_value
+            path: "products[0].format_options[0].params.height"
+            value: 90
+            description: "Canonical image params include the expected height"
+
+      - id: get_seeded_custom_v2_only_product
+        title: "Read custom v2-only declarations"
+        narrative: |
+          Request the seeded product that publishes a custom canonical
+          declaration with `canonical_formats_only: true`, `format_shape`, and
+          a digest-pinned `format_schema` reference.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: schema_compliance
+        stateful: true
+        expected: |
+          Return the seeded canonical_formats_custom_takeover product with a
+          custom v2-only declaration and digest-pinned format_schema reference.
+        sample_request:
+          buying_mode: "wholesale"
+          filters:
+            channels: ["display"]
+            delivery_type: "guaranteed"
+            required_vendor_metrics:
+              - vendor:
+                  domain: "prism.example"
+                metric_id: "canonical_format_storyboard_probe_custom"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          context:
+            correlation_id: "canonical_formats--get_seeded_custom_v2_only_product"
+
+        validations:
+          - check: field_value
+            path: "products[0].product_id"
+            value: "canonical_formats_custom_takeover"
+            description: "The vendor-metric filter isolates the custom seeded product"
+          - check: field_absent
+            path: "products[0].format_ids"
+            description: "Custom v2-only product does not invent v1 named-format fallbacks"
+          - check: field_value
+            path: "products[0].format_options[0].format_kind"
+            value: "custom"
+            description: "Custom declaration uses the custom format_kind discriminator"
+          - check: field_value
+            path: "products[0].format_options[0].canonical_formats_only"
+            value: true
+            description: "Custom declaration explicitly marks itself as v2-only"
+          - check: field_value
+            path: "products[0].format_options[0].experimental"
+            value: true
+            description: "Custom declaration is surfaced as experimental instead of using runtime_status"
+          - check: field_value
+            path: "products[0].format_options[0].format_shape"
+            value: "multi_placement_takeover"
+            description: "Custom declaration declares the shared format-shape vocabulary term"
+          - check: field_value
+            path: "products[0].format_options[0].format_schema.uri"
+            value: "https://creative.adcontextprotocol.org/translated/acme-outdoor/schemas/custom_takeover_v1"
+            description: "Custom declaration carries a fetchable format_schema URI"
+          - check: field_value
+            path: "products[0].format_options[0].format_schema.digest"
+            value: "sha256:a3f5b7c9d8e2f1a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2"
+            description: "Custom declaration carries a digest-pinned format_schema reference"
+
+      - id: get_seeded_experimental_product
+        title: "Read experimental declarations"
+        narrative: |
+          Request the seeded product that dual-emits an image declaration and
+          marks the v2 declaration `experimental: true`. This replaces the
+          earlier runtime_status skip-gate model.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: schema_compliance
+        stateful: true
+        expected: |
+          Return the seeded canonical_formats_experimental_display product with
+          both v1 and v2 declarations and an experimental v2 marker.
+        sample_request:
+          buying_mode: "wholesale"
+          filters:
+            channels: ["display"]
+            delivery_type: "guaranteed"
+            required_vendor_metrics:
+              - vendor:
+                  domain: "prism.example"
+                metric_id: "canonical_format_storyboard_probe_experimental"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          context:
+            correlation_id: "canonical_formats--get_seeded_experimental_product"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_value
+            path: "products[0].product_id"
+            value: "canonical_formats_experimental_display"
+            description: "The vendor-metric filter isolates the experimental seeded product"
+          - check: field_value
+            path: "products[0].format_ids[0].id"
+            value: "display_300x250_image"
+            description: "Experimental declaration still exposes its v1 fallback"
+          - check: field_value
+            path: "products[0].format_options[0].format_kind"
+            value: "image"
+            description: "Experimental declaration still carries the canonical format_kind"
+          - check: field_value
+            path: "products[0].format_options[0].experimental"
+            value: true
+            description: "Experimental marker replaces the obsolete runtime_status field"
+          - check: refs_resolve
+            description: "The experimental declaration's v1_format_ref still resolves to a product format_id"
+            source:
+              from: current_step
+              path: "products[0].format_options[*].v1_format_ref[*]"
+            target:
+              from: current_step
+              path: "products[0].format_ids[*]"
+            match_keys: [agent_url, id]
+            on_out_of_scope: fail
+
+      - id: get_seeded_divergent_product
+        title: "Flag divergent dual-emission"
+        narrative: |
+          Request the seeded product whose `format_ids[]` and
+          `format_options[].v1_format_ref[]` intentionally disagree. Producers
+          that self-detect this drift surface a non-fatal advisory on
+          `errors[]` so consumers do not silently lose inventory.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: schema_compliance
+        auth:
+          type: api_key
+          from_test_kit: true
+        stateful: true
+        expected: |
+          Return the seeded canonical_formats_divergent_display product and
+          flag the divergent declarations with a non-fatal
+          FORMAT_DECLARATION_DIVERGENT advisory in `errors[]`.
+        sample_request:
+          buying_mode: "wholesale"
+          filters:
+            channels: ["display"]
+            delivery_type: "guaranteed"
+            required_vendor_metrics:
+              - vendor:
+                  domain: "prism.example"
+                metric_id: "canonical_format_storyboard_probe_divergent"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          context:
+            correlation_id: "canonical_formats--get_seeded_divergent_product"
+
+        validations:
+          - check: response_schema
+            description: "Divergent dual-emission remains a populated get_products success response"
+          - check: field_value
+            path: "products[0].product_id"
+            value: "canonical_formats_divergent_display"
+            description: "Success response still returns the matching seeded product"
+          - check: field_value
+            path: "errors[0].code"
+            value: "FORMAT_DECLARATION_DIVERGENT"
+            description: "Producer flags divergent dual-emission with the canonical advisory code"
+          - check: field_value
+            path: "errors[0].source"
+            value: "producer"
+            description: "Advisory is attributed to the producer declaration"
+
+  - id: canonical_create_satisfaction
+    title: "Canonical create-time format satisfaction"
+    narrative: |
+      The buyer rereads the fixed-size seeded product so the runner's product
+      context points at `canonical_formats_mrec_display`, then submits two
+      create_media_buy requests. The first uses the legacy
+      `display_300x250_image` selector and MUST be accepted after v1-to-canonical
+      normalization. The second uses a bare canonical `format_kind: image`
+      selector with no dimensions and MUST be rejected because it under-specifies
+      the product's 300x250 constraint.
+
+    steps:
+      - id: get_canonical_product_for_create_satisfaction
+        title: "Read the fixed-size canonical product before create"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: schema_compliance
+        stateful: true
+        expected: |
+          Return the seeded canonical_formats_mrec_display product so create-time
+          validations can compare package format selectors against the product's
+          canonical format_options[] declaration.
+        sample_request:
+          buying_mode: "wholesale"
+          filters:
+            channels: ["display"]
+            delivery_type: "guaranteed"
+            required_vendor_metrics:
+              - vendor:
+                  domain: "prism.example"
+                metric_id: "canonical_format_storyboard_probe"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          context:
+            correlation_id: "canonical_formats--get_canonical_product_for_create_satisfaction"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_value
+            path: "products[0].product_id"
+            value: "canonical_formats_mrec_display"
+            description: "The create-time satisfaction phase targets the fixed-size seeded product"
+          - check: field_value
+            path: "products[0].format_options[0].params.width"
+            value: 300
+            description: "Product fixes image width at 300"
+          - check: field_value
+            path: "products[0].format_options[0].params.height"
+            value: 250
+            description: "Product fixes image height at 250"
+
+      - id: create_media_buy_with_legacy_mrec_format
+        title: "Accept legacy fixed MREC selector after canonical normalization"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        expected: |
+          Accept the buy. The package uses the legacy display_300x250_image
+          format_id; canonical satisfaction validates that the legacy selector
+          normalizes to the product's image format_options[] declaration.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          start_time: "2099-06-01T00:00:00Z"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: "canonical_formats_mrec_display"
+              budget: 1000
+              pricing_option_id: "canonical_formats_mrec_cpm"
+              format_ids:
+                - agent_url: "https://creative.adcontextprotocol.org/"
+                  id: "display_300x250_image"
+              context:
+                buyer_ref: "canonical_formats_legacy_mrec_positive"
+          context:
+            correlation_id: "canonical_formats--create_media_buy_with_legacy_mrec_format"
+          idempotency_key: "$generate:uuid_v4#canonical_formats_create_media_buy_with_legacy_mrec_format"
+
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Accepted create allocates a media_buy_id"
+          - check: canonical_format_satisfaction
+            value: true
+            description: "Legacy display_300x250_image selector satisfies the fixed canonical image declaration after normalization"
+
+      - id: reject_bare_image_selector_for_fixed_mrec
+        title: "Reject bare canonical image selector for fixed-size product"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        expected: |
+          Reject with UNSUPPORTED_FEATURE. The bare canonical image selector
+          does not include width and height, so it does not satisfy the product's
+          fixed 300x250 declaration.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          start_time: "2099-06-01T00:00:00Z"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: "canonical_formats_mrec_display"
+              budget: 1000
+              pricing_option_id: "canonical_formats_mrec_cpm"
+              format_kind: "image"
+              context:
+                buyer_ref: "canonical_formats_bare_image_negative"
+          context:
+            correlation_id: "canonical_formats--reject_bare_image_selector_for_fixed_mrec"
+          idempotency_key: "$generate:uuid_v4#canonical_formats_reject_bare_image_selector_for_fixed_mrec"
+
+        validations:
+          - check: error_code
+            allowed_values: ["UNSUPPORTED_FEATURE"]
+            description: "Seller rejects an under-specified format selector as unsupported for the product"
+          - check: canonical_format_satisfaction
+            value: false
+            description: "Bare canonical image selector lacks the dimensions required by the fixed canonical image declaration"
