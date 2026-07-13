@@ -4,7 +4,7 @@ description: "How to build an AdCP creative agent that defines formats, validate
 "og:title": "AdCP — Implementing Creative Agents"
 ---
 
-> **Canonical formats in 3.1**: in the canonical-formats path, creative agents declare what they can produce via `creative.supported_formats` on `get_adcp_capabilities` (replacing the v1 `list_creative_formats` overload for creative agents). Each entry uses the same `ProductFormatDeclaration` shape as a product's inline `format_options[i]`. See [canonical-formats](/docs/creative/canonical-formats).
+> **Canonical formats in 3.1+ / preferred discovery in 3.2:** creative agents declare what they can produce via `creative.supported_formats` on `get_adcp_capabilities` (replacing the v1 `list_creative_formats` overload for creative agents). Each entry uses the same `ProductFormatDeclaration` shape as a product's inline `format_options[i]`. Sales agents use `get_products.format_options[]` for product-level format discovery. `list_creative_formats` remains a v1 compatibility path through 4.x. See [canonical-formats](/docs/creative/canonical-formats) and the [migration guide](/docs/creative/canonical-formats-migration).
 
 This guide explains how to implement a creative agent that defines and manages creative formats.
 
@@ -31,13 +31,14 @@ The buyer passes all assets inline with each call. Your agent applies a template
 
 | Task | Role |
 |---|---|
-| `list_creative_formats` | Discover available templates and their asset requirements |
+| `get_adcp_capabilities.creative.supported_formats` | Preferred 3.2+ discovery of templates / producible formats |
+| `list_creative_formats` | Deprecated v1 compatibility discovery through 4.x |
 | `preview_creative` | Render a template with provided assets |
 | `build_creative` | Transform input assets into a serving tag |
 
 **Capabilities:** `supports_transformation: true`
 
-The buyer's workflow: discover your formats → preview with real assets → request built creatives for trafficking.
+The buyer's workflow: discover your formats (canonical `supported_formats`, or v1 `list_creative_formats` through 4.x) → preview with real assets → request built creatives for trafficking.
 
 ### Stateful (pre-loaded): ad servers
 
@@ -64,14 +65,16 @@ Buyers push creative assets or catalog items to your platform. You validate, sto
 
 | Task | Role |
 |---|---|
-| `list_creative_formats` | Discover what formats you accept |
+| `get_products.format_options[]` | Preferred 3.2+ discovery of formats your products accept |
+| `list_creative_formats` | Deprecated v1 compatibility discovery through 4.x |
 | `sync_creatives` | Accept pushed assets or catalog items |
 | `preview_creative` | Preview pushed creatives in your platform's environment |
 | `get_creative_delivery` | Report delivery metrics |
+| `list_creatives` | Browse the creative library after sync (not deprecated) |
 
 **Capabilities:** `has_creative_library: true`
 
-The buyer's workflow: discover your accepted formats → push assets → preview in your environment.
+The buyer's workflow: discover your accepted formats (product `format_options[]`, or v1 `list_creative_formats` through 4.x) → push assets → preview in your environment.
 
 ### Choosing your model
 
@@ -294,18 +297,18 @@ When formats reference your agent_url, you are the authority for:
 
 ## Required tasks
 
-Creative agents must implement these two tasks:
+Creative agents must implement format discovery and preview. Preferred 3.2+ discovery is canonical; `list_creative_formats` is the v1 compatibility path through 4.x.
 
-### list_creative_formats
+### Format discovery (`creative.supported_formats` preferred; `list_creative_formats` through 4.x)
 
-Return all formats your agent defines. This is how buyers discover what creative formats you support.
+Declare producible formats via `get_adcp_capabilities.creative.supported_formats`. Optionally keep `list_creative_formats` for v1-era buyers through 4.x.
 
-**Key responsibilities:**
+**Key responsibilities when implementing `list_creative_formats`:**
 - Return complete format definitions with all `assets` (both required and optional)
 - Include your `agent_url` in each format
 - Use proper namespacing for `format_id` values
 
-See [list_creative_formats task reference](/docs/creative/task-reference/list_creative_formats) for complete API specification.
+See [list_creative_formats task reference](/docs/creative/task-reference/list_creative_formats) and [canonical formats](/docs/creative/canonical-formats) for complete specifications.
 
 ### preview_creative
 
@@ -428,12 +431,13 @@ When updating format definitions:
 Before launching your creative agent:
 
 - [ ] MCP and/or A2A endpoints are accessible
-- [ ] All format_ids use proper namespacing (`domain:id`)
+- [ ] All format_ids use proper namespacing (`domain:id`) when using the v1 named-format path
 - [ ] Domain in format_id matches your `agent_url` domain
-- [ ] `list_creative_formats` returns all your formats
+- [ ] Format discovery is declared via `creative.supported_formats` (and/or product `format_options[]` for sales agents); `list_creative_formats` is optional v1 compatibility through 4.x
 - [ ] `preview_creative` validates manifests and generates previews
 - [ ] Format definitions include complete asset requirements
 - [ ] Documentation available for your custom formats
+- [ ] If you host a library, `list_creatives` remains available (not deprecated by this posture)
 
 ## Integration patterns
 
@@ -659,14 +663,14 @@ Re-submission resets the review clock. The agent treats the updated creative as 
 
 The table below maps each interaction model to the tasks it should implement. See [Three interaction models](#three-interaction-models) above for detailed descriptions.
 
-| Interaction model | Required tasks | Additional tasks | Capabilities |
+| Interaction model | Required tasks | Additional / v1-compat through 4.x | Capabilities |
 |---|---|---|---|
-| Template/transformer (Celtra, format conversion) | `list_creative_formats`, `preview_creative`, `build_creative` | — | `supports_transformation: true` |
+| Template/transformer (Celtra, format conversion) | `get_adcp_capabilities` (`creative.supported_formats`), `preview_creative`, `build_creative` | `list_creative_formats` | `supports_transformation: true` |
 | Ad server (Innovid, Flashtalking, CM360) | `list_creatives`, `build_creative`, `preview_creative` | `list_creative_formats`, `get_creative_delivery` | `has_creative_library: true` |
-| Sales agent with creative (publishers, retail media) | `list_creative_formats`, `sync_creatives`, `preview_creative` | `get_creative_delivery` | `has_creative_library: true` |
-| Generative creative tool | `list_creative_formats`, `preview_creative`, `build_creative` | — | `supports_generation: true` |
+| Sales agent with creative (publishers, retail media) | `get_products` (`format_options[]`), `sync_creatives`, `preview_creative` | `list_creative_formats`, `list_creatives`, `get_creative_delivery` | `has_creative_library: true` |
+| Generative creative tool | `get_adcp_capabilities` (`creative.supported_formats`), `preview_creative`, `build_creative` | `list_creative_formats` | `supports_generation: true` |
 
-Declare these capabilities in `get_adcp_capabilities` so buyer agents can determine the correct interaction model without trial and error. See [Interaction models](/docs/creative/specification#interaction-models) in the spec.
+Declare these capabilities in `get_adcp_capabilities` so buyer agents can determine the correct interaction model without trial and error. See [Interaction models](/docs/creative/specification#interaction-models) in the spec. `list_creatives` remains the creative-library query task and is not deprecated by the 3.2 format-discovery posture.
 
 Platforms with a creative library should also implement the [accounts protocol](/docs/accounts/overview) so buyers can establish access before querying. This is the same accounts protocol used by sales agents for media buys.
 
@@ -675,7 +679,7 @@ Platforms with a creative library should also implement the [accounts protocol](
 - [Creative Formats](/docs/creative/formats) - Understanding format structure
 - [Creative Manifests](/docs/creative/creative-manifests) - How manifests work
 - [Asset Types](/docs/creative/asset-types) - Asset specifications
-- [list_creative_formats task](/docs/creative/task-reference/list_creative_formats) - Format discovery API reference
-- [list_creatives task](/docs/creative/task-reference/list_creatives) - Creative library API reference
+- [list_creative_formats task](/docs/creative/task-reference/list_creative_formats) - Deprecated v1 format discovery (functional through 4.x)
+- [list_creatives task](/docs/creative/task-reference/list_creatives) - Creative library API reference (not deprecated)
 - [build_creative task](/docs/creative/task-reference/build_creative) - Manifest generation API reference
 - [preview_creative task](/docs/creative/task-reference/preview_creative) - Preview rendering API reference

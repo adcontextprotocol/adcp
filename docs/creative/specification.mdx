@@ -90,13 +90,13 @@ These models compose — an agent can support multiple. A creative ad server wit
 
 **Buyer workflow by model:**
 
-- **Transformation**: `list_creative_formats` → `build_creative` (with `creative_manifest` + `target_format_id`)
-- **Generation**: `list_creative_formats` → `build_creative` (with `message` + `target_format_id`)
+- **Transformation**: discover via `get_adcp_capabilities.creative.supported_formats` (preferred in 3.2+) or v1 `list_creative_formats` through 4.x → `build_creative` (with `creative_manifest` + `target_format_id`)
+- **Generation**: discover via `get_adcp_capabilities.creative.supported_formats` (preferred in 3.2+) or v1 `list_creative_formats` through 4.x → `build_creative` (with `message` + `target_format_id`)
 - **Library retrieval**: `list_creatives` → `build_creative` (with `creative_id` + `target_format_id`)
 
 Agents that host a creative library should also implement the [accounts protocol](/docs/accounts/overview) so buyers can establish access before querying. Sales agents that already implement accounts for media buys do not need to do anything additional.
 
-A transformation or generation agent that charges for its services implements the Accounts Protocol, exposes `pricing_options` on `list_creative_formats`, and returns pricing in `build_creative` responses. Agents that persist `creative_id` on build output can also expose pricing on `list_creatives`. Free transformation agents remain stateless and unchanged.
+A transformation or generation agent that charges for its services implements the Accounts Protocol, exposes `pricing_options` on the discovery surface it still offers (`list_creative_formats` through 4.x, and/or pricing attached to canonical capability discovery where declared), and returns pricing in `build_creative` responses. Agents that persist `creative_id` on build output can also expose pricing on `list_creatives`. Free transformation agents remain stateless and unchanged.
 
 ### Format authority
 
@@ -222,19 +222,20 @@ Creative agents that charge for their services expose pricing through the same d
 
 ### Pricing discovery surfaces
 
-Pricing is discovered via two surfaces depending on the agent's interaction model:
+Pricing is discovered via surfaces depending on the agent's interaction model:
 
-- **`list_creatives`** — ad servers and library-based agents expose `pricing_options[]` on each creative. The buyer discovers pricing for specific creatives they want to use.
-- **`list_creative_formats`** — transformation and generation agents expose `pricing_options[]` on each format. The buyer discovers pricing for the formats the agent can produce, before any creative exists.
+- **`list_creatives`** — ad servers and library-based agents expose `pricing_options[]` on each creative. The buyer discovers pricing for specific creatives they want to use. `list_creatives` is **not** deprecated by the 3.2 format-discovery posture.
+- **`list_creative_formats`** *(v1 compatibility through 4.x)* — transformation and generation agents that still expose this task MAY attach `pricing_options[]` on each format so buyers can discover pricing before any creative exists.
+- **Canonical discovery** — preferred in 3.2+ for format discovery itself: creative agents declare producible formats via `get_adcp_capabilities.creative.supported_formats`; sales agents declare product formats via `get_products.format_options[]`. Pricing may still be returned on `build_creative` and on any v1 discovery surface the agent continues to offer.
 
-Both surfaces use the same `pricing_options[]` array of [`vendor-pricing-option`](https://adcontextprotocol.org/schemas/v3/core/vendor-pricing-option.json) objects. Both require `account` and `include_pricing: true` on the request.
+Surfaces that return `pricing_options[]` use the same array of [`vendor-pricing-option`](https://adcontextprotocol.org/schemas/v3/core/vendor-pricing-option.json) objects and require `account` and `include_pricing: true` on the request when that surface supports the flag.
 
-An agent MAY expose pricing on both surfaces (e.g., a creative management platform that has both a library and transformation capabilities).
+An agent MAY expose pricing on more than one surface (e.g., a creative management platform that has both a library and transformation capabilities).
 
 ### Pricing flow
 
 1. **Account setup** — rate card agreed. Determines pricing for all subsequent operations.
-2. **Discovery** — `list_creatives` or `list_creative_formats` with `account` and `include_pricing: true` returns `pricing_options[]`. Vendors may offer multiple options (volume tiers, context-specific rates, different models per product line).
+2. **Discovery** — `list_creatives` and/or v1 `list_creative_formats` (through 4.x) with `account` and `include_pricing: true` returns `pricing_options[]`. Vendors may offer multiple options (volume tiers, context-specific rates, different models per product line). Consumers MUST NOT assume `list_creative_formats` is present on 3.2+ agents that declare equivalent canonical-format discovery.
 3. **Build** — `build_creative` with `account`. The agent computes the cost and returns `pricing_option_id`, `vendor_cost`, `currency`, and `consumption` in the response.
 4. **Report** — `report_usage` with `creative_id` and `pricing_option_id` for reconciliation.
 
@@ -273,9 +274,9 @@ The Creative Protocol defines the following tasks. See task reference pages for 
 
 **Reference**: [`list_creative_formats` task](/docs/creative/task-reference/list_creative_formats)
 
-Discover creative formats and their specifications.
+Discover creative formats and their specifications. **Deprecated for new discovery in 3.2** — prefer `get_adcp_capabilities.creative.supported_formats` (creative agents) or `get_products.format_options[]` (sales agents). The task remains a supported v1 compatibility path through 4.x; removal is aligned with the [v1 named-format deprecation calendar](/docs/creative/canonical-formats-migration).
 
-**Requirements:**
+**Requirements** (when the agent implements this v1 compatibility task):
 - Creative agents MUST return full format specifications for formats they own
 - Creative agents MUST include `agent_url` identifying the authoritative agent for each format
 - Creative agents MUST include technical constraints (dimensions, duration, file types) in format definitions
@@ -425,8 +426,10 @@ All Creative Protocol communications MUST use HTTPS with TLS 1.2 or higher.
 A conformant Creative Protocol agent MUST:
 
 1. Support at least one specified transport (MCP or A2A)
-2. Implement `list_creative_formats` for format discovery
-3. Return authoritative format definitions only for formats it owns
+2. Provide format discovery by either:
+   - declaring equivalent canonical-format discovery — creative agents via `get_adcp_capabilities.creative.supported_formats`, sales agents via `get_products.format_options[]` — or
+   - implementing `list_creative_formats` (v1 compatibility path, functional through 4.x)
+3. Return authoritative format definitions only for formats it owns (when returning v1 named-format definitions)
 4. Validate manifests against format specifications
 5. Use specified error codes
 
@@ -435,11 +438,14 @@ A conformant Creative Protocol agent SHOULD:
 1. Implement `build_creative` for creative generation
 2. Implement `preview_creative` for preview rendering
 3. Support universal macros in tracking URLs
-4. Implement `list_creatives` when the agent hosts a creative library
+4. Implement `list_creatives` when the agent hosts a creative library (`list_creatives` is **not** deprecated by the 3.2 format-discovery posture)
 5. Implement `sync_creatives` when the agent accepts creative uploads
 6. Support `creative_id` in `build_creative` when the agent hosts a creative library
 7. Implement the accounts protocol (`sync_accounts` / `list_accounts`) when hosting a creative library
 8. Declare `supports_generation`, `supports_transformation`, and `has_creative_library` in `get_adcp_capabilities` so buyers can determine the correct interaction model
+9. Keep offering `list_creative_formats` through 4.x when serving v1-era buyers, even after declaring canonical discovery
+
+Legacy named-format creatives and v1 `format_id` / `format_ids[]` remain supported through 4.x. This 3.2 posture deprecates the discovery *tool* for new integrations; it is not a hard removal of named-format wire shapes.
 
 ### Consumer conformance
 
@@ -449,6 +455,7 @@ A conformant Creative Protocol consumer MUST:
 2. Validate manifests against format specifications before submission
 3. Handle validation errors appropriately
 4. Track visited URLs when recursively discovering formats to avoid infinite loops
+5. Not assume `list_creative_formats` is present on 3.2+ agents when equivalent canonical-format discovery is declared (`creative.supported_formats` and/or product `format_options[]`). Prefer those surfaces for new discovery; treat `list_creative_formats` as an optional v1 compatibility fallback through 4.x.
 
 ## Implementation notes
 

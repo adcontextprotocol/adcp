@@ -173,6 +173,8 @@ npx @adcp/sdk@latest storyboard run http://localhost:3001/mcp media_buy_seller -
 
 Storyboards exercise every required tool call and validate response shapes. The storyboard runner uses sandbox mode by default — your agent receives `sandbox: true` on all account references and should return simulated data without real platform calls. A passing run means your agent is protocol-compliant.
 
+The sample transcript below includes `list_creative_formats` because the current `media_buy_seller` storyboard still exercises that v1 compatibility path. In 3.2+, agents that declare equivalent canonical-format discovery (`get_products.format_options[]` for sales agents, `get_adcp_capabilities.creative.supported_formats` for creative agents) are not required to expose `list_creative_formats` for new discovery; absence of the tool grades `not_applicable` on gated storyboard steps rather than failing conformance. See the [canonical formats migration guide](/docs/creative/canonical-formats-migration) and [`list_creative_formats`](/docs/creative/task-reference/list_creative_formats).
+
 ```
 media_buy_seller (9 steps)
   ✓ get_adcp_capabilities

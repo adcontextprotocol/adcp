@@ -9,6 +9,34 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 
 ---
 
+## Version 3.2.0
+
+**Status:** In development — minor release targeting the 3.2.0 milestone. Additive over 3.1 for wire shapes; this section records the creative-format **discovery** deprecation posture (#5779).
+
+### Creative-format discovery deprecation posture (#5779)
+
+`list_creative_formats` is **deprecated for new discovery**. Prefer:
+
+| Role | Preferred 3.2+ discovery | Notes |
+|---|---|---|
+| Sales agents | `get_products.format_options[]` | Product-level accepted formats |
+| Creative agents | `get_adcp_capabilities.creative.supported_formats` | Producible-format catalog |
+
+The v1 task remains **functional through 4.x**. Removal is aligned with the v1 named-format / `format_ids` deprecation calendar in the [canonical formats migration guide](/docs/creative/canonical-formats-migration) (2027-Q4 floor / 2029-Q1 ceiling; adoption-driven 5.0 cut sequence) — not an immediate hard cut in 3.2.
+
+**Not deprecated by this change:**
+
+- [`list_creatives`](/docs/creative/task-reference/list_creatives) remains the creative-library query task.
+- Legacy named-format creatives and v1 `format_id` / `format_ids[]` remain supported through 4.x.
+
+**Consumer conformance:** buyers and other consumers MUST NOT assume `list_creative_formats` is present on 3.2+ agents when equivalent canonical-format discovery is declared.
+
+**Compliance:** storyboard steps that call `list_creative_formats` are gated with `requires_tool` so agents that have migrated to canonical discovery grade those steps `not_applicable` rather than failing. Agents that still implement the v1 tool continue to conform.
+
+See [`list_creative_formats`](/docs/creative/task-reference/list_creative_formats), [Creative Protocol specification § Conformance](/docs/creative/specification#conformance), and [Implementing creative agents](/docs/creative/implementing-creative-agents).
+
+---
+
 ## Version 3.1.0
 
 **Status:** General availability — minor release. The stable wire negotiation value is `"3.1"`. The published 3.0.x line remains supported for existing integrations; new 3.1 integrations should pin to `"3.1"` and read `supported_versions` before sending 3.1-only fields.

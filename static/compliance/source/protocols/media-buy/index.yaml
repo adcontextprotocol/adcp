@@ -361,6 +361,7 @@ phases:
           a stale or typo'd entry that would have failed silently at
           `sync_creatives` after the media buy was already committed.
         task: list_creative_formats
+        requires_tool: list_creative_formats
         schema_ref: "creative/list-creative-formats-request.json"
         response_schema_ref: "creative/list-creative-formats-response.json"
         doc_ref: "/creative/task-reference/list_creative_formats"
@@ -609,6 +610,7 @@ phases:
           dimensions, and constraints. This is a bounded integrity check, not a
           full format-catalog dump.
         task: list_creative_formats
+        requires_tool: list_creative_formats
         schema_ref: "creative/list-creative-formats-request.json"
         response_schema_ref: "creative/list-creative-formats-response.json"
         doc_ref: "/creative/task-reference/list_creative_formats"
