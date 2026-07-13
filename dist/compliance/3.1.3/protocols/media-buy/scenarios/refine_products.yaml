@@ -1,0 +1,148 @@
+id: media_buy_seller/refine_products
+version: "1.0.0"
+title: "Seller handles product refinement"
+category: media_buy_seller
+summary: "Verifies that a media buy seller supports buying_mode: refine with product-level and request-level changes."
+track: media_buy
+required_tools:
+  - get_products
+
+narrative: |
+  After a buyer receives products from a brief, they refine the results without starting
+  over. The buyer calls get_products with buying_mode: refine and a refine array describing
+  changes at the request level ("only guaranteed") or product level ("increase this product's
+  budget").
+
+  The seller must apply each refinement, return updated products, and include
+  refinement_applied showing how each request was handled. This is the standard negotiation
+  loop — brief, review, refine, repeat until satisfied.
+
+  Every media buy seller that supports negotiation (not just wholesale) must handle
+  product-level refinement.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - accepts_briefs
+  examples:
+    - "Any media buy seller that accepts briefs"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The caller needs a brand identity and operator credentials.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: setup
+    title: "Account setup"
+    steps:
+      - id: sync_accounts
+        title: "Establish account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the account with account_id and status active.
+
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              payment_terms: "net_30"
+
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_refine_products_setup_sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+
+  - id: brief
+    title: "Initial brief"
+    narrative: |
+      Send a brief to get the initial product set that the buyer will refine.
+
+    steps:
+      - id: get_products_brief
+        title: "Send a brief"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        expected: |
+          Return products matching the brief. Each product should include product_id,
+          delivery_type, pricing_models, and forecast.
+
+        sample_request:
+          buying_mode: "brief"
+          brief: "Premium video and display on sports and outdoor lifestyle. Q2 flight, $50K budget. Adults 25-54, US and Canada."
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products"
+            description: "Response contains products"
+          - check: field_present
+            path: "products[0].product_id"
+            description: "Products have IDs"
+
+  - id: refine
+    title: "Refine products"
+    narrative: |
+      The buyer has reviewed the initial products and wants to narrow down. They call
+      get_products with buying_mode: refine and a refine array with request-level and
+      product-level changes. The seller applies each refinement and returns the updated
+      product set.
+
+    steps:
+      - id: get_products_refine
+        title: "Refine with request-level and product-level changes"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: true
+        expected: |
+          Return updated products reflecting the refinements:
+          - Apply each refinement to the relevant scope (request or product)
+          - Include refinement_applied showing how each request was handled
+          - Preserve products that weren't targeted by refinements
+          - Update pricing and forecasts to reflect the changes
+
+        sample_request:
+          buying_mode: "refine"
+          refine:
+            - scope: "request"
+              ask: "Only guaranteed packages. Must include completion rate SLA above 80%."
+            - scope: "product"
+              product_id: "sports_preroll_q2"
+              ask: "Increase budget allocation to $30K"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products"
+            description: "Response contains updated products"
