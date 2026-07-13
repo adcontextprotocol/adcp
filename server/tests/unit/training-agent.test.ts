@@ -1497,6 +1497,73 @@ describe('get_products handler', () => {
     }
   });
 
+  it('filters by publisher_domain', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const targetDomain = PUBLISHERS[0].domain;
+    const { result } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      filters: { publisher_domain: targetDomain },
+    });
+
+    const products = result.products as Array<{ publisher_properties?: Array<{ publisher_domain?: string; publisher_domains?: string[] }> }>;
+    expect(products.length).toBeGreaterThan(0);
+    expect(products.every(p =>
+      p.publisher_properties?.some(pp =>
+        pp.publisher_domain?.toLowerCase() === targetDomain.toLowerCase() ||
+        pp.publisher_domains?.some(d => d.toLowerCase() === targetDomain.toLowerCase()),
+      ),
+    )).toBe(true);
+  });
+
+  it('matches publisher_domain case-insensitively', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const targetDomain = PUBLISHERS[0].domain;
+    const { result } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      filters: { publisher_domain: targetDomain.toUpperCase() },
+    });
+
+    expect((result.products as unknown[]).length).toBeGreaterThan(0);
+  });
+
+  it('filters by publisher_domain using plural publisher_domains array form', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'pluraltest.example' } };
+
+    const seed = await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: { domain: 'pluraltest.example' },
+      scenario: 'seed_product',
+      params: {
+        product_id: 'plural_domain_product',
+        fixture: {
+          publisher_properties: [{ publisher_domains: ['plural-publisher.example'], selection_type: 'all' }],
+        },
+      },
+    });
+    expect(seed.result.success).toBe(true);
+
+    const { result } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      account,
+      filters: { publisher_domain: 'plural-publisher.example' },
+    });
+
+    const products = result.products as Array<{ product_id: string }>;
+    expect(products.some(p => p.product_id === 'plural_domain_product')).toBe(true);
+  });
+
+  it('returns empty list when publisher_domain matches no products', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      filters: { publisher_domain: 'no-such-publisher.example' },
+    });
+
+    expect(Array.isArray(result.products)).toBe(true);
+    expect((result.products as unknown[]).length).toBe(0);
+  });
+
   it('keeps fixed-price filtering when brief mode falls back to suggestions', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'get_products', {
