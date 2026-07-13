@@ -21,6 +21,7 @@ import { mergeSeedProduct } from '@adcp/sdk/testing';
 import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
 import { isPrivateHostname, safeFetchAxiosLike } from '../utils/url-security.js';
+import { canonicalizePublisherDomain } from '../services/publisher-domain.js';
 import type { TrainingContext, CatalogProduct, MediaBuyState, MediaBuyAvailableActionState, MediaBuyProductAllowedActionState, PackageState, SignalActivationState, CreativeState, CreativeManifest, ToolArgs, ListReference, PackageTargeting, AccountRef, SessionState } from './types.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import type {
@@ -2941,6 +2942,23 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
           ),
         );
       });
+    }
+    const publisherDomainFilter = (req.filters as { publisher_domain?: string }).publisher_domain;
+    if (typeof publisherDomainFilter === 'string' && publisherDomainFilter) {
+      const canonicalDomain = canonicalizePublisherDomain(publisherDomainFilter);
+      products = products.filter(p =>
+        p.publisher_properties?.some((pp: { publisher_domain?: string; publisher_domains?: string[] }) => {
+          if (typeof pp.publisher_domain === 'string') {
+            return canonicalizePublisherDomain(pp.publisher_domain) === canonicalDomain;
+          }
+          if (Array.isArray(pp.publisher_domains)) {
+            return pp.publisher_domains.some(
+              (d: unknown) => typeof d === 'string' && canonicalizePublisherDomain(d) === canonicalDomain,
+            );
+          }
+          return false;
+        }),
+      );
     }
   }
   const filteredProducts = products;
