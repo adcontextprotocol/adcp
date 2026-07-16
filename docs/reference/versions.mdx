@@ -13,7 +13,7 @@ description: "Every published AdCP version, its status, and its end-of-life date
 
 | Status | Versions | Wire pin | What it means |
 |---|---|---|---|
-| **Active** | 3.1 (current stable: 3.1.0) | `"3.1"` | Current production minor release. See [What's New in AdCP 3.1](/docs/reference/whats-new-in-3-1) for the feature set. |
+| **Active** | 3.1 (current stable: 3.1.2) | `"3.1"` | Current production minor release. See [What's New in AdCP 3.1](/docs/reference/whats-new-in-3-1) for the feature set. |
 | **Maintained** | 3.0 (current stable: 3.0.19) | `"3.0"` | Supported previous minor for existing production integrations. Receives compatibility and security patches. |
 | **Security-only** | 2.5.0, 2.5.1, 2.5.3 | `"2.5"` | Security patches through **August 1, 2026 (UTC)**. Not safe for AAO-network production — see [v2 sunset](/docs/reference/v2-sunset). |
 | **End of life** | 2.0.0, 2.1.0 | — | No patches. Migrate to 3.0. |
@@ -34,8 +34,11 @@ description: "Every published AdCP version, its status, and its end-of-life date
 | 3.0.11 through 3.0.15 | 2026-05-11 to 2026-05-31 | Patches. Wire-compatible with 3.0.0. |
 | 3.0.16 through **3.0.19** | 2026-06-14 to 2026-06-17 | Patches. **3.0.19 is the latest stable patch.** Wire-compatible with 3.0.0. |
 | **3.1.0** | 2026-06-18 | GA — current production minor release. Use wire pin `"3.1"`. |
+| 3.1.1 | 2026-06-30 | Patch. Wire-compatible with 3.1.0. |
+| **3.1.2** | 2026-07-08 | Latest supported 3.1 patch. Wire-compatible with 3.1.0. |
+| 3.1.3 | 2026-07-13 | **Withdrawn. Do not use.** It added a stable schema field in a patch release and included an incorrect publisher-domain filter implementation. The artifacts remain available only for auditability. Use 3.1.2 instead. |
 
-Patches don't change the wire contract. Upgrading within 3.0.x is always safe, and 3.1 remains additive over 3.0. For per-version detail, see [Release Notes](/docs/reference/release-notes) (curated narrative) and the [Changelog](/docs/reference/changelog) (full technical history).
+Supported patches don't change the wire contract. Upgrading within 3.0.x is always safe, and 3.1 remains additive over 3.0. The withdrawn 3.1.3 release is not a supported patch or implementation target. For per-version detail, see [Release Notes](/docs/reference/release-notes) (curated narrative) and the [Changelog](/docs/reference/changelog) (full technical history).
 
 ### Prereleases (superseded)
 
@@ -60,7 +63,7 @@ After August 1, 2026 (UTC), the entire 2.x line is fully deprecated. The 2.x sch
 ## FAQ
 
 ### What's "current"?
-For new production integrations, **3.1.0** is current; pin your integration to `"3.1"` (not `"3.1.0"`). Existing 3.0 integrations can remain pinned to `"3.0"` while they migrate. See [Version negotiation](/docs/reference/versioning#version-negotiation).
+For new production integrations, **3.1.2** is current; pin your integration to `"3.1"` (not `"3.1.2"`). Existing 3.0 integrations can remain pinned to `"3.0"` while they migrate. See [Version negotiation](/docs/reference/versioning#version-negotiation).
 
 ### What happened to 2.2, 2.3, 2.4, 2.6?
 The 2.x line skipped version numbers during its working-group cycle. Some appear as in-flight changelog entries but were never released — the changes were rolled forward into the next published version or deferred to 3.0. The five published 2.x releases are 2.0.0, 2.1.0, 2.5.0, 2.5.1, and 2.5.3.

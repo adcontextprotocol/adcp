@@ -9,6 +9,16 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 
 ---
 
+## Version 3.1.3 — withdrawn
+
+**Status:** Withdrawn. Do not use 3.1.3 as an implementation target. Use 3.1.2 for the supported 3.1 line.
+
+3.1.3 added `filters.publisher_domain` to the stable `get_products` request schema in a patch release. New stable protocol fields are minor-version changes under the AdCP release contract. The reference implementation also accepted `publisher_domains[]` on products even though the product schema explicitly permits only singular `publisher_domain` selectors.
+
+The `v3.1.3` tag, schemas, compliance bundles, protocol tarball, signatures, and checksums remain available and immutable for auditability. Public release guidance points back to 3.1.2. A corrected publisher-domain discovery design may return in a future minor release.
+
+---
+
 ## Version 3.1.0
 
 **Status:** General availability — minor release. The stable wire negotiation value is `"3.1"`. The published 3.0.x line remains supported for existing integrations; new 3.1 integrations should pin to `"3.1"` and read `supported_versions` before sending 3.1-only fields.
