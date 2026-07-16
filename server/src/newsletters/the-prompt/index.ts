@@ -5,7 +5,7 @@
  * All content-specific logic delegates to existing digest modules.
  */
 
-import type { NewsletterConfig, SectionDescriptor, ItemOperations } from '../config.js';
+import { getCustomSections, getPastedContent, type NewsletterConfig, type SectionDescriptor, type ItemOperations } from '../config.js';
 import DOMPurify from 'isomorphic-dompurify';
 import { registerNewsletter } from '../registry.js';
 import { escapeHtml } from '../email-layout.js';
@@ -176,6 +176,8 @@ function domToMarkdown(node: any): string {
 function buildPromptMarkdown(content: unknown): string {
   const c = content as DigestContent;
   const sections: string[] = [];
+  const customSections = getCustomSections(c);
+  const pasted = getPastedContent(c);
 
   if (c.coverImageUrl) {
     sections.push(`![The Prompt cover](${c.coverImageUrl})`);
@@ -186,6 +188,18 @@ function buildPromptMarkdown(content: unknown): string {
       ? htmlToMarkdown(c.editorsNote)
       : c.editorsNote;
     sections.push(`> ${noteText.split('\n').join('\n> ')}`);
+  }
+  if (pasted) {
+    sections.push(pasted);
+    for (const custom of customSections) {
+      sections.push(custom.title ? `## ${custom.title}\n\n${custom.body}` : custom.body);
+    }
+    sections.push("---\n\nWe're building this together. If something here resonated, pass it along — every share brings in someone new.\n\nLet's keep building,\nAddie\\\nAgenticAdvertising.org");
+    return sections.join('\n\n');
+  }
+  for (const custom of customSections) {
+    if (custom.position !== 0) continue;
+    sections.push(custom.title ? `## ${custom.title}\n\n${custom.body}` : custom.body);
   }
   if (c.newMembers.length > 0) {
     sections.push(`Welcome to ${c.newMembers.map((m) => `**${m.name}**`).join(', ')} who joined this week.`);
@@ -243,6 +257,10 @@ function buildPromptMarkdown(content: unknown): string {
     for (const action of c.takeActions) {
       sections.push(`- **[${action.ctaLabel}](${action.ctaUrl})** — ${action.text}`);
     }
+  }
+  for (const custom of customSections) {
+    if (custom.position <= 0) continue;
+    sections.push(custom.title ? `## ${custom.title}\n\n${custom.body}` : custom.body);
   }
   sections.push("---\n\nWe're building this together. If something here resonated, pass it along — every share brings in someone new.\n\nLet's keep building,\nAddie\\\nAgenticAdvertising.org");
   return sections.join('\n\n');
