@@ -15,6 +15,7 @@ vi.mock('../../src/utils/markdown.js', async (importOriginal) => {
 
 import { renderDigestEmail, renderDigestSlack } from '../../src/addie/templates/weekly-digest.js';
 import { renderBuildEmail } from '../../src/newsletters/the-build/template.js';
+import { thePromptConfig } from '../../src/newsletters/the-prompt/index.js';
 import type { DigestContent } from '../../src/db/digest-db.js';
 import type { BuildContent } from '../../src/db/build-db.js';
 
@@ -196,12 +197,71 @@ describe('digest editor note link formatting', () => {
       });
       const message = renderDigestSlack(content, '2026-04-01');
       const rendered = JSON.stringify(message.blocks);
+      const markdown = thePromptConfig.buildMarkdown(content);
 
       expect(rendered).toContain('Pasted');
       expect(rendered).toContain('https://example.com/brief');
       expect(rendered).toContain('Extra note');
       expect(rendered).toContain('Custom body');
       expect(rendered).not.toContain('Generated article');
+      expect(markdown).toContain('Pasted **body**');
+      expect(markdown).toContain('Extra note');
+      expect(markdown).toContain('Custom body');
+      expect(markdown).not.toContain('Generated article');
+    });
+  });
+
+  describe('custom sections', () => {
+    const customSections = [
+      { id: 'custom-before', title: 'Before generated', body: 'See [before](https://example.com/before)', position: 0 },
+      { id: 'custom-after', title: 'After generated', body: 'See [after](https://example.com/after)', position: 2 },
+    ];
+
+    it('renders positioned sections in generated email HTML and plain text', () => {
+      const content = makeContent({
+        customSections,
+        whatToWatch: [{
+          title: 'Generated article',
+          url: 'https://example.com/generated',
+          summary: 'Generated summary',
+          whyItMatters: 'Generated rationale',
+          tags: ['official'],
+        }],
+      });
+      const { html, text } = renderDigestEmail(content, 'recipient-1', '2026-04-01', 'both');
+
+      expect(html).toContain('tracked:recipient-1:custom_1_1:https://example.com/before');
+      expect(html).toContain('tracked:recipient-1:custom_2_1:https://example.com/after');
+      expect(html.indexOf('Before generated')).toBeLessThan(html.indexOf('Generated article'));
+      expect(html.indexOf('After generated')).toBeGreaterThan(html.indexOf('Generated article'));
+      expect(text.indexOf('Before generated')).toBeLessThan(text.indexOf('Generated article'));
+      expect(text.indexOf('After generated')).toBeGreaterThan(text.indexOf('Generated article'));
+    });
+
+    it('renders positioned sections in Slack and published markdown', () => {
+      const content = makeContent({
+        customSections,
+        whatToWatch: [{
+          title: 'Generated article',
+          url: 'https://example.com/generated',
+          summary: 'Generated summary',
+          whyItMatters: 'Generated rationale',
+          tags: ['official'],
+        }],
+      });
+      const slack = JSON.stringify(renderDigestSlack(content, '2026-04-01').blocks);
+      const markdown = thePromptConfig.buildMarkdown(content);
+
+      expect(slack).toContain('Before generated');
+      expect(slack).toContain('Generated article');
+      expect(slack).toContain('After generated');
+      expect(slack.indexOf('Before generated')).toBeLessThan(slack.indexOf('Generated article'));
+      expect(slack.indexOf('After generated')).toBeGreaterThan(slack.indexOf('Generated article'));
+      expect(markdown).toContain('Before generated');
+      expect(markdown).toContain('Generated article');
+      expect(markdown).toContain('After generated');
+      expect(markdown.indexOf('Before generated')).toBeLessThan(markdown.indexOf('Generated article'));
+      expect(markdown.indexOf('After generated')).toBeGreaterThan(markdown.indexOf('Generated article'));
     });
   });
 });
