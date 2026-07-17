@@ -135,6 +135,14 @@ function env() {
         contentType: 'application/json; charset=utf-8',
         cacheControl: 'public, max-age=31536000, immutable',
       }),
+      object('schemas/3.2.0/index.json', '{"version":"3.2.0"}', {
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('schemas/3.2.0/foo.json', '{"version":"3.2.0"}', {
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
       object('schemas/3.1.0/tmp/context-match-request.json', '{"namespace":"legacy-tmp"}', {
         contentType: 'application/json; charset=utf-8',
         cacheControl: 'public, max-age=31536000, immutable',
@@ -161,6 +169,18 @@ function env() {
         contentType: 'application/json; charset=utf-8',
         cacheControl: 'public, max-age=31536000, immutable',
       }),
+      object('compliance/3.1.2/index.json', '{"version":"3.1.2"}', {
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('compliance/3.1.3/index.json', '{"version":"3.1.3"}', {
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('compliance/3.2.0/index.json', '{"version":"3.2.0"}', {
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
       object('protocol/3.0.12.tgz', 'pinned-tarball', {
         contentType: 'application/gzip',
         cacheControl: 'public, max-age=31536000, immutable',
@@ -176,6 +196,27 @@ function env() {
       object('protocol/3.0.12.tgz.crt', 'pinned-certificate', {
         contentType: 'application/x-pem-file',
         cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('protocol/3.1.2.tgz', 'supported-tarball', {
+        contentType: 'application/gzip',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('protocol/3.1.2.tgz.sha256', 'supported-checksum', {
+        contentType: 'text/plain; charset=utf-8',
+      }),
+      object('protocol/3.1.3.tgz', 'withdrawn-tarball', {
+        contentType: 'application/gzip',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('protocol/3.1.3.tgz.sha256', 'withdrawn-checksum', {
+        contentType: 'text/plain; charset=utf-8',
+      }),
+      object('protocol/3.2.0.tgz', 'unpublished-tarball', {
+        contentType: 'application/gzip',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('protocol/3.2.0.tgz.sha256', 'unpublished-checksum', {
+        contentType: 'text/plain; charset=utf-8',
       }),
       object('protocol/latest.tgz', 'latest-tarball', {
         contentType: 'application/gzip',
@@ -502,6 +543,14 @@ describe('artifact CDN Worker', () => {
     assert.equal(response.status, 200);
     assert.deepEqual(body.versions, [
       {
+        version: '3.2.0',
+        stability: 'unpublished',
+        prerelease: false,
+        deprecated: false,
+        published: false,
+        path: '/schemas/3.2.0/',
+      },
+      {
         version: '3.1.3',
         stability: 'withdrawn',
         prerelease: false,
@@ -549,6 +598,31 @@ describe('artifact CDN Worker', () => {
       path: '/schemas/latest/',
       note: 'Development version, may differ from released versions',
     });
+  });
+
+  it('applies release overrides consistently to compliance aliases', async () => {
+    const alias = await fetchPath('/compliance/v3.1/');
+    const discovery = await fetchPath('/compliance/');
+    const body = await discovery.json();
+
+    assert.equal(alias.status, 302);
+    assert.equal(alias.headers.get('location'), '/compliance/3.1.2/index.json');
+    assert.equal(body.latest_stable, '3.1.2');
+    assert.deepEqual(
+      body.aliases.find((entry) => entry.alias === 'v3'),
+      { alias: 'v3', resolves_to: '3.1.2', path: '/compliance/v3/' },
+    );
+    assert.deepEqual(
+      body.versions.find((entry) => entry.version === '3.2.0'),
+      {
+        version: '3.2.0',
+        stability: 'unpublished',
+        prerelease: false,
+        deprecated: false,
+        published: false,
+        path: '/compliance/3.2.0/',
+      },
+    );
   });
 
   it('serves protocol files without alias rewriting', async () => {
@@ -635,6 +709,27 @@ describe('artifact CDN Worker', () => {
     assert.equal(response.status, 200);
     assert.deepEqual(body.versions, [
       {
+        version: '3.2.0',
+        stability: 'unpublished',
+        deprecated: false,
+        published: false,
+        tarball: '/protocol/3.2.0.tgz',
+        checksum: '/protocol/3.2.0.tgz.sha256',
+      },
+      {
+        version: '3.1.3',
+        stability: 'withdrawn',
+        deprecated: true,
+        withdrawn: true,
+        tarball: '/protocol/3.1.3.tgz',
+        checksum: '/protocol/3.1.3.tgz.sha256',
+      },
+      {
+        version: '3.1.2',
+        tarball: '/protocol/3.1.2.tgz',
+        checksum: '/protocol/3.1.2.tgz.sha256',
+      },
+      {
         version: '3.0.12',
         tarball: '/protocol/3.0.12.tgz',
         checksum: '/protocol/3.0.12.tgz.sha256',
@@ -643,7 +738,7 @@ describe('artifact CDN Worker', () => {
       },
     ]);
     assert.equal(body.latest.tarball, '/protocol/latest.tgz');
-    assert.equal(body.latest.published_version, '3.0.12');
+    assert.equal(body.latest.published_version, '3.1.2');
   });
 
   it('serves protocol discovery at the bare protocol path', async () => {
