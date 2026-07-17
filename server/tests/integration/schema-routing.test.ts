@@ -82,6 +82,52 @@ describe("/schemas HTTP routing", () => {
   });
 
   describe("version aliases (the bug we just fixed)", () => {
+    it("skips withdrawn releases while preserving their exact immutable paths", async () => {
+      const tempSchemasPath = fs.mkdtempSync(path.join(os.tmpdir(), "schema-routing-withdrawn-"));
+
+      try {
+        for (const version of ["3.1.2", "3.1.3"]) {
+          fs.mkdirSync(path.join(tempSchemasPath, version), { recursive: true });
+          fs.writeFileSync(
+            path.join(tempSchemasPath, version, "index.json"),
+            JSON.stringify({ version }),
+          );
+          fs.writeFileSync(
+            path.join(tempSchemasPath, version, "product.json"),
+            JSON.stringify({ version }),
+          );
+        }
+
+        const tempApp = express();
+        mountSchemasRoutes(tempApp, tempSchemasPath);
+
+        const alias = await request(tempApp).get("/schemas/v3.1/product.json");
+        expect(alias.status).toBe(200);
+        expect(alias.body.version).toBe("3.1.2");
+
+        const exact = await request(tempApp).get("/schemas/3.1.3/product.json");
+        expect(exact.status).toBe(200);
+        expect(exact.body.version).toBe("3.1.3");
+        expect(exact.headers["cache-control"]).toContain("immutable");
+
+        const discovery = await request(tempApp).get("/schemas/");
+        expect(discovery.body.latest_stable).toBe("3.1.2");
+        expect(discovery.body.aliases).toContainEqual({
+          alias: "v3.1",
+          resolves_to: "3.1.2",
+          path: "/schemas/v3.1/",
+        });
+        expect(discovery.body.versions).toContainEqual(expect.objectContaining({
+          version: "3.1.3",
+          stability: "withdrawn",
+          deprecated: true,
+          withdrawn: true,
+        }));
+      } finally {
+        fs.rmSync(tempSchemasPath, { recursive: true, force: true });
+      }
+    });
+
     it("serves /schemas/v2/adagents.json via alias rewrite", async () => {
       if (!latestStableMajor2) return;
       const res = await request(app).get("/schemas/v2/adagents.json");

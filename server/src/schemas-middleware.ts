@@ -5,6 +5,7 @@ import semver from "semver";
 import { createLogger } from "./logger.js";
 
 const logger = createLogger("schemas-middleware");
+const WITHDRAWN_RELEASES = new Set(["3.1.3"]);
 
 // Alias paths like "/v2/...", "/v2.5/...", "/v12/..." (v1 is a special case → latest).
 const ALIAS_PATH = /^\/v(\d+)(?:\.(\d+))?(\/.*)?$/;
@@ -83,6 +84,7 @@ export function findMatchingVersion(
   requestedMinor?: number,
 ): string | undefined {
   return versions.find((v) => {
+    if (WITHDRAWN_RELEASES.has(v)) return false;
     const parsed = semver.parse(v);
     if (!parsed) return false;
     if (parsed.prerelease.length > 0) return false;
@@ -94,6 +96,7 @@ export function findMatchingVersion(
 
 function latestStableVersion(versions: string[]): string | null {
   return versions.find((v) => {
+    if (WITHDRAWN_RELEASES.has(v)) return false;
     const parsed = semver.parse(v);
     return parsed && parsed.prerelease.length === 0;
   }) ?? null;
@@ -148,16 +151,20 @@ async function legacyTmpSchemaFileExistsForPath(
 }
 
 function versionEntry(version: string, mountPath: string) {
+  const withdrawn = WITHDRAWN_RELEASES.has(version);
   const parsed = semver.parse(version);
   const prerelease = !!parsed && parsed.prerelease.length > 0;
   const label = prerelease ? String(parsed.prerelease[0]).toLowerCase() : "";
   return {
     version,
-    stability: prerelease
-      ? (label === "rc" || label === "beta" ? label : "prerelease")
-      : "stable",
+    stability: withdrawn
+      ? "withdrawn"
+      : prerelease
+        ? (label === "rc" || label === "beta" ? label : "prerelease")
+        : "stable",
     prerelease,
-    deprecated: false,
+    deprecated: withdrawn,
+    ...(withdrawn ? { withdrawn: true } : {}),
     path: `${mountPath}/${version}/`,
   };
 }
@@ -193,6 +200,7 @@ export function resolvePinnedFallback(
 
   const wantStable = parsed.prerelease.length === 0;
   const eligible = (v: string): boolean => {
+    if (WITHDRAWN_RELEASES.has(v)) return false;
     const p = semver.parse(v);
     if (!p || p.major !== parsed.major) return false;
     if (wantStable && p.prerelease.length > 0) return false;
@@ -481,6 +489,7 @@ function mountVersionedStaticRoutes(
       const latestPerMinor: Record<string, string> = {};
 
       for (const version of versions) {
+        if (WITHDRAWN_RELEASES.has(version)) continue;
         const parsed = semver.parse(version);
         if (!parsed) continue;
         if (parsed.prerelease.length > 0) continue;
