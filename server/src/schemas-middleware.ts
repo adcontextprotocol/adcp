@@ -5,6 +5,14 @@ import semver from "semver";
 import { createLogger } from "./logger.js";
 
 const logger = createLogger("schemas-middleware");
+const RELEASE_STATUS_OVERRIDES = new Map<string, "withdrawn" | "unpublished">([
+  ["3.1.3", "withdrawn"],
+  ["3.2.0", "unpublished"],
+]);
+
+function isSelectableRelease(version: string): boolean {
+  return !RELEASE_STATUS_OVERRIDES.has(version);
+}
 
 // Alias paths like "/v2/...", "/v2.5/...", "/v12/..." (v1 is a special case → latest).
 const ALIAS_PATH = /^\/v(\d+)(?:\.(\d+))?(\/.*)?$/;
@@ -83,6 +91,7 @@ export function findMatchingVersion(
   requestedMinor?: number,
 ): string | undefined {
   return versions.find((v) => {
+    if (!isSelectableRelease(v)) return false;
     const parsed = semver.parse(v);
     if (!parsed) return false;
     if (parsed.prerelease.length > 0) return false;
@@ -94,6 +103,7 @@ export function findMatchingVersion(
 
 function latestStableVersion(versions: string[]): string | null {
   return versions.find((v) => {
+    if (!isSelectableRelease(v)) return false;
     const parsed = semver.parse(v);
     return parsed && parsed.prerelease.length === 0;
   }) ?? null;
@@ -148,18 +158,37 @@ async function legacyTmpSchemaFileExistsForPath(
 }
 
 function versionEntry(version: string, mountPath: string) {
+  const statusMetadata = releaseStatusMetadata(version);
   const parsed = semver.parse(version);
   const prerelease = !!parsed && parsed.prerelease.length > 0;
   const label = prerelease ? String(parsed.prerelease[0]).toLowerCase() : "";
   return {
     version,
-    stability: prerelease
-      ? (label === "rc" || label === "beta" ? label : "prerelease")
-      : "stable",
+    stability: statusMetadata.stability
+      ?? (prerelease
+        ? (label === "rc" || label === "beta" ? label : "prerelease")
+        : "stable"),
     prerelease,
-    deprecated: false,
+    deprecated: statusMetadata.deprecated ?? false,
+    ...statusMetadata,
     path: `${mountPath}/${version}/`,
   };
+}
+
+function releaseStatusMetadata(version: string): {
+  stability?: "withdrawn" | "unpublished";
+  deprecated?: boolean;
+  withdrawn?: true;
+  published?: false;
+} {
+  const status = RELEASE_STATUS_OVERRIDES.get(version);
+  if (status === "withdrawn") {
+    return { stability: "withdrawn", deprecated: true, withdrawn: true };
+  }
+  if (status === "unpublished") {
+    return { stability: "unpublished", deprecated: false, published: false };
+  }
+  return {};
 }
 
 /**
@@ -193,6 +222,7 @@ export function resolvePinnedFallback(
 
   const wantStable = parsed.prerelease.length === 0;
   const eligible = (v: string): boolean => {
+    if (!isSelectableRelease(v)) return false;
     const p = semver.parse(v);
     if (!p || p.major !== parsed.major) return false;
     if (wantStable && p.prerelease.length > 0) return false;
@@ -253,6 +283,9 @@ export function mountProtocolRoutes(app: Application, protocolPath: string): voi
       const versioned = tarballs
         .filter((name) => name !== "latest.tgz")
         .sort((a, b) => semver.rcompare(a.replace(/\.tgz$/, ""), b.replace(/\.tgz$/, "")));
+      const selectableVersioned = versioned.filter((name) =>
+        isSelectableRelease(name.replace(/\.tgz$/, "")),
+      );
 
       const sidecarFiles = new Set(
         entries.filter((e) => e.isFile()).map((e) => e.name),
@@ -295,8 +328,8 @@ export function mountProtocolRoutes(app: Application, protocolPath: string): voi
           checksum: "/protocol/latest.tgz.sha256",
           ...(latestSidecars.signature && { signature: latestSidecars.signature }),
           ...(latestSidecars.certificate && { certificate: latestSidecars.certificate }),
-          published_version: versioned[0]?.replace(/\.tgz$/, ""),
-          adcp_version: versioned[0]?.replace(/\.tgz$/, ""), // legacy alias through 3.x
+          published_version: selectableVersioned[0]?.replace(/\.tgz$/, ""),
+          adcp_version: selectableVersioned[0]?.replace(/\.tgz$/, ""), // legacy alias through 3.x
           generated_at: generatedAt,
           note: "Development bundle — changes with every merge. Pin a version for production.",
         };
@@ -313,9 +346,11 @@ export function mountProtocolRoutes(app: Application, protocolPath: string): voi
           docs: "/docs/building/by-layer/L0/schemas#verifying-protocol-bundle-signatures",
         },
         versions: versioned.map((name) => {
+          const version = name.replace(/\.tgz$/, "");
           const sidecars = sidecarsFor(name);
           return {
-            version: name.replace(/\.tgz$/, ""),
+            version,
+            ...releaseStatusMetadata(version),
             tarball: `/protocol/${name}`,
             checksum: `/protocol/${name}.sha256`,
             ...(sidecars.signature && { signature: sidecars.signature }),
@@ -481,6 +516,7 @@ function mountVersionedStaticRoutes(
       const latestPerMinor: Record<string, string> = {};
 
       for (const version of versions) {
+        if (!isSelectableRelease(version)) continue;
         const parsed = semver.parse(version);
         if (!parsed) continue;
         if (parsed.prerelease.length > 0) continue;
