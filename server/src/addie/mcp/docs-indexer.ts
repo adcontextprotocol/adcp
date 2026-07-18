@@ -1,7 +1,7 @@
 /**
  * Docs Indexer for Addie
  *
- * Indexes Mintlify docs and website HTML at startup so Addie can search and reference them.
+ * Indexes Mintlify docs, JSON schemas, and website HTML at startup so Addie can search and reference them.
  * Content is read from the filesystem and stored in memory for fast access.
  */
 
@@ -22,6 +22,14 @@ const WEBSITE_PAGES_TO_EXCLUDE = [
   /^member-profile/,  // Member profile (dynamic)
   /^org-index/,       // Organization index (dynamic)
 ];
+
+// Aggregate schemas duplicate large portions of the component schemas and
+// overwhelm keyword ranking. Their referenced component schemas are indexed.
+const SCHEMA_FILES_TO_EXCLUDE = new Set([
+  'index.json',
+  'protocol/get-adcp-capabilities-response.json',
+  'brand.json',
+]);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -221,16 +229,15 @@ function extractCategory(filePath: string, docsRoot: string): string {
 /**
  * Clean markdown content - remove frontmatter, imports, JSX components
  */
-function cleanContent(content: string): string {
+export function cleanContent(content: string): string {
   // Remove frontmatter
   content = content.replace(/^---\s*\n[\s\S]*?\n---\s*\n/, '');
 
   // Remove import statements
   content = content.replace(/^import\s+.*$/gm, '');
 
-  // Remove JSX components (simple cases)
-  content = content.replace(/<[A-Z][a-zA-Z]*[^>]*>[\s\S]*?<\/[A-Z][a-zA-Z]*>/g, '');
-  content = content.replace(/<[A-Z][a-zA-Z]*[^>]*\/>/g, '');
+  // Remove JSX component tags while preserving their searchable children.
+  content = content.replace(/<\/?[A-Z][a-zA-Z]*[^>]*>/g, '');
 
   // Clean up extra whitespace
   content = content.replace(/\n{3,}/g, '\n\n').trim();
@@ -345,6 +352,146 @@ function findMarkdownFiles(dir: string): string[] {
   }
 
   return files;
+}
+
+/** Recursively find JSON schema files. */
+function findJsonFiles(dir: string): string[] {
+  const files: string[] = [];
+
+  if (!fs.existsSync(dir)) {
+    return files;
+  }
+
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...findJsonFiles(fullPath));
+    } else if (entry.isFile() && entry.name.endsWith('.json')) {
+      files.push(fullPath);
+    }
+  }
+
+  return files;
+}
+
+type JsonObject = Record<string, unknown>;
+
+function isJsonObject(value: unknown): value is JsonObject {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function stringValues(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item) => ['string', 'number', 'boolean'].includes(typeof item) || item === null)
+    .map((item) => JSON.stringify(item));
+}
+
+/**
+ * Extract the human-meaningful/searchable portion of a JSON schema.
+ * Structural validation keywords are deliberately omitted unless they name
+ * fields, references, required fields, or allowed values.
+ */
+export function extractSchemaContent(schema: unknown): string {
+  if (!isJsonObject(schema)) return '';
+
+  const lines = new Set<string>();
+  const rootId = typeof schema.$id === 'string' ? schema.$id : null;
+  if (rootId) lines.add(`Schema ID: ${rootId}`);
+  if (typeof schema.description === 'string') lines.add(schema.description.trim());
+
+  const visit = (node: unknown, fieldPath: string): void => {
+    if (!isJsonObject(node)) return;
+
+    const label = fieldPath || 'Schema';
+    if (typeof node.description === 'string') {
+      lines.add(`${label}: ${node.description.trim()}`);
+    }
+    if (typeof node.$ref === 'string') {
+      lines.add(`${label} references ${node.$ref}`);
+    }
+
+    const enumValues = stringValues(node.enum);
+    if (enumValues.length > 0) {
+      lines.add(`${label} allowed values: ${enumValues.join(', ')}`);
+    }
+    if (['string', 'number', 'boolean'].includes(typeof node.const) || node.const === null) {
+      lines.add(`${label} fixed value: ${JSON.stringify(node.const)}`);
+    }
+
+    const required = stringValues(node.required);
+    if (required.length > 0) {
+      lines.add(`${label} required fields: ${required.join(', ')}`);
+    }
+
+    if (isJsonObject(node.properties)) {
+      for (const [propertyName, propertySchema] of Object.entries(node.properties)) {
+        const propertyPath = fieldPath ? `${fieldPath}.${propertyName}` : propertyName;
+        lines.add(`Field: ${propertyPath}`);
+        visit(propertySchema, propertyPath);
+      }
+    }
+
+    if (node.items) visit(node.items, fieldPath ? `${fieldPath}[]` : 'items[]');
+
+    for (const keyword of ['allOf', 'anyOf', 'oneOf'] as const) {
+      const alternatives = node[keyword];
+      if (Array.isArray(alternatives)) {
+        for (const alternative of alternatives) visit(alternative, fieldPath);
+      }
+    }
+
+    for (const keyword of ['$defs', 'definitions'] as const) {
+      const definitions = node[keyword];
+      if (!isJsonObject(definitions)) continue;
+      for (const [definitionName, definitionSchema] of Object.entries(definitions)) {
+        visit(definitionSchema, fieldPath || definitionName);
+      }
+    }
+  };
+
+  visit(schema, '');
+  return [...lines].filter(Boolean).join('\n');
+}
+
+function schemaTitle(schema: JsonObject, relativePath: string): string {
+  if (typeof schema.title === 'string' && schema.title.trim()) return schema.title.trim();
+
+  const id = typeof schema.$id === 'string' ? schema.$id : relativePath;
+  return path.basename(id)
+    .replace(/\.json$/, '')
+    .replace(/[-_]/g, ' ')
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function indexSchemaFiles(schemaRoot: string): IndexedDoc[] {
+  const indexed: IndexedDoc[] = [];
+
+  for (const filePath of findJsonFiles(schemaRoot)) {
+    const relativePath = path.relative(schemaRoot, filePath).replace(/\\/g, '/');
+    if (SCHEMA_FILES_TO_EXCLUDE.has(relativePath)) continue;
+
+    try {
+      const schema = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as unknown;
+      if (!isJsonObject(schema)) continue;
+
+      const content = extractSchemaContent(schema);
+      if (!content) continue;
+
+      indexed.push({
+        id: `schema:${relativePath.replace(/\.json$/, '')}`,
+        title: schemaTitle(schema, relativePath),
+        category: 'schema',
+        path: relativePath,
+        content,
+        sourceUrl: `https://adcontextprotocol.org/schemas/latest/${relativePath}`,
+      });
+    } catch (error) {
+      logger.warn({ error, filePath }, 'Addie Docs: Failed to index schema');
+    }
+  }
+
+  return indexed;
 }
 
 /**
@@ -474,6 +621,14 @@ export async function initializeDocsIndex(): Promise<void> {
     '/app/server/public',
   ];
 
+  const possibleSchemaPaths = [
+    // From server/src/addie/mcp/ to static schemas
+    path.resolve(__dirname, '../../../../static/schemas/source'),
+    // From dist/addie/mcp/ to static schemas
+    path.resolve(__dirname, '../../../static/schemas/source'),
+    '/app/static/schemas/source',
+  ];
+
   let docsRoot: string | null = null;
   for (const p of possibleDocsPaths) {
     if (fs.existsSync(p)) {
@@ -486,6 +641,14 @@ export async function initializeDocsIndex(): Promise<void> {
   for (const p of possiblePublicPaths) {
     if (fs.existsSync(p)) {
       publicRoot = p;
+      break;
+    }
+  }
+
+  let schemaRoot: string | null = null;
+  for (const p of possibleSchemaPaths) {
+    if (fs.existsSync(p)) {
+      schemaRoot = p;
       break;
     }
   }
@@ -537,6 +700,15 @@ export async function initializeDocsIndex(): Promise<void> {
     logger.warn({ paths: possibleDocsPaths }, 'Addie Docs: Could not find docs directory');
   }
 
+  // Index schema facts separately from prose so callers can retrieve the
+  // complete extracted schema document by its stable schema: ID.
+  if (schemaRoot) {
+    logger.info({ schemaRoot }, 'Addie Docs: Indexing JSON schemas');
+    nextDocsIndex.push(...indexSchemaFiles(schemaRoot));
+  } else {
+    logger.warn({ paths: possibleSchemaPaths }, 'Addie Docs: Could not find schema directory');
+  }
+
   // Index website HTML pages
   if (publicRoot) {
     logger.info({ publicRoot }, 'Addie Docs: Indexing website pages');
@@ -576,7 +748,8 @@ export async function initializeDocsIndex(): Promise<void> {
   const websiteCount = docsIndex.filter((d) => d.category === 'website').length;
   const workingGroupCount = docsIndex.filter((d) => d.category.startsWith('working group')).length;
   const perspectiveCount = docsIndex.filter((d) => d.category === 'perspective').length;
-  const protocolDocCount = docsIndex.length - websiteCount - workingGroupCount - perspectiveCount;
+  const schemaCount = docsIndex.filter((d) => d.category === 'schema').length;
+  const protocolDocCount = docsIndex.length - websiteCount - workingGroupCount - perspectiveCount - schemaCount;
 
   // Warn if protocol docs index seems suspiciously empty (expect 50+ docs)
   if (docsRoot && protocolDocCount < 10) {
@@ -591,6 +764,7 @@ export async function initializeDocsIndex(): Promise<void> {
       totalDocs: docsIndex.length,
       totalHeadings: headingsIndex.length,
       protocolDocs: protocolDocCount,
+      schemas: schemaCount,
       websitePages: websiteCount,
       workingGroupDocs: workingGroupCount,
       perspectives: perspectiveCount,
@@ -620,7 +794,24 @@ export function searchDocs(
 
   const limit = options.limit ?? 5;
   const queryLower = query.toLowerCase();
-  const queryWords = queryLower.split(/\s+/).filter((w) => w.length > 2);
+  const queryWords = [...new Set(
+    queryLower
+      .split(/[^a-z0-9_-]+/)
+      .flatMap((word) => [word, word.replace(/_/g, '-'), word.replace(/-/g, '_')])
+      .filter((word) => word.length > 2)
+  )];
+
+  const countOccurrences = (content: string, word: string, max: number): number => {
+    let count = 0;
+    let offset = 0;
+    while (count < max) {
+      const match = content.indexOf(word, offset);
+      if (match === -1) break;
+      count++;
+      offset = match + word.length;
+    }
+    return count;
+  };
 
   // Score each document
   const scored = docsIndex
@@ -634,6 +825,7 @@ export function searchDocs(
     .map((doc) => {
       const titleLower = doc.title.toLowerCase();
       const contentLower = doc.content.toLowerCase();
+      const identityLower = `${doc.id} ${doc.path}`.toLowerCase();
 
       let score = 0;
 
@@ -647,13 +839,22 @@ export function searchDocs(
         score += 50;
       }
 
+      // Schema/task names often arrive as snake_case while filenames use
+      // kebab-case. Stable IDs and paths provide the bridge between them.
+      if (identityLower.includes(queryLower.replace(/_/g, '-'))) {
+        score += 75;
+      }
+
       // Individual word matches
       for (const word of queryWords) {
         if (titleLower.includes(word)) {
           score += 20;
         }
+        if (identityLower.includes(word)) {
+          score += 15;
+        }
         // Count occurrences in content (limited to avoid huge scores)
-        const occurrences = Math.min((contentLower.match(new RegExp(word, 'g')) || []).length, 10);
+        const occurrences = countOccurrences(contentLower, word, 10);
         score += occurrences * 2;
       }
 
@@ -676,6 +877,7 @@ export function getDocById(id: string): IndexedDoc | null {
   return docsIndex.find((doc) => doc.id === id)
     || docsIndex.find((doc) => doc.id === `doc:${id}`)
     || docsIndex.find((doc) => doc.id === `website:${id}`)
+    || docsIndex.find((doc) => doc.id === `schema:${id.replace(/\.json$/, '')}`)
     || docsIndex.find((doc) => doc.id === `wg-doc:${id}`)
     || null;
 }
