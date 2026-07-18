@@ -13,6 +13,12 @@
 
 import { resolvePrimaryOrganization } from '../db/users-db.js';
 import { resolveEffectiveMembership } from '../db/org-filters.js';
+import { getPool } from '../db/client.js';
+import {
+  MEMBERSHIP_TIER_COLUMNS,
+  resolveMembershipTier,
+  type MembershipTierRow,
+} from '../db/organization-db.js';
 
 export const API_ACCESS_TIERS = [
   'individual_professional',
@@ -44,6 +50,21 @@ const ACTIVE_SUBSCRIPTION_STATUS_SET: ReadonlySet<string> = new Set(ACTIVE_SUBSC
 
 export function isActiveSubscriptionStatus(status: string | null | undefined): boolean {
   return status != null && ACTIVE_SUBSCRIPTION_STATUS_SET.has(status);
+}
+
+interface ContentSubmissionMembership {
+  membership_tier: string | null;
+  subscription_status: string | null;
+  subscription_canceled_at: Date | null;
+}
+
+export function isContentSubmissionMembershipEligible(
+  membership: ContentSubmissionMembership | null,
+): boolean {
+  return membership != null
+    && membership.subscription_canceled_at === null
+    && isActiveSubscriptionStatus(membership.subscription_status)
+    && isApiAccessTier(membership.membership_tier);
 }
 
 /**
@@ -143,25 +164,58 @@ export async function resolveOwnerMembership(
  * pipelines that legitimately submit content on a cadence and bypass the
  * human-facing membership gate the same way they bypass the rate limiter.
  *
- * For all other users, resolves their primary organization and checks that:
- *   1. The organization's effective membership tier is in API_ACCESS_TIERS.
- *   2. The subscription status is in ACTIVE_SUBSCRIPTION_STATUSES.
+ * For all other users, resolves their primary organization and allows either:
+ *   1. A direct API-access subscription in ACTIVE_SUBSCRIPTION_STATUSES that
+ *      has not been canceled. This Perspectives-specific grace window does not
+ *      widen the global AgenticAdvertising.org membership invariant.
+ *   2. Strict effective membership inherited from a consenting paying parent.
  *
  * Returns false when the user has no primary organization or when either
  * condition is not met.
  */
-export async function checkContentSubmissionTier(userId: string): Promise<boolean> {
+export interface CheckContentSubmissionTierDeps {
+  resolvePrimaryOrganization: (userId: string) => Promise<string | null>;
+  resolveEffectiveMembership: typeof resolveEffectiveMembership;
+  fetchDirectMembership: (orgId: string) => Promise<ContentSubmissionMembership | null>;
+}
+
+async function fetchDirectMembership(orgId: string): Promise<ContentSubmissionMembership | null> {
+  const result = await getPool().query<MembershipTierRow & { subscription_canceled_at: Date | null }>(
+    `SELECT ${MEMBERSHIP_TIER_COLUMNS.join(', ')}, subscription_canceled_at
+     FROM organizations
+     WHERE workos_organization_id = $1`,
+    [orgId],
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    membership_tier: resolveMembershipTier(row),
+    subscription_status: row.subscription_status,
+    subscription_canceled_at: row.subscription_canceled_at,
+  };
+}
+
+const DEFAULT_CONTENT_SUBMISSION_DEPS: CheckContentSubmissionTierDeps = {
+  resolvePrimaryOrganization,
+  resolveEffectiveMembership,
+  fetchDirectMembership,
+};
+
+export async function checkContentSubmissionTier(
+  userId: string,
+  deps: CheckContentSubmissionTierDeps = DEFAULT_CONTENT_SUBMISSION_DEPS,
+): Promise<boolean> {
   if (userId.startsWith('system:')) return true;
 
-  const orgId = await resolvePrimaryOrganization(userId);
+  const orgId = await deps.resolvePrimaryOrganization(userId);
   if (!orgId) return false;
 
-  const membership = await resolveEffectiveMembership(orgId);
+  const directMembership = await deps.fetchDirectMembership(orgId);
+  if (isContentSubmissionMembershipEligible(directMembership)) return true;
 
-  // resolveEffectiveMembership walks the brand hierarchy and sets is_member
-  // only when the org (or a consenting ancestor) has an entitlement-preserving,
-  // non-canceled subscription — so is_member already encodes subscription-status
-  // validity. We additionally require the tier to be in API_ACCESS_TIERS
-  // (Professional+).
+  const membership = await deps.resolveEffectiveMembership(orgId);
+
+  // Preserve the existing hierarchy behavior, but only through the strict
+  // active/non-canceled global membership resolver.
   return membership.is_member && isApiAccessTier(membership.membership_tier);
 }
