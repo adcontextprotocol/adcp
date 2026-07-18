@@ -181,10 +181,13 @@ export class HealthChecker {
     this.formatsService = new FormatsService();
   }
 
-  async checkHealth(agent: Agent, auth?: SdkAuth): Promise<AgentHealth> {
+  async checkHealth(agent: Agent, auth?: SdkAuth, forceRefresh = false): Promise<AgentHealth> {
     // Skip cache when auth is provided — manual owner-triggered refresh
     // wants fresh data. Periodic crawls (no auth) keep the cache.
-    if (!auth) {
+    // `forceRefresh` covers the same intent for a manual refresh of an
+    // agent with no saved auth, which would otherwise still read the
+    // stale unauthed cache entry.
+    if (!auth && !forceRefresh) {
       const cached = this.healthCache.get(agent.url);
       if (cached) return cached;
     }
@@ -353,18 +356,18 @@ export class HealthChecker {
     }
   }
 
-  async getStats(agent: Agent, auth?: SdkAuth): Promise<AgentStats> {
-    if (!auth) {
+  async getStats(agent: Agent, auth?: SdkAuth, forceRefresh = false): Promise<AgentStats> {
+    if (!auth && !forceRefresh) {
       const cached = this.statsCache.get(agent.url);
       if (cached) return cached;
     }
 
-    const stats = await this.fetchStats(agent, auth);
+    const stats = await this.fetchStats(agent, auth, forceRefresh);
     if (!auth) this.statsCache.set(agent.url, stats);
     return stats;
   }
 
-  private async fetchStats(agent: Agent, auth?: SdkAuth): Promise<AgentStats> {
+  private async fetchStats(agent: Agent, auth?: SdkAuth, forceRefresh = false): Promise<AgentStats> {
     const stats: AgentStats = {};
 
     try {
@@ -381,7 +384,7 @@ export class HealthChecker {
       } else if (agent.type === "creative") {
         // For creative agents, get format count from FormatsService
         try {
-          const formatsProfile = await this.formatsService.getFormatsForAgent(agent, auth);
+          const formatsProfile = await this.formatsService.getFormatsForAgent(agent, auth, forceRefresh);
           if (formatsProfile.formats && formatsProfile.formats.length > 0) {
             stats.creative_formats = formatsProfile.formats.length;
           }

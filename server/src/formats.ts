@@ -19,8 +19,8 @@ export class FormatsService {
   private authedClients: WeakMap<SdkAuth, Map<string, AdCPClientInstance>> = new WeakMap();
   private readonly CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
-  async getFormatsForAgent(agent: Agent, auth?: SdkAuth): Promise<AgentFormatsProfile> {
-    if (!auth) {
+  async getFormatsForAgent(agent: Agent, auth?: SdkAuth, forceRefresh = false): Promise<AgentFormatsProfile> {
+    if (!auth && !forceRefresh) {
       const cached = this.cache.get(agent.url);
       if (cached && Date.now() - new Date(cached.last_fetched).getTime() < this.CACHE_TTL_MS) {
         return cached;
