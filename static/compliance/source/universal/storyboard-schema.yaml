@@ -604,6 +604,13 @@
 #   on setup phases, not on sibling consumption phases that may legitimately
 #   skip on different adopters).
 #
+#   Branch-set peers are exempt from this cross-phase cascade: phases sharing a
+#   `branch_set.id` with `any_of` semantics do NOT cascade `prerequisite_failed`
+#   onto one another (they are mutually-exclusive alternatives, not a chain),
+#   independent of whether the dependency is the implicit default or an explicit
+#   `depends_on`. See `runner-output-contract.yaml >
+#   cascade_rules.branch_set_cascade_exemption`.
+#
 #   References: adcp-client#1161 (field introduction); adcp-client#1711
 #   follow-up + adcp#4750 (deterministic_testing scope tightening that
 #   surfaced the documentation gap).
