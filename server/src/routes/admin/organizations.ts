@@ -15,6 +15,7 @@ import {
   setMembershipRole,
   upsertOrganizationMembership,
 } from "../../db/membership-db.js";
+import { collectWorkOSPages } from "../../services/workos-pagination.js";
 
 const orgDb = new OrganizationDatabase();
 const logger = createLogger("admin-organizations");
@@ -70,14 +71,17 @@ export function setupOrganizationRoutes(
         let members: any[] = [];
         try {
           if (workos) {
-            const memberships =
-              await workos.userManagement.listOrganizationMemberships({
+            const memberships = await collectWorkOSPages((after) =>
+              workos.userManagement.listOrganizationMemberships({
                 organizationId: orgId,
-              });
-            memberCount = memberships.data?.length || 0;
+                limit: 100,
+                after,
+              })
+            );
+            memberCount = memberships.length;
 
             // Get user details for each membership
-            for (const membership of memberships.data || []) {
+            for (const membership of memberships) {
               try {
                 const user = await workos.userManagement.getUser(
                   membership.userId
