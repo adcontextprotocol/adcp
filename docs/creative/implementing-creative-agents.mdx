@@ -359,6 +359,21 @@ Accept creative asset uploads into your library. Implement this if your platform
 
 See [sync_creatives task reference](/docs/creative/task-reference/sync_creatives) for complete API specification.
 
+## Integration with the Media Buy Protocol
+
+`sync_creatives` appears in both the Creative Protocol and the Media Buy Protocol, which is a common source of confusion. It is one task with one schema; what changes is the role of the agent receiving it:
+
+- **Sales agents** (Media Buy Protocol) accept `sync_creatives` to traffic creatives: upload into the seller's library, assign to packages in media buys, and run the seller's review pipeline. This is the call a buyer makes when activating a campaign.
+- **Creative agents** (this guide) MAY accept `sync_creatives` as an optional library on-ramp: buyers push assets into your library so `build_creative` and `list_creatives` can reference them later. No packages or media buys are involved unless your platform also manages them.
+
+A typical buyer flow uses both endpoints in sequence:
+
+1. **Build**: the buyer calls your `build_creative` (or assembles a manifest by hand) and checks the result with `preview_creative`.
+2. **Traffic**: the buyer sends the finished manifest to the sales agent's `sync_creatives`, with package assignments for the media buy.
+3. **Deliver**: the sales agent validates the manifest against the format definition your agent published and serves the creative.
+
+Your creative agent is not in the path of step 2; buyers call the sales agent directly. Your format definitions are, because the sales agent validates incoming manifests against the formats you publish via `list_creative_formats`. Sales agents that implement the Creative Protocol alongside the Media Buy Protocol accept both kinds of calls at a single endpoint; see [Creative capabilities on sales agents](/docs/creative/sales-agent-creative-capabilities).
+
 ## Validation best practices
 
 ### Manifest validation
