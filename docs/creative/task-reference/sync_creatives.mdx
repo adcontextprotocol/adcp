@@ -240,6 +240,8 @@ Assignments are at the request level, mapping creative IDs to package IDs. Stand
 }
 ```
 
+**Adopter note (`@adcp/sdk` server-side):** the typed `syncCreatives(creatives, ctx)` signature does not surface `assignments` as a positional argument. The wire envelope lands on `RequestContext.input`, so handlers read `ctx.input.assignments` to fan out package bindings and emit `creatives[i].assigned_to` in the response. The same escape hatch applies to any request field the typed signature intentionally does not model. See [`adcp#5797`](https://github.com/adcontextprotocol/adcp/issues/5797) for the trace that motivated this note (SDK ≥ 11.1.0 threads `params` into `ctx.input`; earlier lines dropped the field at the projector seam).
+
 ## Response
 
 Responses use discriminated unions — a response has exactly one of three shapes, never mixed:
