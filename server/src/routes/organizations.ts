@@ -45,6 +45,7 @@ import {
 import { getOrgAdminEmails } from "../utils/org-admins.js";
 import { emailPrefsDb } from "../db/email-preferences-db.js";
 import { performCreateOrganization } from "../services/organization-bootstrap.js";
+import { collectWorkOSPages } from "../services/workos-pagination.js";
 
 const logger = createLogger("organization-routes");
 
@@ -2326,9 +2327,13 @@ export function createOrganizationsRouter(): Router {
       );
 
       // Get pending invitations for this organization
-      const invitations = await workos!.userManagement.listInvitations({
-        organizationId: orgId,
-      });
+      const invitations = await collectWorkOSPages((after) =>
+        workos!.userManagement.listInvitations({
+          organizationId: orgId,
+          limit: 100,
+          after,
+        })
+      );
 
       // Fetch seat types for pending invitations
       const invSeatResult = await query<{ email: string; seat_type: string }>(
@@ -2337,7 +2342,7 @@ export function createOrganizationsRouter(): Router {
       );
       const invSeatMap = new Map(invSeatResult.rows.map(r => [r.email.toLowerCase(), r.seat_type]));
 
-      const pendingInvitations = invitations.data
+      const pendingInvitations = invitations
         .filter(inv => inv.state === 'pending')
         .map(inv => ({
           id: inv.id,

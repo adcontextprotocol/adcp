@@ -18,11 +18,13 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vites
 const {
   EXISTING_ORG_ID,
   PROSPECT_ORG_ID,
+  PERSONAL_ORG_ID,
   TAKEN_DOMAIN,
   FRESH_DOMAIN,
   RACE_DOMAIN,
   CONTACT_DOMAIN,
   UPDATE_DOMAIN,
+  PERSONAL_EMAIL,
   mockCreateOrganization,
   mockResolveOrgByDomain,
 } = vi.hoisted(() => {
@@ -31,11 +33,13 @@ const {
   return {
     EXISTING_ORG_ID: 'org_prospect_conflict_existing',
     PROSPECT_ORG_ID: 'org_prospect_conflict_new',
+    PERSONAL_ORG_ID: 'org_prospect_conflict_personal',
     TAKEN_DOMAIN: 'taken-by-original.test',
     FRESH_DOMAIN: 'fresh-domain-for-prospect.test',
     RACE_DOMAIN: 'race-conflict.test',
     CONTACT_DOMAIN: 'contact-only-prospect.test',
     UPDATE_DOMAIN: 'updated-prospect-domain.test',
+    PERSONAL_EMAIL: 'individual.prospect@gmail.com',
     mockCreateOrganization: vi.fn(),
     mockResolveOrgByDomain: vi.fn(),
   };
@@ -75,7 +79,7 @@ import { runMigrations } from '../../src/db/migrate.js';
 import { createProspect, updateProspect } from '../../src/services/prospect.js';
 import type { Pool } from 'pg';
 
-const TEST_ORGS = [EXISTING_ORG_ID, PROSPECT_ORG_ID];
+const TEST_ORGS = [EXISTING_ORG_ID, PROSPECT_ORG_ID, PERSONAL_ORG_ID];
 const TEST_DOMAINS = [TAKEN_DOMAIN, FRESH_DOMAIN, RACE_DOMAIN, CONTACT_DOMAIN, UPDATE_DOMAIN];
 
 async function clearFixtures(pool: Pool) {
@@ -212,6 +216,59 @@ describe('createProspect domain conflict handling (#4321)', () => {
     expect(row.rows[0].is_primary).toBe(true);
     expect(row.rows[0].verified).toBe(true);
     expect(row.rows[0].source).toBe('import');
+  });
+
+  it('creates an individual prospect as a domainless personal workspace', async () => {
+    const result = await createProspect({
+      name: 'Individual Prospect',
+      is_personal: true,
+      prospect_contact_email: `  ${PERSONAL_EMAIL.toUpperCase()}  `,
+      prospect_source: 'addie_payment_request',
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockCreateOrganization).toHaveBeenCalledWith({
+      name: 'Individual Prospect',
+    });
+
+    const org = await pool.query(
+      `SELECT is_personal, email_domain, prospect_contact_email
+       FROM organizations WHERE workos_organization_id = $1`,
+      [PROSPECT_ORG_ID],
+    );
+    expect(org.rows[0]).toMatchObject({
+      is_personal: true,
+      email_domain: null,
+      prospect_contact_email: PERSONAL_EMAIL,
+    });
+
+    const domains = await pool.query(
+      `SELECT domain FROM organization_domains WHERE workos_organization_id = $1`,
+      [PROSPECT_ORG_ID],
+    );
+    expect(domains.rowCount).toBe(0);
+  });
+
+  it('reuses an existing individual workspace by normalized contact email', async () => {
+    await pool.query(
+      `INSERT INTO organizations (
+         workos_organization_id, name, is_personal, prospect_contact_email,
+         created_at, updated_at
+       ) VALUES ($1, $2, true, $3, NOW(), NOW())`,
+      [PERSONAL_ORG_ID, 'Existing Individual', PERSONAL_EMAIL],
+    );
+
+    const result = await createProspect({
+      name: 'A Different Display Name',
+      is_personal: true,
+      prospect_contact_email: 'individual.prospect@googlemail.com',
+      prospect_source: 'addie_payment_request',
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.alreadyExists).toBe(true);
+    expect(result.organization?.workos_organization_id).toBe(PERSONAL_ORG_ID);
+    expect(mockCreateOrganization).not.toHaveBeenCalled();
   });
 
   it('infers and verifies the domain from a business contact email when domain is omitted', async () => {

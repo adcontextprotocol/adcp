@@ -14,6 +14,7 @@ import { createMembershipInvite } from '../../src/db/membership-invites-db.js';
 
 const ORG_PUBX = 'org_admin_invite_tools_pubx';
 const ORG_NONMEMBER = 'org_admin_invite_tools_nonmember';
+const ORG_INDIVIDUAL = 'org_admin_invite_tools_individual';
 const TEST_DOMAIN = 'admin-invite-tools.test';
 const ADMIN_ID = 'user_admin_invite_tools_admin';
 const ADMIN_EMAIL = `admin@${TEST_DOMAIN}`;
@@ -25,18 +26,21 @@ async function cleanup() {
     [`%@${TEST_DOMAIN}`]
   );
   await query('DELETE FROM person_relationships WHERE email LIKE $1', [`%@${TEST_DOMAIN}`]);
-  await query('DELETE FROM membership_invites WHERE workos_organization_id IN ($1, $2)', [
+  await query('DELETE FROM membership_invites WHERE workos_organization_id IN ($1, $2, $3)', [
     ORG_PUBX,
     ORG_NONMEMBER,
+    ORG_INDIVIDUAL,
   ]);
-  await query('DELETE FROM organizations WHERE workos_organization_id IN ($1, $2)', [
+  await query('DELETE FROM organizations WHERE workos_organization_id IN ($1, $2, $3)', [
     ORG_PUBX,
     ORG_NONMEMBER,
+    ORG_INDIVIDUAL,
   ]);
 }
 
 describe('admin invite tools', () => {
   let listInvites: (input: Record<string, unknown>) => Promise<string>;
+  let sendPaymentRequest: (input: Record<string, unknown>) => Promise<string>;
   let resendInvite: (input: Record<string, unknown>) => Promise<string>;
   let revokeInvite: (input: Record<string, unknown>) => Promise<string>;
   let diagnoseSigninBlock: (input: Record<string, unknown>) => Promise<string>;
@@ -61,10 +65,11 @@ describe('admin invite tools', () => {
     });
 
     listInvites = handlers.get('list_invites_for_org')!;
+    sendPaymentRequest = handlers.get('send_payment_request')!;
     resendInvite = handlers.get('resend_invite')!;
     revokeInvite = handlers.get('revoke_invite')!;
     diagnoseSigninBlock = handlers.get('diagnose_signin_block')!;
-    if (!listInvites || !resendInvite || !revokeInvite || !diagnoseSigninBlock) {
+    if (!listInvites || !sendPaymentRequest || !resendInvite || !revokeInvite || !diagnoseSigninBlock) {
       throw new Error('One or more invite tool handlers not registered');
     }
   }, 60000);
@@ -161,6 +166,44 @@ describe('admin invite tools', () => {
       const out = await listInvites({ org_id: ORG_PUBX, include_accepted: true });
       expect(out).toContain(accepted.token.slice(0, 8));
       expect(out).toContain('[accepted]');
+    });
+  });
+
+  describe('send_payment_request', () => {
+    it('finds an existing individual workspace by normalized contact email', async () => {
+      await query(
+        `INSERT INTO organizations (
+           workos_organization_id, name, is_personal, prospect_contact_email,
+           created_at, updated_at
+         ) VALUES ($1, $2, true, $3, NOW(), NOW())`,
+        [ORG_INDIVIDUAL, 'Existing Individual', 'individual@gmail.com']
+      );
+
+      const out = await sendPaymentRequest({
+        company_name: 'A Different Display Name',
+        contact_email: 'INDIVIDUAL@googlemail.com',
+        customer_type: 'individual',
+        action: 'lookup_only',
+      });
+
+      expect(out).toContain('Existing Individual');
+      expect(out).not.toContain('Created');
+      const personalOrgs = await query(
+        `SELECT COUNT(*)::int AS count FROM organizations
+         WHERE is_personal = true
+           AND workos_organization_id LIKE 'org_admin_invite_tools_%'`,
+      );
+      expect(personalOrgs.rows[0].count).toBe(1);
+    });
+
+    it('requires a valid contact email before creating an individual workspace', async () => {
+      const out = await sendPaymentRequest({
+        company_name: 'No Email Individual',
+        customer_type: 'individual',
+        action: 'lookup_only',
+      });
+
+      expect(out).toMatch(/contact_email is required for an individual membership/);
     });
   });
 
@@ -393,6 +436,34 @@ describe('admin invite tools', () => {
       );
       const out = await resendInvite({ token: 'tok_unknown', org_id: ORG_PUBX });
       expect(out).toMatch(/Invite not found/);
+    });
+
+    it('rejects an explicit customer type that disagrees with the persisted workspace', async () => {
+      await query(
+        `INSERT INTO organizations (
+           workos_organization_id, name, is_personal, created_at, updated_at
+         ) VALUES ($1, $2, true, NOW(), NOW())`,
+        [ORG_INDIVIDUAL, 'Individual Invite Test']
+      );
+      const inv = await createMembershipInvite({
+        workos_organization_id: ORG_INDIVIDUAL,
+        lookup_key: 'aao_membership_individual',
+        contact_email: `individual@${TEST_DOMAIN}`,
+        invited_by_user_id: ADMIN_ID,
+      });
+
+      const out = await resendInvite({
+        token: inv.token,
+        org_id: ORG_INDIVIDUAL,
+        customer_type: 'company',
+      });
+
+      expect(out).toMatch(/individual workspace, not a company workspace/);
+      const stored = await query(
+        `SELECT revoked_at FROM membership_invites WHERE token = $1`,
+        [inv.token]
+      );
+      expect(stored.rows[0].revoked_at).toBeNull();
     });
 
     it('refuses to resend an already-accepted invite', async () => {
