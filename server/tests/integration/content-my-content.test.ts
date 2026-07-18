@@ -522,6 +522,108 @@ describe('My Content — body, admin scope, status, delete', () => {
   // ---------------------------------------------------------------------------
 
   describe('PUT /api/me/content/:id status transitions', () => {
+    it('returns a proposer substantive edit of published content to review when status is omitted', async () => {
+      authState.userId = OTHER_USER_ID;
+      authState.email = 'mc-other@example.com';
+      const id = await insertPerspective({
+        slug: 'mc-test-published-proposer-edit',
+        title: 'Published proposer article',
+        proposerUserId: OTHER_USER_ID,
+      });
+      await pool.query(
+        `UPDATE perspectives
+         SET reviewed_by_user_id = 'prior-reviewer', reviewed_at = NOW(),
+             revision_notes = 'stale notes', revision_requested_at = NOW(),
+             rejection_reason = 'stale rejection reason'
+         WHERE id = $1`,
+        [id]
+      );
+
+      const response = await request(app)
+        .put(`/api/me/content/${id}`)
+        .send({ title: 'Revised proposer article' })
+        .expect(200);
+
+      expect(response.body.status).toBe('pending_review');
+      expect(response.body.published_at).toBeNull();
+      expect(response.body.proposed_at).not.toBeNull();
+      expect(response.body.reviewed_by_user_id).toBeNull();
+      expect(response.body.reviewed_at).toBeNull();
+      expect(response.body.revision_notes).toBeNull();
+      expect(response.body.revision_requested_at).toBeNull();
+      expect(response.body.rejection_reason).toBeNull();
+    });
+
+    it('returns a committee lead substantive edit to review even when published is requested', async () => {
+      const id = await insertPerspective({
+        slug: 'mc-test-published-lead-edit',
+        title: 'Published committee article',
+        proposerUserId: OTHER_USER_ID,
+        workingGroupId: wgId,
+      });
+
+      const response = await request(app)
+        .put(`/api/me/content/${id}`)
+        .send({ title: 'Revised by committee lead', status: 'published' })
+        .expect(200);
+
+      expect(response.body.status).toBe('pending_review');
+    });
+
+    it('returns a co-author substantive edit to review even when published is requested', async () => {
+      const id = await insertPerspective({
+        slug: 'mc-test-published-coauthor-edit',
+        title: 'Published co-authored article',
+        proposerUserId: USER_ID,
+      });
+      await pool.query(
+        `INSERT INTO content_authors (perspective_id, user_id, display_name)
+         VALUES ($1, $2, 'Co-author')`,
+        [id, OTHER_USER_ID]
+      );
+      authState.userId = OTHER_USER_ID;
+      authState.email = 'mc-other@example.com';
+
+      const response = await request(app)
+        .put(`/api/me/content/${id}`)
+        .send({ excerpt: 'A co-author revision', status: 'published' })
+        .expect(200);
+
+      expect(response.body.status).toBe('pending_review');
+    });
+
+    it('still forbids a stranger from editing published content', async () => {
+      const id = await insertPerspective({
+        slug: 'mc-test-published-stranger-edit',
+        title: 'Someone else\'s published article',
+        proposerUserId: USER_ID,
+      });
+      authState.userId = OTHER_USER_ID;
+      authState.email = 'mc-other@example.com';
+
+      await request(app)
+        .put(`/api/me/content/${id}`)
+        .send({ title: 'Unauthorized revision' })
+        .expect(403);
+    });
+
+    it('preserves an admin override when editing published content', async () => {
+      const id = await insertPerspective({
+        slug: 'mc-test-published-admin-edit',
+        title: 'Published admin article',
+        proposerUserId: OTHER_USER_ID,
+      });
+      adminState.isAdmin = true;
+
+      const response = await request(app)
+        .put(`/api/me/content/${id}`)
+        .send({ title: 'Admin revision stays live', status: 'published' })
+        .expect(200);
+
+      expect(response.body.status).toBe('published');
+      expect(response.body.published_at).not.toBeNull();
+    });
+
     it('prevents non-admin co-author from resurrecting a rejected item', async () => {
       const id = await insertPerspective({
         slug: 'mc-test-resurrect',
