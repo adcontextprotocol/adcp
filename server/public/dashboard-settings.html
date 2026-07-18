@@ -698,14 +698,15 @@
       <h2>Link Another Email</h2>
       <p style="color: var(--color-text-muted); font-size: var(--text-sm); margin-bottom: var(--space-4);">
         Enter the email address you want to link. We'll send a verification email to confirm ownership.
-        If there's an existing account with that email, your accounts will be merged.
+        Existing accounts can't be combined through this form and require support assistance.
       </p>
       <div style="margin-bottom: var(--space-4);">
         <label for="linkEmailInput" style="font-size: var(--text-xs); font-weight: var(--font-medium); display: block; margin-bottom: var(--space-1);">Email address</label>
         <input type="email" id="linkEmailInput" class="form-input" placeholder="you@example.com">
       </div>
-      <div id="linkEmailWarning" style="display: none; background: var(--color-warning-50); border: 1px solid var(--color-warning-300); border-radius: var(--radius-md); padding: var(--space-3); margin-bottom: var(--space-4); font-size: var(--text-xs);">
-        This email has an existing account. Verifying will merge that account into yours. This cannot be undone.
+      <div id="linkEmailWarning" role="alert" style="display: none; background: var(--color-warning-50); border: 1px solid var(--color-warning-300); border-radius: var(--radius-md); padding: var(--space-3); margin-bottom: var(--space-4); font-size: var(--text-xs);">
+        <span id="linkEmailWarningMessage"></span>
+        <a href="mailto:support@agenticadvertising.org">Email support</a>
       </div>
       <div style="display: flex; gap: var(--space-2); justify-content: flex-end;">
         <button class="btn btn-ghost" id="linkEmailCancelBtn">Cancel</button>
@@ -1138,6 +1139,7 @@
     function openLinkEmailModal() {
       document.getElementById('linkEmailInput').value = '';
       document.getElementById('linkEmailWarning').style.display = 'none';
+      document.getElementById('linkEmailWarningMessage').textContent = '';
       document.getElementById('linkEmailBtn').disabled = false;
       document.getElementById('linkEmailBtn').textContent = 'Send Verification';
       document.getElementById('linkEmailModal').classList.add('show');
@@ -1166,7 +1168,10 @@
         var data = await response.json();
 
         if (!response.ok) {
-          accountShowToast(data.error || 'Failed to send verification', true);
+          var message = data.message || data.error || 'Failed to send verification';
+          accountShowToast(message, true);
+          document.getElementById('linkEmailWarningMessage').textContent = message + ' ';
+          document.getElementById('linkEmailWarning').style.display = 'block';
           return;
         }
 
