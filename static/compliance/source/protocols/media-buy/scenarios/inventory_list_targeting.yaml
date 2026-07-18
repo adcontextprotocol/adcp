@@ -63,7 +63,7 @@ phases:
 
         sample_request:
           buying_mode: "brief"
-          brief: "Video inventory on outdoor lifestyle programming. Q3 flight, $30K budget."
+          brief: "Outdoor lifestyle programming. Q3 flight, $30K budget."
           filters:
             is_fixed_price: true
           account:

@@ -6,7 +6,7 @@ description: How TMP separates user identity from page context, what each party 
 
 # Privacy Architecture
 
-TMP's privacy model is structural, not policy-based. The protocol separates user identity from page context so that buyers never receive both together. Without TEE, this separation is enforced by code: the context code path never accesses identity data and vice versa. The code is open-source and auditable. With TEE, attestation proves the expected code is running unmodified, upgrading the guarantee from "auditable" to "independently verifiable."
+TMP structurally separates user identity from page context at the router and request layers. Without TEE, this separation is enforced by code: the context code path never accesses identity data and vice versa. The code is open-source and auditable. With TEE, attestation proves the expected router code is running unmodified, upgrading that router-layer guarantee from "auditable" to "independently verifiable." This is not an end-to-end guarantee that buyers can never correlate identity and context: in TMPX deployments, the buyer's impression tracker receives decrypted identity alongside a creative selected using page context.
 
 This page explains what the separation is, what it prevents, and where the guarantees come from. TMP is the only AdCP domain that enforces privacy structurally — see [Privacy posture across domains](/docs/protocol/architecture#privacy-posture-across-domains) and the cross-protocol [Privacy Considerations](/docs/reference/privacy-considerations) page for how this compares to other domains.
 
@@ -59,13 +59,13 @@ TEE is an upgrade path, not a prerequisite. The protocol works without it. Publi
 
 The buyer computes eligibility internally from frequency caps, audience membership, purchase history, or whatever signals they have. They return a list of eligible package IDs and a TTL. The publisher does not learn why a user is or is not eligible.
 
-**What the buyer cannot do:**
+**What the buyer cannot do from router requests alone:**
 
-- Associate a user token with a page URL or content signal
-- Determine that a specific user visited a specific page
-- Build a cross-page browsing profile for any user
+- Read a request containing both a user token and page context
+- Join Context Match and Identity Match requests by a shared request ID
+- Obtain raw page URLs from the Identity Match path
 
-These limitations hold because the buyer never receives identity and context in the same request, and the decorrelation mechanisms described below prevent joining them after the fact.
+The decorrelation mechanisms below make joining the two router request streams harder; they do not prevent every downstream inference. In particular, TMPX impression tracking gives the buyer identity at an impression endpoint together with the context-selected creative. Buyers can correlate that event with their own offer and campaign records, and a creative or package with narrow contextual targeting can reveal page context. Deployments must treat that correlation as part of the buyer's data surface rather than relying on router separation as an end-to-end privacy guarantee.
 
 ### What the router operator learns
 
@@ -89,13 +89,13 @@ The publisher has both context and identity. They are the first party: the user 
 
 The publisher performs the join locally after both responses arrive. They can apply consent logic, frequency management, and relevance ranking on their own infrastructure.
 
-### TMPX exposure tokens and structural separation
+### TMPX exposure tokens and the buyer correlation boundary
 
 The Identity Match response can include a `tmpx` field carrying a TMPX token — an HPKE-encrypted blob containing the user's resolved identity tokens. This token flows through creative tracking URLs to the buyer's impression pixel for per-user exposure tracking.
 
 This data flow bridges the identity and context paths: the TMPX token is produced by Identity Match and consumed via creative tracking URLs that originate from Context Match offers. However, the bridge happens **publisher-side** — the publisher joins the two responses locally and substitutes the TMPX value into tracking URLs during ad serving. The buyer's read replica produces the encrypted token. The buyer's impression pixel receives it. The publisher sees only an opaque blob and MUST NOT parse, log, or make decisions based on its value.
 
-The TMPX token does not violate structural separation because:
+TMPX preserves separation inside the router, but deliberately crosses the end-to-end identity/context boundary at the buyer's impression tracker. The following properties limit where that crossing occurs; they do not prevent the buyer from correlating the impression with its own Context Match offer history:
 
 - The router never sees the decrypted contents — it passes the opaque `tmpx` field through.
 - The publisher substitutes the value into tracking URLs without interpreting it.
@@ -162,20 +162,20 @@ A publisher or auditor can verify these measurements against the published build
 | IP address | Included in bid request | Never sent |
 | Raw cookies | Included in bid request | Never sent |
 | GPS coordinates | Included in bid request | Never sent |
-| Browsing history | Constructible via cookie sync | Not constructible: buyer never sees identity + context together |
+| Browsing history | Constructible via cookie sync | Not exposed by router requests alone; TMPX impressions can support buyer-side correlation |
 | Separation verification | Trust the exchange | Code audit (without TEE) or TEE attestation (with TEE) |
 
 In OpenRTB, the bid request is a bundle of everything: user identity, device signals, page context, behavioral data. Every participant in the auction receives the full bundle. Privacy depends on contractual promises not to misuse the data.
 
-TMP splits the bundle at the protocol level. Buyers receive context or identity, never both. The separation is structural, not contractual.
+TMP splits the bundle at the router request layer. Buyer agents receive context or identity in each request, never both in one request. That separation is structural inside an audited or attested router; downstream handling and TMPX impression correlation remain subject to deployment controls, consent, and the buyer's data practices.
 
 ## Regulatory Posture
 
 TMP's structural separation aligns with the data minimization principle required by GDPR, CCPA, ePrivacy, and similar regulations:
 
-- Buyer agents never receive user identity paired with content context. Minimization is enforced by the protocol, not by policy.
+- Router requests never pair user identity with content context. TMPX deployments separately disclose identity to the buyer's impression tracker, where the selected creative and buyer-side offer records can reveal context.
 - The publisher, as the first party with a direct user relationship, controls the join. They can apply consent logic before combining the datasets.
-- With TEE attestation, the separation is independently verifiable, providing auditable evidence for regulators.
+- With TEE attestation, router code-path separation is independently verifiable. Attestation does not cover the buyer's impression tracker or eliminate TMPX correlation.
 
 This is an architectural observation, not legal advice. Publishers and buyer agents should consult their own legal counsel regarding regulatory compliance.
 
