@@ -172,6 +172,11 @@ import {
 } from "../../services/brand-identity.js";
 import { canonicalizeBrandDomain } from "../../services/identifier-normalization.js";
 import { upsertEmailContact } from "../../db/contacts-db.js";
+import { validateEmail } from "../../middleware/validation.js";
+import {
+  getGoogleEmailAliases,
+  normalizeEmail,
+} from "../../utils/email-domain.js";
 
 const logger = createLogger("addie-admin-tools");
 const orgDb = new OrganizationDatabase();
@@ -681,6 +686,12 @@ Actions:
             "Email of the human who will sign in to complete billing in their own session. Used only to deliver the invite — never used as a Stripe customer email or invoice recipient directly. Required for send_invite.",
         },
         contact_title: { type: "string", description: "Contact job title" },
+        customer_type: {
+          type: "string",
+          enum: ["company", "individual"],
+          description:
+            'Membership customer type. Defaults to "company". Individual requests require contact_email so the personal workspace can be safely reused.',
+        },
         action: {
           type: "string",
           enum: ["lookup_only", "draft_invoice", "send_invite"],
@@ -802,6 +813,12 @@ Actions:
         org_id: {
           type: "string",
           description: "WorkOS organization ID (org_…) the invite belongs to",
+        },
+        customer_type: {
+          type: "string",
+          enum: ["company", "individual"],
+          description:
+            "Optional consistency check. When omitted, the persisted organization type is used so existing individual invites remain resendable.",
         },
       },
       required: ["token", "org_id"],
@@ -4750,6 +4767,10 @@ export function createAdminToolHandlers(
     const contactName = input.contact_name as string | undefined;
     const contactEmail = input.contact_email as string | undefined;
     const contactTitle = input.contact_title as string | undefined;
+    const customerType =
+      (input.customer_type as "company" | "individual" | undefined) ||
+      "company";
+    const isPersonal = customerType === "individual";
     const action = (input.action as string) || "lookup_only";
     const lookupKey = input.lookup_key as string | undefined;
     // Discount parameters (preview-only — applied during draft_invoice)
@@ -4759,6 +4780,17 @@ export function createAdminToolHandlers(
       | undefined;
     const discountReason = input.discount_reason as string | undefined;
     const useExistingDiscount = input.use_existing_discount !== false; // default true
+
+    if (input.customer_type && !["company", "individual"].includes(customerType)) {
+      return '❌ customer_type must be either "company" or "individual".';
+    }
+
+    const normalizedContactEmail = contactEmail
+      ? normalizeEmail(contactEmail)
+      : null;
+    if (isPersonal && !validateEmail(normalizedContactEmail).valid) {
+      return "❌ contact_email is required for an individual membership and must be a valid email address.";
+    }
 
     // The admin invoking this tool. Their identity is used as
     // `invited_by_user_id` on the membership invite. We never propagate it as
@@ -4789,44 +4821,80 @@ export function createAdminToolHandlers(
     let created = false;
 
     // Step 1: Find the organization
-    const searchPattern = `%${companyName}%`;
-    const searchParams: string[] = [searchPattern];
-    let paramIdx = 2;
-    const domainClause = domain
-      ? `OR LOWER(email_domain) LIKE LOWER($${paramIdx++})`
-      : "";
-    if (domain) searchParams.push(`%${domain}%`);
-    const exactIdx = paramIdx++;
-    const prefixIdx = paramIdx++;
-    searchParams.push(companyName, `${companyName}%`);
-    const searchResult = await pool.query(
-      `SELECT workos_organization_id, name, is_personal, company_type, revenue_tier,
-              prospect_contact_email, prospect_contact_name,
-              enrichment_employee_count, enrichment_revenue, stripe_customer_id,
-              discount_percent, discount_amount_cents, stripe_coupon_id, stripe_promotion_code
-       FROM organizations
-       WHERE is_personal = false
-         AND (LOWER(name) LIKE LOWER($1) ${domainClause})
-       ORDER BY
-         CASE WHEN LOWER(name) = LOWER($${exactIdx}) THEN 0
-              WHEN LOWER(name) LIKE LOWER($${prefixIdx}) THEN 1
-              ELSE 2 END
-       LIMIT 5`,
-      searchParams,
-    );
+    let searchResult;
+    if (isPersonal) {
+      const emailAliases = [
+        normalizedContactEmail!,
+        ...getGoogleEmailAliases(normalizedContactEmail!),
+      ];
+      searchResult = await pool.query(
+        `SELECT DISTINCT o.workos_organization_id, o.name, o.is_personal,
+                o.company_type, o.revenue_tier, o.prospect_contact_email,
+                o.prospect_contact_name, o.enrichment_employee_count,
+                o.enrichment_revenue, o.stripe_customer_id, o.discount_percent,
+                o.discount_amount_cents, o.stripe_coupon_id, o.stripe_promotion_code
+         FROM organizations o
+         LEFT JOIN organization_memberships om
+           ON om.workos_organization_id = o.workos_organization_id
+         LEFT JOIN users u ON u.workos_user_id = om.workos_user_id
+         LEFT JOIN membership_invites mi
+           ON mi.workos_organization_id = o.workos_organization_id
+         WHERE o.is_personal = true
+           AND (
+             LOWER(TRIM(o.prospect_contact_email)) = ANY($1::text[])
+             OR LOWER(TRIM(om.email)) = ANY($1::text[])
+             OR LOWER(TRIM(u.email)) = ANY($1::text[])
+             OR LOWER(TRIM(mi.contact_email)) = ANY($1::text[])
+           )
+         ORDER BY o.workos_organization_id
+         LIMIT 2`,
+        [emailAliases],
+      );
+    } else {
+      const searchPattern = `%${companyName}%`;
+      const searchParams: string[] = [searchPattern];
+      let paramIdx = 2;
+      const domainClause = domain
+        ? `OR LOWER(email_domain) LIKE LOWER($${paramIdx++})`
+        : "";
+      if (domain) searchParams.push(`%${domain}%`);
+      const exactIdx = paramIdx++;
+      const prefixIdx = paramIdx++;
+      searchParams.push(companyName, `${companyName}%`);
+      searchResult = await pool.query(
+        `SELECT workos_organization_id, name, is_personal, company_type, revenue_tier,
+                prospect_contact_email, prospect_contact_name,
+                enrichment_employee_count, enrichment_revenue, stripe_customer_id,
+                discount_percent, discount_amount_cents, stripe_coupon_id, stripe_promotion_code
+         FROM organizations
+         WHERE is_personal = false
+           AND (LOWER(name) LIKE LOWER($1) ${domainClause})
+         ORDER BY
+           CASE WHEN LOWER(name) = LOWER($${exactIdx}) THEN 0
+                WHEN LOWER(name) LIKE LOWER($${prefixIdx}) THEN 1
+                ELSE 2 END
+         LIMIT 5`,
+        searchParams,
+      );
+    }
+
+    if (isPersonal && searchResult.rows.length > 1) {
+      return `❌ Multiple individual workspaces are associated with ${normalizedContactEmail}. Resolve the duplicate before sending an invite.`;
+    }
 
     if (searchResult.rows.length === 0) {
       // Create the prospect
       const createResult = await createProspect({
         name: companyName,
         domain,
+        is_personal: isPersonal,
         prospect_source: "addie_payment_request",
         prospect_contact_name: contactName,
-        prospect_contact_email: contactEmail,
+        prospect_contact_email: normalizedContactEmail || undefined,
         prospect_contact_title: contactTitle,
       });
 
-      if (!createResult.success || !createResult.organization) {
+      if (!createResult.organization) {
         return `❌ Failed to create prospect: ${createResult.error}`;
       }
 
@@ -4840,7 +4908,7 @@ export function createAdminToolHandlers(
         [createResult.organization.workos_organization_id],
       );
       org = newOrgResult.rows[0];
-      created = true;
+      created = createResult.success;
     } else if (searchResult.rows.length === 1) {
       org = searchResult.rows[0];
     } else {
@@ -4863,6 +4931,11 @@ export function createAdminToolHandlers(
 
     if (!org) {
       return `❌ Could not find or create organization "${companyName}"`;
+    }
+
+    const persistedCustomerType = org.is_personal ? "individual" : "company";
+    if (persistedCustomerType !== customerType) {
+      return `❌ ${org.name} is a ${persistedCustomerType} workspace, not a ${customerType} workspace.`;
     }
 
     // Update contact name/title on the org for visibility. We deliberately do
@@ -4909,7 +4982,6 @@ export function createAdminToolHandlers(
     const members = membersResult.rows;
 
     // Get available products
-    const customerType = org.is_personal ? "individual" : "company";
     let products: BillingProduct[] = [];
     try {
       products = await getProductsForCustomer({
@@ -5039,9 +5111,8 @@ export function createAdminToolHandlers(
         );
       }
 
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-      const normalizedEmail = contactEmail.trim().toLowerCase();
-      if (!emailRegex.test(normalizedEmail)) {
+      const normalizedEmail = normalizedContactEmail!;
+      if (!validateEmail(normalizedEmail).valid) {
         return response + `\n❌ Invalid contact_email: ${contactEmail}`;
       }
 
@@ -11332,10 +11403,20 @@ Use add_committee_leader to assign a leader.`;
   handlers.set("resend_invite", async (input) => {
     const token = input.token as string;
     const orgId = input.org_id as string;
+    const requestedCustomerType = input.customer_type as
+      | "company"
+      | "individual"
+      | undefined;
 
     if (!token) return "❌ token is required.";
     if (!orgId || !orgId.startsWith("org_")) {
       return "❌ org_id is required (org_…).";
+    }
+    if (
+      requestedCustomerType &&
+      !["company", "individual"].includes(requestedCustomerType)
+    ) {
+      return '❌ customer_type must be either "company" or "individual".';
     }
 
     const adminUser = memberContext?.workos_user;
@@ -11363,6 +11444,9 @@ Use add_committee_leader to assign a leader.`;
       }
 
       const customerType = org.is_personal ? "individual" : "company";
+      if (requestedCustomerType && requestedCustomerType !== customerType) {
+        return `❌ Organization ${orgId} is a ${customerType} workspace, not a ${requestedCustomerType} workspace.`;
+      }
       const eligibleProducts = await getProductsForCustomer({
         customerType,
         category: "membership",

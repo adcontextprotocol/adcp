@@ -949,7 +949,11 @@ export class HTTPServer {
     // AAO domain redirects to the DB-managed hosted brand.
     this.app.get('/.well-known/brand.json', (req, res) => {
       res.setHeader('Cache-Control', 'public, max-age=3600');
-      if (this.isAdcpDomain(req)) {
+      // The training-agent hostname publishes the same operator record as the
+      // AdCP site. Its capabilities point at this exact origin, so returning
+      // the AAO authoritative-location stub here would break the required
+      // capabilities -> brand.json -> agents[] -> JWKS discovery chain.
+      if (this.isAdcpDomain(req) || TRAINING_AGENT_HOSTNAMES.has(req.hostname)) {
         return res.json({
           "$schema": "https://adcontextprotocol.org/schemas/latest/brand.json",
           "agents": [

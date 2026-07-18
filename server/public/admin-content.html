@@ -476,11 +476,18 @@
           <div class="form-group" id="statusGroup">
             <label>Status</label>
             <select id="statusSelect">
-              <option value="pending_review">Submit for Review</option>
-              <option value="draft">Save as Draft</option>
-              <option value="published">Publish Now</option>
+              <option value="pending_review">Submit for review</option>
+              <option value="draft">Save as draft</option>
+              <option value="published">Publish now</option>
             </select>
             <small id="statusHint"></small>
+          </div>
+        </div>
+
+        <div id="publishedEditWarning" class="alert-banner hidden">
+          <div class="alert-banner-content">
+            <h3>Published edits require review</h3>
+            <p>Your changes will be removed from the live site and submitted for review before they are published again.</p>
           </div>
         </div>
 
@@ -1597,8 +1604,15 @@
       const sel = document.getElementById('statusSelect');
       const colHint = document.getElementById('collectionHint');
       const col = collections.find(c => c.slug === slug);
+      const publishedEditRequiresReview = editingContent?.status === 'published' && !isAdmin;
+      document.getElementById('publishedEditWarning').classList.toggle('hidden', !publishedEditRequiresReview);
 
-      if (col?.canPublishDirectly || isAdmin) {
+      if (publishedEditRequiresReview) {
+        hint.textContent = 'Published changes must be reviewed before they go live again.';
+        sel.value = 'pending_review';
+        sel.disabled = true;
+        colHint.textContent = 'Where this perspective will appear on the site';
+      } else if (col?.canPublishDirectly || isAdmin) {
         hint.textContent = col?.type === 'committee' ? 'As a lead, you can publish directly.' : '';
         sel.disabled = false;
         colHint.textContent = 'Where this perspective will appear on the site';
@@ -1621,13 +1635,15 @@
       const isEditing = !!document.getElementById('contentId').value;
 
       if (isEditing) {
-        btn.textContent = 'Save Changes';
+        btn.textContent = editingContent?.status === 'published' && !isAdmin
+          ? 'Submit edits for review'
+          : 'Save changes';
       } else if (statusVal === 'published') {
         btn.textContent = 'Publish';
       } else if (statusVal === 'pending_review') {
-        btn.textContent = 'Submit for Review';
+        btn.textContent = 'Submit for review';
       } else {
-        btn.textContent = 'Save as Draft';
+        btn.textContent = 'Save as draft';
       }
     }
 

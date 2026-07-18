@@ -1,0 +1,164 @@
+---
+title: UI guidance for rejected claims
+description: "Non-normative consumer-side guidance for rendering verify_brand_claim disputed / not_ours rejections in DSPs, portfolio explorers, creative-clearance UIs, and brand-safety pipelines. Covers attribution language, recovery paths for the rejected publisher, audit trail recommendations, and legal-exposure considerations."
+"og:title": "AdCP — UI guidance for rejected claims"
+---
+
+When [`verify_brand_claim`](/dist/docs/3.0.21/brand-protocol/tasks/verify_brand_claim) returns `disputed` or `not_ours`, the rejection is authoritative — a brand has standing to refuse association unilaterally. But the *signed answer* travels alone; the consumer surface that renders it owes the humans on both sides a sane presentation.
+
+This page is non-normative. It collects conventions for the consumer side — DSPs, portfolio explorers, creative-clearance UIs, brand-safety pipelines — and for the leaf publisher whose claim was rejected.
+
+## Rendering rejected claims
+
+The rejected response carries a `verification_status` (`disputed` or `not_ours`) and usually a `context_note` written by the brand-agent. The note is intended for human eyes; surface it.
+
+### Attribution language
+
+**Always attribute the rejection to the rejecting brand.** A signed `not_ours` from Nike's brand-agent says *Nike says this is not theirs* — it does NOT say *this publisher is fake*. The distinction matters legally; see [Legal exposure](#legal-exposure) below.
+
+| Don't render | Render instead |
+|---|---|
+| "fake-nike-store.com is fraudulent" | "Nike, Inc. does not recognize fake-nike-store.com as one of its properties" |
+| "This subsidiary claim is invalid" | "Nike, Inc. has rejected this brand's subsidiary claim" |
+| "Trademark not owned" | "Brand X disputes the claim that this mark is theirs in this jurisdiction" |
+
+### DSP inventory shopping
+
+When a DSP buyer agent checks a property claim before bidding and gets `not_ours` or `disputed`:
+
+- **Exclude the property from the buy by default.** A rejected property claim means the publisher's house attribution is in question — bid risk is elevated regardless of the underlying inventory quality.
+- **Surface the rejection inline in the inventory row**, not in a separate audit log. The buyer needs the signal at decision time.
+- **Show the `context_note` verbatim** as the brand's explanation. Don't paraphrase — the brand wrote it deliberately.
+- **Offer the buyer a manual-override path** for cases where the property is legitimately operated under a different relationship the buyer has separately verified.
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│ ◯ premium-sports-network.com                CPM $4.20  ━━━ │
+│                                                              │
+│  ⚠ Nike, Inc. has rejected this site's house-affiliation    │
+│    claim ("Unaffiliated third-party site; we do not         │
+│    authorize use of our marks on it.")                      │
+│                                                              │
+│  [View details]  [Override and bid anyway]                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Portfolio explorer
+
+A portfolio explorer (the AAO registry, a brand-safety vendor's lookup tool) renders brand relationships. When a relationship edge has been rejected at the agent layer:
+
+- **Don't show the edge as if it exists with a warning icon.** Show it as *contested* — a distinct visual state from *verified*, *unverified-pending-reciprocation*, and *missing*.
+- **Render both sides of the rejected edge.** "Brand X claims subsidiary-of Brand Y. Brand Y has rejected this claim."
+- **Timestamp the rejection.** Brands change positions; a 2-year-old rejection of what is now a real acquisition shouldn't dominate the UI.
+- **Link the leaf to its update path** (see [Recovery paths](#recovery-paths-for-the-rejected-leaf) below).
+
+### Creative-clearance UI
+
+Creative-clearance pipelines call `verify_brand_claim` with `claim_type: "trademark"` to confirm a generated creative isn't trespassing on a mark. When the response is `disputed` or `not_ours`:
+
+- **Block the creative from publish by default.** The mark is contested or denied; promoting the creative invites takedown.
+- **Render the disputing brand's `context_note`** so the creative reviewer can decide whether to escalate to legal.
+- **Don't auto-retry** with a different mark variant — the rejection is jurisdictional and a near-miss may produce the same result.
+
+### Brand-safety pipeline
+
+Brand-safety vendors aggregate `verify_brand_claim` signals across the supply chain. When a property is rejected by its claimed house:
+
+- **Demote the property in safety scoring** but don't silently zero it out — the publisher may have legitimate independent inventory.
+- **Surface the rejection in the safety report** with full attribution: "Brand X rejected this site's affiliation claim on $DATE." Buyers reading the report need to know who made the call.
+- **Recompute on a schedule** matching the agent's `Cache-Control: max-age`. Don't pin the rejection state forever — the underlying status can transition.
+
+## Recovery paths for the rejected leaf
+
+The leaf publisher whose `house_domain` (or `properties[]`, or `trademarks[]`) claim was rejected has **no protocol-level recourse beyond updating or removing the claim**. There is no "appeal" task in the brand protocol. This is by design — a brand has standing to refuse association without a counter-process.
+
+But a consumer surface that lands on a rejected leaf SHOULD give that leaf operator a clear next-step UI. Otherwise the publisher sees their site demoted with no explanation.
+
+### Surface the rejection to the leaf
+
+If the consumer surface knows it's looking at the leaf (e.g., the leaf logged into a portfolio explorer or DSP self-service portal):
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│ Your brand.json claims house_domain: nikeinc.com            │
+│                                                              │
+│ Nike, Inc.'s brand-agent has rejected this claim:           │
+│   "We have no record of this brand; the leaf's claim is in  │
+│    error."                                                   │
+│                                                              │
+│ What this means: AdCP consumers will treat your site as     │
+│ standalone (not a Nike subsidiary). Your own brand identity │
+│ is unaffected.                                              │
+│                                                              │
+│ Next steps:                                                 │
+│   • If you should be in Nike's portfolio, contact           │
+│     <portfolio@nikeinc.com> (from Nike's brand.json).       │
+│   • If the claim was mistaken, edit your brand.json to      │
+│     remove `house_domain`, or point it at the correct       │
+│     parent.                                                 │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### What the leaf cannot do
+
+- **There is no protocol-defined challenge mechanism.** The leaf cannot "force" reconsideration through AdCP; that is an out-of-band business conversation.
+- **A leaf claiming `house_domain: A` against A's published rejection does NOT establish the relationship.** Consumers will continue to treat the leaf as standalone.
+- **Re-asserting via different surfaces (a new brand-agent on a new subdomain) doesn't help** — the consumer trust gate is domain control + house-side reciprocation, not number of assertions.
+
+## Audit trail and appeal-process notes
+
+Out-of-spec but worth documenting: keep a record of rejections so a brand or publisher can see the history.
+
+### What to record per rejected response
+
+- **Timestamp** of the response.
+- **Caller identity** that initiated the verify call (your own user, or the upstream service).
+- **Full signed envelope** of the brand-agent's response — signature included, for downstream attestation.
+- **`verification_status`**, **`context_note`**, and the `claim` payload that triggered it.
+- **Bulk context**, when the answer came from `verify_brand_claims`: the full original `claims[]` request and the rejected result index. The single bulk envelope signs the whole `results[]` array, not a standalone per-result artifact.
+- **Cache validity window**: the earlier of `Cache-Control: max-age` and `signed_response.payload.exp`, so you know when the record stopped being fresh.
+
+A signed envelope is durable historical evidence when its signature verifies, its `request_hash` matches the triggering request, and the rejected claim falls within the envelope's `iat`/`exp` window. If a buyer is challenged for excluding a property based on a house-brand rejection, that verified envelope is the artifact the buyer hands back.
+
+### Appeal-process surface
+
+If your platform supports an appeal flow (a vendor-mediated dispute between leaf and house), keep it OUT of the protocol layer and IN your platform's relationship-management surface. The protocol's job is to convey the brand's authoritative answer; your platform's job is to broker the business conversation if there is one.
+
+## Legal exposure
+
+Broadcasting one brand's rejection of another party carries defamation risk. Two considerations:
+
+### Attribute, don't editorialize
+
+Render rejections as the brand's first-person statement, attributed to the brand:
+
+- **Good**: "Nike, Inc. has stated that fake-nike-store.com is not one of its properties."
+- **Bad**: "fake-nike-store.com is a fraudulent Nike imitator."
+
+The first is a reportable fact (Nike's signed statement); the second is an accusation made by your platform.
+
+### The consumer surface is responsible, not AdCP
+
+AdCP delivers a signed answer from one party to another. The consumer surface — the UI that renders that answer to a third party — owns the editorial decisions about how to present it. AdCP does not pre-litigate defamation; render with care.
+
+Specifically:
+
+- **The rejecting brand owns the `context_note` text.** If a brand writes "fake-nike-store.com is a scam," that's the brand's statement and the brand's exposure. Your surface can render it verbatim or summarize it more neutrally; both are reasonable depending on your audience.
+- **Your platform owns any text outside the `context_note`.** Headlines, severity labels, badges ("VERIFIED FRAUD") are your editorial choices and your exposure.
+- **Status-icon design carries weight.** A red X next to a publisher's name reads differently than a yellow "house affiliation contested" badge. Choose the visual register that matches the underlying signal.
+
+### When in doubt, attribute and link
+
+The lowest-risk pattern is to attribute the statement to the brand and link to the signed source:
+
+```text
+"Nike, Inc. says this is not theirs." [View signed response]
+```
+
+The buyer or reviewer can click through to the signed envelope and form their own view. Your platform delivered the signal without amplifying it.
+
+## Related
+
+- [verify_brand_claim](/dist/docs/3.0.21/brand-protocol/tasks/verify_brand_claim) — The task this guidance applies to
+- [Building a brand agent](/dist/docs/3.0.21/brand-protocol/building-a-brand-agent) — Agent-side implementation, including the public/authorized split and signing setup
+- [brand.json § Agent-augmented verification](/dist/docs/3.0.21/brand-protocol/brand-json#agent-augmented-verification) — The asymmetric trust model that makes rejections authoritative

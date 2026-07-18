@@ -1679,6 +1679,34 @@ export function createMyContentRouter(): Router {
         });
       }
 
+      // Published content has already passed editorial review. Any actual
+      // content change by a non-admin must go through that review again,
+      // regardless of whether the caller omits status or asks to keep it
+      // published. Compare values rather than field presence because the web
+      // editor submits the complete form on every save.
+      const changed = (incoming: unknown, current: unknown): boolean => {
+        if (incoming === undefined) return false;
+        if (Array.isArray(incoming) || Array.isArray(current)) {
+          return JSON.stringify(incoming ?? []) !== JSON.stringify(current ?? []);
+        }
+        return incoming !== current;
+      };
+      const authorNameCanChange = isProposer || contentItem.author_user_id === user.id || userIsAdmin;
+      const hasSubstantiveEdit = [
+        changed(title, contentItem.title),
+        changed(content, contentItem.content),
+        changed(content_type, contentItem.content_type),
+        changed(excerpt, contentItem.excerpt),
+        changed(external_url, contentItem.external_url),
+        changed(external_site_name, contentItem.external_site_name),
+        changed(category, contentItem.category),
+        changed(tags, contentItem.tags),
+        authorNameCanChange && changed(author_name, contentItem.author_name),
+      ].some(Boolean);
+      const requiresRenewedReview = contentItem.status === 'published'
+        && !userIsAdmin
+        && hasSubstantiveEdit;
+
       // Build update query
       const updates: string[] = [];
       const values: (string | string[] | null)[] = [];
@@ -1716,7 +1744,7 @@ export function createMyContentRouter(): Router {
         updates.push(`tags = $${paramIndex++}`);
         values.push(tags);
       }
-      const authorNameUpdated = author_name !== undefined && (isProposer || contentItem.author_user_id === user.id || userIsAdmin);
+      const authorNameUpdated = author_name !== undefined && authorNameCanChange;
       if (authorNameUpdated) {
         updates.push(`author_name = $${paramIndex++}`);
         values.push(author_name);
@@ -1733,7 +1761,16 @@ export function createMyContentRouter(): Router {
       // or archived) is gated to admins or the lead of the item's own
       // committee — otherwise an unrelated co-author could resurrect a
       // rejected item without going through the rejecter (see #2713).
-      if (requestedStatus !== undefined) {
+      if (requiresRenewedReview) {
+        updates.push(`status = 'pending_review'`);
+        updates.push(`published_at = NULL`);
+        updates.push(`proposed_at = NOW()`);
+        updates.push(`reviewed_by_user_id = NULL`);
+        updates.push(`reviewed_at = NULL`);
+        updates.push(`revision_notes = NULL`);
+        updates.push(`revision_requested_at = NULL`);
+        updates.push(`rejection_reason = NULL`);
+      } else if (requestedStatus !== undefined) {
         const allowedStatuses = ['draft', 'pending_review', 'published', 'archived', 'needs_revisions'];
         if (allowedStatuses.includes(requestedStatus)) {
           // Non-admins can only set draft or pending_review
@@ -1804,6 +1841,26 @@ export function createMyContentRouter(): Router {
       }
 
       logger.info({ contentId: id, userId: user.id }, 'Content updated');
+
+      if (requiresRenewedReview && result.rows[0].working_group_id) {
+        const updated = result.rows[0];
+        notifyPendingReview(
+          updated.working_group_id,
+          {
+            id: updated.id,
+            title: updated.title,
+            slug: updated.slug,
+            excerpt: updated.excerpt ?? null,
+            content_type: updated.content_type,
+            content: updated.content ?? null,
+            proposed_at: updated.proposed_at,
+          },
+          updated.author_name || 'Unknown',
+          updated.proposer_user_id || user.id
+        ).catch(err => {
+          logger.error({ err, perspectiveId: id }, 'Failed to send renewed content review notification');
+        });
+      }
 
       res.json(result.rows[0]);
     } catch (error) {

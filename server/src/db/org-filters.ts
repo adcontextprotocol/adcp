@@ -42,21 +42,6 @@ export function isPayingMembership(row: {
   return row.subscription_status === 'active' && row.subscription_canceled_at === null;
 }
 
-/**
- * Subscription statuses that keep member entitlements available. This is
- * intentionally broader than `isPayingMembership`: `past_due` and `trialing`
- * preserve tiers during Stripe dunning/trial windows.
- */
-function hasEntitledSubscription(row: {
-  subscription_status: string | null;
-  subscription_canceled_at: Date | null;
-}): boolean {
-  return (
-    (TIER_PRESERVING_STATUSES as readonly string[]).includes(row.subscription_status ?? '') &&
-    row.subscription_canceled_at === null
-  );
-}
-
 /** Organization has at least one user (site account or Slack user) */
 export const HAS_USER = `(
   EXISTS (
@@ -202,9 +187,9 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
  * Resolve effective membership for an organization, including inheritance
  * through the brand registry hierarchy (house_domain chain).
  *
- * If the org itself has an entitlement-preserving subscription, returns direct
- * membership. Otherwise, walks up the house_domain chain looking for an
- * entitled/paying ancestor.
+ * If the org itself has an active, non-canceled subscription, returns direct
+ * membership. Otherwise, walks up the house_domain chain looking for a paying
+ * ancestor.
  *
  * Trust gates on inheritance — same shape as findPayingOrgForDomain so the
  * pre-link auto-provisioning path and post-link is_member resolution agree
@@ -213,7 +198,7 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
  *   - cycle protection via visited-domain array
  *   - only edges classified at confidence='high' (LLM classifier output)
  *   - 180-day TTL on the brand classification
- *   - inherited match only counts if the entitled/paying ancestor has opted into
+ *   - inherited match only counts if the paying ancestor has opted into
  *     auto_provision_brand_hierarchy_children (default false). Without
  *     opt-in, the child org's is_member stays false even if the brand
  *     registry says it's a subsidiary.
@@ -304,9 +289,9 @@ export async function resolveEffectiveMembership(orgId: string): Promise<Effecti
     }
 
     // Check the org itself first (depth 1) — opt-in flag does not apply to
-    // self; an org's own entitlement-preserving subscription always counts.
+    // self; an org's own paying subscription always counts.
     const self = rows[0];
-    if (hasEntitledSubscription(self)) {
+    if (isPayingMembership(self)) {
       const directResult: EffectiveMembership = {
         is_member: true,
         is_inherited: false,
@@ -319,11 +304,11 @@ export async function resolveEffectiveMembership(orgId: string): Promise<Effecti
       return directResult;
     }
 
-    // Check ancestors (depth > 1) for an entitled/paying member that has opted into
+    // Check ancestors (depth > 1) for a paying member that has opted into
     // hierarchy inheritance. An ancestor that didn't consent to children
     // auto-joining doesn't grant is_member to those children either.
     for (const row of rows.slice(1)) {
-      if (hasEntitledSubscription(row) && row.auto_provision_hierarchy) {
+      if (isPayingMembership(row) && row.auto_provision_hierarchy) {
         const chain = rows
           .filter(r => r.depth <= row.depth)
           .map(r => r.email_domain)
