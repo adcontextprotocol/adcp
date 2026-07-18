@@ -1,4 +1,5 @@
 ---
+"adcontextprotocol": patch
 ---
 
 compliance(media-buy): the `available_actions` scenario uses a non-guaranteed product fixture so `sales-non-guaranteed`-only sellers can run it.
