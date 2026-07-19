@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.4/account/list-accounts-request.json",
+  "title": "List Accounts Request",
+  "description": "Request parameters for listing accounts accessible to the authenticated agent. For upstream-managed account namespaces, this is the mandatory discovery surface for seller-assigned account_id values before account-scoped calls when a credential may access more than one account, and the preferred singleton discovery surface when a credential is bound to exactly one account.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/3.1.4/core/version-envelope.json"
+    }
+  ],
+  "properties": {
+    "account": {
+      "$ref": "/schemas/3.1.4/core/account-ref.json",
+      "description": "Optional exact account filter. Use `account_id` to retrieve one known account from an account_id namespace, or the natural key (`brand` + `operator`, optionally `sandbox`) for buyer-declared account sellers. When present, the seller returns only matching accounts visible to the authenticated caller."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "pending_approval",
+        "rejected",
+        "payment_required",
+        "suspended",
+        "closed"
+      ],
+      "description": "Filter accounts by status. Omit to return accounts in all statuses."
+    },
+    "pagination": {
+      "$ref": "/schemas/3.1.4/core/pagination-request.json"
+    },
+    "sandbox": {
+      "type": "boolean",
+      "description": "Filter by sandbox status. true returns only sandbox accounts, false returns only production accounts. Omit to return all accounts. Primarily used with account-id namespaces where sandbox accounts are pre-existing test accounts on the platform."
+    },
+    "context": {
+      "$ref": "/schemas/3.1.4/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.4/core/ext.json"
+    }
+  },
+  "required": [],
+  "additionalProperties": true
+}

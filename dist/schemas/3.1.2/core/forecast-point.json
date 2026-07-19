@@ -1,0 +1,125 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.2/core/forecast-point.json",
+  "title": "Forecast Point",
+  "description": "A forecast data point. When budget is present, the point pairs a spend level with expected delivery — multiple points at ascending budgets form a curve. When budget is omitted, the point represents total available inventory for the requested targeting and dates, independent of spend.",
+  "type": "object",
+  "properties": {
+    "label": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "Human-readable name for this forecast point. Required when forecast_range_unit is 'package' so buyer agents can identify and reference individual packages. Optional for other forecast types.",
+      "examples": ["Primetime", "Morning Drive", "Large Format Transit"]
+    },
+    "budget": {
+      "type": "number",
+      "description": "Budget amount for this forecast point. Required for spend curves; omit for availability forecasts where the metrics represent total available inventory. For allocation-level forecasts, this is the absolute budget for that allocation (not the percentage). For proposal-level forecasts, this is the total proposal budget. When omitted, use metrics.spend to express the estimated cost of the available inventory.",
+      "minimum": 0
+    },
+    "product_id": {
+      "type": "string",
+      "description": "Optional product context for this forecast row. Usually omitted on product-level and allocation-level forecasts where the product is already implied. On proposal-level forecasts, populate when a dimensional row, especially a placement row, maps to a specific product allocation so buyers can turn the row into an executable package choice. Omit for true aggregate proposal rows spanning multiple products.",
+      "x-entity": "product"
+    },
+    "dimensions": {
+      "$ref": "/schemas/3.1.2/core/forecast-point-dimensions.json",
+      "description": "Dimension constraints represented by this forecast point, such as country, region, placement, device type, platform, audience, signal value, or intersections such as placement x country or product x signal. Each item declares one dimension family; when multiple items are present, the point represents their intersection. Sellers MUST NOT emit more than one item for each `kind` on a point; consumers MUST NOT treat repeated kinds as OR semantics. Use multiple points with dimensions to expose country/placement/signal availability within one product, proposal, or signal coverage forecast without creating separate products solely for each dimension. Dimensions describe the forecast row and are independent of pricing_options."
+    },
+    "metrics": {
+      "type": "object",
+      "description": "Forecasted metric values. Keys are forecastable-metric enum values for delivery/engagement or event-type enum values for outcomes. Values are ForecastRange objects (low/mid/high). Use { \"mid\": value } for point estimates. When budget is present, these are the expected metrics at that spend level. When budget is omitted, these represent total available inventory — use spend to express the estimated cost. Additional keys beyond the documented properties are allowed for event-type values (purchase, lead, app_install, etc.).",
+      "properties": {
+        "audience_size": { "$ref": "/schemas/3.1.2/core/forecast-range.json" },
+        "reach": { "$ref": "/schemas/3.1.2/core/forecast-range.json" },
+        "frequency": { "$ref": "/schemas/3.1.2/core/forecast-range.json" },
+        "impressions": { "$ref": "/schemas/3.1.2/core/forecast-range.json" },
+        "clicks": { "$ref": "/schemas/3.1.2/core/forecast-range.json" },
+        "spend": { "$ref": "/schemas/3.1.2/core/forecast-range.json" },
+        "views": { "$ref": "/schemas/3.1.2/core/forecast-range.json" },
+        "completed_views": { "$ref": "/schemas/3.1.2/core/forecast-range.json" },
+        "grps": { "$ref": "/schemas/3.1.2/core/forecast-range.json" },
+        "engagements": { "$ref": "/schemas/3.1.2/core/forecast-range.json" },
+        "follows": { "$ref": "/schemas/3.1.2/core/forecast-range.json" },
+        "saves": { "$ref": "/schemas/3.1.2/core/forecast-range.json" },
+        "profile_visits": { "$ref": "/schemas/3.1.2/core/forecast-range.json" },
+        "measured_impressions": { "$ref": "/schemas/3.1.2/core/forecast-range.json" },
+        "downloads": { "$ref": "/schemas/3.1.2/core/forecast-range.json" },
+        "plays": { "$ref": "/schemas/3.1.2/core/forecast-range.json" },
+        "coverage_rate": {
+          "allOf": [
+            { "$ref": "/schemas/3.1.2/core/forecast-range.json" },
+            {
+              "properties": {
+                "low": { "maximum": 1 },
+                "mid": { "maximum": 1 },
+                "high": { "maximum": 1 }
+              }
+            }
+          ],
+          "description": "Share of the declared forecast scope represented by this point. For signal coverage forecasts, this is the point's count divided by the coverage_forecast.scope denominator. Range 0.0 to 1.0."
+        }
+      },
+      "additionalProperties": {
+        "$ref": "/schemas/3.1.2/core/forecast-range.json"
+      }
+    },
+    "viewability": {
+      "type": "object",
+      "description": "Forecasted viewability metrics. Mirrors delivery-metrics.viewability, but numeric values are ForecastRange objects because forecast rows may provide low/mid/high bounds. Use this for pre-buy viewability expectations by forecast point without folding measurement metrics into pricing_options.",
+      "properties": {
+        "vendor": {
+          "$ref": "/schemas/3.1.2/core/brand-ref.json",
+          "description": "Vendor expected to produce or verify these viewability values."
+        },
+        "measurable_impressions": {
+          "$ref": "/schemas/3.1.2/core/forecast-range.json",
+          "description": "Forecasted impressions where viewability can be measured. Coverage denominator for viewable_rate and viewed_seconds."
+        },
+        "viewable_impressions": {
+          "$ref": "/schemas/3.1.2/core/forecast-range.json",
+          "description": "Forecasted impressions expected to meet the viewability threshold defined by standard."
+        },
+        "viewable_rate": {
+          "allOf": [
+            { "$ref": "/schemas/3.1.2/core/forecast-range.json" },
+            {
+              "properties": {
+                "low": { "maximum": 1 },
+                "mid": { "maximum": 1 },
+                "high": { "maximum": 1 }
+              }
+            }
+          ],
+          "description": "Forecasted viewable impression rate (viewable_impressions / measurable_impressions). Range 0.0 to 1.0."
+        },
+        "viewed_seconds": {
+          "$ref": "/schemas/3.1.2/core/forecast-range.json",
+          "description": "Forecasted average in-view duration per measurable impression, in seconds."
+        },
+        "standard": {
+          "$ref": "/schemas/3.1.2/enums/viewability-standard.json",
+          "description": "Viewability measurement standard applied to these forecasted values."
+        }
+      },
+      "additionalProperties": true,
+      "anyOf": [
+        { "not": { "anyOf": [
+          { "required": ["measurable_impressions"] },
+          { "required": ["viewable_impressions"] },
+          { "required": ["viewable_rate"] },
+          { "required": ["viewed_seconds"] }
+        ] } },
+        { "required": ["standard"] }
+      ]
+    },
+    "vendor_metric_values": {
+      "type": "array",
+      "description": "Forecasted values for vendor-defined metrics that the product's reporting_capabilities.vendor_metrics declared. Mirrors delivery-metrics.vendor_metric_values, but value and measurable_impressions use ForecastRange. These forecasted measurement values are independent of pricing_options.",
+      "items": {
+        "$ref": "/schemas/3.1.2/core/forecast-vendor-metric-value.json"
+      }
+    }
+  },
+  "required": ["metrics"],
+  "additionalProperties": true
+}
