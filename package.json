@@ -135,7 +135,7 @@
   "dependencies": {
     "@adcp/sdk": "9.6.2",
     "@anthropic-ai/sdk": "^0.112.3",
-    "@asteasolutions/zod-to-openapi": "^8.5.0",
+    "@asteasolutions/zod-to-openapi": "^9.1.0",
     "@contentauth/c2pa-node": "^0.6.3",
     "@google-cloud/kms": "^5.6.0",
     "@google/generative-ai": "^0.24.1",
