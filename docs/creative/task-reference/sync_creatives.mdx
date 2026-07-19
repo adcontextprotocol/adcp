@@ -173,8 +173,11 @@ Provide either the legacy `format_id` or the canonical `format_kind` path, never
 Discover support before writing. The agent's
 `get_adcp_capabilities.creative.localization` block names the exact BCP 47
 locales and translation modes it currently accepts. A seller MUST reject a
-locale outside that list, a duplicate locale/ID, a missing buyer translation,
-or a lossy provider mapping before provider or library mutation.
+locale outside that list, a duplicate target locale/ID, a target locale/ID that
+reuses the source value, a missing buyer translation, or a lossy provider
+mapping before provider or library mutation. JSON Schema `uniqueItems` compares
+whole objects and is not sufficient for those property-level rules; verifiers
+consume the schema's `x-adcp-validation` constraints.
 
 ```json
 {

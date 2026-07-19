@@ -116,7 +116,22 @@
           },
           "localization": {
             "$ref": "/schemas/core/creative-localization-readback.json",
-            "description": "Authoritative exact provider-backed locale-variant state. Present for localized creatives. A seller MUST fail the creative read rather than return partial or lossy localization evidence."
+            "description": "Authoritative exact provider-backed locale-variant state. Present for localized creatives. A seller MUST fail the creative read rather than return partial or lossy localization evidence.",
+            "x-adcp-validation": {
+              "verifier_constraints": {
+                "aggregate_status_field": "status",
+                "aggregate_variant_status_path": "localization.variants[].status",
+                "aggregate_status_precedence": [
+                  "rejected",
+                  "suspended",
+                  "pending_review",
+                  "processing",
+                  "approved"
+                ],
+                "archived_requires_all_variants_archived": true
+              },
+              "spec": "docs/creative/task-reference/list_creatives.mdx#localized-creative-readback"
+            }
           },
           "tags": {
             "type": "array",

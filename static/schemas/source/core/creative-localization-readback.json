@@ -3,6 +3,18 @@
   "$id": "/schemas/core/creative-localization-readback.json",
   "title": "Creative Localization Readback",
   "description": "Exact provider-backed localization state for one creative. Presence means every requested source/target variant was read back completely; sellers MUST fail closed instead of returning this object when any locale, resolved asset, provider identity, review state, or launch state is missing or lossy.",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "unique_variant_properties": [
+        "locale_variant_id",
+        "locale",
+        "provider_variant_id"
+      ],
+      "exact_role_counts": { "source": 1 },
+      "creative_review_scope_equal_properties": ["status", "launch_status"]
+    },
+    "spec": "docs/creative/task-reference/list_creatives.mdx#localized-creative-readback"
+  },
   "type": "object",
   "properties": {
     "platform_id": {

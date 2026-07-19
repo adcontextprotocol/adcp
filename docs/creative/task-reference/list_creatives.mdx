@@ -202,6 +202,12 @@ variant. Each entry preserves the buyer's `locale_variant_id` and returns the
 canonical locale, complete resolved assets, provider variant identity, review
 status, and launch status.
 
+Verifiers enforce unique locale, buyer locale-variant ID, and provider-variant
+ID values plus exactly one source role. When `review_scope: creative`, every
+variant must carry the same `status` and `launch_status`. These rules are
+machine-readable in `x-adcp-validation` because draft-07 `uniqueItems` compares
+whole objects and cannot express uniqueness by property or cross-item equality.
+
 This object is atomic. If the provider omits a requested locale, normalizes it
 to a different locale, loses an asset or identity, or cannot report review and
 launch state, the seller MUST fail the creative read rather than return a

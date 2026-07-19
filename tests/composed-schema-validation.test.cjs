@@ -111,6 +111,127 @@ async function testSchemaRejection(schemaId, testData, description) {
   }
 }
 
+function duplicateValues(items, property) {
+  const seen = new Set();
+  const duplicates = new Set();
+  for (const item of items) {
+    const value = item[property];
+    if (seen.has(value)) duplicates.add(value);
+    seen.add(value);
+  }
+  return [...duplicates];
+}
+
+function validateLocalizationRequestSemantics(localization) {
+  const errors = [];
+  const targets = localization.target_variants || [];
+  for (const property of ['locale_variant_id', 'locale']) {
+    if (duplicateValues(targets, property).length > 0) {
+      errors.push(`target ${property} values must be unique`);
+    }
+    if (targets.some((target) => target[property] === localization.source?.[property])) {
+      errors.push(`target ${property} must differ from source ${property}`);
+    }
+  }
+  return errors;
+}
+
+const LOCALIZATION_STATUS_PRECEDENCE = [
+  'rejected',
+  'suspended',
+  'pending_review',
+  'processing',
+  'approved'
+];
+
+function aggregateLocalizationStatus(variants) {
+  if (variants.length > 0 && variants.every((variant) => variant.status === 'archived')) {
+    return 'archived';
+  }
+  return LOCALIZATION_STATUS_PRECEDENCE.find((status) =>
+    variants.some((variant) => variant.status === status)
+  );
+}
+
+function validateLocalizationReadbackSemantics(localization, aggregateStatus) {
+  const errors = [];
+  const variants = localization.variants || [];
+  for (const property of ['locale_variant_id', 'locale', 'provider_variant_id']) {
+    if (duplicateValues(variants, property).length > 0) {
+      errors.push(`variant ${property} values must be unique`);
+    }
+  }
+  const sourceCount = variants.filter((variant) => variant.role === 'source').length;
+  if (sourceCount !== 1) errors.push('localization must contain exactly one source variant');
+  if (localization.review_scope === 'creative' && variants.length > 0) {
+    for (const property of ['status', 'launch_status']) {
+      if (new Set(variants.map((variant) => variant[property])).size !== 1) {
+        errors.push(`creative review scope requires identical ${property}`);
+      }
+    }
+  }
+  if (aggregateStatus !== undefined) {
+    const expected = aggregateLocalizationStatus(variants);
+    if (aggregateStatus !== expected) {
+      errors.push(`aggregate status must be ${expected}`);
+    }
+  }
+  return errors;
+}
+
+function testSemanticValidation(errors, expectedError, description) {
+  totalTests++;
+  const passed = expectedError
+    ? errors.some((error) => error.includes(expectedError))
+    : errors.length === 0;
+  if (passed) {
+    log(`  \u2713 ${description}`, 'success');
+    passedTests++;
+  } else {
+    log(`  \u2717 ${description}`, 'error');
+    log(`    Semantic errors: ${JSON.stringify(errors)}`, 'error');
+    failedTests++;
+  }
+}
+
+function testValidationConstraints(constraints, expectedConstraints, description) {
+  totalTests++;
+  const passed =
+    constraints &&
+    Object.entries(expectedConstraints).every(
+      ([key, value]) => JSON.stringify(constraints[key]) === JSON.stringify(value)
+    );
+  if (passed) {
+    log(`  \u2713 ${description}`, 'success');
+    passedTests++;
+  } else {
+    log(`  \u2717 ${description}`, 'error');
+    log(`    Constraints: ${JSON.stringify(constraints)}`, 'error');
+    failedTests++;
+  }
+}
+
+function testValidationAnnotation(schemaId, expectedConstraints, description) {
+  const schemaPath = path.join(SCHEMA_BASE_DIR, schemaId.replace('/schemas/', ''));
+  const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+  testValidationConstraints(
+    schema['x-adcp-validation']?.verifier_constraints,
+    expectedConstraints,
+    description
+  );
+}
+
+function testNestedValidationAnnotation(schemaId, propertyPath, expectedConstraints, description) {
+  const schemaPath = path.join(SCHEMA_BASE_DIR, schemaId.replace('/schemas/', ''));
+  const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+  const node = propertyPath.reduce((value, key) => value?.[key], schema);
+  testValidationConstraints(
+    node?.['x-adcp-validation']?.verifier_constraints,
+    expectedConstraints,
+    description
+  );
+}
+
 async function runTests() {
   log('Testing Composed Schema Validation (allOf patterns)', 'info');
   log('====================================================');
@@ -2201,6 +2322,49 @@ async function runTests() {
     'Creative accepts an explicit provider-generated translation request'
   );
 
+  testValidationAnnotation(
+    '/schemas/core/creative-localization.json',
+    {
+      unique_target_properties: ['locale_variant_id', 'locale'],
+      target_properties_disjoint_from_source: ['locale_variant_id', 'locale']
+    },
+    'Localization request exposes machine-readable locale and identity uniqueness rules'
+  );
+
+  testSemanticValidation(
+    validateLocalizationRequestSemantics(localizedCreative.localization),
+    undefined,
+    'Localization request semantic verifier accepts unique source and target identities'
+  );
+
+  for (const [property, duplicateValue] of [
+    ['locale', 'es-ES'],
+    ['locale_variant_id', 'loc_es_es']
+  ]) {
+    const duplicateTargets = structuredClone(localizedCreative.localization);
+    duplicateTargets.target_variants.push({
+      locale_variant_id: 'loc_fr_fr',
+      locale: 'fr-FR',
+      translation_mode: 'provider_generated',
+      [property]: duplicateValue
+    });
+    testSemanticValidation(
+      validateLocalizationRequestSemantics(duplicateTargets),
+      `target ${property} values must be unique`,
+      `Localization request semantic verifier rejects duplicate target ${property}`
+    );
+  }
+
+  for (const property of ['locale', 'locale_variant_id']) {
+    const sourceCollision = structuredClone(localizedCreative.localization);
+    sourceCollision.target_variants[0][property] = sourceCollision.source[property];
+    testSemanticValidation(
+      validateLocalizationRequestSemantics(sourceCollision),
+      `target ${property} must differ from source ${property}`,
+      `Localization request semantic verifier rejects source/target ${property} reuse`
+    );
+  }
+
   await testSchemaRejection(
     '/schemas/core/creative-asset.json',
     {
@@ -2281,6 +2445,109 @@ async function runTests() {
     '/schemas/core/creative-localization-readback.json',
     localizationReadback,
     'Exact source and target localization readback validates'
+  );
+
+  testValidationAnnotation(
+    '/schemas/core/creative-localization-readback.json',
+    {
+      unique_variant_properties: [
+        'locale_variant_id',
+        'locale',
+        'provider_variant_id'
+      ],
+      exact_role_counts: { source: 1 },
+      creative_review_scope_equal_properties: ['status', 'launch_status']
+    },
+    'Localization readback exposes machine-readable exactness rules'
+  );
+
+  const aggregateConstraints = {
+    aggregate_status_field: 'status',
+    aggregate_variant_status_path: 'localization.variants[].status',
+    aggregate_status_precedence: LOCALIZATION_STATUS_PRECEDENCE,
+    archived_requires_all_variants_archived: true
+  };
+  testNestedValidationAnnotation(
+    '/schemas/creative/sync-creatives-response.json',
+    ['oneOf', 0, 'properties', 'creatives', 'items', 'properties', 'localization'],
+    aggregateConstraints,
+    'Sync response exposes machine-readable localization status aggregation'
+  );
+  testNestedValidationAnnotation(
+    '/schemas/creative/list-creatives-response.json',
+    ['properties', 'creatives', 'items', 'properties', 'localization'],
+    aggregateConstraints,
+    'List response exposes machine-readable localization status aggregation'
+  );
+
+  testSemanticValidation(
+    validateLocalizationReadbackSemantics(localizationReadback, 'pending_review'),
+    undefined,
+    'Localization readback verifier accepts exact roles, identities, and aggregate status'
+  );
+
+  for (const role of ['target', 'source']) {
+    const invalidRoles = structuredClone(localizationReadback);
+    invalidRoles.variants = invalidRoles.variants.map((variant) => ({ ...variant, role }));
+    testSemanticValidation(
+      validateLocalizationReadbackSemantics(invalidRoles),
+      'exactly one source variant',
+      `Localization readback verifier rejects ${role === 'target' ? 'zero' : 'multiple'} source roles`
+    );
+  }
+
+  for (const property of ['locale_variant_id', 'locale', 'provider_variant_id']) {
+    const duplicateReadback = structuredClone(localizationReadback);
+    duplicateReadback.variants[1][property] = duplicateReadback.variants[0][property];
+    testSemanticValidation(
+      validateLocalizationReadbackSemantics(duplicateReadback),
+      `variant ${property} values must be unique`,
+      `Localization readback verifier rejects duplicate ${property}`
+    );
+  }
+
+  for (const property of ['status', 'launch_status']) {
+    const creativeScopeMismatch = structuredClone(localizationReadback);
+    creativeScopeMismatch.review_scope = 'creative';
+    testSemanticValidation(
+      validateLocalizationReadbackSemantics(creativeScopeMismatch),
+      `creative review scope requires identical ${property}`,
+      `Localization readback verifier rejects creative-scope ${property} drift`
+    );
+  }
+
+  testSemanticValidation(
+    validateLocalizationReadbackSemantics(localizationReadback, 'approved'),
+    'aggregate status must be pending_review',
+    'Localization readback verifier rejects an aggregate status that hides pending review'
+  );
+
+  const precedenceReadback = structuredClone(localizationReadback);
+  precedenceReadback.variants[0].status = 'suspended';
+  precedenceReadback.variants[1].status = 'rejected';
+  testSemanticValidation(
+    validateLocalizationReadbackSemantics(precedenceReadback, 'rejected'),
+    undefined,
+    'Localization aggregate status uses rejected before suspended'
+  );
+
+  const archivedReadback = structuredClone(localizationReadback);
+  archivedReadback.variants = archivedReadback.variants.map((variant) => ({
+    ...variant,
+    status: 'archived'
+  }));
+  testSemanticValidation(
+    validateLocalizationReadbackSemantics(archivedReadback, 'archived'),
+    undefined,
+    'Localization aggregate status is archived only when every variant is archived'
+  );
+
+  const partiallyArchivedReadback = structuredClone(archivedReadback);
+  partiallyArchivedReadback.variants[1].status = 'approved';
+  testSemanticValidation(
+    validateLocalizationReadbackSemantics(partiallyArchivedReadback, 'approved'),
+    undefined,
+    'Localization aggregate status ignores archived when another live state exists'
   );
 
   await testSchemaRejection(
