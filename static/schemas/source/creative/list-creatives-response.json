@@ -114,6 +114,10 @@
             },
             "additionalProperties": true
           },
+          "localization": {
+            "$ref": "/schemas/core/creative-localization-readback.json",
+            "description": "Authoritative exact provider-backed locale-variant state. Present for localized creatives. A seller MUST fail the creative read rather than return partial or lossy localization evidence."
+          },
           "tags": {
             "type": "array",
             "description": "User-defined tags for organization and searchability",

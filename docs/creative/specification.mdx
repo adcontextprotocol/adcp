@@ -146,6 +146,64 @@ Manifests pair format specifications with actual asset content. A manifest provi
 
 Creative agents MUST validate manifests against format requirements before accepting them.
 
+### Native creative localization
+
+Native localization is a library/trafficking capability, distinct from
+`build_creative` fan-out and from served delivery variants. An agent supports
+it only when `get_adcp_capabilities.creative.localization` is present. That
+capability returns the complete BCP 47 locale set accepted for the current
+caller, accepted translation modes, the target-variant ceiling, and whether
+provider review is per variant or creative-wide.
+
+`CreativeAsset.localization` makes every translation request explicit:
+
+- The creative's top-level `assets` are the source/default variant.
+- `localization.source` binds those assets to a canonical BCP 47 tag and a
+  buyer-assigned `locale_variant_id`.
+- Every `target_variants[]` entry has a unique locale and stable
+  `locale_variant_id`.
+- `translation_mode: buyer_supplied` carries locale-specific asset overrides;
+  missing slots inherit source assets.
+- `translation_mode: provider_generated` carries no override assets and is the
+  only way to ask the provider to translate from source. A source asset alone
+  never implies translation.
+
+Locale tags MUST use the canonical representation from
+[RFC 5646](https://www.rfc-editor.org/rfc/rfc5646): lower-case language and
+variants, title-case script, and upper-case region (for example `en-US` and
+`zh-Hant-TW`). A receiver MUST reject duplicate, non-canonical, unsupported, or
+lossily mapped locales before any provider or library mutation. After source
+inheritance or provider generation, each fully resolved variant MUST satisfy
+the selected creative format.
+
+`locale_variant_id` is scoped to the parent creative. It is not a
+`build_variant_id` (a `build_creative` output leaf) and not the `variant_id`
+used for a provider's served execution in `get_creative_delivery`. A successful
+localized sync and every later `list_creatives` read preserve the buyer's
+`locale_variant_id` and add the provider's `provider_variant_id`.
+
+Localized readback is atomic. The seller returns complete resolved assets,
+provider creative/variant identities, review `status`, and `launch_status` for
+the source and every target. If any element is unavailable or cannot be mapped
+exactly, the seller MUST fail the creative read rather than omit the locale,
+substitute the source language, or return a partial localization object.
+`launch_status: ready` reports provider eligibility; it does not authorize
+buyer spend.
+
+The creative-level `status` is deterministic. `archived` applies only when the
+whole creative is archived, in which case every locale variant is archived.
+Otherwise the seller selects the first state present in this precedence order:
+`rejected`, `suspended`, `pending_review`, `processing`, `approved`. Therefore
+the creative is `approved` only when every locale variant is approved. When
+`review_scope: creative`, every locale MUST echo the same provider-backed
+status and launch state.
+
+On upsert, a non-null `localization` object replaces the creative's complete
+locale set; omission leaves localization unchanged; `localization: null`
+removes it. `delete_missing` still operates only at creative scope: archiving a
+missing creative archives all of its locale variants atomically, and it never
+compares locale arrays between otherwise-present creatives.
+
 ### Universal macros
 
 AdCP defines universal macros for cross-platform tracking. Creative agents MUST support these macros in tracking URLs:
@@ -373,6 +431,7 @@ Upload and synchronize creative assets in a library. Implemented by any agent th
 - Agents MAY require approval before creatives are available for use
 - Agents SHOULD support `dry_run` for validation without applying changes
 - Agents MUST reject requests that combine `delete_missing: true` with `creative_ids` — `delete_missing` applies to the entire library, not a filtered subset
+- Agents that advertise `creative.localization` MUST reject unsupported localization before mutation and return exact localization readback on every accepted localized creative
 - Agents that also manage media buys SHOULD support the `assignments` field for bulk creative-to-package mapping
 - Standalone creative agents that do not manage media buys SHOULD ignore the `assignments` field
 

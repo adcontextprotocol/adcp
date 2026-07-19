@@ -49,6 +49,10 @@
                 "type": "string",
                 "description": "Platform-specific ID assigned to the creative"
               },
+              "localization": {
+                "$ref": "/schemas/core/creative-localization-readback.json",
+                "description": "Exact provider-backed locale-variant state. Required for every accepted creative whose request included a non-null localization object; omitted for unlocalized, failed, or deleted items."
+              },
               "changes": {
                 "type": "array",
                 "description": "Field names that were modified (only present when action='updated')",

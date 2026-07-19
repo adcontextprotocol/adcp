@@ -163,9 +163,92 @@ Implementations that acknowledge a creative on the synchronous success branch bu
 | `format_kind`       | CanonicalFormatKind | Conditional | 3.1+ canonical-format path. Required when `format_id` is omitted; mutually exclusive with `format_id`. |
 | `format_option_ref` | FormatOptionRef     | No          | Optional structured reference to a product or publisher format option. Required when the target product has multiple options with the same `format_kind`. |
 | `assets`            | object              | Yes         | Assets keyed by role (e.g., `{video: {...}, thumbnail: {...}}`). Catalogs are included as assets with `asset_type: "catalog"`. See [Catalogs](/docs/creative/catalogs). |
+| `localization`      | object \| null       | No          | Explicit source and target locale variants. Requires `get_adcp_capabilities.creative.localization`. An object replaces the complete locale set, omission leaves it unchanged, and null removes it. |
 | `tags`              | string[]            | No          | Searchable tags for creative organization                          |
 
 Provide either the legacy `format_id` or the canonical `format_kind` path, never both. New 3.1+ integrations should prefer `format_kind` with `format_option_ref` when routing depends on a product's declared format option.
+
+### Native localization
+
+Discover support before writing. The agent's
+`get_adcp_capabilities.creative.localization` block names the exact BCP 47
+locales and translation modes it currently accepts. A seller MUST reject a
+locale outside that list, a duplicate locale/ID, a missing buyer translation,
+or a lossy provider mapping before provider or library mutation.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-request.json",
+  "adcp_version": "3.1",
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
+  "account": { "account_id": "acct_nova" },
+  "creatives": [
+    {
+      "creative_id": "summer_image_localized",
+      "name": "Summer image — localized",
+      "format_kind": "image",
+      "assets": {
+        "image": {
+          "asset_type": "image",
+          "url": "https://cdn.nova.example/summer-en.jpg",
+          "width": 1080,
+          "height": 1080
+        },
+        "headline": {
+          "asset_type": "text",
+          "content": "Summer starts here",
+          "language": "en-US"
+        }
+      },
+      "localization": {
+        "source": {
+          "locale_variant_id": "loc_en_us",
+          "locale": "en-US"
+        },
+        "target_variants": [
+          {
+            "locale_variant_id": "loc_es_es",
+            "locale": "es-ES",
+            "translation_mode": "buyer_supplied",
+            "assets": {
+              "image": {
+                "asset_type": "image",
+                "url": "https://cdn.nova.example/summer-es.jpg",
+                "width": 1080,
+                "height": 1080
+              },
+              "headline": {
+                "asset_type": "text",
+                "content": "El verano empieza aquí",
+                "language": "es-ES"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
+The source assets are the default. A buyer-supplied target contains only its
+locale-specific overrides; missing slots inherit source. A
+`provider_generated` target contains no `assets` and is the explicit request
+for native provider translation. Source assets alone never request
+translation.
+
+Accepted localized results include `localization` with the provider creative
+identity and a complete source-plus-target variant list. Each variant preserves
+`locale_variant_id` and returns complete resolved assets,
+`provider_variant_id`, review `status`, and `launch_status`. If the provider
+cannot read back any one of those values exactly, the item fails rather than
+silently falling back to the source language.
+
+`delete_missing` remains creative-scoped. If it archives a creative, every
+locale variant is archived atomically; it never treats omitted target locales
+as missing creatives. A non-null `localization` object on an upsert replaces
+the locale set, omission leaves it unchanged, and null removes it. The normal
+active-delivery update protection applies to all three operations.
 
 ### Promoting a build_creative variant
 
@@ -269,6 +352,7 @@ The final per-creative `creatives` array lands on the task completion artifact, 
 - `platform_id` - Platform's internal ID (when `action` is not `failed`)
 - `action` - Lifecycle operation performed by this sync: `created`, `updated`, `unchanged`, `failed`, `deleted`
 - `status` - **Advisory** review-lifecycle state ([`CreativeStatus`](https://adcontextprotocol.org/schemas/v3/enums/creative-status.json)): `processing`, `pending_review`, `approved`, `suspended`, `rejected`, `archived`. A UI hint and polling-scheduling signal — **not** a spend-authorization gate. Orthogonal to `action` — `action` describes what the sync did, `status` describes where the creative is in the review lifecycle. Values come from `CreativeStatus` only, never from `CreativeAction` (never put `created`/`updated`/`failed` in `status`). Sellers with async review return `processing` or `pending_review`; sellers with synchronous review MAY return a terminal value (`approved`/`rejected`) or `suspended` when a recoverable dependency/authorization gate prevents serving. **Buyers MUST NOT gate downstream spend or package activation on `status: approved` from this response** — reconcile via `list_creatives` or a signed review webhook before committing spend. Authoritative state is always via `list_creatives`. **MUST be omitted** when `action` is `failed` or `deleted` — failed items have no meaningful review state (see `errors`); deleted items are gone from the library. The schema enforces the omission rule via a conditional constraint.
+- `localization` - Exact provider-backed source/target locale state. Required on every accepted localized item, omitted on failed/deleted/unlocalized items. The creative-level status aggregates locale states in this precedence: `rejected`, `suspended`, `pending_review`, `processing`, `approved`.
 - `errors` - Array of error messages (only when `action: "failed"`)
 - `warnings` - Array of non-fatal warnings (optional)
 

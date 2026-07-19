@@ -1,0 +1,128 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/creative-localization-readback.json",
+  "title": "Creative Localization Readback",
+  "description": "Exact provider-backed localization state for one creative. Presence means every requested source/target variant was read back completely; sellers MUST fail closed instead of returning this object when any locale, resolved asset, provider identity, review state, or launch state is missing or lossy.",
+  "type": "object",
+  "properties": {
+    "platform_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable provider creative identity shared by the localized variants."
+    },
+    "review_scope": {
+      "type": "string",
+      "enum": ["per_variant", "creative"],
+      "description": "Whether the provider reports review independently per locale variant or only for the creative as a whole. With `creative`, every variant MUST echo the same provider-backed status and launch_status."
+    },
+    "variants": {
+      "type": "array",
+      "description": "The source variant followed by every target variant. Each entry contains fully resolved assets after inheritance or provider generation; partial override bags are never returned here.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "locale_variant_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "description": "Buyer-assigned stable locale-variant identity from the request.",
+            "x-entity": "creative_locale_variant"
+          },
+          "locale": {
+            "$ref": "/schemas/core/locale-tag.json"
+          },
+          "role": {
+            "type": "string",
+            "enum": ["source", "target"],
+            "description": "Source/default variant versus a target locale variant. Exactly one entry MUST be source."
+          },
+          "translation_mode": {
+            "type": "string",
+            "enum": ["source", "buyer_supplied", "provider_generated"],
+            "description": "How this locale's assets were obtained. Source entries use `source`; target entries preserve the request's explicit translation mode."
+          },
+          "assets": {
+            "type": "object",
+            "description": "Complete resolved assets for this locale, keyed by creative slot. All source inheritance and provider generation has already been applied.",
+            "minProperties": 1,
+            "patternProperties": {
+              "^[a-z0-9_]+$": {
+              "anyOf": [
+                  { "$ref": "/schemas/core/assets/asset-union.json" },
+                  {
+                    "type": "array",
+                    "items": { "$ref": "/schemas/core/assets/asset-union.json" },
+                    "minItems": 1
+                  }
+                ]
+              }
+            },
+            "additionalProperties": true
+          },
+          "provider_variant_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable provider-native identity or label for this exact locale execution. It is evidence, not buyer-authored provider input."
+          },
+          "status": {
+            "$ref": "/schemas/enums/creative-status.json",
+            "description": "Provider-backed review lifecycle state for this locale variant."
+          },
+          "launch_status": {
+            "type": "string",
+            "enum": ["ready", "pending", "blocked"],
+            "description": "Provider-backed serving eligibility for this locale variant. `ready` means the provider reports the variant eligible, not that the buyer has authorized spend. `pending` means provider processing/review is unfinished. `blocked` means a provider or policy condition prevents launch."
+          },
+          "launch_blockers": {
+            "type": "array",
+            "description": "Machine-readable reasons this locale variant is blocked. Required and non-empty when launch_status is `blocked`; omitted otherwise.",
+            "items": { "$ref": "/schemas/core/error.json" },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "locale_variant_id",
+          "locale",
+          "role",
+          "translation_mode",
+          "assets",
+          "provider_variant_id",
+          "status",
+          "launch_status"
+        ],
+        "allOf": [
+          {
+            "if": {
+              "properties": { "role": { "const": "source" } },
+              "required": ["role"]
+            },
+            "then": {
+              "properties": { "translation_mode": { "const": "source" } }
+            },
+            "else": {
+              "properties": {
+                "translation_mode": {
+                  "enum": ["buyer_supplied", "provider_generated"]
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": { "launch_status": { "const": "blocked" } },
+              "required": ["launch_status"]
+            },
+            "then": { "required": ["launch_blockers"] },
+            "else": { "not": { "required": ["launch_blockers"] } }
+          }
+        ],
+        "additionalProperties": true
+      },
+      "minItems": 2,
+      "maxItems": 51,
+      "uniqueItems": true
+    }
+  },
+  "required": ["platform_id", "review_scope", "variants"],
+  "additionalProperties": true
+}

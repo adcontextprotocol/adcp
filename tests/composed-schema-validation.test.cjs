@@ -2140,6 +2140,185 @@ async function runTests() {
     log('');
   }
 
+  log('Native Creative Localization Schemas:', 'info');
+  const localizedCreative = {
+    creative_id: 'summer_image_localized',
+    name: 'Summer image — localized',
+    format_kind: 'image',
+    assets: {
+      image: {
+        asset_type: 'image',
+        url: 'https://cdn.nova.example/summer-en.jpg',
+        width: 1080,
+        height: 1080
+      },
+      headline: {
+        asset_type: 'text',
+        content: 'Summer starts here',
+        language: 'en-US'
+      }
+    },
+    localization: {
+      source: { locale_variant_id: 'loc_en_us', locale: 'en-US' },
+      target_variants: [
+        {
+          locale_variant_id: 'loc_es_es',
+          locale: 'es-ES',
+          translation_mode: 'buyer_supplied',
+          assets: {
+            headline: {
+              asset_type: 'text',
+              content: 'El verano empieza aquí',
+              language: 'es-ES'
+            }
+          }
+        }
+      ]
+    }
+  };
+
+  await testSchemaValidation(
+    '/schemas/core/creative-asset.json',
+    localizedCreative,
+    'Creative accepts explicit buyer-supplied locale variants'
+  );
+
+  await testSchemaValidation(
+    '/schemas/core/creative-asset.json',
+    {
+      ...localizedCreative,
+      localization: {
+        source: { locale_variant_id: 'loc_en_us', locale: 'en-US' },
+        target_variants: [
+          {
+            locale_variant_id: 'loc_fr_fr',
+            locale: 'fr-FR',
+            translation_mode: 'provider_generated'
+          }
+        ]
+      }
+    },
+    'Creative accepts an explicit provider-generated translation request'
+  );
+
+  await testSchemaRejection(
+    '/schemas/core/creative-asset.json',
+    {
+      ...localizedCreative,
+      localization: {
+        source: { locale_variant_id: 'loc_en_us', locale: 'en-US' },
+        target_variants: [
+          {
+            locale_variant_id: 'loc_es_es',
+            locale: 'es-ES',
+            translation_mode: 'buyer_supplied'
+          }
+        ]
+      }
+    },
+    'Buyer-supplied translation without overrides is rejected'
+  );
+
+  await testSchemaRejection(
+    '/schemas/core/creative-asset.json',
+    {
+      ...localizedCreative,
+      localization: {
+        source: { locale_variant_id: 'loc_en_us', locale: 'en-US' },
+        target_variants: [
+          {
+            locale_variant_id: 'loc_es_es',
+            locale: 'es-ES',
+            translation_mode: 'provider_generated',
+            assets: {
+              headline: {
+                asset_type: 'text',
+                content: 'Ambiguous supplied copy'
+              }
+            }
+          }
+        ]
+      }
+    },
+    'Provider-generated translation with buyer assets is rejected'
+  );
+
+  const localizationReadback = {
+    platform_id: 'provider_creative_123',
+    review_scope: 'per_variant',
+    variants: [
+      {
+        locale_variant_id: 'loc_en_us',
+        locale: 'en-US',
+        role: 'source',
+        translation_mode: 'source',
+        assets: localizedCreative.assets,
+        provider_variant_id: 'provider_variant_en',
+        status: 'approved',
+        launch_status: 'ready'
+      },
+      {
+        locale_variant_id: 'loc_es_es',
+        locale: 'es-ES',
+        role: 'target',
+        translation_mode: 'buyer_supplied',
+        assets: {
+          ...localizedCreative.assets,
+          headline: {
+            asset_type: 'text',
+            content: 'El verano empieza aquí',
+            language: 'es-ES'
+          }
+        },
+        provider_variant_id: 'provider_variant_es',
+        status: 'pending_review',
+        launch_status: 'pending'
+      }
+    ]
+  };
+
+  await testSchemaValidation(
+    '/schemas/core/creative-localization-readback.json',
+    localizationReadback,
+    'Exact source and target localization readback validates'
+  );
+
+  await testSchemaRejection(
+    '/schemas/core/creative-localization-readback.json',
+    {
+      ...localizationReadback,
+      variants: localizationReadback.variants.map((variant, index) =>
+        index === 1
+          ? { ...variant, status: 'rejected', launch_status: 'blocked' }
+          : variant
+      )
+    },
+    'Blocked locale readback without machine-readable blockers is rejected'
+  );
+
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      adcp_version: '3.1',
+      status: 'completed',
+      adcp: {
+        major_versions: [3],
+        idempotency: { supported: true, replay_ttl_seconds: 86400 }
+      },
+      supported_protocols: ['creative'],
+      creative: {
+        localization: {
+          supported_locales: ['en-US', 'es-ES'],
+          translation_modes: ['buyer_supplied'],
+          max_target_variants: 10,
+          review_scope: 'per_variant'
+        }
+      }
+    },
+    'Capabilities advertise discoverable locale and review support'
+  );
+  log('');
+
   // Print results
   log('====================================================');
   log(`Tests completed: ${totalTests}`);

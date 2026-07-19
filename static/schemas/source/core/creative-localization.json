@@ -1,0 +1,92 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/creative-localization.json",
+  "title": "Creative Localization",
+  "description": "Provider-neutral localization request for one creative. The creative's top-level `assets` are the source variant. Every target variant is explicit: omitting localization never asks a provider to translate. When this object is supplied on an existing creative it replaces that creative's complete locale set; omit the field to leave localization unchanged, or send `localization: null` to remove localization. Locale and locale_variant_id values MUST be unique within the creative, and no target locale may equal the source locale.",
+  "type": "object",
+  "properties": {
+    "source": {
+      "type": "object",
+      "description": "Identity and locale of the source/default variant. Its asset payload is the parent creative's top-level `assets` object.",
+      "properties": {
+        "locale_variant_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "Buyer-assigned stable identity for the source locale variant. This is a separate namespace from build_variant_id and served delivery variant_id.",
+          "x-entity": "creative_locale_variant"
+        },
+        "locale": {
+          "$ref": "/schemas/core/locale-tag.json"
+        }
+      },
+      "required": ["locale_variant_id", "locale"],
+      "additionalProperties": true
+    },
+    "target_variants": {
+      "type": "array",
+      "description": "Complete desired target-locale set for this creative. Buyer-supplied variants carry only the locale-specific asset overrides; omitted slots inherit the source assets. Provider-generated variants carry no assets and explicitly ask the provider to translate from the source. After inheritance or generation, every resolved variant MUST satisfy the selected creative format.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "locale_variant_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "description": "Buyer-assigned stable identity for this target locale variant. The same value round-trips through sync_creatives and list_creatives.",
+            "x-entity": "creative_locale_variant"
+          },
+          "locale": {
+            "$ref": "/schemas/core/locale-tag.json"
+          },
+          "translation_mode": {
+            "type": "string",
+            "enum": ["buyer_supplied", "provider_generated"],
+            "description": "`buyer_supplied` means the buyer provided explicit locale-specific asset overrides. `provider_generated` explicitly requests provider-native translation from the source variant. Merely supplying a source asset never implies provider-generated translation."
+          },
+          "assets": {
+            "type": "object",
+            "description": "Locale-specific asset overrides keyed by the same slot IDs as the source creative. Required for buyer_supplied; forbidden for provider_generated. Missing slots inherit the source assets.",
+            "minProperties": 1,
+            "patternProperties": {
+              "^[a-z0-9_]+$": {
+              "anyOf": [
+                  { "$ref": "/schemas/core/assets/asset-union.json" },
+                  {
+                    "type": "array",
+                    "items": { "$ref": "/schemas/core/assets/asset-union.json" },
+                    "minItems": 1
+                  }
+                ]
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "required": ["locale_variant_id", "locale", "translation_mode"],
+        "allOf": [
+          {
+            "if": {
+              "properties": { "translation_mode": { "const": "buyer_supplied" } },
+              "required": ["translation_mode"]
+            },
+            "then": { "required": ["assets"] }
+          },
+          {
+            "if": {
+              "properties": { "translation_mode": { "const": "provider_generated" } },
+              "required": ["translation_mode"]
+            },
+            "then": { "not": { "required": ["assets"] } }
+          }
+        ],
+        "additionalProperties": true
+      },
+      "minItems": 1,
+      "maxItems": 50,
+      "uniqueItems": true
+    }
+  },
+  "required": ["source", "target_variants"],
+  "additionalProperties": true
+}

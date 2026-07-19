@@ -182,6 +182,7 @@ The response provides creative data with optional enrichment:
 | `created_date` | string | Creation timestamp |
 | `updated_date` | string | Last modified timestamp |
 | `assets` | object | Creative assets (images, text, URLs, etc.) |
+| `localization` | object | Exact provider-backed locale assets, buyer/provider variant identities, review state, and launch state for localized creatives. |
 | `tags` | string[] | Tags for categorization |
 | `concept_id` | string | Creative concept ID |
 | `concept_name` | string | Human-readable concept name |
@@ -191,6 +192,26 @@ The response provides creative data with optional enrichment:
 | `snapshot_unavailable_reason` | string | Why snapshot is missing — `SNAPSHOT_UNSUPPORTED`, `SNAPSHOT_TEMPORARILY_UNAVAILABLE`, or `SNAPSHOT_PERMISSION_DENIED` |
 | `items` | array | Items for multi-asset formats (when `include_items=true`) |
 | `pricing_options` | [VendorPricingOption](/docs/creative/specification#pricing)[] | Pricing options for this creative (when `include_pricing=true` and `account` provided). Vendors may offer multiple options (volume tiers, context-specific rates, different models per product line). Same pattern as `get_signals` and `list_content_standards`. |
+
+### Localized creative readback
+
+For a localized creative, `localization` is the authoritative round trip. It
+contains the stable provider creative ID, declares whether review is
+per-variant or creative-wide, and lists exactly one source plus every target
+variant. Each entry preserves the buyer's `locale_variant_id` and returns the
+canonical locale, complete resolved assets, provider variant identity, review
+status, and launch status.
+
+This object is atomic. If the provider omits a requested locale, normalizes it
+to a different locale, loses an asset or identity, or cannot report review and
+launch state, the seller MUST fail the creative read rather than return a
+partial `localization` object. `launch_status: ready` is provider eligibility,
+not buyer spend authorization.
+
+The top-level creative `status` is `archived` only when the whole creative is
+archived. Otherwise it is the first locale state present in this precedence:
+`rejected`, `suspended`, `pending_review`, `processing`, `approved`. A localized
+creative is therefore approved only when every locale is approved.
 
 ### Pricing
 
