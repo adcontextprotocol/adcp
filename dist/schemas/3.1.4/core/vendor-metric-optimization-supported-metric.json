@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.4/core/vendor-metric-optimization-supported-metric.json",
+  "title": "Vendor Metric Optimization Supported Metric",
+  "description": "One vendor-defined metric that a product can optimize toward. Identified by the tuple `(vendor, metric_id)` plus the supported target kinds for optimization goals.",
+  "type": "object",
+  "properties": {
+    "vendor": {
+      "$ref": "/schemas/3.1.4/core/brand-ref.json",
+      "description": "Vendor that defines and computes this metric. The vendor's `brand.json` is the discovery anchor for the measurement agent (entry with `type: 'measurement'` in the `agents[]` array); the metric's definition, methodology, and unit live at that agent's `get_adcp_capabilities.measurement.metrics[]` and are not duplicated inline here. Same shape as the `vendor` field on `reporting_capabilities.vendor_metrics` for symmetry across optimization and reporting capability declarations."
+    },
+    "metric_id": {
+      "$ref": "/schemas/3.1.4/core/vendor-metric-id.json",
+      "description": "Identifier for the metric within the vendor's vocabulary (e.g., `attention_score`, `attention_seconds`, `gco2e_per_impression`, `awareness_lift`). MUST be present in the vendor's published `measurement.metrics[]` catalog."
+    },
+    "supported_targets": {
+      "type": "array",
+      "description": "Target kinds available for `vendor_metric` goals against this `(vendor, metric_id)` pair. Values match `target.kind` on the optimization goal. `cost_per` — target cost per metric unit (e.g., $0.05 per attention-second). `threshold_rate` — minimum per-impression value (e.g., attention_score ≥ 70). Only these target kinds are accepted — goals with unlisted target kinds will be rejected. A goal without a target implicitly maximizes the metric within budget — no declaration needed for that mode. When omitted, buyers can still set target-less vendor_metric goals.",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": ["cost_per", "threshold_rate"]
+      }
+    }
+  },
+  "required": ["vendor", "metric_id"],
+  "additionalProperties": false
+}

@@ -1,0 +1,106 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.4/core/geo-delivery-metrics.json",
+  "title": "Geo Delivery Metrics",
+  "description": "Delivery metrics row for one geographic area within a package.",
+  "allOf": [
+    {
+      "$ref": "/schemas/3.1.4/core/delivery-metrics.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "geo_level": {
+          "$ref": "/schemas/3.1.4/enums/geo-level.json",
+          "description": "Geographic level of this entry (country, region, metro, postal_area)"
+        },
+        "system": {
+          "type": "string",
+          "description": "Classification system for metro or postal_area levels. Metro rows use metro-system values. Native postal rows use country-local postal-system values with country; deprecated legacy postal rows may use legacy-postal-system values."
+        },
+        "country": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$",
+          "description": "ISO 3166-1 alpha-2 country code for native postal_area rows."
+        },
+        "geo_code": {
+          "type": "string",
+          "description": "Geographic code within the level and system. Country: ISO 3166-1 alpha-2 ('US'). Region: ISO 3166-2 with country prefix ('US-CA'). Metro/postal: system-specific code ('501', '10001')."
+        },
+        "geo_name": {
+          "type": "string",
+          "description": "Human-readable geographic name (e.g., 'United States', 'California', 'New York DMA')"
+        }
+      },
+      "required": [
+        "geo_level",
+        "geo_code",
+        "impressions",
+        "spend"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": { "geo_level": { "const": "country" } },
+            "required": ["geo_level"]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                { "required": ["system"] },
+                { "required": ["country"] }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "geo_level": { "const": "region" } },
+            "required": ["geo_level"]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                { "required": ["system"] },
+                { "required": ["country"] }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "geo_level": { "const": "metro" } },
+            "required": ["geo_level"]
+          },
+          "then": {
+            "properties": {
+              "system": { "$ref": "/schemas/3.1.4/enums/metro-system.json" }
+            },
+            "required": ["system"],
+            "not": { "required": ["country"] }
+          }
+        },
+        {
+          "if": {
+            "properties": { "geo_level": { "const": "postal_area" } },
+            "required": ["geo_level"]
+          },
+          "then": {
+            "anyOf": [
+              {
+                "$ref": "/schemas/3.1.4/core/postal-country-system.json"
+              },
+              {
+                "properties": {
+                  "system": { "$ref": "/schemas/3.1.4/enums/legacy-postal-system.json" }
+                },
+                "required": ["system"],
+                "not": { "required": ["country"] }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
