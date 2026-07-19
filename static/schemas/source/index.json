@@ -61,6 +61,18 @@
           "$ref": "/schemas/core/creative-asset.json",
           "description": "Creative asset for upload to library - supports static assets, generative formats, and third-party ad serving (VAST, DAAST, HTML, JavaScript)"
         },
+        "locale-tag": {
+          "$ref": "/schemas/core/locale-tag.json",
+          "description": "Canonical BCP 47 locale tag for provider-neutral localization"
+        },
+        "creative-localization": {
+          "$ref": "/schemas/core/creative-localization.json",
+          "description": "Explicit source and target locale variants requested on a creative"
+        },
+        "creative-localization-readback": {
+          "$ref": "/schemas/core/creative-localization-readback.json",
+          "description": "Exact provider-backed locale assets, identities, review, and launch state"
+        },
         "account": {
           "$ref": "/schemas/core/account.json",
           "description": "Billing account representing who pays for advertising. Accounts have rate cards, payment terms, and platform mappings."

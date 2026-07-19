@@ -111,6 +111,7 @@
           "created_date",
           "updated_date",
           "tags",
+          "localization",
           "assignments",
           "snapshot",
           "items",

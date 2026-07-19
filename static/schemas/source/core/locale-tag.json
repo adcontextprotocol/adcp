@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/locale-tag.json",
+  "title": "Locale Tag",
+  "description": "A well-formed BCP 47 language tag. Senders MUST use the RFC 5646 canonical representation: lower-case language and variants, title-case script, and upper-case region (for example `en-US`, `zh-Hant-TW`). Receivers MUST reject unsupported or non-canonical tags rather than silently normalizing them to another locale.",
+  "type": "string",
+  "minLength": 2,
+  "maxLength": 63,
+  "pattern": "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$",
+  "examples": ["en-US", "es-ES", "zh-Hant-TW"]
+}
