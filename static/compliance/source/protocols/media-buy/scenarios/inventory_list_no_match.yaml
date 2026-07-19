@@ -59,7 +59,7 @@ phases:
           Return products the seller carries.
         sample_request:
           buying_mode: "brief"
-          brief: "Video inventory on outdoor lifestyle programming. Q3 flight."
+          brief: "Outdoor lifestyle programming. Q3 flight."
           filters:
             is_fixed_price: true
           account:
