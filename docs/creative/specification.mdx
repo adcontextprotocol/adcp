@@ -155,7 +155,10 @@ capability returns the complete BCP 47 locale set accepted for the current
 caller, accepted translation modes, the target-variant ceiling, and whether
 provider review is per variant or creative-wide.
 
-`CreativeAsset.localization` makes every translation request explicit:
+`sync_creatives.creatives[].localization` makes every translation request
+explicit. It is the only localization write surface. Inline creatives on
+`create_media_buy` and `update_media_buy` reject `localization`; buyers first
+sync the localized library creative and then assign it to a package.
 
 - The creative's top-level `assets` are the source/default variant.
 - `localization.source` binds those assets to a canonical BCP 47 tag and a
@@ -179,8 +182,11 @@ the selected creative format.
 `locale_variant_id` is scoped to the parent creative. It is not a
 `build_variant_id` (a `build_creative` output leaf) and not the `variant_id`
 used for a provider's served execution in `get_creative_delivery`. A successful
-localized sync and every later `list_creatives` read preserve the buyer's
-`locale_variant_id` and add the provider's `provider_variant_id`.
+localized sync and every later `list_creatives` read MUST preserve the exact
+source ID/locale and exact target ID/locale/translation-mode set from the
+request. Readback adds a `provider_variant_id` to each variant. The single
+provider creative identity is the enclosing creative's top-level `platform_id`;
+it is never duplicated inside `localization`.
 
 Localized readback is atomic. The seller returns complete resolved assets,
 provider creative/variant identities, review `status`, and `launch_status` for
@@ -188,7 +194,10 @@ the source and every target. If any element is unavailable or cannot be mapped
 exactly, the seller MUST fail the creative read rather than omit the locale,
 substitute the source language, or return a partial localization object.
 `launch_status: ready` reports provider eligibility; it does not authorize
-buyer spend.
+buyer spend. Lifecycle pairs are closed: `processing` and `pending_review` map
+to `pending`, `approved` maps to `ready`, and `suspended`, `rejected`, and
+`archived` map to `blocked`. A blocked variant includes at least one
+machine-readable `launch_blockers` entry.
 
 The creative-level `status` is deterministic. `archived` applies only when the
 whole creative is archived, in which case every locale variant is archived.
@@ -199,10 +208,14 @@ the creative is `approved` only when every locale variant is approved. When
 status and launch state.
 
 On upsert, a non-null `localization` object replaces the creative's complete
-locale set; omission leaves localization unchanged; `localization: null`
-removes it. `delete_missing` still operates only at creative scope: archiving a
-missing creative archives all of its locale variants atomically, and it never
-compares locale arrays between otherwise-present creatives.
+locale set and `localization: null` removes it. Omission preserves existing
+localization only when the top-level source assets exactly equal the prior
+localized source assets. If source assets change, the buyer MUST send the full
+replacement topology or explicit removal; the seller rejects an ambiguous
+omission before mutation. `delete_missing` still operates only at creative
+scope: archiving a missing creative archives all of its locale variants
+atomically, and it never compares locale arrays between otherwise-present
+creatives. Partial archive state is invalid.
 
 ### Universal macros
 

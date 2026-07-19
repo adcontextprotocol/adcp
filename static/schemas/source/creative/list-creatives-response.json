@@ -71,6 +71,11 @@
             "$ref": "/schemas/core/account.json",
             "description": "Account that owns this creative"
           },
+          "platform_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable provider creative identity. This is the single provider creative ID for localized and unlocalized readback; localization carries only per-variant provider IDs."
+          },
           "name": {
             "type": "string",
             "description": "Human-readable creative name"
@@ -128,7 +133,14 @@
                   "processing",
                   "approved"
                 ],
-                "archived_requires_all_variants_archived": true
+                "archive_atomicity": "all_variants_or_none",
+                "platform_id_source": "enclosing_creative.platform_id",
+                "sync_list_round_trip": {
+                  "source_equal_properties": ["locale_variant_id", "locale"],
+                  "target_match_key": "locale_variant_id",
+                  "target_set": "exact",
+                  "target_equal_properties": ["locale", "translation_mode"]
+                }
               },
               "spec": "docs/creative/task-reference/list_creatives.mdx#localized-creative-readback"
             }
@@ -290,7 +302,17 @@
           "created_date",
           "updated_date"
         ],
-        "additionalProperties": true
+        "additionalProperties": true,
+        "allOf": [
+          {
+            "if": {
+              "required": ["localization"]
+            },
+            "then": {
+              "required": ["platform_id", "status"]
+            }
+          }
+        ]
       }
     },
     "format_summary": {
