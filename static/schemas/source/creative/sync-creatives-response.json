@@ -51,7 +51,22 @@
               },
               "localization": {
                 "$ref": "/schemas/core/creative-localization-readback.json",
-                "description": "Exact provider-backed locale-variant state. Required for every accepted creative whose request included a non-null localization object; omitted for unlocalized, failed, or deleted items."
+                "description": "Exact provider-backed locale-variant state. Required for every accepted creative whose request included a non-null localization object; omitted for unlocalized, failed, or deleted items.",
+                "x-adcp-validation": {
+                  "verifier_constraints": {
+                    "aggregate_status_field": "status",
+                    "aggregate_variant_status_path": "localization.variants[].status",
+                    "aggregate_status_precedence": [
+                      "rejected",
+                      "suspended",
+                      "pending_review",
+                      "processing",
+                      "approved"
+                    ],
+                    "archived_requires_all_variants_archived": true
+                  },
+                  "spec": "docs/creative/task-reference/sync_creatives.mdx#response"
+                }
               },
               "changes": {
                 "type": "array",

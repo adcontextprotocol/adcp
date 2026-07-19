@@ -3,6 +3,13 @@
   "$id": "/schemas/core/creative-localization.json",
   "title": "Creative Localization",
   "description": "Provider-neutral localization request for one creative. The creative's top-level `assets` are the source variant. Every target variant is explicit: omitting localization never asks a provider to translate. When this object is supplied on an existing creative it replaces that creative's complete locale set; omit the field to leave localization unchanged, or send `localization: null` to remove localization. Locale and locale_variant_id values MUST be unique within the creative, and no target locale may equal the source locale.",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "unique_target_properties": ["locale_variant_id", "locale"],
+      "target_properties_disjoint_from_source": ["locale_variant_id", "locale"]
+    },
+    "spec": "docs/creative/task-reference/sync_creatives.mdx#native-localization"
+  },
   "type": "object",
   "properties": {
     "source": {
