@@ -184,7 +184,10 @@ jobs:
       #   .agents/**              — agent prompts & context (prompt-injection
       #     would target these to expand the agent's capabilities).
       #   static/schemas/source/** — protocol source of truth for the spec.
-      #   .changeset/**           — release tooling.
+      #   .changeset/config.json, .changeset/pre.json — release configuration and
+      #     prerelease state. Routine .changeset/*.md release notes remain reviewable
+      #     so the required changeset policy does not prevent Argus from approving
+      #     otherwise eligible PRs.
       #
       # Even though pull_request_target keeps this run on the base-branch
       # prompt and workflow, a human should own these changes. Bail with a
@@ -209,7 +212,7 @@ jobs:
           MODIFIED=""
           while IFS= read -r f; do
             case "$f" in
-              .github/ai-review/*|.github/workflows/ai-review.yml|.agents/*|.github/workflows/*|static/schemas/source/*|.changeset/*)
+              .github/ai-review/*|.github/workflows/ai-review.yml|.agents/*|.github/workflows/*|static/schemas/source/*|.changeset/config.json|.changeset/pre.json)
                 MODIFIED="${MODIFIED}${f}"$'\n'
                 ;;
             esac
