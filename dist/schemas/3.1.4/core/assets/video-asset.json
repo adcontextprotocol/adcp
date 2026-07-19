@@ -1,0 +1,156 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.4/core/assets/video-asset.json",
+  "title": "Video Asset",
+  "description": "A hosted video file delivered directly (e.g., an MP4 you host), with URL and technical specifications including audio track properties. `width` and `height` are required because a hosted video file has intrinsic, native pixel dimensions that are known when the file is created. Tag-delivered video uses the separate `vast` asset, which carries no `width`/`height`: a VAST response resolves geometry per-`MediaFile` at serve time, so there is no single width/height for the ad. Aspect-ratio and size *constraints* (what a placement accepts) belong on the format/requirements layer, not on the asset.",
+  "$comment": "Dimension policy is deliberate and differs by asset type: a hosted `video` asset requires width/height (intrinsic pixels of a concrete file), while the `vast` asset omits them entirely (renditions are selected per-MediaFile by the player at serve time). Do not infer that AdCP forces a single width/height onto all video — only onto hosted files.",
+  "type": "object",
+  "properties": {
+    "asset_type": {
+      "type": "string",
+      "const": "video",
+      "description": "Discriminator identifying this as a video asset. See /schemas/creative/asset-types for the registry."
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to the video asset"
+    },
+    "width": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Width in pixels — the video file's intrinsic native width. Required: a hosted file always has concrete dimensions. (Tag-delivered video carries no width; see the `vast` asset.)"
+    },
+    "height": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Height in pixels — the video file's intrinsic native height. Required: a hosted file always has concrete dimensions. (Tag-delivered video carries no height; see the `vast` asset.)"
+    },
+    "duration_ms": {
+      "type": "integer",
+      "description": "Video duration in milliseconds",
+      "minimum": 1
+    },
+    "file_size_bytes": {
+      "type": "integer",
+      "description": "File size in bytes",
+      "minimum": 1
+    },
+    "container_format": {
+      "type": "string",
+      "description": "Video container format (mp4, webm, mov, etc.)"
+    },
+    "video_codec": {
+      "type": "string",
+      "description": "Video codec used (h264, h265, vp9, av1, prores, etc.)"
+    },
+    "video_bitrate_kbps": {
+      "type": "integer",
+      "description": "Video stream bitrate in kilobits per second",
+      "minimum": 1
+    },
+    "frame_rate": {
+      "type": "string",
+      "description": "Frame rate as string to preserve precision (e.g., '23.976', '29.97', '30')"
+    },
+    "frame_rate_type": {
+      "$ref": "/schemas/3.1.4/enums/frame-rate-type.json"
+    },
+    "scan_type": {
+      "$ref": "/schemas/3.1.4/enums/scan-type.json"
+    },
+    "color_space": {
+      "type": "string",
+      "enum": ["rec709", "rec2020", "rec2100", "srgb", "dci_p3"],
+      "description": "Color space of the video"
+    },
+    "hdr_format": {
+      "type": "string",
+      "enum": ["sdr", "hdr10", "hdr10_plus", "hlg", "dolby_vision"],
+      "description": "HDR format if applicable, or 'sdr' for standard dynamic range"
+    },
+    "chroma_subsampling": {
+      "type": "string",
+      "enum": ["4:2:0", "4:2:2", "4:4:4"],
+      "description": "Chroma subsampling format"
+    },
+    "video_bit_depth": {
+      "type": "integer",
+      "enum": [8, 10, 12],
+      "description": "Video bit depth"
+    },
+    "gop_interval_seconds": {
+      "type": "number",
+      "description": "GOP/keyframe interval in seconds"
+    },
+    "gop_type": {
+      "$ref": "/schemas/3.1.4/enums/gop-type.json"
+    },
+    "moov_atom_position": {
+      "$ref": "/schemas/3.1.4/enums/moov-atom-position.json"
+    },
+    "has_audio": {
+      "type": "boolean",
+      "description": "Whether the video contains an audio track"
+    },
+    "audio_codec": {
+      "type": "string",
+      "description": "Audio codec used (aac, aac_lc, he_aac, pcm, mp3, ac3, eac3, etc.)"
+    },
+    "audio_sampling_rate_hz": {
+      "type": "integer",
+      "description": "Audio sampling rate in Hz (e.g., 44100, 48000)"
+    },
+    "audio_channels": {
+      "$ref": "/schemas/3.1.4/enums/audio-channel-layout.json",
+      "description": "Audio channel configuration"
+    },
+    "audio_bit_depth": {
+      "type": "integer",
+      "enum": [16, 24, 32],
+      "description": "Audio bit depth"
+    },
+    "audio_bitrate_kbps": {
+      "type": "integer",
+      "description": "Audio bitrate in kilobits per second",
+      "minimum": 1
+    },
+    "audio_loudness_lufs": {
+      "type": "number",
+      "description": "Integrated loudness in LUFS"
+    },
+    "audio_true_peak_dbfs": {
+      "type": "number",
+      "description": "True peak level in dBFS"
+    },
+    "captions_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to captions file (WebVTT, SRT, etc.)",
+      "x-accessibility": true
+    },
+    "transcript_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to text transcript of the video content",
+      "x-accessibility": true
+    },
+    "audio_description_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to audio description track for visually impaired users",
+      "x-accessibility": true
+    },
+    "provenance": {
+      "$ref": "/schemas/3.1.4/core/provenance.json",
+      "description": "Provenance metadata for this asset, overrides manifest-level provenance"
+    }
+  },
+  "required": [
+    "asset_type",
+    "url",
+    "width",
+    "height"
+  ],
+  "additionalProperties": true
+}

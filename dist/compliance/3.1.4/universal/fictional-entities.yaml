@@ -1,0 +1,307 @@
+# Fictional Entities for AdCP Storyboards & Training
+#
+# Canonical source: specs/character-bible.md at docs.adcontextprotocol.org
+#
+# This file mirrors the character bible's fictional companies for use in
+# storyboards, test kits, and client-side testing. All entities use the
+# IANA-reserved .example TLD.
+#
+# Rules:
+#   - Every fictional company MUST match the character bible
+#   - Do not invent new entities here — add them to the bible first
+#   - Test kits in test-kits/ expand on entities with full brand identity,
+#     sample assets, and signal definitions
+#   - Sandbox brands (advertisers) are resolvable via AgenticAdvertising.org
+#     because the registry imports getSandboxEntities() from @adcp/client
+#     directly — no seeding needed, these files are the single source of truth
+#
+# Adding a new entity:
+#   1. Add it to specs/character-bible.md in the adcp docs repo
+#   2. Mirror it here with domain and role
+#   3. If it's an advertiser, create a test kit in test-kits/ with sandbox: true
+#   4. Reference by id in storyboards
+
+# ============================================================
+# ADVERTISERS — brands that buy media through the protocol
+# ============================================================
+
+advertisers:
+  - id: acme_outdoor
+    name: "Acme Outdoor"
+    domain: "acmeoutdoor.example"
+    industry: retail
+    sandbox_brand: true
+    test_kit: "test-kits/acme-outdoor.yaml"
+    description: >
+      Premium outdoor gear company. The default advertiser for most storyboards.
+      Used in media buy, creative, governance, and compliance scenarios.
+    characters:
+      - "Sam Adeyemi (campaigns)"
+      - "Jordan Ochoa (governance)"
+
+  - id: nova_motors
+    name: "Nova Motors"
+    domain: "novamotors.example"
+    industry: automotive
+    sandbox_brand: true
+    test_kit: "test-kits/nova-motors.yaml"
+    description: >
+      Electric vehicle manufacturer launching the Volta EV. Used for signal,
+      brand protocol, and sponsored intelligence storyboards.
+    characters:
+      - "Tomoko Hara (brand operations)"
+      - "Sam Adeyemi (buyer)"
+
+  - id: bistro_oranje
+    name: "Bistro Oranje"
+    domain: "bistro-oranje.example"
+    industry: hospitality
+    sandbox_brand: true
+    test_kit: "test-kits/bistro-oranje.yaml"
+    description: >
+      Dutch restaurant chain. Used in rights licensing scenarios where
+      Carlos manages programmatic rights for ad campaigns.
+    characters:
+      - "Carlos (rights licensing)"
+
+  - id: summit_foods
+    name: "Summit Foods"
+    domain: "summitfoods.example"
+    industry: cpg
+    sandbox_brand: true
+    test_kit: "test-kits/summit-foods.yaml"
+    description: >
+      Organic food / CPG brand. Buys retail media inventory on ShopGrid
+      in commerce media scenarios.
+    characters: []
+
+  - id: osei_natural
+    name: "Osei Natural"
+    domain: "oseinatural.example"
+    industry: beauty
+    sandbox_brand: true
+    test_kit: "test-kits/osei-natural.yaml"
+    description: >
+      8-person natural skincare company based in Nairobi. Represents the
+      small business that advertising should serve but currently doesn't.
+    characters:
+      - "Amara Osei (founder)"
+
+# ============================================================
+# AGENCIES — media buying agencies that operate on behalf of advertisers
+# ============================================================
+
+agencies:
+  - id: pinnacle_agency
+    name: "Pinnacle Agency"
+    domain: "pinnacle-agency.example"
+    size: "~200 employees"
+    description: >
+      Full-service mid-size media buying agency. Acts as the operator (buyer)
+      in most storyboards, executing campaigns on behalf of Acme Outdoor and
+      other clients. Runs its own governance agent and hosts creative assets
+      on its CDN.
+    services:
+      cdn: "cdn.pinnacle-agency.example"
+      governance_agent: "governance.pinnacle-agency.example"
+    characters:
+      - "Alex Reeves (VP of media operations)"
+      - "Sam Adeyemi (senior media buyer)"
+      - "Jordan Ochoa (campaign operations manager)"
+      - "Maya Johal (creative strategist)"
+      - "Dayo Mensah (ad tech fellow)"
+      - "Carlos (programmatic buyer, Amsterdam office)"
+
+# ============================================================
+# PUBLISHERS & PLATFORMS — sell inventory or serve ads
+# ============================================================
+
+publishers:
+  - id: streamhaus
+    name: "StreamHaus"
+    domain: "streamhaus.example"
+    type: "CTV publisher / SSP"
+    size: "~80 employees"
+    description: >
+      Mid-size streaming video platform. Exposes inventory to buyer agents
+      through AdCP rather than building a self-serve dashboard. Validates
+      creatives and fulfills media buys.
+    characters:
+      - "Priya Nair (director of ad products)"
+
+  - id: outdoornet
+    name: "OutdoorNet"
+    domain: "outdoornet.example"
+    type: "Display ad network"
+    description: >
+      Display advertising network. One of Sam's multiple sellers in
+      multi-platform media buying scenarios.
+
+  - id: podtrail
+    name: "PodTrail"
+    domain: "podtrail.example"
+    type: "Podcast ad platform"
+    description: >
+      Podcast-specific seller platform. One of Sam's distribution partners
+      in multi-platform campaigns.
+
+  - id: commhub
+    name: "CommHub"
+    domain: "commhub.example"
+    type: "Social platform"
+    description: >
+      Social media network used in creative strategy and distribution
+      scenarios. Maya's creative channel.
+    characters:
+      - "Maya Johal (creative strategist)"
+
+  - id: shopgrid
+    name: "ShopGrid"
+    domain: "shopgrid.example"
+    type: "Retail marketplace + media network"
+    size: "~3,000 employees"
+    description: >
+      E-commerce marketplace that also operates a retail media network.
+      Summit Foods buys inventory here. Also provides retail purchase
+      data signals (new-to-brand identification).
+    characters:
+      - "Daniel Park (VP of retail media)"
+
+  # --- Property governance fixtures ---
+  # These publishers appear in property governance storyboards as
+  # allow/block list entries. They are thematically consistent with
+  # Acme Outdoor's target audience.
+
+  - id: outdoor_magazine
+    name: "Outdoor Magazine"
+    domain: "outdoormagazine.example"
+    type: "Publisher property"
+    description: "Outdoor lifestyle publication. Allow-listed in property governance."
+
+  - id: hiking_trails
+    name: "Hiking Trails"
+    domain: "hikingtrails.example"
+    type: "Publisher property"
+    description: "Hiking trail guide and community site. Allow-listed in property governance."
+
+  - id: camping_gear
+    name: "Camping Gear Reviews"
+    domain: "campinggear.example"
+    type: "Publisher property"
+    description: "Camping equipment review site. Used in property governance."
+
+  - id: mountaineering
+    name: "Mountaineering Weekly"
+    domain: "mountaineering.example"
+    type: "Publisher property"
+    description: "Mountaineering news and community. Used in property governance."
+
+  - id: test_publisher
+    name: "Test Publisher"
+    domain: "test-publisher.example"
+    type: "Publisher property"
+    description: "Generic publisher for content standards validation."
+
+# ============================================================
+# DATA PROVIDERS — companies that sell audience/signal data
+# ============================================================
+
+data_providers:
+  - id: trident_auto
+    name: "Trident Auto Data"
+    domain: "tridentauto.example"
+    description: >
+      Automotive purchase intent data provider. Supplies EV buyer likelihood
+      and purchase propensity signals for the Nova Motors campaign.
+    characters:
+      - "Kai Lindgren (signals walkthrough)"
+
+  - id: meridian_geo
+    name: "Meridian Geo"
+    domain: "meridiangeo.example"
+    size: "~25 employees"
+    description: >
+      Geolocation data startup. Supplies competitor visitor signals
+      based on physical location data.
+    characters:
+      - "Kai Lindgren (head of partnerships)"
+
+  - id: prism
+    name: "Prism"
+    domain: "prism.example"
+    description: >
+      Nova Motors' first-party data platform. Provides owned signals from
+      CRM and behavioral data: customer lifetime value, cart abandonment,
+      engagement scoring, and churn risk.
+
+# ============================================================
+# RIGHTS & LICENSING
+# ============================================================
+
+rights:
+  - id: loti_entertainment
+    name: "Loti Entertainment"
+    domain: "loti-entertainment.example"
+    type: "Talent agency"
+    description: >
+      Represents talent and manages rights in the licensing ecosystem.
+      Used in rights licensing scenarios alongside Bistro Oranje.
+
+# ============================================================
+# COLLECTIONS — addressable content catalogs for collection_list targeting
+# ============================================================
+#
+# These collections back the CollectionListReference fixtures used in
+# media buy targeting scenarios. Thematically consistent with the
+# advertisers above: outdoor programming for Acme Outdoor, automotive
+# content for Nova Motors.
+#
+# distribution_ids use realistic identifier types (imdb_id, gracenote_id)
+# so matching logic can be exercised against the same shapes a production
+# collection agent would return.
+
+collections:
+  # --- Outdoor programming (matches Acme Outdoor campaigns) ---
+  - id: trail_life_series
+    name: "Trail Life"
+    kind: "series"
+    genre: "outdoor"
+    collection_rid: "rid:outdoor:trail_life"
+    distribution_ids:
+      - type: imdb_id
+        value: "tt9100001"
+      - type: gracenote_id
+        value: "SH_OUTDOOR_TRAIL_LIFE"
+    description: "Multi-part outdoor adventure series. Used as matching inventory for outdoor campaigns."
+
+  - id: summit_stories_series
+    name: "Summit Stories"
+    kind: "series"
+    genre: "outdoor"
+    collection_rid: "rid:outdoor:summit_stories"
+    distribution_ids:
+      - type: imdb_id
+        value: "tt9100002"
+    description: "Mountaineering documentary series. Used as matching inventory for outdoor campaigns."
+
+  # --- Automotive programming (matches Nova Motors campaigns) ---
+  - id: ev_insider_series
+    name: "EV Insider"
+    kind: "series"
+    genre: "automotive"
+    collection_rid: "rid:auto:ev_insider"
+    distribution_ids:
+      - type: gracenote_id
+        value: "SH_AUTO_EV_INSIDER"
+    description: "Electric vehicle review series. Used as matching inventory for Nova Motors campaigns."
+
+  # --- Unrelated programming (used to validate no-match scenarios) ---
+  - id: cooking_bistros_series
+    name: "Bistro Kitchen"
+    kind: "series"
+    genre: "food"
+    collection_rid: "rid:food:bistro_kitchen"
+    distribution_ids:
+      - type: imdb_id
+        value: "tt9200001"
+    description: "Cooking show. Used to validate that unrelated collections do NOT match outdoor targeting."
