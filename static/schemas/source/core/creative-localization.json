@@ -6,7 +6,14 @@
   "x-adcp-validation": {
     "verifier_constraints": {
       "unique_target_properties": ["locale_variant_id", "locale"],
-      "target_properties_disjoint_from_source": ["locale_variant_id", "locale"]
+      "target_properties_disjoint_from_source": ["locale_variant_id", "locale"],
+      "request_sync_list_round_trip": {
+        "source_match": { "role": "source" },
+        "source_equal_properties": ["locale_variant_id", "locale"],
+        "target_match_key": "locale_variant_id",
+        "target_set": "exact",
+        "target_equal_properties": ["locale", "translation_mode"]
+      }
     },
     "spec": "docs/creative/task-reference/sync_creatives.mdx#native-localization"
   },
@@ -34,60 +41,76 @@
       "type": "array",
       "description": "Complete desired target-locale set for this creative. Buyer-supplied variants carry only the locale-specific asset overrides; omitted slots inherit the source assets. Provider-generated variants carry no assets and explicitly ask the provider to translate from the source. After inheritance or generation, every resolved variant MUST satisfy the selected creative format.",
       "items": {
-        "type": "object",
-        "properties": {
-          "locale_variant_id": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 255,
-            "description": "Buyer-assigned stable identity for this target locale variant. The same value round-trips through sync_creatives and list_creatives.",
-            "x-entity": "creative_locale_variant"
-          },
-          "locale": {
-            "$ref": "/schemas/core/locale-tag.json"
-          },
-          "translation_mode": {
-            "type": "string",
-            "enum": ["buyer_supplied", "provider_generated"],
-            "description": "`buyer_supplied` means the buyer provided explicit locale-specific asset overrides. `provider_generated` explicitly requests provider-native translation from the source variant. Merely supplying a source asset never implies provider-generated translation."
-          },
-          "assets": {
+        "discriminator": {
+          "propertyName": "translation_mode"
+        },
+        "oneOf": [
+          {
+            "title": "BuyerSuppliedLocalizationTarget",
             "type": "object",
-            "description": "Locale-specific asset overrides keyed by the same slot IDs as the source creative. Required for buyer_supplied; forbidden for provider_generated. Missing slots inherit the source assets.",
-            "minProperties": 1,
-            "patternProperties": {
-              "^[a-z0-9_]+$": {
-              "anyOf": [
-                  { "$ref": "/schemas/core/assets/asset-union.json" },
-                  {
-                    "type": "array",
-                    "items": { "$ref": "/schemas/core/assets/asset-union.json" },
-                    "minItems": 1
+            "properties": {
+              "locale_variant_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "description": "Buyer-assigned stable identity for this target locale variant. The same value round-trips through sync_creatives and list_creatives.",
+                "x-entity": "creative_locale_variant"
+              },
+              "locale": {
+                "$ref": "/schemas/core/locale-tag.json"
+              },
+              "translation_mode": {
+                "type": "string",
+                "const": "buyer_supplied",
+                "description": "The buyer supplied explicit locale-specific asset overrides."
+              },
+              "assets": {
+                "type": "object",
+                "description": "Locale-specific asset overrides keyed by the same slot IDs as the source creative. Missing slots inherit source assets.",
+                "minProperties": 1,
+                "patternProperties": {
+                  "^[a-z0-9_]+$": {
+                    "anyOf": [
+                      { "$ref": "/schemas/core/assets/asset-union.json" },
+                      {
+                        "type": "array",
+                        "items": { "$ref": "/schemas/core/assets/asset-union.json" },
+                        "minItems": 1
+                      }
+                    ]
                   }
-                ]
+                },
+                "additionalProperties": true
               }
             },
+            "required": ["locale_variant_id", "locale", "translation_mode", "assets"],
             "additionalProperties": true
-          }
-        },
-        "required": ["locale_variant_id", "locale", "translation_mode"],
-        "allOf": [
-          {
-            "if": {
-              "properties": { "translation_mode": { "const": "buyer_supplied" } },
-              "required": ["translation_mode"]
-            },
-            "then": { "required": ["assets"] }
           },
           {
-            "if": {
-              "properties": { "translation_mode": { "const": "provider_generated" } },
-              "required": ["translation_mode"]
+            "title": "ProviderGeneratedLocalizationTarget",
+            "type": "object",
+            "properties": {
+              "locale_variant_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "description": "Buyer-assigned stable identity for this target locale variant. The same value round-trips through sync_creatives and list_creatives.",
+                "x-entity": "creative_locale_variant"
+              },
+              "locale": {
+                "$ref": "/schemas/core/locale-tag.json"
+              },
+              "translation_mode": {
+                "type": "string",
+                "const": "provider_generated",
+                "description": "The buyer explicitly requests provider-native translation from the source variant."
+              }
             },
-            "then": { "not": { "required": ["assets"] } }
+            "required": ["locale_variant_id", "locale", "translation_mode"],
+            "not": { "required": ["assets"] },
+            "additionalProperties": true
           }
-        ],
-        "additionalProperties": true
+        ]
       },
       "minItems": 1,
       "maxItems": 50,

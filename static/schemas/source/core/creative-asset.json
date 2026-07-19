@@ -43,13 +43,6 @@
       },
       "additionalProperties": true
     },
-    "localization": {
-      "description": "Optional explicit native-localization request. The top-level assets are the source/default variant. An object replaces the complete locale set for this creative; omission leaves existing localization unchanged during sync_creatives, and null removes localization. Receivers MUST advertise support and accepted locales through get_adcp_capabilities creative.localization before accepting this field.",
-      "anyOf": [
-        { "$ref": "/schemas/core/creative-localization.json" },
-        { "type": "null" }
-      ]
-    },
     "inputs": {
       "type": "array",
       "description": "Preview contexts for generative formats - defines what scenarios to generate previews for",

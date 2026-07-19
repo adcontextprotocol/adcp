@@ -19,7 +19,34 @@
       "type": "array",
       "description": "Array of creative assets to sync (create or update)",
       "items": {
-        "$ref": "/schemas/core/creative-asset.json"
+        "allOf": [
+          {
+            "$ref": "/schemas/core/creative-asset.json"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "localization": {
+                "description": "Sync-only native-localization mutation. The top-level assets are the source/default variant. An object replaces the complete locale set, omission preserves an existing locale topology only when the top-level source assets are unchanged, and null removes localization. Receivers MUST advertise support and accepted locales through get_adcp_capabilities creative.localization before accepting this field.",
+                "anyOf": [
+                  { "$ref": "/schemas/core/creative-localization.json" },
+                  { "type": "null" }
+                ]
+              }
+            },
+            "additionalProperties": true
+          }
+        ],
+        "x-adcp-validation": {
+          "verifier_constraints": {
+            "existing_localized_source_upsert": {
+              "localization_omitted": "top_level_assets_must_equal_prior_source_assets",
+              "source_assets_changed": "require_non_null_localization_or_null_removal",
+              "on_violation": "reject_before_mutation"
+            }
+          },
+          "spec": "docs/creative/task-reference/sync_creatives.mdx#native-localization"
+        }
       },
       "minItems": 1,
       "maxItems": 100
