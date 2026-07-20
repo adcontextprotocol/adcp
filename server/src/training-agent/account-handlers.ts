@@ -323,6 +323,15 @@ async function normalizeNotificationConfigs(input: SyncAccountInput): Promise<No
       return { error: validationFailure(input, `${field}.subscriber_id`, 'subscriber_id must be unique within an account') };
     }
     seen.add(config.subscriber_id);
+    if (config.active !== false) {
+      return {
+        error: validationFailure(
+          input,
+          `${field}.active`,
+          'active must be false until the training sandbox implements a signed proof-of-control challenge for the webhook target',
+        ),
+      };
+    }
     if (!config.url) {
       return { error: validationFailure(input, `${field}.url`, 'url is required') };
     }
@@ -392,7 +401,7 @@ async function normalizeNotificationConfigs(input: SyncAccountInput): Promise<No
             credentials: config.authentication.credentials,
           }
         : undefined,
-      active: config.active !== false,
+      active: false,
     });
   }
   return out;
@@ -690,9 +699,13 @@ export const ACCOUNT_TOOLS = [
                       },
                       required: ['schemes', 'credentials'],
                     },
-                    active: { type: 'boolean' },
+                    active: {
+                      type: 'boolean',
+                      enum: [false],
+                      description: 'Must be false in the training sandbox until a signed proof-of-control challenge can activate the webhook target.',
+                    },
                   },
-                  required: ['subscriber_id', 'url', 'event_types'],
+                  required: ['subscriber_id', 'url', 'event_types', 'active'],
                 },
               },
             },

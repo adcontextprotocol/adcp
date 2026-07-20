@@ -44,6 +44,7 @@ interface McpResultEnvelope {
         billing?: string;
         errors?: Array<{
           code: string;
+          field?: string;
           message?: string;
           recovery?: string;
           details?: Record<string, unknown>;
@@ -222,6 +223,32 @@ describe('v6 /sales/mcp sync_accounts billing gates', () => {
     expect(acct?.status).toBe('active');
     expect(acct?.account_id).toEqual(expect.any(String));
     expect(acct?.billing).toBe('agent');
+  });
+
+  it('rejects active notification registration on /sales/mcp without proof of control', async () => {
+    const env = await callSyncAccounts(baseUrl, 'sales', 'demo-billing-agent-billable-v1', {
+      accounts: [{
+        brand: { domain: 'webhook-proof.example' },
+        operator: 'pinnacle-agency.example',
+        billing: 'operator',
+        sandbox: true,
+        notification_configs: [{
+          subscriber_id: 'buyer-primary',
+          url: 'https://webhook.example.com/adcp',
+          event_types: ['creative.status_changed'],
+          active: true,
+        }],
+      }],
+      idempotency_key: freshKey('v6-active-webhook-reject'),
+    }, 5);
+
+    const acct = env.result?.structuredContent?.accounts?.[0];
+    expect(acct?.action).toBe('failed');
+    expect(acct?.status).toBe('rejected');
+    expect(acct?.errors?.[0]).toMatchObject({
+      code: 'VALIDATION_ERROR',
+      field: 'notification_configs[0].active',
+    });
   });
 
   it('rejects missing bearer with 401 (regression-pin: requireAuth runs before tenantMcpHandler)', async () => {

@@ -145,8 +145,20 @@ Lab exercises run against the public test agent. Use the shared token — no sig
 
 ```bash
 export ADCP_AUTH_TOKEN="1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ"
-export AGENT_URL="https://test-agent.adcontextprotocol.org/governance/mcp"
+export SALES_AGENT_URL="https://test-agent.adcontextprotocol.org/sales/mcp"
+export GOVERNANCE_AGENT_URL="https://test-agent.adcontextprotocol.org/governance/mcp"
+export ROOT_AGENT_URL="https://test-agent.adcontextprotocol.org/mcp"
 ```
+
+Use the endpoint that owns the task. The training agent deliberately splits the workflow across tenants:
+
+| Task | Endpoint |
+|---|---|
+| `sync_governance` | `$SALES_AGENT_URL` |
+| `sync_plans`, `check_governance`, `report_plan_outcome`, `get_plan_audit_logs` | `$GOVERNANCE_AGENT_URL` |
+| `validate_property_delivery` | `$ROOT_AGENT_URL` (legacy root-only custom tool) |
+
+Do not send `sync_governance` to the governance tenant: it configures the seller account, so the sales tenant owns it. The root route for `validate_property_delivery` is an explicit sandbox compatibility surface, not a claim that every governance task belongs on `/mcp`.
 
 See the [Quickstart](/docs/quickstart) for a walkthrough of your first call.
 

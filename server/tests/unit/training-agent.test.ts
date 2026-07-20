@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createServer } from 'node:http';
 import { buildCatalog } from '../../src/training-agent/product-factory.js';
 import { buildFormats, FORMAT_CHANNEL_MAP } from '../../src/training-agent/formats.js';
 import { PUBLISHERS } from '../../src/training-agent/publishers.js';
@@ -8312,74 +8311,29 @@ describe('get_adcp_capabilities handler', () => {
     expect(configs[0].active).toBe(false);
   });
 
-  it('emits wholesale feed webhook payloads to active account subscribers', async () => {
-    const received: Record<string, unknown>[] = [];
-    const receiver = createServer((req, res) => {
-      const chunks: Buffer[] = [];
-      req.on('data', chunk => chunks.push(Buffer.from(chunk)));
-      req.on('end', () => {
-        received.push(JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>);
-        res.statusCode = 204;
-        res.end();
-      });
-    });
-    await new Promise<void>(resolve => receiver.listen(0, '127.0.0.1', resolve));
-
-    try {
-      const address = receiver.address() as { port: number };
-      const server = createTrainingAgentServer(DEFAULT_CTX);
-      const account = { brand: { domain: 'wholesale-webhook.example' }, operator: 'pinnacle-agency.example' };
-      await simulateCallTool(server, 'sync_accounts', {
-        accounts: [{
-          ...account,
-          billing: 'operator',
-          sandbox: true,
-          notification_configs: [{
-            subscriber_id: 'wholesale-feed-sync',
-            url: `http://127.0.0.1:${address.port}/webhooks/adcp/wholesale-feed`,
-            event_types: ['product.priced', 'product.created'],
-            active: true,
-          }],
+  it('rejects active wholesale feed subscribers until proof of control exists', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'sync_accounts', {
+      accounts: [{
+        brand: { domain: 'wholesale-webhook.example' },
+        operator: 'pinnacle-agency.example',
+        billing: 'operator',
+        sandbox: true,
+        notification_configs: [{
+          subscriber_id: 'wholesale-feed-sync',
+          url: 'https://webhook.example.com/webhooks/adcp/wholesale-feed',
+          event_types: ['product.priced', 'product.created'],
+          active: true,
         }],
-      });
+      }],
+    });
 
-      const forced = await simulateCallTool(server, 'comply_test_controller', {
-        account,
-        brand: account.brand,
-        scenario: 'force_wholesale_feed_webhook',
-        params: {
-          event_type: 'product.priced',
-          entity_id: 'prod_training_wholesale',
-        },
-      });
-
-      expect(forced.result.success).toBe(true);
-      expect(forced.result.delivered).toBe(1);
-      expect(received).toHaveLength(1);
-      expect(received[0].notification_type).toBe('product.priced');
-      expect(received[0].subscriber_id).toBe('wholesale-feed-sync');
-      expect((received[0].event as Record<string, unknown>).event_type).toBe('product.priced');
-      expect(((received[0].event as Record<string, unknown>).payload as Record<string, unknown>).product_id).toBe('prod_training_wholesale');
-
-      const created = await simulateCallTool(server, 'comply_test_controller', {
-        account,
-        brand: account.brand,
-        scenario: 'force_wholesale_feed_webhook',
-        params: {
-          event_type: 'product.created',
-          entity_id: 'prod_training_wholesale_created',
-        },
-      });
-
-      expect(created.result.success).toBe(true);
-      expect(created.result.delivered).toBe(1);
-      expect(received).toHaveLength(2);
-      expect(received[1].notification_type).toBe('product.created');
-      const createdPayload = (received[1].event as Record<string, unknown>).payload as Record<string, unknown>;
-      expect((createdPayload.product as Record<string, unknown>).product_id).toBe('prod_training_wholesale_created');
-    } finally {
-      await new Promise<void>(resolve => receiver.close(() => resolve()));
-    }
+    const account = (result.accounts as Array<Record<string, unknown>>)[0];
+    expect(account.action).toBe('failed');
+    expect(account.errors).toEqual([expect.objectContaining({
+      code: 'VALIDATION_ERROR',
+      field: 'notification_configs[0].active',
+    })]);
   });
 
   it('lists protocol tasks without get_adcp_capabilities itself', async () => {
