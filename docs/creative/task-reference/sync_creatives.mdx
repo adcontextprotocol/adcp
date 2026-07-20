@@ -827,12 +827,11 @@ Poll `tasks/get` or wait for the webhook. The completion artifact carries the `c
 
 | Error Code                | Description                                       | Resolution                                                           |
 | ------------------------- | ------------------------------------------------- | -------------------------------------------------------------------- |
-| `INVALID_FORMAT`          | Format not supported by product                   | Check product's supported formats via `list_creative_formats`        |
-| `ASSET_PROCESSING_FAILED` | Asset file corrupt or invalid                     | Verify asset meets format requirements (codec, dimensions, duration) |
+| `UNSUPPORTED_FEATURE`     | Format not supported by this seller or product    | Check product's supported formats via `list_creative_formats`        |
+| `VALIDATION_ERROR`        | Manifest failed format validation: an asset file is corrupt or invalid, or assets don't match the format's requirements (codec, dimensions, duration). `error.field` identifies the offending asset path | Verify asset types and specifications match the format definition |
 | `PACKAGE_NOT_FOUND`       | Package ID doesn't exist in media buy             | Verify `package_id`; for legacy package correlation use `get_media_buys` + package `context.buyer_ref` |
-| `BRAND_SAFETY_VIOLATION`  | Creative failed brand safety scan                 | Review content against publisher's brand safety guidelines           |
-| `FORMAT_MISMATCH`         | Assets don't match format requirements            | Verify asset types and specifications match format definition        |
-| `CREATIVE_IN_ACTIVE_DELIVERY` | Creative is assigned to an active, non-paused package (blocks updates and `delete_missing` deletions) | Pause the package first, or create a new creative version        |
+| `CREATIVE_REJECTED`       | Creative failed content policy or brand safety review | Review content against the seller's advertising policies         |
+| `INVALID_STATE`           | Creative is assigned to an active, non-paused package (blocks updates and `delete_missing` deletions) | Pause the package first, or create a new creative version        |
 
 ## Best practices
 

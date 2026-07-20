@@ -394,10 +394,9 @@ Creative agents MUST return errors using the [standard AdCP error schema](/docs/
 Common error codes:
 
 - `REFERENCE_NOT_FOUND`: Requested format does not exist or is not accessible (`error.field` identifies the `format_id`)
-- `VALIDATION_ERROR`: Manifest failed format validation
-- `ASSET_MISSING`: Required asset not provided in manifest
-- `ASSET_INVALID`: Asset does not meet format constraints
-- `GENERATION_FAILED`: Creative generation could not be completed
+- `VALIDATION_ERROR`: Manifest failed format validation: a required asset is missing from the manifest, or an asset does not meet the format's constraints (`error.field` identifies the offending asset path)
+
+Generation-pipeline failures (model or rendering errors during `build_creative`) surface as task-level failure (`status: "failed"`) with the most specific applicable code in `errors[]`. The error-code vocabulary is open: sellers MAY return platform-specific codes for failure modes the canonical enum does not cover, and agents MUST handle unknown codes by falling back to the recovery classification.
 
 ## Security considerations
 

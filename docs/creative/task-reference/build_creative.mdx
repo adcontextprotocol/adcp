@@ -1526,6 +1526,6 @@ To refine, pass the previous response's `creative_manifest` back as input with a
 | Code | Description |
 |------|-------------|
 | `FORMAT_NOT_SUPPORTED` | The `target_format_id` (or `target_format_ids[N]` in a multi-format request) is not supported by this creative agent. For canonical creative-agent routing, retry with an advertised `creative.supported_formats[].capability_id`; legacy named-format IDs remain valid when the agent still advertises them. |
-| `INVALID_MANIFEST` | The `creative_manifest` is malformed or missing required assets for the target format |
+| `VALIDATION_ERROR` | The `creative_manifest` is malformed or missing required assets for the target format |
 | `CREATIVE_NOT_FOUND` | The `creative_id` does not exist in the agent's library (or in the specified `concept_id`) |
 | `COMPLIANCE_UNSATISFIED` | A required disclosure from the brief cannot be rendered in the target format (e.g., format does not support the required disclosure position) |
