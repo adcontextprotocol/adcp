@@ -42,7 +42,9 @@ async function gatherSignals(orgId: string): Promise<InferenceSignals> {
        FROM working_group_memberships wgm
        JOIN working_groups wg ON wg.id = wgm.working_group_id
        JOIN organization_memberships om ON om.workos_user_id = wgm.workos_user_id
-       WHERE om.workos_organization_id = $1 AND wgm.status = 'active'`,
+       WHERE om.workos_organization_id = $1
+         AND wgm.status = 'active'
+         AND wg.status = 'active'`,
       [orgId]
     ),
     pool.query(

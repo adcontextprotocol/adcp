@@ -2114,8 +2114,10 @@ export class OrganizationDatabase {
       pool.query(
         `SELECT COUNT(DISTINCT wgm.working_group_id) as count
          FROM working_group_memberships wgm
+         JOIN working_groups wg ON wg.id = wgm.working_group_id
          WHERE wgm.workos_organization_id = $1
-         AND wgm.status = 'active'`,
+         AND wgm.status = 'active'
+         AND wg.status = 'active'`,
         [workos_organization_id]
       ),
       // Email click count (last 30 days)

@@ -3766,7 +3766,9 @@ export function createAdminToolHandlers(
           `SELECT DISTINCT wg.name, wg.slug, wgm.status, wgm.joined_at
            FROM working_group_memberships wgm
            JOIN working_groups wg ON wgm.working_group_id = wg.id
-           WHERE wgm.workos_organization_id = $1 AND wgm.status = 'active'`,
+           WHERE wgm.workos_organization_id = $1
+             AND wgm.status = 'active'
+             AND wg.status = 'active'`,
           [orgId],
         ),
         // Recent activities
