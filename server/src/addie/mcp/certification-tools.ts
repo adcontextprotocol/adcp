@@ -104,6 +104,13 @@ const MIN_PLACEMENT_TURNS = 3;
 const MIN_MODULE_TIME_MS = 5 * 60 * 1000; // 5 minutes
 const MIN_CAPSTONE_TIME_MS = 10 * 60 * 1000; // 10 minutes
 
+const UNAVAILABLE_SPECIALIST_MODULES = new Set(['S5']);
+
+function unavailableSpecialistMessage(moduleId: string): string | null {
+  if (!UNAVAILABLE_SPECIALIST_MODULES.has(moduleId)) return null;
+  return `Module ${moduleId} (Sponsored Intelligence) is not currently available for assessment because the sandbox does not yet expose the required si_* lab tools. No module progress or capstone attempt was changed.`;
+}
+
 export const PRIOR_TURN_RESTATEMENT_NO_RAW_JSON_RULE = 'for prior-turn re-statements, no raw JSON';
 export const LIVE_DEMO_RESULT_FORMATTING_RULE = 'When pasting the tool result, preserve the exact formatting returned by the tool -- including any code fence wrappers. Do NOT flatten to prose or strip the fence.';
 export const LIVE_DEMO_CODE_FENCE_ARTIFACT_RULE = 'The code fence is the artifact learners are here to see.';
@@ -1003,15 +1010,15 @@ export const CERTIFICATION_TOOLS: AddieTool[] = [
   },
   {
     name: 'start_certification_exam',
-    description: 'Begin a specialist deep dive module (S1: Media Buy, S2: Creative, S3: Signals, S4: Governance, S5: Sponsored Intelligence). The learner must hold the Practitioner credential. Returns the capstone format, lab exercises, and assessment criteria. You (Sage) will conduct the combined hands-on lab and adaptive exam — technically assess the learner against the spec.',
-    usage_hints: 'use for "take the exam", "start capstone", "specialist exam", "ready for certification", "start S1", "media buy specialist", "sponsored intelligence"',
+    description: 'Begin an available specialist deep dive module (S1: Media Buy, S2: Creative, S3: Signals, S4: Governance, S6: Security). S5 Sponsored Intelligence is listed in the curriculum but is not assessable until its sandbox labs exist. The learner must hold the Practitioner credential. Returns the capstone format, lab exercises, and assessment criteria. You (Sage) will conduct the combined hands-on lab and adaptive exam — technically assess the learner against the spec.',
+    usage_hints: 'use for "take the exam", "start capstone", "specialist exam", "ready for certification", "start S1", "media buy specialist", "security specialist"',
     input_schema: {
       type: 'object',
       properties: {
         module_id: {
           type: 'string',
-          enum: ['S1', 'S2', 'S3', 'S4', 'S5'],
-          description: 'Specialist module ID: S1 (Media Buy), S2 (Creative), S3 (Signals), S4 (Governance), S5 (Sponsored Intelligence)',
+          enum: ['S1', 'S2', 'S3', 'S4', 'S5', 'S6'],
+          description: 'Specialist module ID: S1 (Media Buy), S2 (Creative), S3 (Signals), S4 (Governance), S5 (Sponsored Intelligence — currently unavailable), S6 (Security)',
         },
       },
       required: ['module_id'],
@@ -1564,7 +1571,7 @@ function isCredentialIssued(
  */
 export function createCertificationToolHandlers(
   initialMemberContext: MemberContext | null,
-  options?: { threadId?: string },
+  options?: { threadId?: string; trainingModuleContext?: { moduleId?: string } },
 ): Map<string, ToolHandler> {
   const handlers = new Map<string, ToolHandler>();
 
@@ -1694,7 +1701,10 @@ export function createCertificationToolHandlers(
 
         for (const mod of trackModules) {
           const freeLabel = mod.is_free ? ' (free)' : '';
-          lines.push(`- ${mod.id}: ${mod.title} — ${mod.duration_minutes} min, ${mod.format}${freeLabel}`);
+          const availabilityLabel = UNAVAILABLE_SPECIALIST_MODULES.has(mod.id)
+            ? ' — unavailable (sandbox labs pending)'
+            : '';
+          lines.push(`- ${mod.id}: ${mod.title} — ${mod.duration_minutes} min, ${mod.format}${freeLabel}${availabilityLabel}`);
         }
         lines.push('');
       }
@@ -1702,7 +1712,7 @@ export function createCertificationToolHandlers(
       lines.push('---');
       lines.push('Modules A1, A2, A2B, and A3 are free for everyone. Other modules require AgenticAdvertising.org membership.');
       lines.push('To start a module, say "start module [ID]" (e.g., "start module A1").');
-      lines.push('To start a specialist deep dive, say "start capstone S1" (or S2–S5, or S7 Brand).');
+      lines.push('To start a specialist deep dive, say "start capstone S1" (S1–S4, S6 Security, or S7 Brand are available; S5 is pending sandbox labs).');
       lines.push('Already familiar with AdCP? Say "assess my level" to take a placement assessment and skip modules you already know.');
 
       return lines.join('\n');
@@ -1818,6 +1828,8 @@ export function createCertificationToolHandlers(
 
     try {
       const moduleId = (input.module_id as string).toUpperCase();
+      const unavailable = unavailableSpecialistMessage(moduleId);
+      if (unavailable) return unavailable;
       const mod = await certDb.getModule(moduleId);
       if (!mod) return `Module "${moduleId}" not found.`;
 
@@ -1866,6 +1878,9 @@ export function createCertificationToolHandlers(
       }
 
       await certDb.startModule(userId, moduleId);
+      if (options?.trainingModuleContext) {
+        options.trainingModuleContext.moduleId = moduleId;
+      }
 
       // Return the lesson plan so Sage can teach it
       const lines: string[] = [
@@ -1980,6 +1995,8 @@ export function createCertificationToolHandlers(
 
     try {
       const moduleId = (input.module_id as string).toUpperCase();
+      const unavailable = unavailableSpecialistMessage(moduleId);
+      if (unavailable) return notCompleted(moduleId, 'state', unavailable);
 
       // Verify module is in-progress before allowing completion
       const progress = await certDb.getProgress(userId);
@@ -2308,6 +2325,8 @@ export function createCertificationToolHandlers(
 
     try {
       const moduleId = (input.module_id as string).toUpperCase();
+      const unavailable = unavailableSpecialistMessage(moduleId);
+      if (unavailable) return unavailable;
 
       // Validate it's a capstone module
       const mod = await certDb.getModule(moduleId);
@@ -2439,12 +2458,18 @@ export function createCertificationToolHandlers(
       // Check for existing active attempt (module-scoped so S1 doesn't block S4)
       const active = await certDb.getActiveAttemptForModule(userId, moduleId);
       if (active) {
+        if (options?.trainingModuleContext) {
+          options.trainingModuleContext.moduleId = moduleId;
+        }
         return `You already have an active capstone attempt (started ${new Date(active.started_at).toLocaleDateString()}). Continue the capstone.\n\nAttempt ID: ${active.id}`;
       }
 
       // Start the module and create an attempt
       await certDb.startModule(userId, moduleId);
       const attempt = await certDb.createAttempt(userId, mod.track_id, options?.threadId, moduleId);
+      if (options?.trainingModuleContext) {
+        options.trainingModuleContext.moduleId = moduleId;
+      }
 
       const criteria = mod.assessment_criteria as certDb.AssessmentCriteria | null;
       const lessonPlan = mod.lesson_plan as certDb.LessonPlan | null;
@@ -2457,6 +2482,7 @@ export function createCertificationToolHandlers(
         'S3': 'AdCP Specialist — Signals',
         'S4': 'AdCP Specialist — Governance',
         'S5': 'AdCP Specialist — Sponsored Intelligence',
+        'S6': 'AdCP Specialist — Security',
       };
 
       const lines = [
@@ -2630,6 +2656,8 @@ export function createCertificationToolHandlers(
       const examAc = capstoneMod.assessment_criteria as certDb.AssessmentCriteria | undefined;
 
       const capstoneId = capstoneMod.id;
+      const unavailable = unavailableSpecialistMessage(capstoneId);
+      if (unavailable) return notCompleted(capstoneId, 'state', unavailable);
       const deltaDef = getDeltaForModule(capstoneId) ?? null;
       const deltaStatus = deltaDef
         ? await certDb.getDeltaStatus(deltaDef, userId)

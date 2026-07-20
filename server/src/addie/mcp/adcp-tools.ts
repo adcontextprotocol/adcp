@@ -679,7 +679,8 @@ export const ADCP_TOOLS: AddieTool[] = [
  * These wrap the AdCPClient to execute tasks with proper parameter mapping.
  */
 export function createAdcpToolHandlers(
-  memberContext: MemberContext | null
+  memberContext: MemberContext | null,
+  trainingModuleContext?: { moduleId?: string },
 ): Map<string, ToolHandler> {
   const handlers = new Map<string, ToolHandler>();
   const agentContextDb = new AgentContextDatabase();
@@ -782,7 +783,14 @@ export function createAdcpToolHandlers(
       if (isTrainingAgentUrl(parsedUrl)) {
         const { executeTrainingAgentTool } = await import('../../training-agent/task-handlers.js');
         const userId = memberContext?.workos_user?.workos_user_id;
-        const ctx = { mode: 'training' as const, userId };
+        const memberModuleId = memberContext?.certification?.status === 'in_progress'
+          ? memberContext.certification.module_id ?? undefined
+          : undefined;
+        const ctx = {
+          mode: 'training' as const,
+          userId,
+          moduleId: trainingModuleContext?.moduleId ?? memberModuleId,
+        };
         const result = await executeTrainingAgentTool(task, params, ctx);
         if (!result.success) {
           return [
