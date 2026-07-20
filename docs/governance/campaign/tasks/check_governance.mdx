@@ -478,9 +478,9 @@ The seller MUST adjust pacing and re-call `check_governance` immediately. The `n
 | Code | Recovery | Description |
 |------|----------|-------------|
 | `PLAN_NOT_FOUND` | correctable | No plan with this ID. The buyer may not have synced the plan yet. |
-| `AMBIGUOUS_CHECK_TYPE` | correctable | Request contains both intent fields (`tool` + `payload`) and execution fields (`governance_context` + `planned_delivery`). Send one set or the other. |
+| `INVALID_REQUEST` | correctable | Request contains both intent fields (`tool` + `payload`) and execution fields (`governance_context` + `planned_delivery`), so the check type cannot be inferred. Send one set or the other. |
 | `CAMPAIGN_SUSPENDED` | correctable | Campaign governance is suspended pending human review. |
-| `SELLER_NOT_RECOGNIZED` | correctable | The caller URL is not in the plan's `approved_sellers` list. |
+| `PERMISSION_DENIED` | correctable | The caller URL is not in the plan's `approved_sellers` list. |
 
 ## Related tasks
 

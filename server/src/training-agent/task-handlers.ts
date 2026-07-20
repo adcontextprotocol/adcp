@@ -7189,7 +7189,7 @@ export async function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext
   if (!preview) {
     const fmtId = manifest.format_id?.id || 'unknown';
     return {
-      errors: [{ code: 'INVALID_FORMAT', message: `Format "${fmtId}" is not supported. Use list_creative_formats to discover available formats.` }],
+      errors: [{ code: 'UNSUPPORTED_FEATURE', message: `Format "${fmtId}" is not supported. Use list_creative_formats to discover available formats.` }],
     };
   }
 
