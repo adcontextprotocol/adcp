@@ -528,19 +528,22 @@ Without confidence, every finding is presented as equally certain, which either 
 
 ### Phase inference
 
-The governance agent infers the validation phase from the `tool` parameter in `check_governance`:
+The governance agent determines the token phase from the request shape, not from
+the tool name or a caller-supplied lifecycle phase:
 
-| tool | Phase |
-|------|-------|
-| `get_products` | Discovery -- validates search intent, seller eligibility, product suitability |
-| `create_media_buy` | Purchase -- validates budget authority, targeting compliance, flight dates |
-| `update_media_buy` | Purchase -- validates change magnitude, reallocation thresholds |
-| `acquire_rights` | Purchase -- validates budget authority, geo compliance, flight dates |
-| `update_rights` | Purchase -- validates change magnitude, reallocation thresholds |
-| `activate_signal` | Purchase -- validates budget authority, geo compliance, flight dates |
-| `build_creative` | Purchase -- validates budget authority, geo compliance |
+- `tool` + `payload` is an orchestrator-side intent check. Its signed
+  `governance_context` carries `phase: "intent"` and omits `media_buy_id`, even
+  when the proposed payload contains a media buy ID or the caller supplies a
+  lifecycle `phase`.
+- `planned_delivery` is a seller-side execution check (normally carrying the
+  buyer's prior `governance_context` for lifecycle continuity).
+  Its signed token carries the requested `purchase`, `modification`, or
+  `delivery` phase (defaulting to `purchase`) and binds to the seller-assigned
+  `media_buy_id` when one is supplied.
 
-Phase context is cumulative. During **purchase**, the governance agent considers what was discovered during **discovery**.
+This separation prevents a proposed action from being mistaken for a seller's
+authorization to execute it. The `phase` request field applies only to execution
+checks; it does not override an intent-shaped request.
 
 The `check_id` returned by `check_governance` is used by `report_plan_outcome` to link the seller's response back to the validated action.
 

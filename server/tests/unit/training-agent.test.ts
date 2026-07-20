@@ -8935,12 +8935,11 @@ describe('check_governance delegation enforcement', () => {
     // Second check — pass governance_context back for lifecycle continuity
     const { result: check2 } = await simulateCallTool(server, 'check_governance', {
       plan_id: 'plan-deleg',
-      binding: 'committed',
       caller: 'https://delegated.example',
-      media_buy_id: 'mb_test_123',
       governance_context: check1.governance_context,
       phase: 'purchase',
       planned_delivery: {
+        media_buy_id: 'mb_test_123',
         geo: { countries: ['US'] },
         total_budget: 10000,
         currency: 'USD',
