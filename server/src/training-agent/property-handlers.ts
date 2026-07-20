@@ -11,6 +11,7 @@ import type { TrainingContext, ToolArgs, AccountRef, PropertyListState } from '.
 import { getSession, sessionKeyFromArgs, MAX_PROPERTY_LISTS_PER_SESSION } from './state.js';
 import { ACCOUNT_REF_SCHEMA } from './account-handlers.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
+import { assertPublicTarget } from './webhook-fetch.js';
 
 const MAX_PROPERTIES_PER_LIST = 10_000;
 
@@ -87,6 +88,7 @@ export const PROPERTY_TOOLS = [
         base_properties: { type: 'array', description: 'Complete replacement for the base properties list' },
         filters: { type: 'object', description: 'Complete replacement for the filters' },
         brand: { type: 'object', properties: { domain: { type: 'string' } }, description: 'Update brand reference (campaign metadata)' },
+        webhook_url: { type: 'string', description: 'Update the webhook URL for list change notifications (set to empty string to remove)' },
       },
       required: ['list_id'],
     },
@@ -180,6 +182,27 @@ function extractDomains(properties: unknown[]): string[] {
     }
   }
   return domains;
+}
+
+async function validateWebhookUrl(value: string): Promise<{ code: string; message: string; field: string } | undefined> {
+  let target: URL;
+  try {
+    target = new URL(value);
+  } catch {
+    return { code: 'VALIDATION_ERROR', message: 'webhook_url must be a valid URL', field: 'webhook_url' };
+  }
+  if (target.protocol !== 'https:' && (process.env.NODE_ENV === 'production' || target.protocol !== 'http:')) {
+    return { code: 'VALIDATION_ERROR', message: 'webhook_url must use HTTPS', field: 'webhook_url' };
+  }
+  if (target.username || target.password) {
+    return { code: 'VALIDATION_ERROR', message: 'webhook_url must not include userinfo credentials', field: 'webhook_url' };
+  }
+  try {
+    await assertPublicTarget(target);
+  } catch {
+    return { code: 'VALIDATION_ERROR', message: 'webhook_url must target a public network address', field: 'webhook_url' };
+  }
+  return undefined;
 }
 
 // ── Handlers ─────────────────────────────────────────────────────
@@ -302,12 +325,17 @@ export async function handleUpdatePropertyList(
   args: ToolArgs,
   ctx: TrainingContext,
 ) {
-  const req = args as { list_id: string; name?: string; description?: string; base_properties?: unknown[]; filters?: unknown; brand?: unknown };
+  const req = args as { list_id: string; name?: string; description?: string; base_properties?: unknown[]; filters?: unknown; brand?: unknown; webhook_url?: string };
   const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   const state = session.propertyLists.get(req.list_id);
   if (!state) {
     return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: 'Property list not found', field: 'list_id' }] };
+  }
+
+  if (req.webhook_url !== undefined && req.webhook_url !== '') {
+    const webhookError = await validateWebhookUrl(req.webhook_url);
+    if (webhookError) return { errors: [webhookError] };
   }
 
   if (req.name) {
@@ -332,6 +360,10 @@ export async function handleUpdatePropertyList(
 
   if (req.brand !== undefined) {
     state.brand = req.brand;
+  }
+
+  if (req.webhook_url !== undefined) {
+    state.webhookUrl = req.webhook_url === '' ? undefined : req.webhook_url;
   }
 
   state.propertyCount = state.baseProperties.length;
