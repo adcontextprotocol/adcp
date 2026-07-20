@@ -116,6 +116,7 @@ describe('My Content — body, admin scope, status, delete', () => {
   let pool: Pool;
   let wgId: string;
   const WG_SLUG = 'mc-test-wg';
+  const ARCHIVED_WG_SLUG = 'mc-test-archived-wg';
   const USER_ID = 'user_my_content';
   const OTHER_USER_ID = 'user_my_content_other';
   const ELIGIBLE_ORG_ID = 'org_my_content_professional';
@@ -191,6 +192,12 @@ describe('My Content — body, admin scope, status, delete', () => {
   afterAll(async () => {
     await pool.query(`DELETE FROM content_authors WHERE perspective_id IN (SELECT id FROM perspectives WHERE slug LIKE 'mc-test-%')`);
     await pool.query(`DELETE FROM perspectives WHERE slug LIKE 'mc-test-%'`);
+    await pool.query(
+      `DELETE FROM working_group_memberships
+       WHERE working_group_id IN (SELECT id FROM working_groups WHERE slug = $1)`,
+      [ARCHIVED_WG_SLUG]
+    );
+    await pool.query(`DELETE FROM working_groups WHERE slug = $1`, [ARCHIVED_WG_SLUG]);
     await pool.query(`DELETE FROM working_group_leaders WHERE working_group_id = $1`, [wgId]);
     await pool.query(`DELETE FROM working_groups WHERE slug = $1`, [WG_SLUG]);
     // Side tables the propose flow writes into. Clear everything referencing
@@ -295,6 +302,59 @@ describe('My Content — body, admin scope, status, delete', () => {
   // ---------------------------------------------------------------------------
 
   describe('POST /api/content/propose', () => {
+    it('excludes archived working groups from collections and content proposals', async () => {
+      const archivedWg = await pool.query<{ id: string }>(
+        `INSERT INTO working_groups
+           (name, slug, description, accepts_public_submissions, status)
+         VALUES ('Archived Content Test WG', $1, 'lifecycle test', false, 'active')
+         ON CONFLICT (slug) DO UPDATE SET
+           accepts_public_submissions = false,
+           status = 'active'
+         RETURNING id`,
+        [ARCHIVED_WG_SLUG]
+      );
+      const archivedWgId = archivedWg.rows[0].id;
+      await pool.query(
+        `INSERT INTO working_group_memberships
+           (working_group_id, workos_user_id, status)
+         VALUES ($1, $2, 'active')
+         ON CONFLICT (working_group_id, workos_user_id)
+         DO UPDATE SET status = 'active'`,
+        [archivedWgId, USER_ID]
+      );
+
+      const activeCollections = await request(app).get('/api/content/collections').expect(200);
+      expect(activeCollections.body.collections.map((collection: { slug: string }) => collection.slug))
+        .toContain(ARCHIVED_WG_SLUG);
+
+      await request(app)
+        .post('/api/content/propose')
+        .send({
+          title: 'mc-test-active-wg-proposal',
+          content: 'body',
+          content_type: 'article',
+          collection: { slug: ARCHIVED_WG_SLUG },
+        })
+        .expect(201);
+
+      await pool.query(`UPDATE working_groups SET status = 'archived' WHERE id = $1`, [archivedWgId]);
+
+      const archivedCollections = await request(app).get('/api/content/collections').expect(200);
+      expect(archivedCollections.body.collections.map((collection: { slug: string }) => collection.slug))
+        .not.toContain(ARCHIVED_WG_SLUG);
+
+      const archivedProposal = await request(app)
+        .post('/api/content/propose')
+        .send({
+          title: 'mc-test-archived-wg-proposal',
+          content: 'body',
+          content_type: 'article',
+          collection: { slug: ARCHIVED_WG_SLUG },
+        })
+        .expect(400);
+      expect(archivedProposal.body.message).toContain('No collection found');
+    });
+
     it('respects pending_review requested by a committee lead', async () => {
       const response = await request(app)
         .post('/api/content/propose')

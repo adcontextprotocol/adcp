@@ -458,7 +458,9 @@ export async function proposeContentForUser(
 
   // Resolve the collection (working group)
   const committeeResult = await pool.query(
-    `SELECT id, name, accepts_public_submissions, slack_channel_id FROM working_groups WHERE slug = $1`,
+    `SELECT id, name, accepts_public_submissions, slack_channel_id
+     FROM working_groups
+     WHERE slug = $1 AND status = 'active'`,
     [committeeSlug]
   );
 
@@ -480,7 +482,8 @@ export async function proposeContentForUser(
   // For non-public collections, user must be a member
   if (!acceptsPublicSubmissions && !userIsLead && !userIsAdmin) {
     const membershipResult = await pool.query(
-      `SELECT 1 FROM working_group_memberships WHERE working_group_id = $1 AND workos_user_id = $2`,
+      `SELECT 1 FROM working_group_memberships
+       WHERE working_group_id = $1 AND workos_user_id = $2 AND status = 'active'`,
       [committeeId, user.id]
     );
     if (membershipResult.rows.length === 0) {
@@ -1145,6 +1148,7 @@ export function createContentRouter(): Router {
         `SELECT id, slug, name, description
          FROM working_groups
          WHERE accepts_public_submissions = TRUE
+           AND status = 'active'
          ORDER BY name`
       );
 
@@ -1160,7 +1164,9 @@ export function createContentRouter(): Router {
          FROM working_group_memberships wgm
          JOIN working_groups wg ON wg.id = wgm.working_group_id
          WHERE wgm.workos_user_id = $1
+           AND wgm.status = 'active'
            AND wg.accepts_public_submissions = FALSE
+           AND wg.status = 'active'
          ORDER BY wg.name`,
         [user.id]
       );
