@@ -704,6 +704,15 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
       : 'purchase';
   const phase: GovernancePhase = binding === 'proposed' ? 'intent' : requestedExecutionPhase;
 
+  if (binding === 'committed' && !plannedDelivery?.media_buy_id) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: 'planned_delivery.media_buy_id is required for execution governance checks',
+      }],
+    };
+  }
+
   const plan = session.governancePlans.get(planId);
   if (!plan) {
     const checkId = `chk_${randomUUID().slice(0, 8)}`;

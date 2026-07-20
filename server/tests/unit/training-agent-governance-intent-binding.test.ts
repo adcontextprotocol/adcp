@@ -139,4 +139,19 @@ describe('check_governance request-shape binding', () => {
     expect(payload.phase).toBe('purchase');
     expect(payload.media_buy_id).toBe('mb_without_prior_context');
   });
+
+  it('rejects an execution check that cannot bind a seller-assigned media buy ID', async () => {
+    const result = await withPlan(async () => check({
+      phase: 'purchase',
+      planned_delivery: { total_budget: 1_000 },
+    }));
+
+    expect(result).toEqual({
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: 'planned_delivery.media_buy_id is required for execution governance checks',
+      }],
+    });
+    expect(result).not.toHaveProperty('governance_context');
+  });
 });
