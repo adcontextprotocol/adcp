@@ -2112,7 +2112,7 @@ export function createCertificationToolHandlers(
     if (!userId) return 'You need to be logged in to see your certification progress.';
 
     try {
-      const [progress, trackProgress, credentials, userCredentials, tracks, deltaStatuses] = await Promise.all([
+      const [progress, trackProgress, credentials, userCredentials, tracks, deltaStatuses, attempts] = await Promise.all([
         certDb.getProgress(userId),
         certDb.getTrackProgress(userId),
         certDb.getCredentials(),
@@ -2121,6 +2121,7 @@ export function createCertificationToolHandlers(
         Promise.all(
           DELTA_DEFINITIONS.map(async def => ({ def, status: await certDb.getDeltaStatus(def, userId) })),
         ),
+        certDb.getUserAttempts(userId),
       ]);
 
       const lines: string[] = ['# Your certification progress\n'];
@@ -2186,10 +2187,27 @@ export function createCertificationToolHandlers(
 
       const moduleProgress = progress.filter(p => p.status !== 'not_started');
       if (moduleProgress.length > 0) {
+        const activeSpecialistAttempts = new Map<string, certDb.CertificationAttempt>();
+        for (const attempt of attempts) {
+          if (
+            attempt.status === 'in_progress'
+            && attempt.module_id?.startsWith('S')
+            && !activeSpecialistAttempts.has(attempt.module_id)
+          ) {
+            activeSpecialistAttempts.set(attempt.module_id, attempt);
+          }
+        }
+
         lines.push('## Module details');
         for (const p of moduleProgress) {
           const status = p.status === 'completed' ? 'completed' : p.status === 'tested_out' ? 'tested out' : 'in progress';
           lines.push(`- ${p.module_id}: ${status}`);
+          const activeAttempt = p.status === 'in_progress'
+            ? activeSpecialistAttempts.get(p.module_id)
+            : undefined;
+          if (activeAttempt) {
+            lines.push(`  Active attempt: ${activeAttempt.id} (started ${formatUtcDate(activeAttempt.started_at)})`);
+          }
         }
       }
 
@@ -2545,6 +2563,7 @@ export function createCertificationToolHandlers(
 
       // Look up the active attempt: accept the UUID directly, or resolve from module ID
       let attempt: certDb.CertificationAttempt | null;
+      let resolvedFromModuleId = false;
       if (isUuid(attemptId)) {
         attempt = await certDb.getAttempt(attemptId);
       } else {
@@ -2554,6 +2573,7 @@ export function createCertificationToolHandlers(
         if (!/^[A-Z]{1,2}[0-9]+$/.test(normalized)) {
           return `Invalid attempt_id "${attemptId}". Provide the UUID returned by start_certification_exam.`;
         }
+        resolvedFromModuleId = true;
         attempt = await certDb.getActiveAttemptForModule(userId, normalized);
       }
       if (!attempt) return 'Exam attempt not found.';
@@ -2683,18 +2703,21 @@ export function createCertificationToolHandlers(
       const overallScore = Math.round(scoreResult.weightedAvg);
       const allAboveThreshold = Object.values(scores).every(s => s >= 70);
       const passing = allAboveThreshold && overallScore >= 70;
+      const recordedScores: Record<string, number | boolean> = resolvedFromModuleId
+        ? { ...scores, _resolved_from_module_id: true }
+        : scores;
 
       if (isProtocolDelta && deltaDef && passing) {
         await certDb.completeDeltaAttempt(
           deltaDef,
           attempt.id,
           userId,
-          scores,
+          recordedScores,
           overallScore,
           deltaEvidence!.evidenceByCriterionId,
         );
       } else {
-        await certDb.completeAttempt(attempt.id, scores, overallScore, passing);
+        await certDb.completeAttempt(attempt.id, recordedScores, overallScore, passing);
       }
 
       // --- From this point the attempt is recorded. Failures below must not ---

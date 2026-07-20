@@ -113,7 +113,7 @@ export interface CertificationAttempt {
   status: 'in_progress' | 'passed' | 'failed';
   started_at: string;
   completed_at: string | null;
-  scores: Record<string, number> | null;
+  scores: Record<string, number | boolean> | null;
   overall_score: number | null;
   passing: boolean | null;
   addie_thread_id: string | null;
@@ -469,7 +469,7 @@ export async function createAttempt(
 
 export async function completeAttempt(
   attemptId: string,
-  scores: Record<string, number>,
+  scores: Record<string, number | boolean>,
   overallScore: number,
   passing: boolean,
   certifierCredentialId?: string,
@@ -480,13 +480,13 @@ export async function completeAttempt(
     `UPDATE certification_attempts
      SET status = $2, completed_at = NOW(), scores = $3, overall_score = $4,
          passing = $5, certifier_credential_id = $6, certifier_public_id = $7
-     WHERE id = $1
+     WHERE id = $1 AND status = 'in_progress'
      RETURNING *`,
     [attemptId, status, JSON.stringify(scores), overallScore, passing,
      certifierCredentialId || null, certifierPublicId || null]
   );
   if (!result.rows[0]) {
-    throw new Error(`Certification attempt ${attemptId} not found`);
+    throw new Error(`Certification attempt ${attemptId} not found or not in_progress`);
   }
   return result.rows[0];
 }
@@ -855,7 +855,7 @@ export async function completeDeltaAttempt(
   def: DeltaDefinition,
   attemptId: string,
   userId: string,
-  scores: Record<string, number>,
+  scores: Record<string, number | boolean>,
   overallScore: number,
   evidenceByCriterionId: Record<string, string>,
 ): Promise<CertificationAttempt> {

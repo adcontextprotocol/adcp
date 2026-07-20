@@ -158,4 +158,25 @@ describe('Admin attempt resolution', () => {
       ).rejects.toThrow('not found or not in_progress');
     });
   });
+
+  describe('completeAttempt', () => {
+    it('allows only one concurrent completion of an in-progress attempt', async () => {
+      const attempt = await certDb.createAttempt(TEST_USER, 'S', undefined, 'S1');
+      const scores = { protocol_mastery: 80 };
+
+      const results = await Promise.allSettled([
+        certDb.completeAttempt(attempt.id, scores, 80, true),
+        certDb.completeAttempt(attempt.id, scores, 80, true),
+      ]);
+
+      expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+      const rejected = results.find(result => result.status === 'rejected');
+      expect(rejected).toMatchObject({
+        status: 'rejected',
+        reason: expect.objectContaining({
+          message: `Certification attempt ${attempt.id} not found or not in_progress`,
+        }),
+      });
+    });
+  });
 });
