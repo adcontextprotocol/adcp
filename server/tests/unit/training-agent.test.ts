@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createServer } from 'node:http';
 import { buildCatalog } from '../../src/training-agent/product-factory.js';
 import { buildFormats, FORMAT_CHANNEL_MAP } from '../../src/training-agent/formats.js';
@@ -14,6 +14,10 @@ import {
   flushDirtySessions,
   MAX_MEDIA_BUYS_PER_SESSION,
   MAX_CREATIVES_PER_SESSION,
+  SESSION_RETENTION_MS,
+  SESSION_STORE_UNAVAILABLE_MESSAGE,
+  sessionRetentionCutoff,
+  setStateStore,
 } from '../../src/training-agent/state.js';
 import {
   createTrainingAgentServer,
@@ -26,6 +30,7 @@ import {
 import {
   MUTATING_TOOLS,
   clearIdempotencyCache,
+  REPLAY_TTL_SECONDS,
 } from '../../src/training-agent/idempotency.js';
 import { randomUUID } from 'node:crypto';
 import { getAgentUrl } from '../../src/training-agent/config.js';
@@ -739,6 +744,22 @@ describe('session state', () => {
   });
 
   describe('getSession', () => {
+    it('retains resources beyond the complete idempotency replay window', () => {
+      const replayTtlMs = REPLAY_TTL_SECONDS * 1000;
+      const cleanupAndSkewMarginMs = 60 * 60 * 1000;
+
+      expect(SESSION_RETENTION_MS).toBe(25 * 60 * 60 * 1000);
+      expect(SESSION_RETENTION_MS).toBeGreaterThanOrEqual(
+        replayTtlMs + cleanupAndSkewMarginMs,
+      );
+
+      // A row last mutated at t=0 is not eligible at the replay boundary or
+      // even at the exact retention boundary because cleanup uses strict `<`.
+      expect(sessionRetentionCutoff(replayTtlMs).getTime()).toBeLessThan(0);
+      expect(sessionRetentionCutoff(SESSION_RETENTION_MS).getTime()).toBe(0);
+      expect(sessionRetentionCutoff(SESSION_RETENTION_MS + 1).getTime()).toBe(1);
+    });
+
     it('creates a new session with empty maps', async () => {
       await runWithSessionContext(async () => {
         const session = await getSession('test-key');
@@ -789,7 +810,6 @@ describe('session state', () => {
     });
 
     it('read-only access does not flush (lastAccessedAt touch is excluded from diff)', async () => {
-      const { setStateStore } = await import('../../src/training-agent/state.js');
       const { InMemoryStateStore } = await import('@adcp/sdk/server');
       const store = new InMemoryStateStore();
       setStateStore(store);
@@ -815,6 +835,30 @@ describe('session state', () => {
           await flushDirtySessions();
         });
         expect(writes).toBe(0);
+      } finally {
+        setStateStore(null);
+      }
+    });
+
+    it('fails closed on a store read error without persisting replacement state', async () => {
+      const get = vi.fn().mockRejectedValue(new Error('postgres connection reset'));
+      const put = vi.fn();
+      setStateStore({ get, put } as any);
+      try {
+        const server = createTrainingAgentServer(DEFAULT_CTX);
+        const response = await simulateCallTool(server, 'get_media_buys', {
+          account: { brand: { domain: 'durability.example' } },
+        });
+
+        expect(response.isError).toBe(true);
+        expect(response.result).toMatchObject({
+          code: 'SERVICE_UNAVAILABLE',
+          message: SESSION_STORE_UNAVAILABLE_MESSAGE,
+          recovery: 'transient',
+        });
+        expect(JSON.stringify(response.result)).not.toContain('postgres connection reset');
+        expect(get).toHaveBeenCalledTimes(1);
+        expect(put).not.toHaveBeenCalled();
       } finally {
         setStateStore(null);
       }
