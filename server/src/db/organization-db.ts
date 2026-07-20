@@ -467,7 +467,7 @@ export function buildSubscriptionUpdate(
  * A member is a contributor if any of:
  *   - admin assigned seat_type = 'contributor'
  *   - they have a mapped Slack account
- *   - they are an active member of a working group
+ *   - they are an active member of an active working group
  */
 export async function getSeatUsage(orgId: string): Promise<{ contributor: number; community_only: number }> {
   const pool = getPool();
@@ -477,7 +477,14 @@ export async function getSeatUsage(orgId: string): Promise<{ contributor: number
        COUNT(*) FILTER (WHERE
          om.seat_type = 'contributor'
          OR EXISTS (SELECT 1 FROM slack_user_mappings sm WHERE sm.workos_user_id = om.workos_user_id AND sm.mapping_status = 'mapped')
-         OR EXISTS (SELECT 1 FROM working_group_memberships wgm WHERE wgm.workos_user_id = om.workos_user_id AND wgm.status = 'active')
+         OR EXISTS (
+           SELECT 1
+           FROM working_group_memberships wgm
+           JOIN working_groups wg ON wg.id = wgm.working_group_id
+           WHERE wgm.workos_user_id = om.workos_user_id
+             AND wgm.status = 'active'
+             AND wg.status = 'active'
+         )
        ) as contributor
      FROM organization_memberships om
      WHERE om.workos_organization_id = $1`,
@@ -507,14 +514,21 @@ export async function canAddSeat(
     const tier = await readMembershipTierFromClient(client, orgId, { forUpdate: true });
     const limits = getSeatLimits(tier);
 
-    // Count active members (contributor = admin-assigned OR Slack-mapped OR in working group)
+    // Count active members (contributor = admin-assigned OR Slack-mapped OR in an active working group)
     const memberResult = await client.query<{ total: string; contributor: string }>(
       `SELECT
          COUNT(*) as total,
          COUNT(*) FILTER (WHERE
            om.seat_type = 'contributor'
            OR EXISTS (SELECT 1 FROM slack_user_mappings sm WHERE sm.workos_user_id = om.workos_user_id AND sm.mapping_status = 'mapped')
-           OR EXISTS (SELECT 1 FROM working_group_memberships wgm WHERE wgm.workos_user_id = om.workos_user_id AND wgm.status = 'active')
+           OR EXISTS (
+             SELECT 1
+             FROM working_group_memberships wgm
+             JOIN working_groups wg ON wg.id = wgm.working_group_id
+             WHERE wgm.workos_user_id = om.workos_user_id
+               AND wgm.status = 'active'
+               AND wg.status = 'active'
+           )
          ) as contributor
        FROM organization_memberships om
        WHERE om.workos_organization_id = $1`,
@@ -561,7 +575,7 @@ export async function canAddSeat(
  * Get a user's effective seat type. A user is a contributor if any of:
  *   - admin assigned seat_type = 'contributor'
  *   - they have a mapped Slack account
- *   - they are an active member of a working group
+ *   - they are an active member of an active working group
  */
 export async function getUserSeatType(userId: string): Promise<SeatType | null> {
   const pool = getPool();
@@ -569,7 +583,14 @@ export async function getUserSeatType(userId: string): Promise<SeatType | null> 
     `SELECT (
        EXISTS (SELECT 1 FROM organization_memberships WHERE workos_user_id = $1 AND seat_type = 'contributor')
        OR EXISTS (SELECT 1 FROM slack_user_mappings WHERE workos_user_id = $1 AND mapping_status = 'mapped')
-       OR EXISTS (SELECT 1 FROM working_group_memberships WHERE workos_user_id = $1 AND status = 'active')
+       OR EXISTS (
+         SELECT 1
+         FROM working_group_memberships wgm
+         JOIN working_groups wg ON wg.id = wgm.working_group_id
+         WHERE wgm.workos_user_id = $1
+           AND wgm.status = 'active'
+           AND wg.status = 'active'
+       )
      ) as is_contributor
      FROM organization_memberships WHERE workos_user_id = $1 LIMIT 1`,
     [userId]

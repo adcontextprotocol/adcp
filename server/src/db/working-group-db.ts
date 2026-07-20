@@ -453,7 +453,8 @@ export class WorkingGroupDatabase {
    */
   async getWorkingGroupBySlackChannelId(slackChannelId: string): Promise<WorkingGroup | null> {
     const result = await query<WorkingGroup>(
-      'SELECT * FROM working_groups WHERE slack_channel_id = $1',
+      `SELECT * FROM working_groups
+       WHERE slack_channel_id = $1 AND status = 'active'`,
       [slackChannelId]
     );
     return result.rows[0] || null;
@@ -967,8 +968,12 @@ export class WorkingGroupDatabase {
   async getWorkingGroupIdsByUser(userId: string): Promise<string[]> {
     const canonicalUserId = await this.resolveToCanonicalUserId(userId);
     const result = await query<{ working_group_id: string }>(
-      `SELECT working_group_id FROM working_group_memberships
-       WHERE workos_user_id = $1 AND status = 'active'`,
+      `SELECT wgm.working_group_id
+       FROM working_group_memberships wgm
+       JOIN working_groups wg ON wg.id = wgm.working_group_id
+       WHERE wgm.workos_user_id = $1
+         AND wgm.status = 'active'
+         AND wg.status = 'active'`,
       [canonicalUserId]
     );
     return result.rows.map(r => r.working_group_id);

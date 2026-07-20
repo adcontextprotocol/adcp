@@ -21,13 +21,18 @@ import {
   markAdminReminderSent,
   markMemberTimeoutNotified,
   getSeatUsage,
+  getUserSeatType,
+  canAddSeat,
   getSeatLimits,
 } from '../../src/db/organization-db.js';
+import { WorkingGroupDatabase } from '../../src/db/working-group-db.js';
 import type { Pool } from 'pg';
 
 const TEST_ORG_ID = 'org_seat_lifecycle_test';
 const TEST_MEMBER_USER_ID = 'user_seat_member_1';
 const TEST_ADMIN_USER_ID = 'user_seat_admin_1';
+const TEST_LIFECYCLE_WG_SLUG = 'seat-lifecycle-archived-wg';
+const TEST_LIFECYCLE_CHANNEL_ID = 'C0ARCHIVEDWG';
 
 describe('Seat Lifecycle', () => {
   let pool: Pool;
@@ -41,6 +46,8 @@ describe('Seat Lifecycle', () => {
 
   afterAll(async () => {
     await pool.query('DELETE FROM seat_upgrade_requests WHERE workos_organization_id = $1', [TEST_ORG_ID]);
+    await pool.query('DELETE FROM working_group_memberships WHERE workos_user_id = $1', [TEST_MEMBER_USER_ID]);
+    await pool.query('DELETE FROM working_groups WHERE slug = $1', [TEST_LIFECYCLE_WG_SLUG]);
     await pool.query('DELETE FROM organization_memberships WHERE workos_organization_id = $1', [TEST_ORG_ID]);
     await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [TEST_ORG_ID]);
     await closeDatabase();
@@ -408,6 +415,54 @@ describe('Seat Lifecycle', () => {
       const usage = await getSeatUsage(TEST_ORG_ID);
       expect(usage.contributor).toBeGreaterThanOrEqual(1);
       expect(usage.community_only).toBeGreaterThanOrEqual(0);
+    });
+
+    it('does not grant contributor or working-group capabilities from an archived group', async () => {
+      await pool.query('DELETE FROM working_group_memberships WHERE workos_user_id = $1', [TEST_MEMBER_USER_ID]);
+      await pool.query('DELETE FROM slack_user_mappings WHERE workos_user_id = $1 OR slack_user_id = $1', [TEST_MEMBER_USER_ID]);
+      await pool.query(
+        `UPDATE organizations
+         SET membership_tier = 'individual_professional', subscription_status = 'active'
+         WHERE workos_organization_id = $1`,
+        [TEST_ORG_ID]
+      );
+      await pool.query(
+        `INSERT INTO organization_memberships
+           (workos_user_id, workos_organization_id, email, seat_type, created_at, updated_at, synced_at)
+         VALUES ($1, $2, 'member@test.com', 'community_only', NOW(), NOW(), NOW())
+         ON CONFLICT (workos_user_id, workos_organization_id)
+         DO UPDATE SET seat_type = 'community_only'`,
+        [TEST_MEMBER_USER_ID, TEST_ORG_ID]
+      );
+      const workingGroup = await pool.query<{ id: string }>(
+        `INSERT INTO working_groups (name, slug, status, slack_channel_id)
+         VALUES ('Seat Lifecycle WG', $1, 'active', $2)
+         ON CONFLICT (slug) DO UPDATE SET status = 'active', slack_channel_id = EXCLUDED.slack_channel_id
+         RETURNING id`,
+        [TEST_LIFECYCLE_WG_SLUG, TEST_LIFECYCLE_CHANNEL_ID]
+      );
+      const workingGroupId = workingGroup.rows[0].id;
+      await pool.query(
+        `INSERT INTO working_group_memberships (working_group_id, workos_user_id, status)
+         VALUES ($1, $2, 'active')
+         ON CONFLICT (working_group_id, workos_user_id) DO UPDATE SET status = 'active'`,
+        [workingGroupId, TEST_MEMBER_USER_ID]
+      );
+
+      const wgDb = new WorkingGroupDatabase();
+      expect(await getSeatUsage(TEST_ORG_ID)).toEqual({ contributor: 1, community_only: 0 });
+      expect(await getUserSeatType(TEST_MEMBER_USER_ID)).toBe('contributor');
+      expect((await canAddSeat(TEST_ORG_ID, 'contributor')).allowed).toBe(false);
+      expect((await wgDb.getWorkingGroupBySlackChannelId(TEST_LIFECYCLE_CHANNEL_ID))?.id).toBe(workingGroupId);
+      expect(await wgDb.getWorkingGroupIdsByUser(TEST_MEMBER_USER_ID)).toContain(workingGroupId);
+
+      await pool.query(`UPDATE working_groups SET status = 'archived' WHERE id = $1`, [workingGroupId]);
+
+      expect(await getSeatUsage(TEST_ORG_ID)).toEqual({ contributor: 0, community_only: 1 });
+      expect(await getUserSeatType(TEST_MEMBER_USER_ID)).toBe('community_only');
+      expect((await canAddSeat(TEST_ORG_ID, 'contributor')).allowed).toBe(true);
+      expect(await wgDb.getWorkingGroupBySlackChannelId(TEST_LIFECYCLE_CHANNEL_ID)).toBeNull();
+      expect(await wgDb.getWorkingGroupIdsByUser(TEST_MEMBER_USER_ID)).not.toContain(workingGroupId);
     });
   });
 });
