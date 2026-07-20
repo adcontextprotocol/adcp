@@ -66,7 +66,8 @@ fixtures:
       # sellers (a guaranteed-only fixture made create_buy_from_product fail with
       # DELIVERY_MODE_NOT_SUPPORTED, cascading the whole available-actions flow).
       # The allowed_actions below — what this scenario actually grades — are
-      # delivery-type-agnostic. Mirrors the base media-buy flow fix.
+      # delivery-type-agnostic. Keep this fixture non-guaranteed when extending
+      # the scenario; it mirrors the base media-buy flow compatibility fix.
       delivery_type: "non_guaranteed"
       channels: ["display"]
       format_ids:
