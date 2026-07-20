@@ -661,6 +661,7 @@ describe('sync_accounts', () => {
           subscriber_id: 'buyer-primary',
           url: 'https://buyer.example.com/webhooks/creative',
           event_types: ['creative.status_changed'],
+          active: false,
         }],
       }],
     });
@@ -672,7 +673,7 @@ describe('sync_accounts', () => {
       subscriber_id: 'buyer-primary',
       url: 'https://buyer.example.com/webhooks/creative',
       event_types: ['creative.status_changed'],
-      active: true,
+      active: false,
     }]);
   });
 
@@ -728,7 +729,7 @@ describe('sync_accounts', () => {
             schemes: ['Bearer'],
             credentials: 'AbCdEf0123456789AbCdEf0123456789',
           },
-          active: true,
+          active: false,
         }],
       }],
     });
@@ -739,7 +740,7 @@ describe('sync_accounts', () => {
       url: 'https://buyer.example.com/webhooks/creative',
       event_types: ['creative.status_changed'],
       authentication: { schemes: ['Bearer'] },
-      active: true,
+      active: false,
     }]);
   });
 
@@ -754,7 +755,7 @@ describe('sync_accounts', () => {
           subscriber_id: 'buyer-primary',
           url: 'https://buyer.example.com/webhooks/creative',
           event_types: ['creative.status_changed'],
-          active: true,
+          active: false,
         }],
       }],
     });
@@ -766,8 +767,33 @@ describe('sync_accounts', () => {
       subscriber_id: 'buyer-primary',
       url: 'https://buyer.example.com/webhooks/creative',
       event_types: ['creative.status_changed'],
-      active: true,
+      active: false,
     }]);
+  });
+
+  it('rejects active notification configs until proof of control is implemented', async () => {
+    const { result } = await simulateCallTool(server, 'sync_accounts', {
+      accounts: [{
+        brand: { domain: 'acme.com' },
+        operator: 'agency-one',
+        billing: 'operator',
+        sandbox: true,
+        notification_configs: [{
+          subscriber_id: 'buyer-primary',
+          url: 'https://buyer.example.com/webhooks/creative',
+          event_types: ['creative.status_changed'],
+          active: true,
+        }],
+      }],
+    });
+
+    const acct = (result.accounts as Record<string, unknown>[])[0];
+    expect(acct.action).toBe('failed');
+    expect(acct.status).toBe('rejected');
+    expect(acct.errors).toEqual([expect.objectContaining({
+      code: 'VALIDATION_ERROR',
+      field: 'notification_configs[0].active',
+    })]);
   });
 });
 

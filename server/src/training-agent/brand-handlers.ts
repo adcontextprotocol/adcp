@@ -575,7 +575,7 @@ export const BRAND_TOOLS = [
   },
   {
     name: 'update_rights',
-    description: 'Update an existing rights grant — extend dates, adjust impression caps, or pause/resume.',
+    description: 'Update an existing rights grant — extend dates, adjust impression caps, or pause/resume. The training sandbox rejects push_notification_config until update_rights is added to the webhook task-type enum.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     execution: { taskSupport: 'optional' as const },
     inputSchema: {
@@ -585,6 +585,10 @@ export const BRAND_TOOLS = [
         end_date: { type: 'string', description: 'New end date (must be >= current end date)' },
         impression_cap: { type: 'number', description: 'New impression cap (must be >= current)' },
         paused: { type: 'boolean', description: 'Pause or resume the grant' },
+        push_notification_config: {
+          type: 'object',
+          description: 'Not currently supported by the training sandbox: requests that include this field are rejected until update_rights has a routable webhook task type.',
+        },
       },
       required: ['rights_id'],
     },
@@ -1131,7 +1135,23 @@ export function handleUpdateRights(
   args: ToolArgs,
   _ctx: TrainingContext,
 ) {
-  const req = args as { rights_id: string; end_date?: string; impression_cap?: number; paused?: boolean };
+  const req = args as {
+    rights_id: string;
+    end_date?: string;
+    impression_cap?: number;
+    paused?: boolean;
+    push_notification_config?: unknown;
+  };
+  if (req.push_notification_config !== undefined) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        field: 'push_notification_config',
+        message: 'The training sandbox cannot emit update_rights completion webhooks until update_rights is added to the webhook task-type enum. Omit push_notification_config and poll the synchronous result.',
+        recovery: 'correctable',
+      }],
+    };
+  }
   const rightsId = req.rights_id;
   const endDate = req.end_date;
   const impressionCap = req.impression_cap;
