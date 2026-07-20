@@ -359,21 +359,6 @@ Accept creative asset uploads into your library. Implement this if your platform
 
 See [sync_creatives task reference](/docs/creative/task-reference/sync_creatives) for complete API specification.
 
-## Integration with the Media Buy Protocol
-
-`sync_creatives` appears in both the Creative Protocol and the Media Buy Protocol, which is a common source of confusion. It is one task with one schema; what changes is the role of the agent receiving it:
-
-- **Sales agents** (Media Buy Protocol) accept `sync_creatives` to traffic creatives: upload into the seller's library, assign to packages in media buys, and run the seller's review pipeline. This is the call a buyer makes when activating a campaign.
-- **Creative agents** (this guide) MAY accept `sync_creatives` as an optional library on-ramp: buyers push assets into your library so `build_creative` and `list_creatives` can reference them later. No packages or media buys are involved unless your platform also manages them.
-
-A typical buyer flow uses both endpoints in sequence:
-
-1. **Build**: the buyer calls your `build_creative` (or assembles a manifest by hand) and checks the result with `preview_creative`.
-2. **Traffic**: the buyer sends the finished manifest to the sales agent's `sync_creatives`, with package assignments for the media buy.
-3. **Deliver**: the sales agent validates the manifest against the format definition your agent published and serves the creative.
-
-Your creative agent is not in the path of step 2; buyers call the sales agent directly. Your format definitions are, because the sales agent validates incoming manifests against the formats you publish via `list_creative_formats`. Sales agents that implement the Creative Protocol alongside the Media Buy Protocol accept both kinds of calls at a single endpoint; see [Creative capabilities on sales agents](/docs/creative/sales-agent-creative-capabilities).
-
 ## Validation best practices
 
 ### Manifest validation
@@ -443,12 +428,84 @@ When updating format definitions:
 Before launching your creative agent:
 
 - [ ] MCP and/or A2A endpoints are accessible
+- [ ] `get_adcp_capabilities` returns `creative.supported_formats` with at least one entry
 - [ ] All format_ids use proper namespacing (`domain:id`)
 - [ ] Domain in format_id matches your `agent_url` domain
 - [ ] `list_creative_formats` returns all your formats
 - [ ] `preview_creative` validates manifests and generates previews
 - [ ] Format definitions include complete asset requirements
 - [ ] Documentation available for your custom formats
+
+To verify a remote creative agent is reachable and advertising its format surface, call `get_adcp_capabilities` on the agent endpoint and confirm that the response includes a non-empty `creative.supported_formats` array. Each entry follows the [canonical format declaration](/docs/creative/canonical-formats) shape.
+
+<Accordion title="Verify an MCP creative agent">
+
+```bash
+export AGENT_URL="https://your-creative-agent.example.com/mcp"
+
+# 1. MCP initialize — establish session; capture Mcp-Session-Id if server is stateful
+SESSION_ID=$(curl -s -D - -o /dev/null -X POST "$AGENT_URL" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": {
+      "protocolVersion": "2024-11-05",
+      "capabilities": {},
+      "clientInfo": { "name": "adcp-probe", "version": "1.0" }
+    }
+  }' | grep -i '^mcp-session-id:' | awk '{print $2}' | tr -d '\r\n')
+
+HEADERS=(-H "Content-Type: application/json" -H "Accept: application/json, text/event-stream")
+[ -n "$SESSION_ID" ] && HEADERS+=(-H "Mcp-Session-Id: $SESSION_ID")
+
+# 2. Send notifications/initialized (required by the MCP lifecycle before any tool call)
+curl -s -o /dev/null -X POST "$AGENT_URL" "${HEADERS[@]}" \
+  -d '{"jsonrpc":"2.0","method":"notifications/initialized"}'
+
+# 3. Call get_adcp_capabilities
+curl -X POST "$AGENT_URL" "${HEADERS[@]}" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/call",
+    "params": {
+      "name": "get_adcp_capabilities",
+      "arguments": {
+        "adcp_version": "3.1",
+        "adcp_major_version": 3,
+        "protocols": ["creative"]
+      }
+    }
+  }'
+```
+
+Read the AdCP payload from the MCP result and verify that it contains a creative capability block like this:
+
+```json
+{
+  "creative": {
+    "supported_formats": [
+      {
+        "capability_id": "display_banner",
+        "format": {
+          "format_kind": "image",
+          "params": {
+            "width": 300,
+            "height": 250
+          }
+        }
+      }
+    ]
+  }
+}
+```
+
+An unreachable endpoint, an authorization error, a missing `creative` block, or an empty `supported_formats` array means the agent is not ready for creative-format discovery. If the endpoint requires authentication, include the credential configured for that agent.
+
+</Accordion>
 
 ## Integration patterns
 
