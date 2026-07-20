@@ -25,6 +25,7 @@ import {
 } from '../../src/training-agent/task-handlers.js';
 import {
   MUTATING_TOOLS,
+  clearIdempotencyCache,
 } from '../../src/training-agent/idempotency.js';
 import { randomUUID } from 'node:crypto';
 import { getAgentUrl } from '../../src/training-agent/config.js';
@@ -11431,6 +11432,79 @@ describe('property-list uniform not-found response (issue #2739)', () => {
     expect(probeA.result.code).toBe('REFERENCE_NOT_FOUND');
     expect(probeA.result.message).toBe('Property list not found');
     expect(probeA.result.field).toBe('list_id');
+  });
+});
+
+describe('collection and property list webhook URL handling', () => {
+  beforeEach(async () => {
+    await clearSessions();
+    clearIdempotencyCache();
+  });
+
+  afterEach(async () => {
+    await clearSessions();
+    stopSessionCleanup();
+  });
+
+  it('advertises the schema-defined webhook_url field on both update tools', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { tools } = await simulateListTools(server);
+
+    for (const toolName of ['update_collection_list', 'update_property_list']) {
+      const tool = tools.find(candidate => candidate.name === toolName);
+      expect(tool?.inputSchema?.properties).toHaveProperty('webhook_url');
+    }
+  });
+
+  it.each([
+    { kind: 'collection', createTool: 'create_collection_list', updateTool: 'update_collection_list', getTool: 'get_collection_list' },
+    { kind: 'property', createTool: 'create_property_list', updateTool: 'update_property_list', getTool: 'get_property_list' },
+  ])('rejects a private $kind list webhook without partially applying the update', async ({ createTool, updateTool, getTool }) => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const created = await simulateCallTool(server, createTool, { name: 'Original name' });
+    const listId = (created.result.list as { list_id: string }).list_id;
+
+    const rejected = await simulateCallTool(server, updateTool, {
+      list_id: listId,
+      name: 'Must not persist',
+      webhook_url: 'https://169.254.169.254/latest/meta-data',
+    });
+    expect(rejected.result).toMatchObject({ code: 'VALIDATION_ERROR', field: 'webhook_url' });
+
+    const fetched = await simulateCallTool(server, getTool, { list_id: listId });
+    expect(fetched.result.list).toMatchObject({ name: 'Original name' });
+    expect((fetched.result.list as Record<string, unknown>).webhook_url).toBeUndefined();
+  });
+
+  it.each([
+    { createTool: 'create_collection_list', updateTool: 'update_collection_list' },
+    { createTool: 'create_property_list', updateTool: 'update_property_list' },
+  ])('rejects webhook URLs containing userinfo credentials', async ({ createTool, updateTool }) => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const created = await simulateCallTool(server, createTool, { name: 'Credential test' });
+    const listId = (created.result.list as { list_id: string }).list_id;
+
+    const rejected = await simulateCallTool(server, updateTool, {
+      list_id: listId,
+      webhook_url: 'https://username:password@8.8.8.8/list-changes',
+    });
+    expect(rejected.result).toMatchObject({ code: 'VALIDATION_ERROR', field: 'webhook_url' });
+  });
+
+  it.each([
+    { kind: 'collection', createTool: 'create_collection_list', updateTool: 'update_collection_list' },
+    { kind: 'property', createTool: 'create_property_list', updateTool: 'update_property_list' },
+  ])('stores and removes a public $kind list webhook', async ({ createTool, updateTool }) => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const created = await simulateCallTool(server, createTool, { name: 'Webhook list' });
+    const listId = (created.result.list as { list_id: string }).list_id;
+    const webhookUrl = 'https://8.8.8.8/list-changes';
+
+    const updated = await simulateCallTool(server, updateTool, { list_id: listId, webhook_url: webhookUrl });
+    expect(updated.result.list).toMatchObject({ webhook_url: webhookUrl });
+
+    const cleared = await simulateCallTool(server, updateTool, { list_id: listId, webhook_url: '' });
+    expect((cleared.result.list as Record<string, unknown>).webhook_url).toBeUndefined();
   });
 });
 
