@@ -554,7 +554,12 @@ export async function getDigestEmailRecipients(): Promise<DigestEmailRecipient[]
        o.persona,
        o.journey_stage,
        om.seat_type,
-       COALESCE((SELECT COUNT(*) FROM working_group_memberships wgm WHERE wgm.workos_user_id = u.workos_user_id AND wgm.status = 'active'), 0)::int AS wg_count,
+       COALESCE((SELECT COUNT(*)
+                 FROM working_group_memberships wgm
+                 JOIN working_groups wg ON wg.id = wgm.working_group_id
+                 WHERE wgm.workos_user_id = u.workos_user_id
+                   AND wgm.status = 'active'
+                   AND wg.status = 'active'), 0)::int AS wg_count,
        COALESCE((SELECT COUNT(*) FROM learner_progress lp
                  JOIN certification_modules cm ON cm.id = lp.module_id
                  WHERE lp.workos_user_id = u.workos_user_id

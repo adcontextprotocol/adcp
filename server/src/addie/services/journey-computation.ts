@@ -44,8 +44,9 @@ export async function checkMilestones(orgId: string): Promise<MilestoneCheck | n
        o.created_at,
        EXISTS (
          SELECT 1 FROM working_group_leaders wgl
+         JOIN working_groups wg ON wg.id = wgl.working_group_id
          JOIN organization_memberships om ON om.workos_user_id = wgl.user_id
-         WHERE om.workos_organization_id = $1
+         WHERE om.workos_organization_id = $1 AND wg.status = 'active'
        ) as has_leadership,
        EXISTS (
          SELECT 1 FROM perspectives p
@@ -54,8 +55,11 @@ export async function checkMilestones(orgId: string): Promise<MilestoneCheck | n
        ) as has_content_proposals,
        EXISTS (
          SELECT 1 FROM working_group_memberships wgm
+         JOIN working_groups wg ON wg.id = wgm.working_group_id
          JOIN organization_memberships om ON om.workos_user_id = wgm.workos_user_id
-         WHERE om.workos_organization_id = $1 AND wgm.status = 'active'
+         WHERE om.workos_organization_id = $1
+           AND wgm.status = 'active'
+           AND wg.status = 'active'
        ) as has_working_groups,
        EXISTS (
          SELECT 1 FROM member_search_analytics msa
