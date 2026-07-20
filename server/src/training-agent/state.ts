@@ -28,11 +28,24 @@ import {
 import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
 import { getAgentUrl } from './config.js';
+import { REPLAY_TTL_SECONDS } from './idempotency.js';
 
 const logger = createLogger('training-agent-state');
 
-const SESSION_TTL_MS = 60 * 60 * 1000;
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+const SESSION_RETENTION_MARGIN_SECONDS = 60 * 60;
+/**
+ * Durable sandbox resources outlive the full idempotency replay window.
+ *
+ * The one-hour margin is deliberately larger than the five-minute cleanup
+ * cadence plus the replay store's clock-skew allowance. Retention is based on
+ * the last persisted mutation (`adcp_state.updated_at`); read-only requests do
+ * not refresh it or generate a write.
+ */
+export const SESSION_RETENTION_MS =
+  (REPLAY_TTL_SECONDS + SESSION_RETENTION_MARGIN_SECONDS) * 1000;
+export const SESSION_STORE_UNAVAILABLE_MESSAGE =
+  'Training session state is temporarily unavailable. Retry the request.';
 const MAX_MEDIA_BUYS_PER_SESSION = 100;
 const MAX_CREATIVES_PER_SESSION = 500;
 const MAX_PROPERTY_LISTS_PER_SESSION = 100;
@@ -421,16 +434,19 @@ export async function getSession(key: string): Promise<SessionState> {
     if (cached) return cached;
   }
 
-  let session: SessionState | undefined;
+  let storedShape: Record<string, unknown> | null;
   try {
-    const storedShape = await getStore().get<Record<string, unknown>>(SESSIONS_COLLECTION, key);
-    if (storedShape) session = deserializeSession(storedShape);
+    storedShape = await getStore().get<Record<string, unknown>>(SESSIONS_COLLECTION, key);
   } catch (err) {
-    logger.warn({ err, key }, 'Failed to load session from store; creating fresh');
+    // Never turn an unavailable durable store into an apparent cache miss.
+    // Creating and later flushing a fresh session here could overwrite the
+    // caller's existing resources after a transient Postgres read failure.
+    logger.error({ err, key }, 'Failed to load training-agent session');
+    throw new Error(SESSION_STORE_UNAVAILABLE_MESSAGE, { cause: err });
   }
-  if (!session) {
-    session = createSession();
-  }
+
+  // Only an authoritative missing-row result creates a fresh session.
+  const session = storedShape ? deserializeSession(storedShape) : createSession();
   session.lastAccessedAt = new Date();
 
   if (ctx) {
@@ -531,6 +547,11 @@ export function sessionKeyFromArgs(
 
 let cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
+/** Exact cutoff used by the strict `<` cleanup query. */
+export function sessionRetentionCutoff(nowMs = Date.now()): Date {
+  return new Date(nowMs - SESSION_RETENTION_MS);
+}
+
 /** Start the TTL cleanup interval. Deletes stale sessions from the store. */
 export function startSessionCleanup(): void {
   if (cleanupTimer) return;
@@ -538,8 +559,8 @@ export function startSessionCleanup(): void {
     try {
       if (isDatabaseInitialized()) {
         const { rowCount } = await getPool().query(
-          `DELETE FROM adcp_state WHERE collection = $1 AND updated_at < NOW() - ($2 || ' milliseconds')::interval`,
-          [SESSIONS_COLLECTION, String(SESSION_TTL_MS)],
+          `DELETE FROM adcp_state WHERE collection = $1 AND updated_at < $2`,
+          [SESSIONS_COLLECTION, sessionRetentionCutoff()],
         );
         if ((rowCount ?? 0) > 0) {
           logger.info({ deleted: rowCount }, 'Cleaned up expired training-agent sessions');
