@@ -2591,7 +2591,7 @@ export function createCertificationToolHandlers(
       let attempt: certDb.CertificationAttempt | null;
       let resolvedFromModuleId = false;
       if (isUuid(attemptId)) {
-        attempt = await certDb.getAttempt(attemptId);
+        attempt = await certDb.getAttemptForUser(attemptId, userId);
       } else {
         // Claude sometimes sends the module ID instead of the attempt UUID
         logger.warn({ attemptId, userId }, 'complete_certification_exam received module ID instead of UUID, resolving');
@@ -2602,8 +2602,7 @@ export function createCertificationToolHandlers(
         resolvedFromModuleId = true;
         attempt = await certDb.getActiveAttemptForModule(userId, normalized);
       }
-      if (!attempt) return 'Exam attempt not found.';
-      if (attempt.workos_user_id !== userId) return 'This exam attempt belongs to a different user.';
+      if (!attempt || attempt.workos_user_id !== userId) return 'Exam attempt not found.';
 
       if (attempt.status !== 'in_progress') {
         if (attempt.status === 'passed' && attempt.passing === true) {

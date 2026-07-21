@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   getActiveAttemptForModule: vi.fn(),
   startModule: vi.fn(),
   createAttempt: vi.fn(),
-  getAttempt: vi.fn(),
+  getAttemptForUser: vi.fn(),
   getModulesForTrack: vi.fn(),
 }));
 
@@ -76,7 +76,7 @@ describe('specialist certification catalog', () => {
   });
 
   it('blocks completion of an existing S5 attempt', async () => {
-    mocks.getAttempt.mockResolvedValue({
+    mocks.getAttemptForUser.mockResolvedValue({
       id: ATTEMPT_ID,
       workos_user_id: USER_ID,
       track_id: 'S',

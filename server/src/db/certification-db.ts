@@ -499,6 +499,17 @@ export async function getAttempt(attemptId: string): Promise<CertificationAttemp
   return result.rows[0] || null;
 }
 
+export async function getAttemptForUser(
+  attemptId: string,
+  userId: string,
+): Promise<CertificationAttempt | null> {
+  const result = await query<CertificationAttempt>(
+    'SELECT * FROM certification_attempts WHERE id = $1 AND workos_user_id = $2',
+    [attemptId, userId]
+  );
+  return result.rows[0] || null;
+}
+
 export async function getUserAttempts(userId: string): Promise<CertificationAttempt[]> {
   const result = await query<CertificationAttempt>(
     'SELECT * FROM certification_attempts WHERE workos_user_id = $1 ORDER BY created_at DESC',
