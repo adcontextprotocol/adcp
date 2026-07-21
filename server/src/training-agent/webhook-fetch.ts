@@ -33,7 +33,11 @@
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { fetch as undiciFetch, type Dispatcher } from 'undici';
-import { buildSsrfSafeDispatcher, isPrivateHostname } from '../utils/url-security.js';
+import {
+  buildSsrfSafeDispatcher,
+  isPrivateHostname,
+  SSRF_CONNECT_TIMEOUT_MS,
+} from '../utils/url-security.js';
 
 type FetchInitWithDispatcher = Omit<RequestInit, 'dispatcher'> & { dispatcher?: Dispatcher };
 
@@ -53,7 +57,15 @@ export interface WebhookValidationError {
   field: 'webhook_url';
 }
 
-export const WEBHOOK_DNS_TIMEOUT_MS = 5_000;
+export const WEBHOOK_DNS_TIMEOUT_MS = SSRF_CONNECT_TIMEOUT_MS;
+
+/** Private/loopback webhook targets are a test and local-development affordance.
+ * Unknown, unset, staging, and misspelled runtime names fail closed. */
+export function isWebhookTestOrDevelopment(
+  environment: string | undefined,
+): boolean {
+  return environment === 'test' || environment === 'development';
+}
 
 const fetchWithDispatcher = undiciFetch as unknown as (
   input: Parameters<typeof fetch>[0],
@@ -174,7 +186,10 @@ export async function validateWebhookUrl(
   } catch {
     return { code: 'VALIDATION_ERROR', message: 'webhook_url must be a valid URL', field: 'webhook_url' };
   }
-  if (target.protocol !== 'https:' && (process.env.NODE_ENV === 'production' || target.protocol !== 'http:')) {
+  if (
+    target.protocol !== 'https:' &&
+    (!isWebhookTestOrDevelopment(process.env.NODE_ENV) || target.protocol !== 'http:')
+  ) {
     return { code: 'VALIDATION_ERROR', message: 'webhook_url must use HTTPS', field: 'webhook_url' };
   }
   if (target.username || target.password) {
@@ -200,8 +215,8 @@ export async function validateWebhookUrl(
  * The returned function uses userland `undici.fetch` so its dispatcher and
  * request-handler contract stay aligned with the imported undici version. */
 export function createWebhookFetch(options: { allowPrivateIp: boolean }): typeof fetch {
-  if (process.env.NODE_ENV === 'production' && options.allowPrivateIp) {
-    throw new Error('Private webhook targets cannot be enabled in production');
+  if (options.allowPrivateIp && !isWebhookTestOrDevelopment(process.env.NODE_ENV)) {
+    throw new Error('Private webhook targets can only be enabled in test or development');
   }
   return async (input, init) => {
     const href = typeof input === 'string' || input instanceof URL
@@ -236,11 +251,11 @@ export function createWebhookFetch(options: { allowPrivateIp: boolean }): typeof
 /** The required fetch policy for every training-agent webhook delivery,
  * including future collection/property list-change notifications.
  *
- * Production behavior is intentionally derived here rather than at call
- * sites: callers cannot accidentally enable private targets in production.
- * Tests and local conformance receivers retain loopback access. */
+ * Runtime behavior is intentionally derived here rather than at call sites:
+ * callers cannot accidentally enable private targets unless the environment
+ * is explicitly `test` or `development`. */
 export function createTrainingWebhookFetch(
   environment: string | undefined = process.env.NODE_ENV,
 ): typeof fetch {
-  return createWebhookFetch({ allowPrivateIp: environment !== 'production' });
+  return createWebhookFetch({ allowPrivateIp: isWebhookTestOrDevelopment(environment) });
 }

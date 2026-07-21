@@ -7,6 +7,8 @@ import { createLogger } from '../logger.js';
 
 const logger = createLogger('url-security');
 
+export const SSRF_CONNECT_TIMEOUT_MS = 5_000;
+
 const TRANSIENT_DNS_CODES = new Set(['EAI_AGAIN', 'ESERVFAIL', 'ETIMEOUT', 'ECONNREFUSED']);
 const PERMANENT_DNS_CODES = new Set(['ENOTFOUND', 'EAI_NONAME', 'ENODATA', 'ENONAME', 'EAI_NODATA']);
 const DNS_CODE_RE = /\b(EAI_AGAIN|ESERVFAIL|ETIMEOUT|ECONNREFUSED|ENOTFOUND|EAI_NONAME|ENODATA|ENONAME|EAI_NODATA)\b/i;
@@ -401,6 +403,7 @@ export function buildSsrfSafeDispatcher(): Dispatcher {
   return new Agent({
     connect: {
       lookup: ssrfSafeLookup,
+      timeout: SSRF_CONNECT_TIMEOUT_MS,
     },
   });
 }
