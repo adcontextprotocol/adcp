@@ -17,6 +17,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -29,14 +31,22 @@ jobs:
         env:
           PUPPETEER_SKIP_DOWNLOAD: 'true'
 
+      - name: Check immutable release artifacts
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_REF="origin/${{ github.base_ref }}"
+          else
+            BASE_REF="${{ github.event.before }}"
+            if [ -z "${BASE_REF}" ] || [ "${BASE_REF}" = "0000000000000000000000000000000000000000" ]; then
+              BASE_REF="HEAD^"
+            fi
+          fi
+          npm run test:immutable-release-artifacts
+          node scripts/check-immutable-release-artifacts.cjs "${BASE_REF}"
+
       - name: Build
         run: npm run build
-
-      - name: Check release compliance artifacts
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          ADCP_SKIP_RELEASE_GIT_ADD=1 npm run build:compliance -- --release
-          node scripts/check-generated-artifact-diff.cjs "dist/compliance/$VERSION" dist/compliance/latest
 
       - name: Server unit tests
         run: npm run test:server-unit
