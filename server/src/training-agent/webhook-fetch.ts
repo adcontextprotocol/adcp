@@ -36,8 +36,11 @@ import { fetch as undiciFetch, type Dispatcher } from 'undici';
 import {
   buildSsrfSafeDispatcher,
   isPrivateHostname,
+  isTestOrDevelopmentRuntime as isWebhookTestOrDevelopment,
   SSRF_CONNECT_TIMEOUT_MS,
 } from '../utils/url-security.js';
+
+export { isWebhookTestOrDevelopment };
 
 type FetchInitWithDispatcher = Omit<RequestInit, 'dispatcher'> & { dispatcher?: Dispatcher };
 
@@ -58,14 +61,6 @@ export interface WebhookValidationError {
 }
 
 export const WEBHOOK_DNS_TIMEOUT_MS = SSRF_CONNECT_TIMEOUT_MS;
-
-/** Private/loopback webhook targets are a test and local-development affordance.
- * Unknown, unset, staging, and misspelled runtime names fail closed. */
-export function isWebhookTestOrDevelopment(
-  environment: string | undefined,
-): boolean {
-  return environment === 'test' || environment === 'development';
-}
 
 const fetchWithDispatcher = undiciFetch as unknown as (
   input: Parameters<typeof fetch>[0],
