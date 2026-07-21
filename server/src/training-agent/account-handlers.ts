@@ -12,7 +12,11 @@ import { getAgentUrl } from './config.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import { getCommercialRelationship } from './commercial-relationships.js';
 import { isPerAccountBillingRestricted } from './account-billing-relationships.js';
-import { assertPublicTarget, SsrfRefusedError } from './webhook-fetch.js';
+import {
+  assertPublicTarget,
+  isWebhookTestOrDevelopment,
+  SsrfRefusedError,
+} from './webhook-fetch.js';
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -342,7 +346,7 @@ async function normalizeNotificationConfigs(input: SyncAccountInput): Promise<No
       return { error: validationFailure(input, `${field}.url`, 'url must be a valid URL') };
     }
     const isLocalWebhook = ['localhost', '127.0.0.1', '::1'].includes(parsed.hostname);
-    if (parsed.protocol !== 'https:' && !(process.env.NODE_ENV !== 'production' && isLocalWebhook)) {
+    if (parsed.protocol !== 'https:' && !(isWebhookTestOrDevelopment(process.env.NODE_ENV) && isLocalWebhook)) {
       return { error: validationFailure(input, `${field}.url`, 'url must use HTTPS') };
     }
     if (parsed.username || parsed.password) {
