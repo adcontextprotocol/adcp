@@ -541,7 +541,7 @@ phases:
         completes, then returns the cached response with `replayed: true`.
       - **Reject-and-redirect**: the second request returns
         `IDEMPOTENCY_IN_FLIGHT` immediately with
-        `error.retry_after`. The buyer retries with the same key
+        `error.details.retry_after`. The buyer retries with the same key
         after the hint elapses and receives the cached response.
 
       This phase exercises both policies via the parallel_dispatch_runner
@@ -626,7 +626,7 @@ phases:
 
         reviewer_checks:
           - "Confirm the seller's claim-row / unique-constraint implementation backs the observed first-insert-wins behavior, rather than a happy-path race the test happened to avoid (review code or runbook describing the INSERT … ON CONFLICT pattern on the scope tuple)."
-          - "If the seller returned IDEMPOTENCY_IN_FLIGHT on the second dispatch, confirm `error.retry_after` was populated with a plausible value (seconds, > 0) and that the cached response was available within the hint window. A seller that consistently overshoots retry_after produces brittle retry timing for buyers."
+          - "If the seller returned IDEMPOTENCY_IN_FLIGHT on the second dispatch, confirm `error.details.retry_after` was populated with a plausible value (seconds, integer, > 0) and that the cached response was available within the hint window. A seller that consistently overshoots retry_after produces brittle retry timing for buyers."
           - "Confirm the seller's in-flight detection does NOT leak across (authenticated_agent, account_id) scope boundaries — probe with a stolen key from a different scope and verify the response shape and timing match the never-seen-key path."
 
   - id: verify_media_buy_count
@@ -694,7 +694,7 @@ phases:
       idempotency-cache insert-rate limiter trips and a request receives
       `RATE_LIMITED`, the response MUST NOT be cached as the canonical
       replay for that idempotency_key. A buyer retrying with the same key
-      after `error.retry_after` elapses MUST observe the real
+      after `error.details.retry_after` elapses MUST observe the real
       handler result (success or a state-dependent error) — not a cached
       rate-limit response that would persist for the entire replay TTL.
 
@@ -736,7 +736,7 @@ phases:
           requests with fresh UUID v4 idempotency_keys and otherwise-identical
           canonical payloads. On the first response with envelope error_code
           = `RATE_LIMITED`, the runner captures the request's
-          `idempotency_key` and the response's `error.retry_after`,
+          `idempotency_key` and the response's `error.details.retry_after`,
           waits that long (capped by `replay_max_wait_seconds`), and
           re-submits the captured key with the same payload but a distinct
           `context.correlation_id` for traceability.
@@ -798,5 +798,5 @@ phases:
 
         reviewer_checks:
           - "Confirm the seller's idempotency-cache implementation explicitly excludes RATE_LIMITED (and other transient-error) responses from the cached-replay path. Review the storage layer or runbook describing which response classes are persisted under idempotency_key."
-          - "Confirm the seller's RATE_LIMITED response carries a usable retry_after value (seconds, > 0, ≤ a documented ceiling). A seller that returns retry_after values larger than buyers' realistic retry windows produces unusable rate-limit signaling."
+          - "Confirm the seller's RATE_LIMITED response carries a usable retry_after value (seconds, integer, > 0, ≤ a documented ceiling). A seller that returns retry_after values larger than buyers' realistic retry windows produces unusable rate-limit signaling."
           - "Confirm the seller's rate-limit budget is scoped per (authenticated_agent, account) tuple — not shared across all agents or accounts globally — so one agent's burst cannot exhaust another's budget."
