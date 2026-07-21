@@ -37,6 +37,24 @@ import { buildSsrfSafeDispatcher, isPrivateHostname } from '../utils/url-securit
 
 type FetchInitWithDispatcher = Omit<RequestInit, 'dispatcher'> & { dispatcher?: Dispatcher };
 
+type DnsLookup = (
+  hostname: string,
+  options: { all: true; verbatim: true },
+) => Promise<Array<{ address: string; family: number }>>;
+
+interface PublicTargetOptions {
+  dnsLookup?: DnsLookup;
+  dnsTimeoutMs?: number;
+}
+
+export interface WebhookValidationError {
+  code: 'VALIDATION_ERROR';
+  message: string;
+  field: 'webhook_url';
+}
+
+export const WEBHOOK_DNS_TIMEOUT_MS = 5_000;
+
 const fetchWithDispatcher = undiciFetch as unknown as (
   input: Parameters<typeof fetch>[0],
   init?: FetchInitWithDispatcher,
@@ -85,7 +103,10 @@ function isNumericHostname(hostname: string): boolean {
   return false;
 }
 
-export async function assertPublicTarget(url: URL): Promise<void> {
+export async function assertPublicTarget(
+  url: URL,
+  options: PublicTargetOptions = {},
+): Promise<void> {
   // Scheme refusal is handled by the wrapper before this is called (so it
   // applies unconditionally, including under `allowPrivateIp: true`). By the
   // time we get here the URL is already known to be http(s).
@@ -110,8 +131,20 @@ export async function assertPublicTarget(url: URL): Promise<void> {
   if (isNumericHostname(hostname)) {
     throw new SsrfRefusedError(url.toString(), 'numeric-encoded hostname not allowed');
   }
+  let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
-    const records = await lookup(hostname, { all: true, verbatim: true });
+    const dnsLookup = options.dnsLookup ?? lookup as DnsLookup;
+    const dnsTimeoutMs = options.dnsTimeoutMs ?? WEBHOOK_DNS_TIMEOUT_MS;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeout = setTimeout(() => {
+        reject(new SsrfRefusedError(url.toString(), 'DNS lookup timed out'));
+      }, dnsTimeoutMs);
+      timeout.unref?.();
+    });
+    const records = await Promise.race([
+      dnsLookup(hostname, { all: true, verbatim: true }),
+      timeoutPromise,
+    ]);
     if (records.length === 0) {
       throw new SsrfRefusedError(url.toString(), 'hostname did not resolve');
     }
@@ -121,7 +154,38 @@ export async function assertPublicTarget(url: URL): Promise<void> {
   } catch (err) {
     if (err instanceof SsrfRefusedError) throw err;
     throw new SsrfRefusedError(url.toString(), `DNS lookup failed: ${err instanceof Error ? err.message : String(err)}`);
+  } finally {
+    if (timeout) clearTimeout(timeout);
   }
+}
+
+/** Validate a webhook URL before storing it on collection/property state.
+ *
+ * This is only a pre-flight policy check. Any future list-change delivery
+ * must still use `createTrainingWebhookFetch`, which repeats the DNS check,
+ * pins the validated address at connect time, and refuses redirects. */
+export async function validateWebhookUrl(
+  value: string,
+  options: PublicTargetOptions = {},
+): Promise<WebhookValidationError | undefined> {
+  let target: URL;
+  try {
+    target = new URL(value);
+  } catch {
+    return { code: 'VALIDATION_ERROR', message: 'webhook_url must be a valid URL', field: 'webhook_url' };
+  }
+  if (target.protocol !== 'https:' && (process.env.NODE_ENV === 'production' || target.protocol !== 'http:')) {
+    return { code: 'VALIDATION_ERROR', message: 'webhook_url must use HTTPS', field: 'webhook_url' };
+  }
+  if (target.username || target.password) {
+    return { code: 'VALIDATION_ERROR', message: 'webhook_url must not include userinfo credentials', field: 'webhook_url' };
+  }
+  try {
+    await assertPublicTarget(target, options);
+  } catch {
+    return { code: 'VALIDATION_ERROR', message: 'webhook_url must target a public network address', field: 'webhook_url' };
+  }
+  return undefined;
 }
 
 /** Build a `fetch`-shaped function gated by the SSRF guard.
@@ -136,6 +200,9 @@ export async function assertPublicTarget(url: URL): Promise<void> {
  * The returned function uses userland `undici.fetch` so its dispatcher and
  * request-handler contract stay aligned with the imported undici version. */
 export function createWebhookFetch(options: { allowPrivateIp: boolean }): typeof fetch {
+  if (process.env.NODE_ENV === 'production' && options.allowPrivateIp) {
+    throw new Error('Private webhook targets cannot be enabled in production');
+  }
   return async (input, init) => {
     const href = typeof input === 'string' || input instanceof URL
       ? input.toString()
@@ -164,4 +231,16 @@ export function createWebhookFetch(options: { allowPrivateIp: boolean }): typeof
       dispatcher,
     });
   };
+}
+
+/** The required fetch policy for every training-agent webhook delivery,
+ * including future collection/property list-change notifications.
+ *
+ * Production behavior is intentionally derived here rather than at call
+ * sites: callers cannot accidentally enable private targets in production.
+ * Tests and local conformance receivers retain loopback access. */
+export function createTrainingWebhookFetch(
+  environment: string | undefined = process.env.NODE_ENV,
+): typeof fetch {
+  return createWebhookFetch({ allowPrivateIp: environment !== 'production' });
 }

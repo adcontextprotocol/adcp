@@ -315,6 +315,8 @@ export interface CollectionListState {
   filters?: Record<string, unknown>;
   brand?: { domain: string };
   account?: AccountRef;
+  /** Stored target only. Delivery must use createTrainingWebhookFetch so the
+   * address is revalidated and pinned at connection time. */
   webhook_url?: string;
   collection_count: number;
   created_at: string;
@@ -666,6 +668,8 @@ export interface PropertyListState {
   baseProperties: unknown[];
   filters?: unknown;
   brand?: unknown;
+  /** Stored target only. Delivery must use createTrainingWebhookFetch so the
+   * address is revalidated and pinned at connection time. */
   webhookUrl?: string;
   cacheDurationHours: number;
   propertyCount: number;

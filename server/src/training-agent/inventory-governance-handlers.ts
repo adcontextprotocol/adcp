@@ -11,7 +11,7 @@ import type { TrainingContext, ToolArgs, CollectionListState } from './types.js'
 import { getSession, sessionKeyFromArgs } from './state.js';
 import { ACCOUNT_REF_SCHEMA } from './account-handlers.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
-import { assertPublicTarget } from './webhook-fetch.js';
+import { validateWebhookUrl } from './webhook-fetch.js';
 
 const MAX_ARRAY_INPUT = 100;
 
@@ -146,27 +146,6 @@ const MAX_LIST_ID_LEN = 128;
 function validateListId(value: unknown): { code: string; message: string; field: string } | undefined {
   if (typeof value !== 'string' || value.length === 0 || value.length > MAX_LIST_ID_LEN) {
     return { code: 'VALIDATION_ERROR', message: `list_id must be a non-empty string up to ${MAX_LIST_ID_LEN} chars`, field: 'list_id' };
-  }
-  return undefined;
-}
-
-async function validateWebhookUrl(value: string): Promise<{ code: string; message: string; field: string } | undefined> {
-  let target: URL;
-  try {
-    target = new URL(value);
-  } catch {
-    return { code: 'VALIDATION_ERROR', message: 'webhook_url must be a valid URL', field: 'webhook_url' };
-  }
-  if (target.protocol !== 'https:' && (process.env.NODE_ENV === 'production' || target.protocol !== 'http:')) {
-    return { code: 'VALIDATION_ERROR', message: 'webhook_url must use HTTPS', field: 'webhook_url' };
-  }
-  if (target.username || target.password) {
-    return { code: 'VALIDATION_ERROR', message: 'webhook_url must not include userinfo credentials', field: 'webhook_url' };
-  }
-  try {
-    await assertPublicTarget(target);
-  } catch {
-    return { code: 'VALIDATION_ERROR', message: 'webhook_url must target a public network address', field: 'webhook_url' };
   }
   return undefined;
 }
