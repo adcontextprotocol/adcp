@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import express from 'express';
-import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import type { PendingWebFlow, PendingWebFlowStore } from '@adcp/sdk/auth';
 
@@ -115,9 +114,14 @@ const TEST_ORG_ID = 'org_123';
 const AGENT_CONTEXT_ID = '11111111-1111-4111-8111-111111111111';
 const TEST_AGENT_URL = 'https://agent.example.com/mcp';
 
-function makeApp() {
+function makeApp(stateCookie?: string) {
   const app = express();
-  app.use(cookieParser());
+  if (stateCookie) {
+    app.use((req, _res, next) => {
+      req.cookies = { adcp_oauth_state: stateCookie };
+      next();
+    });
+  }
   app.use('/api/oauth/agent', createAgentOAuthRouter());
   return app;
 }
@@ -342,9 +346,8 @@ describe('agent OAuth safe fetch injection', () => {
       persisted: true,
     });
 
-    await request(makeApp())
+    await request(makeApp('state_123'))
       .get('/api/oauth/agent/callback')
-      .set('Cookie', 'adcp_oauth_state=state_123')
       .query({ code: 'code_123', state: 'state_123' })
       .expect(302);
 
