@@ -39,6 +39,8 @@ describe('validateExternalUrl runtime policy', () => {
 
       for (const target of [
         'http://localhost:3000',
+        'http://localhost.:3000',
+        'http://service.internal./health',
         'http://0.0.0.0',
         'http://127.0.0.1',
         'http://10.0.0.1',
@@ -62,6 +64,8 @@ describe('validateExternalUrl runtime policy', () => {
 
       for (const target of [
         'http://localhost:3000',
+        'http://localhost.:3000',
+        'http://service.internal./health',
         'http://0.0.0.0',
         'http://127.0.0.1',
         'http://10.0.0.1',
@@ -83,16 +87,28 @@ describe('validateExternalUrl runtime policy', () => {
 
       expect(validateExternalUrl('http://169.254.169.254/latest/meta-data')).toBeNull();
       expect(validateExternalUrl('http://metadata.google.internal/computeMetadata/v1')).toBeNull();
+      expect(validateExternalUrl('http://metadata.google.internal./computeMetadata/v1')).toBeNull();
     },
   );
+
+  it('removes only one trailing DNS root dot for classification', () => {
+    setEnvironment('production');
+    const target = 'http://metadata.google.internal../computeMetadata/v1';
+
+    expect(validateExternalUrl(target)).toBe(target);
+  });
 
   it.each(['test', 'development', 'production', 'staging', undefined])(
     'allows public URLs when NODE_ENV is %s',
     (environment) => {
       setEnvironment(environment);
-      const target = 'https://agent.example.com/mcp';
-
-      expect(validateExternalUrl(target)).toBe(target);
+      for (const target of [
+        'https://agent.example.com/mcp',
+        'https://agent.example.com./mcp',
+        'https://[2001:4860:4860::8888]/mcp',
+      ]) {
+        expect(validateExternalUrl(target), target).toBe(target);
+      }
     },
   );
 });
