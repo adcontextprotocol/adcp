@@ -45,7 +45,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { AgentContextDatabase } from '../db/agent-context-db.js';
 import { getWorkos } from '../auth/workos-client.js';
 import { createWebOAuthAdapters, AgentOAuthPendingFlowStore } from './helpers/web-oauth-stores.js';
-import { oauthSafeFetch } from './helpers/oauth-safe-fetch.js';
+import { oauthSafeFetch } from '../utils/oauth-safe-fetch.js';
 import { validateExternalUrl } from '../utils/url-security.js';
 
 const logger = createLogger('agent-oauth');

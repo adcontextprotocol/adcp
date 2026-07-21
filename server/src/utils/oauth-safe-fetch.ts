@@ -1,10 +1,10 @@
-import { safeFetch } from '../../utils/url-security.js';
+import { safeFetch } from './url-security.js';
 
 /**
- * Fetch adapter for the OAuth libraries used by the agent authorization
- * routes. OAuth discovery, dynamic registration, and token exchange only use
- * GET and POST requests, so keep this surface deliberately narrow while
- * routing every request and redirect hop through the SSRF-safe fetcher.
+ * Fetch adapter for server-side OAuth requests. OAuth discovery, dynamic
+ * registration, and token exchange only use GET and POST requests, so keep
+ * this surface deliberately narrow while routing every request and redirect
+ * hop through the SSRF-safe fetcher.
  */
 export const oauthSafeFetch: typeof fetch = async (input, init) => {
   if (typeof input !== 'string' && !(input instanceof URL)) {

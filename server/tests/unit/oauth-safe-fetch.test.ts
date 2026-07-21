@@ -8,7 +8,7 @@ vi.mock('../../src/utils/url-security.js', () => ({
   safeFetch: urlSecurityMocks.safeFetch,
 }));
 
-import { oauthSafeFetch } from '../../src/routes/helpers/oauth-safe-fetch.js';
+import { oauthSafeFetch } from '../../src/utils/oauth-safe-fetch.js';
 
 describe('oauthSafeFetch', () => {
   beforeEach(() => {

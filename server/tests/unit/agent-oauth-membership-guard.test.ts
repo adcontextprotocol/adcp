@@ -107,7 +107,7 @@ import {
   createAgentOAuthRouter,
   createMembershipGuardedPendingFlowStore,
 } from '../../src/routes/agent-oauth.js';
-import { oauthSafeFetch } from '../../src/routes/helpers/oauth-safe-fetch.js';
+import { oauthSafeFetch } from '../../src/utils/oauth-safe-fetch.js';
 
 const TEST_USER_ID = 'user_123';
 const TEST_ORG_ID = 'org_123';

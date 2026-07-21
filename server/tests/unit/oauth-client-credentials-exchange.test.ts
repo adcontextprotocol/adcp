@@ -1,4 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+const oauthFetchMocks = vi.hoisted(() => ({
+  oauthSafeFetch: vi.fn(),
+}));
+
+vi.mock('../../src/utils/oauth-safe-fetch.js', () => ({
+  oauthSafeFetch: oauthFetchMocks.oauthSafeFetch,
+}));
+
 import {
   exchangeClientCredentials,
   resolveEnvReference,
@@ -34,6 +43,10 @@ function mockFetch(response: { status: number; body: string | object }) {
     } as unknown as Response;
   });
 }
+
+beforeEach(() => {
+  oauthFetchMocks.oauthSafeFetch.mockReset();
+});
 
 describe('resolveEnvReference', () => {
   beforeEach(() => {
@@ -77,6 +90,30 @@ describe('exchangeClientCredentials', () => {
     client_id: 'client-abc',
     client_secret: 'secret-xyz',
   };
+
+  it('uses the SSRF-safe OAuth fetcher by default and preserves the token request', async () => {
+    oauthFetchMocks.oauthSafeFetch.mockImplementation(mockFetch({
+      status: 200,
+      body: { access_token: 'safe-token', expires_in: 900 },
+    }));
+
+    const result = await exchangeClientCredentials(baseCreds);
+
+    expect(result).toEqual({ ok: true, access_token: 'safe-token', expires_in: 900 });
+    expect(oauthFetchMocks.oauthSafeFetch).toHaveBeenCalledWith(
+      baseCreds.token_endpoint,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Accept: 'application/json',
+          Authorization: expect.stringMatching(/^Basic /),
+        },
+        body: 'grant_type=client_credentials',
+        signal: expect.any(AbortSignal),
+      },
+    );
+  });
 
   it('returns a bearer token from a successful exchange', async () => {
     const fetchImpl = mockFetch({
@@ -203,12 +240,10 @@ describe('adaptAuthForSdk', () => {
 
   it('exchanges oauth_client_credentials and narrows to bearer', async () => {
     process.env.ADCP_OAUTH_BRIDGE_TEST = 'sec';
-    // Swap global fetch for this test only
-    const original = globalThis.fetch;
-    globalThis.fetch = mockFetch({
+    oauthFetchMocks.oauthSafeFetch.mockImplementation(mockFetch({
       status: 200,
       body: { access_token: 'exchanged-tok', expires_in: 600 },
-    }) as unknown as typeof fetch;
+    }));
     try {
       const result = await adaptAuthForSdk({
         type: 'oauth_client_credentials',
@@ -220,26 +255,23 @@ describe('adaptAuthForSdk', () => {
       });
       expect(result).toEqual({ type: 'bearer', token: 'exchanged-tok' });
     } finally {
-      globalThis.fetch = original;
       delete process.env.ADCP_OAUTH_BRIDGE_TEST;
     }
   });
 
   it('returns undefined (falls back to unauthenticated) when the exchange fails', async () => {
-    const original = globalThis.fetch;
-    globalThis.fetch = mockFetch({ status: 500, body: 'internal' }) as unknown as typeof fetch;
-    try {
-      const result = await adaptAuthForSdk({
-        type: 'oauth_client_credentials',
-        credentials: {
-          token_endpoint: 'https://idp.example/token',
-          client_id: 'c',
-          client_secret: 's',
-        },
-      });
-      expect(result).toBeUndefined();
-    } finally {
-      globalThis.fetch = original;
-    }
+    oauthFetchMocks.oauthSafeFetch.mockImplementation(
+      mockFetch({ status: 500, body: 'internal' }),
+    );
+
+    const result = await adaptAuthForSdk({
+      type: 'oauth_client_credentials',
+      credentials: {
+        token_endpoint: 'https://idp.example/token',
+        client_id: 'c',
+        client_secret: 's',
+      },
+    });
+    expect(result).toBeUndefined();
   });
 });
