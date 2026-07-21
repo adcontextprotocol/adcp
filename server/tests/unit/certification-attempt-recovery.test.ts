@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   getDeltaStatus: vi.fn(),
   getUserAttempts: vi.fn(),
   getActiveAttemptForModule: vi.fn(),
-  getAttempt: vi.fn(),
+  getAttemptForUser: vi.fn(),
   getModule: vi.fn(),
   getLatestCheckpoint: vi.fn(),
   completeAttempt: vi.fn(),
@@ -27,7 +27,7 @@ vi.mock('../../src/db/certification-db.js', () => ({
   getDeltaStatus: mocks.getDeltaStatus,
   getUserAttempts: mocks.getUserAttempts,
   getActiveAttemptForModule: mocks.getActiveAttemptForModule,
-  getAttempt: mocks.getAttempt,
+  getAttemptForUser: mocks.getAttemptForUser,
   getModule: mocks.getModule,
   getLatestCheckpoint: mocks.getLatestCheckpoint,
   completeAttempt: mocks.completeAttempt,
@@ -131,5 +131,74 @@ describe('certification attempt recovery', () => {
       85,
       true,
     );
+  });
+
+  it('does not distinguish another learner\'s attempt UUID from a missing UUID', async () => {
+    const otherUserAttemptId = '123e4567-e89b-42d3-a456-426614174001';
+    const missingAttemptId = '123e4567-e89b-42d3-a456-426614174002';
+    mocks.getAttemptForUser
+      .mockResolvedValueOnce({
+        id: otherUserAttemptId,
+        workos_user_id: 'another_learner',
+        track_id: 'S',
+        module_id: 'S3',
+        status: 'in_progress',
+        started_at: new Date().toISOString(),
+      })
+      .mockResolvedValueOnce(null);
+
+    const handler = createCertificationToolHandlers(memberContext())
+      .get('complete_certification_exam');
+    const otherUserResult = await handler?.({
+      attempt_id: otherUserAttemptId,
+      scores: { protocol_mastery: 85 },
+    });
+    const missingResult = await handler?.({
+      attempt_id: missingAttemptId,
+      scores: { protocol_mastery: 85 },
+    });
+
+    expect(otherUserResult).toBe('Exam attempt not found.');
+    expect(missingResult).toBe(otherUserResult);
+    expect(mocks.getAttemptForUser).toHaveBeenNthCalledWith(1, otherUserAttemptId, USER_ID);
+    expect(mocks.getAttemptForUser).toHaveBeenNthCalledWith(2, missingAttemptId, USER_ID);
+  });
+
+  it('completes an owned attempt resolved from its UUID', async () => {
+    const startedAt = new Date(Date.now() - 11 * 60 * 1000).toISOString();
+    const attempt = {
+      id: ATTEMPT_ID,
+      workos_user_id: USER_ID,
+      track_id: 'S',
+      module_id: 'S3',
+      status: 'in_progress',
+      started_at: startedAt,
+      passing: null,
+    };
+    const scores = { protocol_mastery: 85 };
+
+    mocks.getAttemptForUser.mockResolvedValue(attempt);
+    mocks.getModule.mockResolvedValue({
+      id: 'S3',
+      assessment_criteria: {
+        dimensions: [{ name: 'protocol_mastery', weight: 100, description: 'Mastery' }],
+        passing_threshold: 70,
+      },
+      exercise_definitions: [],
+    });
+    mocks.getLatestCheckpoint.mockResolvedValue({
+      preliminary_scores: { protocol_mastery: 85 },
+      demonstrations_verified: [],
+    });
+    mocks.query.mockResolvedValue({ rows: [{ count: '6' }] });
+    mocks.completeAttempt.mockResolvedValue({ ...attempt, status: 'passed', passing: true });
+    mocks.completeModule.mockResolvedValue({ module_id: 'S3', status: 'completed' });
+
+    const result = await createCertificationToolHandlers(memberContext(), { threadId: 'thread_123' })
+      .get('complete_certification_exam')?.({ attempt_id: ATTEMPT_ID, scores });
+
+    expect(result).toContain('# Congratulations! The learner passed the capstone!');
+    expect(mocks.getAttemptForUser).toHaveBeenCalledWith(ATTEMPT_ID, USER_ID);
+    expect(mocks.completeAttempt).toHaveBeenCalledWith(ATTEMPT_ID, scores, 85, true);
   });
 });
