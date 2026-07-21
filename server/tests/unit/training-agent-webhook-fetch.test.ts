@@ -1,5 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createWebhookFetch, SsrfRefusedError } from '../../src/training-agent/webhook-fetch.js';
+import {
+  assertPublicTarget,
+  createTrainingWebhookFetch,
+  createWebhookFetch,
+  SsrfRefusedError,
+  validateWebhookUrl,
+  WEBHOOK_DNS_TIMEOUT_MS,
+} from '../../src/training-agent/webhook-fetch.js';
 
 const undiciFetchMock = vi.hoisted(() => vi.fn());
 
@@ -24,6 +31,8 @@ describe('createWebhookFetch — SSRF guard', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
     undiciFetchMock.mockReset();
   });
 
@@ -178,6 +187,75 @@ describe('createWebhookFetch — SSRF guard', () => {
       const fetch = createWebhookFetch({ allowPrivateIp: true });
       await fetch('http://127.0.0.1:9999/hook');
       expect((calls[0].init as RequestInit & { dispatcher?: unknown }).dispatcher).toBeUndefined();
+    });
+  });
+
+  describe('stored webhook URL validation', () => {
+    it.each([
+      ['private target', 'https://169.254.169.254/latest/meta-data'],
+      ['decimal-encoded target', 'https://2852039166/latest/meta-data'],
+      ['hex-encoded target', 'https://0x7f000001/private'],
+    ])('returns the stable validation error for a %s', async (_kind, target) => {
+      await expect(validateWebhookUrl(target)).resolves.toEqual({
+        code: 'VALIDATION_ERROR',
+        message: 'webhook_url must target a public network address',
+        field: 'webhook_url',
+      });
+    });
+
+    it('bounds a stalled DNS lookup without a real-time wait', async () => {
+      vi.useFakeTimers();
+      const stalledLookup = vi.fn(() => new Promise<Array<{ address: string; family: number }>>(() => {}));
+      const validation = validateWebhookUrl('https://stalled-dns.example/hook', {
+        dnsLookup: stalledLookup,
+      });
+      const expectation = expect(validation).resolves.toEqual({
+        code: 'VALIDATION_ERROR',
+        message: 'webhook_url must target a public network address',
+        field: 'webhook_url',
+      });
+
+      await vi.advanceTimersByTimeAsync(WEBHOOK_DNS_TIMEOUT_MS);
+      await expectation;
+      expect(stalledLookup).toHaveBeenCalledOnce();
+    });
+
+    it('uses a stable refusal reason when DNS lookup times out', async () => {
+      vi.useFakeTimers();
+      const refusal = assertPublicTarget(new URL('https://stalled-dns.example/hook'), {
+        dnsLookup: () => new Promise<Array<{ address: string; family: number }>>(() => {}),
+      });
+      const expectation = expect(refusal).rejects.toMatchObject({
+        name: 'SsrfRefusedError',
+        reason: 'DNS lookup timed out',
+      });
+
+      await vi.advanceTimersByTimeAsync(WEBHOOK_DNS_TIMEOUT_MS);
+      await expectation;
+    });
+  });
+
+  describe('training-agent delivery policy', () => {
+    it('cannot enable private delivery explicitly in production', () => {
+      vi.stubEnv('NODE_ENV', 'production');
+
+      expect(() => createWebhookFetch({ allowPrivateIp: true }))
+        .toThrow('Private webhook targets cannot be enabled in production');
+    });
+
+    it('forces the production delivery path through the public-target guard', async () => {
+      const fetch = createTrainingWebhookFetch('production');
+
+      await expect(fetch('https://169.254.169.254/latest/meta-data'))
+        .rejects.toBeInstanceOf(SsrfRefusedError);
+      expect(urls()).toEqual([]);
+    });
+
+    it('retains loopback receivers outside production', async () => {
+      const fetch = createTrainingWebhookFetch('test');
+
+      await expect(fetch('http://127.0.0.1:9999/hook')).resolves.toBeInstanceOf(Response);
+      expect(urls()).toEqual(['http://127.0.0.1:9999/hook']);
     });
   });
 });

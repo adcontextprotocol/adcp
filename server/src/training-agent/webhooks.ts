@@ -23,7 +23,7 @@ import {
 import type { SignerKey, SigningProvider } from '@adcp/sdk/signing';
 import type { AdcpJsonWebKey } from '@adcp/sdk/signing';
 import { createLogger } from '../logger.js';
-import { createWebhookFetch } from './webhook-fetch.js';
+import { createTrainingWebhookFetch } from './webhook-fetch.js';
 import { getWebhookSigningProvider } from '../security/gcp-kms-signer.js';
 import {
   WEBHOOK_SIGNING_KID,
@@ -380,18 +380,20 @@ export function getWebhookSigningMaterial():
     : { signerKey: m.signerKey };
 }
 
+/** Return the only training-agent webhook emitter.
+ *
+ * Future collection/property list-change notifications must route through
+ * this emitter (or use `createTrainingWebhookFetch` directly). Storage-time
+ * URL validation is not sufficient: this fetch policy repeats validation at
+ * delivery time and pins the public address at connect time. */
 export function getWebhookEmitter(): WebhookEmitter {
   if (emitter) return emitter;
   const m = ensureMaterial();
-  // Production (`NODE_ENV=production`, i.e. fly.io) refuses webhook delivery
-  // to private/loopback/metadata addresses. Dev and CI need loopback for
-  // conformance storyboards using `http://127.0.0.1:<port>` receivers.
-  const allowPrivateIp = process.env.NODE_ENV !== 'production';
   emitter = createWebhookEmitter({
     ...(m.kind === 'kms' ? { signerProvider: m.signerProvider } : { signerKey: m.signerKey }),
     idempotencyKeyStore: memoryWebhookKeyStore(),
     userAgent: 'adcp-training-agent/1.0',
-    fetch: createWebhookFetch({ allowPrivateIp }),
+    fetch: createTrainingWebhookFetch(),
   });
   return emitter;
 }

@@ -11454,9 +11454,39 @@ describe('collection and property list webhook URL handling', () => {
   });
 
   it.each([
-    { kind: 'collection', createTool: 'create_collection_list', updateTool: 'update_collection_list', getTool: 'get_collection_list' },
-    { kind: 'property', createTool: 'create_property_list', updateTool: 'update_property_list', getTool: 'get_property_list' },
-  ])('rejects a private $kind list webhook without partially applying the update', async ({ createTool, updateTool, getTool }) => {
+    {
+      kind: 'collection',
+      targetKind: 'private',
+      webhookUrl: 'https://169.254.169.254/latest/meta-data',
+      createTool: 'create_collection_list',
+      updateTool: 'update_collection_list',
+      getTool: 'get_collection_list',
+    },
+    {
+      kind: 'property',
+      targetKind: 'private',
+      webhookUrl: 'https://169.254.169.254/latest/meta-data',
+      createTool: 'create_property_list',
+      updateTool: 'update_property_list',
+      getTool: 'get_property_list',
+    },
+    {
+      kind: 'collection',
+      targetKind: 'numeric-encoded',
+      webhookUrl: 'https://2852039166/latest/meta-data',
+      createTool: 'create_collection_list',
+      updateTool: 'update_collection_list',
+      getTool: 'get_collection_list',
+    },
+    {
+      kind: 'property',
+      targetKind: 'numeric-encoded',
+      webhookUrl: 'https://2852039166/latest/meta-data',
+      createTool: 'create_property_list',
+      updateTool: 'update_property_list',
+      getTool: 'get_property_list',
+    },
+  ])('rejects a $targetKind $kind list webhook without partially applying the update', async ({ webhookUrl, createTool, updateTool, getTool }) => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const created = await simulateCallTool(server, createTool, { name: 'Original name' });
     const listId = (created.result.list as { list_id: string }).list_id;
@@ -11464,7 +11494,7 @@ describe('collection and property list webhook URL handling', () => {
     const rejected = await simulateCallTool(server, updateTool, {
       list_id: listId,
       name: 'Must not persist',
-      webhook_url: 'https://169.254.169.254/latest/meta-data',
+      webhook_url: webhookUrl,
     });
     expect(rejected.result).toMatchObject({ code: 'VALIDATION_ERROR', field: 'webhook_url' });
 
