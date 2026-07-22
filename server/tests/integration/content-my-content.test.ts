@@ -797,6 +797,58 @@ describe('My Content — body, admin scope, status, delete', () => {
     });
   });
 
+  describe('DELETE /api/admin/content/:id', () => {
+    it('deletes linked content while preserving publication history', async () => {
+      const id = await insertPerspective({
+        slug: 'mc-test-admin-delete-linked',
+        title: 'linked publication',
+        status: 'published',
+        proposerUserId: OTHER_USER_ID,
+      });
+
+      const weeklyDigest = await pool.query(
+        `INSERT INTO weekly_digests (edition_date, status, content, perspective_id)
+         VALUES ('2999-01-01', 'sent', '{}'::jsonb, $1)
+         RETURNING id`,
+        [id]
+      );
+      const buildEdition = await pool.query(
+        `INSERT INTO build_editions (edition_date, status, content, perspective_id)
+         VALUES ('2999-01-02', 'sent', '{}'::jsonb, $1)
+         RETURNING id`,
+        [id]
+      );
+      const moltbookPost = await pool.query(
+        `INSERT INTO moltbook_posts (moltbook_post_id, perspective_id, title)
+         VALUES ('mc-test-admin-delete-linked', $1, 'Linked publication')
+         RETURNING id`,
+        [id]
+      );
+
+      try {
+        await request(app).delete(`/api/admin/content/${id}`).expect(200);
+
+        const perspective = await pool.query(`SELECT id FROM perspectives WHERE id = $1`, [id]);
+        expect(perspective.rows).toHaveLength(0);
+
+        const links = await pool.query(
+          `SELECT perspective_id FROM weekly_digests WHERE id = $1
+           UNION ALL
+           SELECT perspective_id FROM build_editions WHERE id = $2
+           UNION ALL
+           SELECT perspective_id FROM moltbook_posts WHERE id = $3`,
+          [weeklyDigest.rows[0].id, buildEdition.rows[0].id, moltbookPost.rows[0].id]
+        );
+        expect(links.rows).toHaveLength(3);
+        expect(links.rows.every(row => row.perspective_id === null)).toBe(true);
+      } finally {
+        await pool.query(`DELETE FROM weekly_digests WHERE id = $1`, [weeklyDigest.rows[0].id]);
+        await pool.query(`DELETE FROM build_editions WHERE id = $1`, [buildEdition.rows[0].id]);
+        await pool.query(`DELETE FROM moltbook_posts WHERE id = $1`, [moltbookPost.rows[0].id]);
+      }
+    });
+  });
+
   // ---------------------------------------------------------------------------
   // #2569 — proposer relationship in GET /api/me/content (edit-button fix)
   //
