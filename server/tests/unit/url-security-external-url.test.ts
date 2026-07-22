@@ -91,12 +91,25 @@ describe('validateExternalUrl runtime policy', () => {
     },
   );
 
-  it('removes only one trailing DNS root dot for classification', () => {
-    setEnvironment('production');
-    const target = 'http://metadata.google.internal../computeMetadata/v1';
+  it.each(['test', 'development', 'production', 'staging', undefined])(
+    'rejects malformed empty DNS labels when NODE_ENV is %s',
+    (environment) => {
+      setEnvironment(environment);
 
-    expect(validateExternalUrl(target)).toBe(target);
-  });
+      for (const target of [
+        'https://.example.com/path',
+        'https://..example.com/path',
+        'https://example..com/path',
+        'http://metadata.google.internal../computeMetadata/v1',
+        'https://。example.com/path',
+        'https://example。。com/path',
+        'https://example.com。。/path',
+        'https://example．｡com/path',
+      ]) {
+        expect(validateExternalUrl(target), target).toBeNull();
+      }
+    },
+  );
 
   it.each(['test', 'development', 'production', 'staging', undefined])(
     'allows public URLs when NODE_ENV is %s',
@@ -105,6 +118,8 @@ describe('validateExternalUrl runtime policy', () => {
       for (const target of [
         'https://agent.example.com/mcp',
         'https://agent.example.com./mcp',
+        'https://agent.example.com。/mcp',
+        'https://agent．example｡com/mcp',
         'https://[2001:4860:4860::8888]/mcp',
       ]) {
         expect(validateExternalUrl(target), target).toBe(target);

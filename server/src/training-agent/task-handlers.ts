@@ -20,7 +20,7 @@ import { PostgresTaskStore } from '@adcp/sdk';
 import { mergeSeedProduct } from '@adcp/sdk/testing';
 import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
-import { isPrivateHostname, safeFetchAxiosLike } from '../utils/url-security.js';
+import { isPrivateHostname, normalizeExternalHostname, safeFetchAxiosLike } from '../utils/url-security.js';
 import type { TrainingContext, CatalogProduct, MediaBuyState, MediaBuyAvailableActionState, MediaBuyProductAllowedActionState, PackageState, SignalActivationState, CreativeState, CreativeManifest, ToolArgs, ListReference, PackageTargeting, AccountRef, SessionState } from './types.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import type {
@@ -3603,7 +3603,8 @@ function validateExternalUrlValue(field: string, raw: unknown): ValidateInputVio
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     return { rule: 'url_scheme', field, expected: 'http or https', predicted: parsed.protocol };
   }
-  if (isPrivateHostname(parsed.hostname)) {
+  const hostname = normalizeExternalHostname(parsed.hostname);
+  if (!hostname || isPrivateHostname(hostname)) {
     return { rule: 'url_host_public', field, expected: 'public hostname', predicted: parsed.hostname };
   }
   return null;
@@ -3815,7 +3816,8 @@ function parseThirdPartyFormatTarget(target: ValidateInputTarget): { url: string
     if (parsed.protocol !== 'https:') {
       return thirdPartyResolutionViolation(target, 'https URI', parsed.protocol);
     }
-    if (isPrivateHostname(parsed.hostname)) {
+    const hostname = normalizeExternalHostname(parsed.hostname);
+    if (!hostname || isPrivateHostname(hostname)) {
       return thirdPartyResolutionViolation(target, 'public hostname', parsed.hostname);
     }
   } catch {

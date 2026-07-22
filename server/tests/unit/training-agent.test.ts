@@ -1866,6 +1866,64 @@ describe('validate_input handler', () => {
     ]));
   });
 
+  it.each([
+    'https://cdn..example/mrec.png',
+    'https://。cdn.example/mrec.png',
+    'https://cdn。。example/mrec.png',
+    'https://cdn.example。。/mrec.png',
+  ])('returns validated_fail for malformed asset hostname %s', async (url) => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      manifest: {
+        format_kind: 'image',
+        assets: {
+          image_main: {
+            asset_type: 'image',
+            url,
+            width: 300,
+            height: 250,
+          },
+        },
+      },
+      targets: [{ kind: 'canonical', id: 'image' }],
+    });
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_fail');
+    expect(results[0].violations).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        rule: 'url_host_public',
+        field: 'assets.image_main.url',
+      }),
+    ]));
+  });
+
+  it.each([
+    'https://cdn.example.com./mrec.png',
+    'https://cdn.example.com。/mrec.png',
+    'https://cdn．example｡com/mrec.png',
+  ])('accepts a valid FQDN asset hostname %s', async (url) => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      manifest: {
+        format_kind: 'image',
+        assets: {
+          image_main: {
+            asset_type: 'image',
+            url,
+            width: 300,
+            height: 250,
+          },
+        },
+      },
+      targets: [{ kind: 'canonical', id: 'image' }],
+    });
+
+    expect(result.results).toEqual([
+      { target: { kind: 'canonical', id: 'image' }, result_kind: 'validated_pass' },
+    ]);
+  });
+
   it('returns validated_fail for unsafe nested URL-bearing assets', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'validate_input', {
