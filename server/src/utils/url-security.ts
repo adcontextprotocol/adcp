@@ -332,9 +332,16 @@ export function validateExternalUrl(raw: string): string | null {
     if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
 
     const hostname = url.hostname.toLowerCase();
-    const normalizedHostname = hostname.startsWith('[') && hostname.endsWith(']')
+    const hostnameWithoutIpv6Brackets = hostname.startsWith('[') && hostname.endsWith(']')
       ? hostname.slice(1, -1)
       : hostname;
+    // A single terminal dot is the DNS root label, so `example.com.` and
+    // `example.com` identify the same host. Remove only that canonical root
+    // label; additional terminal dots are meaningful (and generally invalid)
+    // hostname input and should not be silently normalized away.
+    const normalizedHostname = hostnameWithoutIpv6Brackets.endsWith('.')
+      ? hostnameWithoutIpv6Brackets.slice(0, -1)
+      : hostnameWithoutIpv6Brackets;
 
     if (normalizedHostname === '169.254.169.254' || normalizedHostname === 'metadata.google.internal') return null;
 
