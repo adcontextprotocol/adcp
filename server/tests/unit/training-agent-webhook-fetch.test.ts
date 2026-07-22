@@ -3,6 +3,7 @@ import {
   assertPublicTarget,
   createTrainingWebhookFetch,
   createWebhookFetch,
+  isWebhookTestOrDevelopment,
   SsrfRefusedError,
   validateWebhookUrl,
   WEBHOOK_DNS_TIMEOUT_MS,
@@ -191,6 +192,26 @@ describe('createWebhookFetch — SSRF guard', () => {
   });
 
   describe('stored webhook URL validation', () => {
+    it('rejects HTTP before DNS resolution in an unknown runtime', async () => {
+      vi.stubEnv('NODE_ENV', 'staging');
+      const dnsLookup = vi.fn(async () => [{ address: '93.184.216.34', family: 4 }]);
+
+      await expect(validateWebhookUrl('http://example.com/hook', { dnsLookup })).resolves.toEqual({
+        code: 'VALIDATION_ERROR',
+        message: 'webhook_url must use HTTPS',
+        field: 'webhook_url',
+      });
+      expect(dnsLookup).not.toHaveBeenCalled();
+    });
+
+    it.each(['test', 'development'])('allows HTTP in explicit %s mode', async (environment) => {
+      vi.stubEnv('NODE_ENV', environment);
+      const dnsLookup = vi.fn(async () => [{ address: '93.184.216.34', family: 4 }]);
+
+      await expect(validateWebhookUrl('http://example.com/hook', { dnsLookup })).resolves.toBeUndefined();
+      expect(dnsLookup).toHaveBeenCalledOnce();
+    });
+
     it.each([
       ['private target', 'https://169.254.169.254/latest/meta-data'],
       ['decimal-encoded target', 'https://2852039166/latest/meta-data'],
@@ -236,11 +257,43 @@ describe('createWebhookFetch — SSRF guard', () => {
   });
 
   describe('training-agent delivery policy', () => {
+    it.each([
+      ['test', true],
+      ['development', true],
+      ['production', false],
+      ['staging', false],
+      ['developmnt', false],
+      [undefined, false],
+    ])('classifies the %s runtime explicitly', (environment, expected) => {
+      expect(isWebhookTestOrDevelopment(environment)).toBe(expected);
+    });
+
     it('cannot enable private delivery explicitly in production', () => {
       vi.stubEnv('NODE_ENV', 'production');
 
       expect(() => createWebhookFetch({ allowPrivateIp: true }))
-        .toThrow('Private webhook targets cannot be enabled in production');
+        .toThrow('Private webhook targets can only be enabled in test or development');
+    });
+
+    it('cannot enable private delivery in an unknown runtime', () => {
+      vi.stubEnv('NODE_ENV', 'staging');
+
+      expect(() => createWebhookFetch({ allowPrivateIp: true }))
+        .toThrow('Private webhook targets can only be enabled in test or development');
+    });
+
+    it('fails closed when NODE_ENV is unset', async () => {
+      const originalEnvironment = process.env.NODE_ENV;
+      delete process.env.NODE_ENV;
+      try {
+        const fetch = createTrainingWebhookFetch();
+
+        await expect(fetch('https://169.254.169.254/latest/meta-data'))
+          .rejects.toBeInstanceOf(SsrfRefusedError);
+      } finally {
+        if (originalEnvironment === undefined) delete process.env.NODE_ENV;
+        else process.env.NODE_ENV = originalEnvironment;
+      }
     });
 
     it('forces the production delivery path through the public-target guard', async () => {
@@ -253,6 +306,13 @@ describe('createWebhookFetch — SSRF guard', () => {
 
     it('retains loopback receivers outside production', async () => {
       const fetch = createTrainingWebhookFetch('test');
+
+      await expect(fetch('http://127.0.0.1:9999/hook')).resolves.toBeInstanceOf(Response);
+      expect(urls()).toEqual(['http://127.0.0.1:9999/hook']);
+    });
+
+    it('retains loopback receivers in explicit development mode', async () => {
+      const fetch = createTrainingWebhookFetch('development');
 
       await expect(fetch('http://127.0.0.1:9999/hook')).resolves.toBeInstanceOf(Response);
       expect(urls()).toEqual(['http://127.0.0.1:9999/hook']);

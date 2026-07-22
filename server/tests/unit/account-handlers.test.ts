@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -95,6 +95,10 @@ describe('sync_accounts', () => {
     clearIdempotencyCache();
     invalidateCache();
     server = createTrainingAgentServer(DEFAULT_CTX);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it('sandbox account is active immediately', async () => {
@@ -793,6 +797,58 @@ describe('sync_accounts', () => {
     expect(acct.errors).toEqual([expect.objectContaining({
       code: 'VALIDATION_ERROR',
       field: 'notification_configs[0].active',
+    })]);
+  });
+
+  it('rejects loopback notification configs in an unknown runtime', async () => {
+    vi.stubEnv('NODE_ENV', 'staging');
+
+    const { result } = await simulateCallTool(server, 'sync_accounts', {
+      accounts: [{
+        brand: { domain: 'acme.com' },
+        operator: 'agency-one',
+        billing: 'operator',
+        sandbox: true,
+        notification_configs: [{
+          subscriber_id: 'buyer-primary',
+          url: 'http://127.0.0.1:9999/webhook',
+          event_types: ['creative.status_changed'],
+          active: false,
+        }],
+      }],
+    });
+
+    const acct = (result.accounts as Record<string, unknown>[])[0];
+    expect(acct.action).toBe('failed');
+    expect(acct.errors).toEqual([expect.objectContaining({
+      code: 'VALIDATION_ERROR',
+      field: 'notification_configs[0].url',
+      message: 'url must use HTTPS',
+    })]);
+  });
+
+  it('allows loopback notification configs in explicit development mode', async () => {
+    vi.stubEnv('NODE_ENV', 'development');
+
+    const { result } = await simulateCallTool(server, 'sync_accounts', {
+      accounts: [{
+        brand: { domain: 'acme.com' },
+        operator: 'agency-one',
+        billing: 'operator',
+        sandbox: true,
+        notification_configs: [{
+          subscriber_id: 'buyer-primary',
+          url: 'http://127.0.0.1:9999/webhook',
+          event_types: ['creative.status_changed'],
+          active: false,
+        }],
+      }],
+    });
+
+    const acct = (result.accounts as Record<string, unknown>[])[0];
+    expect(acct.action).toBe('created');
+    expect(acct.notification_configs).toEqual([expect.objectContaining({
+      url: 'http://127.0.0.1:9999/webhook',
     })]);
   });
 });
