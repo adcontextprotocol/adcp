@@ -6183,11 +6183,13 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
    */
   async function ensureAgentContextId(orgId: string, agentUrl: string, userId: string): Promise<string | null> {
     try {
-      let context = await agentContextDb.getByOrgAndUrl(orgId, agentUrl);
+      const canonicalUrl = canonicalizeAgentUrl(agentUrl);
+      if (!canonicalUrl) return null;
+      let context = await agentContextDb.getByOrgAndUrl(orgId, canonicalUrl);
       if (!context) {
         context = await agentContextDb.create({
           organization_id: orgId,
-          agent_url: agentUrl,
+          agent_url: canonicalUrl,
           created_by: userId,
         });
       }

@@ -2,6 +2,7 @@ import { query } from './client.js';
 import { encrypt as encryptToken, decrypt as decryptToken } from './encryption.js';
 import { createLogger } from '../logger.js';
 import crypto from 'crypto';
+import { canonicalizeAgentUrl } from './publisher-db.js';
 
 const logger = createLogger('agent-context-db');
 
@@ -110,6 +111,7 @@ export interface CreateAgentContextInput {
 }
 
 export interface UpdateAgentContextInput {
+  agent_url?: string;
   agent_name?: string;
   agent_type?: AgentType;
   protocol?: Protocol;
@@ -117,6 +119,14 @@ export interface UpdateAgentContextInput {
   last_test_scenario?: string;
   last_test_passed?: boolean;
   last_test_summary?: string;
+}
+
+function requireCanonicalAgentUrl(agentUrl: string): string {
+  const canonical = canonicalizeAgentUrl(agentUrl);
+  if (!canonical) {
+    throw new Error('Invalid agent URL');
+  }
+  return canonical;
 }
 
 export interface RecordTestInput {
@@ -270,6 +280,7 @@ export class AgentContextDatabase {
    * Get agent context by organization and URL
    */
   async getByOrgAndUrl(organizationId: string, agentUrl: string): Promise<AgentContext | null> {
+    const canonicalUrl = requireCanonicalAgentUrl(agentUrl);
     const result = await query(
       `SELECT
         id,
@@ -305,7 +316,7 @@ export class AgentContextDatabase {
         created_by
       FROM agent_context_with_latest_test
       WHERE organization_id = $1 AND agent_url = $2`,
-      [organizationId, agentUrl]
+      [organizationId, canonicalUrl]
     );
     return result.rows[0] || null;
   }
@@ -322,6 +333,7 @@ export class AgentContextDatabase {
    * the periodic snapshot is a single shared row anyway.
    */
   async findOrgWithSavedAuth(agentUrl: string): Promise<string | null> {
+    const canonicalUrl = requireCanonicalAgentUrl(agentUrl);
     const result = await query<{ organization_id: string }>(
       `SELECT organization_id
        FROM agent_contexts
@@ -335,7 +347,7 @@ export class AgentContextDatabase {
          )
        ORDER BY updated_at DESC
        LIMIT 1`,
-      [agentUrl],
+      [canonicalUrl],
     );
     return result.rows[0]?.organization_id ?? null;
   }
@@ -344,6 +356,7 @@ export class AgentContextDatabase {
    * Create a new agent context
    */
   async create(input: CreateAgentContextInput): Promise<AgentContext> {
+    const canonicalUrl = requireCanonicalAgentUrl(input.agent_url);
     const result = await query(
       `INSERT INTO agent_contexts (
         organization_id,
@@ -379,7 +392,7 @@ export class AgentContextDatabase {
         created_by`,
       [
         input.organization_id,
-        input.agent_url,
+        canonicalUrl,
         input.agent_name || null,
         input.agent_type || 'unknown',
         input.protocol || 'mcp',
@@ -397,6 +410,10 @@ export class AgentContextDatabase {
     const values: any[] = [];
     let paramIndex = 1;
 
+    if (input.agent_url !== undefined) {
+      updates.push(`agent_url = $${paramIndex++}`);
+      values.push(requireCanonicalAgentUrl(input.agent_url));
+    }
     if (input.agent_name !== undefined) {
       updates.push(`agent_name = $${paramIndex++}`);
       values.push(input.agent_name);
@@ -522,11 +539,12 @@ export class AgentContextDatabase {
    * Used by the AdCP tool passthrough to determine Bearer vs Basic auth.
    */
   async getAuthInfoByOrgAndUrl(organizationId: string, agentUrl: string): Promise<{ token: string; authType: AuthType } | null> {
+    const canonicalUrl = requireCanonicalAgentUrl(agentUrl);
     const result = await query(
       `SELECT id, auth_token_encrypted, auth_token_iv, auth_type
        FROM agent_contexts
        WHERE organization_id = $1 AND agent_url = $2`,
-      [organizationId, agentUrl]
+      [organizationId, canonicalUrl]
     );
 
     const row = result.rows[0];
@@ -648,6 +666,7 @@ export class AgentContextDatabase {
    * Get OAuth tokens by org and URL
    */
   async getOAuthTokensByOrgAndUrl(organizationId: string, agentUrl: string): Promise<OAuthTokens | null> {
+    const canonicalUrl = requireCanonicalAgentUrl(agentUrl);
     const result = await query(
       `SELECT
         id,
@@ -658,7 +677,7 @@ export class AgentContextDatabase {
         oauth_token_expires_at
        FROM agent_contexts
        WHERE organization_id = $1 AND agent_url = $2`,
-      [organizationId, agentUrl]
+      [organizationId, canonicalUrl]
     );
 
     const row = result.rows[0];
@@ -870,6 +889,7 @@ export class AgentContextDatabase {
     organizationId: string,
     agentUrl: string,
   ): Promise<OAuthClientCredentials | null> {
+    const canonicalUrl = requireCanonicalAgentUrl(agentUrl);
     const result = await query(
       `SELECT
         oauth_cc_token_endpoint,
@@ -882,7 +902,7 @@ export class AgentContextDatabase {
         oauth_cc_auth_method
        FROM agent_contexts
        WHERE organization_id = $1 AND agent_url = $2`,
-      [organizationId, agentUrl]
+      [organizationId, canonicalUrl]
     );
 
     const row = result.rows[0];
