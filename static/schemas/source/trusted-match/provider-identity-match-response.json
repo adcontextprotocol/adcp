@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/trusted-match/provider-identity-match-response.json",
+  "title": "Identity Match Response (Provider → Router)",
+  "description": "Provider-to-router shape of the Identity Match response. An identity agent returns eligibility, the per-package serve-window throttle, and — when it mints one — an ordered list of opaque TMPX value chunks. Names live on the publisher deployment side (see publisher-tmpx-config.json) and MUST NOT appear on the wire between provider and router; the provider owns ordering only. The router transforms this shape into the publisher-facing identity-match-response.json by keying the values under the emitting provider_id. Extension fields (ext, context) are intentionally omitted to prevent data leakage across the identity privacy boundary.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
+    }
+  ],
+  "x-status": "experimental",
+  "properties": {
+    "type": {
+      "type": "string",
+      "const": "identity_match_response",
+      "description": "Message type discriminator for deserialization. Same const as the router→publisher variant so publisher-facing decoders can key off type before dispatching on shape."
+    },
+    "request_id": {
+      "type": "string",
+      "description": "Echoed request identifier from the identity match request."
+    },
+    "eligible_package_ids": {
+      "type": "array",
+      "description": "Package IDs the user is eligible for. Packages not listed are ineligible.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "serve_window_sec": {
+      "type": "integer",
+      "description": "Per-package single-shot fcap window, in seconds. After serving the user one impression on each eligible package within this window, the publisher MUST re-query Identity Match before serving from those packages again. Not a router response cache TTL — it is a buyer-asserted serve throttle. Multi-impression frequency caps are handled separately by the buyer's impression tracker. Maximum 300.",
+      "minimum": 1,
+      "maximum": 300
+    },
+    "tmpx_values": {
+      "type": "array",
+      "description": "Ordered opaque TMPX chunks for this identity agent. Each entry is a URL-safe wire string the publisher substitutes verbatim into whatever ad-server slot its deployment configuration maps to this provider_id / ordinal — providers do NOT emit publisher-local names. Capped at 2 chunks in v1 to support multi-chunk TMPX (a single opaque token that exceeds one macro slot); the cap MAY rise without a shape change. Position within the array is the chunk's identity; the publisher's tmpx_macro_mapping (see publisher-tmpx-config.json) determines destination. Omitted when this provider mints no TMPX (e.g. no eligible packages).",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1024
+      },
+      "minItems": 1,
+      "maxItems": 2
+    }
+  },
+  "required": [
+    "type",
+    "request_id",
+    "eligible_package_ids",
+    "serve_window_sec"
+  ],
+  "additionalProperties": true
+}

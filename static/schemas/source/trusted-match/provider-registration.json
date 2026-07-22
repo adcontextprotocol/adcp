@@ -8,7 +8,7 @@
   "properties": {
     "provider_id": {
       "type": "string",
-      "description": "Stable identifier for this provider registration. Used in logs, metrics, cache keys, and as the key in `tmpx_providers` on the identity-match response so the publisher can route each provider's TMPX `macros[]` to that provider's pre-configured ad-server slots (names registered in `tmpx_macros` below — macro names MUST NOT be derived from `provider_id` at runtime). Publishers assign this — it is not the provider's agent_url. Charset is constrained to a safe alphanumeric/underscore set so the value can appear in operational surfaces (logs, metrics, dashboards) without quoting.",
+      "description": "Stable identifier for this provider registration. Used in logs, metrics, cache keys, and as the key in `tmpx_providers` on the identity-match response so the publisher can route each provider's ordered TMPX values to that provider's pre-configured ad-server slots via the publisher's `tmpx_macro_mapping` deployment configuration (see publisher-tmpx-config.json). Publishers assign this — it is not the provider's agent_url. Charset is constrained to a safe alphanumeric/underscore set so the value can appear in operational surfaces (logs, metrics, dashboards) without quoting.",
       "pattern": "^[A-Za-z0-9_]+$",
       "minLength": 1,
       "maxLength": 64
@@ -64,18 +64,6 @@
       "description": "Provider ordering for merge conflict resolution. Lower values have higher priority. When two providers return offers for the same package_id (a configuration error), the router keeps the offer from the higher-priority provider. Also used for adaptive timeout allocation — higher-priority providers receive a larger share of the latency budget.",
       "minimum": 0,
       "default": 0
-    },
-    "tmpx_macros": {
-      "type": "array",
-      "description": "Stable, provider-namespaced ad-server macro names this provider's TMPX response fills, ordered. Publishers traffic these exact names in their ad server (GAM key-values, VAST URL macros, DOOH play-log fields); the router places each provider's TMPX chunks into the matching slots on the identity-match response (`tmpx_providers[provider_id].macros[]`). Names MUST be provider-namespaced so publishers can configure distinct macros per provider (e.g. `PIN_TMPX_1`, `PIN_TMPX_2` for one provider; `NOVA_TMPX_1` for another). Ordered so multi-chunk TMPX values (when the opaque token exceeds one macro slot) are placed deterministically. Capped at 2 entries in v1; the cap MAY be raised in a later version without a shape change. A provider that emits TMPX on its identity-match response (populates `tmpx_macros[]` there) MUST also register this list — otherwise the router has no slot names to forward — but the schema cannot enforce this because \"emits TMPX\" is not a schema-visible predicate. Providers that do not emit TMPX omit this field.",
-      "items": {
-        "type": "string",
-        "pattern": "^[A-Z][A-Z0-9_]*$",
-        "minLength": 1,
-        "maxLength": 64
-      },
-      "minItems": 1,
-      "maxItems": 2
     },
     "status": {
       "type": "string",

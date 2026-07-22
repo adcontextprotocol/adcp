@@ -1849,6 +1849,14 @@
         "provider-registration": {
           "$ref": "/schemas/trusted-match/provider-registration.json",
           "description": "TMP provider registration — endpoint, capabilities, and operational parameters for router configuration"
+        },
+        "provider-identity-match-response": {
+          "$ref": "/schemas/trusted-match/provider-identity-match-response.json",
+          "description": "Provider-to-router Identity Match response shape — carries ordered opaque TMPX values with no publisher-local names"
+        },
+        "publisher-tmpx-config": {
+          "$ref": "/schemas/trusted-match/publisher-tmpx-config.json",
+          "description": "Publisher-owned deployment configuration that maps (provider_id, ordinal) to the ad-server macro name, GAM key-value, VAST substitution, or play-log field for that surface"
         }
       },
       "operations": {
