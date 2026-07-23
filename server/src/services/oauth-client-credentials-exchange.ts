@@ -25,6 +25,7 @@
 
 import type { OAuthClientCredentials } from '../db/agent-context-db.js';
 import { createLogger } from '../logger.js';
+import { oauthSafeFetch } from '../utils/oauth-safe-fetch.js';
 
 const logger = createLogger('oauth-client-credentials-exchange');
 
@@ -100,7 +101,7 @@ export async function exchangeClientCredentials(
     headers['Authorization'] = `Basic ${encoded}`;
   }
 
-  const fetchImpl = options.fetchImpl ?? fetch;
+  const fetchImpl = options.fetchImpl ?? oauthSafeFetch;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), EXCHANGE_TIMEOUT_MS);
 
