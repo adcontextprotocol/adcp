@@ -191,6 +191,7 @@ An unexpired `committed` proposal carries an inventory hold and cannot be reject
 | `impressions` | number | No | Impression goal for this package |
 | `paused` | boolean | No | Create package in paused state (default: `false`) |
 | `pacing` | string | No | `"even"` (default), `"asap"`, or `"front_loaded"` |
+| `daily_budget_cap` | number | No | Optional hard package-level spend ceiling per calendar day, subordinate to any aggregate media-buy `daily_budget_cap`. It is a package constraint, not a reserved daily allocation; seller-optimized packages may omit it. All daily caps on the buy use the media-buy cap timezone. |
 | `bidding` | BiddingPolicy | No | Complete package-authored bidding override. Use `{automatic: true}` to explicitly override a media-buy policy with provider automatic bidding. Omit to inherit. This is replacement inheritance, not a field-by-field merge. |
 | `bid_price` | number | No | **Deprecated in 3.2.** Use `bidding.bid_amount` or `bidding.max_bid`. A package cannot supply both representations. |
 | `optimization_goals` | [OptimizationGoal[]](/docs/media-buy/conversion-tracking/#optimization-goals) | No | Objective functions for this package: what to optimize and in what priority. Currency controls belong in `bidding`; legacy `target.cost_per` and `target.per_ad_spend` remain accepted only for migration. |
