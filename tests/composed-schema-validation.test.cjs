@@ -2108,6 +2108,17 @@ async function runTests() {
     },
     'Accepts package update raising daily_budget_cap'
   );
+  await testSchemaValidation(
+    '/schemas/core/package.json',
+    {
+      package_id: 'pkg_001',
+      product_id: 'prod_ctv_sports',
+      budget: 50000,
+      daily_budget_cap: 2500,
+      budget_cap_timezone: 'America/New_York'
+    },
+    'Package response object (create/update echo) carries daily_budget_cap + budget_cap_timezone'
+  );
   log('');
 
   // Test 7: Bundled schemas (no $ref resolution needed)

@@ -229,8 +229,7 @@
                 "daily_budget_cap": {
                   "type": "number",
                   "minimum": 0,
-                  "description": "The hard per-calendar-day spend ceiling the seller is enforcing on this package, denominated in package.currency when present, otherwise media_buy.currency. Sellers MUST echo this whenever a `daily_budget_cap` was accepted on create_media_buy or update_media_buy, so buyers can verify the cap took effect and reconcile enforced-vs-requested.",
-                  "x-echo": "packages[].daily_budget_cap"
+                  "description": "The hard per-calendar-day spend ceiling the seller is enforcing on this package, denominated in package.currency when present, otherwise media_buy.currency. Sellers MUST echo this whenever a `daily_budget_cap` was accepted on create_media_buy or update_media_buy, so buyers can verify the cap took effect and reconcile enforced-vs-requested."
                 },
                 "budget_cap_timezone": {
                   "type": "string",
