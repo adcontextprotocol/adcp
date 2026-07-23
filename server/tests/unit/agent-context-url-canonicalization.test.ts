@@ -36,14 +36,20 @@ describe('AgentContextDatabase URL canonicalization', () => {
 
   it('reports OAuth grants only when their ciphertext and IV are both present', async () => {
     await db.getByOrgAndUrl(ORG, VARIANT);
+    await db.findOrgWithSavedAuth(VARIANT);
 
-    const sql = String(queryMock.mock.calls[0][0]);
-    expect(sql).toContain(
+    const projectionSql = String(queryMock.mock.calls[0][0]);
+    expect(projectionSql).toContain(
       '(oauth_access_token_encrypted IS NOT NULL AND oauth_access_token_iv IS NOT NULL) as has_oauth_token',
     );
-    expect(sql).toContain(
+    expect(projectionSql).toContain(
       '(oauth_refresh_token_encrypted IS NOT NULL AND oauth_refresh_token_iv IS NOT NULL) as has_oauth_refresh_token',
     );
+
+    const savedAuthSql = String(queryMock.mock.calls[1][0]);
+    expect(savedAuthSql).toContain('auth_token_iv IS NOT NULL');
+    expect(savedAuthSql).toContain('oauth_access_token_iv IS NOT NULL');
+    expect(savedAuthSql).toContain('oauth_cc_client_secret_iv IS NOT NULL');
   });
 
   it('canonicalizes create and URL updates', async () => {

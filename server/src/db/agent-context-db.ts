@@ -339,11 +339,14 @@ export class AgentContextDatabase {
        FROM agent_contexts
        WHERE agent_url = $1
          AND (
-           auth_token_encrypted IS NOT NULL
-           OR oauth_access_token_encrypted IS NOT NULL
+           (auth_token_encrypted IS NOT NULL
+            AND auth_token_iv IS NOT NULL)
+           OR (oauth_access_token_encrypted IS NOT NULL
+               AND oauth_access_token_iv IS NOT NULL)
            OR (oauth_cc_token_endpoint IS NOT NULL
                AND oauth_cc_client_id IS NOT NULL
-               AND oauth_cc_client_secret_encrypted IS NOT NULL)
+               AND oauth_cc_client_secret_encrypted IS NOT NULL
+               AND oauth_cc_client_secret_iv IS NOT NULL)
          )
        ORDER BY updated_at DESC
        LIMIT 1`,
