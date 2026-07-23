@@ -1,5 +1,45 @@
 # Changelog
 
+## 3.2.0
+
+### Minor Changes
+
+- 4cdebb9: Allow `null` for video-only delivery metrics (`quartile_data`, `completion_rate`). Sellers running non-video inventory (display, audio-only, DOOH-without-video) legitimately have no value for these metrics, and returning `null` is the correct "not applicable" signal. The schema previously required `type: "number"` / `type: "object"` and rejected `null`, causing receivers to fail validation on every valid display-inventory delivery report.
+
+  `delivery-metrics.json` (`totals` / `by_package[]`) now accepts `["number", "null"]` for `completion_rate` and `["object", "null"]` for `quartile_data`; `get-media-buy-delivery-response.json` `aggregated_totals.completion_rate` gets the same loosening so the aggregate path can't re-trigger the failure. The `minimum`/`maximum` constraints on `completion_rate` still apply to non-null values, and the type stays narrowed to null (no strings/arrays). Every other delivery metric continues to signal "not applicable" by omission, not `null` — this exception is scoped to the two video-only fields. Spec-loosening for the receiver contract: producers already sending numbers/objects remain valid.
+
+  The separate inline `completion_rate` in `report-plan-outcome-request.json` (a governance self-report block, not on the `get_media_buy_delivery` path) is intentionally left unchanged.
+
+- e75f12f: Add `property_list_exclude` to the targeting overlay: a reference to a property list whose properties must not carry the buyer's ads, for brand-safety do-not-run lists (apps and sites). Mirrors `collection_list_exclude` and reuses `property-list-ref.json`. Exclude wins on overlap with `property_list` and applies regardless of the product's `property_targeting_allowed` flag. Sellers declare support via the property/collection list entries in the `get_adcp_capabilities` targeting table.
+- 81cf467: Withdraw the incorrectly specified `publisher_domain` filter from `get_products` before the next minor release. The filter was not patch-eligible for the stable 3.1.x line, and its implementation incorrectly accepted the plural `publisher_domains[]` form that product schemas reject.
+
+### Patch Changes
+
+- 0fe5101: compliance(media-buy): the `available_actions` scenario uses a non-guaranteed product fixture so `sales-non-guaranteed`-only sellers can run it.
+
+  `available_actions.yaml` seeded a guaranteed-only product, so its `create_buy_from_product` step (and the whole available-actions enforcement flow that follows) failed with a terminal `DELIVERY_MODE_NOT_SUPPORTED` for sellers that declare only `specialisms: ["sales-non-guaranteed"]`. The `allowed_actions` behavior the scenario actually grades is delivery-type-agnostic, so the fixture is switched to `non_guaranteed` (floor-priced) — the same fix applied to the base `media_buy_seller` flow. The packaged `dist/compliance/` cache is generated from this source.
+
+- 918c073: Runner output contract: document the branch-set `any_of` peer cascade exemption. `cascade_rules` now names a `branch_set_cascade_exemption` (parallel to `sole_stateful_step_exemption`) stating that a stateful peer's genuine failure or `peer_branch_taken` skip MUST NOT cascade `prerequisite_failed` onto a sibling phase sharing the same `branch_set.id` under `any_of` semantics — the peers are mutually-exclusive alternatives, not a dependency chain. The exemption is scoped to `any_of`, is N-ary-safe (any number of peers), leaves cross-set and within-phase cascade unchanged, and is explicitly `depends_on`-agnostic (it fires whether the sibling's dependency is the implicit default or an explicit `depends_on` naming the peer). `storyboard-schema.yaml`'s `depends_on` section gains a cross-reference. Documents-only; codifies the runner behavior shipped in adcp-client#2306 (closing adcp-client#2305), root-caused in adcp#5337. No schema or wire change.
+- 5a7668c: Enforce `cancellation_fee.rate` / `.amount` by fee `type` in `cancellation-policy.json`. Both fields are documented as conditionally required — `rate` "Required when type is 'percent_remaining'", `amount` "Required when type is 'fixed_fee'" — and the requirement is restated in the pricing-models reference, but `cancellation_fee` listed only `["type"]` in `required[]`. A validator therefore accepted `{ "type": "percent_remaining" }` (or `{ "type": "fixed_fee" }`) with no fee value at all, leaving a money-path term that declares nothing computable for a buyer accepting the product's cancellation terms.
+
+  Adds `if/then` conditionals: `percent_remaining` requires `rate`, `fixed_fee` requires `amount`; `full_commitment` and `none` are unaffected. No prose change — this aligns the schema with the already-documented contract, and no existing example regresses (both doc examples already carry `rate`). Regression coverage added to `tests/composed-schema-validation.test.cjs`.
+
+- 4eda22a: Clarify the boundary between `validate_input` manifest preflight and `sync_creatives` dry-run trafficking rehearsal.
+- 19a6447: Move stale active-window dates in compliance fixtures and 3.0 compatibility bundles forward so storyboard runs continue to exercise protocol behavior instead of calendar drift.
+- f38101a: Replace phantom error codes in creative and campaign-governance task docs with canonical enum members. `sync_creatives`, `build_creative`, the Creative Protocol specification, `check_governance`, and `sync_plans` documented 13 `errors[].code` values that do not exist in `enums/error-code.json` (`INVALID_FORMAT`, `ASSET_PROCESSING_FAILED`, `BRAND_SAFETY_VIOLATION`, `FORMAT_MISMATCH`, `CREATIVE_IN_ACTIVE_DELIVERY`, `ASSET_MISSING`, `ASSET_INVALID`, `GENERATION_FAILED`, `INVALID_MANIFEST`, `AMBIGUOUS_CHECK_TYPE`, `SELLER_NOT_RECOGNIZED`, `INVALID_PLAN`, `BUDGET_BELOW_COMMITTED`). SDKs that validate `errors[].code` against the published enum reject responses built from the docs literally, the same failure mode as #4852 and #5307. Each phantom is remapped to the existing code with matching semantics (`UNSUPPORTED_FEATURE`, `VALIDATION_ERROR`, `CREATIVE_REJECTED`, `INVALID_STATE`, `INVALID_REQUEST`, `PERMISSION_DENIED`); `GENERATION_FAILED` is replaced with guidance that generation-pipeline failures surface as task-level failure with the most specific applicable canonical code, per the open-vocabulary rule on `error-code.json`. Also fixes the one live `INVALID_FORMAT` emission in the training-agent reference implementation. Docs and reference implementation only; no wire change.
+- c8f3ba5: Fix false failures in creative compliance storyboards (canonical_supported_formats, evaluator_auth).
+
+  `canonical_supported_formats`: removes the hardcoded `capability_id: "training_image_generation"` assertion (capability_id is agent-local; any valid value must pass) and the `field_absent` check on `supported_formats[1]` (agents may advertise multiple canonical formats). Fixes `context_outputs` field name from `key:` to `name:`.
+
+  `evaluator_auth`: adds `requires_capability` guards to all five optional phases so agents that correctly declare `creative.supports_evaluator: false` receive `not_applicable` instead of failing the evaluator track. Guards evaluate against the raw capabilities response, bypassing a runner-side boolean-false accumulator bug. Fixes `context_outputs` field name from `key:` to `name:`.
+
+- c68d545: Fix a misleading `get_media_buy_delivery` example that implied buyers can look up delivery by their own reference. `media_buy_ids` are seller-assigned; the top-level `buyer_ref` field was removed in 3.0.0. The example is retitled "Correlating Your Own Reference", uses seller-assigned `mb_...` IDs, and adds a note pointing buyers to reconcile their own reference via `context` echoed on `create_media_buy` / `get_media_buys`.
+- 0a51bac: Align idempotency and rate-limit guidance with the canonical top-level `error.retry_after` field across schemas, documentation, and compliance storyboards.
+- a335070: Clarify and enforce governed signal activation: `activate_signal` now documents `governance_context`, signal agents fail closed on governed accounts without a valid approval context, and signal governance compliance checks no longer require the signals tenant to own `sync_plans`.
+- 24a83c5: Allow governance checks to accept human approval from `ext.human_approval` and use that approval to clear reallocation-threshold human review.
+- 348ae53: Preserve withdrawn and unpublished release status when generating file-based schema discovery so exact artifacts remain available without becoming stable alias targets.
+- a81067a: Remove an incidental video-only constraint from the inventory list targeting storyboards so single-channel sellers can exercise the channel-agnostic scenarios.
+
 ## 3.1.4
 
 ### Patch Changes
