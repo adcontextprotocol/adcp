@@ -81,7 +81,10 @@ import {
 } from '../../services/hosted-compliance-version.js';
 import { AgentContextDatabase, validateAuthTokenChars, type OAuthClientCredentials } from '../../db/agent-context-db.js';
 import { buildAgentOAuthAuthorizeUrl, isOAuthRequiredError } from '../../routes/helpers/agent-oauth-prompt.js';
+import { resolveUserAgentAuth } from '../../routes/helpers/resolve-user-agent-auth.js';
 import { isOAuthRequiredErrorMessage } from '../../routes/helpers/oauth-error-detection.js';
+import { agentConfigAuthFields, type SdkAuth } from '../../services/sdk-auth-adapter.js';
+import { withSdkSafeTransport } from '../../utils/sdk-safe-fetch.js';
 import {
   findExistingProposalOrFeed,
   createFeedProposal,
@@ -253,9 +256,9 @@ async function explicitTargetSupportErrorFromAgent(
   if (!hasExplicitComplianceTarget(input) || !requiresAdvertisedHostedComplianceSupport(target)) return undefined;
 
   try {
-    const caps = await testCapabilityDiscovery(agentUrl, {
+    const caps = await testCapabilityDiscovery(agentUrl, withSdkSafeTransport({
       ...(auth && { auth }),
-    });
+    }));
     const oauthError = capabilityDiscoveryOAuthError(caps);
     if (oauthError) return explicitTargetOAuthRequiredMessage(agentUrl, organizationId);
 
@@ -396,6 +399,7 @@ interface ResolvedAgentAuth {
   authType: 'bearer' | 'basic';
   source: 'explicit' | 'saved' | 'oauth' | 'public' | 'none';
   resolvedUrl: string;
+  sdkAuth?: SdkAuth;
 }
 
 /**
@@ -471,15 +475,25 @@ export async function resolveAgentAuth(
       logger.debug({ error, agentUrl: resolvedUrl }, 'Could not lookup saved auth token');
     }
 
-    // Check OAuth tokens
+    // Preserve refresh-capable OAuth and client-credentials shapes for the
+    // SDK. Static auth was already handled above, so this branch represents
+    // OAuth-backed credentials (or no credentials).
     try {
-      const oauthTokens = await agentContextDb.getOAuthTokensByOrgAndUrl(organizationId, resolvedUrl);
-      if (oauthTokens?.access_token) {
-        const isExpired = oauthTokens.expires_at &&
-          new Date(oauthTokens.expires_at).getTime() - Date.now() < 5 * 60 * 1000;
-        if (!isExpired) {
-          return { authToken: oauthTokens.access_token, authType: 'bearer', source: 'oauth', resolvedUrl };
-        }
+      const sdkAuth = await resolveUserAgentAuth(agentContextDb, organizationId, resolvedUrl, logger);
+      if (sdkAuth?.type === 'oauth') {
+        return {
+          authToken: sdkAuth.tokens.access_token,
+          authType: 'bearer',
+          source: 'oauth',
+          resolvedUrl,
+          sdkAuth,
+        };
+      }
+      if (sdkAuth?.type === 'oauth_client_credentials') {
+        return { authType: 'bearer', source: 'oauth', resolvedUrl, sdkAuth };
+      }
+      if (sdkAuth?.type === 'bearer') {
+        return { authToken: sdkAuth.token, authType: 'bearer', source: 'oauth', resolvedUrl, sdkAuth };
       }
     } catch (error) {
       logger.debug({ error, agentUrl: resolvedUrl }, 'Could not lookup OAuth token');
@@ -537,7 +551,8 @@ function validateAgentUrl(agentUrl: string): string | null {
 /**
  * Build auth options for the SDK from resolved auth. Exported for unit testing.
  */
-export function buildAuthOption(resolved: ResolvedAgentAuth): { type: 'bearer'; token: string } | { type: 'basic'; username: string; password: string } | undefined {
+export function buildAuthOption(resolved: ResolvedAgentAuth): SdkAuth | undefined {
+  if (resolved.sdkAuth) return resolved.sdkAuth;
   if (!resolved.authToken) return undefined;
 
   if (resolved.authType === 'basic') {
@@ -569,7 +584,10 @@ async function inferHostedAuthProbeTask(
   if (!auth) return undefined;
 
   try {
-    const caps = await testCapabilityDiscovery(agentUrl, withHostedTestOptions({ auth }, runTarget));
+    const caps = await testCapabilityDiscovery(
+      agentUrl,
+      withSdkSafeTransport(withHostedTestOptions({ auth }, runTarget)),
+    );
     return hostedAuthProbeTaskForProfile(caps.profile);
   } catch (error) {
     logger.warn({ error, agentUrl }, 'Addie: could not infer hosted auth probe task; using default');
@@ -586,9 +604,9 @@ async function classifyCapabilityResolutionErrorWithDeclaredProtocols(
   if (initial?.kind !== 'specialism_parent_protocol_missing') return initial;
 
   try {
-    const caps = await testCapabilityDiscovery(agentUrl, {
+    const caps = await testCapabilityDiscovery(agentUrl, withSdkSafeTransport({
       ...(auth && { auth }),
-    });
+    }));
     return classifyCapabilityResolutionError(error, caps.profile?.supported_protocols ?? []) ?? initial;
   } catch (probeError) {
     logger.warn({ probeError, agentUrl }, 'evaluate_agent_quality: could not reprobe capabilities after resolver error');
@@ -4867,9 +4885,9 @@ export function createMemberToolHandlers(
     let profile: AgentProfile | undefined;
     let discoveryProbeError: string | undefined;
     try {
-      const caps = await testCapabilityDiscovery(resolved.resolvedUrl, {
+      const caps = await testCapabilityDiscovery(resolved.resolvedUrl, withSdkSafeTransport({
         ...(authOption && { auth: authOption }),
-      });
+      }));
       profile = caps.profile;
       discoveryProbeError = capabilityDiscoveryProbeError(caps);
       if (!hasExplicitComplianceTarget(input)) {
@@ -5240,9 +5258,13 @@ export function createMemberToolHandlers(
 
     try {
       const authProbeTask = await inferHostedAuthProbeTask(resolved.resolvedUrl, authOption, runTarget);
-      const result = await runStoryboard(resolved.resolvedUrl, sb, withHostedStoryboardRunOptions({
-        ...(authOption && { auth: authOption }),
-      }, runTarget, authProbeTask));
+      const result = await runStoryboard(
+        resolved.resolvedUrl,
+        sb,
+        withSdkSafeTransport(withHostedStoryboardRunOptions({
+          ...(authOption && { auth: authOption }),
+        }, runTarget, authProbeTask)),
+      );
 
       // runStoryboard catches its own throws and surfaces them as step
       // errors. Detect OAuth on the first failing step before rendering a
@@ -5447,10 +5469,15 @@ export function createMemberToolHandlers(
 
     try {
       const authProbeTask = await inferHostedAuthProbeTask(resolved.resolvedUrl, authOption, runTarget);
-      const result: StoryboardStepResult = await runStoryboardStep(resolved.resolvedUrl, sb, resolvedStepId, withHostedStoryboardRunOptions({
-        context,
-        ...(authOption && { auth: authOption }),
-      }, runTarget, authProbeTask));
+      const result: StoryboardStepResult = await runStoryboardStep(
+        resolved.resolvedUrl,
+        sb,
+        resolvedStepId,
+        withSdkSafeTransport(withHostedStoryboardRunOptions({
+          context,
+          ...(authOption && { auth: authOption }),
+        }, runTarget, authProbeTask)),
+      );
 
       // runStoryboardStep catches its own throws and surfaces them as
       // result.error strings. Detect OAuth before rendering.
@@ -5610,12 +5637,10 @@ export function createMemberToolHandlers(
         name: 'target',
         agent_uri: resolved.resolvedUrl,
         protocol: 'mcp' as const,
-        ...(resolved.authToken && resolved.authType === 'basic'
-          ? { headers: { 'Authorization': `Basic ${resolved.authToken}` } }
-          : resolved.authToken ? { auth_token: resolved.authToken } : {}),
+        ...agentConfigAuthFields(buildAuthOption(resolved)),
       };
 
-      const multiClient = new AdCPClient([agentConfig], { debug: false });
+      const multiClient = new AdCPClient([agentConfig], withSdkSafeTransport({ debug: false }));
       const client = multiClient.agent('target');
 
       // Run each brief and collect results
@@ -5850,11 +5875,9 @@ export function createMemberToolHandlers(
         id: 'target', name: 'target',
         agent_uri: resolved.resolvedUrl,
         protocol: 'mcp' as const,
-        ...(resolved.authToken && resolved.authType === 'basic'
-          ? { headers: { 'Authorization': `Basic ${resolved.authToken}` } }
-          : resolved.authToken ? { auth_token: resolved.authToken } : {}),
+        ...agentConfigAuthFields(buildAuthOption(resolved)),
       };
-      const multiClient = new AdCPClient([agentConfig], { debug: false });
+      const multiClient = new AdCPClient([agentConfig], withSdkSafeTransport({ debug: false }));
       const client = multiClient.agent('target');
 
       const result = await Promise.race([
@@ -6088,11 +6111,9 @@ export function createMemberToolHandlers(
         id: 'target', name: 'target',
         agent_uri: resolved.resolvedUrl,
         protocol: 'mcp' as const,
-        ...(resolved.authToken && resolved.authType === 'basic'
-          ? { headers: { 'Authorization': `Basic ${resolved.authToken}` } }
-          : resolved.authToken ? { auth_token: resolved.authToken } : {}),
+        ...agentConfigAuthFields(buildAuthOption(resolved)),
       };
-      const multiClient = new AdCPClient([agentConfig], { debug: false });
+      const multiClient = new AdCPClient([agentConfig], withSdkSafeTransport({ debug: false }));
       const client = multiClient.agent('target');
 
       // Get full catalog via wholesale mode

@@ -126,6 +126,7 @@ import { parseOAuthClientCredentialsInput } from "./helpers/oauth-client-credent
 import { isOAuthRequiredErrorMessage } from "./helpers/oauth-error-detection.js";
 import { AgentContextDatabase, validateAuthTokenChars } from "../db/agent-context-db.js";
 import { normalizeBasicAuthForStorage } from "../utils/basic-auth-credentials.js";
+import { withSdkSafeTransport } from "../utils/sdk-safe-fetch.js";
 import { getRequestLog, getRequestCount, logOutboundRequest } from "../db/outbound-log-db.js";
 import { enrichUserWithMembership } from "../utils/html-config.js";
 import { classifyProbeError } from "../utils/probe-error.js";
@@ -7118,7 +7119,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       try {
         const caps = await testCapabilityDiscovery(
           agentUrl,
-          { ...(probeAuth && { auth: probeAuth }) },
+          withSdkSafeTransport({ ...(probeAuth && { auth: probeAuth }) }),
         );
         profile = caps.profile;
 
@@ -7289,9 +7290,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         }
 
         let authProbeTask: string | undefined;
-        if (sdkAuth?.type === 'bearer' || sdkAuth?.type === 'basic') {
+        if (sdkAuth) {
           try {
-            const caps = await testCapabilityDiscovery(agentUrl, withHostedTestOptions({ auth: sdkAuth }, runTarget));
+            const caps = await testCapabilityDiscovery(
+              agentUrl,
+              withSdkSafeTransport(withHostedTestOptions({ auth: sdkAuth }, runTarget)),
+            );
             authProbeTask = hostedAuthProbeTaskForProfile(caps.profile);
           } catch (err) {
             logger.warn({ err, agentUrl }, "Could not infer hosted auth probe task for storyboard step; using default");
@@ -7306,10 +7310,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           return res.status(400).json({ error: "context too large" });
         }
 
-        const result = await runStoryboardStep(agentUrl, storyboard, req.params.stepId, withHostedStoryboardRunOptions({
-          ...(sdkAuth && { auth: sdkAuth }),
-          ...(context && { context }),
-        }, runTarget, authProbeTask));
+        const result = await runStoryboardStep(
+          agentUrl,
+          storyboard,
+          req.params.stepId,
+          withSdkSafeTransport(withHostedStoryboardRunOptions({
+            ...(sdkAuth && { auth: sdkAuth }),
+            ...(context && { context }),
+          }, runTarget, authProbeTask)),
+        );
 
         if (!result.passed && isOAuthRequiredErrorMessage(result.error)) {
           const agentContextId = await ensureAgentContextId(orgId, agentUrl, req.user.id);

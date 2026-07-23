@@ -27,6 +27,7 @@ import { reviewNewRecord, reviewRegistryEdit } from "./addie/mcp/registry-review
 import type { MCPAuthContext } from "./mcp/auth.js";
 import { createLogger } from "./logger.js";
 import { scrubCommunityAuthorizedAgents } from "./utils/community-adagents.js";
+import { withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
 
 const logger = createLogger('mcp-tools');
 
@@ -897,7 +898,7 @@ export class MCPToolHandler {
             name: "Query",
             agent_uri: agentUrl,
             protocol: "mcp",
-          }]);
+          }], withSdkSafeTransport({}));
           const client = multiClient.agent("query");
 
           const result = await client.executeTask("get_products", params);
@@ -957,7 +958,7 @@ export class MCPToolHandler {
             name: "Query",
             agent_uri: agentUrl,
             protocol: "mcp",
-          }]);
+          }], withSdkSafeTransport({}));
           const client = multiClient.agent("query");
 
           const result = await client.executeTask("list_creative_formats", params);
@@ -1016,7 +1017,7 @@ export class MCPToolHandler {
             name: "Query",
             agent_uri: agentUrl,
             protocol: "mcp",
-          }]);
+          }], withSdkSafeTransport({}));
           const client = multiClient.agent("query");
 
           const result = await client.executeTask("list_authorized_properties", {});
