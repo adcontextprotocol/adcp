@@ -1098,6 +1098,51 @@ Each package specifies its `pricing_option_id`, which determines:
 
 Packages can use different currencies when sellers support it. See [Pricing Models](/docs/media-buy/advanced-topics/pricing-models).
 
+### Budget & Pacing Controls
+
+Budget constraints are set **per package**, not at the media-buy level. The one exception is `total_budget`, which applies only when [executing a proposal](#executing-a-proposal) — the seller then derives per-package budgets from the proposal's allocation percentages.
+
+| Field | Level | Type | Controls |
+|-------|-------|------|----------|
+| `total_budget.amount` + `total_budget.currency` | Media buy | TotalBudget | Total spend when executing a proposal. Not used when supplying explicit `packages`. |
+| `budget` | Package | number | Total spend cap for the package, in the currency the package's `pricing_option_id` specifies. Delivery stops when the package budget is exhausted. |
+| `impressions` | Package | number | Impression goal for the package. An alternative volume target to `budget`; a seller may pace to whichever binds first. |
+| `pacing` | Package | enum | How the seller spreads the package budget across the flight: `even` (default), `asap`, or `front_loaded`. |
+| `bid_price` | Package | number | For auction pricing options — the exact bid, or the ceiling when the pricing option has `max_bid: true`. |
+| `start_time` / `end_time` | Package | string | The flight window the budget is spread across. When omitted, the package inherits the media buy's flight dates. |
+
+**Pacing modes** (from [`/schemas/v3/enums/pacing.json`](https://adcontextprotocol.org/schemas/v3/enums/pacing.json)):
+
+| Mode | Behavior |
+|------|----------|
+| `even` | Allocate remaining budget evenly over the remaining flight (default). |
+| `asap` | Spend remaining budget as quickly as possible. |
+| `front_loaded` | Allocate more of the remaining budget earlier in the remaining flight. |
+
+Example package with an even-paced budget over a fixed flight:
+
+```json
+{
+  "product_id": "prod_ctv_sports",
+  "pricing_option_id": "po_cpm_fixed",
+  "budget": 50000,
+  "pacing": "even",
+  "start_time": "2026-08-01T00:00:00Z",
+  "end_time": "2026-08-31T23:59:59Z"
+}
+```
+
+With `even` pacing over the 31-day flight above, the seller spreads the $50,000 budget across the month — roughly $1,613/day — subject to the seller's own pacing engine and available inventory.
+
+#### Known gap: no explicit daily cap
+
+AdCP 3.1 has **no per-day (or per-hour) budget cap field.** Delivery rate is governed by the combination of `budget`, `pacing`, and the flight window (`start_time` / `end_time`) — not a hard daily ceiling the buyer can pin. To constrain daily spend today:
+
+- **Approximate a daily rate** by setting `pacing: "even"` and choosing `budget` and flight length so `budget ÷ flight_days` lands near the target daily spend. Enforcement is seller-side and best-effort, not a guaranteed hard cap.
+- **Tighten the window** by splitting a long flight into shorter packages (e.g. weekly packages), each with its own `budget`, when finer control is needed.
+
+A first-class daily-cap field is not yet specified. Tracking: [#5983](https://github.com/adcontextprotocol/adcp/issues/5983).
+
 ### Targeting Overlays
 
 **Use sparingly** - most targeting should be in your brief and handled through product selection.
