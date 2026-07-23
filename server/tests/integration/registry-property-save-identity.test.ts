@@ -86,6 +86,10 @@ describe('POST /api/properties/save — identity, not authorization', () => {
   let propertyDb: PropertyDatabase;
 
   async function clearFixtures() {
+    // Community creates write revision #1. Revisions are intentionally not
+    // cascade-deleted with hosted properties, so clear them explicitly to
+    // keep this suite repeatable against a persistent local test database.
+    await pool.query('DELETE FROM property_revisions WHERE publisher_domain LIKE $1', [DOMAIN_LIKE]);
     await pool.query('DELETE FROM hosted_properties WHERE publisher_domain LIKE $1', [DOMAIN_LIKE]);
     // The edit-path success case calls syncHostedPropertyToFederatedIndex, which
     // derives a discovered_properties row; clear it too so re-runs against a
