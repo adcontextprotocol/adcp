@@ -69,6 +69,19 @@ export async function adaptAuthForSdk(
 }
 
 /**
+ * Authentication shape for the SDK's capability-discovery preflight.
+ *
+ * @adcp/sdk 9.x attaches the OAuth provider after endpoint discovery, while
+ * discovery itself only reads the bearer token. Preserve bearer/basic auth as
+ * supplied, but expose the current OAuth access token as bearer credentials so
+ * an already-authorized agent is not probed anonymously.
+ */
+export function authForSdkDiscoveryProbe(auth: SdkAuth | undefined): SdkAuth | undefined {
+  if (auth?.type !== 'oauth') return auth;
+  return { type: 'bearer', token: auth.tokens.access_token };
+}
+
+/**
  * Subset of `AgentConfig` (from `@adcp/sdk`) populated from saved auth.
  * Spread into the config literal passed to `new AdCPClient(...)` to make
  * authenticated probe / discovery / health calls. Bearer maps to

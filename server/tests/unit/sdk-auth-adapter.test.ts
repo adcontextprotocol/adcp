@@ -1,5 +1,27 @@
 import { describe, expect, it } from 'vitest';
-import { agentConfigAuthFields } from '../../src/services/sdk-auth-adapter.js';
+import { agentConfigAuthFields, authForSdkDiscoveryProbe } from '../../src/services/sdk-auth-adapter.js';
+
+describe('authForSdkDiscoveryProbe', () => {
+  it('exposes an OAuth access token as bearer auth during endpoint discovery', () => {
+    expect(authForSdkDiscoveryProbe({
+      type: 'oauth',
+      tokens: {
+        access_token: 'fresh-access-token',
+        refresh_token: 'refresh-token',
+      },
+      client: { client_id: 'client-id' },
+    })).toEqual({ type: 'bearer', token: 'fresh-access-token' });
+  });
+
+  it('preserves non-OAuth auth and missing auth', () => {
+    const bearer = { type: 'bearer' as const, token: 'static-token' };
+    const basic = { type: 'basic' as const, username: 'user', password: 'pass' };
+
+    expect(authForSdkDiscoveryProbe(bearer)).toBe(bearer);
+    expect(authForSdkDiscoveryProbe(basic)).toBe(basic);
+    expect(authForSdkDiscoveryProbe(undefined)).toBeUndefined();
+  });
+});
 
 describe('agentConfigAuthFields', () => {
   it('maps bearer auth to the SDK auth_token field', () => {
