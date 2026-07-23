@@ -126,7 +126,7 @@ import { parseOAuthClientCredentialsInput } from "./helpers/oauth-client-credent
 import { isOAuthRequiredErrorMessage } from "./helpers/oauth-error-detection.js";
 import { AgentContextDatabase, validateAuthTokenChars } from "../db/agent-context-db.js";
 import { normalizeBasicAuthForStorage } from "../utils/basic-auth-credentials.js";
-import { withSdkSafeTransport } from "../utils/sdk-safe-fetch.js";
+import { sdkSafeFetch, withSdkSafeTransport } from "../utils/sdk-safe-fetch.js";
 import { getRequestLog, getRequestCount, logOutboundRequest } from "../db/outbound-log-db.js";
 import { enrichUserWithMembership } from "../utils/html-config.js";
 import { classifyProbeError } from "../utils/probe-error.js";
@@ -7017,7 +7017,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
         const start = Date.now();
         try {
-          await exchangeClientCredentials(creds);
+          await exchangeClientCredentials(creds, { fetch: sdkSafeFetch });
           return res.json({ ok: true, latency_ms: Date.now() - start });
         } catch (err) {
           if (err instanceof ClientCredentialsExchangeError) {
@@ -8906,7 +8906,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         name: "discovery-client",
         agent_uri: url,
         protocol: "mcp",
-      });
+      }, withSdkSafeTransport({}));
 
       const agentInfo = await client.getAgentInfo();
       const tools = agentInfo.tools || [];
@@ -8926,7 +8926,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       try {
         if (agentInfo.protocol === "mcp") {
           const a2aUrl = new URL("/.well-known/agent.json", url).toString();
-          const a2aResponse = await fetch(a2aUrl, {
+          const a2aResponse = await sdkSafeFetch(a2aUrl, {
             headers: { Accept: "application/json" },
             signal: AbortSignal.timeout(3000),
           });
@@ -8942,7 +8942,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
       if (agentType === "creative") {
         try {
-          const creativeClient = new CreativeAgentClient({ agentUrl: url });
+          const creativeClient = new CreativeAgentClient(withSdkSafeTransport({ agentUrl: url }));
           const formats = await creativeClient.listFormats();
           stats.format_count = formats.length;
         } catch (statsError) {
@@ -8983,7 +8983,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     }
 
     try {
-      const creativeClient = new CreativeAgentClient({ agentUrl: url });
+      const creativeClient = new CreativeAgentClient(withSdkSafeTransport({ agentUrl: url }));
       const formats = await creativeClient.listFormats();
 
       return res.json({
@@ -9025,7 +9025,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         name: "products-discovery-client",
         agent_uri: url,
         protocol: "mcp",
-      });
+      }, withSdkSafeTransport({}));
 
       const result = await client.getProducts({ buying_mode: 'wholesale' });
       const products = result.data?.products || [];

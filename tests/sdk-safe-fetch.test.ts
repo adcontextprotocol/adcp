@@ -38,6 +38,58 @@ describe('SDK safe fetch adapter', () => {
     expect(new TextDecoder().decode(options?.body as Uint8Array)).toContain('tools/list');
   });
 
+  it.each([
+    'Authorization',
+    'Proxy-Authorization',
+    'Cookie',
+    'x-adcp-auth',
+  ])('refuses GET redirects carrying the sensitive %s header', async header => {
+    const safeFetchImpl = vi.fn(async () => new Response('{}', { status: 200 }));
+    const fetchFn = createSdkSafeFetch(safeFetchImpl);
+
+    await fetchFn('https://agent.example/metadata', {
+      headers: { [header]: 'secret' },
+    });
+
+    expect(safeFetchImpl.mock.calls[0][1]).toMatchObject({
+      method: 'GET',
+      maxRedirects: 0,
+    });
+  });
+
+  it('refuses HEAD redirects carrying credentials', async () => {
+    const safeFetchImpl = vi.fn(async () => new Response(null, { status: 200 }));
+    const fetchFn = createSdkSafeFetch(safeFetchImpl);
+
+    await fetchFn('https://agent.example/health', {
+      method: 'HEAD',
+      headers: { Authorization: 'Bearer secret' },
+    });
+
+    expect(safeFetchImpl.mock.calls[0][1]).toMatchObject({
+      method: 'HEAD',
+      maxRedirects: 0,
+    });
+  });
+
+  it('rejects an oversized declared body before allocating it', async () => {
+    const safeFetchImpl = vi.fn(async () => new Response('{}', { status: 200 }));
+    const fetchFn = createSdkSafeFetch(safeFetchImpl);
+    const arrayBuffer = vi.fn(async () => new ArrayBuffer(0));
+    vi.stubGlobal('Request', class {
+      url = 'https://agent.example/mcp';
+      method = 'POST';
+      headers = new Headers({ 'content-length': String(10 * 1024 * 1024 + 1) });
+      body = {};
+      signal = new AbortController().signal;
+      arrayBuffer = arrayBuffer;
+    });
+
+    await expect(fetchFn('https://agent.example/mcp')).rejects.toThrow('exceeds 10485760 byte cap');
+    expect(arrayBuffer).not.toHaveBeenCalled();
+    expect(safeFetchImpl).not.toHaveBeenCalled();
+  });
+
   it('preserves transport limits while enforcing the server fetch boundary', () => {
     const callerFetch = vi.fn();
     const merged = withSdkSafeTransport({
