@@ -2249,18 +2249,26 @@ function stableMapDigest(map: Map<string, Record<string, unknown>>): string {
 function productWholesaleFeedMeta(req: WholesaleFeedRequest, session: SessionState): WholesaleFeedMeta {
   const seededProductsRevision = stableMapDigest(session.complyExtensions.seededProducts);
   const seededPricingRevision = stableMapDigest(session.complyExtensions.seededPricingOptions);
+  const cacheScope = cacheScopeForWholesaleRequest(req);
+  // Tokens are scope-keyed: the same feed state yields a distinct token per
+  // cache_scope so a token minted under one scope never short-circuits a probe
+  // the seller resolves to another. See media-buy/get-products-response.json#unchanged.
   return {
-    wholesale_feed_version: `${PRODUCT_WHOLESALE_FEED_VERSION}.${seededProductsRevision}`,
-    pricing_version: `${PRODUCT_WHOLESALE_PRICING_VERSION}.${seededPricingRevision}`,
-    cache_scope: cacheScopeForWholesaleRequest(req),
+    wholesale_feed_version: `${PRODUCT_WHOLESALE_FEED_VERSION}.${cacheScope}.${seededProductsRevision}`,
+    pricing_version: `${PRODUCT_WHOLESALE_PRICING_VERSION}.${cacheScope}.${seededPricingRevision}`,
+    cache_scope: cacheScope,
   };
 }
 
 function signalWholesaleFeedMeta(req: WholesaleFeedRequest): WholesaleFeedMeta {
+  const cacheScope = cacheScopeForWholesaleRequest(req);
+  // Tokens are scope-keyed: the same feed state yields a distinct token per
+  // cache_scope so a token minted under one scope never short-circuits a probe
+  // the agent resolves to another. See signals/get-signals-response.json#unchanged.
   return {
-    wholesale_feed_version: SIGNAL_WHOLESALE_FEED_VERSION,
-    pricing_version: SIGNAL_WHOLESALE_PRICING_VERSION,
-    cache_scope: cacheScopeForWholesaleRequest(req),
+    wholesale_feed_version: `${SIGNAL_WHOLESALE_FEED_VERSION}.${cacheScope}`,
+    pricing_version: `${SIGNAL_WHOLESALE_PRICING_VERSION}.${cacheScope}`,
+    cache_scope: cacheScope,
   };
 }
 

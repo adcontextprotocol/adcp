@@ -1266,8 +1266,8 @@ describe('get_products handler', () => {
       buying_mode: 'wholesale',
     });
 
-    expect(first.wholesale_feed_version).toBe('training-products-feed-v1.base');
-    expect(first.pricing_version).toBe('training-products-pricing-v1.base');
+    expect(first.wholesale_feed_version).toBe('training-products-feed-v1.public.base');
+    expect(first.pricing_version).toBe('training-products-pricing-v1.public.base');
     expect(first.cache_scope).toBe('public');
 
     const { result: unchanged } = await simulateCallTool(server, 'get_products', {
@@ -1287,14 +1287,14 @@ describe('get_products handler', () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'get_products', {
       buying_mode: 'wholesale',
-      if_wholesale_feed_version: 'training-products-feed-v1.base',
+      if_wholesale_feed_version: 'training-products-feed-v1.public.base',
       if_pricing_version: 'stale-pricing-token',
     });
 
     expect(result.unchanged).toBeUndefined();
     expect((result.products as unknown[]).length).toBeGreaterThan(0);
-    expect(result.wholesale_feed_version).toBe('training-products-feed-v1.base');
-    expect(result.pricing_version).toBe('training-products-pricing-v1.base');
+    expect(result.wholesale_feed_version).toBe('training-products-feed-v1.public.base');
+    expect(result.pricing_version).toBe('training-products-pricing-v1.public.base');
   });
 
   it('changes product wholesale version tokens when controller-seeded catalog state changes', async () => {
@@ -7390,8 +7390,8 @@ describe('get_signals handler', () => {
     });
 
     expect((first.signals as unknown[]).length).toBeGreaterThan(0);
-    expect(first.wholesale_feed_version).toBe('training-signals-feed-v1');
-    expect(first.pricing_version).toBe('training-signals-pricing-v1');
+    expect(first.wholesale_feed_version).toBe('training-signals-feed-v1.public');
+    expect(first.pricing_version).toBe('training-signals-pricing-v1.public');
     expect(first.cache_scope).toBe('public');
 
     const { result: unchanged } = await simulateCallTool(server, 'get_signals', {
@@ -7413,14 +7413,14 @@ describe('get_signals handler', () => {
     const { result } = await simulateCallTool(server, 'get_signals', {
       account,
       discovery_mode: 'wholesale',
-      if_wholesale_feed_version: 'training-signals-feed-v1',
+      if_wholesale_feed_version: 'training-signals-feed-v1.public',
       if_pricing_version: 'stale-pricing-token',
     });
 
     expect(result.unchanged).toBeUndefined();
     expect((result.signals as unknown[]).length).toBeGreaterThan(0);
-    expect(result.wholesale_feed_version).toBe('training-signals-feed-v1');
-    expect(result.pricing_version).toBe('training-signals-pricing-v1');
+    expect(result.wholesale_feed_version).toBe('training-signals-feed-v1.public');
+    expect(result.pricing_version).toBe('training-signals-pricing-v1.public');
   });
 
   it('supports signal_refs exact lookup in brief mode', async () => {
@@ -7481,8 +7481,8 @@ describe('get_signals handler', () => {
       signal_spec: 'E2E fallback signal discovery',
     });
 
-    expect(result.wholesale_feed_version).toBe('training-signals-feed-v1');
-    expect(result.pricing_version).toBe('training-signals-pricing-v1');
+    expect(result.wholesale_feed_version).toBe('training-signals-feed-v1.public');
+    expect(result.pricing_version).toBe('training-signals-pricing-v1.public');
     expect((result.signals as unknown[]).length).toBeGreaterThan(0);
   });
 
