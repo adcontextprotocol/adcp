@@ -2076,6 +2076,63 @@ async function runTests() {
   );
   log('');
 
+  // report_plan_outcome: check_id is required for budget-committing outcomes (partial hardening for 3.2; refs #5827)
+  log('Report Plan Outcome Schema (check_id binding):', 'info');
+  await testSchemaValidation(
+    '/schemas/governance/report-plan-outcome-request.json',
+    {
+      adcp_version: '3.1',
+      plan_id: 'plan_123',
+      outcome: 'completed',
+      check_id: 'chk_xyz789',
+      idempotency_key: 'idem_0123456789abcdef',
+      governance_context: 'ctx_abc',
+      seller_response: { committed_budget: 50000 }
+    },
+    'Accepts completed outcome carrying check_id'
+  );
+  await testSchemaRejection(
+    '/schemas/governance/report-plan-outcome-request.json',
+    {
+      adcp_version: '3.1',
+      plan_id: 'plan_123',
+      outcome: 'completed',
+      idempotency_key: 'idem_0123456789abcdef',
+      governance_context: 'ctx_abc',
+      seller_response: { committed_budget: 50000 }
+    },
+    'Rejects completed outcome missing check_id'
+  );
+  await testSchemaRejection(
+    '/schemas/governance/report-plan-outcome-request.json',
+    {
+      adcp_version: '3.1',
+      plan_id: 'plan_123',
+      outcome: 'failed',
+      idempotency_key: 'idem_0123456789abcdef',
+      governance_context: 'ctx_abc',
+      error: { code: 'BUDGET_EXCEEDED', message: 'over cap' }
+    },
+    'Rejects failed outcome missing check_id'
+  );
+  await testSchemaValidation(
+    '/schemas/governance/report-plan-outcome-request.json',
+    {
+      adcp_version: '3.1',
+      plan_id: 'plan_123',
+      outcome: 'delivery',
+      idempotency_key: 'idem_0123456789abcdef',
+      governance_context: 'ctx_abc',
+      delivery: {
+        reporting_period: { start: '2026-08-01T00:00:00Z', end: '2026-08-07T23:59:59Z' },
+        impressions: 100000,
+        spend: 5000
+      }
+    },
+    'Accepts delivery outcome without check_id (not budget-committing)'
+  );
+  log('');
+
   // Test 7: Bundled schemas (no $ref resolution needed)
   // Only test against latest/ — versioned dirs in dist/ may be from a prior release
   // and are not updated on every source change.

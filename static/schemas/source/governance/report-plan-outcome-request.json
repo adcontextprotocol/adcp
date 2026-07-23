@@ -7,6 +7,27 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$comment": "check_id links the outcome to the check_governance decision that authorized it. Required for 'completed' and 'failed' outcomes so budget-committing self-reports cannot be submitted without a reference to the authorizing check (NS-GOV-002).",
+      "if": {
+        "properties": {
+          "outcome": {
+            "enum": [
+              "completed",
+              "failed"
+            ]
+          }
+        },
+        "required": [
+          "outcome"
+        ]
+      },
+      "then": {
+        "required": [
+          "check_id"
+        ]
+      }
     }
   ],
   "x-status": "experimental",
