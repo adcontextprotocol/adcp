@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.2.0/core/product-allowed-action.json",
+  "title": "Product Allowed Action",
+  "description": "An action a seller declares as allowed on buys created against this product, scoped to the buy statuses where the action is permitted and the modes available. Advisory template only — the authoritative per-buy resolution lives in `available_actions[]` on the buy response (which may diverge from the product template based on negotiated terms, account tier, or buy-level overrides). The containing `allowed_actions[]` array is uniquely keyed by `action`; sellers MUST NOT emit two entries with the same `action` value. JSON Schema `uniqueItems` only catches structurally identical objects, so validators MUST enforce action-uniqueness separately.",
+  "type": "object",
+  "properties": {
+    "action": {
+      "$ref": "/schemas/3.2.0/enums/media-buy-valid-action.json",
+      "description": "The action identifier."
+    },
+    "modes": {
+      "type": "array",
+      "description": "Modes available for this action on this product. A product may declare multiple modes (for example `self_serve` within tolerances, escalating to `requires_approval` outside) — the buy-side `available_actions[<action>].mode` resolves to the singular mode in effect at mutation time. SDKs that see multiple modes MUST NOT assume which one will fire; they must read the resolved `mode` on the buy.",
+      "items": {
+        "$ref": "/schemas/3.2.0/enums/media-buy-action-mode.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "allowed_statuses": {
+      "type": "array",
+      "description": "Media buy statuses in which this action is permitted. When absent, the action is permitted in all non-terminal statuses (`pending_creatives`, `pending_start`, `active`, `paused`).",
+      "items": {
+        "$ref": "/schemas/3.2.0/enums/media-buy-status.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "sla": {
+      "$ref": "/schemas/3.2.0/core/sla-window.json",
+      "description": "Optional SLA commitment for this action on this product. Absence means no commitment."
+    },
+    "terms_ref": {
+      "type": "string",
+      "description": "Optional pointer into buy-terms negotiation (forward-references the buy-terms namespace landing via separate RFC). When present, the named term governs cancellation policy, makegoods, or other commercial remedies tied to this action. Schema accepts any string for now and will tighten to a structured reference when the buy-terms RFC ships."
+    }
+  },
+  "required": ["action", "modes"],
+  "additionalProperties": false
+}
