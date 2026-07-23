@@ -180,6 +180,29 @@ export function isPrivateHostname(hostname: string): boolean {
   return false;
 }
 
+/**
+ * Normalize a URL parser hostname for security classification.
+ *
+ * A single terminal dot is the canonical DNS root label. Empty labels in any
+ * other position are malformed and must fail closed rather than reaching a
+ * resolver or proxy that may interpret them differently. WHATWG URL parsing
+ * maps the IDNA dot variants to ASCII dots before this helper is called.
+ */
+export function normalizeExternalHostname(hostname: string): string | null {
+  const lowerHostname = hostname.toLowerCase();
+  const hostnameWithoutIpv6Brackets = lowerHostname.startsWith('[') && lowerHostname.endsWith(']')
+    ? lowerHostname.slice(1, -1)
+    : lowerHostname;
+  const normalizedHostname = hostnameWithoutIpv6Brackets.endsWith('.')
+    ? hostnameWithoutIpv6Brackets.slice(0, -1)
+    : hostnameWithoutIpv6Brackets;
+
+  if (!normalizedHostname || normalizedHostname.split('.').some(label => label.length === 0)) {
+    return null;
+  }
+  return normalizedHostname;
+}
+
 function extractDnsErrorCode(reason: unknown): string | undefined {
   if (!reason || typeof reason !== 'object') return undefined;
   const err = reason as { code?: unknown; message?: unknown };
@@ -331,17 +354,8 @@ export function validateExternalUrl(raw: string): string | null {
     const url = new URL(raw);
     if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
 
-    const hostname = url.hostname.toLowerCase();
-    const hostnameWithoutIpv6Brackets = hostname.startsWith('[') && hostname.endsWith(']')
-      ? hostname.slice(1, -1)
-      : hostname;
-    // A single terminal dot is the DNS root label, so `example.com.` and
-    // `example.com` identify the same host. Remove only that canonical root
-    // label; additional terminal dots are meaningful (and generally invalid)
-    // hostname input and should not be silently normalized away.
-    const normalizedHostname = hostnameWithoutIpv6Brackets.endsWith('.')
-      ? hostnameWithoutIpv6Brackets.slice(0, -1)
-      : hostnameWithoutIpv6Brackets;
+    const normalizedHostname = normalizeExternalHostname(url.hostname);
+    if (!normalizedHostname) return null;
 
     if (normalizedHostname === '169.254.169.254' || normalizedHostname === 'metadata.google.internal') return null;
 
