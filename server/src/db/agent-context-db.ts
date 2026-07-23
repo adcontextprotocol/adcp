@@ -202,8 +202,8 @@ export class AgentContextDatabase {
         auth_token_encrypted IS NOT NULL as has_auth_token,
         auth_token_hint,
         auth_type,
-        oauth_access_token_encrypted IS NOT NULL as has_oauth_token,
-        oauth_refresh_token_encrypted IS NOT NULL as has_oauth_refresh_token,
+        (oauth_access_token_encrypted IS NOT NULL AND oauth_access_token_iv IS NOT NULL) as has_oauth_token,
+        (oauth_refresh_token_encrypted IS NOT NULL AND oauth_refresh_token_iv IS NOT NULL) as has_oauth_refresh_token,
         oauth_token_expires_at,
         oauth_client_id IS NOT NULL as has_oauth_client,
         (oauth_cc_token_endpoint IS NOT NULL
@@ -247,8 +247,8 @@ export class AgentContextDatabase {
         auth_token_encrypted IS NOT NULL as has_auth_token,
         auth_token_hint,
         auth_type,
-        oauth_access_token_encrypted IS NOT NULL as has_oauth_token,
-        oauth_refresh_token_encrypted IS NOT NULL as has_oauth_refresh_token,
+        (oauth_access_token_encrypted IS NOT NULL AND oauth_access_token_iv IS NOT NULL) as has_oauth_token,
+        (oauth_refresh_token_encrypted IS NOT NULL AND oauth_refresh_token_iv IS NOT NULL) as has_oauth_refresh_token,
         oauth_token_expires_at,
         oauth_client_id IS NOT NULL as has_oauth_client,
         (oauth_cc_token_endpoint IS NOT NULL
@@ -292,8 +292,8 @@ export class AgentContextDatabase {
         auth_token_encrypted IS NOT NULL as has_auth_token,
         auth_token_hint,
         auth_type,
-        oauth_access_token_encrypted IS NOT NULL as has_oauth_token,
-        oauth_refresh_token_encrypted IS NOT NULL as has_oauth_refresh_token,
+        (oauth_access_token_encrypted IS NOT NULL AND oauth_access_token_iv IS NOT NULL) as has_oauth_token,
+        (oauth_refresh_token_encrypted IS NOT NULL AND oauth_refresh_token_iv IS NOT NULL) as has_oauth_refresh_token,
         oauth_token_expires_at,
         oauth_client_id IS NOT NULL as has_oauth_client,
         (oauth_cc_token_endpoint IS NOT NULL
@@ -465,8 +465,8 @@ export class AgentContextDatabase {
          auth_token_encrypted IS NOT NULL as has_auth_token,
          auth_token_hint,
          auth_type,
-         oauth_access_token_encrypted IS NOT NULL as has_oauth_token,
-         oauth_refresh_token_encrypted IS NOT NULL as has_oauth_refresh_token,
+         (oauth_access_token_encrypted IS NOT NULL AND oauth_access_token_iv IS NOT NULL) as has_oauth_token,
+         (oauth_refresh_token_encrypted IS NOT NULL AND oauth_refresh_token_iv IS NOT NULL) as has_oauth_refresh_token,
          oauth_token_expires_at,
          oauth_client_id IS NOT NULL as has_oauth_client,
          (oauth_cc_token_endpoint IS NOT NULL

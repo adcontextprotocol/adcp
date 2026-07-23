@@ -34,6 +34,18 @@ describe('AgentContextDatabase URL canonicalization', () => {
     expect(queryMock.mock.calls[4][1]).toEqual([CANONICAL]);
   });
 
+  it('reports OAuth grants only when their ciphertext and IV are both present', async () => {
+    await db.getByOrgAndUrl(ORG, VARIANT);
+
+    const sql = String(queryMock.mock.calls[0][0]);
+    expect(sql).toContain(
+      '(oauth_access_token_encrypted IS NOT NULL AND oauth_access_token_iv IS NOT NULL) as has_oauth_token',
+    );
+    expect(sql).toContain(
+      '(oauth_refresh_token_encrypted IS NOT NULL AND oauth_refresh_token_iv IS NOT NULL) as has_oauth_refresh_token',
+    );
+  });
+
   it('canonicalizes create and URL updates', async () => {
     queryMock.mockResolvedValueOnce({ rows: [{ id: 'ctx_created', agent_url: CANONICAL }] } as never);
     await db.create({ organization_id: ORG, agent_url: VARIANT });

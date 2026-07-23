@@ -117,7 +117,11 @@ import { ComplianceDatabase, type LifecycleStage } from "../db/compliance-db.js"
 import { VERIFICATION_MODES, isVerificationMode } from "../services/adcp-taxonomy.js";
 import { AgentSnapshotDatabase } from "../db/agent-snapshot-db.js";
 import { resolveUserAgentAuth } from "./helpers/resolve-user-agent-auth.js";
-import { adaptAuthForSdk, type SdkAuth } from "../services/sdk-auth-adapter.js";
+import {
+  adaptAuthForSdk,
+  authForSdkDiscoveryProbe,
+  type SdkAuth,
+} from "../services/sdk-auth-adapter.js";
 import { parseOAuthClientCredentialsInput } from "./helpers/oauth-client-credentials-input.js";
 import { isOAuthRequiredErrorMessage } from "./helpers/oauth-error-detection.js";
 import { AgentContextDatabase, validateAuthTokenChars } from "../db/agent-context-db.js";
@@ -7108,12 +7112,13 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     try {
       const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
       const sdkAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `test-agent:${agentUrl}` });
+      const probeAuth = authForSdkDiscoveryProbe(sdkAuth);
 
       let profile;
       try {
         const caps = await testCapabilityDiscovery(
           agentUrl,
-          { ...(sdkAuth && { auth: sdkAuth }) },
+          { ...(probeAuth && { auth: probeAuth }) },
         );
         profile = caps.profile;
 
