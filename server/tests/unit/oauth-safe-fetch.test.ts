@@ -62,6 +62,7 @@ describe('oauthSafeFetch', () => {
         method: 'POST',
         headers: { 'content-type': 'application/x-www-form-urlencoded' },
         body: expectedBody,
+        maxRedirects: 0,
       },
     );
   });
