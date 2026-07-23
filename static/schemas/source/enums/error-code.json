@@ -96,7 +96,12 @@
     "FEED_FETCH_FAILED",
     "INVALID_FEED_FORMAT",
     "ITEM_VALIDATION_FAILED",
-    "CATALOG_LIMIT_EXCEEDED"
+    "CATALOG_LIMIT_EXCEEDED",
+    "INVALID_PRICING_OPTION",
+    "INVALID_USAGE_DATA",
+    "DUPLICATE_REQUEST",
+    "TARGETING_TOO_NARROW",
+    "CREATIVE_ID_EXISTS"
   ],
   "enumDescriptions": {
     "INVALID_REQUEST": "Request is malformed, missing required fields, or violates schema constraints. Recovery: correctable (check request parameters and fix).",
@@ -190,7 +195,12 @@
     "FEED_FETCH_FAILED": "Platform could not fetch the catalog feed URL during sync_catalogs. Recovery: correctable (check URL accessibility, authentication, and that the content matches the declared feed_format).",
     "INVALID_FEED_FORMAT": "Catalog feed content does not match the declared feed_format. Recovery: correctable (verify the feed content matches the declared format, e.g. XML for google_merchant_center).",
     "ITEM_VALIDATION_FAILED": "One or more catalog items failed schema validation during sync_catalogs. Recovery: correctable (check item_issues for per-item rejection reasons and fix the offending items).",
-    "CATALOG_LIMIT_EXCEEDED": "The account has reached its maximum catalog count. Recovery: correctable (remove unused catalogs, or contact the seller to raise the limit)."
+    "CATALOG_LIMIT_EXCEEDED": "The account has reached its maximum catalog count. Recovery: correctable (remove unused catalogs, or contact the seller to raise the limit).",
+    "INVALID_PRICING_OPTION": "A `pricing_option_id` referenced in the request does not exist on the target account or product. Returned per-record in `report_usage` responses and at the request level for `create_media_buy` when the submitted pricing option cannot be resolved. `error.field` SHOULD point at the offending record path (e.g., `usage[1].pricing_option_id` or `packages[0].pricing_option_id`). Distinct from `PRODUCT_NOT_FOUND` (the product itself is unknown) by being narrowly about a pricing option within a known product or account. Recovery: correctable (verify `pricing_option_id` against the product's `pricing_options` from `get_products` or the vendor's discovery response, then resubmit with a valid ID).",
+    "INVALID_USAGE_DATA": "A usage record in `report_usage` has missing or invalid fields — required fields absent, values out of range, or type mismatches. Returned per-record in the `report_usage` response `errors[]` array. `error.field` SHOULD point at the offending field path (e.g., `usage[0].vendor_cost`, `usage[0].currency`). Distinct from `INVALID_REQUEST` (top-level request malformed) by being scoped to individual usage records within an otherwise well-formed request. Recovery: correctable (check required fields for the vendor type — at minimum `vendor_cost`, `currency`, and `account` — fix the offending values, and resubmit).",
+    "DUPLICATE_REQUEST": "A request with this `idempotency_key` was already accepted and processed. The original response is returned unchanged. Distinct from `IDEMPOTENCY_CONFLICT` (same key, different payload) and `IDEMPOTENCY_IN_FLIGHT` (same key, still processing) by indicating a completed, successful prior request with identical payload. Recovery: none needed (safe to ignore — the response is the original result; no double-counting or double-execution occurred).",
+    "TARGETING_TOO_NARROW": "The requested targeting parameters yield zero available inventory — the intersection of geographic, audience, contextual, or other targeting dimensions is too restrictive for the seller to serve. Distinct from `AUDIENCE_TOO_SMALL` (a single audience segment is below minimum size) by applying to the combined targeting envelope across all dimensions. `error.details` SHOULD identify which targeting dimensions contributed to the empty intersection when the seller can determine this. Recovery: correctable (broaden geographic, audience, or contextual targeting criteria and retry).",
+    "CREATIVE_ID_EXISTS": "The submitted `creative_id` already exists in the seller's creative namespace for this account. Returned by `create_media_buy` and `update_media_buy` when inline creative submission uses an ID that collides with an existing creative. For library-backed sellers (those implementing `sync_creatives`), existing creatives should be assigned via `creative_assignments` or updated via `sync_creatives` rather than re-submitted inline. For inline-only sellers, use a different package-scoped `creative_id`. `error.field` SHOULD point at the offending creative path (e.g., `packages[0].creatives[0].creative_id`). Recovery: correctable (assign the existing creative via `creative_assignments`, update it via `sync_creatives`, or use a different `creative_id`)."
   },
   "enumMetadata": {
     "$comment": "Structured recovery classification and remediation hints for each error code. SDKs MUST consume this block instead of parsing 'Recovery: X' from enumDescriptions prose. Each entry is { recovery, suggestion }. recovery is one of: correctable (caller can fix and retry), transient (retry with backoff), terminal (no autonomous recovery - operator intervention required). enumDescriptions is retained for human readability and will continue to carry the canonical narrative; the recovery classification embedded in that prose is normative and MUST match the value here.",
@@ -561,6 +571,26 @@
     "CATALOG_LIMIT_EXCEEDED": {
       "recovery": "correctable",
       "suggestion": "remove unused catalogs, or contact the seller to raise the limit"
+    },
+    "INVALID_PRICING_OPTION": {
+      "recovery": "correctable",
+      "suggestion": "verify pricing_option_id against the product's pricing_options from get_products or the vendor's discovery response, then resubmit with a valid ID"
+    },
+    "INVALID_USAGE_DATA": {
+      "recovery": "correctable",
+      "suggestion": "check required fields for the vendor type (vendor_cost, currency, account at minimum), fix invalid values, and resubmit"
+    },
+    "DUPLICATE_REQUEST": {
+      "recovery": "correctable",
+      "suggestion": "safe to ignore — the original response is returned unchanged; no double-counting occurred"
+    },
+    "TARGETING_TOO_NARROW": {
+      "recovery": "correctable",
+      "suggestion": "broaden geographic, audience, or contextual targeting criteria and retry"
+    },
+    "CREATIVE_ID_EXISTS": {
+      "recovery": "correctable",
+      "suggestion": "assign the existing creative via creative_assignments, update it via sync_creatives, or use a different creative_id"
     }
   }
 }
