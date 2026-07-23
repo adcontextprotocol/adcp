@@ -1,232 +1,123 @@
 # Release Process
 
-This document describes how to manage releases of the AdCP specification using Changesets. **For deeper operational guidance** — release lines, cherry-pick conventions, the forward-merge workflow, manual resolution recipes, and the 3.1.0 transition plan — see `.agents/playbook.md` (§ Release lines). The playbook is canonical; this file is the introductory walkthrough.
+This is the operational overview for AdCP releases. For patch eligibility and
+conflict policy, see `.agents/playbook.md` (§ Release lines). For the complete
+maintenance-line checklist, see `.agents/shortcuts/cut-patch.md`.
 
-## Overview
+## Current topology
 
-We use [Changesets](https://github.com/changesets/changesets) to manage versions and releases. Changesets automatically:
+- `3.1.x` is the stable maintenance line. Patch fixes are reviewed on `main`
+  first, then cherry-picked to a PR targeting `3.1.x`.
+- `main` is the next-minor line. It must be in Changesets beta pre mode
+  (`.changeset/pre.json` with `"tag": "beta"`) while developing 3.2, so its
+  Version Packages PRs produce `3.2.0-beta.N` rather than stable `3.2.0`.
+- Forward merges are one-way: `3.1.x → main`. Never merge `main` into the
+  maintenance branch.
 
-- Updates `package.json` version
-- Updates all schema `adcp_version` defaults
-- Updates documentation examples
-- Generates CHANGELOG entries
-- Creates git tags
+The root `adcontextprotocol` package is private. Its version is release
+metadata for Changesets and the protocol artifacts; it is **not published to
+npm**. Protocol releases are distributed as signed tarballs through GitHub
+Releases and `https://adcontextprotocol.org/protocol/`. SDK npm releases happen
+in the separate `adcp-client` repository.
 
-AdCP runs **two release lines simultaneously**: `main` (next minor, currently `3.1.0-beta.N`) and `3.0.x` (patches to the current stable). Most contributors only touch `main` — the cherry-pick + forward-merge dance is documented in the playbook for cases where a fix needs to ship in both lines.
+## Changes and changesets
 
-## Workflow
-
-### 1. Making Changes
-
-When you make changes to the protocol (adding features, fixing bugs, etc.):
+Protocol changes need a changeset:
 
 ```bash
 npm run changeset
 ```
 
-This will prompt you to:
-1. Select the type of change (patch/minor/major)
-2. Write a description of the change
+Use `patch` for compatible fixes and clarifications, `minor` for additive
+stable protocol surface, and `major` for breaking stable changes. Addie,
+website, infrastructure, internal tooling, and non-normative docs do not get a
+protocol changeset.
 
-A changeset file will be created in `.changeset/` directory. Commit this with your changes.
+For a fix that must ship in 3.1.x:
 
-### 2. Creating a Release
+1. Land the normal PR on `main`.
+2. Confirm every protocol changeset in the merged commit is `patch`.
+3. Create a clean branch from `origin/3.1.x`, cherry-pick the merged commit,
+   resolve only maintenance-compatible conflicts, and open a PR to `3.1.x`.
+4. Merge only after CI and human review. The push to `3.1.x` refreshes the
+   `changeset-release/3.1.x` Version Packages PR.
 
-When ready to release:
+Do not downgrade a `minor` or `major` changeset during a backport. Reclassify
+the change on `main` first or leave it for 3.2.
 
-```bash
-npm run version
-```
+## Cutting a 3.1.x patch
 
-This will:
-- Apply all pending changesets
-- Update `package.json` version
-- Run `scripts/update-schema-versions.js` to sync all schemas and docs
-- Update CHANGELOG.md
+1. Audit `changeset-release/3.1.x`. The PR must show only
+   `adcontextprotocol@3.1.X` under `Patch Changes`; unexpected non-protocol or
+   higher-level entries are a stop.
+2. Review the generated version, changelog, versioned schemas/compliance, and
+   `dist/protocol/3.1.X.tgz{,.sha256,.sig,.crt}`.
+3. Merge the Version Packages PR. `release.yml` tags `v3.1.X`, creates the
+   GitHub Release, uploads the four assets, publishes the immutable artifacts
+   to R2, and verifies the CDN copy. It does not run `npm publish`.
+4. Let `release-docs.yml` open and merge the versioned docs snapshot PR.
+5. Review and merge the automated forward-merge PR from `3.1.x` to `main`.
+   Metadata may resolve by policy; content conflicts require human review.
 
-Review the changes, then commit:
+## Patch verification (3.1.5 example)
 
-```bash
-git add -A
-git commit -m "Version packages"
-git push
-```
-
-Or use the convenience script:
-
-```bash
-npm run release
-```
-
-### 3. Tagging the Release
-
-After the version commit is merged to main:
+Use the exact release version; do not verify through a moving alias:
 
 ```bash
-git tag -a v0.5.0 -m "Release v0.5.0"
-git push origin v0.5.0
+VERSION=3.1.5
+
+git fetch origin --tags
+git rev-parse "v$VERSION^{}"
+git rev-parse origin/3.1.x
+gh release view "v$VERSION" --json tagName,targetCommitish,assets,url
+
+tmpdir="$(mktemp -d)"
+gh release download "v$VERSION" --dir "$tmpdir"
+cd "$tmpdir"
+shasum -a 256 -c "$VERSION.tgz.sha256"
+cosign verify-blob \
+  --signature "$VERSION.tgz.sig" \
+  --certificate "$VERSION.tgz.crt" \
+  --certificate-identity-regexp '^https://github\.com/adcontextprotocol/adcp/\.github/workflows/release\.yml@refs/heads/.*$' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  "$VERSION.tgz"
+
+curl -fsSI "https://adcontextprotocol.org/protocol/$VERSION.tgz"
+curl -fsS "https://adcontextprotocol.org/schemas/$VERSION/index.json" >/dev/null
+curl -fsS "https://adcontextprotocol.org/compliance/$VERSION/index.json" >/dev/null
 ```
 
-Then create a GitHub release from the tag.
+Then confirm:
 
-## Version Management
+- the tag and `origin/3.1.x` identify the Version Packages merge;
+- the GitHub Release has exactly the tarball, checksum, signature, and
+  certificate assets;
+- `dist/docs/3.1.5/` lands on `main` and the `3.1` docs selector reflects it;
+- the `3.1.x → main` forward-merge PR lands; and
+- `git log v3.1.5..origin/3.1.x` contains no stranded release work.
 
-### Semantic Versioning
+## 3.2 beta pre mode
 
-We follow [Semantic Versioning](https://semver.org/):
-
-- **Patch** (0.5.x): Bug fixes, documentation clarifications, schema fixes
-  - Fix typos in schemas or docs
-  - Correct validation patterns
-  - Fix broken references
-
-- **Minor** (0.x.0): New features, backward-compatible changes
-  - Add new optional fields
-  - Add new tasks
-  - Add new enum values
-  - Add new standard formats
-
-- **Major** (x.0.0): Breaking changes
-  - Remove or rename fields
-  - Change field types
-  - Make optional fields required
-  - Remove enum values
-
-### What Gets Versioned
-
-When you run `npm run version`, these files are automatically updated:
-
-1. **package.json**: The main version number
-2. **Schema Registry** (`static/schemas/source/index.json`): `adcp_version` field and `lastUpdated` date
-
-**That's it!** Version is maintained in only two places:
-- The npm package version
-- The schema registry (single source of truth for protocol version)
-
-Individual request/response schemas and documentation do not contain version fields. Version is indicated by the schema path (`/schemas/latest/`) and the schema registry.
-
-### Manual Version Updates (Not Recommended)
-
-If you need to manually update versions (avoid this - use Changesets instead):
+Enter beta pre mode on `main` before accepting 3.2 release changes:
 
 ```bash
-# Update package.json version
-npm version 0.6.0 --no-git-tag-version
-
-# Run the sync script
-npm run update-schema-versions
-
-# Commit changes
-git add -A
-git commit -m "Bump version to 0.6.0"
+git switch main
+git pull --ff-only origin main
+npx changeset pre enter beta
+git add .changeset/pre.json
+git commit -m "chore(release): enter pre mode for 3.2 beta"
 ```
 
-## Best Practices
+Land that through a normal PR. While `.changeset/pre.json` exists, merge only
+Version Packages PRs that resolve to `3.2.0-beta.N`. Keep pre mode and its
+changeset pool on `main`; neither belongs on `3.1.x`. Exiting pre mode for 3.2
+GA is a separate, explicitly reviewed release operation.
 
-### Before Making Changes
+## Recovery
 
-1. **Check current version**: Look at `package.json`
-2. **Review pending changesets**: Check `.changeset/` directory
-3. **Consider impact**: Will this be patch, minor, or major?
-
-### When Adding Features
-
-1. Make your changes to code/docs/schemas
-2. Run `npm run changeset` to create changeset
-3. Select "minor" for new features
-4. Write clear description of what was added
-5. Commit both your changes and the changeset file
-
-### When Fixing Bugs
-
-1. Fix the bug
-2. Run `npm run changeset`
-3. Select "patch" for bug fixes
-4. Describe what was fixed
-5. Commit both the fix and the changeset
-
-### When Making Breaking Changes
-
-1. **Carefully consider** if the breaking change is necessary
-2. Make your changes
-3. Run `npm run changeset`
-4. Select "major" for breaking changes
-5. Write detailed description including migration path
-6. Update migration documentation
-7. Commit changes and changeset
-
-## Release Checklist
-
-Before releasing:
-
-- [ ] All tests pass (`npm test`)
-- [ ] Documentation is up to date
-- [ ] CHANGELOG.md entries are accurate
-- [ ] All changesets describe changes clearly
-- [ ] Breaking changes have migration guides
-- [ ] Schema validation works with new changes
-
-After releasing:
-
-- [ ] Version commit is pushed to main
-- [ ] Git tag is created and pushed
-- [ ] GitHub release is created with notes
-- [ ] Documentation site is updated
-- [ ] Community is notified (if major/minor)
-
-## Automation
-
-Our version management is automated through npm scripts:
-
-```json
-{
-  "changeset": "changeset",
-  "version": "changeset version && npm run update-schema-versions",
-  "update-schema-versions": "node scripts/update-schema-versions.js",
-  "release": "npm run version && npm test && git add -A && git commit -m 'Version packages' && git push"
-}
-```
-
-The `scripts/update-schema-versions.js` script updates the schema registry version to match package.json.
-
-## Troubleshooting
-
-### Forward-merge PR fails on `Check for changeset`
-
-PRs whose head branch starts with `forward-merge/` skip the changeset check (the merge brings package-changing commits whose changesets were already consumed by 3.0.x's Version Packages cut). If the check is firing on a forward-merge PR, the head branch isn't using the `forward-merge/` prefix — rename it:
-
-```bash
-git push origin HEAD:refs/heads/forward-merge/3.0.x-<descriptor>
-```
-
-See `.agents/playbook.md` for the full manual forward-merge runbook.
-
-### Forward-merge workflow fails loud on content conflicts
-
-Expected behavior when 3.0.x has changes in the cross-line-divergent files (`error-code.json`, `storyboard-schema.yaml`, `runner-output-contract.yaml`, `error.json`, `get-adcp-capabilities-response.json`, `training-agent-storyboards.yml`, `error-handling.mdx`). The workflow's error message includes the manual resolution recipe. See `.agents/playbook.md` (§ Cherry-pick convention) for the full procedure and rationale.
-
-### Changesets not found
-
-Install dependencies:
-```bash
-npm install
-```
-
-### Schema versions out of sync
-
-Run the sync script:
-```bash
-npm run update-schema-versions
-```
-
-### Tests failing after version bump
-
-The version script runs tests automatically. If they fail:
-1. Check what broke
-2. Fix the issue
-3. Commit the fix
-4. Re-run `npm run version`
-
-## Questions?
-
-For questions about the release process, open an issue on GitHub or reach out to the maintainers.
+If the automated release fails after the Version Packages merge, fix and
+rerun the workflow when safe. Manual tag/release recovery is the last resort:
+the tag must target the Version Packages merge, and the same four signed
+assets must be uploaded without overwriting an existing artifact with a
+different digest. See `.agents/shortcuts/cut-major.md` for the fallback
+commands.
