@@ -31,7 +31,8 @@ description: |
   fires up to `max_attempts` sequential requests with fresh
   `idempotency_key` values and otherwise-identical canonical payloads. On
   the first `RATE_LIMITED` response it captures the request's idempotency
-  key, sleeps `error.details.retry_after` seconds, and then re-submits the
+  key, sleeps the RATE_LIMITED response's top-level `error.retry_after`
+  seconds, and then re-submits the
   same key with the same payload. The cross-step assertion compares the
   replay response against the rate-limit response and fails if the replay
   returned the cached `RATE_LIMITED`.
@@ -57,7 +58,7 @@ harness_mode: black_box
 #   1. A response with envelope error_code = RATE_LIMITED is observed.
 #      The runner captures the request's idempotency_key into the
 #      step's context as `rate_limited_key`, captures the response's
-#      `error.details.retry_after` as `retry_after_seconds`, captures
+#      top-level `error.retry_after` as `retry_after_seconds`, captures
 #      the rate-limit response body for the replay assertion, and
 #      proceeds to the wait + replay phase.
 #
@@ -92,7 +93,7 @@ burst_step_contract:
 # --- Wait + replay mechanism ---
 #
 # When a RATE_LIMITED is observed the runner reads
-# `error.details.retry_after` (seconds), waits that long (capped by
+# the RATE_LIMITED response's top-level `error.retry_after` (seconds), waits that long (capped by
 # `rate_limit_trip.replay_max_wait_seconds`, default 30), then re-submits
 # the rate-limited request:
 #
@@ -110,7 +111,7 @@ burst_step_contract:
 # verified.
 #
 # Sellers returning a `RATE_LIMITED` response without
-# `error.details.retry_after` (or with retry_after = 0) fail with
+# top-level `error.retry_after` (or with retry_after = 0) fail with
 # `missing_retry_after` — the retry hint is required to make rate-limit
 # responses actionable, per L1/security.mdx error semantics.
 
@@ -168,5 +169,5 @@ replay_invariant_check_kinds:
 
 reviewer_checks:
   - "Confirm the seller's idempotency-cache implementation explicitly excludes RATE_LIMITED (and other transient-error) responses from the cached-replay path. Review the storage layer or runbook describing which response classes are persisted under idempotency_key."
-  - "Confirm the seller's rate-limit response carries a usable retry_after value (seconds, integer, > 0, ≤ a documented ceiling). A seller that returns retry_after values larger than buyers' realistic retry windows produces unusable rate-limit signaling."
+  - "Confirm the seller's RATE_LIMITED response carries a usable top-level error.retry_after value (seconds, > 0, ≤ a documented ceiling). A seller that returns retry_after values larger than buyers' realistic retry windows produces unusable rate-limit signaling."
   - "Confirm the seller's rate-limit budget is scoped per (authenticated_agent, account) tuple — not shared across all agents or accounts globally — so one agent's burst cannot exhaust another's budget."

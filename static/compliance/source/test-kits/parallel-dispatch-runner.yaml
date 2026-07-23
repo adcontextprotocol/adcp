@@ -142,7 +142,7 @@ cross_response_check_kinds:
 # than wait-and-replay. The runner MUST resolve IDEMPOTENCY_IN_FLIGHT
 # responses to their eventual cached response before applying cross-response
 # checks: when the runner observes IDEMPOTENCY_IN_FLIGHT, it waits the
-# `error.details.retry_after` seconds and retries the SAME idempotency_key
+# top-level `error.retry_after` seconds and retries the SAME idempotency_key
 # (per the buyer-side normative behavior). The cross-response check then
 # operates on the resolved response set, not the raw initial set.
 #
