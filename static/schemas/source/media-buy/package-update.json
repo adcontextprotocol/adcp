@@ -28,6 +28,15 @@
       "description": "Updated impression goal for this package",
       "minimum": 0
     },
+    "daily_budget_cap": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Updated hard ceiling on spend per calendar day for this package, in the media buy's currency. PATCH semantics: send to set or change the cap; the seller applies it from the next cap-day boundary forward and does not retroactively re-pace days already elapsed. Same enforcement contract as on create — requires `media_buy.budget_capping` support; sellers MUST reject a cap they cannot enforce with `UNSUPPORTED_FEATURE`. Removing a previously-set cap is out of scope for 3.1 (no explicit unset primitive; omitting the field leaves the current cap unchanged per PATCH semantics)."
+    },
+    "budget_cap_timezone": {
+      "type": "string",
+      "description": "Updated IANA timezone override for the `daily_budget_cap` day boundary. Valid only when the seller advertises `media_buy.budget_capping.buyer_timezone_override: true`; otherwise rejected with `UNSUPPORTED_FEATURE`."
+    },
     "start_time": {
       "type": "string",
       "format": "date-time",

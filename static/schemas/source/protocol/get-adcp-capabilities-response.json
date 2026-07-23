@@ -620,6 +620,37 @@
           },
           "additionalProperties": true
         },
+        "budget_capping": {
+          "type": "object",
+          "description": "Daily budget-cap capabilities. Presence of this object indicates the seller honors `daily_budget_cap` on packages and MUST reject caps it cannot enforce with `UNSUPPORTED_FEATURE` rather than silently dropping them. Absence indicates no daily-cap support; buyers MUST NOT send `daily_budget_cap` to a seller that does not declare this object. `daily_budget_cap` is orthogonal to `pacing` — the cap is the ceiling the pacing engine operates within.",
+          "properties": {
+            "supported_periods": {
+              "type": "array",
+              "description": "Cap reset periods the seller enforces. AdCP 3.1 defines `day` only; the array form reserves room for future periods (e.g. `hour`, `week`) as an additive change without breaking the field shape.",
+              "items": {
+                "type": "string",
+                "enum": ["day"]
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "enforcement": {
+              "type": "string",
+              "enum": ["hard", "soft"],
+              "description": "Enforcement strength. `hard`: spend never exceeds the cap on any single day — delivery pauses for the remainder of the cap-day when the ceiling is hit. `soft`: the cap is a pacing target the seller aims for but MAY overshoot within the day. Buyers running against client-approved daily authorizations MUST inspect this before treating a cap as a guarantee."
+            },
+            "effective_timezone": {
+              "type": "string",
+              "description": "IANA timezone (e.g., 'America/New_York') anchoring the daily cap's calendar-day boundary. Authoritative pre-commitment — buyers SHOULD read it before setting a cap. When the account exposes `get_account_financials`, this value MUST equal `get_account_financials.timezone` so cap resets and invoice periods share one boundary; when financials are unavailable, this is the self-contained source of truth. DST transition days (23/25-hour) count as one local calendar day carrying the full cap."
+            },
+            "buyer_timezone_override": {
+              "type": "boolean",
+              "description": "When true, buyers MAY override the cap's day boundary via `package.budget_cap_timezone`. When false or absent, the cap always resets on `effective_timezone`, and a submitted `budget_cap_timezone` is rejected with `UNSUPPORTED_FEATURE`."
+            }
+          },
+          "required": ["supported_periods", "enforcement", "effective_timezone"],
+          "additionalProperties": true
+        },
         "content_standards": {
           "type": "object",
           "description": "Content standards implementation details. Presence of this object indicates the seller supports content_standards configuration including sampling rates and category filtering. Gives buyers pre-buy visibility into local evaluation and artifact delivery capabilities. This is a seller-side media-buy capability; governance agents providing content standards services declare `specialisms: [\"content-standards\"]` instead.",

@@ -2076,6 +2076,40 @@ async function runTests() {
   );
   log('');
 
+  // daily_budget_cap threads through the package request/update shapes (#5983)
+  log('Daily budget cap (package request/update):', 'info');
+  await testSchemaValidation(
+    '/schemas/media-buy/package-request.json',
+    {
+      product_id: 'prod_ctv_sports',
+      pricing_option_id: 'po_cpm_fixed',
+      budget: 50000,
+      pacing: 'asap',
+      daily_budget_cap: 2500,
+      budget_cap_timezone: 'America/Chicago'
+    },
+    'Accepts package request with daily_budget_cap + budget_cap_timezone (orthogonal to asap pacing)'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/package-request.json',
+    {
+      product_id: 'prod_ctv_sports',
+      pricing_option_id: 'po_cpm_fixed',
+      budget: 50000,
+      daily_budget_cap: -100
+    },
+    'Rejects negative daily_budget_cap'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/package-update.json',
+    {
+      package_id: 'pkg_001',
+      daily_budget_cap: 1800
+    },
+    'Accepts package update raising daily_budget_cap'
+  );
+  log('');
+
   // Test 7: Bundled schemas (no $ref resolution needed)
   // Only test against latest/ — versioned dirs in dist/ may be from a prior release
   // and are not updated on every source change.
