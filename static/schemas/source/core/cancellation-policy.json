@@ -31,6 +31,24 @@
         }
       },
       "required": ["type"],
+      "allOf": [
+        {
+          "$comment": "rate quantifies a percent_remaining fee; without it the cancellation cost is undefined.",
+          "if": {
+            "properties": { "type": { "const": "percent_remaining" } },
+            "required": ["type"]
+          },
+          "then": { "required": ["rate"] }
+        },
+        {
+          "$comment": "amount quantifies a fixed_fee; without it the cancellation cost is undefined.",
+          "if": {
+            "properties": { "type": { "const": "fixed_fee" } },
+            "required": ["type"]
+          },
+          "then": { "required": ["amount"] }
+        }
+      ],
       "additionalProperties": true
     }
   },
