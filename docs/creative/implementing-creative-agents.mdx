@@ -428,12 +428,84 @@ When updating format definitions:
 Before launching your creative agent:
 
 - [ ] MCP and/or A2A endpoints are accessible
+- [ ] `get_adcp_capabilities` returns `creative.supported_formats` with at least one entry
 - [ ] All format_ids use proper namespacing (`domain:id`)
 - [ ] Domain in format_id matches your `agent_url` domain
-- [ ] `list_creative_formats` returns all your formats
+- [ ] `creative.supported_formats` includes every format the agent offers for discovery
 - [ ] `preview_creative` validates manifests and generates previews
 - [ ] Format definitions include complete asset requirements
 - [ ] Documentation available for your custom formats
+
+To verify a remote creative agent is reachable and advertising its format surface, call `get_adcp_capabilities` on the agent endpoint and confirm that the response includes a non-empty `creative.supported_formats` array. Each entry follows the [canonical format declaration](/docs/creative/canonical-formats) shape.
+
+<Accordion title="Verify an MCP creative agent">
+
+```bash
+export AGENT_URL="https://your-creative-agent.example.com/mcp"
+
+# 1. Initialize MCP and capture Mcp-Session-Id when the server is stateful.
+SESSION_ID=$(curl -s -D - -o /dev/null -X POST "$AGENT_URL" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": {
+      "protocolVersion": "2024-11-05",
+      "capabilities": {},
+      "clientInfo": { "name": "adcp-probe", "version": "1.0" }
+    }
+  }' | grep -i '^mcp-session-id:' | awk '{print $2}' | tr -d '\r\n')
+
+HEADERS=(-H "Content-Type: application/json" -H "Accept: application/json, text/event-stream")
+[ -n "$SESSION_ID" ] && HEADERS+=(-H "Mcp-Session-Id: $SESSION_ID")
+
+# 2. Complete the MCP initialization lifecycle before calling a tool.
+curl -s -o /dev/null -X POST "$AGENT_URL" "${HEADERS[@]}" \
+  -d '{"jsonrpc":"2.0","method":"notifications/initialized"}'
+
+# 3. Call get_adcp_capabilities with the same session header.
+curl -X POST "$AGENT_URL" "${HEADERS[@]}" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/call",
+    "params": {
+      "name": "get_adcp_capabilities",
+      "arguments": {
+        "adcp_version": "3.1",
+        "adcp_major_version": 3,
+        "protocols": ["creative"]
+      }
+    }
+  }'
+```
+
+Read the AdCP payload from the MCP result and verify that it contains a creative capability block like this:
+
+```json
+{
+  "creative": {
+    "supported_formats": [
+      {
+        "capability_id": "display_banner",
+        "format": {
+          "format_kind": "image",
+          "params": {
+            "width": 300,
+            "height": 250
+          }
+        }
+      }
+    ]
+  }
+}
+```
+
+An unreachable endpoint, an authorization error, a missing `creative` block, or an empty `supported_formats` array means the agent is not ready for creative-format discovery. If the endpoint requires authentication, include the credential configured for that agent.
+
+</Accordion>
 
 ## Integration patterns
 
