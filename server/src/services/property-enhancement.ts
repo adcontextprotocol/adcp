@@ -197,7 +197,10 @@ export async function enhanceProperty(
     risk = 'normal';
   }
 
-  // Build a minimal adagents_json for the pending entry.
+  // Build a minimal, identity-only adagents_json for the pending entry.
+  // Validation above records only whether an origin document exists; it does
+  // not copy the origin body. Authorization remains origin-derived at read
+  // time and is never projected into this community row.
   // Metadata goes in the ext field for reference.
   const adagentsJson: Record<string, unknown> = {
     $schema: 'https://adcontextprotocol.org/schemas/latest/adagents.json',

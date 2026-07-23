@@ -54,6 +54,7 @@ import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain, getGoogleEmailAliases } from "./utils/email-domain.js";
 import { isUuid } from "./utils/uuid.js";
 import { resolveUserNameWithFallbacks, sanitizeName } from "./utils/resolve-user-name.js";
+import { scrubCommunityAuthorizedAgents } from "./utils/community-adagents.js";
 import { requireAuth, requireAdmin, requireGlobalAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, encodeDevSessionCookie, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter, newsletterSubscribeRateLimiter, newsletterConfirmRateLimiter } from "./middleware/rate-limit.js";
 import { findOrCreateUserByEmail } from "./auth/workos-client.js";
@@ -3632,7 +3633,7 @@ export class HTTPServer {
 
         const property = await this.propertyDb.createHostedProperty({
           publisher_domain: publisher_domain.toLowerCase(),
-          adagents_json,
+          adagents_json: scrubCommunityAuthorizedAgents(adagents_json),
           source_type: source_type || 'community',
           created_by_user_id: req.user?.id,
           created_by_email: req.user?.email,
@@ -3666,7 +3667,7 @@ export class HTTPServer {
 
         const property = await this.propertyDb.createCommunityProperty({
           publisher_domain: publisher_domain.toLowerCase(),
-          adagents_json,
+          adagents_json: scrubCommunityAuthorizedAgents(adagents_json),
           source_type: 'community',
           created_by_user_id: req.user!.id,
           created_by_email: req.user!.email,
@@ -3751,7 +3752,9 @@ export class HTTPServer {
         }
 
         const { property, revision_number } = await this.propertyDb.editCommunityProperty(domain, {
-          adagents_json,
+          adagents_json: adagents_json === undefined
+            ? undefined
+            : scrubCommunityAuthorizedAgents(adagents_json),
           edit_summary,
           editor_user_id: req.user!.id,
           editor_email: req.user!.email,
