@@ -4,7 +4,9 @@ import { safeFetch } from './url-security.js';
  * Fetch adapter for server-side OAuth requests. OAuth discovery, dynamic
  * registration, and token exchange only use GET and POST requests, so keep
  * this surface deliberately narrow while routing every request and redirect
- * hop through the SSRF-safe fetcher.
+ * hop through the SSRF-safe fetcher. Credential-bearing POST requests never
+ * follow redirects; OAuth token and dynamic-registration endpoints are not
+ * expected to redirect, and forwarding their headers or bodies is unsafe.
  */
 export const oauthSafeFetch: typeof fetch = async (input, init) => {
   if (typeof input !== 'string' && !(input instanceof URL)) {
@@ -43,6 +45,7 @@ export const oauthSafeFetch: typeof fetch = async (input, init) => {
     method,
     headers,
     ...(body !== undefined && { body }),
+    ...(method === 'POST' && { maxRedirects: 0 }),
     ...(init?.signal && { signal: init.signal }),
   });
 };
