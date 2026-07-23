@@ -1474,9 +1474,13 @@
           if (currentTab === 'all') await loadAdminContent();
         } else {
           const d = await res.json().catch(() => ({}));
-          alert(d.message || d.error || 'Failed to delete');
+          if (res.status === 403) {
+            alert(d.message || 'You do not have permission to delete this content.');
+          } else {
+            alert(d.message || d.error || 'Failed to delete content. Please try again.');
+          }
         }
-      } catch (e) { alert('Failed to delete'); }
+      } catch (e) { alert(e.message || 'Failed to delete content. Please try again.'); }
     }
 
     function closeModal() { document.getElementById('contentModal').style.display = 'none'; editingContent = null; }
