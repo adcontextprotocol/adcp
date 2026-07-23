@@ -26,6 +26,7 @@ import { notifyRegistryCreate, notifyRegistryEdit } from "./notifications/regist
 import { reviewNewRecord, reviewRegistryEdit } from "./addie/mcp/registry-review.js";
 import type { MCPAuthContext } from "./mcp/auth.js";
 import { createLogger } from "./logger.js";
+import { scrubCommunityAuthorizedAgents } from "./utils/community-adagents.js";
 
 const logger = createLogger('mcp-tools');
 
@@ -474,17 +475,6 @@ export const TOOL_DEFINITIONS = [
         publisher_domain: {
           type: "string",
           description: "Publisher domain (e.g., 'example-news.com')",
-        },
-        authorized_agents: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              url: { type: "string" },
-              authorized_for: { type: "string" },
-            },
-          },
-          description: "Authorized agents for this property",
         },
         properties: {
           type: "array",
@@ -1794,35 +1784,15 @@ export class MCPToolHandler {
           };
         }
 
-        const authorizedAgents = args?.authorized_agents as Array<{ url: string; authorized_for?: string }> || [];
         const propertyItems = args?.properties as Array<{ type: string; name: string }> || [];
         const formats = args?.formats as Array<Record<string, unknown>> | undefined;
         const placements = args?.placements as Array<Record<string, unknown>> | undefined;
         const contact = args?.contact as { name?: string; email?: string } | undefined;
 
-        // Validate agent URLs
-        for (const agent of authorizedAgents) {
-          try {
-            const parsed = new URL(agent.url);
-            if (parsed.protocol !== 'https:') {
-              return {
-                content: [{ type: "text", text: JSON.stringify({ error: `Agent URL must use HTTPS: ${agent.url}` }) }],
-                isError: true,
-              };
-            }
-          } catch {
-            return {
-              content: [{ type: "text", text: JSON.stringify({ error: `Invalid agent URL: ${agent.url}` }) }],
-              isError: true,
-            };
-          }
-        }
-
-        const adagentsJson: Record<string, unknown> = {
+        const adagentsJson = scrubCommunityAuthorizedAgents({
           $schema: 'https://adcontextprotocol.org/schemas/latest/adagents.json',
-          authorized_agents: authorizedAgents,
           properties: propertyItems,
-        };
+        });
         if (contact) {
           adagentsJson.contact = contact;
         }

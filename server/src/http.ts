@@ -54,6 +54,7 @@ import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain, getGoogleEmailAliases } from "./utils/email-domain.js";
 import { isUuid } from "./utils/uuid.js";
 import { resolveUserNameWithFallbacks, sanitizeName } from "./utils/resolve-user-name.js";
+import { scrubCommunityAuthorizedAgents } from "./utils/community-adagents.js";
 import { requireAuth, requireAdmin, requireGlobalAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, encodeDevSessionCookie, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter, newsletterSubscribeRateLimiter, newsletterConfirmRateLimiter } from "./middleware/rate-limit.js";
 import { findOrCreateUserByEmail } from "./auth/workos-client.js";
@@ -3625,14 +3626,19 @@ export class HTTPServer {
     // POST /api/properties/hosted - Create a hosted property (authenticated)
     this.app.post('/api/properties/hosted', requireAuth, async (req, res) => {
       try {
-        const { publisher_domain, adagents_json, source_type } = req.body;
-        if (!publisher_domain || !adagents_json) {
+        // Establish the identity-only write invariant before any validation
+        // branch derived from caller input. Only this scrubbed value may reach
+        // the database boundary below.
+        const requestedAdagentsJson = req.body?.adagents_json;
+        const adagentsJsonForStorage = scrubCommunityAuthorizedAgents(requestedAdagentsJson);
+        const { publisher_domain, source_type } = req.body;
+        if (!publisher_domain || !requestedAdagentsJson) {
           return res.status(400).json({ error: 'publisher_domain and adagents_json required' });
         }
 
         const property = await this.propertyDb.createHostedProperty({
           publisher_domain: publisher_domain.toLowerCase(),
-          adagents_json,
+          adagents_json: adagentsJsonForStorage,
           source_type: source_type || 'community',
           created_by_user_id: req.user?.id,
           created_by_email: req.user?.email,
@@ -3648,13 +3654,18 @@ export class HTTPServer {
     // POST /api/properties/hosted/community - Create a new community property (member-authenticated, pending review)
     this.app.post('/api/properties/hosted/community', requireAuth, async (req, res) => {
       try {
+        // Scrub unconditionally, before membership and payload validation can
+        // branch on request-derived values.
+        const requestedAdagentsJson = req.body?.adagents_json;
+        const adagentsJsonForStorage = scrubCommunityAuthorizedAgents(requestedAdagentsJson);
+
         await enrichUserWithMembership(req.user as any);
         if (!(req.user as any)?.isMember) {
           return res.status(403).json({ error: 'Membership required to create properties' });
         }
 
-        const { publisher_domain, adagents_json } = req.body;
-        if (!publisher_domain || !adagents_json) {
+        const { publisher_domain } = req.body;
+        if (!publisher_domain || !requestedAdagentsJson) {
           return res.status(400).json({ error: 'publisher_domain and adagents_json required' });
         }
 
@@ -3666,7 +3677,7 @@ export class HTTPServer {
 
         const property = await this.propertyDb.createCommunityProperty({
           publisher_domain: publisher_domain.toLowerCase(),
-          adagents_json,
+          adagents_json: adagentsJsonForStorage,
           source_type: 'community',
           created_by_user_id: req.user!.id,
           created_by_email: req.user!.email,
@@ -3732,6 +3743,15 @@ export class HTTPServer {
     // PUT /api/properties/hosted/:domain - Edit a community property with revision tracking
     this.app.put('/api/properties/hosted/:domain', requireAuth, async (req, res) => {
       try {
+        // Always scrub before request-dependent branching. Preserve the
+        // existing optional-update behavior by selecting undefined only after
+        // the scrub has established the safe storage value.
+        const requestedAdagentsJson = req.body?.adagents_json;
+        const adagentsJsonForStorage = scrubCommunityAuthorizedAgents(requestedAdagentsJson);
+        const adagentsJsonUpdate = requestedAdagentsJson === undefined
+          ? undefined
+          : adagentsJsonForStorage;
+
         await enrichUserWithMembership(req.user as any);
         if (!(req.user as any)?.isMember) {
           return res.status(403).json({ error: 'Membership required to edit properties' });
@@ -3739,7 +3759,7 @@ export class HTTPServer {
 
         const domain = decodeURIComponent(req.params.domain).toLowerCase();
 
-        const { edit_summary, adagents_json } = req.body;
+        const { edit_summary } = req.body;
         if (!edit_summary || typeof edit_summary !== 'string') {
           return res.status(400).json({ error: 'edit_summary required' });
         }
@@ -3751,7 +3771,7 @@ export class HTTPServer {
         }
 
         const { property, revision_number } = await this.propertyDb.editCommunityProperty(domain, {
-          adagents_json,
+          adagents_json: adagentsJsonUpdate,
           edit_summary,
           editor_user_id: req.user!.id,
           editor_email: req.user!.email,
