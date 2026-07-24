@@ -1,0 +1,116 @@
+{
+  "$comment": "Brand-authorization cross-check conformance vectors for the verify_brand_claim / verify_brand_claims payload-envelope response-signing profile. Each case asserts the authorization decision a verifier MUST make AFTER the JWS signature itself verifies: the signing agent named by the envelope's agent_url MUST be an authorized type:brand agent in the asserted brand_domain's brand.json, and the kid MUST resolve only within that entry's jwks_uri. Independent of cryptographic signing — every case assumes the envelope signature already verified, and tests only the brand.json authorization binding. All entities are fictional. Cited by docs/building/by-layer/L1/security.mdx §Designated-task payload-envelope response signing, Brand-authorization cross-check.",
+  "version": "3.1",
+  "spec_reference": "#designated-task-response-signing",
+  "cases": [
+    {
+      "name": "forged-owned-for-unowned-brand",
+      "rule": "agent_url absent from brand_domain's brand.json agents[] -> reject, regardless of a valid signature",
+      "envelope": {
+        "task": "verify_brand_claim",
+        "brand_domain": "novabrands.example",
+        "agent_url": "https://brand-agent.attacker.example/mcp",
+        "response": { "status": "owned" }
+      },
+      "brand_json": {
+        "domain": "novabrands.example",
+        "agents": [
+          { "type": "brand", "url": "https://brand.novabrands.example/mcp", "jwks_uri": "https://brand.novabrands.example/.well-known/jwks.json" }
+        ]
+      },
+      "expected_verifier_action": "reject",
+      "expected_reason": "response_signature_agent_not_in_brand_json"
+    },
+    {
+      "name": "agent-url-present-but-wrong-type",
+      "rule": "agents[] entry matches url but type is not 'brand' -> reject (brand-protocol responses are answered by the type:brand agent)",
+      "envelope": {
+        "task": "verify_brand_claim",
+        "brand_domain": "novabrands.example",
+        "agent_url": "https://rights.novabrands.example/mcp",
+        "response": { "status": "owned" }
+      },
+      "brand_json": {
+        "domain": "novabrands.example",
+        "agents": [
+          { "type": "rights", "url": "https://rights.novabrands.example/mcp", "jwks_uri": "https://rights.novabrands.example/.well-known/jwks.json" }
+        ]
+      },
+      "expected_verifier_action": "reject",
+      "expected_reason": "response_signature_agent_not_in_brand_json"
+    },
+    {
+      "name": "trailing-slash-mismatch-is-not-a-match",
+      "rule": "step 2 uses byte-equality, no canonicalization: a trailing-slash difference is not a match -> reject",
+      "envelope": {
+        "task": "verify_brand_claim",
+        "brand_domain": "novabrands.example",
+        "agent_url": "https://brand.novabrands.example/mcp/",
+        "response": { "status": "owned" }
+      },
+      "brand_json": {
+        "domain": "novabrands.example",
+        "agents": [
+          { "type": "brand", "url": "https://brand.novabrands.example/mcp", "jwks_uri": "https://brand.novabrands.example/.well-known/jwks.json" }
+        ]
+      },
+      "expected_verifier_action": "reject",
+      "expected_reason": "response_signature_agent_not_in_brand_json"
+    },
+    {
+      "name": "ambiguous-duplicate-brand-agent-urls",
+      "rule": "more than one type:brand entry byte-equals agent_url (operator misconfig; agents[] URLs MUST be unique) -> reject ambiguous",
+      "envelope": {
+        "task": "verify_brand_claim",
+        "brand_domain": "novabrands.example",
+        "agent_url": "https://brand.novabrands.example/mcp",
+        "response": { "status": "owned" }
+      },
+      "brand_json": {
+        "domain": "novabrands.example",
+        "agents": [
+          { "type": "brand", "url": "https://brand.novabrands.example/mcp", "jwks_uri": "https://brand.novabrands.example/.well-known/jwks.json" },
+          { "type": "brand", "url": "https://brand.novabrands.example/mcp", "jwks_uri": "https://alt.novabrands.example/.well-known/jwks.json" }
+        ]
+      },
+      "expected_verifier_action": "reject",
+      "expected_reason": "response_signature_brand_json_ambiguous"
+    },
+    {
+      "name": "forged-rejection-from-unbound-agent",
+      "rule": "rejection direction (not_ours) is also bound: an agent_url absent from brand.json cannot forge a rejection -> reject",
+      "envelope": {
+        "task": "verify_brand_claim",
+        "brand_domain": "novabrands.example",
+        "agent_url": "https://brand-agent.attacker.example/mcp",
+        "response": { "status": "not_ours" }
+      },
+      "brand_json": {
+        "domain": "novabrands.example",
+        "agents": [
+          { "type": "brand", "url": "https://brand.novabrands.example/mcp", "jwks_uri": "https://brand.novabrands.example/.well-known/jwks.json" }
+        ]
+      },
+      "expected_verifier_action": "reject",
+      "expected_reason": "response_signature_agent_not_in_brand_json"
+    },
+    {
+      "name": "authorized-brand-agent-accepts",
+      "rule": "agent_url byte-equals exactly one type:brand agents[] entry -> accept, then resolve kid only within that entry's jwks_uri",
+      "envelope": {
+        "task": "verify_brand_claim",
+        "brand_domain": "novabrands.example",
+        "agent_url": "https://brand.novabrands.example/mcp",
+        "response": { "status": "owned" }
+      },
+      "brand_json": {
+        "domain": "novabrands.example",
+        "agents": [
+          { "type": "brand", "url": "https://brand.novabrands.example/mcp", "jwks_uri": "https://brand.novabrands.example/.well-known/jwks.json" }
+        ]
+      },
+      "expected_verifier_action": "accept",
+      "expected_kid_jwks_uri": "https://brand.novabrands.example/.well-known/jwks.json"
+    }
+  ]
+}
