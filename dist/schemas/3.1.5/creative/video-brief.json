@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.5/creative/video-brief.json",
+  "title": "Video Brief",
+  "description": "Structured per-segment generation brief for generative video products (Veo / Sora / Runway-class). Each `segments[]` entry declares a timed prompt the synthesis pipeline turns into a continuous shot — `order`, `duration_ms`, `prompt`, optional `vo` (voiceover line) and `caption` (on-screen text). This is a *generation* brief, not a creative-direction storyboard: there is no camera direction, shot type, mood, or reference-asset attachment. Buyers wanting to direct camera, lighting, or reference-image conditioning attach a `reference-asset.json` with `purpose: \"storyboard\"` separately — that's the visual-direction surface; video-brief is the structured prompt the model receives. Renamed from earlier `scenes` to call the shape what it is (a brief, not a scene-level production document).",
+  "type": "object",
+  "required": ["segments"],
+  "properties": {
+    "segments": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Ordered list of per-segment prompts that compose the generated video. The sum of `duration_ms` across segments should match the target video duration declared by the format declaration's `duration_ms_exact` or `duration_ms_range`.",
+      "items": {
+        "type": "object",
+        "required": ["order", "duration_ms", "prompt"],
+        "properties": {
+          "order": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "1-indexed sequence position of this segment in the final video."
+          },
+          "duration_ms": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Duration of this segment in milliseconds."
+          },
+          "prompt": {
+            "type": "string",
+            "description": "Text prompt fed to the synthesis pipeline for this segment (subject, action, setting, mood). Renamed from earlier `description` to make explicit that this is a generation prompt — not a description-of-finished-content."
+          },
+          "vo": {
+            "type": "string",
+            "description": "Voiceover line for this segment (optional)."
+          },
+          "caption": {
+            "type": "string",
+            "description": "On-screen caption text for this segment (optional)."
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true,
+  "examples": [
+    {
+      "segments": [
+        {
+          "order": 1,
+          "duration_ms": 3000,
+          "prompt": "Sunset beach, brand logo overlay top-left, warm cinematic tone",
+          "vo": "Welcome to summer with Acme",
+          "caption": "Summer Sale Now"
+        },
+        {
+          "order": 2,
+          "duration_ms": 4000,
+          "prompt": "Product close-up — limited-edition sneakers, slow zoom on stitching",
+          "vo": "Limited edition. Hand-crafted.",
+          "caption": "Up to 50% Off"
+        },
+        {
+          "order": 3,
+          "duration_ms": 3000,
+          "prompt": "Logo end-card on solid brand-color background with CTA button overlay",
+          "caption": "Shop Now"
+        }
+      ]
+    }
+  ]
+}
