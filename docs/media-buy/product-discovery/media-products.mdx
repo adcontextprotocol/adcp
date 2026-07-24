@@ -202,6 +202,7 @@ Products can optionally declare specific public ad placements within their inven
 - **`audio_distribution_types`** - Declared audio distribution types for radio, streaming-audio, podcast, gaming, and other audio placements. Concrete placements usually declare one value; aggregate placements may declare multiple.
 - **`sponsored_placement_types`** - Declared sponsored-placement types for catalog-driven retail-media placements. Concrete placements usually declare one value; aggregate placements may declare multiple.
 - **`social_placement_surfaces`** - Declared social-placement surfaces for social placements. Concrete placements usually declare one value; aggregate placements may declare multiple.
+- **`dooh_placement_attributes.location`** - Optional concrete location metadata for disclosed DOOH screens, frames, or venues. Use `lat` / `lon` and optional address fields; omit for aggregate packages or inventory where per-placement location is not disclosed.
 - **Publisher reference rule** - Publisher-referenced product placements resolve to `{publisher_domain, placement_id}` in the publisher's `adagents.json`
 - **Private inventory rule** - Seller-private delivery objects, ad-server mappings, and source/origin details must stay out of `get_products`
 - **Creative assignment** - Different creatives can be assigned to targetable placements
@@ -276,6 +277,58 @@ Social products can declare `social_placement_surfaces` at the product level, pl
 The field is an array because a sellable product can aggregate multiple surfaces; when both product and placement declarations are present, the product-level array should be the union the seller may deliver under that product.
 
 This is a discovery signal, not a verification claim. Buyers can filter for products that can satisfy a requested surface with `get_products.filters.social_placement_surfaces`, but sellers should not return mixed, non-targetable bundles unless they can constrain delivery to the requested surface during planning or purchase.
+
+#### DOOH location and inventory summary
+
+DOOH products can expose planning-time geography without moving location data into `property.json`. Use placement-level `dooh_placement_attributes.location` when the seller is disclosing a concrete screen, frame, or venue. Use product-level `dooh_inventory_summary.venue_counts[]` when the product is an aggregate network, regional package, or other bundle where per-screen disclosure is unavailable, impractical, or not useful at discovery time.
+
+Location is descriptive metadata, not a stable inventory identifier. Buyers should use `placement_id` for protocol references and treat `location` as planning and verification context.
+
+This excerpt shows only the DOOH-specific discovery fields; a complete Product object still includes required product fields such as `description`, `publisher_properties`, `delivery_type`, `pricing_options`, `reporting_capabilities`, and `format_options` or `format_ids`.
+
+```json
+{
+  "product_id": "pinnacle_transit_downtown",
+  "name": "Pinnacle Transit Downtown Screens",
+  "channels": ["dooh"],
+  "placements": [
+    {
+      "kind": "seller_inline",
+      "placement_id": "central_station_concourse_01",
+      "name": "Central Station Concourse Screen 1",
+      "mode": "targetable",
+      "dooh_placement_attributes": {
+        "location": {
+          "lat": 40.7527,
+          "lon": -73.9772,
+          "address": {
+            "line1": "100 Transit Plaza",
+            "city": "New York",
+            "region": "NY",
+            "postal_code": "10017",
+            "country": "US"
+          }
+        }
+      }
+    }
+  ],
+  "dooh_inventory_summary": {
+    "venue_counts": [
+      {
+        "geo_level": "metro",
+        "system": "nielsen_dma",
+        "geo_code": "501",
+        "geo_name": "New York",
+        "venue_type": "transit.station",
+        "count_unit": "venues",
+        "count": 87
+      }
+    ]
+  }
+}
+```
+
+Use `lat` and `lon` together; do not emit `lng`. `venue_counts[]` uses the same `geo_level` / `system` / `geo_code` vocabulary as forecast geo dimensions, so buyer agents can compare discovery summaries with availability and forecast rows. Each aggregate row declares `count_unit` so buyers can distinguish venues, screens, frames, and faces. `coverage_polygon` is intentionally absent from this surface; if polygon coverage is standardized later, it should reuse the existing catchment geometry pattern rather than defining a new DOOH-only polygon object.
 
 #### Format precedence with placements
 
