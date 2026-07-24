@@ -218,6 +218,46 @@ Description of change.
 
 Types: `patch` (fixes), `minor` (new features), `major` (breaking), `--empty` (no protocol impact)
 
+### Immutable released artifacts
+
+Released `dist` artifacts are append-only. Do **not** patch, rewrite, delete, or
+add files inside an existing semver release artifact:
+
+- `dist/schemas/<semver>/`
+- `dist/compliance/<semver>/`
+- `dist/docs/<semver>/`
+- `dist/protocol/<semver>.*`
+
+`dist/*/latest` is the mutable development output. Existing semver paths are
+release records. If a released schema, compliance storyboard, docs bundle, or
+protocol tarball is wrong, change the source of truth and ship a new versioned
+artifact through the release flow:
+
+1. Edit source files such as `static/**/source`, docs source, or build tooling.
+2. Add the appropriate changeset.
+3. Let Version Packages run `npm run version`, which creates a new
+   `dist/**/<new-version>` artifact.
+
+This applies to agents and CI fixes too. For example, do not modify
+`dist/compliance/3.0.14` to repair a hosted compliance test. Make the fix in
+source and cut the next patch/RC release for the line that needs it. Temporary
+copies in CI scratch directories may be transformed for compatibility testing,
+but checked-in existing semver artifacts must remain unchanged.
+
+#### PR title hygiene
+
+PR titles must be review- and release-ready:
+
+- Use conventional-commits format (`fix(scope): summary`, `docs: summary`, `feat(schema): summary`).
+- Do not prefix titles with the tool or model that authored the PR. In particular, never use `[codex]`, `[claude]`, `[agent]`, or similar ownership tags.
+- The authoring tool belongs in the PR body/session link or labels when useful, not in the title. PR titles flow into release/review surfaces, so tool prefixes create noise and can break title-based automation.
+
+Before creating or updating a PR title, validate it locally:
+
+```bash
+node scripts/check-pr-title.cjs "fix(scope): concise human title"
+```
+
 **Use `--empty` (no package entry) for everything that isn't a protocol change:**
 - Addie (any server-side AI behavior, tools, routing, bolt app)
 - Website / admin UI / member pages
