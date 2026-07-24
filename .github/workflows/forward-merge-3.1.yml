@@ -36,7 +36,7 @@ jobs:
       # required CI workflows (TypeScript Build, IPR Policy, Check for
       # changeset). GITHUB_TOKEN-triggered events are blocked by GitHub's
       # recursion rule. Closes #3417.
-      - name: Mint AAO Release Bot installation token
+      - name: Mint AgenticAdvertising.org Release Bot installation token
         id: app-token
         uses: actions/create-github-app-token@v3.2.0
         with:
