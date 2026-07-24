@@ -7,81 +7,52 @@ channels per `.agents/wg/constitution.md` §Information sources and the
 record: never quote or attribute this content in public output; Slack
 informs, GitHub decides.
 
-- Generated: 2026-07-22
+- Generated: 2026-07-24
 - Window: last 14 days
 - Channels: 20 public WG channels swept (4 private excluded)
 
 ---
 
-# AdCP Slack Digest — Week of 2026-07-13 to 2026-07-21
+# AdCP Slack Digest — Spec-Relevant Discussion
 
 ---
 
-### VAST Validation Contract — Opt-in Validation Levels
+### Sell-Side Governance Proposal (sync_policies / governance agent parity)
 
 - **Status:** active
-- **Summary:** A pull request proposes an opt-in tiered validation system for VAST tags, enabling a "structurally valid" manifest to be distinguished from one containing a broken VAST tag that would fail silently at serve time. Sellers who do not inspect tags would be unaffected. Review is requested within approximately one week, with particular attention to whether the proposed validation levels and error codes are appropriate.
-- **Related:** #5820
-- **Thread:** https://agenticads.slack.com/archives/C09C7PLE5B8/p1783520387371049
-
----
-
-### Creative Agent Role Clarification in `sync_creatives`
-
-- **Status:** active
-- **Summary:** A documentation fix pull request clarifies the intended recipients of `sync_creatives`, specifying that it flows from the trafficking agent to the sales agent, with the creative agent receiving it only when it has opted into the library on-ramp. The change is described as a quick read with limited scope.
-- **Related:** #5821
-- **Thread:** https://agenticads.slack.com/archives/C09C7PLE5B8/p1783520387371049
-
----
-
-### Phantom Error Code Remapping
-
-- **Status:** active
-- **Summary:** A pull request addresses thirteen documented error codes that do not correspond to existing codes in the specification. The fix remaps these phantom codes to correct the discrepancy.
-- **Related:** #5819
-- **Thread:** https://agenticads.slack.com/archives/C09C7PLE5B8/p1783520387371049
-
----
-
-### Creative Formats v2 — Structural Direction for 3.x
-
-- **Status:** active
-- **Summary:** An open issue outlines the proposed direction for creative format authoring across the 3.x release series, including canonical formats living on products, per-format tracking, and `validate_input`. The proposal carries a deprecation path for v1 formats extending to version 5.0, making it the largest structural change on the creative roadmap. Working group members are encouraged to review and form positions before the design is mid-flight.
-- **Related:** #3305
-- **Thread:** https://agenticads.slack.com/archives/C09C7PLE5B8/p1783520432418159
-
----
-
-### Click Tracker Chaining and Attribution Semantics
-
-- **Status:** active
-- **Summary:** An open issue identifies the current macros page as underspecified: only a single `{CLICK_URL}` is defined with no chaining semantics, leaving multi-party chaining, terminal-hop ownership, and the distinction between click count and click attribution unaddressed. This gap creates real interoperability pain for buyers who need click identifiers to survive to the landing page. A suggested framing proposes leading with a tractable scoped definition before expanding.
-- **Related:** #5693
-- **Thread:** https://agenticads.slack.com/archives/C09C7PLE5B8/p1783520432418159
-
----
-
-### Sell-Side Governance Proposal — `sync_policies` Parity
-
-- **Status:** active
-- **Summary:** A formal sell-side governance proposal has been published as a consolidated document, stemming from ongoing working-group calls and Slack discussions. The proposal identifies a structural imbalance whereby campaign governance agents are buyer-selected and buyer-operated with no seller-side equivalent to `sync_plans`, and puts forward a minimal base proposal mirroring the buyer pattern for sellers — including seller-side governance agent declarations analogous to `accepted_verifiers[]`. A stretch proposal for a unified, consensus-operated governance agent is also included for consideration.
-- **Related:** #4146
+- **Summary:** A formal sell-side governance proposal has been published for working-group review. It identifies a structural asymmetry in the current spec: campaign governance agents are buyer-selected and buyer-operated, and no seller-side equivalent to `sync_plans` (i.e., `sync_policies`) exists. The minimal proposal mirrors the buyer governance pattern for sellers and introduces accepted governance agent declarations analogous to the existing `accepted_verifiers[]` field for creative governance. A stretch proposal floats consolidating governance into a unified, consensus-operated agent.
 - **Thread:** https://agenticads.slack.com/archives/C09NUQS93DF/p1784198720767619
 
 ---
 
-### Negotiation Field Transparency — Source and Verification Augmentation
+### Policy Source Attribution in Negotiation Fields
 
 - **Status:** active
-- **Summary:** A member proposed augmenting negotiation fields with a `source` attribute and an optional list of independent trusted verification partners, applicable to any field used by both buyers and sellers in negotiation. The argument advanced is that the communication protocol cannot resolve power imbalances directly but can improve transparency, interoperability, and competitive parity relative to vertically integrated alternatives by making the information exchanged more explicit.
+- **Summary:** A working-group member proposed augmenting negotiation fields used by both buyers and sellers with a `source` property and an optional `independent trusted verification partners` sub-field. The argument is that the communication protocol itself cannot resolve power imbalances but can improve transparency and interoperability by surfacing provenance of policy claims, enabling a network of compatible data and logic providers to compete more effectively against vertically integrated offerings.
 - **Thread:** https://agenticads.slack.com/archives/C09NUQS93DF/p1784595457843029
 
 ---
 
-### Outstanding Governance Issue — #4146
+### Outstanding Governance Ticket #4146
 
 - **Status:** active
-- **Summary:** A standing reminder was posted that issue #4146 remains unresolved and open for action by the governance working group.
+- **Summary:** An unresolved GitHub issue (#4146) was flagged as still outstanding in the Governance Protocols channel, with no accompanying resolution or assignee noted in the thread.
 - **Related:** #4146
 - **Thread:** https://agenticads.slack.com/archives/C09NUQS93DF/p1784649736909299
+
+---
+
+### RFC: Hierarchical Cell-Grid Systems as Declared Geographic Unit
+
+- **Status:** active
+- **Summary:** A request for comment was surfaced in the Signals and Measurement channel referencing issue #5969, which proposes hierarchical cell-grid systems as a declared geographic unit within the spec. Working-group members were asked to review the RFC.
+- **Related:** #5969
+- **Thread:** https://agenticads.slack.com/archives/C09BF378H8A/p1784717295816509
+
+---
+
+### Signals and Measurement Working Group — Leadership Transition
+
+- **Status:** resolved
+- **Summary:** Ownership of the Signals and Measurement working group has been transferred to a new member to resume progress on topics raised at a prior in-person gathering and subsequent discussions. No spec changes were proposed in the thread itself, but the transition is relevant to the group's ability to advance open measurement-related issues.
+- **Thread:** https://agenticads.slack.com/archives/C09BF378H8A/p1784577646347699
