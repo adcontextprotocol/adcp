@@ -96,7 +96,10 @@
     "FEED_FETCH_FAILED",
     "INVALID_FEED_FORMAT",
     "ITEM_VALIDATION_FAILED",
-    "CATALOG_LIMIT_EXCEEDED"
+    "CATALOG_LIMIT_EXCEEDED",
+    "VAST_PARSE_FAILED",
+    "VAST_VERSION_MISMATCH",
+    "VAST_WRAPPER_DEPTH_EXCEEDED"
   ],
   "enumDescriptions": {
     "INVALID_REQUEST": "Request is malformed, missing required fields, or violates schema constraints. Recovery: correctable (check request parameters and fix).",
@@ -190,7 +193,10 @@
     "FEED_FETCH_FAILED": "Platform could not fetch the catalog feed URL during sync_catalogs. Recovery: correctable (check URL accessibility, authentication, and that the content matches the declared feed_format).",
     "INVALID_FEED_FORMAT": "Catalog feed content does not match the declared feed_format. Recovery: correctable (verify the feed content matches the declared format, e.g. XML for google_merchant_center).",
     "ITEM_VALIDATION_FAILED": "One or more catalog items failed schema validation during sync_catalogs. Recovery: correctable (check item_issues for per-item rejection reasons and fix the offending items).",
-    "CATALOG_LIMIT_EXCEEDED": "The account has reached its maximum catalog count. Recovery: correctable (remove unused catalogs, or contact the seller to raise the limit)."
+    "CATALOG_LIMIT_EXCEEDED": "The account has reached its maximum catalog count. Recovery: correctable (remove unused catalogs, or contact the seller to raise the limit).",
+    "VAST_PARSE_FAILED": "A submitted `vast` asset failed document-level validation: the inline `content` (or the document fetched from `url`) is not well-formed XML, has no `<VAST>` root element, contains no `<Ad>` element, or an `<InLine>` linear creative carries no `<MediaFile>`. Returned by sellers that declare `creative_specs.vast_validation` of `document` or `wrapper`; sellers at the default `structural` level do not inspect the VAST document and MUST NOT return this code. Distinct from `VALIDATION_ERROR` (manifest-level format validation): the manifest was structurally valid, the VAST document inside it was not. Sellers SHOULD set `error.field` to the offending asset path and SHOULD populate `error.details.reason` with one of `not_xml`, `no_vast_root`, `no_ad`, `no_media_file`. Unresolved ad-server macros in URLs (`[MACRO]`, `${MACRO}`, `{UNIVERSAL_MACRO}`) are opaque tokens, not parse failures. Recovery: correctable (fix the VAST document and resubmit).",
+    "VAST_VERSION_MISMATCH": "A submitted `vast` asset's document declares a `<VAST version>` attribute that does not match the asset's declared `vast_version`, does not satisfy the format's `vast_version` requirement, or is not in the seller's declared `creative_specs.vast_versions`. Returned by sellers performing document-level VAST validation (`creative_specs.vast_validation` of `document` or `wrapper`). Distinct from `VERSION_UNSUPPORTED` (AdCP protocol version negotiation, unrelated to creative documents). Sellers SHOULD set `error.field` to the offending asset path and SHOULD include the accepted versions in `error.details.supported_versions`. Recovery: correctable (re-tag with an accepted VAST version, or correct the asset's declared `vast_version`).",
+    "VAST_WRAPPER_DEPTH_EXCEEDED": "Resolving a `vast` asset's wrapper chain failed: the chain exceeded the format's declared `max_wrapper_depth`, revisited a `VASTAdTagURI` already seen in the chain (a loop), or a hop did not resolve within the seller's per-hop timeout. Returned by sellers that declare `creative_specs.vast_validation: \"wrapper\"`. Sellers SHOULD set `error.field` to the offending asset path and SHOULD populate `error.details.reason` with one of `depth`, `loop`, `timeout`, plus `error.details.depth` with the depth reached. Recovery: correctable (flatten the chain, reduce redirects below the format's `max_wrapper_depth`, or fix the failing hop)."
   },
   "enumMetadata": {
     "$comment": "Structured recovery classification and remediation hints for each error code. SDKs MUST consume this block instead of parsing 'Recovery: X' from enumDescriptions prose. Each entry is { recovery, suggestion }. recovery is one of: correctable (caller can fix and retry), transient (retry with backoff), terminal (no autonomous recovery - operator intervention required). enumDescriptions is retained for human readability and will continue to carry the canonical narrative; the recovery classification embedded in that prose is normative and MUST match the value here.",
@@ -561,6 +567,18 @@
     "CATALOG_LIMIT_EXCEEDED": {
       "recovery": "correctable",
       "suggestion": "remove unused catalogs, or contact the seller to raise the limit"
+    },
+    "VAST_PARSE_FAILED": {
+      "recovery": "correctable",
+      "suggestion": "inspect error.details.reason (not_xml, no_vast_root, no_ad, no_media_file), fix the VAST document, and resubmit"
+    },
+    "VAST_VERSION_MISMATCH": {
+      "recovery": "correctable",
+      "suggestion": "re-tag with a version from error.details.supported_versions, or correct the asset's declared vast_version to match the document"
+    },
+    "VAST_WRAPPER_DEPTH_EXCEEDED": {
+      "recovery": "correctable",
+      "suggestion": "inspect error.details.reason (depth, loop, timeout); flatten the wrapper chain, reduce redirects below the format's max_wrapper_depth, or fix the failing hop"
     }
   }
 }

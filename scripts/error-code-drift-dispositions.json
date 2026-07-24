@@ -235,6 +235,21 @@
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
       "note": "From sync_accounts polymorphic-key refactor (#2261). Returned per-entry when the seller does not implement the entry's `sync_accounts` mode — settings-update sellers (explicit-account platforms) reject natural-key entries; provisioning-only sellers reject AccountRef-keyed entries. Wire change — held for 3.1."
+    },
+    "VAST_PARSE_FAILED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.2",
+      "note": "VAST validation contract: document-level validation of vast assets at sync_creatives for sellers declaring creative_specs.vast_validation of document or wrapper. New VAST-validation surface; wire change, held for 3.2."
+    },
+    "VAST_VERSION_MISMATCH": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.2",
+      "note": "VAST validation contract: the VAST document's version attribute disagrees with the declared vast_version, the format requirement, or the seller's vast_versions. New VAST-validation surface; wire change, held for 3.2."
+    },
+    "VAST_WRAPPER_DEPTH_EXCEEDED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.2",
+      "note": "VAST validation contract: wrapper-chain resolution exceeded max_wrapper_depth, looped, or timed out, for sellers declaring creative_specs.vast_validation: wrapper. New VAST-validation surface; wire change, held for 3.2."
     }
   }
 }
