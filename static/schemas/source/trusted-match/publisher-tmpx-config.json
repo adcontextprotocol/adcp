@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/trusted-match/publisher-tmpx-config.json",
+  "title": "Publisher TMPX Macro Mapping",
+  "description": "Publisher-owned deployment configuration that maps each identity provider to the ad-server macro names (or targeting keys, VAST substitutions, DOOH play-log fields) the publisher wants that provider's ordered TMPX values fired into on this surface. Mapping is authored by the publisher — the same schema the operator uses to configure their ad server — and never travels on the wire between identity provider and router. This keeps macro naming a deployment concern rather than a protocol identifier: providers emit ordered opaque values (see provider-identity-match-response.json), the router preserves ordering under `provider_id` (see identity-match-response.json), and this configuration resolves each `(provider_id, ordinal)` pair to a local destination on the way to the ad server. A publisher may map the same provider to different destinations across surfaces (GAM key-values vs. VAST macros vs. DOOH play-log fields) by carrying one instance of this configuration per surface.",
+  "x-status": "experimental",
+  "type": "object",
+  "properties": {
+    "tmpx_macro_mapping": {
+      "type": "object",
+      "description": "Map from `provider_id` to the ordered list of ad-server macro names (or equivalent destination identifiers for the surface) the publisher trafficks for that provider on this surface. Index N in this list receives `tmpx_providers[provider_id].values[N]` from the identity-match response. The list is provider-namespaced by convention — e.g. `provider_a: [\"PIN_TMPX_1\", \"PIN_TMPX_2\"]`, `provider_b: [\"NOVA_TMPX_1\"]` — so distinct providers do not collide on the same ad-server slot. The exact string is publisher-local: GAM adopters typically use uppercase snake-case macro names, VAST surfaces use URL macro tokens, DOOH surfaces use play-log field identifiers. When a response carries more values for a provider than this mapping has slots for that provider, the publisher's adapter MUST fail closed for that provider on that impression — none of that provider's values are fired into the ad-serving path and the adapter logs a configuration error. Other providers on the same response are unaffected. Fewer values than slots (partial fill) leave the trailing slots empty and the impression proceeds normally. A `provider_id` absent from this mapping (e.g. a newly onboarded provider not yet trafficked on this surface) MUST cause the adapter to drop that provider's values on this surface rather than firing them into an unconfigured destination.",
+      "additionalProperties": {
+        "type": "array",
+        "description": "Ordered destinations for this provider on this surface. Same length as, or longer than, the provider's registered TMPX chunk count (v1 cap = 2). Each entry is opaque to the protocol — it is the string the publisher's adapter substitutes into the ad request or play log.",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "minItems": 1,
+        "maxItems": 2
+      }
+    }
+  },
+  "required": [
+    "tmpx_macro_mapping"
+  ],
+  "additionalProperties": false
+}
