@@ -1,0 +1,446 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.5/core/wholesale-feed-webhook.json",
+  "title": "Wholesale Feed Webhook",
+  "description": "Account-level webhook payload fired when a seller's wholesale product feed or wholesale signals feed changes. Registered through sync_accounts.accounts[].notification_configs[] using product.* / signal.* / wholesale_feed.bulk_change event_types. The payload carries the actual change event so receivers can update a local mirror without immediately re-reading the full feed. get_products / get_signals with if_wholesale_feed_version remain the repair and reconciliation path after missed, stale, or distrusted pushes. Capability consistency: product.* webhooks require wholesale get_products support; signal.* webhooks require wholesale get_signals support; wholesale_feed.bulk_change must name only a feed family backed by a declared wholesale repair path.",
+  "type": "object",
+  "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "description": "Sender-generated key stable across retries of the same webhook fire. Receivers MUST dedupe by this key, scoped to the authenticated sender identity.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "notification_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Stable identifier for this logical wholesale feed event. MUST equal event.event_id. Re-emissions of the same logical event reuse this value under a new idempotency_key."
+    },
+    "notification_type": {
+      "type": "string",
+      "enum": [
+        "product.created",
+        "product.updated",
+        "product.priced",
+        "product.removed",
+        "signal.created",
+        "signal.updated",
+        "signal.priced",
+        "signal.removed",
+        "wholesale_feed.bulk_change"
+      ],
+      "description": "Wholesale feed notification type discriminator. MUST match event.event_type."
+    },
+    "fired_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the seller initiated this webhook fire. Distinct from event.created_at, which is when the seller observed or recorded the feed change."
+    },
+    "subscriber_id": {
+      "type": "string",
+      "description": "Identifies which notification_configs[] entry is receiving this fire. Echoed from the registered subscriber_id.",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+    },
+    "account_id": {
+      "type": "string",
+      "description": "Seller account identifier for the account scope that registered this webhook through sync_accounts.accounts[].notification_configs[]. Required because wholesale feed webhooks are account-anchored notifications.",
+      "x-entity": "account"
+    },
+    "wholesale_feed_version": {
+      "type": "string",
+      "description": "Opaque version token for the affected wholesale feed after this change. Receivers store it with their mirror and can pass it to get_products / get_signals as if_wholesale_feed_version to verify whether their local state is current."
+    },
+    "previous_wholesale_feed_version": {
+      "type": "string",
+      "description": "Opaque version token for the affected wholesale feed before this change, when the seller can cheaply provide it. Receivers MAY use this to detect obvious gaps, but MUST NOT require it."
+    },
+    "cache_scope": {
+      "type": "string",
+      "enum": [
+        "public",
+        "account"
+      ],
+      "description": "Cache layer affected by this change. MUST equal event.payload.applies_to.scope. Mirrors the cache_scope returned by get_products / get_signals for the affected wholesale feed."
+    },
+    "event": {
+      "$ref": "/schemas/3.1.5/core/wholesale-feed-event.json",
+      "description": "The actual product, signal, or bulk-change event. Consumers MAY apply this payload to their local mirror. Before any binding action, or when ordering/gap checks fail, consumers MUST reconcile through get_products / get_signals."
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.5/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "notification_id",
+    "notification_type",
+    "fired_at",
+    "subscriber_id",
+    "wholesale_feed_version",
+    "cache_scope",
+    "event",
+    "account_id"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "Product pricing change webhook",
+      "data": {
+        "idempotency_key": "whk_01HX2N4S8J4TK8M6D3K9Q2P1A7",
+        "notification_id": "019539a0-0000-7000-8000-000000000001",
+        "notification_type": "product.priced",
+        "fired_at": "2026-05-18T10:00:02Z",
+        "subscriber_id": "wholesale-feed-sync",
+        "account_id": "acc_acme_pinnacle",
+        "wholesale_feed_version": "v2026-05-18T10:00:00Z-acme-rev413",
+        "previous_wholesale_feed_version": "v2026-05-18T08:00:00Z-acme-rev412",
+        "cache_scope": "public",
+        "event": {
+          "event_id": "019539a0-0000-7000-8000-000000000001",
+          "event_type": "product.priced",
+          "entity_type": "product",
+          "entity_id": "prod_premium_ctv_us",
+          "created_at": "2026-05-18T10:00:00Z",
+          "payload": {
+            "product_id": "prod_premium_ctv_us",
+            "pricing_options": [
+              {
+                "pricing_option_id": "po_cpm_v2",
+                "pricing_model": "cpm",
+                "fixed_price": 18.5,
+                "currency": "USD"
+              }
+            ],
+            "previous_pricing_option_ids": [
+              "po_cpm_v1"
+            ],
+            "applies_to": {
+              "scope": "public"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "notification_type": {
+            "const": "product.created"
+          }
+        },
+        "required": [
+          "notification_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "event": {
+            "properties": {
+              "event_type": {
+                "const": "product.created"
+              }
+            },
+            "required": [
+              "event_type"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "notification_type": {
+            "const": "product.updated"
+          }
+        },
+        "required": [
+          "notification_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "event": {
+            "properties": {
+              "event_type": {
+                "const": "product.updated"
+              }
+            },
+            "required": [
+              "event_type"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "notification_type": {
+            "const": "product.priced"
+          }
+        },
+        "required": [
+          "notification_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "event": {
+            "properties": {
+              "event_type": {
+                "const": "product.priced"
+              }
+            },
+            "required": [
+              "event_type"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "notification_type": {
+            "const": "product.removed"
+          }
+        },
+        "required": [
+          "notification_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "event": {
+            "properties": {
+              "event_type": {
+                "const": "product.removed"
+              }
+            },
+            "required": [
+              "event_type"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "notification_type": {
+            "const": "signal.created"
+          }
+        },
+        "required": [
+          "notification_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "event": {
+            "properties": {
+              "event_type": {
+                "const": "signal.created"
+              }
+            },
+            "required": [
+              "event_type"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "notification_type": {
+            "const": "signal.updated"
+          }
+        },
+        "required": [
+          "notification_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "event": {
+            "properties": {
+              "event_type": {
+                "const": "signal.updated"
+              }
+            },
+            "required": [
+              "event_type"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "notification_type": {
+            "const": "signal.priced"
+          }
+        },
+        "required": [
+          "notification_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "event": {
+            "properties": {
+              "event_type": {
+                "const": "signal.priced"
+              }
+            },
+            "required": [
+              "event_type"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "notification_type": {
+            "const": "signal.removed"
+          }
+        },
+        "required": [
+          "notification_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "event": {
+            "properties": {
+              "event_type": {
+                "const": "signal.removed"
+              }
+            },
+            "required": [
+              "event_type"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "notification_type": {
+            "const": "wholesale_feed.bulk_change"
+          }
+        },
+        "required": [
+          "notification_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "event": {
+            "properties": {
+              "event_type": {
+                "const": "wholesale_feed.bulk_change"
+              }
+            },
+            "required": [
+              "event_type"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "description": "Outer cache_scope and inner applies_to.scope MUST both identify the public layer.",
+      "if": {
+        "properties": {
+          "cache_scope": {
+            "const": "public"
+          }
+        },
+        "required": [
+          "cache_scope"
+        ]
+      },
+      "then": {
+        "properties": {
+          "event": {
+            "properties": {
+              "payload": {
+                "properties": {
+                  "applies_to": {
+                    "properties": {
+                      "scope": {
+                        "const": "public"
+                      }
+                    },
+                    "required": [
+                      "scope"
+                    ]
+                  }
+                },
+                "required": [
+                  "applies_to"
+                ]
+              }
+            },
+            "required": [
+              "payload"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "description": "Outer cache_scope and inner applies_to.scope MUST both identify an account overlay.",
+      "if": {
+        "properties": {
+          "cache_scope": {
+            "const": "account"
+          }
+        },
+        "required": [
+          "cache_scope"
+        ]
+      },
+      "then": {
+        "properties": {
+          "event": {
+            "properties": {
+              "payload": {
+                "properties": {
+                  "applies_to": {
+                    "properties": {
+                      "scope": {
+                        "const": "account"
+                      }
+                    },
+                    "required": [
+                      "scope"
+                    ]
+                  }
+                },
+                "required": [
+                  "applies_to"
+                ]
+              }
+            },
+            "required": [
+              "payload"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}
