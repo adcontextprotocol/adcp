@@ -167,9 +167,12 @@
     },
     "creatives": {
       "type": "array",
-      "description": "Replace this package's inline creative assets. When the seller also advertises creative.has_creative_library: true, new inline creatives enter the seller's creative library and can be reused by creative_id while retained; inline-only sellers may store them as package-scoped assets. Use creative_assignments instead for existing library creatives.",
+      "description": "Replace this package's inline creative assets. Native localization is not accepted on this path; use sync_creatives before assigning the library creative. When the seller also advertises creative.has_creative_library: true, new inline creatives enter the seller's creative library and can be reused by creative_id while retained; inline-only sellers may store them as package-scoped assets. Use creative_assignments instead for existing library creatives.",
       "items": {
-        "$ref": "/schemas/core/creative-asset.json"
+        "allOf": [
+          { "$ref": "/schemas/core/creative-asset.json" },
+          { "not": { "required": ["localization"] } }
+        ]
       },
       "minItems": 1,
       "maxItems": 100

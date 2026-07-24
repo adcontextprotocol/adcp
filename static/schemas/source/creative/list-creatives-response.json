@@ -71,6 +71,11 @@
             "$ref": "/schemas/core/account.json",
             "description": "Account that owns this creative"
           },
+          "platform_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable provider creative identity. This is the single provider creative ID for localized and unlocalized readback; localization carries only per-variant provider IDs."
+          },
           "name": {
             "type": "string",
             "description": "Human-readable creative name"
@@ -113,6 +118,32 @@
               }
             },
             "additionalProperties": true
+          },
+          "localization": {
+            "$ref": "/schemas/core/creative-localization-readback.json",
+            "description": "Authoritative exact provider-backed locale-variant state. Present for localized creatives. A seller MUST fail the creative read rather than return partial or lossy localization evidence.",
+            "x-adcp-validation": {
+              "verifier_constraints": {
+                "aggregate_status_field": "status",
+                "aggregate_variant_status_path": "localization.variants[].status",
+                "aggregate_status_precedence": [
+                  "rejected",
+                  "suspended",
+                  "pending_review",
+                  "processing",
+                  "approved"
+                ],
+                "archive_atomicity": "all_variants_or_none",
+                "platform_id_source": "enclosing_creative.platform_id",
+                "sync_list_round_trip": {
+                  "source_equal_properties": ["locale_variant_id", "locale"],
+                  "target_match_key": "locale_variant_id",
+                  "target_set": "exact",
+                  "target_equal_properties": ["locale", "translation_mode"]
+                }
+              },
+              "spec": "docs/creative/task-reference/list_creatives.mdx#localized-creative-readback"
+            }
           },
           "tags": {
             "type": "array",
@@ -271,7 +302,17 @@
           "created_date",
           "updated_date"
         ],
-        "additionalProperties": true
+        "additionalProperties": true,
+        "allOf": [
+          {
+            "if": {
+              "required": ["localization"]
+            },
+            "then": {
+              "required": ["platform_id", "status"]
+            }
+          }
+        ]
       }
     },
     "format_summary": {

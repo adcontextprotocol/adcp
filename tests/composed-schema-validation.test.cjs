@@ -111,6 +111,253 @@ async function testSchemaRejection(schemaId, testData, description) {
   }
 }
 
+function duplicateValues(items, property) {
+  const seen = new Set();
+  const duplicates = new Set();
+  for (const item of items) {
+    const value = item[property];
+    if (seen.has(value)) duplicates.add(value);
+    seen.add(value);
+  }
+  return [...duplicates];
+}
+
+function validateLocalizationRequestSemantics(localization) {
+  const errors = [];
+  const targets = localization.target_variants || [];
+  for (const property of ['locale_variant_id', 'locale']) {
+    if (duplicateValues(targets, property).length > 0) {
+      errors.push(`target ${property} values must be unique`);
+    }
+    if (targets.some((target) => target[property] === localization.source?.[property])) {
+      errors.push(`target ${property} must differ from source ${property}`);
+    }
+  }
+  return errors;
+}
+
+const LOCALIZATION_STATUS_PRECEDENCE = [
+  'rejected',
+  'suspended',
+  'pending_review',
+  'processing',
+  'approved'
+];
+const LOCALIZATION_STATUS_LAUNCH = {
+  processing: 'pending',
+  pending_review: 'pending',
+  approved: 'ready',
+  suspended: 'blocked',
+  rejected: 'blocked',
+  archived: 'blocked'
+};
+
+function aggregateLocalizationStatus(variants) {
+  if (variants.length > 0 && variants.every((variant) => variant.status === 'archived')) {
+    return 'archived';
+  }
+  if (variants.some((variant) => variant.status === 'archived')) return undefined;
+  return LOCALIZATION_STATUS_PRECEDENCE.find((status) =>
+    variants.some((variant) => variant.status === status)
+  );
+}
+
+function validateLocalizationReadbackSemantics(localization, aggregateStatus) {
+  const errors = [];
+  const variants = localization.variants || [];
+  for (const property of ['locale_variant_id', 'locale', 'provider_variant_id']) {
+    if (duplicateValues(variants, property).length > 0) {
+      errors.push(`variant ${property} values must be unique`);
+    }
+  }
+  const sourceCount = variants.filter((variant) => variant.role === 'source').length;
+  if (sourceCount !== 1) errors.push('localization must contain exactly one source variant');
+  for (const variant of variants) {
+    const expectedLaunch = LOCALIZATION_STATUS_LAUNCH[variant.status];
+    if (expectedLaunch && variant.launch_status !== expectedLaunch) {
+      errors.push(`${variant.status} status requires ${expectedLaunch} launch_status`);
+    }
+  }
+  const archivedCount = variants.filter((variant) => variant.status === 'archived').length;
+  if (archivedCount > 0 && archivedCount !== variants.length) {
+    errors.push('localized creative archive must include every variant atomically');
+  }
+  if (localization.review_scope === 'creative' && variants.length > 0) {
+    for (const property of ['status', 'launch_status']) {
+      if (new Set(variants.map((variant) => variant[property])).size !== 1) {
+        errors.push(`creative review scope requires identical ${property}`);
+      }
+    }
+  }
+  if (aggregateStatus !== undefined) {
+    const expected = aggregateLocalizationStatus(variants);
+    if (aggregateStatus !== expected) {
+      errors.push(`aggregate status must be ${expected}`);
+    }
+  }
+  return errors;
+}
+
+function validateLocalizationAgainstRequest(requestLocalization, readback, label) {
+  const errors = [];
+  if (!readback) return [`${label} localization readback is required`];
+  const source = readback.variants?.find((variant) => variant.role === 'source');
+  if (!source) return [`${label} source localization readback is required`];
+  for (const property of ['locale_variant_id', 'locale']) {
+    if (source[property] !== requestLocalization.source[property]) {
+      errors.push(`${label} source ${property} must equal request`);
+    }
+  }
+  const requestTargets = new Map(
+    requestLocalization.target_variants.map((variant) => [variant.locale_variant_id, variant])
+  );
+  const responseTargets = (readback.variants || []).filter((variant) => variant.role === 'target');
+  if (responseTargets.length !== requestTargets.size) {
+    errors.push(`${label} target locale_variant_id set must exactly equal request`);
+  }
+  for (const target of responseTargets) {
+    const requested = requestTargets.get(target.locale_variant_id);
+    if (!requested) {
+      errors.push(`${label} target locale_variant_id set must exactly equal request`);
+      continue;
+    }
+    for (const property of ['locale', 'translation_mode']) {
+      if (target[property] !== requested[property]) {
+        errors.push(`${label} target ${property} must equal request`);
+      }
+    }
+  }
+  return errors;
+}
+
+function validateLocalizationRoundTrip(requestLocalization, syncItem, listItem) {
+  const errors = [];
+  if (['failed', 'deleted'].includes(syncItem.action)) {
+    if (syncItem.localization !== undefined) {
+      errors.push('failed or deleted sync result must omit localization');
+    }
+    return errors;
+  }
+  if (!requestLocalization) return errors;
+  for (const [label, item] of [
+    ['sync', syncItem],
+    ['list', listItem]
+  ]) {
+    if (!item?.status) errors.push(`${label} aggregate status is required`);
+    if (!item?.platform_id) errors.push(`${label} top-level platform_id is required`);
+    if (item?.localization?.platform_id !== undefined) {
+      errors.push(`${label} localization must not duplicate top-level platform_id`);
+    }
+    errors.push(...validateLocalizationAgainstRequest(requestLocalization, item?.localization, label));
+    if (item?.localization) {
+      errors.push(...validateLocalizationReadbackSemantics(item.localization, item.status));
+    }
+  }
+  if (syncItem.platform_id && listItem?.platform_id && syncItem.platform_id !== listItem.platform_id) {
+    errors.push('sync and list top-level platform_id must match');
+  }
+  return errors;
+}
+
+function validateLocalizedSourceUpsert(previousLocalization, nextCreative) {
+  if (!previousLocalization || Object.hasOwn(nextCreative, 'localization')) return [];
+  const priorSource = previousLocalization.variants?.find((variant) => variant.role === 'source');
+  if (!priorSource || JSON.stringify(priorSource.assets) !== JSON.stringify(nextCreative.assets)) {
+    return [
+      'localization omission requires top-level assets to equal prior localized source assets'
+    ];
+  }
+  return [];
+}
+
+function testSemanticValidation(errors, expectedError, description) {
+  totalTests++;
+  const passed = expectedError
+    ? errors.some((error) => error.includes(expectedError))
+    : errors.length === 0;
+  if (passed) {
+    log(`  \u2713 ${description}`, 'success');
+    passedTests++;
+  } else {
+    log(`  \u2717 ${description}`, 'error');
+    log(`    Semantic errors: ${JSON.stringify(errors)}`, 'error');
+    failedTests++;
+  }
+}
+
+function testValidationConstraints(constraints, expectedConstraints, description) {
+  totalTests++;
+  const passed =
+    constraints &&
+    Object.entries(expectedConstraints).every(
+      ([key, value]) => JSON.stringify(constraints[key]) === JSON.stringify(value)
+    );
+  if (passed) {
+    log(`  \u2713 ${description}`, 'success');
+    passedTests++;
+  } else {
+    log(`  \u2717 ${description}`, 'error');
+    log(`    Constraints: ${JSON.stringify(constraints)}`, 'error');
+    failedTests++;
+  }
+}
+
+function testValidationAnnotation(schemaId, expectedConstraints, description) {
+  const schemaPath = path.join(SCHEMA_BASE_DIR, schemaId.replace('/schemas/', ''));
+  const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+  testValidationConstraints(
+    schema['x-adcp-validation']?.verifier_constraints,
+    expectedConstraints,
+    description
+  );
+}
+
+function testNestedValidationAnnotation(schemaId, propertyPath, expectedConstraints, description) {
+  const schemaPath = path.join(SCHEMA_BASE_DIR, schemaId.replace('/schemas/', ''));
+  const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+  const node = propertyPath.reduce((value, key) => value?.[key], schema);
+  testValidationConstraints(
+    node?.['x-adcp-validation']?.verifier_constraints,
+    expectedConstraints,
+    description
+  );
+}
+
+function testTypedDiscriminatedUnion(
+  schemaId,
+  propertyPath,
+  discriminator,
+  expectedVariants,
+  description
+) {
+  totalTests++;
+  const schemaPath = path.join(SCHEMA_BASE_DIR, schemaId.replace('/schemas/', ''));
+  const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+  const node = propertyPath.reduce((value, key) => value?.[key], schema);
+  const variants = node?.oneOf || [];
+  const passed =
+    node?.discriminator?.propertyName === discriminator &&
+    variants.length === expectedVariants.length &&
+    expectedVariants.every((expected) =>
+      variants.some((variant) =>
+        Object.entries(expected).every(
+          ([property, value]) =>
+            variant.properties?.[property]?.type === 'string' &&
+            variant.properties?.[property]?.const === value &&
+            variant.required?.includes(property)
+        )
+      )
+    );
+  if (passed) {
+    log(`  \u2713 ${description}`, 'success');
+    passedTests++;
+  } else {
+    log(`  \u2717 ${description}`, 'error');
+    log(`    Union: ${JSON.stringify(node)}`, 'error');
+    failedTests++;
+  }
+}
+
 async function runTests() {
   log('Testing Composed Schema Validation (allOf patterns)', 'info');
   log('====================================================');
@@ -2183,6 +2430,631 @@ async function runTests() {
     log('  (skipped - run npm run build:schemas first to generate bundled schemas)', 'warning');
     log('');
   }
+
+  log('Native Creative Localization Schemas:', 'info');
+  const localizedCreative = {
+    creative_id: 'summer_image_localized',
+    name: 'Summer image — localized',
+    format_kind: 'image',
+    assets: {
+      image: {
+        asset_type: 'image',
+        url: 'https://cdn.nova.example/summer-en.jpg',
+        width: 1080,
+        height: 1080
+      },
+      headline: {
+        asset_type: 'text',
+        content: 'Summer starts here',
+        language: 'en-US'
+      }
+    },
+    localization: {
+      source: { locale_variant_id: 'loc_en_us', locale: 'en-US' },
+      target_variants: [
+        {
+          locale_variant_id: 'loc_es_es',
+          locale: 'es-ES',
+          translation_mode: 'buyer_supplied',
+          assets: {
+            headline: {
+              asset_type: 'text',
+              content: 'El verano empieza aquí',
+              language: 'es-ES'
+            }
+          }
+        }
+      ]
+    }
+  };
+  const localizedSyncRequest = (creative) => ({
+    idempotency_key: '550e8400-e29b-41d4-a716-446655440099',
+    account: { account_id: 'acct_nova_localization' },
+    creatives: [creative]
+  });
+
+  await testSchemaValidation(
+    '/schemas/creative/sync-creatives-request.json',
+    localizedSyncRequest(localizedCreative),
+    'sync_creatives accepts explicit buyer-supplied locale variants'
+  );
+
+  await testSchemaValidation(
+    '/schemas/creative/sync-creatives-request.json',
+    localizedSyncRequest({
+      ...localizedCreative,
+      localization: {
+        source: { locale_variant_id: 'loc_en_us', locale: 'en-US' },
+        target_variants: [
+          {
+            locale_variant_id: 'loc_fr_fr',
+            locale: 'fr-FR',
+            translation_mode: 'provider_generated'
+          }
+        ]
+      }
+    }),
+    'sync_creatives accepts an explicit provider-generated translation request'
+  );
+
+  testValidationAnnotation(
+    '/schemas/core/creative-localization.json',
+    {
+      unique_target_properties: ['locale_variant_id', 'locale'],
+      target_properties_disjoint_from_source: ['locale_variant_id', 'locale'],
+      request_sync_list_round_trip: {
+        source_match: { role: 'source' },
+        source_equal_properties: ['locale_variant_id', 'locale'],
+        target_match_key: 'locale_variant_id',
+        target_set: 'exact',
+        target_equal_properties: ['locale', 'translation_mode']
+      }
+    },
+    'Localization request exposes machine-readable locale and identity uniqueness rules'
+  );
+
+  testTypedDiscriminatedUnion(
+    '/schemas/core/creative-localization.json',
+    ['properties', 'target_variants', 'items'],
+    'translation_mode',
+    [
+      { translation_mode: 'buyer_supplied' },
+      { translation_mode: 'provider_generated' }
+    ],
+    'Localization request emits typed buyer-supplied/provider-generated union arms'
+  );
+
+  testNestedValidationAnnotation(
+    '/schemas/creative/sync-creatives-request.json',
+    ['properties', 'creatives', 'items'],
+    {
+      existing_localized_source_upsert: {
+        localization_omitted: 'top_level_assets_must_equal_prior_source_assets',
+        source_assets_changed: 'require_non_null_localization_or_null_removal',
+        on_violation: 'reject_before_mutation'
+      }
+    },
+    'sync_creatives exposes machine-readable fail-closed localized source upsert rules'
+  );
+
+  testSemanticValidation(
+    validateLocalizationRequestSemantics(localizedCreative.localization),
+    undefined,
+    'Localization request semantic verifier accepts unique source and target identities'
+  );
+
+  for (const [property, duplicateValue] of [
+    ['locale', 'es-ES'],
+    ['locale_variant_id', 'loc_es_es']
+  ]) {
+    const duplicateTargets = structuredClone(localizedCreative.localization);
+    duplicateTargets.target_variants.push({
+      locale_variant_id: 'loc_fr_fr',
+      locale: 'fr-FR',
+      translation_mode: 'provider_generated',
+      [property]: duplicateValue
+    });
+    testSemanticValidation(
+      validateLocalizationRequestSemantics(duplicateTargets),
+      `target ${property} values must be unique`,
+      `Localization request semantic verifier rejects duplicate target ${property}`
+    );
+  }
+
+  for (const property of ['locale', 'locale_variant_id']) {
+    const sourceCollision = structuredClone(localizedCreative.localization);
+    sourceCollision.target_variants[0][property] = sourceCollision.source[property];
+    testSemanticValidation(
+      validateLocalizationRequestSemantics(sourceCollision),
+      `target ${property} must differ from source ${property}`,
+      `Localization request semantic verifier rejects source/target ${property} reuse`
+    );
+  }
+
+  await testSchemaRejection(
+    '/schemas/creative/sync-creatives-request.json',
+    localizedSyncRequest({
+      ...localizedCreative,
+      localization: {
+        source: { locale_variant_id: 'loc_en_us', locale: 'en-US' },
+        target_variants: [
+          {
+            locale_variant_id: 'loc_es_es',
+            locale: 'es-ES',
+            translation_mode: 'buyer_supplied'
+          }
+        ]
+      }
+    }),
+    'Buyer-supplied translation without overrides is rejected'
+  );
+
+  await testSchemaRejection(
+    '/schemas/creative/sync-creatives-request.json',
+    localizedSyncRequest({
+      ...localizedCreative,
+      localization: {
+        source: { locale_variant_id: 'loc_en_us', locale: 'en-US' },
+        target_variants: [
+          {
+            locale_variant_id: 'loc_es_es',
+            locale: 'es-ES',
+            translation_mode: 'provider_generated',
+            assets: {
+              headline: {
+                asset_type: 'text',
+                content: 'Ambiguous supplied copy'
+              }
+            }
+          }
+        ]
+      }
+    }),
+    'Provider-generated translation with buyer assets is rejected'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/package-request.json',
+    {
+      product_id: 'social_reach',
+      budget: 1000,
+      pricing_option_id: 'cpm_standard',
+      creatives: [localizedCreative]
+    },
+    'create_media_buy inline creatives reject localization requests'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/package-update.json',
+    {
+      package_id: 'pkg_social_reach',
+      creatives: [localizedCreative]
+    },
+    'update_media_buy inline creatives reject localization requests'
+  );
+
+  const localizationReadback = {
+    review_scope: 'per_variant',
+    variants: [
+      {
+        locale_variant_id: 'loc_en_us',
+        locale: 'en-US',
+        role: 'source',
+        translation_mode: 'source',
+        assets: localizedCreative.assets,
+        provider_variant_id: 'provider_variant_en',
+        status: 'approved',
+        launch_status: 'ready'
+      },
+      {
+        locale_variant_id: 'loc_es_es',
+        locale: 'es-ES',
+        role: 'target',
+        translation_mode: 'buyer_supplied',
+        assets: {
+          ...localizedCreative.assets,
+          headline: {
+            asset_type: 'text',
+            content: 'El verano empieza aquí',
+            language: 'es-ES'
+          }
+        },
+        provider_variant_id: 'provider_variant_es',
+        status: 'pending_review',
+        launch_status: 'pending'
+      }
+    ]
+  };
+
+  await testSchemaValidation(
+    '/schemas/core/creative-localization-readback.json',
+    localizationReadback,
+    'Exact source and target localization readback validates'
+  );
+
+  testValidationAnnotation(
+    '/schemas/core/creative-localization-readback.json',
+    {
+      unique_variant_properties: [
+        'locale_variant_id',
+        'locale',
+        'provider_variant_id'
+      ],
+      exact_role_counts: { source: 1 },
+      creative_review_scope_equal_properties: ['status', 'launch_status'],
+      status_launch_compatibility: LOCALIZATION_STATUS_LAUNCH,
+      archive_atomicity: {
+        variant_status: 'all_or_none',
+        aggregate_status: 'archived_if_and_only_if_all_variants_archived'
+      }
+    },
+    'Localization readback exposes machine-readable exactness rules'
+  );
+
+  testTypedDiscriminatedUnion(
+    '/schemas/core/creative-localization-readback.json',
+    ['properties', 'variants', 'items'],
+    'translation_mode',
+    [
+      { role: 'source', translation_mode: 'source' },
+      { role: 'target', translation_mode: 'buyer_supplied' },
+      { role: 'target', translation_mode: 'provider_generated' }
+    ],
+    'Localization readback emits typed source/buyer/provider union arms'
+  );
+
+  const aggregateConstraints = {
+    aggregate_status_field: 'status',
+    aggregate_variant_status_path: 'localization.variants[].status',
+    aggregate_status_precedence: LOCALIZATION_STATUS_PRECEDENCE,
+    archive_atomicity: 'all_variants_or_none',
+    platform_id_source: 'enclosing_creative.platform_id'
+  };
+  testNestedValidationAnnotation(
+    '/schemas/creative/sync-creatives-response.json',
+    ['oneOf', 0, 'properties', 'creatives', 'items', 'properties', 'localization'],
+    aggregateConstraints,
+    'Sync response exposes machine-readable localization status aggregation'
+  );
+  testNestedValidationAnnotation(
+    '/schemas/creative/list-creatives-response.json',
+    ['properties', 'creatives', 'items', 'properties', 'localization'],
+    aggregateConstraints,
+    'List response exposes machine-readable localization status aggregation'
+  );
+
+  testSemanticValidation(
+    validateLocalizationReadbackSemantics(localizationReadback, 'pending_review'),
+    undefined,
+    'Localization readback verifier accepts exact roles, identities, and aggregate status'
+  );
+
+  for (const role of ['target', 'source']) {
+    const invalidRoles = structuredClone(localizationReadback);
+    invalidRoles.variants = invalidRoles.variants.map((variant) => ({ ...variant, role }));
+    testSemanticValidation(
+      validateLocalizationReadbackSemantics(invalidRoles),
+      'exactly one source variant',
+      `Localization readback verifier rejects ${role === 'target' ? 'zero' : 'multiple'} source roles`
+    );
+  }
+
+  for (const property of ['locale_variant_id', 'locale', 'provider_variant_id']) {
+    const duplicateReadback = structuredClone(localizationReadback);
+    duplicateReadback.variants[1][property] = duplicateReadback.variants[0][property];
+    testSemanticValidation(
+      validateLocalizationReadbackSemantics(duplicateReadback),
+      `variant ${property} values must be unique`,
+      `Localization readback verifier rejects duplicate ${property}`
+    );
+  }
+
+  for (const property of ['status', 'launch_status']) {
+    const creativeScopeMismatch = structuredClone(localizationReadback);
+    creativeScopeMismatch.review_scope = 'creative';
+    testSemanticValidation(
+      validateLocalizationReadbackSemantics(creativeScopeMismatch),
+      `creative review scope requires identical ${property}`,
+      `Localization readback verifier rejects creative-scope ${property} drift`
+    );
+  }
+
+  testSemanticValidation(
+    validateLocalizationReadbackSemantics(localizationReadback, 'approved'),
+    'aggregate status must be pending_review',
+    'Localization readback verifier rejects an aggregate status that hides pending review'
+  );
+
+  for (const [status, expectedLaunch] of Object.entries(LOCALIZATION_STATUS_LAUNCH)) {
+    const incompatibleReadback = structuredClone(localizationReadback);
+    incompatibleReadback.variants[0].status = status;
+    incompatibleReadback.variants[0].launch_status = expectedLaunch === 'ready' ? 'pending' : 'ready';
+    testSemanticValidation(
+      validateLocalizationReadbackSemantics(incompatibleReadback),
+      `${status} status requires ${expectedLaunch} launch_status`,
+      `Localization verifier rejects ${status} with incompatible launch state`
+    );
+  }
+
+  await testSchemaRejection(
+    '/schemas/core/creative-localization-readback.json',
+    {
+      ...localizationReadback,
+      variants: localizationReadback.variants.map((variant, index) =>
+        index === 0 ? { ...variant, status: 'approved', launch_status: 'pending' } : variant
+      )
+    },
+    'Localization readback schema rejects status and launch-state mismatch'
+  );
+
+  const precedenceReadback = structuredClone(localizationReadback);
+  precedenceReadback.variants[0] = {
+    ...precedenceReadback.variants[0],
+    status: 'suspended',
+    launch_status: 'blocked',
+    launch_blockers: [{ code: 'AUTHORIZATION_REQUIRED', message: 'Source is suspended' }]
+  };
+  precedenceReadback.variants[1] = {
+    ...precedenceReadback.variants[1],
+    status: 'rejected',
+    launch_status: 'blocked',
+    launch_blockers: [{ code: 'CREATIVE_REJECTED', message: 'Target is rejected' }]
+  };
+  testSemanticValidation(
+    validateLocalizationReadbackSemantics(precedenceReadback, 'rejected'),
+    undefined,
+    'Localization aggregate status uses rejected before suspended'
+  );
+
+  const archivedReadback = structuredClone(localizationReadback);
+  archivedReadback.variants = archivedReadback.variants.map((variant) => ({
+    ...variant,
+    status: 'archived',
+    launch_status: 'blocked',
+    launch_blockers: [{ code: 'CREATIVE_ARCHIVED', message: 'Creative is archived' }]
+  }));
+  testSemanticValidation(
+    validateLocalizationReadbackSemantics(archivedReadback, 'archived'),
+    undefined,
+    'Localization aggregate status is archived only when every variant is archived'
+  );
+
+  const partiallyArchivedReadback = structuredClone(archivedReadback);
+  partiallyArchivedReadback.variants[1].status = 'approved';
+  partiallyArchivedReadback.variants[1].launch_status = 'ready';
+  testSemanticValidation(
+    validateLocalizationReadbackSemantics(partiallyArchivedReadback, 'approved'),
+    'archive must include every variant atomically',
+    'Localization verifier rejects partial archive state'
+  );
+
+  await testSchemaRejection(
+    '/schemas/core/creative-localization-readback.json',
+    {
+      ...localizationReadback,
+      variants: localizationReadback.variants.map((variant, index) =>
+        index === 1
+          ? { ...variant, status: 'rejected', launch_status: 'blocked' }
+          : variant
+      )
+    },
+    'Blocked locale readback without machine-readable blockers is rejected'
+  );
+
+  const localizedSyncItem = {
+    creative_id: localizedCreative.creative_id,
+    action: 'created',
+    status: 'pending_review',
+    platform_id: 'provider_creative_4821',
+    localization: localizationReadback
+  };
+  const localizedListItem = {
+    creative_id: localizedCreative.creative_id,
+    name: localizedCreative.name,
+    format_id: {
+      agent_url: 'https://creative.example.com',
+      id: 'localized_image'
+    },
+    status: 'pending_review',
+    platform_id: 'provider_creative_4821',
+    created_date: '2026-07-19T10:00:00Z',
+    updated_date: '2026-07-19T10:00:00Z',
+    assets: localizedCreative.assets,
+    localization: localizationReadback
+  };
+
+  testSemanticValidation(
+    validateLocalizationRoundTrip(
+      localizedCreative.localization,
+      localizedSyncItem,
+      localizedListItem
+    ),
+    undefined,
+    'Localization verifier accepts exact request to sync to list round trip'
+  );
+
+  for (const [surface, mutate, expectedError] of [
+    [
+      'sync source identity',
+      (syncItem) => {
+        syncItem.localization.variants[0].locale_variant_id = 'loc_en_gb';
+      },
+      'sync source locale_variant_id must equal request'
+    ],
+    [
+      'list source locale',
+      (_syncItem, listItem) => {
+        listItem.localization.variants[0].locale = 'en-GB';
+      },
+      'list source locale must equal request'
+    ],
+    [
+      'sync target identity set',
+      (syncItem) => {
+        syncItem.localization.variants[1].locale_variant_id = 'loc_fr_fr';
+      },
+      'sync target locale_variant_id set must exactly equal request'
+    ],
+    [
+      'list target locale',
+      (_syncItem, listItem) => {
+        listItem.localization.variants[1].locale = 'es-MX';
+      },
+      'list target locale must equal request'
+    ],
+    [
+      'sync target translation mode',
+      (syncItem) => {
+        syncItem.localization.variants[1].translation_mode = 'provider_generated';
+      },
+      'sync target translation_mode must equal request'
+    ],
+    [
+      'top-level provider identity',
+      (_syncItem, listItem) => {
+        listItem.platform_id = 'provider_creative_drifted';
+      },
+      'sync and list top-level platform_id must match'
+    ]
+  ]) {
+    const syncItem = structuredClone(localizedSyncItem);
+    const listItem = structuredClone(localizedListItem);
+    mutate(syncItem, listItem);
+    testSemanticValidation(
+      validateLocalizationRoundTrip(localizedCreative.localization, syncItem, listItem),
+      expectedError,
+      `Localization verifier rejects ${surface} drift`
+    );
+  }
+
+  const nestedPlatformId = structuredClone(localizationReadback);
+  nestedPlatformId.platform_id = 'duplicate_provider_creative_4821';
+  await testSchemaRejection(
+    '/schemas/core/creative-localization-readback.json',
+    nestedPlatformId,
+    'Localization readback rejects a duplicate nested platform_id'
+  );
+
+  await testSchemaValidation(
+    '/schemas/creative/sync-creatives-response.json',
+    { status: 'completed', creatives: [localizedSyncItem] },
+    'Accepted localized sync result includes aggregate status and complete readback'
+  );
+
+  const localizedSyncWithoutStatus = structuredClone(localizedSyncItem);
+  delete localizedSyncWithoutStatus.status;
+  await testSchemaRejection(
+    '/schemas/creative/sync-creatives-response.json',
+    { status: 'completed', creatives: [localizedSyncWithoutStatus] },
+    'Accepted localized sync result without aggregate status is rejected'
+  );
+
+  for (const action of ['failed', 'deleted']) {
+    await testSchemaRejection(
+      '/schemas/creative/sync-creatives-response.json',
+      {
+        status: 'completed',
+        creatives: [
+          {
+            creative_id: localizedCreative.creative_id,
+            action,
+            localization: localizationReadback
+          }
+        ]
+      },
+      `${action} sync result cannot leak localization readback`
+    );
+  }
+
+  await testSchemaValidation(
+    '/schemas/creative/list-creatives-response.json',
+    {
+      status: 'completed',
+      query_summary: { total_matching: 1, returned: 1 },
+      pagination: { has_more: false },
+      creatives: [localizedListItem]
+    },
+    'list_creatives returns complete localized state with one provider creative ID'
+  );
+
+  const localizedListWithoutPlatformId = structuredClone(localizedListItem);
+  delete localizedListWithoutPlatformId.platform_id;
+  await testSchemaRejection(
+    '/schemas/creative/list-creatives-response.json',
+    {
+      status: 'completed',
+      query_summary: { total_matching: 1, returned: 1 },
+      pagination: { has_more: false },
+      creatives: [localizedListWithoutPlatformId]
+    },
+    'Localized list result without top-level provider identity is rejected'
+  );
+
+  testSemanticValidation(
+    validateLocalizedSourceUpsert(localizationReadback, {
+      ...localizedCreative,
+      localization: localizedCreative.localization
+    }),
+    undefined,
+    'Explicit full localization field may replace existing topology'
+  );
+
+  const unchangedLocalizedSource = structuredClone(localizedCreative);
+  delete unchangedLocalizedSource.localization;
+  testSemanticValidation(
+    validateLocalizedSourceUpsert(localizationReadback, unchangedLocalizedSource),
+    undefined,
+    'Localization omission preserves topology when source assets are exactly unchanged'
+  );
+
+  const changedLocalizedSource = structuredClone(unchangedLocalizedSource);
+  changedLocalizedSource.assets.headline.content = 'A changed source headline';
+  testSemanticValidation(
+    validateLocalizedSourceUpsert(localizationReadback, changedLocalizedSource),
+    'localization omission requires top-level assets to equal prior localized source assets',
+    'Localization omission rejects a source asset change'
+  );
+
+  testSemanticValidation(
+    validateLocalizedSourceUpsert(localizationReadback, {
+      ...changedLocalizedSource,
+      localization: localizedCreative.localization
+    }),
+    undefined,
+    'Changed source assets are accepted with an explicit full localization topology'
+  );
+
+  testSemanticValidation(
+    validateLocalizedSourceUpsert(localizationReadback, {
+      ...changedLocalizedSource,
+      localization: null
+    }),
+    undefined,
+    'Changed source assets are accepted with explicit localization removal'
+  );
+
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      adcp_version: '3.1',
+      status: 'completed',
+      adcp: {
+        major_versions: [3],
+        idempotency: { supported: true, replay_ttl_seconds: 86400 }
+      },
+      supported_protocols: ['creative'],
+      creative: {
+        localization: {
+          supported_locales: ['en-US', 'es-ES'],
+          translation_modes: ['buyer_supplied'],
+          max_target_variants: 10,
+          review_scope: 'per_variant'
+        }
+      }
+    },
+    'Capabilities advertise discoverable locale and review support'
+  );
+  log('');
 
   // Print results
   log('====================================================');

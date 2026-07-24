@@ -179,9 +179,11 @@ The response provides creative data with optional enrichment:
 | `name` | string | Human-readable name |
 | `format_id` | object | Structured format reference |
 | `status` | string | Approval status |
+| `platform_id` | string | Single stable provider creative identity; required for localized creatives. |
 | `created_date` | string | Creation timestamp |
 | `updated_date` | string | Last modified timestamp |
 | `assets` | object | Creative assets (images, text, URLs, etc.) |
+| `localization` | object | Exact provider-backed locale assets, buyer/provider variant identities, review state, and launch state for localized creatives. |
 | `tags` | string[] | Tags for categorization |
 | `concept_id` | string | Creative concept ID |
 | `concept_name` | string | Human-readable concept name |
@@ -191,6 +193,40 @@ The response provides creative data with optional enrichment:
 | `snapshot_unavailable_reason` | string | Why snapshot is missing — `SNAPSHOT_UNSUPPORTED`, `SNAPSHOT_TEMPORARILY_UNAVAILABLE`, or `SNAPSHOT_PERMISSION_DENIED` |
 | `items` | array | Items for multi-asset formats (when `include_items=true`) |
 | `pricing_options` | [VendorPricingOption](/docs/creative/specification#pricing)[] | Pricing options for this creative (when `include_pricing=true` and `account` provided). Vendors may offer multiple options (volume tiers, context-specific rates, different models per product line). Same pattern as `get_signals` and `list_content_standards`. |
+
+### Localized creative readback
+
+For a localized creative, top-level `platform_id` plus `localization` are the
+authoritative round trip. `platform_id` is the single provider creative ID;
+`localization` never duplicates it. The localization object declares whether
+review is per-variant or creative-wide and lists exactly one source plus every
+target variant. It preserves the originating request's exact source ID/locale
+and exact target ID/locale/translation-mode set. Each entry returns complete
+resolved assets, provider variant identity, review status, and launch status.
+
+Verifiers enforce unique locale, buyer locale-variant ID, and provider-variant
+ID values plus exactly one source role. When `review_scope: creative`, every
+variant must carry the same `status` and `launch_status`. These rules are
+machine-readable in `x-adcp-validation` because draft-07 `uniqueItems` compares
+whole objects and cannot express uniqueness by property or cross-item equality.
+
+This object is atomic. If the provider omits a requested locale, normalizes it
+to a different locale, loses an asset or identity, or cannot report review and
+launch state, the seller MUST fail the creative read rather than return a
+partial `localization` object. `launch_status: ready` is provider eligibility,
+not buyer spend authorization.
+
+Lifecycle pairs are strict: `processing` and `pending_review` require
+`launch_status: pending`; `approved` requires `ready`; and `suspended`,
+`rejected`, and `archived` require `blocked` with at least one
+machine-readable `launch_blockers` entry.
+
+The top-level creative `status` is `archived` only when the whole creative is
+archived. Otherwise it is the first locale state present in this precedence:
+`rejected`, `suspended`, `pending_review`, `processing`, `approved`. A localized
+creative is therefore approved only when every locale is approved. Archive is
+whole-creative atomic: either every variant and the aggregate are archived, or
+none are.
 
 ### Pricing
 

@@ -1061,6 +1061,46 @@
             "additionalProperties": true
           }
         },
+        "localization": {
+          "type": "object",
+          "description": "Native creative-localization support for sync_creatives/list_creatives. Presence opts the agent into the exact locale-variant contract: accepted writes MUST round-trip complete resolved assets, stable buyer and provider variant identity, review state, and launch state. Omit this object when localization is unsupported.",
+          "properties": {
+            "supported_locales": {
+              "type": "array",
+              "description": "Complete current set of BCP 47 source and target locales accepted for this authenticated caller. Buyers MUST NOT send locale tags outside this list. Sellers MUST reject a now-unsupported locale before provider or library mutation rather than normalize or fall back to another locale.",
+              "items": { "$ref": "/schemas/core/locale-tag.json" },
+              "minItems": 2,
+              "uniqueItems": true
+            },
+            "translation_modes": {
+              "type": "array",
+              "description": "Translation modes this agent accepts. `buyer_supplied` accepts explicit locale-specific asset overrides. `provider_generated` explicitly asks the provider to translate from source; source assets alone never imply this mode.",
+              "items": {
+                "type": "string",
+                "enum": ["buyer_supplied", "provider_generated"]
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "max_target_variants": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "description": "Maximum target locale variants accepted on one creative. Omit to inherit the protocol ceiling of 50."
+            },
+            "review_scope": {
+              "type": "string",
+              "enum": ["per_variant", "creative"],
+              "description": "Provider review granularity. `per_variant` means each locale has independent provider-backed status; `creative` means one review state applies to every locale and all readback variants echo it."
+            }
+          },
+          "required": [
+            "supported_locales",
+            "translation_modes",
+            "review_scope"
+          ],
+          "additionalProperties": true
+        },
         "bills_through_adcp": {
           "type": "boolean",
           "description": "When true, this creative agent bills through the AdCP rate-card surface: list_creatives returns pricing_options when include_pricing=true with an authenticated account, build_creative populates pricing_option_id and vendor_cost on the response, and report_usage accepts records against the rate card. When false or absent, the agent bills out of band (flat license, SaaS contract, bundled enterprise agreement) and buyers should skip pricing fields and tolerate report_usage returning accepted: 0 with errors carrying BILLING_OUT_OF_BAND. A pre-call discriminator so buyer agents can route across many creative agents without first establishing an account to probe pricing.",
