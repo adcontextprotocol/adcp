@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.0.22
+
+### Patch Changes
+
+- 388a8af: Correct the idempotency compliance suite to read retry hints from the canonical top-level `error.retry_after` field. Restore the rate-limit trip runner source contract and align its assertions and reviewer guidance with the published numeric field type.
+
 ## 3.0.21
 
 ### Patch Changes
