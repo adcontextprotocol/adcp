@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.5/enums/legacy-postal-system.json",
+  "title": "Legacy Postal Code System",
+  "description": "Deprecated country-fused postal code systems for geographic targeting. Prefer postal-system with an explicit ISO 3166-1 alpha-2 country on postal area objects.",
+  "type": "string",
+  "deprecated": true,
+  "enum": [
+    "us_zip",
+    "us_zip_plus_four",
+    "gb_outward",
+    "gb_full",
+    "ca_fsa",
+    "ca_full",
+    "de_plz",
+    "fr_code_postal",
+    "au_postcode",
+    "ch_plz",
+    "at_plz"
+  ]
+}

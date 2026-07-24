@@ -1,5 +1,31 @@
 # Changelog
 
+## 3.1.5
+
+### Patch Changes
+
+- 4deb946: compliance(media-buy): the `available_actions` scenario uses a non-guaranteed product fixture so `sales-non-guaranteed`-only sellers can run it.
+
+  `available_actions.yaml` seeded a guaranteed-only product, so its `create_buy_from_product` step (and the whole available-actions enforcement flow that follows) failed with a terminal `DELIVERY_MODE_NOT_SUPPORTED` for sellers that declare only `specialisms: ["sales-non-guaranteed"]`. The `allowed_actions` behavior the scenario actually grades is delivery-type-agnostic, so the fixture is switched to `non_guaranteed` (floor-priced) — the same fix applied to the base `media_buy_seller` flow. The packaged `dist/compliance/` cache is generated from this source.
+
+- 4deb946: Runner output contract: document the branch-set `any_of` peer cascade exemption. `cascade_rules` now names a `branch_set_cascade_exemption` (parallel to `sole_stateful_step_exemption`) stating that a stateful peer's genuine failure or `peer_branch_taken` skip MUST NOT cascade `prerequisite_failed` onto a sibling phase sharing the same `branch_set.id` under `any_of` semantics — the peers are mutually-exclusive alternatives, not a dependency chain. The exemption is scoped to `any_of`, is N-ary-safe (any number of peers), leaves cross-set and within-phase cascade unchanged, and is explicitly `depends_on`-agnostic (it fires whether the sibling's dependency is the implicit default or an explicit `depends_on` naming the peer). `storyboard-schema.yaml`'s `depends_on` section gains a cross-reference. Documents-only; codifies the runner behavior shipped in adcp-client#2306 (closing adcp-client#2305), root-caused in adcp#5337. No schema or wire change.
+- 4deb946: Enforce `cancellation_fee.rate` / `.amount` by fee `type` in `cancellation-policy.json`. Both fields are documented as conditionally required — `rate` "Required when type is 'percent_remaining'", `amount` "Required when type is 'fixed_fee'" — and the requirement is restated in the pricing-models reference, but `cancellation_fee` listed only `["type"]` in `required[]`. A validator therefore accepted `{ "type": "percent_remaining" }` (or `{ "type": "fixed_fee" }`) with no fee value at all, leaving a money-path term that declares nothing computable for a buyer accepting the product's cancellation terms.
+
+  Adds `if/then` conditionals: `percent_remaining` requires `rate`, `fixed_fee` requires `amount`; `full_commitment` and `none` are unaffected. No prose change — this aligns the schema with the already-documented contract, and no existing example regresses (both doc examples already carry `rate`). Regression coverage added to `tests/composed-schema-validation.test.cjs`.
+
+- 4deb946: Clarify the boundary between `validate_input` manifest preflight and `sync_creatives` dry-run trafficking rehearsal.
+- 4deb946: Replace phantom error codes in creative and campaign-governance task docs with canonical enum members. `sync_creatives`, `build_creative`, the Creative Protocol specification, `check_governance`, and `sync_plans` documented 13 `errors[].code` values that do not exist in `enums/error-code.json` (`INVALID_FORMAT`, `ASSET_PROCESSING_FAILED`, `BRAND_SAFETY_VIOLATION`, `FORMAT_MISMATCH`, `CREATIVE_IN_ACTIVE_DELIVERY`, `ASSET_MISSING`, `ASSET_INVALID`, `GENERATION_FAILED`, `INVALID_MANIFEST`, `AMBIGUOUS_CHECK_TYPE`, `SELLER_NOT_RECOGNIZED`, `INVALID_PLAN`, `BUDGET_BELOW_COMMITTED`). SDKs that validate `errors[].code` against the published enum reject responses built from the docs literally, the same failure mode as #4852 and #5307. Each phantom is remapped to the existing code with matching semantics (`UNSUPPORTED_FEATURE`, `VALIDATION_ERROR`, `CREATIVE_REJECTED`, `INVALID_STATE`, `INVALID_REQUEST`, `PERMISSION_DENIED`); `GENERATION_FAILED` is replaced with guidance that generation-pipeline failures surface as task-level failure with the most specific applicable canonical code, per the open-vocabulary rule on `error-code.json`. Also fixes the one live `INVALID_FORMAT` emission in the training-agent reference implementation. Docs and reference implementation only; no wire change.
+- 4deb946: Fix false failures in creative compliance storyboards (canonical_supported_formats, evaluator_auth).
+
+  `canonical_supported_formats`: removes the hardcoded `capability_id: "training_image_generation"` assertion (capability_id is agent-local; any valid value must pass) and the `field_absent` check on `supported_formats[1]` (agents may advertise multiple canonical formats). Fixes `context_outputs` field name from `key:` to `name:`.
+
+  `evaluator_auth`: adds `requires_capability` guards to all five optional phases so agents that correctly declare `creative.supports_evaluator: false` receive `not_applicable` instead of failing the evaluator track. Guards evaluate against the raw capabilities response, bypassing a runner-side boolean-false accumulator bug. Fixes `context_outputs` field name from `key:` to `name:`.
+
+- 4deb946: Fix a misleading `get_media_buy_delivery` example that implied buyers can look up delivery by their own reference. `media_buy_ids` are seller-assigned; the top-level `buyer_ref` field was removed in 3.0.0. The example is retitled "Correlating Your Own Reference", uses seller-assigned `mb_...` IDs, and adds a note pointing buyers to reconcile their own reference via `context` echoed on `create_media_buy` / `get_media_buys`.
+- 4deb946: Align idempotency and rate-limit guidance with the canonical top-level `error.retry_after` field across schemas, documentation, and compliance storyboards.
+- 4deb946: Preserve withdrawn and unpublished release status when generating file-based schema discovery so exact artifacts remain available without becoming stable alias targets.
+- 4deb946: Remove an incidental video-only constraint from the inventory list targeting storyboards so single-channel sellers can exercise the channel-agnostic scenarios.
+
 ## 3.1.4
 
 ### Patch Changes
