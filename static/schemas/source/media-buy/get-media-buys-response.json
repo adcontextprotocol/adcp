@@ -226,6 +226,15 @@
                   "description": "Package budget amount, denominated in package.currency when present, otherwise media_buy.currency",
                   "minimum": 0
                 },
+                "daily_budget_cap": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "The hard per-calendar-day spend ceiling the seller is enforcing on this package, denominated in package.currency when present, otherwise media_buy.currency. Sellers MUST echo this whenever a `daily_budget_cap` was accepted on create_media_buy or update_media_buy, so buyers can verify the cap took effect and reconcile enforced-vs-requested."
+                },
+                "budget_cap_timezone": {
+                  "type": "string",
+                  "description": "The IANA timezone the seller resolved for this package's `daily_budget_cap` day boundary — the buyer-requested override when honored, otherwise the seller's effective billing timezone. Sellers MUST echo this whenever `daily_budget_cap` is set so buyers can confirm which calendar-day boundary the cap resets on."
+                },
                 "currency": {
                   "type": "string",
                   "description": "ISO 4217 currency code for monetary values at this package level (budget, bid_price, snapshot.spend). When absent, inherit media_buy.currency.",

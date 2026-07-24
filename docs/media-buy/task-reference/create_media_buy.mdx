@@ -196,6 +196,8 @@ When executing a proposal, `proposal_status` on the returned proposal determines
 | `impressions` | number | No | Impression goal for this package |
 | `paused` | boolean | No | Create package in paused state (default: `false`) |
 | `pacing` | string | No | `"even"` (default), `"asap"`, or `"front_loaded"` |
+| `daily_budget_cap` | number | No | Hard ceiling on spend per calendar day, in the media buy's currency. Orthogonal to `pacing` (the cap bounds the daily maximum; pacing governs within-day distribution). Day boundary is the seller's billing timezone (`get_account_financials.timezone`). Requires seller support: the seller declares `media_buy.budget_capping` in `get_adcp_capabilities` and rejects unenforceable caps with `UNSUPPORTED_FEATURE`. |
+| `budget_cap_timezone` | string | No | IANA timezone override for the `daily_budget_cap` day boundary. Valid only when the seller advertises `media_buy.budget_capping.buyer_timezone_override: true`; otherwise rejected with `UNSUPPORTED_FEATURE`. |
 | `bid_price` | number | No | Bid price for auction pricing. This is the exact bid/price to honor unless the selected pricing option has `max_bid: true`, in which case it is treated as the buyer's maximum willingness to pay (ceiling). |
 | `optimization_goals` | [OptimizationGoal[]](/docs/media-buy/conversion-tracking/#optimization-goals) | No | Optimization targets for this package. Each goal is either `kind: "event"` (conversion events with `event_sources` array, optional `cost_per`, `per_ad_spend`, or `maximize_value` target) or `kind: "metric"` (seller-native metric with optional `cost_per` or `threshold_rate` target). Event goals require `conversion_tracking.supported_targets` on the product; metric goals require `metric_optimization.supported_metrics`. |
 | `targeting_overlay` | TargetingOverlay | No | Additional targeting criteria (see [Targeting](/docs/media-buy/advanced-topics/targeting)) |
@@ -1109,6 +1111,7 @@ Budget constraints are set **per package**, not at the media-buy level. The one 
 | `impressions` | Package | number | Impression goal for the package. An alternative volume target to `budget`; a seller may pace to whichever binds first. |
 | `pacing` | Package | enum | How the seller spreads the package budget across the flight: `even` (default), `asap`, or `front_loaded`. |
 | `bid_price` | Package | number | For auction pricing options — the exact bid, or the ceiling when the pricing option has `max_bid: true`. |
+| `daily_budget_cap` | Package | number | Optional hard ceiling on spend per calendar day (seller billing timezone). Orthogonal to `pacing`. Requires `media_buy.budget_capping` support; see [Daily budget cap](#daily-budget-cap). |
 | `start_time` / `end_time` | Package | string | The flight window the budget is spread across. When omitted, the package inherits the media buy's flight dates. |
 
 **Pacing modes** (from [`/schemas/v3/enums/pacing.json`](https://adcontextprotocol.org/schemas/v3/enums/pacing.json)):
@@ -1134,14 +1137,13 @@ Example package with an even-paced budget over a fixed flight:
 
 With `even` pacing over the 31-day flight above, the seller spreads the $50,000 budget across the month — roughly $1,613/day — subject to the seller's own pacing engine and available inventory.
 
-#### Known gap: no explicit daily cap
+#### Daily budget cap
 
-AdCP 3.1 has **no per-day (or per-hour) budget cap field.** Delivery rate is governed by the combination of `budget`, `pacing`, and the flight window (`start_time` / `end_time`) — not a hard daily ceiling the buyer can pin. To constrain daily spend today:
+An optional per-package `daily_budget_cap` sets a hard ceiling on spend per calendar day. It is **orthogonal to `pacing`** — the cap bounds the daily maximum while `pacing` governs within-day distribution, so `pacing: "asap"` plus a cap is valid (spend fast, but never past the ceiling on any single day). The day boundary is the seller's billing timezone (`get_account_financials.timezone`), so cap resets align with invoice periods.
 
-- **Approximate a daily rate** by setting `pacing: "even"` and choosing `budget` and flight length so `budget ÷ flight_days` lands near the target daily spend. Enforcement is seller-side and best-effort, not a guaranteed hard cap.
-- **Tighten the window** by splitting a long flight into shorter packages (e.g. weekly packages), each with its own `budget`, when finer control is needed.
+`daily_budget_cap` requires seller support: sellers advertise `media_buy.budget_capping` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) (declaring `enforcement` strength and the `effective_timezone`) and MUST reject a cap they cannot enforce with `UNSUPPORTED_FEATURE` rather than silently dropping it. Sellers echo the accepted cap on read surfaces so buyers can verify it took effect.
 
-A first-class daily-cap field is not yet specified. Tracking: [#5983](https://github.com/adcontextprotocol/adcp/issues/5983).
+When a seller does not support `daily_budget_cap`, approximate a daily rate with `pacing: "even"` and a `budget ÷ flight_days` calculation, or split a long flight into shorter packages each with its own `budget` — both are best-effort, not a guaranteed ceiling.
 
 ### Targeting Overlays
 

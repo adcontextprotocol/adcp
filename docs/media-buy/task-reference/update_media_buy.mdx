@@ -237,6 +237,8 @@ Configure automated delivery reporting for this media buy:
 | `start_time` | string | Updated flight start date/time in ISO 8601 format. Must fall within the media buy's date range. |
 | `end_time` | string | Updated flight end date/time in ISO 8601 format. Must fall within the media buy's date range. |
 | `pacing` | string | Updated pacing strategy |
+| `daily_budget_cap` | number | Updated hard per-calendar-day spend ceiling, in the media buy's currency. PATCH semantics — applied from the next cap-day boundary forward, not retroactively. Same enforcement contract as create: requires `media_buy.budget_capping` support; unenforceable caps are rejected with `UNSUPPORTED_FEATURE`. |
+| `budget_cap_timezone` | string | Updated IANA timezone override for the cap day boundary. Valid only when the seller advertises `media_buy.budget_capping.buyer_timezone_override: true`. |
 | `bid_price` | number | Updated bid price (auction products only). This is the exact bid/price to honor unless the selected pricing option has `max_bid: true`, in which case it is treated as the buyer's maximum willingness to pay (ceiling). |
 | `optimization_goals` | OptimizationGoal[] | Replace all optimization goals for this package. Uses replacement semantics — omit to leave goals unchanged. |
 | `targeting_overlay` | TargetingOverlay | Updated targeting restrictions. Uses replacement semantics; changing `signal_targeting_groups` can alter priced signal selection, so sellers MAY reject with `REQUOTE_REQUIRED` when the selected signal, group expression, or signal `pricing_option_id` falls outside the original quote. Sellers SHOULD reject attempts to change fixed signal selections and MUST echo applied fixed/default signal groups on the resulting package state. |
