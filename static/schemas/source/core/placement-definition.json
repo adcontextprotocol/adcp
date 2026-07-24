@@ -121,6 +121,65 @@
       "uniqueItems": true,
       "minItems": 1
     },
+    "identifiers": {
+      "type": "array",
+      "description": "Optional external inventory identifiers for this placement, using the same {type, value} shape as property identifiers. Externally governed IDs should be authority-prefixed (e.g., space:1234931339, geopath:30961, fcc:73953). Seller-local IDs are opaque values scoped by the surrounding publisher namespace. Product-level placement declarations may carry additional identifiers but SHOULD NOT contradict publisher-declared identifiers for the same type.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "/schemas/enums/identifier-types.json"
+          },
+          "value": {
+            "type": "string",
+            "description": "Identifier value, optionally authority-prefixed for externally governed IDs (e.g., space:1234931339)."
+          }
+        },
+        "required": ["type", "value"],
+        "additionalProperties": false
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "dooh_placement_attributes": {
+      "type": "object",
+      "description": "DOOH-specific placement metadata for digital out-of-home inventory. Each field is optional and should only be populated when it is true for the placement being represented. A single screen/frame placement can include all fields; a package/network placement should include fields only when they are uniform across the included inventory. Product-level placement declarations may narrow these attributes but SHOULD NOT broaden them.",
+      "properties": {
+        "slot_duration_seconds": {
+          "type": "integer",
+          "description": "Duration of one ad slot in seconds (e.g., 10, 15, 30). Aligns with the seconds-based duration convention used by loop_duration_seconds.",
+          "minimum": 1
+        },
+        "loop_duration_seconds": {
+          "type": "integer",
+          "description": "Duration of the full ad loop rotation in seconds. Buyers can derive nominal slot share as slot_duration_seconds / loop_duration_seconds. This is the canonical source for loop duration; the pricing-layer field in flat-rate-option.json is superseded by this placement-level declaration.",
+          "minimum": 1
+        },
+        "screen_resolution": {
+          "type": "object",
+          "description": "Physical screen resolution in pixels. Buyers can derive aspect ratio from width/height.",
+          "properties": {
+            "width": {
+              "type": "integer",
+              "description": "Screen width in pixels.",
+              "minimum": 1
+            },
+            "height": {
+              "type": "integer",
+              "description": "Screen height in pixels.",
+              "minimum": 1
+            }
+          },
+          "required": ["width", "height"],
+          "additionalProperties": false
+        },
+        "motion": {
+          "$ref": "/schemas/enums/dooh-motion-type.json",
+          "description": "Motion capability of the DOOH screen. Determines whether full-motion video, partial-motion (animated stills), or static-only creatives are accepted."
+        }
+      },
+      "additionalProperties": true
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
