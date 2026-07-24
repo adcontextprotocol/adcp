@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
+const { execFileSync, spawnSync } = require('node:child_process');
 const { describe, it } = require('node:test');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -54,6 +54,19 @@ function runSign(workspace, extraEnv = {}) {
   });
 }
 
+function runSignResult(workspace, extraEnv = {}) {
+  return spawnSync('bash', ['scripts/sign-protocol-tarball.sh'], {
+    cwd: workspace.dir,
+    env: {
+      ...process.env,
+      ...extraEnv,
+      GITHUB_ACTIONS: 'true',
+      PATH: `${workspace.binDir}${path.delimiter}${process.env.PATH}`,
+    },
+    encoding: 'utf8',
+  });
+}
+
 describe('sign-protocol-tarball.sh', () => {
   it('replaces sidecars for the current package version on rerun', () => {
     const workspace = makeWorkspace('1.2.3');
@@ -71,6 +84,7 @@ describe('sign-protocol-tarball.sh', () => {
 
   it('does not rewrite already signed older tarballs by default', () => {
     const workspace = makeWorkspace('1.2.3');
+    fs.writeFileSync(path.join(workspace.dir, 'dist/protocol/1.2.3.tgz'), 'current-tarball');
     const oldTarball = path.join(workspace.dir, 'dist/protocol/1.2.2.tgz');
     fs.writeFileSync(oldTarball, 'old-tarball');
     fs.writeFileSync(`${oldTarball}.sig`, 'old-signature');
@@ -79,6 +93,60 @@ describe('sign-protocol-tarball.sh', () => {
     const output = runSign(workspace);
 
     assert.match(output, /Skipping 1\.2\.2\.tgz \(not current package version 1\.2\.3\)/);
+    assert.equal(fs.readFileSync(`${oldTarball}.sig`, 'utf8'), 'old-signature');
+    assert.equal(fs.readFileSync(`${oldTarball}.crt`, 'utf8'), 'old-certificate');
+  });
+
+  it('fails closed when the expected current tarball is missing', () => {
+    const workspace = makeWorkspace('1.2.3');
+    const oldTarball = path.join(workspace.dir, 'dist/protocol/1.2.2.tgz');
+    fs.writeFileSync(oldTarball, 'old-tarball');
+    fs.writeFileSync(`${oldTarball}.sig`, 'old-signature');
+    fs.writeFileSync(`${oldTarball}.crt`, 'old-certificate');
+
+    const result = runSignResult(workspace);
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Expected current protocol tarball .*1\.2\.3\.tgz was not found/);
+    assert.equal(fs.readFileSync(`${oldTarball}.sig`, 'utf8'), 'old-signature');
+    assert.equal(fs.readFileSync(`${oldTarball}.crt`, 'utf8'), 'old-certificate');
+  });
+
+  it('fails closed when package.json has no version', () => {
+    const workspace = makeWorkspace('1.2.3');
+    fs.writeFileSync(path.join(workspace.dir, 'package.json'), '{}');
+    fs.writeFileSync(path.join(workspace.dir, 'dist/protocol/1.2.3.tgz'), 'tarball');
+
+    const result = runSignResult(workspace);
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Could not resolve package\.json version/);
+  });
+
+  it('refuses a partial historical sidecar set in explicit sign-all mode', () => {
+    const workspace = makeWorkspace('1.2.3');
+    const oldTarball = path.join(workspace.dir, 'dist/protocol/1.2.2.tgz');
+    fs.writeFileSync(oldTarball, 'old-tarball');
+    fs.writeFileSync(`${oldTarball}.sig`, 'old-signature');
+
+    const result = runSignResult(workspace, { SIGN_ALL_PROTOCOL_TARBALLS: 'true' });
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Refusing to overwrite partial signature sidecars/);
+    assert.equal(fs.readFileSync(`${oldTarball}.sig`, 'utf8'), 'old-signature');
+    assert.equal(fs.existsSync(`${oldTarball}.crt`), false);
+  });
+
+  it('preserves complete historical sidecars in explicit sign-all mode', () => {
+    const workspace = makeWorkspace('1.2.3');
+    const oldTarball = path.join(workspace.dir, 'dist/protocol/1.2.2.tgz');
+    fs.writeFileSync(oldTarball, 'old-tarball');
+    fs.writeFileSync(`${oldTarball}.sig`, 'old-signature');
+    fs.writeFileSync(`${oldTarball}.crt`, 'old-certificate');
+
+    const output = runSign(workspace, { SIGN_ALL_PROTOCOL_TARBALLS: 'true' });
+
+    assert.match(output, /Skipping 1\.2\.2\.tgz \(signature sidecars already exist\)/);
     assert.equal(fs.readFileSync(`${oldTarball}.sig`, 'utf8'), 'old-signature');
     assert.equal(fs.readFileSync(`${oldTarball}.crt`, 'utf8'), 'old-certificate');
   });
