@@ -1190,6 +1190,8 @@ AdCP supports fixed package budgets and media-buy-level shared budgets. `budget_
 | `impressions` | Package | number | Impression goal for the package. An alternative volume target to `budget`; a seller may pace to whichever binds first. |
 | `pacing` | Media buy | enum | How the seller spreads aggregate spend across the media-buy flight. |
 | `packages[].pacing` | Package | enum | Subordinate temporal preference affecting which package receives the aggregate spend. |
+| `daily_budget_cap` | Media buy | number | Optional hard aggregate ceiling per calendar day. It limits total buy spend without allocating that amount among packages. |
+| `packages[].daily_budget_cap` | Package | number | Optional subordinate package ceiling per calendar day. It is not a reservation or current allocation. |
 | `bidding` | Media buy or package | BiddingPolicy | Buyer execution policy. Media-buy is the inherited default; package is a complete override. |
 | `bid_price` | Package | number | Deprecated legacy representation normalized to `bidding.bid_amount` or `bidding.max_bid`. |
 | `start_time` / `end_time` | Package | string | The flight window the budget is spread across. When omitted, the package inherits the media buy's flight dates. |
@@ -1276,14 +1278,15 @@ Continuous allocation decisions inside an accepted seller-optimized buy are deli
 
 The package caps total $130,000, creating room for the seller to allocate the $100,000 shared total toward the better-performing package. The first package has a soft $20,000 minimum-spend target; neither package has a reserved allocation.
 
-#### Known gap: no explicit daily cap
+#### Daily budget cap
 
-AdCP 3.2 has **no per-day (or per-hour) budget cap field.** Delivery rate is governed by the combination of `budget`, `pacing`, and the flight window (`start_time` / `end_time`) — not a hard daily ceiling the buyer can pin. To constrain daily spend today:
+An optional media-buy `daily_budget_cap` sets a hard ceiling on aggregate spend per calendar day without creating package allocations. Optional package `daily_budget_cap` values add subordinate per-package ceilings. In seller-optimized mode, package caps may be omitted so the seller can allocate the aggregate daily allowance dynamically; a package cap is always a ceiling, never a reservation.
 
-- **Approximate a daily rate** by setting `pacing: "even"` and choosing `budget` and flight length so `budget ÷ flight_days` lands near the target daily spend. Enforcement is seller-side and best-effort, not a guaranteed hard cap.
-- **Tighten the window** by splitting a long flight into shorter packages (e.g. weekly packages), each with its own `budget`, when finer control is needed.
+Daily caps are **orthogonal to `pacing`**. The media-buy cap bounds aggregate daily spend, package caps bound individual package spend, and pacing governs distribution within those limits. `pacing: "asap"` plus a cap is valid. Every cap on one media buy uses its accepted `budget_cap_timezone`, which defaults to the seller's billing timezone, so aggregate and package accounting share one calendar-day boundary.
 
-A first-class daily-cap field is not yet specified. Tracking: [#5983](https://github.com/adcontextprotocol/adcp/issues/5983).
+`daily_budget_cap` requires seller support: sellers advertise `media_buy.budget_capping` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) (declaring `enforcement` strength and the `effective_timezone`) and MUST reject a cap they cannot enforce with `UNSUPPORTED_FEATURE` rather than silently dropping it. Sellers echo the accepted cap on read surfaces so buyers can verify it took effect.
+
+When a seller does not support `daily_budget_cap`, approximate a daily rate with `pacing: "even"` and a `budget ÷ flight_days` calculation, or split a long flight into shorter packages each with its own `budget` — both are best-effort, not a guaranteed ceiling.
 
 ### Targeting Overlays
 
