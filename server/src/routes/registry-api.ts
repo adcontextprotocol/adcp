@@ -156,6 +156,7 @@ type PublisherFormatSummary = {
   format_option_id?: string;
   display_name: string;
   format_kind: string;
+  sample_render_url?: string;
   params?: Record<string, unknown>;
   applies_to_property_ids?: string[];
   applies_to_property_tags?: string[];
@@ -171,6 +172,17 @@ function recordOrNull(value: unknown): Record<string, unknown> | null {
 
 function stringOrUndefined(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function httpsUrlOrUndefined(value: unknown): string | undefined {
+  const raw = stringOrUndefined(value);
+  if (!raw) return undefined;
+  try {
+    const url = new URL(raw);
+    return url.protocol === "https:" ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function stringArray(value: unknown, cap = 8): string[] {
@@ -306,6 +318,7 @@ function summarizeFormats(
         format_option_id: optionId,
         display_name: displayName,
         format_kind: formatKind,
+        sample_render_url: httpsUrlOrUndefined(format.sample_render_url),
         params,
         applies_to_property_ids: appliesToPropertyIds,
         applies_to_property_tags: appliesToPropertyTags,
