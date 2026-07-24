@@ -218,77 +218,92 @@ jobs:
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
-            # Push the branch to origin BEFORE peter-evans runs.
-            # peter-evans/create-pull-request@v8 internally runs
-            # `git reset --hard origin/forward-merge/3.0.x` as part of
-            # its branch-update flow and fails with "ambiguous argument"
-            # when the remote ref doesn't exist yet (first run, or after
-            # `delete-branch: false` left no remote ref). Pushing here
-            # establishes the remote-tracking branch so peter-evans's
-            # reset has something to point at.
+            # The branch already contains the merge commit that must be
+            # reviewed. Push it directly, then let `gh pr create` point a PR
+            # at this exact ref without rewriting it.
             git push --force origin "HEAD:refs/heads/forward-merge/3.0.x"
           fi
 
       - name: Create or update pull request
         if: steps.merge.outputs.skip != 'true'
-        uses: peter-evans/create-pull-request@v8
-        with:
-          token: ${{ steps.app-token.outputs.token }}
-          branch: forward-merge/3.0.x
-          base: main
-          title: "Forward-merge 3.0.x → main"
-          body: |
-            Auto-generated forward-merge of `3.0.x` into `main`.
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_HEAD: forward-merge/3.0.x
+          PR_TITLE: "Forward-merge 3.0.x → main"
+        run: |
+          set -euo pipefail
 
-            Brings 3.0.x patches into main so 3.1.x continues to include all
-            3.0.x fixes. **Direction is one-way**: `3.0.x → main`. Never the
-            reverse.
+          EXISTING_PR="$(gh pr list \
+            --repo "$GITHUB_REPOSITORY" \
+            --state open \
+            --base main \
+            --head "$PR_HEAD" \
+            --limit 1 \
+            --json url \
+            --jq '.[0].url // empty')"
 
-            ## Auto-resolved divergent metadata
+          if [ -n "$EXISTING_PR" ]; then
+            echo "Forward-merge PR already open: $EXISTING_PR"
+            exit 0
+          fi
 
-            Conflicts on these always-divergent paths are resolved
-            automatically (see workflow source for rationale):
+          BODY_FILE="$RUNNER_TEMP/forward-merge-3.0.md"
+          cat > "$BODY_FILE" <<'EOF'
+          Auto-generated forward-merge of `3.0.x` into `main`.
 
-            - `package.json` / `package-lock.json` → preserve main's
-              (main's pre-mode tracking is independent of 3.0.x's version,
-              and main may carry structural changes — package renames,
-              new deps — that 3.0.x doesn't)
-            - `.changeset/*.md` / `.changeset/pre.json` → preserve main's
-              state (main consumes changesets on its own beta schedule)
-            - `static/schemas/source/index.json`,
-              `static/schemas/source/registry/index.yaml` → preserve main's
-              branch-local version metadata
-            - `CHANGELOG.md` → take 3.0.x's (main's next Version Packages
-              cut prepends its own beta entries above)
-            - `dist/*` → take 3.0.x's (versioned release artifacts)
+          Brings 3.0.x patches into main so 3.1.x continues to include all
+          3.0.x fixes. **Direction is one-way**: `3.0.x → main`. Never the
+          reverse.
 
-            Any conflict outside this list fails the workflow loud — needs
-            manual resolution. Content-file divergences between 3.0.x and
-            main (schemas, docs, workflow scripts) are real backport
-            decisions and require human review — auto-resolving them
-            silently dropped 3.0.x patches in the past (see #4306).
+          ## Auto-resolved divergent metadata
 
-            ## Review checklist
+          Conflicts on these always-divergent paths are resolved
+          automatically (see workflow source for rationale):
 
-            - [ ] Diff matches what you'd expect from the 3.0.x patches
-            - [ ] No 3.1-line work has been pulled in by accident (would
-                  indicate the merge picked up something unintended)
-            - [ ] If the merge commit message says "(auto-resolved
-                  divergent metadata)", confirm `package.json` /
-                  `package-lock.json` reflect main's state (the workflow
-                  preserves --ours; 3.0.x's version bump intentionally
-                  doesn't propagate)
-            - [ ] CI green
+          - `package.json` / `package-lock.json` → preserve main's
+            (main's pre-mode tracking is independent of 3.0.x's version,
+            and main may carry structural changes — package renames,
+            new deps — that 3.0.x doesn't)
+          - `.changeset/*.md` / `.changeset/pre.json` → preserve main's
+            state (main consumes changesets on its own beta schedule)
+          - `static/schemas/source/index.json`,
+            `static/schemas/source/registry/index.yaml` → preserve main's
+            branch-local version metadata
+          - `CHANGELOG.md` → take 3.0.x's (main's next Version Packages
+            cut prepends its own beta entries above)
+          - `dist/*` → take 3.0.x's (versioned release artifacts)
 
-            ## Source
+          Any conflict outside this list fails the workflow loud — needs
+          manual resolution. Content-file divergences between 3.0.x and
+          main (schemas, docs, workflow scripts) are real backport
+          decisions and require human review — auto-resolving them
+          silently dropped 3.0.x patches in the past (see #4306).
 
-            See `.github/workflows/forward-merge-3.0.yml` for the trigger
-            and auto-resolution logic. See `.agents/playbook.md` § Release
-            lines for the cherry-pick convention.
+          ## Review checklist
 
-            🤖 Generated by `.github/workflows/forward-merge-3.0.yml`
-          labels: forward-merge
-          # delete-branch is false so a stuck PR can be inspected. peter-evans
-          # force-updates the branch on each run; if a prior run left a stale
-          # branch, the next push overwrites it.
-          delete-branch: false
+          - [ ] Diff matches what you'd expect from the 3.0.x patches
+          - [ ] No 3.1-line work has been pulled in by accident (would
+                indicate the merge picked up something unintended)
+          - [ ] If the merge commit message says "(auto-resolved
+                divergent metadata)", confirm `package.json` /
+                `package-lock.json` reflect main's state (the workflow
+                preserves --ours; 3.0.x's version bump intentionally
+                doesn't propagate)
+          - [ ] CI green
+
+          ## Source
+
+          See `.github/workflows/forward-merge-3.0.yml` for the trigger
+          and auto-resolution logic. See `.agents/playbook.md` § Release
+          lines for the cherry-pick convention.
+
+          🤖 Generated by `.github/workflows/forward-merge-3.0.yml`
+          EOF
+
+          gh pr create \
+            --repo "$GITHUB_REPOSITORY" \
+            --base main \
+            --head "$PR_HEAD" \
+            --title "$PR_TITLE" \
+            --body-file "$BODY_FILE" \
+            --label forward-merge

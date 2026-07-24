@@ -1,5 +1,5 @@
 id: creative/canonical_supported_formats
-version: "1.0.0"
+version: "1.0.1"
 title: "Creative canonical supported formats"
 category: creative
 summary: "Verifies the 3.1 creative-agent canonical path: targetable supported_formats capability IDs, build_creative routing, and unsupported target rejection."
@@ -69,7 +69,7 @@ phases:
           context:
             correlation_id: "creative_canonical_supported_formats--get_capabilities"
         context_outputs:
-          - key: "image_build_capability_id"
+          - name: "image_build_capability_id"
             path: "creative.supported_formats[0].capability_id"
         validations:
           - check: response_schema
@@ -77,10 +77,9 @@ phases:
           - check: field_present
             path: "creative.supported_formats"
             description: "Creative canonical supported formats are advertised"
-          - check: field_value
+          - check: field_present
             path: "creative.supported_formats[0].capability_id"
-            value: "training_image_generation"
-            description: "The image build path has a stable local capability_id"
+            description: "The advertised canonical format entry carries a capability_id for build routing"
           - check: field_value
             path: "creative.supported_formats[0].format.format_kind"
             value: "image"
@@ -91,9 +90,6 @@ phases:
           - check: field_absent
             path: "creative.supported_formats[0].format.format_option_id"
             description: "Creative-agent build routing uses capability_id, not product format_option_id"
-          - check: field_absent
-            path: "creative.supported_formats[1].capability_id"
-            description: "Storyboard fixture only advertises implemented canonical build paths"
           - check: field_value
             path: "context.correlation_id"
             value: "creative_canonical_supported_formats--get_capabilities"

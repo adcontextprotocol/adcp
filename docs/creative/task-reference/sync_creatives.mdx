@@ -149,7 +149,7 @@ Implementations that acknowledge a creative on the synchronous success branch bu
 | `creatives`       | Creative[] | Yes      | Creative assets to upload/update (max 100)                                                                                                                               |
 | `creative_ids`    | string[]   | No       | Optional filter to limit sync scope to specific creative IDs. Only these creatives are affected, others remain untouched. Useful for partial updates and error recovery. |
 | `assignments`     | array      | No       | Array of `{creative_id, package_id}` objects for bulk assignment. Optional `weight` and `placement_ids` per assignment.                                                  |
-| `dry_run`         | boolean    | No       | When true, preview changes without applying them (default: false)                                                                                                        |
+| `dry_run`         | boolean    | No       | When true, rehearse this exact sync operation without applying it (default: false). Use this for seller trafficking acceptance checks; use `validate_input` for manifest-only preflight against canonical/product format targets. |
 | `validation_mode` | string     | No       | Validation strictness: `"strict"` (default) or `"lenient"`                                                                                                               |
 | `delete_missing`  | boolean    | No       | When true, creatives not in this sync are archived (default: false). Cannot be combined with `creative_ids`. Cannot delete creatives assigned to active, non-paused packages. |
 
@@ -585,6 +585,14 @@ const validated = SyncCreativesResponseSchema.parse(result.data);
 if ("errors" in validated && validated.errors && validated.errors.length > 0) {
   console.log("Validation errors found:");
   validated.errors.forEach((error) => console.log(`  - ${error.message}`));
+} else if (
+  "creatives" in validated && validated.creatives?.some((creative) => creative.action === "failed")
+) {
+  console.log("Creative validation errors found.");
+} else if (
+  "assignments" in validated && validated.assignments?.some((assignment) => assignment.status === "error")
+) {
+  console.log("Assignment validation errors found.");
 } else {
   console.log("Validation passed! Ready to sync.");
 }
@@ -626,6 +634,10 @@ async def main():
     if hasattr(result, 'errors') and result.errors:
         error_messages = [error.message for error in result.errors]
         raise Exception(f"Validation errors: {error_messages}")
+    if any(getattr(creative, 'action', None) == 'failed' for creative in getattr(result, 'creatives', [])):
+        raise Exception('Creative validation errors found')
+    if any(getattr(assignment, 'status', None) == 'error' for assignment in getattr(result, 'assignments', [])):
+        raise Exception('Assignment validation errors found')
 
     print('Validation passed! Ready to sync.')
 
@@ -804,27 +816,26 @@ Poll `tasks/get` or wait for the webhook. The completion artifact carries the `c
 
 ### Dry run
 
-- Validates request without making changes
-- Returns errors and warnings
-- Does not process assets or create creatives
-- Use for pre-flight validation checks
+- Rehearses the same `sync_creatives` acceptance path without committing library, assignment, review, or serving changes
+- Returns operation-level errors, per-creative failures, assignment errors, and warnings the seller can determine before mutation
+- Does not create or update creatives, package assignments, review state, or serving state
+- Use for seller trafficking acceptance checks; use `validate_input` for manifest-only canonical/product preflight
 
 ## Error handling
 
 | Error Code                | Description                                       | Resolution                                                           |
 | ------------------------- | ------------------------------------------------- | -------------------------------------------------------------------- |
-| `INVALID_FORMAT`          | Format not supported by product                   | Check product's supported formats via `list_creative_formats`        |
-| `ASSET_PROCESSING_FAILED` | Asset file corrupt or invalid                     | Verify asset meets format requirements (codec, dimensions, duration) |
+| `UNSUPPORTED_FEATURE`     | Format not supported by this seller or product    | Check product's supported formats via `list_creative_formats`        |
+| `VALIDATION_ERROR`        | Manifest failed format validation: an asset file is corrupt or invalid, or assets don't match the format's requirements (codec, dimensions, duration). `error.field` identifies the offending asset path | Verify asset types and specifications match the format definition |
 | `PACKAGE_NOT_FOUND`       | Package ID doesn't exist in media buy             | Verify `package_id`; for legacy package correlation use `get_media_buys` + package `context.buyer_ref` |
-| `BRAND_SAFETY_VIOLATION`  | Creative failed brand safety scan                 | Review content against publisher's brand safety guidelines           |
-| `FORMAT_MISMATCH`         | Assets don't match format requirements            | Verify asset types and specifications match format definition        |
-| `CREATIVE_IN_ACTIVE_DELIVERY` | Creative is assigned to an active, non-paused package (blocks updates and `delete_missing` deletions) | Pause the package first, or create a new creative version        |
+| `CREATIVE_REJECTED`       | Creative failed content policy or brand safety review | Review content against the seller's advertising policies         |
+| `INVALID_STATE`           | Creative is assigned to an active, non-paused package (blocks updates and `delete_missing` deletions) | Pause the package first, or create a new creative version        |
 
 ## Best practices
 
 1. **Use upsert semantics** - Same `creative_id` updates existing creative rather than creating duplicates. This allows iterative creative development. Note: updates are blocked for creatives in active delivery (see #7).
 
-2. **Validate first** - Use `dry_run: true` to catch errors before actual upload. This saves bandwidth and processing time.
+2. **Rehearse seller acceptance first** - Use `dry_run: true` when you need to catch upload, upsert, assignment, account, policy, or format errors before mutating the seller's creative library. Use `validate_input` earlier in the workflow only for manifest-structure preflight or multi-target product comparison.
 
 3. **Batch assignments** - Include all package assignments in single sync call to avoid race conditions between updates.
 

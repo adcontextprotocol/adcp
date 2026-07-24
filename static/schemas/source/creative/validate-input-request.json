@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/creative/validate-input-request.json",
   "title": "Validate Input Request",
-  "description": "Request payload for the validate_input task. Lets buyers dry-run a creative manifest against canonical formats and/or specific products before committing to a render. Cheaper than preview_creative (no synthesis cost). Used by build_creative internally to validate inputs before producing output. For genuinely nondeterministic generative platforms (Veo/Sora/Runway-class) where predictive validation is impossible, the platform's own post-synthesis QA loop applies — validate_input is the predictable-case primitive.\n\nThe `targets[]` array is a discriminated list of validation targets, mirroring the response shape on `validate-input-result.json#target`. Each entry has a `kind` (canonical | product | third_party_format) plus a kind-specific identifier. Discriminated-by-kind on both sides eliminates a wire-shape mismatch: a previous draft used `format_ids: string[]` for canonical names alongside `product_ids: string[]`, which collided with `Product.format_ids: FormatId[]` ({agent_url, id}) — codegen would emit the same field name with two different types. Discriminated `targets[]` makes the intent explicit and codegen-clean.",
+  "description": "Request payload for the validate_input task. Lets buyers preflight a creative manifest against canonical formats and/or specific products before committing to a render or other expensive creative-production step. It validates manifest structure and target format constraints only: slot counts, asset types, parameter ranges, and format-shape constraints. It does not rehearse a seller's library mutation, creative_id upsert semantics, package assignments, account authorization, active-delivery protections, or other trafficking-time gates. When the question is final seller acceptance for a creative that is ready to traffic, call sync_creatives directly; use dry_run: true for a non-mutating rehearsal of that operation. Used by build_creative internally to validate inputs before producing output. For genuinely nondeterministic generative platforms (Veo/Sora/Runway-class) where predictive validation is impossible, the platform's own post-synthesis QA loop applies — validate_input is the predictable-case primitive.\n\nThe `targets[]` array is a discriminated list of validation targets, mirroring the response shape on `validate-input-result.json#target`. Each entry has a `kind` (canonical | product | third_party_format) plus a kind-specific identifier. Discriminated-by-kind on both sides eliminates a wire-shape mismatch: a previous draft used `format_ids: string[]` for canonical names alongside `product_ids: string[]`, which collided with `Product.format_ids: FormatId[]` ({agent_url, id}) — codegen would emit the same field name with two different types. Discriminated `targets[]` makes the intent explicit and codegen-clean.",
   "type": "object",
   "required": ["manifest"],
   "properties": {
@@ -69,7 +69,7 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Dry-run a video manifest against canonical video_hosted and a specific Meta product in one round-trip",
+      "description": "Preflight a video manifest against canonical video_hosted and a specific Meta product in one round-trip",
       "data": {
         "manifest": {
           "format_kind": "video_hosted",

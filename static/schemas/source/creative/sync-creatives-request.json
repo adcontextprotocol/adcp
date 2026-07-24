@@ -88,7 +88,7 @@
     "dry_run": {
       "type": "boolean",
       "default": false,
-      "description": "When true, preview changes without applying them. Returns what would be created/updated/deleted."
+      "description": "When true, rehearse this sync_creatives operation without applying it. Validates the actual trafficking request in the seller's current context, including library upsert semantics, creative IDs, assignments, account-scoped gates, and seller policies, then returns what would be created/updated/deleted. This is distinct from validate_input, which only validates manifest structure against canonical/product format targets."
     },
     "validation_mode": {
       "$ref": "/schemas/enums/validation-mode.json",

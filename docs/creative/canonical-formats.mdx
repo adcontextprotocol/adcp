@@ -45,7 +45,7 @@ For hands-on authoring practice, use the [S2 creative specialist module](/docs/l
 | **`asset_source`** | Production-source declaration: who renders or owns the source asset. Shared enum across `image` / `video_hosted` / `audio_hosted` includes `buyer_uploaded`, `publisher_host_recorded`, `seller_pre_rendered_from_brief`, `seller_human_designed`, `agent_synthesized`, and `publisher_owned_reference`. `item_production_model` on `sponsored_placement` covers the same axis with a 4-value subset (drops host-recorded and published-post reference semantics). |
 | **Canonical maturity** | 3.1 uses the `experimental` boolean instead of a separate `stable` / `preview` status axis. Non-experimental canonicals are the default production path; experimental canonicals and `custom` require extra validation before routing budget. |
 | **`since_version` / `migration_target_version`** | Release-precision lifecycle metadata on canonicals — when introduced, when stabilization or breaking revision is expected. |
-| **`validate_input`** | Spec-defined dry-run primitive — buyers verify a manifest against canonicals/products without committing to a render. |
+| **`validate_input`** | Spec-defined manifest preflight — buyers verify a manifest's structure against canonicals/products without committing to a render or other expensive creative-production step. It is not a rehearsal of the seller's `sync_creatives` mutation. |
 | **`build_creative`** | Creative-agent surface that produces a manifest from inputs (brief, video_brief, brand). Sales agents do NOT expose `build_creative`. |
 | **`creative.supported_formats`** | Capabilities-response field on creative agents declaring which canonicals they can produce via `build_creative`. |
 | **`BrandRef`** | `{domain, brand_id?}` reference. Resolves brand context (logos, colors, voice) from `brand.json` automatically. |
@@ -909,7 +909,7 @@ A buyer agent reading a `format_kind: native_in_feed` product knows to assemble 
 
 ## Validation flow — `validate_input`
 
-Buyers can dry-run a manifest against canonicals and/or specific products without committing to a render. The buyer's manifest below is a v2 manifest (`format_kind: "video_hosted"`); the slot key is the canonical's `asset_group_id` (`video_main`); the asset value carries its `asset_type` discriminator. The buyer asks `validate_input` to check both the canonical contract AND the seller's specific product narrowing in a single round-trip:
+Buyers can preflight a manifest against canonicals and/or specific products without committing to a render. The buyer's manifest below is a v2 manifest (`format_kind: "video_hosted"`); the slot key is the canonical's `asset_group_id` (`video_main`); the asset value carries its `asset_type` discriminator. The buyer asks `validate_input` to check both the canonical contract AND the seller's specific product narrowing in a single round-trip:
 
 ```json test=false
 {
@@ -965,25 +965,26 @@ Response carries per-target results. The canonical accepts the duration (canonic
 A decision rule, not a one-size primitive:
 
 - **Pre-flight before an expensive `build_creative` call.** If the manifest can't even narrow against canonical, the buyer saves the synthesis cost. Especially relevant for nondeterministic-synthesis products where each retry has real GPU cost.
-- **Multi-target dry-run during product selection.** A buyer comparing 10 candidate products asks `validate_input` once with all 10 product_ids; gets back per-target results. Cheaper than 10 separate `sync_creatives` round-trips.
-- **Debugging a rejected manifest.** When `sync_creatives` returns violations, calling `validate_input` against the canonical alone narrows the question to "is my manifest fundamentally broken vs is the product's narrowing the gating constraint."
+- **Multi-target preflight during product selection.** A buyer comparing 10 candidate products asks `validate_input` once with all 10 product_ids; gets back per-target results. Cheaper than 10 separate `sync_creatives` round-trips.
+- **Debugging a rejected manifest.** When `sync_creatives` returns format violations, calling `validate_input` against the canonical alone narrows the question to "is my manifest fundamentally broken vs is the seller's product narrowing or trafficking policy the gating constraint."
 - **Preview-render gating** (formats with `composition_model: algorithmic` or `synthesis_nondeterministic: true`). The platform's preview surface is a richer follow-on; `validate_input` is the cheap pre-flight that gates whether previewing is even worth attempting.
 
 When NOT to use `validate_input`:
 
-- For a manifest you intend to submit anyway. `sync_creatives` returns the same violations and registers on success — `validate_input` adds a round-trip without reducing total work.
+- As the launch-critical check for a creative you intend to upload to a seller. Use `sync_creatives` directly, or `sync_creatives` with `dry_run: true` if you need a non-mutating rehearsal of the actual upload request.
 - For products where the seller's narrowing is unknowable client-side without fetching extensions. `validate_input` pulls extensions same as `sync_creatives` does — there's no discovery shortcut.
 - For high-volume per-impression decisions. `validate_input` is per-target, not per-impression. Operational scale (hundreds of products × N format_options) belongs to client-side filtering against the cached `get_products` response.
 
-### `validate_input` vs `build_creative` vs `sync_creatives`
+### `validate_input` vs `sync_creatives` dry run
 
 | Tool | Who calls | What it does | Side effects |
 |---|---|---|---|
-| `validate_input` | Buyer | Dry-run validation against canonicals and/or products. Returns per-target `validated_pass`, `validated_fail`, or `unvalidatable_nondeterministic`. | None (no creative registered, no synthesis triggered). |
+| `validate_input` | Buyer | Manifest preflight against canonicals and/or products. Returns per-target `validated_pass`, `validated_fail`, or `unvalidatable_nondeterministic`. | None (no creative registered, no synthesis triggered). |
+| `sync_creatives` with `dry_run: true` | Buyer (calling a seller) | Operation-level rehearsal of the exact creative upload/update request in the seller's current account and library context. Validates the actual trafficking path, including IDs, upserts, assignments, account gates, seller policy, and format constraints. | None (no creative registered), but the request is evaluated as a seller sync operation. |
 | `build_creative` | Buyer (calling a creative agent) | Produces a creative manifest from inputs (brief, video_brief, brand). For deterministic flows: one round-trip. For nondeterministic flows: returns task with QA-loop semantics. | Synthesis happens; output manifest is returned. May register a creative on the creative agent's library if the agent supports `has_creative_library`. Does NOT register on the seller. |
 | `sync_creatives` | Buyer (calling a seller) | Submits a manifest to the sales agent for the seller to register against a product. | Validates against canonical + product narrowing; registers creative on the seller's library on success; returns violations on failure. |
 
-For the third-party creative-agent flow: `validate_input` first (cheap pre-flight) → `build_creative` on the creative agent → `sync_creatives` on the sales agent. For the in-house pre-rendered flow: skip `build_creative`; `validate_input` then `sync_creatives`. For the seller-renders-from-brief flow (universalads-class): skip `build_creative` (the seller does the rendering at `sync_creatives` time); `validate_input` then `sync_creatives` directly.
+For the third-party creative-agent flow: use `validate_input` when it can save an expensive or slow `build_creative` call, then call `build_creative` on the creative agent and `sync_creatives` on the sales agent. For the in-house pre-rendered flow: skip `build_creative`; use `validate_input` only when comparing targets or debugging, and use `sync_creatives` with `dry_run: true` when you need to know whether the seller would accept the upload. For the seller-renders-from-brief flow (universalads-class): skip `build_creative` (the seller does the rendering at `sync_creatives` time); use `sync_creatives` or `sync_creatives` dry run for the operational acceptance check.
 
 See [`build_creative` task reference](/docs/creative/task-reference/build_creative) for the full request/response shape.
 

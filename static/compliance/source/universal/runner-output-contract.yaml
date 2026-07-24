@@ -1143,6 +1143,10 @@ cascade_rules:
     `skip_result.reasons.peer_substituted`). Steps that skip with
     `not_applicable`, `missing_tool`, or `missing_test_controller` do NOT
     trigger the cascade when the `sole_stateful_step_exemption` below applies.
+    A stateful step's genuine failure or `peer_branch_taken` skip does NOT
+    cascade onto a sibling phase that shares its `branch_set.id` under `any_of`
+    semantics when the `branch_set_cascade_exemption` below applies — such peers
+    are mutually-exclusive alternatives, not a dependency chain.
   sole_stateful_step_exemption: |
     When ALL of the following hold, the runner MUST NOT cascade
     `prerequisite_failed` to downstream stateful phases:
@@ -1189,6 +1193,60 @@ cascade_rules:
     References: adcp-client#1146 (original `not_applicable` exemption);
     adcp-client#1545 (extension to `missing_tool` / `missing_test_controller`);
     adcp-client-python#550 (adopter pattern that surfaced the cross-runner gap).
+  branch_set_cascade_exemption: |
+    When two or more phases share the same `branch_set.id` with `any_of`
+    semantics, the runner MUST NOT cascade `prerequisite_failed` from one peer
+    onto another peer in the same set. When a branch-set peer grades
+    `passed: false` (its alternative was not the path the agent took) or skips
+    with `peer_branch_taken`, that outcome MUST NOT produce `prerequisite_failed`
+    on any sibling phase sharing its `branch_set.id`. Each peer is graded on its
+    own merits, and the set's `any_of` contribution gate credits whichever peer
+    the agent's behavior satisfied.
+
+    Rationale: `any_of` branch-set peers are mutually-exclusive ALTERNATIVES, not
+    a dependency chain. Exactly one branch is the live path for a given agent
+    (e.g., a seller that supports atomic multi-proposal finalize takes
+    `multi_finalize_atomic_path`; one that correctly rejects it with
+    `MULTI_FINALIZE_UNSUPPORTED` takes `multi_finalize_unsupported_path`), so the
+    non-taken peer(s) failing or skipping is the expected shape, not a
+    prerequisite failure. Absent this exemption, `default_cascade` — which lists
+    genuine failures and `peer_branch_taken` as cascade triggers — lets an
+    earlier peer's by-design non-selection skip a later peer the agent actually
+    satisfied, returning an empty `any_of` gate for a conformant agent.
+
+    Scope — `any_of` only: this exemption applies solely to peers whose shared
+    `branch_set` declares `semantics: any_of`. Branch-set semantics where peers
+    legitimately depend on one another (e.g., a future `all_of`) MUST keep
+    cascading; a runner MUST NOT extend the exemption to them.
+
+    `depends_on`-agnostic: the exemption fires whenever two phases share an
+    `any_of` `branch_set.id`, independent of whether the downstream phase's
+    dependency on the peer is the implicit `default_cascade` ("all prior phases")
+    or an explicit `depends_on` naming the peer. `depends_on` answers whether an
+    edge exists between two phases; the cascade exemptions answer how a skip is
+    classified — orthogonal questions. Neither existing exemption
+    (`peer_substituted`, `sole_stateful_step_exemption`) inspects `depends_on`,
+    and this one does not either. No current storyboard declares `depends_on`
+    between `any_of` peers (they are alternatives, not a chain), but the
+    exemption is defined to hold regardless, so an explicit sibling dependency
+    cannot silently reintroduce the cascade.
+
+    N-ary sets (3+ peers): one or more peers failing or skipping with
+    `peer_branch_taken` exempts EVERY sibling in the set, not only one. The
+    single peer the agent satisfies contributes to the gate; the rest regrade to
+    `peer_branch_taken` without cascading. The rule holds for any set
+    cardinality.
+
+    Cross-set cascade is unaffected: a branch-set peer's genuine failure still
+    cascades `prerequisite_failed` to downstream stateful phases that are NOT
+    members of the same `branch_set.id`, exactly as `default_cascade` specifies.
+    Within-phase grading is likewise unchanged. The exemption is scoped strictly
+    to same-`any_of`-set siblings.
+
+    References: adcp-client#2306 (runner fix implementing this exemption in
+    `cascadeForPhase`); adcp-client#2305 (the bug it closed); adcp#5337 (the
+    diagnostic-visibility thread that root-caused the branch-set cascade gap and
+    confirmed the N-ary and `depends_on`-agnostic behavior empirically).
 
 run_summary:
   description: |

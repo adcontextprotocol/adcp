@@ -2032,6 +2032,50 @@ async function runTests() {
   );
   log('');
 
+  // cancellation_fee: rate/amount required by fee type (money-path integrity)
+  log('Cancellation Policy Schema (fee-type conditionals):', 'info');
+  await testSchemaValidation(
+    '/schemas/core/cancellation-policy.json',
+    {
+      notice_period: { interval: 30, unit: 'days' },
+      cancellation_fee: { type: 'percent_remaining', rate: 0.5 }
+    },
+    'Accepts percent_remaining fee carrying rate'
+  );
+  await testSchemaRejection(
+    '/schemas/core/cancellation-policy.json',
+    {
+      notice_period: { interval: 30, unit: 'days' },
+      cancellation_fee: { type: 'percent_remaining' }
+    },
+    'Rejects percent_remaining fee missing rate'
+  );
+  await testSchemaValidation(
+    '/schemas/core/cancellation-policy.json',
+    {
+      notice_period: { interval: 30, unit: 'days' },
+      cancellation_fee: { type: 'fixed_fee', amount: 2500 }
+    },
+    'Accepts fixed_fee carrying amount'
+  );
+  await testSchemaRejection(
+    '/schemas/core/cancellation-policy.json',
+    {
+      notice_period: { interval: 30, unit: 'days' },
+      cancellation_fee: { type: 'fixed_fee' }
+    },
+    'Rejects fixed_fee missing amount'
+  );
+  await testSchemaValidation(
+    '/schemas/core/cancellation-policy.json',
+    {
+      notice_period: { interval: 30, unit: 'days' },
+      cancellation_fee: { type: 'none' }
+    },
+    'Accepts none fee with neither rate nor amount'
+  );
+  log('');
+
   // Test 7: Bundled schemas (no $ref resolution needed)
   // Only test against latest/ — versioned dirs in dist/ may be from a prior release
   // and are not updated on every source change.

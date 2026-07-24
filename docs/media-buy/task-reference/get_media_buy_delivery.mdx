@@ -447,7 +447,11 @@ asyncio.run(main())
 
 </CodeGroup>
 
-### Buyer Reference Query
+### Correlating Your Own Reference
+
+<Note>
+**`media_buy_ids` are seller-assigned.** They are the `media_buy_id` values returned by [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) and [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) — not buyer-side identifiers. AdCP has no buyer-reference lookup key: the top-level `buyer_ref` field was removed in 3.0.0, making seller-assigned `media_buy_id`/`package_id` canonical. If you hold only your own identifier, include it in the opaque `context` object (commonly `context.buyer_ref`) when you call `create_media_buy`; the seller echoes `context` back on `create_media_buy` and [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys), so you can reconcile your reference to the seller's `media_buy_id` before requesting delivery.
+</Note>
 
 <CodeGroup>
 
@@ -455,9 +459,9 @@ asyncio.run(main())
 import { testAgent } from '@adcp/sdk/testing';
 import { GetMediaBuyDeliveryResponseSchema } from '@adcp/sdk';
 
-// Query by buyer reference instead of media buy ID
+// Compare several media buys by their seller-assigned IDs (from create_media_buy / get_media_buys)
 const result = await testAgent.getMediaBuyDelivery({
-  media_buy_ids: ['acme_q1_campaign_2024', 'acme_q1_retargeting_2024']
+  media_buy_ids: ['mb_q1_campaign_2024', 'mb_q1_retargeting_2024']
 });
 
 if (!result.success) {
@@ -489,10 +493,10 @@ from adcp.testing import test_agent
 from adcp.types import GetMediaBuyDeliveryRequest
 
 async def main():
-    # Query by buyer reference instead of media buy ID
+    # Compare several media buys by their seller-assigned IDs (from create_media_buy / get_media_buys)
     result = await test_agent.get_media_buy_delivery(
         GetMediaBuyDeliveryRequest(
-            media_buy_ids=['acme_q1_campaign_2024', 'acme_q1_retargeting_2024']
+            media_buy_ids=['mb_q1_campaign_2024', 'mb_q1_retargeting_2024']
         )
     )
 

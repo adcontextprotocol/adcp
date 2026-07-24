@@ -604,6 +604,13 @@
 #   on setup phases, not on sibling consumption phases that may legitimately
 #   skip on different adopters).
 #
+#   Branch-set peers are exempt from this cross-phase cascade: phases sharing a
+#   `branch_set.id` with `any_of` semantics do NOT cascade `prerequisite_failed`
+#   onto one another (they are mutually-exclusive alternatives, not a chain),
+#   independent of whether the dependency is the implicit default or an explicit
+#   `depends_on`. See `runner-output-contract.yaml >
+#   cascade_rules.branch_set_cascade_exemption`.
+#
 #   References: adcp-client#1161 (field introduction); adcp-client#1711
 #   follow-up + adcp#4750 (deterministic_testing scope tightening that
 #   surfaced the documentation gap).
@@ -1862,7 +1869,7 @@
 #   rule 9 may return `IDEMPOTENCY_IN_FLIGHT` on the second (or later) dispatch
 #   rather than block. The runner MUST resolve `IDEMPOTENCY_IN_FLIGHT` responses
 #   to their eventual cached response before applying these checks: wait
-#   `error.details.retry_after` seconds and retry with the SAME idempotency_key,
+#   top-level `error.retry_after` seconds and retry with the SAME idempotency_key,
 #   exactly as the buyer-side normative behavior specifies. The cross-response
 #   check operates on the resolved response set, not the raw initial set. If
 #   resolution exceeds the runner's step-timeout budget, the step grades
@@ -2164,7 +2171,7 @@
 #   and bullet 8 (insert-rate ceiling). The runner drives a sequential fresh-
 #   key burst against the named mutating-op target until a RATE_LIMITED
 #   response appears, then re-submits the same idempotency_key after waiting
-#   `error.details.retry_after` seconds. The cross-step assertion fails if the
+#   the RATE_LIMITED response's top-level `error.retry_after` seconds. The cross-step assertion fails if the
 #   replay returned the cached RATE_LIMITED response shape.
 #
 #   When `max_attempts` requests complete without producing a RATE_LIMITED
