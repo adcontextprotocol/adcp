@@ -63,7 +63,7 @@ jobs:
       # review App token and Anthropic secret. Never check out the PR head or
       # execute PR-controlled code in this job. Keep the workspace pinned to the
       # trusted base SHA and inspect the PR through GitHub APIs / gh pr diff.
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 0
@@ -371,7 +371,7 @@ jobs:
         id: ai-review
         if: steps.review-route.outputs.skip != 'true' && steps.workflow-mod.outputs.modified != 'true' && steps.skip-check.outputs.skip != 'true'
         continue-on-error: true
-        uses: anthropics/claude-code-action@af0559ee4f514d1ef21826982bed13f7edc3c35e # v1
+        uses: anthropics/claude-code-action@be7b93b1907a4abad570368f3c74b6fe3807510b # v1
         with:
           prompt: ${{ steps.build-prompt.outputs.ARGUS_PROMPT }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
