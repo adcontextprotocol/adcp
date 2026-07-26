@@ -16,9 +16,9 @@ import { adaptAuthForSdk } from '../../src/services/sdk-auth-adapter.js';
 
 /**
  * Tests for the server-side OAuth 2.0 client-credentials exchange
- * (#2800 follow-up). `@adcp/sdk`'s ComplyOptions/TestOptions don't
- * accept the `oauth_client_credentials` auth variant, so we exchange
- * for a bearer token server-side before handing it to the SDK.
+ * (#2800 follow-up). The low-level helper remains covered for direct
+ * callers, while the SDK adapter now passes client credentials through
+ * so `@adcp/sdk` owns token acquisition and refresh.
  */
 
 function mockFetch(response: { status: number; body: string | object }) {
@@ -238,40 +238,39 @@ describe('adaptAuthForSdk', () => {
     expect(await adaptAuthForSdk(oauth)).toBe(oauth);
   });
 
-  it('exchanges oauth_client_credentials and narrows to bearer', async () => {
-    process.env.ADCP_OAUTH_BRIDGE_TEST = 'sec';
-    oauthFetchMocks.oauthSafeFetch.mockImplementation(mockFetch({
-      status: 200,
-      body: { access_token: 'exchanged-tok', expires_in: 600 },
-    }));
-    try {
-      const result = await adaptAuthForSdk({
-        type: 'oauth_client_credentials',
-        credentials: {
-          token_endpoint: 'https://idp.example/token',
-          client_id: 'client-x',
-          client_secret: '$ENV:ADCP_OAUTH_BRIDGE_TEST',
-        },
-      });
-      expect(result).toEqual({ type: 'bearer', token: 'exchanged-tok' });
-    } finally {
-      delete process.env.ADCP_OAUTH_BRIDGE_TEST;
-    }
+  it('passes oauth_client_credentials through for SDK-managed token refresh', async () => {
+    const auth = {
+      type: 'oauth_client_credentials',
+      credentials: {
+        token_endpoint: 'https://idp.example/token',
+        client_id: 'client-x',
+        client_secret: '$ENV:ADCP_OAUTH_BRIDGE_TEST',
+      },
+    } as const;
+
+    const result = await adaptAuthForSdk(auth);
+
+    expect(result).toBe(auth);
+    expect(oauthFetchMocks.oauthSafeFetch).not.toHaveBeenCalled();
   });
 
-  it('returns undefined (falls back to unauthenticated) when the exchange fails', async () => {
+  it('does not preflight the token endpoint before handing auth to the SDK', async () => {
     oauthFetchMocks.oauthSafeFetch.mockImplementation(
       mockFetch({ status: 500, body: 'internal' }),
     );
 
-    const result = await adaptAuthForSdk({
+    const auth = {
       type: 'oauth_client_credentials',
       credentials: {
         token_endpoint: 'https://idp.example/token',
         client_id: 'c',
         client_secret: 's',
       },
-    });
-    expect(result).toBeUndefined();
+    } as const;
+
+    const result = await adaptAuthForSdk(auth);
+
+    expect(result).toBe(auth);
+    expect(oauthFetchMocks.oauthSafeFetch).not.toHaveBeenCalled();
   });
 });

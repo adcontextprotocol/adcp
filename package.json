@@ -3,6 +3,7 @@
   "version": "3.1.1",
   "private": true,
   "type": "module",
+  "packageManager": "npm@10.9.4",
   "scripts": {
     "start": "bash -c 'source <(grep CONDUCTOR_PORT .env.local | sed \"s/^/export /\") && DOTENV_CONFIG_PATH=.env.local PORT=${CONDUCTOR_PORT:-3000} tsx watch server/src/index.ts'",
     "start:mintlify": "bash scripts/start-mintlify.sh",
@@ -133,7 +134,7 @@
     "docs:json-field-audit": "node scripts/docs-json-field-audit.cjs"
   },
   "dependencies": {
-    "@adcp/sdk": "9.6.2",
+    "@adcp/sdk": "12.1.1",
     "@anthropic-ai/sdk": "^0.112.3",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@contentauth/c2pa-node": "^0.6.3",
@@ -217,6 +218,13 @@
   },
   "engines": {
     "node": ">=22.22.0"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "npm",
+      "version": "^10.9.4",
+      "onFail": "error"
+    }
   },
   "overrides": {
     "webpack-dev-server": "^5.2.2",
