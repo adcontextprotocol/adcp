@@ -10,6 +10,7 @@ import type {
   KellerType,
 } from './types';
 import { AAO_UA_VALIDATOR } from './config/user-agents.js';
+import { withSdkSafeTransport } from './utils/sdk-safe-fetch.js';
 
 export interface BrandValidationError {
   field: string;
@@ -862,7 +863,7 @@ export class BrandManager {
           agent_uri: agentUrl,
           protocol: 'mcp',
         },
-      ]);
+      ], withSdkSafeTransport({ userAgent: AAO_UA_VALIDATOR }));
       const client = multiClient.agent('brand-agent-check');
 
       const agentInfo = await Promise.race([

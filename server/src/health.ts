@@ -8,6 +8,7 @@ import { safeFetch } from "./utils/url-security.js";
 import { logger } from "./logger.js";
 import { promises as dnsPromises } from "node:dns";
 import { agentConfigAuthFields, type SdkAuth } from "./services/sdk-auth-adapter.js";
+import { withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
 
 export interface ClassifiedProbeError {
   kind: ProbeErrorKind;
@@ -231,7 +232,7 @@ export class HealthChecker {
         agent_uri: agent.url,
         protocol: "mcp",
         ...agentConfigAuthFields(auth),
-      }], { userAgent: AAO_UA_HEALTH_CHECK });
+      }], withSdkSafeTransport({ userAgent: AAO_UA_HEALTH_CHECK }));
       const client = multiClient.agent("health-check");
 
       const agentInfo = await client.getAgentInfo();

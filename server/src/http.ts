@@ -25,6 +25,7 @@ import { AdAgentsManager } from "./adagents-manager.js";
 import { mountSchemasRoutes, mountComplianceRoutes, mountProtocolRoutes } from "./schemas-middleware.js";
 import { closeDatabase, getPool, healthCheck } from "./db/client.js";
 import { AuthenticationRequiredError, CreativeAgentClient, SingleAgentClient } from "@adcp/sdk";
+import { sdkSafeFetch, withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
 import type { Agent, AgentType, AgentWithStats, Company } from "./types.js";
 import { isValidAgentType, VALID_MEMBER_OFFERINGS, VALID_LEGAL_DOCUMENT_TYPES } from "./types.js";
 import type { Server } from "http";
@@ -9275,7 +9276,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           name: 'discovery-client',
           agent_uri: url,
           protocol: 'mcp', // Library handles protocol detection internally
-        });
+        }, withSdkSafeTransport({}));
 
         // getAgentInfo() handles all the protocol detection and tool discovery
         const agentInfo = await client.getAgentInfo();
@@ -9301,7 +9302,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           // Check for A2A agent card if we detected MCP
           if (agentInfo.protocol === 'mcp') {
             const a2aUrl = new URL('/.well-known/agent.json', url).toString();
-            const a2aResponse = await fetch(a2aUrl, {
+            const a2aResponse = await sdkSafeFetch(a2aUrl, {
               headers: { 'Accept': 'application/json' },
               signal: AbortSignal.timeout(3000),
             });
@@ -9322,7 +9323,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
         if (agentType === 'creative') {
           try {
-            const creativeClient = new CreativeAgentClient({ agentUrl: url });
+            const creativeClient = new CreativeAgentClient(withSdkSafeTransport({ agentUrl: url }));
             const formats = await creativeClient.listFormats();
             stats.format_count = formats.length;
           } catch (statsError) {

@@ -5,6 +5,7 @@ import { is401Error, AuthenticationRequiredError } from "@adcp/sdk";
 import { AAO_UA_DISCOVERY } from "./config/user-agents.js";
 import { logOutboundRequest } from "./db/outbound-log-db.js";
 import { agentConfigAuthFields, type SdkAuth } from "./services/sdk-auth-adapter.js";
+import { withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
 
 const logger = createLogger('capabilities');
 
@@ -376,7 +377,10 @@ export class CapabilityDiscovery {
       // TODO(adcp-client#1799): maxResponseBytes is currently dormant on
       // getAgentInfo/listTools — the SDK doesn't yet wrap that path in
       // withResponseSizeLimit. Re-verify when upstream lands.
-      }], { userAgent: AAO_UA_DISCOVERY, transport: { maxResponseBytes: 4 * 1024 * 1024 } });
+      }], withSdkSafeTransport({
+        userAgent: AAO_UA_DISCOVERY,
+        transport: { maxResponseBytes: 4 * 1024 * 1024 },
+      }));
       const client = multiClient.agent("discovery");
 
       const agentInfo = await client.getAgentInfo();
@@ -417,7 +421,10 @@ export class CapabilityDiscovery {
         protocol: "a2a",
         ...agentConfigAuthFields(auth),
       // TODO(adcp-client#1799): cap dormant on A2AClient.fromCardUrl until upstream wraps it.
-      }], { userAgent: AAO_UA_DISCOVERY, transport: { maxResponseBytes: 4 * 1024 * 1024 } });
+      }], withSdkSafeTransport({
+        userAgent: AAO_UA_DISCOVERY,
+        transport: { maxResponseBytes: 4 * 1024 * 1024 },
+      }));
       const client = multiClient.agent("discovery");
 
       const agentInfo = await client.getAgentInfo();
@@ -544,7 +551,10 @@ export class CapabilityDiscovery {
         agent_uri: agent.url,
         protocol: agent.protocol || "mcp",
         ...agentConfigAuthFields(auth),
-      }], { userAgent: AAO_UA_DISCOVERY, transport: { maxResponseBytes: 1024 * 1024 } });
+      }], withSdkSafeTransport({
+        userAgent: AAO_UA_DISCOVERY,
+        transport: { maxResponseBytes: 1024 * 1024 },
+      }));
       const client = multiClient.agent("discovery");
 
       // 10s timeout matches the existing tools/list discovery budget.

@@ -488,7 +488,12 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
       expect(res.status).toBe(200);
       expect(testCapabilityDiscoveryMock).toHaveBeenCalledWith(
         agentUrl,
-        { auth: { type: 'bearer', token: accessToken } },
+        expect.objectContaining({
+          auth: { type: 'bearer', token: accessToken },
+          transport: expect.objectContaining({
+            fetchFn: expect.any(Function),
+          }),
+        }),
       );
     } finally {
       await pool.query('DELETE FROM agent_contexts WHERE id = $1', [context.id]);
