@@ -449,6 +449,26 @@ const MemberRefSchema = z.object({
   }),
 });
 
+const BrandValidationIssueSchema = z.object({
+  field: z.string(),
+  message: z.string(),
+  severity: z.literal("error"),
+});
+
+const BrandValidationWarningSchema = z.object({
+  field: z.string(),
+  message: z.string(),
+  suggestion: z.string().optional(),
+});
+
+const LiveBrandJsonValidationSchema = z.object({
+  valid: z.boolean(),
+  url: z.string(),
+  status_code: z.number().int().optional(),
+  errors: z.array(BrandValidationIssueSchema),
+  warnings: z.array(BrandValidationWarningSchema),
+});
+
 export const ResolvedBrandSchema = z
   .object({
     canonical_id: z.string().openapi({ example: "acmecorp.com" }),
@@ -460,10 +480,26 @@ export const ResolvedBrandSchema = z
       .optional(),
     parent_brand: z.string().optional(),
     house_domain: z.string().optional(),
+    claimed_house_domain: z.string().optional().openapi({
+      description: "Unilateral house claim from a canonical document. Does not extend relationship trust unless relationship_trust is mutual.",
+    }),
     house_name: z.string().optional(),
+    relationship_trust: z.enum([
+      "inline",
+      "mutual",
+      "leaf_only",
+      "house_only",
+      "standalone",
+      "unverifiable",
+    ]).optional(),
+    promoted_from_schema: z.string().optional(),
+    migration_warnings: z.array(BrandValidationWarningSchema).optional(),
     brand_agent_url: z.string().optional(),
     brand_manifest: z.record(z.string(), z.unknown()).optional(),
-    source: z.enum(["brand_json", "community", "enriched"]),
+    source: z.enum(["hosted", "brand_json", "community", "enriched"]),
+    live_brand_json: LiveBrandJsonValidationSchema.optional().openapi({
+      description: "Live origin-validation diagnostics when fresh=true falls back to a stored registry record.",
+    }),
   })
   .openapi("ResolvedBrand");
 

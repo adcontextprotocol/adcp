@@ -1,5 +1,6 @@
 import { Cache } from './cache.js';
 import { safeFetchAxiosLike, classifySafeFetchError } from './utils/url-security.js';
+import { validateBrandJsonSchema } from './services/brand-json-schema-validator.js';
 import type {
   LocalizedName,
   BrandProperty,
@@ -32,8 +33,16 @@ export interface BrandValidationResult {
   url: string;
   status_code?: number;
   raw_data?: unknown;
-  variant?: 'authoritative_location' | 'house_redirect' | 'brand_agent' | 'house_portfolio';
+  variant?: BrandJsonVariant;
+  promoted_from_schema?: string;
 }
+
+type BrandJsonVariant =
+  | 'authoritative_location'
+  | 'house_redirect'
+  | 'brand_agent'
+  | 'house_portfolio'
+  | 'brand_canonical';
 
 // brand.json variant types
 export interface AuthoritativeLocationVariant {
@@ -53,7 +62,8 @@ export interface HouseRedirectVariant {
 export interface BrandAgentVariant {
   $schema?: string;
   version?: string;
-  brand_agent: BrandAgentConfig;
+  brand_agent?: BrandAgentConfig;
+  agents?: Array<BrandAgentConfig & { type: string }>;
   auth?: {
     required?: boolean;
     method?: 'api_key' | 'oauth2' | 'bearer_token';
@@ -73,7 +83,13 @@ export interface HousePortfolioVariant {
   $schema?: string;
   version?: string;
   house: HouseDefinition;  // Object
-  brands: BrandDefinition[];
+  brands?: BrandDefinition[];
+  brand_refs?: Array<{
+    domain: string;
+    brand_id: string;
+    managed_by?: string;
+    effective_at?: string;
+  }>;
   contact?: {
     name: string;
     email?: string;
@@ -87,7 +103,23 @@ export interface HousePortfolioVariant {
   last_updated?: string;
 }
 
-export type BrandJson = AuthoritativeLocationVariant | HouseRedirectVariant | BrandAgentVariant | HousePortfolioVariant;
+export type BrandCanonicalDocument = BrandDefinition & {
+  $schema?: string;
+  version?: string;
+  house_domain?: string;
+  last_updated?: string;
+};
+
+export type BrandJson =
+  | AuthoritativeLocationVariant
+  | HouseRedirectVariant
+  | BrandAgentVariant
+  | HousePortfolioVariant
+  | BrandCanonicalDocument;
+
+const LEGACY_BRAND_SCHEMA = 'https://schemas.adcontextprotocol.org/brand/v1/brand.json';
+const CURRENT_BRAND_SCHEMA = 'https://adcontextprotocol.org/schemas/v3/brand.json';
+const PROPERTY_RELATIONSHIPS = new Set(['owned', 'direct', 'delegated', 'ad_network']);
 
 export interface BrandAgentValidationResult {
   agent_url: string;
@@ -105,6 +137,10 @@ export class BrandManager {
   private resolutionCache: Cache<ResolvedBrand | null>;
   // Cache for failed lookups (1 hour)
   private failedLookupCache: Cache<BrandValidationResult>;
+  // Most recent network attempt per domain, including fresh failures. Used to
+  // report the attempt that actually caused a fallback instead of an older
+  // positive cache entry.
+  private lastValidationAttempt = new Map<string, BrandValidationResult>();
 
   constructor() {
     this.validationCache = new Cache<BrandValidationResult>(24 * 60); // 24 hours
@@ -119,6 +155,7 @@ export class BrandManager {
     this.validationCache.clear();
     this.resolutionCache.clear();
     this.failedLookupCache.clear();
+    this.lastValidationAttempt.clear();
   }
 
   /**
@@ -130,6 +167,155 @@ export class BrandManager {
       resolution: this.resolutionCache.size(),
       failed: this.failedLookupCache.size(),
     };
+  }
+
+  getLastValidationResult(domain: string): BrandValidationResult | undefined {
+    const normalized = domain.replace(/^https?:\/\//, '').replace(/\/$/, '').toLowerCase();
+    return this.lastValidationAttempt.get(normalized);
+  }
+
+  /**
+   * Promote the narrowly identified pre-v3 shape used by early integrations.
+   *
+   * The legacy schema URL was never part of the canonical AdCP schema tree, so
+   * this adapter intentionally does not guess at trust semantics. Unsupported
+   * property relationships are preserved as opaque legacy data and excluded
+   * from active v3 properties instead of being rewritten as ownership claims.
+   */
+  private normalizeLegacyBrandJson(
+    data: unknown,
+    originDomain: string
+  ): { data: unknown; warnings: BrandValidationWarning[]; promotedFromSchema?: string } {
+    if (!this.isRecord(data) || data.$schema !== LEGACY_BRAND_SCHEMA) {
+      return { data, warnings: [] };
+    }
+
+    const document = structuredClone(data) as Record<string, unknown>;
+    const warnings: BrandValidationWarning[] = [{
+      field: '$schema',
+      message: `Promoted legacy brand.json shape to ${CURRENT_BRAND_SCHEMA}`,
+      suggestion: `Publish the document directly against ${CURRENT_BRAND_SCHEMA}`,
+    }];
+    const brands = Array.isArray(document.brands)
+      ? document.brands.filter((brand): brand is Record<string, unknown> => this.isRecord(brand))
+      : [];
+
+    // Compatibility promotion is identity-only. Require exactly one explicit
+    // website match to the TLS origin; never infer identity from array position.
+    const originMatches = brands.filter((brand) => {
+      if (!Array.isArray(brand.properties)) return false;
+      return brand.properties.some((property) =>
+        this.isRecord(property) &&
+        property.type === 'website' &&
+        typeof property.identifier === 'string' &&
+        property.identifier.toLowerCase() === originDomain &&
+        property.relationship === 'owned'
+      );
+    });
+
+    if (originMatches.length !== 1) {
+      warnings.push({
+        field: 'brands',
+        message: `Legacy promotion requires exactly one website property matching ${originDomain}; found ${originMatches.length}`,
+      });
+      return { data, warnings, promotedFromSchema: LEGACY_BRAND_SCHEMA };
+    }
+
+    const originBrand = structuredClone(originMatches[0]);
+    const originIndex = brands.indexOf(originMatches[0]);
+    const legacyProperties: unknown[] = [];
+    const activeProperties: unknown[] = [];
+    for (const [propertyIndex, property] of (
+      Array.isArray(originBrand.properties) ? originBrand.properties : []
+    ).entries()) {
+      const relationship = this.isRecord(property) ? property.relationship : undefined;
+      if (typeof relationship !== 'string' || !PROPERTY_RELATIONSHIPS.has(relationship)) {
+        legacyProperties.push(property);
+        warnings.push({
+          field: `brands[${originIndex}].properties[${propertyIndex}].relationship`,
+          message: 'Preserved a property with missing or unsupported legacy relationship as opaque data; it was not promoted to a v3 trust assertion',
+          suggestion: 'Publish owned, direct, delegated, or ad_network explicitly',
+        });
+      } else {
+        activeProperties.push(property);
+      }
+    }
+    originBrand.properties = activeProperties;
+    if (legacyProperties.length > 0) originBrand.legacy_properties = legacyProperties;
+
+    if (typeof originBrand.name === 'string' && originBrand.name.trim()) {
+      originBrand.names = [{ und: originBrand.name }];
+      delete originBrand.name;
+      warnings.push({
+        field: `brands[${originIndex}].name`,
+        message: 'Promoted legacy name to names[] using the undetermined-language tag "und"',
+      });
+    }
+    if (!Array.isArray(originBrand.names) || originBrand.names.length === 0) {
+      warnings.push({ field: `brands[${originIndex}].names`, message: 'Legacy origin brand has no promotable name' });
+      return { data, warnings, promotedFromSchema: LEGACY_BRAND_SCHEMA };
+    }
+
+    const topName = typeof document.name === 'string' ? document.name.trim() : '';
+    if (
+      topName &&
+      !(originBrand.names as unknown[]).some((entry) =>
+        this.isRecord(entry) && Object.values(entry).includes(topName)
+      )
+    ) {
+      (originBrand.names as unknown[]).push({ und: topName });
+    }
+    if (typeof document.description === 'string' && originBrand.description === undefined) {
+      originBrand.description = document.description;
+    }
+    if (typeof document.logo === 'string') {
+      const logos = Array.isArray(originBrand.logos) ? originBrand.logos : [];
+      if (!logos.some((logo) => this.isRecord(logo) && logo.url === document.logo)) {
+        logos.push({ url: document.logo });
+      }
+      originBrand.logos = logos;
+    }
+    if (this.isRecord(document.colors) && !this.isRecord(originBrand.colors)) {
+      originBrand.colors = document.colors;
+    }
+
+    const metadata: Record<string, unknown> = {};
+    for (const key of ['legal_operator', 'related_domains', 'operator_domain_evidence'] as const) {
+      if (!(key in document)) continue;
+      metadata[key] = document[key];
+      warnings.push({
+        field: key,
+        message: `Preserved legacy ${key} as opaque metadata; it is not treated as v3 trust evidence`,
+      });
+    }
+    const otherBrands = brands.filter((brand) => brand !== originMatches[0]);
+    if (otherBrands.length > 0) {
+      metadata.unpromoted_brands = otherBrands;
+      warnings.push({
+        field: 'brands',
+        message: `Preserved ${otherBrands.length} non-origin legacy brand entries as opaque metadata; no ownership relationship was promoted`,
+      });
+    }
+
+    const house = this.isRecord(document.house) ? document.house : undefined;
+    const houseDomain = house && typeof house.domain === 'string' ? house.domain.toLowerCase() : undefined;
+    if (house) metadata.legacy_house = house;
+
+    const canonical: Record<string, unknown> = {
+      ...originBrand,
+      $schema: CURRENT_BRAND_SCHEMA,
+      ...(houseDomain && houseDomain !== originDomain ? { house_domain: houseDomain } : {}),
+      ...(Object.keys(metadata).length > 0 ? { legacy_metadata: metadata } : {}),
+    };
+    warnings.push({
+      field: 'root',
+      message: 'Promoted only the TLS-origin brand identity to a v3 Brand Canonical Document',
+    });
+    return { data: canonical, warnings, promotedFromSchema: LEGACY_BRAND_SCHEMA };
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 
   /**
@@ -171,6 +357,7 @@ export class BrandManager {
       // /api/registry/publisher auto-crawl path (PR #4128 / issue #4129).
       const response = await safeFetchAxiosLike(url, {
         timeoutMs: 10000,
+        sameSiteRedirectsOnly: true,
         headers: {
           Accept: 'application/json',
           'User-Agent': AAO_UA_VALIDATOR,
@@ -191,6 +378,7 @@ export class BrandManager {
         });
         // Cache failed lookups for 1 hour
         this.failedLookupCache.set(cacheKey, result);
+        this.lastValidationAttempt.set(cacheKey, result);
         return result;
       }
 
@@ -205,36 +393,11 @@ export class BrandManager {
           severity: 'error',
         });
         this.failedLookupCache.set(cacheKey, result);
+        this.lastValidationAttempt.set(cacheKey, result);
         return result;
       }
-      result.raw_data = brandData;
 
-      // Determine which variant this is and validate
-      const variant = this.detectVariant(brandData);
-      result.variant = variant || undefined;
-
-      switch (variant) {
-        case 'authoritative_location':
-          await this.validateAuthoritativeLocationVariant(brandData as AuthoritativeLocationVariant, result);
-          break;
-        case 'house_redirect':
-          this.validateHouseRedirectVariant(brandData as HouseRedirectVariant, result);
-          break;
-        case 'brand_agent':
-          this.validateBrandAgentVariant(brandData as BrandAgentVariant, result);
-          break;
-        case 'house_portfolio':
-          this.validateHousePortfolioVariant(brandData as HousePortfolioVariant, result);
-          break;
-        default:
-          result.errors.push({
-            field: 'root',
-            message: 'Unable to determine brand.json variant. Must contain one of: authoritative_location, house (string), brand_agent, or house (object) + brands',
-            severity: 'error',
-          });
-      }
-
-      result.valid = result.errors.length === 0;
+      await this.validateBrandData(brandData, normalizedDomain, result);
     } catch (error) {
       const classified = classifySafeFetchError(error, normalizedDomain);
       result.errors.push({ ...classified, severity: 'error' });
@@ -249,6 +412,105 @@ export class BrandManager {
       this.failedLookupCache.set(cacheKey, result);
     }
 
+    this.lastValidationAttempt.set(cacheKey, result);
+
+    return result;
+  }
+
+  private async validateBrandData(
+    brandData: unknown,
+    attributedDomain: string,
+    result: BrandValidationResult
+  ): Promise<void> {
+    const normalized = this.normalizeLegacyBrandJson(brandData, attributedDomain);
+    brandData = normalized.data;
+    result.warnings.push(...normalized.warnings);
+    result.promoted_from_schema = normalized.promotedFromSchema;
+    result.raw_data = brandData;
+
+    const schemaValidation = validateBrandJsonSchema(brandData);
+    if (!schemaValidation.valid) {
+      for (const issue of schemaValidation.errors.slice(0, 20)) {
+        result.errors.push({
+          field: issue.instancePath || 'root',
+          message: issue.message ?? 'Invalid brand.json field',
+          severity: 'error',
+        });
+      }
+    }
+
+    const variant = this.detectVariant(brandData);
+    result.variant = variant || undefined;
+    if (schemaValidation.valid && variant === 'house_portfolio') {
+      const houseDomain = (brandData as HousePortfolioVariant).house.domain.toLowerCase();
+      if (houseDomain !== attributedDomain.toLowerCase()) {
+        result.errors.push({
+          field: 'house.domain',
+          message: 'House Portfolio house.domain must match the TLS-attributed domain',
+          severity: 'error',
+        });
+      }
+    }
+    if (schemaValidation.valid) switch (variant) {
+      case 'authoritative_location':
+        await this.validateAuthoritativeLocationVariant(brandData as AuthoritativeLocationVariant, result);
+        break;
+      case 'house_redirect':
+        this.validateHouseRedirectVariant(brandData as HouseRedirectVariant, result);
+        break;
+      case 'brand_agent':
+        this.validateBrandAgentVariant(brandData as BrandAgentVariant, result);
+        break;
+      case 'house_portfolio':
+        this.validateHousePortfolioVariant(brandData as HousePortfolioVariant, result);
+        break;
+      case 'brand_canonical':
+        this.validateCanonicalDocument(brandData as BrandCanonicalDocument, result);
+        break;
+      default:
+        result.errors.push({
+          field: 'root',
+          message: 'Unable to determine brand.json variant. Expected a redirect, brand agent, house portfolio, or canonical brand document',
+          severity: 'error',
+        });
+    }
+    result.valid = result.errors.length === 0;
+  }
+
+  private async validateBrandJsonUrl(
+    url: string,
+    attributedDomain: string
+  ): Promise<BrandValidationResult> {
+    const result: BrandValidationResult = {
+      valid: false,
+      errors: [],
+      warnings: [],
+      domain: attributedDomain,
+      url,
+    };
+    try {
+      const response = await safeFetchAxiosLike(url, {
+        timeoutMs: 10000,
+        sameSiteRedirectsOnly: true,
+        headers: { Accept: 'application/json', 'User-Agent': AAO_UA_VALIDATOR },
+      });
+      result.status_code = response.status;
+      if (response.status !== 200) {
+        result.errors.push({ field: 'http_status', message: `HTTP ${response.status} fetching authoritative_location`, severity: 'error' });
+        return result;
+      }
+      let data: unknown;
+      try {
+        data = JSON.parse(response.data.toString('utf-8'));
+      } catch {
+        result.errors.push({ field: 'json', message: 'Invalid JSON at authoritative_location', severity: 'error' });
+        return result;
+      }
+      await this.validateBrandData(data, attributedDomain, result);
+    } catch (error) {
+      const classified = classifySafeFetchError(error, attributedDomain);
+      result.errors.push({ ...classified, severity: 'error' });
+    }
     return result;
   }
 
@@ -257,7 +519,7 @@ export class BrandManager {
    */
   private detectVariant(
     data: unknown
-  ): 'authoritative_location' | 'house_redirect' | 'brand_agent' | 'house_portfolio' | null {
+  ): BrandJsonVariant | null {
     if (typeof data !== 'object' || data === null) {
       return null;
     }
@@ -269,19 +531,30 @@ export class BrandManager {
       return 'authoritative_location';
     }
 
-    // Check for brand_agent
-    if ('brand_agent' in obj && typeof obj.brand_agent === 'object') {
-      return 'brand_agent';
-    }
-
     // Check for house - could be string (redirect) or object (portfolio)
     if ('house' in obj) {
       if (typeof obj.house === 'string') {
         return 'house_redirect';
       }
-      if (typeof obj.house === 'object' && 'brands' in obj) {
+      if (
+        typeof obj.house === 'object' && obj.house !== null &&
+        (Array.isArray(obj.brands) || Array.isArray(obj.brand_refs))
+      ) {
         return 'house_portfolio';
       }
+    }
+
+    // Canonical documents may themselves declare agents, so detect their
+    // top-level identity fields before the agent-only variant.
+    if (typeof obj.id === 'string' && Array.isArray(obj.names)) {
+      return 'brand_canonical';
+    }
+
+    if (
+      ('brand_agent' in obj && typeof obj.brand_agent === 'object') ||
+      Array.isArray(obj.agents)
+    ) {
+      return 'brand_agent';
     }
 
     return null;
@@ -367,43 +640,44 @@ export class BrandManager {
     data: BrandAgentVariant,
     result: BrandValidationResult
   ): void {
-    if (!data.brand_agent || typeof data.brand_agent !== 'object') {
+    const agent = data.brand_agent ?? data.agents?.find((entry) => entry.type === 'brand');
+    if (!agent) {
       result.errors.push({
-        field: 'brand_agent',
-        message: 'brand_agent object is required',
+        field: 'agents',
+        message: 'A brand agent entry is required',
         severity: 'error',
       });
       return;
     }
 
-    if (!data.brand_agent.id) {
+    if (!agent.id) {
       result.errors.push({
-        field: 'brand_agent.id',
-        message: 'brand_agent.id is required',
+        field: 'agents.id',
+        message: 'agent id is required',
         severity: 'error',
       });
     }
 
-    if (!data.brand_agent.url) {
+    if (!agent.url) {
       result.errors.push({
-        field: 'brand_agent.url',
-        message: 'brand_agent.url is required',
+        field: 'agents.url',
+        message: 'agent url is required',
         severity: 'error',
       });
     } else {
       try {
-        const url = new URL(data.brand_agent.url);
+        const url = new URL(agent.url);
         if (!url.protocol.startsWith('https:')) {
           result.errors.push({
-            field: 'brand_agent.url',
-            message: 'brand_agent.url must use HTTPS',
+            field: 'agents.url',
+            message: 'agent url must use HTTPS',
             severity: 'error',
           });
         }
       } catch {
         result.errors.push({
-          field: 'brand_agent.url',
-          message: 'brand_agent.url must be a valid URL',
+          field: 'agents.url',
+          message: 'agent url must be a valid URL',
           severity: 'error',
         });
       }
@@ -454,33 +728,26 @@ export class BrandManager {
       });
     }
 
-    // Validate brands array
-    if (!data.brands || !Array.isArray(data.brands)) {
-      result.errors.push({
-        field: 'brands',
-        message: 'brands array is required',
-        severity: 'error',
-      });
-      return;
-    }
+    const brands = Array.isArray(data.brands) ? data.brands : [];
+    const brandRefs = Array.isArray(data.brand_refs) ? data.brand_refs : [];
 
-    if (data.brands.length === 0) {
+    if (brands.length === 0 && brandRefs.length === 0) {
       result.errors.push({
         field: 'brands',
-        message: 'brands array must contain at least one brand',
+        message: 'At least one of brands[] or brand_refs[] is required',
         severity: 'error',
       });
       return;
     }
 
     // Validate each brand
-    data.brands.forEach((brand, index) => {
+    brands.forEach((brand, index) => {
       this.validateBrand(brand, index, result);
     });
 
     // Check for duplicate brand IDs
     const seenIds = new Set<string>();
-    data.brands.forEach((brand, index) => {
+    brands.forEach((brand, index) => {
       if (brand.id) {
         if (seenIds.has(brand.id)) {
           result.errors.push({
@@ -493,8 +760,29 @@ export class BrandManager {
       }
     });
 
+    const seenRefDomains = new Set<string>();
+    brandRefs.forEach((ref, index) => {
+      const domain = ref.domain.toLowerCase();
+      if (seenRefDomains.has(domain)) {
+        result.errors.push({
+          field: `brand_refs[${index}].domain`,
+          message: `Duplicate brand_refs domain: ${ref.domain}`,
+          severity: 'error',
+        });
+      }
+      if (seenIds.has(ref.brand_id)) {
+        result.errors.push({
+          field: `brand_refs[${index}].brand_id`,
+          message: `brand_id "${ref.brand_id}" cannot appear in both brands[] and brand_refs[]`,
+          severity: 'error',
+        });
+      }
+      seenRefDomains.add(domain);
+      seenIds.add(ref.brand_id);
+    });
+
     // Validate parent_brand references
-    data.brands.forEach((brand, index) => {
+    brands.forEach((brand, index) => {
       if (brand.parent_brand && !seenIds.has(brand.parent_brand)) {
         result.warnings.push({
           field: `brands[${index}].parent_brand`,
@@ -505,15 +793,22 @@ export class BrandManager {
     });
   }
 
+  private validateCanonicalDocument(
+    data: BrandCanonicalDocument,
+    result: BrandValidationResult
+  ): void {
+    this.validateBrand(data, 'root', result);
+  }
+
   /**
    * Validate a single brand definition
    */
   private validateBrand(
     brand: BrandDefinition,
-    index: number,
+    index: number | 'root',
     result: BrandValidationResult
   ): void {
-    const prefix = `brands[${index}]`;
+    const prefix = index === 'root' ? 'root' : `brands[${index}]`;
 
     if (!brand.id) {
       result.errors.push({
@@ -617,13 +912,17 @@ export class BrandManager {
     }
 
     let currentDomain = normalizedDomain;
+    let currentUrl: string | undefined;
     let redirectCount = 0;
 
-    while (redirectCount < maxRedirects) {
-      const validationResult = await this.validateDomain(currentDomain, { skipCache });
+    while (redirectCount <= maxRedirects) {
+      const validationResult = currentUrl
+        ? await this.validateBrandJsonUrl(currentUrl, currentDomain)
+        : await this.validateDomain(currentDomain, { skipCache });
+      this.lastValidationAttempt.set(normalizedDomain, validationResult);
 
       if (!validationResult.valid || !validationResult.raw_data) {
-        this.resolutionCache.set(cacheKey, null);
+        if (!skipCache) this.resolutionCache.set(cacheKey, null);
         return null;
       }
 
@@ -634,11 +933,11 @@ export class BrandManager {
           const authData = data as AuthoritativeLocationVariant;
           try {
             const url = new URL(authData.authoritative_location);
-            currentDomain = url.hostname + url.pathname;
+            currentUrl = url.toString();
             redirectCount++;
             continue;
           } catch {
-            this.resolutionCache.set(cacheKey, null);
+            if (!skipCache) this.resolutionCache.set(cacheKey, null);
             return null;
           }
         }
@@ -646,17 +945,24 @@ export class BrandManager {
         case 'house_redirect': {
           const redirectData = data as HouseRedirectVariant;
           currentDomain = redirectData.house;
+          currentUrl = undefined;
           redirectCount++;
           continue;
         }
 
         case 'brand_agent': {
           const agentData = data as BrandAgentVariant;
+          const agent = agentData.brand_agent ?? agentData.agents?.find((entry) => entry.type === 'brand');
+          if (!agent) {
+            if (!skipCache) this.resolutionCache.set(cacheKey, null);
+            return null;
+          }
           const result: ResolvedBrand = {
             canonical_id: currentDomain,
             canonical_domain: currentDomain,
             brand_name: currentDomain, // Agent should provide the name via MCP
-            brand_agent_url: agentData.brand_agent.url,
+            brand_agent_url: agent.url,
+            ...this.promotionMetadata(validationResult),
             source: 'brand_json',
           };
           this.resolutionCache.set(cacheKey, result);
@@ -665,6 +971,7 @@ export class BrandManager {
 
         case 'house_portfolio': {
           const portfolioData = data as HousePortfolioVariant;
+          const brands = portfolioData.brands ?? [];
           // Find the brand that owns this domain
           const brand = this.findBrandByProperty(portfolioData, normalizedDomain);
           if (brand) {
@@ -680,17 +987,33 @@ export class BrandManager {
               parent_brand: brand.parent_brand,
               house_domain: portfolioData.house.domain,
               house_name: portfolioData.house.name,
+              relationship_trust: 'inline',
               brand_manifest: this.buildBrandManifest(brand),
+              ...this.promotionMetadata(validationResult),
               source: 'brand_json',
             };
             this.resolutionCache.set(cacheKey, result);
             return result;
           }
 
+          const pointer = portfolioData.brand_refs?.find(
+            (ref) => ref.domain.toLowerCase() === normalizedDomain
+          );
+          if (pointer) {
+            const pointed = await this.resolveBrandPointer(
+              pointer,
+              { skipCache },
+              portfolioData.house.domain,
+              normalizedDomain
+            );
+            this.resolutionCache.set(cacheKey, pointed);
+            return pointed;
+          }
+
           // Check if the query domain is the house domain itself
           if (currentDomain === portfolioData.house.domain) {
             // Return the master brand if there is one
-            const masterBrand = portfolioData.brands.find((b) => b.keller_type === 'master');
+            const masterBrand = brands.find((b) => b.keller_type === 'master');
             if (masterBrand) {
               const primaryName = this.getPrimaryName(masterBrand.names);
               const result: ResolvedBrand = {
@@ -701,7 +1024,9 @@ export class BrandManager {
                 keller_type: masterBrand.keller_type,
                 house_domain: portfolioData.house.domain,
                 house_name: portfolioData.house.name,
+                relationship_trust: 'inline',
                 brand_manifest: this.buildBrandManifest(masterBrand),
+                ...this.promotionMetadata(validationResult),
                 source: 'brand_json',
               };
               this.resolutionCache.set(cacheKey, result);
@@ -709,17 +1034,31 @@ export class BrandManager {
             }
           }
 
-          this.resolutionCache.set(cacheKey, null);
+          if (!skipCache) this.resolutionCache.set(cacheKey, null);
           return null;
         }
 
+        case 'brand_canonical': {
+          const result = await this.resolveCanonicalDocument(
+            data as BrandCanonicalDocument,
+            currentDomain,
+            {
+              skipCache,
+              maxRedirects,
+              ...this.promotionMetadata(validationResult),
+            }
+          );
+          this.resolutionCache.set(cacheKey, result);
+          return result;
+        }
+
         default:
-          this.resolutionCache.set(cacheKey, null);
+          if (!skipCache) this.resolutionCache.set(cacheKey, null);
           return null;
       }
     }
 
-    this.resolutionCache.set(cacheKey, null);
+    if (!skipCache) this.resolutionCache.set(cacheKey, null);
     return null; // Max redirects exceeded
   }
 
@@ -734,20 +1073,27 @@ export class BrandManager {
     options: { skipCache?: boolean } = {}
   ): Promise<ResolvedBrand | null> {
     const resolved = await this.resolveBrand(ref.domain, options);
-    if (!resolved || !ref.brand_id) {
+    if (!ref.brand_id) {
       return resolved;
     }
 
     // If the resolved brand already matches the requested brand_id, return it
-    if (resolved.canonical_id === ref.brand_id || resolved.canonical_domain === ref.brand_id) {
+    if (
+      resolved &&
+      (resolved.canonical_id === ref.brand_id || resolved.canonical_domain === ref.brand_id)
+    ) {
       return resolved;
     }
 
     // For house portfolios, look up the specific brand by id
     const validationResult = await this.validateDomain(ref.domain, { skipCache: options.skipCache });
-    if (validationResult.variant === 'house_portfolio' && validationResult.raw_data) {
+    if (
+      validationResult.valid &&
+      validationResult.variant === 'house_portfolio' &&
+      validationResult.raw_data
+    ) {
       const portfolio = validationResult.raw_data as HousePortfolioVariant;
-      const brand = portfolio.brands.find((b) => b.id === ref.brand_id);
+      const brand = portfolio.brands?.find((b) => b.id === ref.brand_id);
       if (brand) {
         const primaryName = this.getPrimaryName(brand.names);
         return {
@@ -759,13 +1105,169 @@ export class BrandManager {
           parent_brand: brand.parent_brand,
           house_domain: portfolio.house.domain,
           house_name: portfolio.house.name,
+          relationship_trust: 'inline',
           brand_manifest: this.buildBrandManifest(brand),
+          ...this.promotionMetadata(validationResult),
           source: 'brand_json',
         };
+      }
+
+
+      const pointer = portfolio.brand_refs?.find((entry) => entry.brand_id === ref.brand_id);
+      if (pointer) {
+        return this.resolveBrandPointer(pointer, options, portfolio.house.domain, ref.domain);
       }
     }
 
     return null;
+  }
+
+  private async resolveBrandPointer(
+    pointer: NonNullable<HousePortfolioVariant['brand_refs']>[number],
+    options: { skipCache?: boolean },
+    expectedHouseDomain: string,
+    diagnosticDomain: string
+  ): Promise<ResolvedBrand | null> {
+    const validation = await this.validateCanonicalPointer(pointer.domain, options);
+    this.lastValidationAttempt.set(diagnosticDomain.toLowerCase(), validation);
+    if (
+      !validation.valid ||
+      validation.variant !== 'brand_canonical' ||
+      !validation.raw_data
+    ) {
+      return null;
+    }
+
+    const canonical = validation.raw_data as BrandCanonicalDocument;
+    if (canonical.id !== pointer.brand_id) return null;
+    const reciprocal = canonical.house_domain?.toLowerCase() === expectedHouseDomain.toLowerCase();
+    return this.resolveCanonicalDocument(canonical, pointer.domain, {
+      skipCache: options.skipCache,
+      maxRedirects: 3,
+      knownRelationship: reciprocal ? 'mutual' : 'house_only',
+      verifiedHouseDomain: reciprocal ? expectedHouseDomain : undefined,
+      ...this.promotionMetadata(validation),
+    });
+  }
+
+  private async validateCanonicalPointer(
+    domain: string,
+    options: { skipCache?: boolean }
+  ): Promise<BrandValidationResult> {
+    let validation = await this.validateDomain(domain, { skipCache: options.skipCache });
+    for (let redirects = 0; redirects < 3 && validation.variant === 'authoritative_location'; redirects++) {
+      const location = (validation.raw_data as AuthoritativeLocationVariant).authoritative_location;
+      validation = await this.validateBrandJsonUrl(location, domain);
+    }
+    return validation;
+  }
+
+  private async resolveCanonicalDocument(
+    data: BrandCanonicalDocument,
+    domain: string,
+    options: {
+      skipCache?: boolean;
+      maxRedirects: number;
+      knownRelationship?: 'mutual' | 'house_only';
+      verifiedHouseDomain?: string;
+      promoted_from_schema?: string;
+      migration_warnings?: BrandValidationWarning[];
+    }
+  ): Promise<ResolvedBrand> {
+    const primaryName = this.getPrimaryName(data.names);
+    const claimedHouseDomain = data.house_domain?.toLowerCase();
+    let relationshipTrust: ResolvedBrand['relationship_trust'] = claimedHouseDomain
+      ? 'leaf_only'
+      : 'standalone';
+    let verifiedHouseDomain = options.verifiedHouseDomain;
+    let houseName: string | undefined;
+
+    if (options.knownRelationship) {
+      relationshipTrust = options.knownRelationship;
+    } else if (claimedHouseDomain) {
+      const verification = await this.verifyCanonicalHouseRelationship(
+        domain,
+        data.id,
+        claimedHouseDomain,
+        options
+      );
+      relationshipTrust = verification.mutual ? 'mutual' : 'leaf_only';
+      verifiedHouseDomain = verification.mutual ? verification.houseDomain : undefined;
+      houseName = verification.mutual ? verification.houseName : undefined;
+    }
+
+    return {
+      canonical_id: data.id,
+      canonical_domain: domain,
+      brand_name: primaryName || data.id,
+      names: data.names,
+      keller_type: data.keller_type,
+      parent_brand: data.parent_brand,
+      house_domain: verifiedHouseDomain,
+      claimed_house_domain: claimedHouseDomain,
+      house_name: houseName,
+      relationship_trust: relationshipTrust,
+      promoted_from_schema: options.promoted_from_schema,
+      migration_warnings: options.migration_warnings,
+      brand_manifest: this.buildBrandManifest(data),
+      source: 'brand_json',
+    };
+  }
+
+  private promotionMetadata(validation: BrandValidationResult): Pick<
+    ResolvedBrand,
+    'promoted_from_schema' | 'migration_warnings'
+  > {
+    if (!validation.promoted_from_schema) return {};
+    return {
+      promoted_from_schema: validation.promoted_from_schema,
+      migration_warnings: validation.warnings.slice(0, 20),
+    };
+  }
+
+  private async verifyCanonicalHouseRelationship(
+    leafDomain: string,
+    brandId: string,
+    claimedHouseDomain: string,
+    options: { skipCache?: boolean; maxRedirects: number }
+  ): Promise<{ mutual: boolean; houseDomain?: string; houseName?: string }> {
+    let current = claimedHouseDomain;
+    let currentUrl: string | undefined;
+    const seen = new Set<string>();
+
+    for (let redirects = 0; redirects <= options.maxRedirects; redirects++) {
+      if (seen.has(current)) return { mutual: false };
+      seen.add(current);
+      const validation = currentUrl
+        ? await this.validateBrandJsonUrl(currentUrl, current)
+        : await this.validateDomain(current, { skipCache: options.skipCache });
+      if (!validation.valid || !validation.raw_data) return { mutual: false };
+
+      if (validation.variant === 'house_redirect') {
+        current = (validation.raw_data as HouseRedirectVariant).house.toLowerCase();
+        currentUrl = undefined;
+        continue;
+      }
+      if (validation.variant === 'authoritative_location') {
+        const location = (validation.raw_data as AuthoritativeLocationVariant).authoritative_location;
+        currentUrl = location;
+        continue;
+      }
+      if (validation.variant !== 'house_portfolio') return { mutual: false };
+
+      const portfolio = validation.raw_data as HousePortfolioVariant;
+      const reciprocal = portfolio.brand_refs?.some((ref) =>
+        ref.domain.toLowerCase() === leafDomain.toLowerCase() && ref.brand_id === brandId
+      );
+      return reciprocal
+        ? {
+            mutual: true,
+            houseDomain: portfolio.house.domain,
+            houseName: portfolio.house.name,
+          }
+        : { mutual: false };
+    }
+    return { mutual: false };
   }
 
   /**
@@ -778,16 +1280,24 @@ export class BrandManager {
    * schema. A legacy nested `brand_manifest` sub-key, if present, is merged
    * in for backwards compatibility; flat fields take precedence.
    */
-  private buildBrandManifest(brand: BrandDefinition): Record<string, unknown> | undefined {
+  private buildBrandManifest(
+    brand: BrandDefinition | BrandCanonicalDocument
+  ): Record<string, unknown> | undefined {
     const {
+      $schema: _schema,
+      version: _version,
+      last_updated: _lastUpdated,
+      house_domain: _houseDomain,
       id: _id,
       names: _names,
       keller_type: _kellerType,
       parent_brand: _parentBrand,
       properties: _properties,
+      legacy_properties: _legacyProperties,
+      legacy_metadata: _legacyMetadata,
       brand_manifest: brandManifest,
       ...rest
-    } = brand;
+    } = brand as BrandCanonicalDocument & Record<string, unknown>;
 
     const legacy =
       brandManifest && typeof brandManifest === 'object'
@@ -805,7 +1315,7 @@ export class BrandManager {
     portfolio: HousePortfolioVariant,
     identifier: string
   ): BrandDefinition | null {
-    for (const brand of portfolio.brands) {
+    for (const brand of portfolio.brands ?? []) {
       // Check if identifier matches brand id
       if (brand.id === identifier) {
         return brand;

@@ -502,6 +502,27 @@ export interface RegistryApiConfig {
   optionalAuth?: RequestHandler;
 }
 
+function serializeBrandValidation(
+  validation: Awaited<ReturnType<RegistryApiConfig['brandManager']['validateDomain']>>
+) {
+  const truncate = (value: string) => value.length > 500 ? `${value.slice(0, 497)}...` : value;
+  return {
+    valid: validation.valid,
+    url: validation.url,
+    status_code: validation.status_code,
+    errors: validation.errors.slice(0, 20).map((issue) => ({
+      field: truncate(issue.field),
+      message: truncate(issue.message),
+      severity: issue.severity,
+    })),
+    warnings: validation.warnings.slice(0, 20).map((warning) => ({
+      field: truncate(warning.field),
+      message: truncate(warning.message),
+      ...(warning.suggestion ? { suggestion: truncate(warning.suggestion) } : {}),
+    })),
+  };
+}
+
 // ── Helpers ─────────────────────────────────────────────────────
 
 function extractPublisherStats(result: { valid: boolean; raw_data?: any }) {
@@ -590,7 +611,40 @@ registry.registerPath({
     }),
   },
   responses: {
-    200: { description: "Raw brand.json data", content: { "application/json": { schema: z.object({ domain: z.string(), url: z.string(), variant: z.string().optional(), data: z.record(z.string(), z.unknown()), warnings: z.array(z.string()).optional() }) } } },
+    200: {
+      description: "Raw brand.json data",
+      content: {
+        "application/json": {
+          schema: z.object({
+            domain: z.string(),
+            url: z.string(),
+            variant: z.string().optional(),
+            data: z.record(z.string(), z.unknown()),
+            warnings: z.array(z.object({
+              field: z.string(),
+              message: z.string(),
+              suggestion: z.string().optional(),
+            })).optional(),
+            promoted_from_schema: z.string().optional(),
+            live_brand_json: z.object({
+              valid: z.boolean(),
+              url: z.string(),
+              status_code: z.number().int().optional(),
+              errors: z.array(z.object({
+                field: z.string(),
+                message: z.string(),
+                severity: z.literal("error"),
+              })),
+              warnings: z.array(z.object({
+                field: z.string(),
+                message: z.string(),
+                suggestion: z.string().optional(),
+              })),
+            }).optional(),
+          }),
+        },
+      },
+    },
     404: { description: "Brand not found", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
@@ -4042,7 +4096,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     }
   });
 
-  router.get("/brands/resolve", async (req, res) => {
+  router.get("/brands/resolve", registryReadRateLimiter, async (req, res) => {
     try {
       const domain = req.query.domain as string;
       const fresh = req.query.fresh === "true";
@@ -4051,6 +4105,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       }
 
       const resolved = await brandManager.resolveBrand(domain, { skipCache: fresh });
+      const liveValidation = fresh && !resolved
+        ? brandManager.getLastValidationResult(domain) ?? await brandManager.validateDomain(domain)
+        : undefined;
       if (!resolved) {
         const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
         // Hide orphaned manifests and explicitly non-public rows. The manifest
@@ -4064,8 +4121,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             canonical_id: discovered.canonical_domain || discovered.domain,
             canonical_domain: discovered.canonical_domain || discovered.domain,
             brand_name: discovered.brand_name,
-            source: discovered.source_type,
+            source: discovered.workos_organization_id ? 'hosted' : discovered.source_type,
             brand_manifest: stripLegacyBrandContext(discovered.brand_manifest),
+            ...(liveValidation ? {
+              live_brand_json: serializeBrandValidation(liveValidation),
+            } : {}),
           });
         }
         registryRequestsDb
@@ -4151,7 +4211,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     return enriched;
   }
 
-  router.get("/brands/brand-json", async (req, res) => {
+  router.get("/brands/brand-json", registryReadRateLimiter, async (req, res) => {
     try {
       const domain = ((req.query.domain as string) || "").toLowerCase();
       const fresh = req.query.fresh === "true";
@@ -4160,9 +4220,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         return res.status(400).json({ error: "Invalid domain format" });
       }
 
+      let liveValidation: Awaited<ReturnType<typeof brandManager.validateDomain>> | undefined;
+
       // If fresh=true, fetch live from external domain and update DB cache
       if (fresh) {
         const result = await brandManager.validateDomain(domain, { skipCache: true });
+        liveValidation = result;
         if (result.valid && result.raw_data) {
           const enrichedData = await enrichBrandDataWithVerification(result.raw_data);
           return res.json({
@@ -4171,6 +4234,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             variant: result.variant,
             data: enrichedData,
             warnings: result.warnings,
+            promoted_from_schema: result.promoted_from_schema,
           });
         }
         // Live fetch failed — fall through to DB cache
@@ -4188,7 +4252,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           ? `https://${domain}/.well-known/brand.json`
           : `https://agenticadvertising.org/brands/${domain}/brand.json`;
 
-        return res.json({ domain, url, variant, data: enrichedData });
+        return res.json({
+          domain,
+          url,
+          variant,
+          data: enrichedData,
+          ...(liveValidation ? {
+            live_brand_json: serializeBrandValidation(liveValidation),
+          } : {}),
+        });
       }
 
       // Nothing in DB — try live fetch as last resort
@@ -4201,6 +4273,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           variant: result.variant,
           data: enrichedData,
           warnings: result.warnings,
+          promoted_from_schema: result.promoted_from_schema,
         });
       }
 
@@ -4340,7 +4413,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
                   canonical_id: discovered.canonical_domain || discovered.domain,
                   canonical_domain: discovered.canonical_domain || discovered.domain,
                   brand_name: discovered.brand_name,
-                  source: discovered.source_type,
+                  source: discovered.workos_organization_id ? 'hosted' : discovered.source_type,
                   brand_manifest: stripLegacyBrandContext(discovered.brand_manifest),
                 },
               };

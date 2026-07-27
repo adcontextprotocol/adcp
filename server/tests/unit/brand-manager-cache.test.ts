@@ -109,6 +109,176 @@ describe('BrandManager caching', () => {
       await manager.validateDomain('fresh.com', { skipCache: true });
       expect(mockedSafeFetch).toHaveBeenCalledTimes(2);
     });
+
+    it('retains a prior positive cache while exposing the latest fresh failure', async () => {
+      const validDocument = {
+        id: 'stable',
+        names: [{ en: 'Stable' }],
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(validDocument)) })
+        .mockResolvedValueOnce({ status: 503, data: Buffer.from('unavailable') });
+
+      expect((await manager.validateDomain('stable.example')).valid).toBe(true);
+      expect((await manager.validateDomain('stable.example', { skipCache: true })).valid).toBe(false);
+      expect(manager.getLastValidationResult('stable.example')?.status_code).toBe(503);
+      expect((await manager.validateDomain('stable.example')).valid).toBe(true);
+      expect(mockedSafeFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('promotes the narrow legacy portfolio shape without inventing trust relationships', async () => {
+      const legacyBrandJson = {
+        $schema: 'https://schemas.adcontextprotocol.org/brand/v1/brand.json',
+        name: 'Example House',
+        domain: 'example.com',
+        legal_operator: {
+          name: 'Example LLC',
+          domain: 'example.com',
+          relationship: 'registered_account_operator',
+        },
+        brands: [
+          {
+            id: 'example',
+            name: 'Example',
+            properties: [
+              { type: 'website', identifier: 'example.com', relationship: 'owned' },
+              { type: 'website', identifier: 'alias.example' },
+            ],
+          },
+          {
+            id: 'partner',
+            name: 'Partner',
+            properties: [
+              {
+                type: 'website',
+                identifier: 'partner.com',
+                relationship: 'operated_publisher_brand',
+              },
+            ],
+          },
+        ],
+      };
+      mockedSafeFetch.mockResolvedValueOnce({
+        status: 200,
+        data: Buffer.from(JSON.stringify(legacyBrandJson)),
+      });
+
+      const result = await manager.validateDomain('example.com');
+
+      expect(result.valid).toBe(true);
+      expect(result.variant).toBe('brand_canonical');
+      expect(result.promoted_from_schema).toBe(legacyBrandJson.$schema);
+      expect(result.warnings).toEqual(expect.arrayContaining([
+        expect.objectContaining({ field: 'brands' }),
+        expect.objectContaining({ field: 'legal_operator' }),
+      ]));
+      const promoted = result.raw_data as Record<string, any>;
+      expect(promoted.$schema).toBe('https://adcontextprotocol.org/schemas/v3/brand.json');
+      expect(promoted.names).toEqual([{ und: 'Example' }, { und: 'Example House' }]);
+      expect(promoted.properties).toEqual([
+        { type: 'website', identifier: 'example.com', relationship: 'owned' },
+      ]);
+      expect(promoted.legacy_properties).toEqual([
+        { type: 'website', identifier: 'alias.example' },
+      ]);
+      expect(promoted.legacy_metadata.unpromoted_brands[0].id).toBe('partner');
+      expect(promoted.legacy_metadata.legal_operator).toEqual(legacyBrandJson.legal_operator);
+
+      const resolved = await manager.resolveBrand('example.com');
+      expect(resolved).toMatchObject({
+        source: 'brand_json',
+        relationship_trust: 'standalone',
+        promoted_from_schema: legacyBrandJson.$schema,
+      });
+      expect(resolved?.migration_warnings?.length).toBeGreaterThan(0);
+    });
+
+    it('promotes a leaf-hosted legacy shape to a canonical v3 document', async () => {
+      const legacyBrandJson = {
+        $schema: 'https://schemas.adcontextprotocol.org/brand/v1/brand.json',
+        name: 'Leaf Brand',
+        domain: 'leaf.example',
+        house: { domain: 'house.example', name: 'Example House' },
+        brands: [{
+          id: 'leaf',
+          name: 'Leaf Brand',
+          properties: [
+            { type: 'website', identifier: 'leaf.example', relationship: 'owned' },
+            {
+              type: 'website',
+              identifier: 'house.example',
+              relationship: 'registered_account_operator',
+            },
+          ],
+        }],
+      };
+      mockedSafeFetch.mockResolvedValueOnce({
+        status: 200,
+        data: Buffer.from(JSON.stringify(legacyBrandJson)),
+      });
+
+      const result = await manager.validateDomain('leaf.example');
+
+      expect(result.valid).toBe(true);
+      expect(result.variant).toBe('brand_canonical');
+      expect(result.raw_data).toMatchObject({
+        id: 'leaf',
+        names: [{ und: 'Leaf Brand' }],
+        house_domain: 'house.example',
+        properties: [{ type: 'website', identifier: 'leaf.example', relationship: 'owned' }],
+      });
+      expect((result.raw_data as Record<string, any>).legacy_properties[0].relationship)
+        .toBe('registered_account_operator');
+    });
+
+    it.each([
+      {
+        label: 'a forbidden canonical brand_refs field',
+        document: {
+          id: 'leaf',
+          names: [{ en: 'Leaf' }],
+          brand_refs: [{ domain: 'child.example', brand_id: 'child' }],
+        },
+      },
+      {
+        label: 'an unsupported property relationship',
+        document: {
+          id: 'leaf',
+          names: [{ en: 'Leaf' }],
+          properties: [{ type: 'website', identifier: 'leaf.example', relationship: 'bogus' }],
+        },
+      },
+    ])('rejects v3 documents containing $label', async ({ document }) => {
+      mockedSafeFetch.mockResolvedValueOnce({
+        status: 200,
+        data: Buffer.from(JSON.stringify(document)),
+      });
+
+      const result = await manager.validateDomain('leaf.example');
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.length).toBeGreaterThan(0);
+    });
+
+    it('rejects a House Portfolio whose house.domain is not bound to the TLS origin', async () => {
+      const forgedPortfolio = {
+        house: { domain: 'trusted.example', name: 'Trusted House' },
+        brands: [{
+          id: 'evil',
+          names: [{ en: 'Evil' }],
+          properties: [{ type: 'website', identifier: 'evil.example', relationship: 'owned' }],
+        }],
+      };
+      mockedSafeFetch.mockResolvedValueOnce({
+        status: 200,
+        data: Buffer.from(JSON.stringify(forgedPortfolio)),
+      });
+
+      const result = await manager.validateDomain('evil.example');
+
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.objectContaining({ field: 'house.domain' }));
+    });
   });
 
   describe('UTF-8 encoding', () => {
@@ -233,6 +403,190 @@ describe('BrandManager caching', () => {
       await manager.resolveBrand('bypass.com', { skipCache: true });
       expect(mockedSafeFetch).toHaveBeenCalled();
     });
+
+    it('does not replace a positive resolution cache on a transient fresh failure', async () => {
+      const canonical = { id: 'stable', names: [{ en: 'Stable' }] };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({ status: 503, data: Buffer.from('unavailable') });
+
+      expect((await manager.resolveBrand('stable.example'))?.brand_name).toBe('Stable');
+      expect(await manager.resolveBrand('stable.example', { skipCache: true })).toBeNull();
+      expect((await manager.resolveBrand('stable.example'))?.brand_name).toBe('Stable');
+      expect(mockedSafeFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('retains terminal redirect diagnostics under the originally requested domain', async () => {
+      const redirect = { house: 'house.example' };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(redirect)) })
+        .mockResolvedValueOnce({ status: 503, data: Buffer.from('unavailable') });
+
+      expect(await manager.resolveBrand('leaf.example', { skipCache: true })).toBeNull();
+      expect(manager.getLastValidationResult('leaf.example')).toMatchObject({
+        valid: false,
+        domain: 'house.example',
+        status_code: 503,
+      });
+    });
+
+    it('resolves a v3 Brand Canonical Document', async () => {
+      const canonical = {
+        $schema: 'https://adcontextprotocol.org/schemas/v3/brand.json',
+        id: 'leaf',
+        names: [{ en: 'Leaf Brand' }],
+        house_domain: 'house.example',
+        description: 'Leaf-owned identity',
+        properties: [{ type: 'website', identifier: 'leaf.example', relationship: 'owned' }],
+      };
+      mockedSafeFetch.mockResolvedValueOnce({
+        status: 200,
+        data: Buffer.from(JSON.stringify(canonical)),
+      });
+
+      const result = await manager.resolveBrand('leaf.example');
+
+      expect(result).toMatchObject({
+        canonical_id: 'leaf',
+        canonical_domain: 'leaf.example',
+        brand_name: 'Leaf Brand',
+        claimed_house_domain: 'house.example',
+        relationship_trust: 'leaf_only',
+        source: 'brand_json',
+        brand_manifest: { description: 'Leaf-owned identity' },
+      });
+      expect(result?.house_domain).toBeUndefined();
+      expect(result?.brand_manifest).not.toHaveProperty('house_domain');
+      expect(result?.brand_manifest).not.toHaveProperty('$schema');
+    });
+
+    it('follows a house brand_refs pointer only to the matching canonical brand', async () => {
+      const portfolio = {
+        $schema: 'https://adcontextprotocol.org/schemas/v3/brand.json',
+        house: { domain: 'house.example', name: 'Example House' },
+        brand_refs: [{ domain: 'leaf.example', brand_id: 'leaf' }],
+      };
+      const canonical = {
+        $schema: 'https://adcontextprotocol.org/schemas/v3/brand.json',
+        id: 'leaf',
+        names: [{ en: 'Leaf Brand' }],
+        house_domain: 'house.example',
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(portfolio)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) });
+
+      const result = await manager.resolveBrandRef({
+        domain: 'house.example',
+        brand_id: 'leaf',
+      });
+
+      expect(result).toMatchObject({
+        canonical_id: 'leaf',
+        canonical_domain: 'leaf.example',
+        brand_name: 'Leaf Brand',
+        house_domain: 'house.example',
+        claimed_house_domain: 'house.example',
+        relationship_trust: 'mutual',
+        source: 'brand_json',
+      });
+      expect(mockedSafeFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('marks a one-sided house pointer as house_only without trusting parentage', async () => {
+      const portfolio = {
+        house: { domain: 'house.example', name: 'Example House' },
+        brand_refs: [{ domain: 'leaf.example', brand_id: 'leaf' }],
+      };
+      const standaloneLeaf = {
+        id: 'leaf',
+        names: [{ en: 'Leaf Brand' }],
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(portfolio)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(standaloneLeaf)) });
+
+      const result = await manager.resolveBrandRef({
+        domain: 'house.example',
+        brand_id: 'leaf',
+      });
+
+      expect(result).toMatchObject({
+        relationship_trust: 'house_only',
+        canonical_domain: 'leaf.example',
+      });
+      expect(result?.house_domain).toBeUndefined();
+      expect(result?.claimed_house_domain).toBeUndefined();
+    });
+
+    it('verifies a direct canonical house claim through reciprocal brand_refs', async () => {
+      const canonical = {
+        id: 'leaf',
+        names: [{ en: 'Leaf Brand' }],
+        house_domain: 'house.example',
+      };
+      const portfolio = {
+        house: { domain: 'house.example', name: 'Example House' },
+        brand_refs: [{ domain: 'leaf.example', brand_id: 'leaf' }],
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(portfolio)) });
+
+      const result = await manager.resolveBrand('leaf.example');
+
+      expect(result).toMatchObject({
+        house_domain: 'house.example',
+        claimed_house_domain: 'house.example',
+        house_name: 'Example House',
+        relationship_trust: 'mutual',
+      });
+    });
+
+    it('fetches authoritative_location at the exact published URL', async () => {
+      const pointer = {
+        authoritative_location: 'https://cdn.example/custom/brand.json',
+      };
+      const canonical = {
+        id: 'cdn_brand',
+        names: [{ en: 'CDN Brand' }],
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(pointer)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) });
+
+      const result = await manager.resolveBrand('origin.example');
+
+      expect(result).toMatchObject({
+        canonical_id: 'cdn_brand',
+        canonical_domain: 'origin.example',
+        relationship_trust: 'standalone',
+      });
+      expect(mockedSafeFetch).toHaveBeenNthCalledWith(
+        2,
+        'https://cdn.example/custom/brand.json',
+        expect.objectContaining({ sameSiteRedirectsOnly: true })
+      );
+    });
+
+    it('does not follow brand_refs from a portfolio forged for another house origin', async () => {
+      const forgedPortfolio = {
+        house: { domain: 'trusted.example', name: 'Trusted House' },
+        brand_refs: [{ domain: 'leaf.example', brand_id: 'leaf' }],
+      };
+      mockedSafeFetch.mockResolvedValueOnce({
+        status: 200,
+        data: Buffer.from(JSON.stringify(forgedPortfolio)),
+      });
+
+      const result = await manager.resolveBrandRef({
+        domain: 'evil.example',
+        brand_id: 'leaf',
+      });
+
+      expect(result).toBeNull();
+      expect(mockedSafeFetch).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('brand_manifest construction', () => {
@@ -331,10 +685,15 @@ describe('BrandManager caching', () => {
         ],
       };
 
-      mockedSafeFetch.mockResolvedValue({
-        status: 200,
-        data: Buffer.from(JSON.stringify(mockBrandJson)),
-      });
+      mockedSafeFetch
+        .mockResolvedValueOnce({
+          status: 200,
+          data: Buffer.from(JSON.stringify({ house: 'house.com' })),
+        })
+        .mockResolvedValueOnce({
+          status: 200,
+          data: Buffer.from(JSON.stringify(mockBrandJson)),
+        });
 
       const result = await manager.resolveBrand('subbrand.com');
       expect(result).not.toBeNull();
@@ -417,13 +776,13 @@ describe('BrandManager caching', () => {
         },
         brands: [
           {
-            id: 'brand-a',
+            id: 'brand_a',
             names: [{ en: 'Brand A' }],
             keller_type: 'master',
             description: 'Brand A description',
           },
           {
-            id: 'brand-b',
+            id: 'brand_b',
             names: [{ en: 'Brand B' }],
             keller_type: 'sub_brand',
             description: 'Brand B description',
@@ -438,7 +797,7 @@ describe('BrandManager caching', () => {
 
       const result = await manager.resolveBrandRef({
         domain: 'multi.com',
-        brand_id: 'brand-b',
+        brand_id: 'brand_b',
       });
       expect(result).not.toBeNull();
       expect(result?.brand_manifest?.description).toBe('Brand B description');

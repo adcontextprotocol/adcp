@@ -44,6 +44,7 @@ function buildApp(
     brandManager: {
       resolveBrand: vi.fn().mockResolvedValue(null),
       validateDomain: vi.fn().mockResolvedValue({ valid: false, errors: [] }),
+      getLastValidationResult: vi.fn().mockReturnValue(undefined),
       ...brandManager,
     } as RegistryApiConfig['brandManager'],
     brandDb: brandDb as RegistryApiConfig['brandDb'],
@@ -322,6 +323,52 @@ describe('public registry brand read paths', () => {
     expect(res.body.brand_manifest).toEqual({ name: 'Acme', url: 'https://acme.com' });
   });
 
+  it('distinguishes owner-registered fallback records from community records', async () => {
+    const brandDb = {
+      getDiscoveredBrandByDomain: vi.fn().mockResolvedValue({
+        ...discoveredBrandWithContext(),
+        source_type: 'community',
+        workos_organization_id: 'org_owner',
+      }),
+      upsertDiscoveredBrand: vi.fn(),
+    };
+
+    const res = await request(buildApp(brandDb)).get('/api/brands/resolve?domain=acme.com');
+
+    expect(res.status).toBe(200);
+    expect(res.body.source).toBe('hosted');
+  });
+
+  it('surfaces live brand.json diagnostics when fresh resolution falls back', async () => {
+    const brandDb = {
+      getDiscoveredBrandByDomain: vi.fn().mockResolvedValue(discoveredBrandWithContext()),
+      upsertDiscoveredBrand: vi.fn(),
+    };
+    const validation = {
+      valid: false,
+      domain: 'acme.com',
+      url: 'https://acme.com/.well-known/brand.json',
+      status_code: 200,
+      errors: [{ field: 'brands[0].names', message: 'Required', severity: 'error' }],
+      warnings: [{ field: '$schema', message: 'Legacy schema detected' }],
+    };
+
+    const res = await request(buildApp(brandDb, false, {
+      resolveBrand: vi.fn().mockResolvedValue(null),
+      validateDomain: vi.fn().mockResolvedValue(validation),
+    })).get('/api/brands/resolve?domain=acme.com&fresh=true');
+
+    expect(res.status).toBe(200);
+    expect(res.body.source).toBe('enriched');
+    expect(res.body.live_brand_json).toEqual({
+      valid: false,
+      url: validation.url,
+      status_code: 200,
+      errors: validation.errors,
+      warnings: validation.warnings,
+    });
+  });
+
   it('strips legacy brand_context from /api/brands/resolve/bulk fallback manifests', async () => {
     const brandDb = {
       getDiscoveredBrandByDomain: vi.fn().mockResolvedValue(discoveredBrandWithContext()),
@@ -346,5 +393,34 @@ describe('public registry brand read paths', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data).toEqual({ name: 'Acme', url: 'https://acme.com' });
+  });
+
+  it('surfaces live validation diagnostics when fresh brand-json falls back to cached data', async () => {
+    const brandDb = {
+      getDiscoveredBrandByDomain: vi.fn().mockResolvedValue(discoveredBrandWithContext()),
+      upsertDiscoveredBrand: vi.fn(),
+    };
+    const validation = {
+      valid: false,
+      domain: 'acme.com',
+      url: 'https://acme.com/.well-known/brand.json',
+      status_code: 200,
+      errors: [{ field: 'root', message: 'Invalid brand.json', severity: 'error' }],
+      warnings: [{ field: '$schema', message: 'Legacy schema detected' }],
+    };
+
+    const res = await request(buildApp(brandDb, false, {
+      validateDomain: vi.fn().mockResolvedValue(validation),
+    })).get('/api/brands/brand-json?domain=acme.com&fresh=true');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ name: 'Acme', url: 'https://acme.com' });
+    expect(res.body.live_brand_json).toEqual({
+      valid: false,
+      url: validation.url,
+      status_code: 200,
+      errors: validation.errors,
+      warnings: validation.warnings,
+    });
   });
 });
