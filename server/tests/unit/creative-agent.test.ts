@@ -23,6 +23,55 @@ describe('training agent formats', () => {
     }
   });
 
+  it('publishes reviewed canonical mappings for deployed legacy IDs', () => {
+    const formats = buildReferenceFormats(TEST_AGENT_URL);
+    const byId = new Map(
+      formats.map(format => [(format.format_id as { id: string }).id, format as Record<string, unknown>])
+    );
+
+    for (const [id, width] of [
+      ['display_320x50_html', 320],
+      ['display_300x50_html', 300],
+    ] as const) {
+      const format = byId.get(id)!;
+      expect(format.canonical).toEqual({ kind: 'html5' });
+      expect(format.renders).toEqual([
+        {
+          dimensions: {
+            height: 50,
+            responsive: { height: false, width: false },
+            width,
+          },
+          role: 'primary',
+        },
+      ]);
+      const htmlAsset = (format.assets as Array<Record<string, unknown>>).find(
+        asset => asset.asset_id === 'html_creative'
+      )!;
+      expect(htmlAsset.requirements).toMatchObject({ width, height: 50 });
+    }
+
+    expect(byId.get('display_static')).toMatchObject({
+      accepts_parameters: ['dimensions'],
+      canonical: { kind: 'image' },
+    });
+    expect(byId.get('video_hosted')).toMatchObject({
+      accepts_parameters: ['duration'],
+      canonical: { kind: 'video_hosted' },
+    });
+    expect(byId.get('audio_30s')).toMatchObject({
+      canonical: { kind: 'audio_hosted' },
+    });
+    const audioAsset = (byId.get('audio_30s')!.assets as Array<Record<string, unknown>>).find(
+      asset => asset.asset_id === 'audio_file'
+    )!;
+    expect(audioAsset.requirements).toMatchObject({
+      min_duration_ms: 30_000,
+      max_duration_ms: 30_000,
+    });
+  });
+
+
   it('all format IDs are unique', () => {
     const formats = buildFormats(TEST_TRAINING_URL);
     const ids = formats.map(f => (f.format_id as { id: string }).id);
@@ -40,13 +89,12 @@ describe('training agent formats', () => {
     }
   });
 });
-
 // ── Reference formats (creative agent) ──────────────────────────────
 
 describe('reference formats', () => {
   it('loads reference formats and rewrites agent_url', () => {
     const formats = buildReferenceFormats(TEST_AGENT_URL);
-    expect(formats.length).toBe(57);
+    expect(formats.length).toBe(62);
     for (const f of formats) {
       const fid = f.format_id as { agent_url: string; id: string };
       expect(fid.agent_url).toBe(TEST_AGENT_URL);
@@ -112,7 +160,7 @@ describe('handleListCreativeFormats', () => {
   it('returns all formats when no filters provided', () => {
     const result = handleListCreativeFormats({}, formats);
     const returned = result.formats as unknown[];
-    expect(returned.length).toBe(57);
+    expect(returned.length).toBe(62);
   });
 
   it('response structure matches schema: { formats: [...] }', () => {
@@ -523,7 +571,7 @@ describe('MCP tool responses include structuredContent', () => {
     const structured = result.structuredContent as { formats: unknown[] };
     expect(structured.formats).toBeDefined();
     expect(Array.isArray(structured.formats)).toBe(true);
-    expect(structured.formats.length).toBe(3);
+    expect(structured.formats.length).toBe(4);
   });
 
   it('list_creative_formats structuredContent matches content text', async () => {
@@ -584,7 +632,7 @@ describe('MCP tool responses include structuredContent', () => {
     });
 
     const structured = result.structuredContent as { formats: unknown[] };
-    expect(structured.formats.length).toBe(57);
+    expect(structured.formats.length).toBe(62);
   });
 
   it('preview_creative batch mode returns structuredContent', async () => {
