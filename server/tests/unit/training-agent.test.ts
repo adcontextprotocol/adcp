@@ -6439,6 +6439,119 @@ describe('get_products refine mode', () => {
     )).toBe(true);
   });
 
+  it('applies and persists concrete CPM pricing for a product-scoped ask', async () => {
+    const account = { brand: { domain: 'product-cpm.example' }, operator: 'product-cpm.example' };
+    const product = buildCatalog().map(entry => entry.product).find(candidate =>
+      candidate.pricing_options.some(option => option.pricing_model === 'cpm' && option.currency === 'USD'),
+    )!;
+
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: refined } = await simulateCallTool(server1, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{
+        scope: 'product',
+        product_id: product.product_id,
+        ask: 'Provide concrete fixed CPM pricing in USD.',
+      }],
+    });
+
+    expect(refined.refinement_applied).toEqual([
+      expect.objectContaining({ scope: 'product', product_id: product.product_id, status: 'applied' }),
+    ]);
+    const returnedProduct = (refined.products as Array<Record<string, unknown>>).find(
+      candidate => candidate.product_id === product.product_id,
+    )!;
+    const negotiatedOption = (returnedProduct.pricing_options as Array<Record<string, unknown>>).find(
+      option => String(option.pricing_option_id).includes('_concrete_'),
+    );
+    expect(negotiatedOption).toMatchObject({ pricing_model: 'cpm', currency: 'USD' });
+    expect(negotiatedOption!.fixed_price).toBeGreaterThan(0);
+    expect(returnedProduct.pricing_options).not.toEqual(product.pricing_options);
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: reread } = await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{ scope: 'product', product_id: product.product_id }],
+    });
+    const persistedProduct = (reread.products as Array<Record<string, unknown>>).find(
+      candidate => candidate.product_id === product.product_id,
+    )!;
+    expect(persistedProduct.pricing_options).toContainEqual(negotiatedOption);
+  });
+
+  it('applies a guaranteed-only request ask by changing the returned selection', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'refine',
+      account: { brand: { domain: 'guaranteed-only.example' }, operator: 'guaranteed-only.example' },
+      refine: [{ scope: 'request', ask: 'Only guaranteed products.' }],
+    });
+
+    expect(result.refinement_applied).toEqual([
+      expect.objectContaining({ scope: 'request', status: 'applied' }),
+    ]);
+    const products = result.products as Array<Record<string, unknown>>;
+    expect(products.length).toBeGreaterThan(0);
+    expect(products.length).toBeLessThan(buildCatalog().length);
+    expect(products.every(product => product.delivery_type === 'guaranteed')).toBe(true);
+  });
+
+  it('returns unable without changing product pricing when concrete CPM cannot be fulfilled', async () => {
+    const product = buildCatalog().map(entry => entry.product).find(candidate =>
+      candidate.pricing_options.some(option => option.pricing_model === 'cpm')
+      && candidate.pricing_options.every(option => option.currency !== 'JPY'),
+    )!;
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'refine',
+      account: { brand: { domain: 'unable-cpm.example' }, operator: 'unable-cpm.example' },
+      refine: [{
+        scope: 'product',
+        product_id: product.product_id,
+        ask: 'Provide concrete fixed CPM pricing in JPY.',
+      }],
+    });
+
+    expect(result.refinement_applied).toEqual([
+      expect.objectContaining({ scope: 'product', product_id: product.product_id, status: 'unable' }),
+    ]);
+    const unchangedProduct = (result.products as Array<Record<string, unknown>>).find(
+      candidate => candidate.product_id === product.product_id,
+    )!;
+    expect(unchangedProduct.pricing_options).toEqual(product.pricing_options);
+  });
+
+  it('keeps mixed ask outcomes position-aligned and leaves unsupported asks partial', async () => {
+    const products = buildCatalog().map(entry => entry.product).filter(candidate =>
+      candidate.pricing_options.some(option => option.pricing_model === 'cpm' && option.currency === 'USD')
+      && candidate.pricing_options.every(option => option.currency !== 'JPY'),
+    );
+    expect(products.length).toBeGreaterThanOrEqual(3);
+    const [appliedProduct, partialProduct, unableProduct] = products;
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'refine',
+      account: { brand: { domain: 'aligned-refine.example' }, operator: 'aligned-refine.example' },
+      refine: [
+        { scope: 'request', ask: 'Prioritize premium inventory with strong completion rates.' },
+        { scope: 'product', product_id: appliedProduct.product_id, ask: 'Provide concrete fixed CPM pricing in USD.' },
+        { scope: 'product', product_id: partialProduct.product_id, ask: 'Increase budget allocation to $30K.' },
+        { scope: 'product', product_id: unableProduct.product_id, ask: 'Provide concrete fixed CPM pricing in JPY.' },
+        { scope: 'request', ask: 'Only guaranteed products.' },
+      ],
+    });
+
+    expect(result.refinement_applied).toEqual([
+      expect.objectContaining({ scope: 'request', status: 'partial' }),
+      expect.objectContaining({ scope: 'product', product_id: appliedProduct.product_id, status: 'applied' }),
+      expect.objectContaining({ scope: 'product', product_id: partialProduct.product_id, status: 'partial' }),
+      expect.objectContaining({ scope: 'product', product_id: unableProduct.product_id, status: 'unable' }),
+      expect.objectContaining({ scope: 'request', status: 'applied' }),
+    ]);
+  });
+
   it('rejects mixed refinements before applying an earlier proposal pricing change', async () => {
     const account = { brand: { domain: 'atomic-product-refine.example' }, operator: 'atomic-product-refine.example' };
     const server1 = createTrainingAgentServer(DEFAULT_CTX);
