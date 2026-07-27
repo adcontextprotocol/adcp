@@ -619,7 +619,7 @@ type ConcreteCpmAsk = {
 const ISO_CURRENCY_CODES = new Set(Intl.supportedValuesOf('currency'));
 
 /**
- * Recognize the training agent's deterministic proposal-pricing refinement.
+ * Recognize the training agent's deterministic CPM-pricing refinement.
  * Other natural-language asks intentionally remain partial so buyers can test
  * both successful and honest incomplete refinement outcomes.
  */
@@ -669,6 +669,19 @@ function parseConcreteCpmAsk(ask?: string): ConcreteCpmAsk | undefined {
     currency: normalizedCurrency,
     budget: { amount, currency: normalizedCurrency },
   };
+}
+
+/**
+ * Recognize the request-level selection refinement that the training agent
+ * can apply deterministically. Keeping this grammar deliberately narrow
+ * leaves compound or arbitrary natural-language constraints on the honest
+ * partial path.
+ */
+function requestsGuaranteedOnlyProducts(ask?: string): boolean {
+  if (!ask) return false;
+  const normalized = ask.trim().toLowerCase().replace(/[.!?]+$/, '').trim();
+  return /^(?:(?:show|return|include|select|keep)\s+)?only\s+guaranteed\s+(?:products|packages)$/.test(normalized)
+    || /^limit\s+(?:the\s+)?(?:results|selection)\s+to\s+guaranteed\s+(?:products|packages)$/.test(normalized);
 }
 
 function concreteCpmPricing(
@@ -3198,6 +3211,7 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
   const proposalOmitIds = new Set<string>();
   const refinedProposalOverrides = new Map<string, Proposal>();
   const explicitlySelectedProposals = new Map<string, Proposal>();
+  let guaranteedOnlyRequested = false;
   if (buyingMode === 'refine' && req.refine) {
     const refineOps = req.refine as unknown as RefineEntry[];
     const previousProposals = session.lastGetProductsContext?.proposals || getProposals();
@@ -3263,9 +3277,51 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
           refinementApplied.push({ scope: 'product', product_id: op.product_id, status: 'applied' });
         } else if (action === 'include') {
           includeIds.add(op.product_id);
-          refinementApplied.push(passesFilters
-            ? { scope: 'product', product_id: op.product_id, status: op.ask ? 'partial' : 'applied', ...askAckNotes(op.ask) }
-            : { scope: 'product', product_id: op.product_id, status: 'partial', notes: 'Product is excluded by the request filters' });
+          if (!passesFilters) {
+            refinementApplied.push({
+              scope: 'product',
+              product_id: op.product_id,
+              status: 'partial',
+              notes: 'Product is excluded by the request filters',
+            });
+          } else {
+            const concreteCpmAsk = parseConcreteCpmAsk(op.ask);
+            if (concreteCpmAsk) {
+              const product = products.find(candidate => candidate.product_id === op.product_id);
+              const concretePricing = product && concreteCpmPricing(product, concreteCpmAsk.currency);
+              if (concretePricing) {
+                products = products.map(candidate =>
+                  candidate.product_id === op.product_id ? concretePricing.product : candidate,
+                );
+                session.negotiatedPricingOptions.set(`${op.product_id}:${concretePricing.pricingOptionId}`, {
+                  productId: op.product_id,
+                  option: concretePricing.pricingOption,
+                });
+                refinementApplied.push({
+                  scope: 'product',
+                  product_id: op.product_id,
+                  status: 'applied',
+                  notes: `Concrete fixed CPM pricing applied (${concretePricing.currency} ${concretePricing.fixedPrice} CPM).`,
+                });
+              } else {
+                refinementApplied.push({
+                  scope: 'product',
+                  product_id: op.product_id,
+                  status: 'unable',
+                  notes: concreteCpmAsk.currency
+                    ? `No CPM pricing option is available in ${concreteCpmAsk.currency}.`
+                    : 'No CPM pricing option can be converted to concrete fixed pricing.',
+                });
+              }
+            } else {
+              refinementApplied.push({
+                scope: 'product',
+                product_id: op.product_id,
+                status: op.ask ? 'partial' : 'applied',
+                ...askAckNotes(op.ask),
+              });
+            }
+          }
         } else if (action === 'more_like_this') {
           includeIds.add(op.product_id);
           const source = registryProducts.find(p => p.product_id === op.product_id);
@@ -3395,7 +3451,25 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
           }
         }
       } else if (op.scope === 'request') {
-        refinementApplied.push({ scope: 'request', status: 'partial', notes: 'Request-level refinement acknowledged but not applied by training agent' });
+        if (requestsGuaranteedOnlyProducts(op.ask)) {
+          const guaranteedProducts = products.filter(product => product.delivery_type === 'guaranteed');
+          if (guaranteedProducts.length === 0) {
+            refinementApplied.push({
+              scope: 'request',
+              status: 'unable',
+              notes: 'No guaranteed products are available in the current selection.',
+            });
+          } else {
+            guaranteedOnlyRequested = true;
+            refinementApplied.push({
+              scope: 'request',
+              status: 'applied',
+              notes: 'Selection limited to guaranteed products.',
+            });
+          }
+        } else {
+          refinementApplied.push({ scope: 'request', status: 'partial', notes: 'Request-level refinement acknowledged but not applied by training agent' });
+        }
       }
     }
 
@@ -3408,6 +3482,9 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
     }
     if (omitIds.size > 0) {
       products = products.filter(p => !omitIds.has(p.product_id));
+    }
+    if (guaranteedOnlyRequested) {
+      products = products.filter(product => product.delivery_type === 'guaranteed');
     }
   }
 
