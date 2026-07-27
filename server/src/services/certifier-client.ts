@@ -13,6 +13,29 @@ const CERTIFIER_API_TOKEN = process.env.CERTIFIER_API_TOKEN;
 const CERTIFIER_API_URL = 'https://api.certifier.io/v1';
 const CERTIFIER_VERSION = '2022-10-26';
 const CERTIFIER_TIMEOUT_MS = 15_000;
+const DEFINITIVE_PRE_DISPATCH_ERROR_CODES = new Set([
+  'ECONNREFUSED',
+  'ENOTFOUND',
+  'EAI_AGAIN',
+]);
+
+/**
+ * Return true only when a failed send is known not to have reached Certifier's
+ * delivery handler. Timeouts and connection resets remain ambiguous because
+ * the provider may have accepted the request before the connection was lost.
+ */
+export function isDefinitiveCertifierNonDelivery(error: unknown): boolean {
+  if (!axios.isAxiosError(error)) return false;
+
+  const status = error.response?.status;
+  if (status !== undefined && status >= 400 && status < 500) return true;
+
+  return (
+    error.response === undefined &&
+    typeof error.code === 'string' &&
+    DEFINITIVE_PRE_DISPATCH_ERROR_CODES.has(error.code)
+  );
+}
 
 export interface CertifierRecipient {
   name: string;

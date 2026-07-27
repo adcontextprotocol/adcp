@@ -1,6 +1,6 @@
-import type { PoolClient } from 'pg';
+import type { Client } from 'pg';
 import { randomUUID } from 'node:crypto';
-import { getClient } from '../db/client.js';
+import { getDedicatedClient } from '../db/client.js';
 import { createLogger } from '../logger.js';
 import { resolveUserNameWithFallbacks } from '../utils/resolve-user-name.js';
 import {
@@ -9,6 +9,7 @@ import {
   getCredential,
   getCredentialBadgeUrl,
   isCertifierConfigured,
+  isDefinitiveCertifierNonDelivery,
   issueCredentialDraft,
   sendCredential,
   type CertifierCredential,
@@ -53,7 +54,7 @@ export function credentialExpiryDate(tier: number, now: Date = new Date()): stri
 }
 
 async function loadAwardedCredential(
-  client: PoolClient,
+  client: Client,
   userId: string,
   credentialId: string,
 ): Promise<AwardedCredentialRow | null> {
@@ -72,7 +73,7 @@ async function loadAwardedCredential(
 }
 
 async function persistDraftId(
-  client: PoolClient,
+  client: Client,
   userId: string,
   credentialId: string,
   issuanceKey: string,
@@ -99,7 +100,7 @@ async function persistDraftId(
 }
 
 async function setIssuanceState(
-  client: PoolClient,
+  client: Client,
   userId: string,
   credentialId: string,
   externalCredentialId: string,
@@ -118,7 +119,7 @@ async function setIssuanceState(
 }
 
 async function setDeliveryState(
-  client: PoolClient,
+  client: Client,
   userId: string,
   credentialId: string,
   externalCredentialId: string,
@@ -137,7 +138,7 @@ async function setDeliveryState(
 }
 
 async function persistProviderState(
-  client: PoolClient,
+  client: Client,
   userId: string,
   credentialId: string,
   externalCredentialId: string,
@@ -179,10 +180,12 @@ export async function ensureCertifierCredential(input: {
     throw new CertifierNotConfiguredError('Certifier not configured');
   }
 
-  const client = await getClient();
+  // A dedicated connection keeps the session-scoped advisory lock from
+  // consuming one of the application's pooled request connections while
+  // Certifier calls are in flight.
+  const client = await getDedicatedClient();
   const lockKey = `certifier:${input.userId}:${input.credentialId}`;
   let lockHeld = false;
-  let releaseError: Error | undefined;
 
   try {
     const lock = await client.query<{ locked: boolean }>(
@@ -209,7 +212,7 @@ export async function ensureCertifierCredential(input: {
     const hadPublicId = Boolean(awarded.certifier_public_id);
     let external: CertifierCredential;
     let issuedInThisCall = false;
-    let deliveryState = awarded.certifier_delivery_state;
+    const deliveryState = awarded.certifier_delivery_state;
     let emailDelivery: EnsureCertifierCredentialResult['emailDelivery'] = deliveryState === 'sent'
       ? 'sent'
       : deliveryState === 'unknown' || deliveryState === 'sending'
@@ -304,20 +307,31 @@ export async function ensureCertifierCredential(input: {
       try {
         external = await sendCredential(external.id);
         await setDeliveryState(client, input.userId, input.credentialId, external.id, 'sent');
-        deliveryState = 'sent';
         emailDelivery = 'sent';
       } catch (error) {
-        await setDeliveryState(client, input.userId, input.credentialId, external.id, 'unknown');
-        deliveryState = 'unknown';
-        emailDelivery = 'unknown';
-        logger.error(
-          { error, userId: input.userId, credentialId: input.credentialId, externalCredentialId: external.id },
-          'Credential issued but email delivery outcome is unknown; automatic resend suppressed',
+        const definitiveNonDelivery = isDefinitiveCertifierNonDelivery(error);
+        await setDeliveryState(
+          client,
+          input.userId,
+          input.credentialId,
+          external.id,
+          definitiveNonDelivery ? 'not_started' : 'unknown',
         );
+        emailDelivery = definitiveNonDelivery ? 'not_attempted' : 'unknown';
+        const context = {
+          error,
+          userId: input.userId,
+          credentialId: input.credentialId,
+          externalCredentialId: external.id,
+        };
+        if (definitiveNonDelivery) {
+          logger.warn(context, 'Credential issued but email was not dispatched; retry remains available');
+        } else {
+          logger.error(context, 'Credential issued but email delivery outcome is unknown; automatic resend suppressed');
+        }
       }
     } else if (deliveryState === 'sending') {
       await setDeliveryState(client, input.userId, input.credentialId, external.id, 'unknown');
-      deliveryState = 'unknown';
       emailDelivery = 'unknown';
     }
 
@@ -375,14 +389,14 @@ export async function ensureCertifierCredential(input: {
           [lockKey],
         );
         if (unlock.rows[0]?.unlocked !== true) {
-          releaseError = new Error('Credential issuance advisory unlock returned false');
-          logger.error({ lockKey }, 'Failed to release credential issuance advisory lock; destroying client');
+          logger.error({ lockKey }, 'Credential issuance advisory unlock returned false; closing dedicated client');
         }
       } catch (error) {
-        releaseError = error instanceof Error ? error : new Error(String(error));
-        logger.error({ error: releaseError, lockKey }, 'Failed to release credential issuance advisory lock');
+        logger.error({ error, lockKey }, 'Failed to release credential issuance advisory lock');
       }
     }
-    client.release(releaseError);
+    await client.end().catch((error) => {
+      logger.error({ error, lockKey }, 'Failed to close credential issuance database connection');
+    });
   }
 }

@@ -138,6 +138,50 @@ export async function getClient(): Promise<PoolClient> {
 }
 
 /**
+ * Open a one-off database connection outside the application pool.
+ *
+ * Use this only for session-scoped work that must retain one connection while
+ * waiting on slow external systems (for example, a PostgreSQL advisory lock).
+ * Callers own the returned client and must close it with `client.end()`.
+ */
+export async function getDedicatedClient(): Promise<Client> {
+  if (!poolConfig) {
+    throw new Error("Database not initialized. Call initializeDatabase() first.");
+  }
+  const config = poolConfig;
+
+  const connect = async (): Promise<Client> => {
+    const client = new Client({
+      connectionString: config.connectionString,
+      host: config.host,
+      port: config.port,
+      database: config.database,
+      user: config.user,
+      password: config.password,
+      ssl: config.ssl,
+      connectionTimeoutMillis: config.connectionTimeoutMillis ?? 5000,
+    });
+    try {
+      await client.connect();
+      return client;
+    } catch (error) {
+      await client.end().catch(() => undefined);
+      throw error;
+    }
+  };
+
+  try {
+    return await connect();
+  } catch (err) {
+    if (isTransientConnectionError(err)) {
+      console.warn("Transient DB connection error, retrying dedicated connection:", (err as Error).message);
+      return connect();
+    }
+    throw err;
+  }
+}
+
+/**
  * Perform a health check using a one-off connection, outside the application
  * pool, so saturated worker traffic does not make a reachable database look
  * down to the load balancer.

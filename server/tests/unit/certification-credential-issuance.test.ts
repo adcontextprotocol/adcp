@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   query: vi.fn(),
-  release: vi.fn(),
+  end: vi.fn(),
   resolveName: vi.fn(),
   isConfigured: vi.fn(),
   createDraft: vi.fn(),
@@ -10,10 +10,11 @@ const mocks = vi.hoisted(() => ({
   issueDraft: vi.fn(),
   sendCredential: vi.fn(),
   getBadge: vi.fn(),
+  isDefinitiveNonDelivery: vi.fn(),
 }));
 
 vi.mock('../../src/db/client.js', () => ({
-  getClient: vi.fn(async () => ({ query: mocks.query, release: mocks.release })),
+  getDedicatedClient: vi.fn(async () => ({ query: mocks.query, end: mocks.end })),
 }));
 
 vi.mock('../../src/utils/resolve-user-name.js', () => ({
@@ -27,6 +28,7 @@ vi.mock('../../src/services/certifier-client.js', () => ({
   getCredential: mocks.getCredential,
   getCredentialBadgeUrl: mocks.getBadge,
   isCertifierConfigured: mocks.isConfigured,
+  isDefinitiveCertifierNonDelivery: mocks.isDefinitiveNonDelivery,
   issueCredentialDraft: mocks.issueDraft,
   sendCredential: mocks.sendCredential,
 }));
@@ -66,7 +68,9 @@ function setDbRow(row = awardedRow) {
 describe('certification credential issuance', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.end.mockResolvedValue(undefined);
     mocks.isConfigured.mockReturnValue(true);
+    mocks.isDefinitiveNonDelivery.mockReturnValue(false);
     mocks.resolveName.mockResolvedValue({ firstName: 'Test', lastName: 'Learner' });
     mocks.createDraft.mockResolvedValue({
       id: 'cert_new', publicId: 'public_new', groupId: 'group_signals', status: 'draft',
@@ -107,6 +111,7 @@ describe('certification credential issuance', () => {
     expect(mocks.sendCredential).toHaveBeenCalledWith('cert_new');
     expect(mocks.query.mock.calls.some(([sql]) => sql.includes('pg_try_advisory_lock'))).toBe(true);
     expect(mocks.query.mock.calls.some(([sql]) => sql.includes('certifier_credential_id IS NULL'))).toBe(true);
+    expect(mocks.end).toHaveBeenCalledTimes(1);
   });
 
   it('gates issuance when no real first name can be resolved', async () => {
@@ -242,6 +247,36 @@ describe('certification credential issuance', () => {
     })).rejects.toThrow('provider timeout');
 
     expect(mocks.query.mock.calls.some(([sql]) => sql.includes("certifier_issuance_state = 'reconcile_required'"))).toBe(true);
+  });
+
+  it('keeps a definitive email non-delivery retryable', async () => {
+    const sendError = new Error('connect ECONNREFUSED');
+    mocks.sendCredential.mockRejectedValue(sendError);
+    mocks.isDefinitiveNonDelivery.mockReturnValue(true);
+
+    const result = await ensureCertifierCredential({
+      userId: 'user_learner',
+      credentialId: 'specialist_signals',
+    });
+
+    expect(mocks.isDefinitiveNonDelivery).toHaveBeenCalledWith(sendError);
+    expect(result.emailDelivery).toBe('not_attempted');
+    expect(mocks.query.mock.calls.some(([sql, params]) =>
+      sql.includes('certifier_delivery_state') && params?.[3] === 'not_started')).toBe(true);
+  });
+
+  it('suppresses resend when an email failure is ambiguous', async () => {
+    const sendError = new Error('provider timeout');
+    mocks.sendCredential.mockRejectedValue(sendError);
+
+    const result = await ensureCertifierCredential({
+      userId: 'user_learner',
+      credentialId: 'specialist_signals',
+    });
+
+    expect(result.emailDelivery).toBe('unknown');
+    expect(mocks.query.mock.calls.some(([sql, params]) =>
+      sql.includes('certifier_delivery_state') && params?.[3] === 'unknown')).toBe(true);
   });
 
   it('refuses an existing credential belonging to a different recipient', async () => {

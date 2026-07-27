@@ -893,8 +893,8 @@
       const result = document.getElementById('credential-action-result');
       if (!result) return;
       result.style.display = 'block';
-      result.style.background = isError ? 'var(--color-error-50)' : 'var(--color-success-50, #f0fdf4)';
-      result.style.color = isError ? 'var(--color-error-800)' : 'var(--color-success-800, #166534)';
+      result.style.background = isError ? 'var(--color-error-50)' : 'var(--color-success-50)';
+      result.style.color = isError ? 'var(--color-error-800)' : 'var(--color-success-800)';
       result.textContent = message;
     }
 
