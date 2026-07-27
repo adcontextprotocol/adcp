@@ -1081,6 +1081,32 @@ export async function awardCredential(
   return result.rows[0];
 }
 
+/** Append one immutable event to an admin credential-recovery audit trail. */
+export async function recordAdminCredentialReissueEvent(input: {
+  operationId: string;
+  userId: string;
+  credentialId: string;
+  adminUserId: string;
+  reason: string;
+  eventType: 'started' | 'succeeded' | 'failed';
+  details: Record<string, unknown>;
+}): Promise<void> {
+  await query(
+    `INSERT INTO admin_credential_reissue_events
+       (operation_id, workos_user_id, credential_id, admin_user_id, reason, event_type, details)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [
+      input.operationId,
+      input.userId,
+      input.credentialId,
+      input.adminUserId,
+      input.reason,
+      input.eventType,
+      JSON.stringify(input.details),
+    ],
+  );
+}
+
 /**
  * Check and auto-award any credentials the user has become eligible for.
  * Returns a list of newly awarded credential IDs.
@@ -1958,7 +1984,18 @@ export interface AdminLearnerDetail {
     score: Record<string, number> | null;
     attempts: number;
   }>;
-  credentials: Array<{ name: string; tier: number; awarded_at: string; certifier_credential_id: string | null }>;
+  credentials: Array<{
+    credential_id: string;
+    name: string;
+    tier: number;
+    awarded_at: string;
+    certifier_credential_id: string | null;
+    certifier_public_id: string | null;
+    certifier_badge_url: string | null;
+    certifier_configured: boolean;
+    certifier_issuance_state: string;
+    certifier_delivery_state: string;
+  }>;
   checkpoints: Array<{
     id: string;
     module_id: string;
@@ -1994,8 +2031,16 @@ export async function getAdminLearnerDetail(userId: string): Promise<AdminLearne
        ORDER BY m.track_id, m.sort_order`,
       [userId]
     ),
-    query<{ name: string; tier: number; awarded_at: string; certifier_credential_id: string | null }>(
-      `SELECT cc.name, cc.tier, uc.awarded_at, uc.certifier_credential_id
+    query<{
+      credential_id: string; name: string; tier: number; awarded_at: string;
+      certifier_credential_id: string | null; certifier_public_id: string | null;
+      certifier_badge_url: string | null; certifier_configured: boolean;
+      certifier_issuance_state: string; certifier_delivery_state: string;
+    }>(
+      `SELECT cc.id AS credential_id, cc.name, cc.tier, uc.awarded_at,
+              uc.certifier_credential_id, uc.certifier_public_id, uc.certifier_badge_url,
+              uc.certifier_issuance_state, uc.certifier_delivery_state,
+              (cc.certifier_group_id IS NOT NULL) AS certifier_configured
        FROM user_credentials uc
        JOIN certification_credentials cc ON cc.id = uc.credential_id
        WHERE uc.workos_user_id = $1

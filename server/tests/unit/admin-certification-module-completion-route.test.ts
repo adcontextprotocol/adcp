@@ -25,6 +25,7 @@ vi.mock('../../src/middleware/auth.js', async (importOriginal) => {
     ...(await importOriginal<typeof import('../../src/middleware/auth.js')>()),
     requireAuth: mockedRequireAuth,
     requireAdmin: passThrough,
+    requireGlobalAdmin: [mockedRequireAuth, passThrough, passThrough],
     optionalAuth: passThrough,
   };
 });
