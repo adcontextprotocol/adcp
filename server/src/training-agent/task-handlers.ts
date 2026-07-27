@@ -3197,9 +3197,20 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
   const refinementApplied: RefinementAppliedEntry[] = [];
   const proposalOmitIds = new Set<string>();
   const refinedProposalOverrides = new Map<string, Proposal>();
+  const explicitlySelectedProposals = new Map<string, Proposal>();
   if (buyingMode === 'refine' && req.refine) {
     const refineOps = req.refine as unknown as RefineEntry[];
     const previousProposals = session.lastGetProductsContext?.proposals || getProposals();
+    const registryProposals = getProposals();
+    const resolveProposal = (proposalId: string): Proposal | undefined => {
+      const proposal = previousProposals.find(candidate => candidate.proposal_id === proposalId)
+        ?? registryProposals.find(candidate => candidate.proposal_id === proposalId);
+      if (proposal) return proposal;
+      if (isThreeZeroStoryboardCompat(ctx) && proposalId === THREE_ZERO_LEGACY_PROPOSAL_ID) {
+        return resolveThreeZeroProposalAlias([...previousProposals, ...registryProposals]);
+      }
+      return undefined;
+    };
     const omitIds = new Set<string>();
     const includeIds = new Set<string>();
     const knownProductIds = new Set(
@@ -3229,10 +3240,7 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
         continue;
       }
       if (op.scope !== 'proposal') continue;
-      let proposal = previousProposals.find(p => p.proposal_id === op.proposal_id);
-      if (!proposal && isThreeZeroStoryboardCompat(ctx) && op.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_ID) {
-        proposal = resolveThreeZeroProposalAlias([...previousProposals, ...getProposals()]);
-      }
+      const proposal = resolveProposal(op.proposal_id);
       if (!proposal) {
         return {
           errors: [{
@@ -3276,15 +3284,13 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
       } else if (op.scope === 'proposal') {
         const action = op.action ?? 'include';
         let proposal = refinedProposalOverrides.get(op.proposal_id)
-          ?? previousProposals.find(p => p.proposal_id === op.proposal_id);
-        if (!proposal && isThreeZeroStoryboardCompat(ctx) && op.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_ID) {
-          proposal = resolveThreeZeroProposalAlias([...previousProposals, ...getProposals()]);
-        }
+          ?? resolveProposal(op.proposal_id);
         if (!proposal) continue;
         if (action === 'omit') {
-          proposalOmitIds.add(op.proposal_id);
+          proposalOmitIds.add(proposal.proposal_id);
           refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'applied' });
         } else if (action === 'include') {
+          explicitlySelectedProposals.set(proposal.proposal_id, proposal);
           for (const allocation of proposal.allocations) includeIds.add(allocation.product_id);
           const concreteCpmAsk = parseConcreteCpmAsk(op.ask);
           if (concreteCpmAsk) {
@@ -3311,7 +3317,8 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
                 })),
               } as Proposal;
               if (budget) refinedProposal = withProposalBudgetGuidance(refinedProposal, budget);
-              refinedProposalOverrides.set(op.proposal_id, refinedProposal);
+              refinedProposalOverrides.set(proposal.proposal_id, refinedProposal);
+              explicitlySelectedProposals.set(proposal.proposal_id, refinedProposal);
               for (const [productId, pricing] of stagedProducts) {
                 session.negotiatedPricingOptions.set(`${productId}:${pricing!.pricingOptionId}`, {
                   productId,
@@ -3425,9 +3432,15 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
   }
 
   // In refine mode, use session proposals (which may include finalized versions)
-  const sourceProposals = (buyingMode === 'refine' && session.lastGetProductsContext?.proposals)
+  const contextualProposals = (buyingMode === 'refine' && session.lastGetProductsContext?.proposals)
     ? session.lastGetProductsContext.proposals
     : getProposals();
+  const sourceProposals = [
+    ...contextualProposals,
+    ...Array.from(explicitlySelectedProposals.values()).filter(selected =>
+      !contextualProposals.some(contextual => contextual.proposal_id === selected.proposal_id),
+    ),
+  ];
 
   const productsById = new Map(products.map(p => [p.product_id, p]));
   const proposals = sourceProposals

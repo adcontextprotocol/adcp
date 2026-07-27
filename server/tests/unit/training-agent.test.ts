@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { buildCatalog } from '../../src/training-agent/product-factory.js';
+import { buildCatalog, buildProposals } from '../../src/training-agent/product-factory.js';
 import { buildFormats, FORMAT_CHANNEL_MAP } from '../../src/training-agent/formats.js';
 import { PUBLISHERS } from '../../src/training-agent/publishers.js';
 import { SIGNAL_PROVIDERS, getAllSignals } from '../../src/training-agent/signal-providers.js';
@@ -6422,6 +6422,23 @@ describe('get_products refine mode', () => {
     expect(result.recovery).toBe('correctable');
   });
 
+  it('recognizes the legacy sports preroll refinement fixture as a catalog product', async () => {
+    const server = createTrainingAgentServer({ ...DEFAULT_CTX, storyboardCompat: { version: '3.0' } });
+    const { result, isError } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'refine',
+      account: { brand: { domain: 'legacy-refine.example' }, operator: 'legacy-refine.example' },
+      refine: [
+        { scope: 'request', ask: 'Only guaranteed packages.' },
+        { scope: 'product', product_id: 'sports_preroll_q2', ask: 'Increase budget allocation to $30K' },
+      ],
+    });
+
+    expect(isError).toBeFalsy();
+    expect((result.products as Array<Record<string, unknown>>).some(
+      product => product.product_id === 'sports_preroll_q2',
+    )).toBe(true);
+  });
+
   it('rejects mixed refinements before applying an earlier proposal pricing change', async () => {
     const account = { brand: { domain: 'atomic-product-refine.example' }, operator: 'atomic-product-refine.example' };
     const server1 = createTrainingAgentServer(DEFAULT_CTX);
@@ -6750,6 +6767,61 @@ describe('get_products refine mode', () => {
       expect(pricingOption!.max_bid).toBeUndefined();
       expect(pricingOption!.min_spend_per_package).toBeUndefined();
     }
+  });
+
+  it('returns a legacy 3.0 proposal alias even when the preceding brief selected other proposals', async () => {
+    const compatCtx = { ...DEFAULT_CTX, storyboardCompat: { version: '3.0' as const } };
+    const account = { brand: { domain: 'legacy-proposal.example' }, operator: 'legacy-proposal.example' };
+    const server1 = createTrainingAgentServer(compatCtx);
+    await simulateCallTool(server1, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'Premium video and display across outdoor lifestyle and sports.',
+      account,
+    });
+
+    const server2 = createTrainingAgentServer(compatCtx);
+    const { result, isError } = await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [
+        { scope: 'proposal', proposal_id: 'balanced_reach_q2', ask: 'Shift budget to CTV.' },
+        { scope: 'request', ask: 'All products must support frequency capping.' },
+      ],
+    });
+
+    expect(isError).toBeFalsy();
+    expect(result.proposals).toEqual(expect.arrayContaining([
+      expect.objectContaining({ proposal_id: 'sparq_social_amplification' }),
+    ]));
+  });
+
+  it('resolves a canonical proposal from the seller registry when it was absent from the preceding brief', async () => {
+    const account = { brand: { domain: 'registry-proposal.example' }, operator: 'registry-proposal.example' };
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: initial } = await simulateCallTool(server1, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'Premium video and display across outdoor lifestyle and sports.',
+      account,
+    });
+    const returnedProposalIds = new Set(
+      ((initial.proposals ?? []) as Array<Record<string, unknown>>).map(proposal => proposal.proposal_id),
+    );
+    const registryProposal = buildProposals(buildCatalog()).find(
+      proposal => !returnedProposalIds.has(proposal.proposal_id),
+    );
+    expect(registryProposal).toBeDefined();
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{ scope: 'proposal', proposal_id: registryProposal!.proposal_id }],
+    });
+
+    expect(isError).toBeFalsy();
+    expect(result.proposals).toEqual(expect.arrayContaining([
+      expect.objectContaining({ proposal_id: registryProposal!.proposal_id }),
+    ]));
   });
 
   it('persists concrete proposal pricing across subsequent get_products requests', async () => {
