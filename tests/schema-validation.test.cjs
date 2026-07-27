@@ -467,6 +467,55 @@ async function runTests() {
     return true;
   });
 
+  await test('list_creatives accepts exactly one legacy or canonical creative identity', async () => {
+    const responseSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'creative/list-creatives-response.json'));
+    const testAjv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false,
+      discriminator: true,
+      loadSchema: loadExternalSchema
+    });
+    addFormats(testAjv);
+    const validate = await testAjv.compileAsync(responseSchema);
+    const baseResponse = {
+      status: 'completed',
+      query_summary: { total_matching: 1, returned: 1 },
+      pagination: { has_more: false },
+      creatives: [
+        {
+          creative_id: 'creative_1',
+          name: 'Canonical image',
+          status: 'approved',
+          created_date: '2026-07-27T00:00:00Z',
+          updated_date: '2026-07-27T00:00:00Z'
+        }
+      ]
+    };
+    const creative = baseResponse.creatives[0];
+    const legacyIdentity = {
+      format_id: {
+        agent_url: 'https://creative.example',
+        id: 'display_image'
+      }
+    };
+    const canonicalIdentity = { format_kind: 'image' };
+
+    for (const identity of [legacyIdentity, canonicalIdentity]) {
+      if (!validate({ ...baseResponse, creatives: [{ ...creative, ...identity }] })) {
+        return `valid creative identity was rejected: ${testAjv.errorsText(validate.errors)}`;
+      }
+    }
+
+    for (const identity of [{}, { ...legacyIdentity, ...canonicalIdentity }]) {
+      if (validate({ ...baseResponse, creatives: [{ ...creative, ...identity }] })) {
+        return 'creative identity must contain exactly one of format_id or format_kind';
+      }
+    }
+
+    return true;
+  });
+
   // Test 7: Validate preview_creative supports non-expiring preview URLs
   await test('preview_creative responses may omit expires_at for non-expiring preview URLs', async () => {
     const previewResponseSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'creative/preview-creative-response.json'));

@@ -77,7 +77,15 @@
           },
           "format_id": {
             "$ref": "/schemas/core/format-id.json",
-            "description": "Format identifier specifying which format this creative conforms to"
+            "description": "Legacy named-format path. Structured format identifier specifying which legacy format this creative conforms to. Mutually exclusive with `format_kind`."
+          },
+          "format_kind": {
+            "$ref": "/schemas/core/canonical-format-kind.json",
+            "description": "3.1+ canonical-format path. The canonical format kind this creative targets. Mutually exclusive with `format_id`."
+          },
+          "format_option_ref": {
+            "$ref": "/schemas/core/format-option-ref.json",
+            "description": "Optional 3.1+ reference to the concrete canonical format option this creative targets. Required when `format_kind` alone is ambiguous in the enclosing product context."
           },
           "status": {
             "$ref": "/schemas/enums/creative-status.json",
@@ -266,10 +274,33 @@
         "required": [
           "creative_id",
           "name",
-          "format_id",
           "status",
           "created_date",
           "updated_date"
+        ],
+        "oneOf": [
+          {
+            "title": "Legacy listed creative (named-format reference)",
+            "required": [
+              "format_id"
+            ],
+            "not": {
+              "required": [
+                "format_kind"
+              ]
+            }
+          },
+          {
+            "title": "3.1+ listed creative (canonical format kind)",
+            "required": [
+              "format_kind"
+            ],
+            "not": {
+              "required": [
+                "format_id"
+              ]
+            }
+          }
         ],
         "additionalProperties": true
       }
