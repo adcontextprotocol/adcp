@@ -111,10 +111,10 @@ The slot-level `asset_group_id` bridge below tells SDKs which v2 canonical *slot
 
 [`/schemas/registries/v1-canonical-mapping.json`](https://adcontextprotocol.org/schemas/v3/registries/v1-canonical-mapping.json) is the authoritative AAO-published registry. SDKs consume it to project v1 formats to v2 canonicals during dual-emission and v1↔v2 translation. Two match modes per entry:
 
-- **`format_id_glob`** — exact / glob match against v1 `format_id.id`. Covers IAB-conventional sizes (`iab/mrec_300x250` → `image` 300×250), named platform formats, common publisher conventions.
+- **`format_id_glob`** — exact / glob match against v1 `format_id.id`. Published entries currently use non-wildcarded literals for observed legacy video/audio ids whose duration, dimensions, or VAST delivery cannot be recovered structurally.
 - **`structural`** — match against the format's slot shape, asset types, and version constraints. Catches custom v1 formats that are structurally a standard format under a different name (a seller's `acme_homepage_300x250` is structurally an IAB MREC).
 
-Initial registry covers ~15 unambiguous entries (IAB display sizes, VAST 4.x, DAAST 1.x). Subsequent PRs expand coverage as adopter feedback surfaces patterns. Governance follows the same rules as `asset-group-vocabulary.json`: PR with rationale + ≥1 reference adopter + AAO maintainer review; entries are additive and digest-pinned.
+The registry currently carries 9 literal entries and 7 structural fallbacks covering hosted video/audio, VAST, DAAST, HTML5 bundles, and display tags. Subsequent PRs expand coverage as adopter feedback surfaces patterns. Governance follows the same rules as `asset-group-vocabulary.json`: PR with rationale + ≥1 reference adopter + AgenticAdvertising.org maintainer review; entries are additive and digest-pinned.
 
 ### `canonical` field on v1 format declarations (custom / non-registered formats)
 
@@ -147,14 +147,14 @@ For the `format_kind: "custom"` case (a custom seller format that itself doesn't
 
 ### Normative SDK projection rules
 
-Resolution order when an SDK projects a v1 format to its v2 canonical (or back):
+Resolution order when an SDK projects a v1 format to its v2 canonical:
 
 1. If the v1 format declaration carries `canonical`, use it (seller-declared, highest priority). When `canonical_parameters` is also present, use that as the projected ProductFormatDeclaration verbatim.
 2. Else, look up `format_id` in `/schemas/registries/v1-canonical-mapping.json`'s `format_id_glob` entries.
 3. Else, attempt structural match against the registry's `structural` entries.
 4. Else, **fail closed**: SDK MUST NOT emit `format_options` for products carrying this format. Surface a validation warning suggesting the seller add an explicit `canonical` field or file a registry entry. Buyers see `format_ids` only for these products.
 
-Reverse direction (v2 → v1 demotion for v1-only buyers reading a v2 seller) is the inverse projection: same registry, same algorithm, run backward. SDKs ship a single mapping engine that handles both directions.
+Reverse direction (v2 → v1 demotion for v1-only buyers reading a v2 seller) relies on the seller-authored `v1_format_ref`. SDKs MUST NOT invert structural matches. They MAY use a non-wildcarded literal registry entry as a non-normative best-effort fallback only when it does not contradict a seller-authored reference; downstream consumers MUST NOT depend on that fallback.
 
 This is what makes "publish both wire shapes during migration" tractable and consistent across SDK implementations — every SDK projects through the same registry so dual-emitted products from any seller resolve identically across any buyer.
 
