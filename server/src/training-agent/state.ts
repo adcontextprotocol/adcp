@@ -180,6 +180,7 @@ function createSession(): SessionState {
     collectionLists: new Map(),
     contentStandards: new Map(),
     rightsGrants: new Map(),
+    negotiatedPricingOptions: new Map(),
     creatives: new Map(),
     signalActivations: new Map(),
     usageRecords: [],
@@ -395,6 +396,7 @@ function deserializeSession(data: Record<string, unknown>): SessionState {
     collectionLists: asMap(hydrated.collectionLists, fresh.collectionLists),
     contentStandards: asMap(hydrated.contentStandards, fresh.contentStandards),
     rightsGrants: asMap(hydrated.rightsGrants, fresh.rightsGrants),
+    negotiatedPricingOptions: asMap(hydrated.negotiatedPricingOptions, fresh.negotiatedPricingOptions),
     usageRecords: Array.isArray(hydrated.usageRecords) ? hydrated.usageRecords : [],
     complyExtensions: {
       accountStatuses: asMap(hydratedComply.accountStatuses, fresh.complyExtensions.accountStatuses),
