@@ -1234,13 +1234,28 @@ export function createCertificationRouters() {
       }
 
       if (error instanceof CredentialNotEarnedError) {
-        return res.status(404).json({ error: error.message, ...(operationId && { operation_id: operationId }) });
+        return res.status(404).json({
+          error: 'Learner has not earned this credential',
+          ...(operationId && { operation_id: operationId }),
+        });
       }
-      if (error instanceof CredentialNameRequiredError || error instanceof CredentialRecoveryConflictError) {
-        return res.status(409).json({ error: error.message, ...(operationId && { operation_id: operationId }) });
+      if (error instanceof CredentialNameRequiredError) {
+        return res.status(409).json({
+          error: 'Learner name is required before issuance',
+          ...(operationId && { operation_id: operationId }),
+        });
+      }
+      if (error instanceof CredentialRecoveryConflictError) {
+        return res.status(409).json({
+          error: 'Credential recovery requires manual reconciliation',
+          ...(operationId && { operation_id: operationId }),
+        });
       }
       if (error instanceof CertifierNotConfiguredError) {
-        return res.status(503).json({ error: error.message, ...(operationId && { operation_id: operationId }) });
+        return res.status(503).json({
+          error: 'Certifier not configured',
+          ...(operationId && { operation_id: operationId }),
+        });
       }
       logger.error({ error, userId, credentialId }, 'Failed to reissue Certifier credential');
       return res.status(502).json({
