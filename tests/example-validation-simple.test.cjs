@@ -1145,6 +1145,247 @@ async function runTests() {
     'TMP Identity Match request — 4 identities rejected (maxItems:3 boundary)'
   );
 
+  // TMP Identity Match — hop-split, envelope-field, and map-key negatives (adcp#5947).
+  // Prove each schema-encoded invariant actually rejects the wrong shape at validation time.
+
+  // Provider→router shape MUST NOT carry router-hop fields.
+  await expectInvalid(
+    {
+      "status": "completed",
+      "type": "identity_match_response",
+      "request_id": "id-1",
+      "eligible_package_ids": ["pkg-1"],
+      "serve_window_sec": 60,
+      "tmpx_providers": { "provider_a": { "chunks": [{ "slot_id": "primary", "value": "k1.xxx" }] } }
+    },
+    '/schemas/trusted-match/provider-identity-match-response.json',
+    'TMP provider→router response rejects router-hop `tmpx_providers`',
+    [/not|must NOT|anyOf/i]
+  );
+
+  // Provider→router shape MUST NOT carry the deprecated singular `tmpx` field.
+  await expectInvalid(
+    {
+      "status": "completed",
+      "type": "identity_match_response",
+      "request_id": "id-2",
+      "eligible_package_ids": ["pkg-1"],
+      "serve_window_sec": 60,
+      "tmpx": "k1.legacy"
+    },
+    '/schemas/trusted-match/provider-identity-match-response.json',
+    'TMP provider→router response rejects router-hop singular `tmpx`',
+    [/not|must NOT|anyOf/i]
+  );
+
+  // Provider→router shape MUST NOT carry envelope-extension fields (`context`, `ext`) — identity privacy boundary.
+  await expectInvalid(
+    {
+      "status": "completed",
+      "type": "identity_match_response",
+      "request_id": "id-3",
+      "eligible_package_ids": ["pkg-1"],
+      "serve_window_sec": 60,
+      "context": { "trace_id": "abc" }
+    },
+    '/schemas/trusted-match/provider-identity-match-response.json',
+    'TMP provider→router response rejects envelope-extension `context`',
+    [/not|must NOT|anyOf/i]
+  );
+
+  // Router→publisher shape MUST NOT carry the provider-hop `tmpx_chunks` field at the root.
+  await expectInvalid(
+    {
+      "status": "completed",
+      "type": "identity_match_response",
+      "request_id": "id-4",
+      "eligible_package_ids": ["pkg-1"],
+      "serve_window_sec": 60,
+      "tmpx_chunks": [{ "slot_id": "primary", "value": "k1.xxx" }]
+    },
+    '/schemas/trusted-match/identity-match-response.json',
+    'TMP router→publisher response rejects provider-hop `tmpx_chunks` at root',
+    [/not|must NOT|anyOf/i]
+  );
+
+  // Router→publisher shape MUST NOT carry envelope-extension `context` — identity privacy boundary applies on both hops.
+  await expectInvalid(
+    {
+      "status": "completed",
+      "type": "identity_match_response",
+      "request_id": "id-4b",
+      "eligible_package_ids": ["pkg-1"],
+      "serve_window_sec": 60,
+      "context": { "trace_id": "abc" }
+    },
+    '/schemas/trusted-match/identity-match-response.json',
+    'TMP router→publisher response rejects envelope-extension `context`',
+    [/not|must NOT|anyOf/i]
+  );
+
+  // Router→publisher shape MUST NOT carry envelope-extension `ext`.
+  await expectInvalid(
+    {
+      "status": "completed",
+      "type": "identity_match_response",
+      "request_id": "id-4c",
+      "eligible_package_ids": ["pkg-1"],
+      "serve_window_sec": 60,
+      "ext": { "vendor_custom": true }
+    },
+    '/schemas/trusted-match/identity-match-response.json',
+    'TMP router→publisher response rejects envelope-extension `ext`',
+    [/not|must NOT|anyOf/i]
+  );
+
+  // Provider→router shape MUST NOT carry envelope-extension `ext` either.
+  await expectInvalid(
+    {
+      "status": "completed",
+      "type": "identity_match_response",
+      "request_id": "id-3b",
+      "eligible_package_ids": ["pkg-1"],
+      "serve_window_sec": 60,
+      "ext": { "vendor_custom": true }
+    },
+    '/schemas/trusted-match/provider-identity-match-response.json',
+    'TMP provider→router response rejects envelope-extension `ext`',
+    [/not|must NOT|anyOf/i]
+  );
+
+  // Router→publisher `tmpx_providers` map keys MUST match the provider_id charset.
+  await expectInvalid(
+    {
+      "status": "completed",
+      "type": "identity_match_response",
+      "request_id": "id-5",
+      "eligible_package_ids": ["pkg-1"],
+      "serve_window_sec": 60,
+      "tmpx_providers": {
+        "bad-id!": { "chunks": [{ "slot_id": "primary", "value": "k1.xxx" }] }
+      }
+    },
+    '/schemas/trusted-match/identity-match-response.json',
+    'TMP router→publisher `tmpx_providers` rejects provider_id keys outside charset',
+    [/propertyNames|pattern|does not match/i]
+  );
+
+  // Chunk `slot_id` MUST match its charset.
+  await expectInvalid(
+    {
+      "status": "completed",
+      "type": "identity_match_response",
+      "request_id": "id-6",
+      "eligible_package_ids": ["pkg-1"],
+      "serve_window_sec": 60,
+      "tmpx_providers": {
+        "provider_a": { "chunks": [{ "slot_id": "1-bad", "value": "k1.xxx" }] }
+      }
+    },
+    '/schemas/trusted-match/identity-match-response.json',
+    'TMP router→publisher chunk rejects slot_id outside charset',
+    [/pattern|does not match/i]
+  );
+
+  // Happy path — provider→router with `tmpx_chunks` validates.
+  await validateExample(
+    {
+      "status": "completed",
+      "type": "identity_match_response",
+      "request_id": "id-7",
+      "eligible_package_ids": ["pkg-1"],
+      "serve_window_sec": 60,
+      "tmpx_chunks": [
+        { "slot_id": "primary", "value": "k1.aaa" },
+        { "slot_id": "secondary", "value": "bbb" }
+      ]
+    },
+    '/schemas/trusted-match/provider-identity-match-response.json',
+    'TMP provider→router response with two chunks validates'
+  );
+
+  // Happy path — router→publisher with `tmpx_providers` validates.
+  await validateExample(
+    {
+      "status": "completed",
+      "type": "identity_match_response",
+      "request_id": "id-8",
+      "eligible_package_ids": ["pkg-1"],
+      "serve_window_sec": 60,
+      "tmpx_providers": {
+        "provider_a": { "chunks": [{ "slot_id": "primary", "value": "k1.aaa" }] },
+        "provider_b": { "chunks": [{ "slot_id": "primary", "value": "n1.bbb" }] }
+      }
+    },
+    '/schemas/trusted-match/identity-match-response.json',
+    'TMP router→publisher response with tmpx_providers validates'
+  );
+
+  // Publisher config — happy path with two providers, each with a slot map.
+  await validateExample(
+    {
+      "tmpx_macro_mapping": {
+        "provider_a": { "primary": "PIN_TMPX_1", "secondary": "PIN_TMPX_2" },
+        "provider_b": { "primary": "NOVA_TMPX_1" }
+      }
+    },
+    '/schemas/trusted-match/publisher-tmpx-config.json',
+    'Publisher TMPX config with two providers and slot maps validates'
+  );
+
+  // Publisher config rejects provider_id keys outside charset.
+  await expectInvalid(
+    {
+      "tmpx_macro_mapping": {
+        "bad id": { "primary": "X" }
+      }
+    },
+    '/schemas/trusted-match/publisher-tmpx-config.json',
+    'Publisher TMPX config rejects provider_id keys outside charset',
+    [/propertyNames|pattern|does not match/i]
+  );
+
+  // Publisher config rejects slot_id keys outside charset.
+  await expectInvalid(
+    {
+      "tmpx_macro_mapping": {
+        "provider_a": { "1-bad-slot": "X" }
+      }
+    },
+    '/schemas/trusted-match/publisher-tmpx-config.json',
+    'Publisher TMPX config rejects slot_id keys outside charset',
+    [/propertyNames|pattern|does not match/i]
+  );
+
+  // Provider registration accepts tmpx_slots when identity_match is true.
+  await validateExample(
+    {
+      "provider_id": "provider_a",
+      "endpoint": "https://provider-a.example",
+      "identity_match": true,
+      "countries": ["US"],
+      "uid_types": ["uid2"],
+      "tmpx_slots": ["primary", "secondary"]
+    },
+    '/schemas/trusted-match/provider-registration.json',
+    'Provider registration with tmpx_slots validates'
+  );
+
+  // Provider registration rejects duplicate slot IDs.
+  await expectInvalid(
+    {
+      "provider_id": "provider_a",
+      "endpoint": "https://provider-a.example",
+      "identity_match": true,
+      "countries": ["US"],
+      "uid_types": ["uid2"],
+      "tmpx_slots": ["primary", "primary"]
+    },
+    '/schemas/trusted-match/provider-registration.json',
+    'Provider registration rejects duplicate tmpx_slots',
+    [/uniqueItems|duplicate/i]
+  );
+
   // get_products refine[] — migration regressions for the `id` → `product_id`/`proposal_id` rename (adcp#2775).
   // These fixtures exercise exactly the payload shape a pre-rename orchestrator would send today, so the test
   // proves the schema rejects it with a migration-diagnosable error.

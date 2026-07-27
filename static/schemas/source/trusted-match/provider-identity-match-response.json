@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/trusted-match/provider-identity-match-response.json",
   "title": "Identity Match Response (Provider → Router)",
-  "description": "Provider-to-router shape of the Identity Match response. An identity agent returns eligibility, the per-package serve-window throttle, and — when it mints one — an ordered list of opaque TMPX value chunks. Names live on the publisher deployment side (see publisher-tmpx-config.json) and MUST NOT appear on the wire between provider and router; the provider owns ordering only. The router transforms this shape into the publisher-facing identity-match-response.json by keying the values under the emitting provider_id. Extension fields (ext, context) are intentionally omitted to prevent data leakage across the identity privacy boundary.",
+  "description": "Provider-to-router shape of the Identity Match response. An identity agent returns eligibility, the per-package serve-window throttle, and — when it mints one — an ordered list of TMPX chunks. Each chunk pairs a provider-local `slot_id` (declared at registration in `tmpx_slots`) with an opaque URL-safe `value`. Publisher-local destination names (ad-server macros, GAM key-values, VAST URL macros, DOOH play-log fields) MUST NOT appear on this hop; the router keys chunks under the emitting `provider_id` and the publisher's deployment configuration resolves `(provider_id, slot_id)` to the local destination (see publisher-tmpx-config.json). Router-hop fields (`tmpx_providers`, `tmpx`) MUST NOT appear on this shape — a router receiving them from a provider MUST reject the response. Envelope extension fields (`context`, `ext`) are intentionally omitted to prevent data leakage across the identity privacy boundary; they are forbidden by this schema.",
   "type": "object",
   "allOf": [
     {
@@ -36,13 +36,11 @@
       "minimum": 1,
       "maximum": 300
     },
-    "tmpx_values": {
+    "tmpx_chunks": {
       "type": "array",
-      "description": "Ordered opaque TMPX chunks for this identity agent. Each entry is a URL-safe wire string the publisher substitutes verbatim into whatever ad-server slot its deployment configuration maps to this provider_id / ordinal — providers do NOT emit publisher-local names. Capped at 2 chunks in v1 to support multi-chunk TMPX (a single opaque token that exceeds one macro slot); the cap MAY rise without a shape change. Position within the array is the chunk's identity; the publisher's tmpx_macro_mapping (see publisher-tmpx-config.json) determines destination. Omitted when this provider mints no TMPX (e.g. no eligible packages).",
+      "description": "Ordered TMPX chunk/value pairs this identity agent mints. Each entry names the provider-local `slot_id` the value fills (from the provider's registered `tmpx_slots` in provider-registration.json). Ordered-prefix invariant: a response that carries fewer chunks than the provider registered MUST emit an ordered prefix of the registered `tmpx_slots` — routers MUST NOT reorder or fill gaps, and publishers MAY reject responses whose chunk `slot_id`s or ordering diverge from the provider's registered list. Cap of 2 chunks in v1 aligned with the GAM macro-slot budget; the cap MAY rise without a shape change. Omitted when this provider mints no TMPX (e.g. no eligible packages).",
       "items": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 1024
+        "$ref": "/schemas/trusted-match/tmpx-chunk.json"
       },
       "minItems": 1,
       "maxItems": 2
@@ -54,5 +52,15 @@
     "eligible_package_ids",
     "serve_window_sec"
   ],
+  "not": {
+    "anyOf": [
+      { "required": ["tmpx_providers"] },
+      { "required": ["tmpx"] },
+      { "required": ["tmpx_values"] },
+      { "required": ["tmpx_macros"] },
+      { "required": ["context"] },
+      { "required": ["ext"] }
+    ]
+  },
   "additionalProperties": true
 }
