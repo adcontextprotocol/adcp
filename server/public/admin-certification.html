@@ -763,15 +763,21 @@
         }).join('');
 
         const credentialRows = data.credentials.map(c => {
-          const badgeStatus = c.certifier_credential_id
+          const badgeStatus = c.certifier_credential_id && c.certifier_badge_url
             ? '<span class="badge badge-active">issued</span>'
-            : '<span class="badge badge-stuck">pending</span>';
+            : c.certifier_credential_id
+              ? '<span class="badge badge-stuck">badge pending</span>'
+              : '<span class="badge badge-stuck">not issued</span>';
+          const repairAction = c.certifier_configured && (!c.certifier_credential_id || !c.certifier_badge_url)
+            ? `<button type="button" data-user-id="${escapeHtml(userId)}" data-credential-id="${escapeHtml(c.credential_id)}" onclick="reissueCredential(event)">Re-issue</button>`
+            : '-';
           return `
             <tr>
               <td>${escapeHtml(c.name)}</td>
               <td>${tierBadge(c.tier)}</td>
               <td>${formatDate(c.awarded_at)}</td>
               <td>${badgeStatus}</td>
+              <td>${repairAction}</td>
             </tr>
           `;
         }).join('');
@@ -804,7 +810,7 @@
             <div class="detail-section">
               <h4>Credentials</h4>
               <table>
-                <thead><tr><th>Credential</th><th>Tier</th><th>Awarded</th><th>Badge</th></tr></thead>
+                <thead><tr><th>Credential</th><th>Tier</th><th>Awarded</th><th>Badge</th><th>Action</th></tr></thead>
                 <tbody>${credentialRows}</tbody>
               </table>
             </div>
@@ -859,6 +865,32 @@
 
     function closeDetail() {
       document.getElementById('learner-modal').style.display = 'none';
+    }
+
+    async function reissueCredential(event) {
+      const btn = event.currentTarget;
+      const userId = btn.dataset.userId;
+      const credentialId = btn.dataset.credentialId;
+      btn.disabled = true;
+      btn.textContent = 'Issuing...';
+
+      try {
+        const response = await AdminSidebar.fetch(
+          `/api/admin/certification/learners/${encodeURIComponent(userId)}/credentials/${encodeURIComponent(credentialId)}/reissue`,
+          { method: 'POST' },
+        );
+        const data = await response.json();
+        if (!response.ok) {
+          alert(data.error || 'Failed to re-issue credential');
+          return;
+        }
+        await Promise.all([showDetail(userId), loadLearners(currentPage), loadOverview()]);
+      } catch (err) {
+        alert('Network error re-issuing credential');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Re-issue';
+      }
     }
 
     async function adminCompleteModule(event) {

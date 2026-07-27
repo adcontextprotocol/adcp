@@ -1124,6 +1124,100 @@ export function createCertificationRouters() {
     }
   });
 
+  // POST /api/admin/certification/learners/:userId/credentials/:credentialId/reissue
+  // Targeted recovery for an already-awarded local credential whose Certifier
+  // issuance or badge lookup failed. Idempotent when the external credential is
+  // already complete, so a retry never creates a second Certifier credential.
+  adminRouter.post('/learners/:userId/credentials/:credentialId/reissue', async (req, res) => {
+    const { userId, credentialId } = req.params;
+    try {
+      const credential = await certDb.getCredential(credentialId);
+      if (!credential) {
+        return res.status(404).json({ error: 'Credential definition not found' });
+      }
+      if (!credential.certifier_group_id) {
+        return res.status(409).json({ error: 'Credential is not configured for Certifier issuance' });
+      }
+
+      const awardedResult = await query<{
+        first_name: string | null;
+        last_name: string | null;
+        email: string;
+        certifier_credential_id: string | null;
+        certifier_public_id: string | null;
+        certifier_badge_url: string | null;
+      }>(
+        `SELECT u.first_name, u.last_name, u.email,
+                uc.certifier_credential_id, uc.certifier_public_id, uc.certifier_badge_url
+         FROM user_credentials uc
+         JOIN users u ON u.workos_user_id = uc.workos_user_id
+         WHERE uc.workos_user_id = $1 AND uc.credential_id = $2`,
+        [userId, credentialId],
+      );
+      const awarded = awardedResult.rows[0];
+      if (!awarded) {
+        return res.status(404).json({ error: 'Learner has not earned this credential' });
+      }
+
+      const { issueCredential, isCertifierConfigured, getCredentialBadgeUrl, buildRecipientName } =
+        await import('../services/certifier-client.js');
+      if (!isCertifierConfigured()) {
+        return res.status(503).json({ error: 'Certifier not configured' });
+      }
+
+      let certifierCredentialId = awarded.certifier_credential_id;
+      let certifierPublicId = awarded.certifier_public_id;
+      let badgeUrl = awarded.certifier_badge_url;
+      let issued = false;
+
+      if (!certifierCredentialId) {
+        const issuedCredential = await issueCredential({
+          groupId: credential.certifier_group_id,
+          recipient: {
+            name: buildRecipientName(awarded),
+            email: awarded.email,
+          },
+        });
+        certifierCredentialId = issuedCredential.id;
+        certifierPublicId = issuedCredential.publicId;
+        issued = true;
+      }
+
+      if (!badgeUrl) {
+        try {
+          badgeUrl = await getCredentialBadgeUrl(certifierCredentialId);
+        } catch (badgeError) {
+          // Persist successful issuance even if Certifier's rendered badge is
+          // not available yet. A later retry will only repeat the badge lookup.
+          logger.warn({ error: badgeError, userId, credentialId }, 'Credential issued but badge lookup failed');
+        }
+      }
+
+      const saved = await certDb.awardCredential(
+        userId,
+        credentialId,
+        certifierCredentialId,
+        certifierPublicId || undefined,
+        badgeUrl || undefined,
+      );
+
+      return res.json({
+        issued,
+        badge_available: Boolean(saved.certifier_badge_url),
+        credential: {
+          credential_id: credentialId,
+          name: credential.name,
+          certifier_credential_id: saved.certifier_credential_id,
+          certifier_public_id: saved.certifier_public_id,
+          certifier_badge_url: saved.certifier_badge_url,
+        },
+      });
+    } catch (error) {
+      logger.error({ error, userId, credentialId }, 'Failed to reissue Certifier credential');
+      return res.status(502).json({ error: 'Certifier credential recovery failed' });
+    }
+  });
+
   // GET /api/admin/certification/stuck-attempts — list stuck attempts
   adminRouter.get('/stuck-attempts', async (req, res) => {
     try {

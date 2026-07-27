@@ -1958,7 +1958,16 @@ export interface AdminLearnerDetail {
     score: Record<string, number> | null;
     attempts: number;
   }>;
-  credentials: Array<{ name: string; tier: number; awarded_at: string; certifier_credential_id: string | null }>;
+  credentials: Array<{
+    credential_id: string;
+    name: string;
+    tier: number;
+    awarded_at: string;
+    certifier_credential_id: string | null;
+    certifier_public_id: string | null;
+    certifier_badge_url: string | null;
+    certifier_configured: boolean;
+  }>;
   checkpoints: Array<{
     id: string;
     module_id: string;
@@ -1994,8 +2003,14 @@ export async function getAdminLearnerDetail(userId: string): Promise<AdminLearne
        ORDER BY m.track_id, m.sort_order`,
       [userId]
     ),
-    query<{ name: string; tier: number; awarded_at: string; certifier_credential_id: string | null }>(
-      `SELECT cc.name, cc.tier, uc.awarded_at, uc.certifier_credential_id
+    query<{
+      credential_id: string; name: string; tier: number; awarded_at: string;
+      certifier_credential_id: string | null; certifier_public_id: string | null;
+      certifier_badge_url: string | null; certifier_configured: boolean;
+    }>(
+      `SELECT cc.id AS credential_id, cc.name, cc.tier, uc.awarded_at,
+              uc.certifier_credential_id, uc.certifier_public_id, uc.certifier_badge_url,
+              (cc.certifier_group_id IS NOT NULL) AS certifier_configured
        FROM user_credentials uc
        JOIN certification_credentials cc ON cc.id = uc.credential_id
        WHERE uc.workos_user_id = $1
