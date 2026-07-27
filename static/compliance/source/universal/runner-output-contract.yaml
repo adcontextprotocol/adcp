@@ -300,7 +300,7 @@ validation_result:
                               #                          value (scoped to envelope)
                               #   envelope_field_absent → observed value at path (any JSON
                               #                          type); emitted only on failure
-	                              #                          and scoped to envelope
+                                #                          and scoped to envelope
                               #   envelope_field_pattern → observed envelope value at path
                               #                          (any JSON type); null when the field
                               #                          was missing
