@@ -80,9 +80,19 @@ test('dist schema root discovery marks prereleases but points canonical aliases 
   assert.equal(latest.latest_stable, discovery.latest_stable);
   assert.equal(latest.channel, 'stable');
 
+  const entriesByVersion = new Map(discovery.versions.map((entry) => [entry.version, entry]));
+  const assertSelectableStableTarget = (version, label) => {
+    const entry = entriesByVersion.get(version);
+    assert.ok(entry, `${label} must point at a discovered release`);
+    assert.equal(entry.stability, 'stable', `${label} must not point at a withdrawn or unpublished release`);
+    assert.equal(entry.prerelease, false, `${label} must not point at a prerelease`);
+  };
+
+  assertSelectableStableTarget(discovery.latest_stable, 'latest_stable');
   for (const [alias, version] of Object.entries(discovery.aliases)) {
     assert.match(alias, /^v\d+(?:\.\d+)?$/);
     assert.match(version, stableVersion, `${alias} must not point at a prerelease`);
+    assertSelectableStableTarget(version, alias);
   }
 
   assert.ok(discovery.versions.some((entry) => entry.prerelease === true), 'historical prerelease dirs should remain discoverable');
@@ -91,7 +101,10 @@ test('dist schema root discovery marks prereleases but points canonical aliases 
     .map((entry) => entry.version));
   for (const entry of discovery.versions) {
     if (stableVersion.test(entry.version)) {
-      assert.equal(entry.stability, 'stable');
+      assert.ok(
+        ['stable', 'withdrawn', 'unpublished'].includes(entry.stability),
+        `${entry.version} has unexpected release stability ${entry.stability}`,
+      );
       assert.equal(entry.prerelease, false);
     } else {
       assert.match(entry.version, /^\d+\.\d+\.\d+-[0-9A-Za-z.-]+$/);
