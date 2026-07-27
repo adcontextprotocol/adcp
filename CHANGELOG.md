@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.1.6
+
+### Patch Changes
+
+- 362ed68: Add literal v1 canonical mappings for observed duration-, dimension-, and VAST-suffixed legacy format ids, with reference vectors that preserve encoded constraints and fail closed for durationless placements.
+
 ## 3.1.5
 
 ### Patch Changes
