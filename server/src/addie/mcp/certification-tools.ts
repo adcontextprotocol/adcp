@@ -32,6 +32,14 @@ import { stripe } from '../../billing/stripe-client.js';
 import { attemptStripeReconciliation } from '../../billing/lazy-reconcile.js';
 import { coerceStringArray } from './input-coercion.js';
 import { wrapUntrustedInput } from './untrusted-input.js';
+import {
+  CertifierNotConfiguredError,
+  CredentialNameRequiredError,
+  NAME_REQUIRED_MARKER,
+  ensureCertifierCredential,
+} from '../../services/certification-credential-issuance.js';
+
+export { NAME_REQUIRED_MARKER };
 
 const logger = createLogger('certification-tools');
 
@@ -513,7 +521,6 @@ function validateDemonstrationIds(
  * Certifier-side issuance is deferred. `checkAndFormatCredentials` retries
  * deferred issuances on its next call.
  */
-export const NAME_REQUIRED_MARKER = 'NAME_REQUIRED';
 type IssueResult = string | null | 'NAME_REQUIRED';
 
 /**
@@ -530,59 +537,22 @@ async function issueCertifierBadge(
   credId: string,
   cred: { name: string; tier: number; certifier_group_id: string | null },
   memberContext: MemberContext | null,
-  extraAttributes?: Record<string, string>,
 ): Promise<IssueResult> {
   if (!cred.certifier_group_id || !memberContext?.workos_user) return null;
 
-  // Resolve the name from the freshest source available: the helper falls
-  // back to the DB when memberContext is stale (the closure-bound context
-  // doesn't see the row `set_my_name` just wrote), and to the Slack mapping
-  // when neither has a value.
-  const { resolveUserNameWithFallbacks } = await import('../../utils/resolve-user-name.js');
-  const wu = memberContext.workos_user;
-  const resolved = await resolveUserNameWithFallbacks(
-    getPool(), userId, wu.first_name, wu.last_name,
-  );
-  if (!(resolved.firstName ?? '').trim()) {
-    logger.info({ userId, credId, email: wu.email }, 'Credential issuance gated: no first_name on file');
-    return NAME_REQUIRED_MARKER;
-  }
-
   try {
-    const { issueCredential, isCertifierConfigured, getCredentialBadgeUrl, buildRecipientName } = await import('../../services/certifier-client.js');
-    if (!isCertifierConfigured()) return null;
-
-    const expiryDate = cred.tier === 1 ? undefined : (() => {
-      const d = new Date();
-      d.setFullYear(d.getFullYear() + 2);
-      return d.toISOString().split('T')[0];
-    })();
-
-    const credential = await issueCredential({
-      groupId: cred.certifier_group_id,
-      recipient: {
-        name: buildRecipientName({
-          first_name: resolved.firstName,
-          last_name: resolved.lastName,
-          email: wu.email,
-        }),
-        email: wu.email,
-      },
-      ...(expiryDate ? { expiryDate } : {}),
-      ...(extraAttributes ? { customAttributes: extraAttributes } : {}),
-    });
-
-    let badgeUrl: string | null = null;
-    try {
-      badgeUrl = await getCredentialBadgeUrl(credential.id);
-    } catch (badgeErr) {
-      logger.warn({ error: badgeErr, credentialId: credential.id }, 'Failed to fetch badge URL');
-    }
-
-    await certDb.awardCredential(userId, credId, credential.id, credential.publicId, badgeUrl || undefined);
-    logger.info({ credentialId: credential.id, userId, credId, badgeUrl }, 'Credential issued via Certifier');
-    return credential.publicId || credential.id;
+    const result = await ensureCertifierCredential({ userId, credentialId: credId });
+    logger.info(
+      { credentialId: result.credentialId, userId, credId, badgeUrl: result.badgeUrl, outcome: result.outcome },
+      'Credential ensured via Certifier',
+    );
+    return result.publicId || result.credentialId;
   } catch (certError) {
+    if (certError instanceof CredentialNameRequiredError) {
+      logger.info({ userId, credId, email: memberContext.workos_user.email }, 'Credential issuance gated: no first_name on file');
+      return NAME_REQUIRED_MARKER;
+    }
+    if (certError instanceof CertifierNotConfiguredError) return null;
     logger.error({ error: certError, credId }, 'Failed to issue Certifier credential (continuing)');
     return null;
   }

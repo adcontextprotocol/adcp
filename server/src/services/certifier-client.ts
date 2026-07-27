@@ -12,6 +12,7 @@ const logger = createLogger('certifier');
 const CERTIFIER_API_TOKEN = process.env.CERTIFIER_API_TOKEN;
 const CERTIFIER_API_URL = 'https://api.certifier.io/v1';
 const CERTIFIER_VERSION = '2022-10-26';
+const CERTIFIER_TIMEOUT_MS = 15_000;
 
 export interface CertifierRecipient {
   name: string;
@@ -82,6 +83,7 @@ function getClient(): AxiosInstance {
   }
   return axios.create({
     baseURL: CERTIFIER_API_URL,
+    timeout: CERTIFIER_TIMEOUT_MS,
     headers: {
       'Authorization': `Bearer ${CERTIFIER_API_TOKEN}`,
       'Certifier-Version': CERTIFIER_VERSION,
@@ -107,6 +109,45 @@ export async function issueCredential(options: IssueCredentialOptions): Promise<
 
   const response = await client.post<CertifierCredential>('/credentials/create-issue-send', body);
   logger.info({ credentialId: response.data.id, publicId: response.data.publicId }, 'Credential issued');
+  return response.data;
+}
+
+/**
+ * Create a draft credential without issuing or emailing it. Recovery flows use
+ * this two-phase path so the external ID can be persisted locally before any
+ * irreversible learner-facing action occurs.
+ */
+export async function createCredentialDraft(options: IssueCredentialOptions): Promise<CertifierCredential> {
+  const client = getClient();
+  const body: Record<string, unknown> = {
+    groupId: options.groupId,
+    recipient: options.recipient,
+  };
+  if (options.issueDate) body.issueDate = options.issueDate;
+  if (options.expiryDate) body.expiryDate = options.expiryDate;
+  if (options.customAttributes) body.customAttributes = options.customAttributes;
+
+  logger.info({ groupId: options.groupId, recipientEmail: options.recipient.email }, 'Creating draft credential');
+  const response = await client.post<CertifierCredential>('/credentials', body);
+  logger.info({ credentialId: response.data.id, publicId: response.data.publicId }, 'Draft credential created');
+  return response.data;
+}
+
+/** Issue a previously-created draft credential. */
+export async function issueCredentialDraft(credentialId: string): Promise<CertifierCredential> {
+  const client = getClient();
+  const response = await client.post<CertifierCredential>(`/credentials/${credentialId}/issue`);
+  logger.info({ credentialId: response.data.id }, 'Draft credential issued');
+  return response.data;
+}
+
+/** Email a previously-issued credential to its recipient. */
+export async function sendCredential(credentialId: string): Promise<CertifierCredential> {
+  const client = getClient();
+  const response = await client.post<CertifierCredential>(`/credentials/${credentialId}/send`, {
+    deliveryMethod: 'email',
+  });
+  logger.info({ credentialId: response.data.id }, 'Credential email sent');
   return response.data;
 }
 

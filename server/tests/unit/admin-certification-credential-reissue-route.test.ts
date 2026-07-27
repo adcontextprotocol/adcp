@@ -4,16 +4,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockCertDb = vi.hoisted(() => ({
   getCredential: vi.fn(),
-  awardCredential: vi.fn(),
+  recordAdminCredentialReissueEvent: vi.fn(),
 }));
 const mockQuery = vi.hoisted(() => vi.fn());
-const mockCertifier = vi.hoisted(() => ({
-  issueCredential: vi.fn(),
-  isCertifierConfigured: vi.fn(),
-  getCredentialBadgeUrl: vi.fn(),
-  buildRecipientName: vi.fn((user: { first_name: string | null; last_name: string | null; email: string }) =>
-    `${user.first_name ?? ''} ${user.last_name ?? ''}`.trim() || user.email),
-}));
+const mockEnsureCredential = vi.hoisted(() => vi.fn());
+const authState = vi.hoisted(() => ({ allowGlobalAdmin: true }));
 
 vi.hoisted(() => {
   process.env.WORKOS_API_KEY ??= 'sk_test_mock_key';
@@ -26,11 +21,18 @@ vi.mock('../../src/middleware/auth.js', async (importOriginal) => {
     req.user = { id: 'user_test_admin', email: 'admin@test.local' };
     next();
   };
+  const globalGate = (_req: any, res: any, next: any) => {
+    if (!authState.allowGlobalAdmin) {
+      return res.status(403).json({ error: 'global_admin_required' });
+    }
+    next();
+  };
   const passThrough = (_req: any, _res: any, next: any) => next();
   return {
     ...(await importOriginal<typeof import('../../src/middleware/auth.js')>()),
     requireAuth: mockedRequireAuth,
     requireAdmin: passThrough,
+    requireGlobalAdmin: [mockedRequireAuth, globalGate, passThrough],
     optionalAuth: passThrough,
   };
 });
@@ -40,12 +42,16 @@ vi.mock('../../src/db/client.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/db/client.js')>()),
   query: mockQuery,
 }));
-vi.mock('../../src/services/certifier-client.js', () => mockCertifier);
+vi.mock('../../src/services/certification-credential-issuance.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/services/certification-credential-issuance.js')>()),
+  ensureCertifierCredential: mockEnsureCredential,
+}));
 
 import { createCertificationRouters } from '../../src/routes/certification.js';
 
 const USER_ID = 'user_learner';
 const CREDENTIAL_ID = 'specialist_signals';
+const REASON = 'Escalation #6032 credential recovery';
 
 function buildApp() {
   const app = express();
@@ -57,84 +63,101 @@ function buildApp() {
 describe('admin credential reissue route', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authState.allowGlobalAdmin = true;
     mockCertDb.getCredential.mockResolvedValue({
       id: CREDENTIAL_ID,
       name: 'AdCP Specialist — Signals',
       certifier_group_id: 'group_signals',
     });
-    mockCertifier.isCertifierConfigured.mockReturnValue(true);
-    mockCertifier.issueCredential.mockResolvedValue({ id: 'cert_new', publicId: 'public_new' });
-    mockCertifier.getCredentialBadgeUrl.mockResolvedValue('https://cdn.test/badge.png');
-    mockCertDb.awardCredential.mockResolvedValue({
-      credential_id: CREDENTIAL_ID,
-      certifier_credential_id: 'cert_new',
-      certifier_public_id: 'public_new',
-      certifier_badge_url: 'https://cdn.test/badge.png',
-    });
-  });
-
-  it('issues and stores a missing external credential for an earned credential', async () => {
+    mockCertDb.recordAdminCredentialReissueEvent.mockResolvedValue(undefined);
     mockQuery.mockResolvedValue({ rows: [{
-      first_name: 'Test',
-      last_name: 'Learner',
-      email: 'learner@test.example',
       certifier_credential_id: null,
       certifier_public_id: null,
       certifier_badge_url: null,
     }] });
-
-    const response = await request(buildApp())
-      .post(`/api/admin/certification/learners/${USER_ID}/credentials/${CREDENTIAL_ID}/reissue`);
-
-    expect(response.status).toBe(200);
-    expect(response.body).toMatchObject({ issued: true, badge_available: true });
-    expect(mockCertifier.issueCredential).toHaveBeenCalledWith({
-      groupId: 'group_signals',
-      recipient: { name: 'Test Learner', email: 'learner@test.example' },
+    mockEnsureCredential.mockResolvedValue({
+      outcome: 'issued',
+      credentialId: 'cert_new',
+      publicId: 'public_new',
+      badgeUrl: 'https://cdn.test/badge.png',
+      emailDelivery: 'sent',
     });
-    expect(mockCertDb.awardCredential).toHaveBeenCalledWith(
-      USER_ID,
-      CREDENTIAL_ID,
-      'cert_new',
-      'public_new',
-      'https://cdn.test/badge.png',
-    );
   });
 
-  it('only retries badge lookup when the external credential already exists', async () => {
-    mockQuery.mockResolvedValue({ rows: [{
-      first_name: 'Test',
-      last_name: 'Learner',
-      email: 'learner@test.example',
-      certifier_credential_id: 'cert_existing',
-      certifier_public_id: 'public_existing',
-      certifier_badge_url: null,
-    }] });
-    mockCertDb.awardCredential.mockResolvedValue({
-      credential_id: CREDENTIAL_ID,
-      certifier_credential_id: 'cert_existing',
-      certifier_public_id: 'public_existing',
-      certifier_badge_url: 'https://cdn.test/badge.png',
-    });
-
+  it('recovers an earned credential and appends actor-attributed audit events', async () => {
     const response = await request(buildApp())
-      .post(`/api/admin/certification/learners/${USER_ID}/credentials/${CREDENTIAL_ID}/reissue`);
+      .post(`/api/admin/certification/learners/${USER_ID}/credentials/${CREDENTIAL_ID}/reissue`)
+      .send({ reason: REASON });
 
     expect(response.status).toBe(200);
-    expect(response.body.issued).toBe(false);
-    expect(mockCertifier.issueCredential).not.toHaveBeenCalled();
-    expect(mockCertifier.getCredentialBadgeUrl).toHaveBeenCalledWith('cert_existing');
+    expect(response.body).toMatchObject({
+      outcome: 'issued',
+      issued: true,
+      badge_available: true,
+      email_delivery: 'sent',
+    });
+    expect(response.body.operation_id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(mockEnsureCredential).toHaveBeenCalledWith({ userId: USER_ID, credentialId: CREDENTIAL_ID });
+    expect(mockCertDb.recordAdminCredentialReissueEvent).toHaveBeenCalledTimes(2);
+    expect(mockCertDb.recordAdminCredentialReissueEvent).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      userId: USER_ID,
+      credentialId: CREDENTIAL_ID,
+      adminUserId: 'user_test_admin',
+      reason: REASON,
+      eventType: 'started',
+    }));
+    expect(mockCertDb.recordAdminCredentialReissueEvent).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      eventType: 'succeeded',
+    }));
   });
 
-  it('does not issue a credential the learner has not earned', async () => {
+  it('returns partial-success semantics when the success audit append fails', async () => {
+    mockCertDb.recordAdminCredentialReissueEvent
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('audit unavailable'));
+
+    const response = await request(buildApp())
+      .post(`/api/admin/certification/learners/${USER_ID}/credentials/${CREDENTIAL_ID}/reissue`)
+      .send({ reason: REASON });
+
+    expect(response.status).toBe(200);
+    expect(response.body.credential.certifier_credential_id).toBe('cert_new');
+    expect(response.body.warnings[0]).toContain('audit event');
+    expect(mockCertDb.recordAdminCredentialReissueEvent).toHaveBeenCalledTimes(2);
+  });
+
+  it('requires a bounded incident reason before performing an external action', async () => {
+    const response = await request(buildApp())
+      .post(`/api/admin/certification/learners/${USER_ID}/credentials/${CREDENTIAL_ID}/reissue`)
+      .send({ reason: 'short' });
+
+    expect(response.status).toBe(400);
+    expect(mockEnsureCredential).not.toHaveBeenCalled();
+    expect(mockCertDb.recordAdminCredentialReissueEvent).not.toHaveBeenCalled();
+  });
+
+  it('does not recover a credential the learner has not earned', async () => {
     mockQuery.mockResolvedValue({ rows: [] });
 
     const response = await request(buildApp())
-      .post(`/api/admin/certification/learners/${USER_ID}/credentials/${CREDENTIAL_ID}/reissue`);
+      .post(`/api/admin/certification/learners/${USER_ID}/credentials/${CREDENTIAL_ID}/reissue`)
+      .send({ reason: REASON });
 
     expect(response.status).toBe(404);
     expect(response.body.error).toContain('has not earned');
-    expect(mockCertifier.issueCredential).not.toHaveBeenCalled();
-    expect(mockCertDb.awardCredential).not.toHaveBeenCalled();
+    expect(mockEnsureCredential).not.toHaveBeenCalled();
+    expect(mockCertDb.recordAdminCredentialReissueEvent).not.toHaveBeenCalled();
+  });
+
+  it('refuses tenant-scoped admin API keys through the global-admin gate', async () => {
+    authState.allowGlobalAdmin = false;
+
+    const response = await request(buildApp())
+      .post(`/api/admin/certification/learners/${USER_ID}/credentials/${CREDENTIAL_ID}/reissue`)
+      .send({ reason: REASON });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe('global_admin_required');
+    expect(mockEnsureCredential).not.toHaveBeenCalled();
   });
 });
