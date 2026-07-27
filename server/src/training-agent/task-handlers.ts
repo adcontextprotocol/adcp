@@ -7,6 +7,7 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
   CallToolRequestSchema,
@@ -608,6 +609,171 @@ interface ProposalLifecycle {
 }
 function proposalLifecycle(proposal: Proposal): ProposalLifecycle {
   return proposal as unknown as ProposalLifecycle;
+}
+
+type ConcreteCpmAsk = {
+  currency?: string;
+  budget?: { amount: number; currency: string };
+};
+
+const ISO_CURRENCY_CODES = new Set(Intl.supportedValuesOf('currency'));
+
+/**
+ * Recognize the training agent's deterministic proposal-pricing refinement.
+ * Other natural-language asks intentionally remain partial so buyers can test
+ * both successful and honest incomplete refinement outcomes.
+ */
+function parseConcreteCpmAsk(ask?: string): ConcreteCpmAsk | undefined {
+  if (!ask) return undefined;
+  const normalized = ask.toLowerCase();
+  if (!/\bcpm\b/.test(normalized)) return undefined;
+  if (!/\b(?:concrete|firm|fixed|price|pricing|rate|per[ -]unit)\b/.test(normalized)) return undefined;
+
+  const contextualCurrency = ask.match(/\b(?:in|currency(?:\s+of)?)\s+([a-z]{3})\b/i)?.[1]?.toUpperCase();
+  const explicitCurrency = contextualCurrency && ISO_CURRENCY_CODES.has(contextualCurrency)
+    ? contextualCurrency
+    : ask.includes('$') ? 'USD' : undefined;
+  const budgetClause = ask.match(/\b(?:budget|total)\b[^.!?]{0,120}/i)?.[0];
+  const containsExplicitCpmAmount = /(?:\$\s*\d[\d,.]*|\b\d[\d,.]*\s*[a-z]{3})\s*(?:per[- ]unit\s+)?cpm\b/i.test(ask);
+  if (containsExplicitCpmAmount) return undefined;
+  if (!budgetClause) {
+    return { ...(explicitCurrency && { currency: explicitCurrency }) };
+  }
+
+  const amountPattern = '([0-9][0-9,]*(?:\\.[0-9]{1,2})?)\\s*([km])?';
+  const currencyBefore = budgetClause.match(new RegExp(`\\b([A-Z]{3})\\s*\\$?\\s*${amountPattern}\\b`, 'i'));
+  const currencyAfter = budgetClause.match(new RegExp(`\\b${amountPattern}\\s*([A-Z]{3})\\b`, 'i'));
+  const dollarAmount = budgetClause.match(new RegExp(`\\$\\s*${amountPattern}\\b`, 'i'));
+
+  let amountText: string | undefined;
+  let scale: string | undefined;
+  let currency: string | undefined;
+  if (currencyAfter) {
+    [, amountText, scale, currency] = currencyAfter;
+  } else if (currencyBefore) {
+    [, currency, amountText, scale] = currencyBefore;
+  } else if (dollarAmount) {
+    [, amountText, scale] = dollarAmount;
+    currency = 'USD';
+  }
+
+  if (!amountText || !currency) {
+    return { ...(explicitCurrency && { currency: explicitCurrency }) };
+  }
+  const multiplier = scale?.toLowerCase() === 'm' ? 1_000_000 : scale?.toLowerCase() === 'k' ? 1_000 : 1;
+  const amount = Number(amountText.replaceAll(',', '')) * multiplier;
+  if (!Number.isFinite(amount) || amount <= 0) return undefined;
+  const normalizedCurrency = currency.toUpperCase();
+  if (!ISO_CURRENCY_CODES.has(normalizedCurrency)) return undefined;
+  return {
+    currency: normalizedCurrency,
+    budget: { amount, currency: normalizedCurrency },
+  };
+}
+
+function concreteCpmPricing(
+  product: Product,
+  requestedCurrency?: string,
+): {
+  product: Product;
+  pricingOption: PricingOption;
+  pricingOptionId: string;
+  fixedPrice: number;
+  currency: string;
+} | undefined {
+  const optionIndex = product.pricing_options.findIndex(option =>
+    option.pricing_model === 'cpm'
+    && (!requestedCurrency || option.currency === requestedCurrency),
+  );
+  if (optionIndex < 0) return undefined;
+
+  const option = product.pricing_options[optionIndex] as Extract<PricingOption, { pricing_model: 'cpm' }>;
+  const fixedPrice = option.fixed_price
+    ?? option.price_guidance?.p50
+    ?? option.floor_price;
+  if (fixedPrice === undefined) return undefined;
+
+  const {
+    floor_price: _floorPrice,
+    price_guidance: _priceGuidance,
+    max_bid: _maxBid,
+    min_spend_per_package: _minSpendPerPackage,
+    ...concreteOptionBase
+  } = option;
+  const fingerprint = createHash('sha256')
+    .update(`${product.product_id}|${option.pricing_option_id}|${option.currency}|${fixedPrice}`)
+    .digest('hex')
+    .slice(0, 32);
+  const pricingOptionId = `${option.pricing_option_id}_concrete_${fingerprint}`;
+  const pricingOptions = [...product.pricing_options];
+  const negotiatedOption = { ...concreteOptionBase, pricing_option_id: pricingOptionId, fixed_price: fixedPrice } as PricingOption;
+  const negotiatedIndex = pricingOptions.findIndex(candidate => candidate.pricing_option_id === pricingOptionId);
+  let effectiveOption = negotiatedOption;
+  if (negotiatedIndex >= 0) {
+    const existing = pricingOptions[negotiatedIndex] as PricingOption;
+    if (!isDeepStrictEqual(existing, negotiatedOption)) return undefined;
+    effectiveOption = existing;
+  } else {
+    pricingOptions.push(negotiatedOption);
+  }
+
+  return {
+    product: { ...product, pricing_options: pricingOptions },
+    pricingOption: effectiveOption,
+    pricingOptionId,
+    fixedPrice,
+    currency: option.currency,
+  };
+}
+
+function withProposalBudgetGuidance(
+  proposal: Proposal,
+  budget: { amount: number; currency: string },
+): Proposal {
+  const guidance = {
+    ...proposal.total_budget_guidance,
+    min: Math.min(proposal.total_budget_guidance?.min ?? budget.amount, budget.amount),
+    recommended: budget.amount,
+    currency: budget.currency,
+  };
+  const ext = proposal.ext as unknown as Record<string, unknown> | undefined;
+  const updateCard = (card: unknown): unknown => {
+    if (!card || typeof card !== 'object' || Array.isArray(card)) return card;
+    const typedCard = card as Record<string, unknown>;
+    const manifest = typedCard.manifest;
+    if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) return card;
+    const typedManifest = manifest as Record<string, unknown>;
+    const assets = typedManifest.assets;
+    if (!assets || typeof assets !== 'object' || Array.isArray(assets)) return card;
+    const {
+      estimated_delivery: _staleEstimatedDelivery,
+      ...currentAssets
+    } = assets as Record<string, unknown>;
+    return {
+      ...typedCard,
+      manifest: {
+        ...typedManifest,
+        assets: {
+          ...currentAssets,
+          budget_min: { content: String(guidance.min) },
+          budget_recommended: { content: String(guidance.recommended) },
+          budget_currency: { content: guidance.currency },
+        },
+      },
+    };
+  };
+
+  return {
+    ...proposal,
+    total_budget_guidance: guidance,
+    ...(ext && {
+      ext: {
+        ...ext,
+        proposal_card: updateCard(ext.proposal_card),
+        proposal_card_detailed: updateCard(ext.proposal_card_detailed),
+      },
+    }),
+  } as Proposal;
 }
 
 const THREE_ZERO_LEGACY_PROPOSAL_ID = 'balanced_reach_q2';
@@ -2020,6 +2186,27 @@ function overlaySeededProducts(
   }
 }
 
+/** Overlay proposal-specific pricing created by successful refine asks. */
+function overlayNegotiatedPricingOptions(
+  session: import('./types.js').SessionState,
+  productMap: Map<string, Product>,
+): void {
+  for (const { productId, option } of session.negotiatedPricingOptions.values()) {
+    const product = productMap.get(productId);
+    if (!product) continue;
+    const pricingOptions = [...product.pricing_options];
+    const existingIndex = pricingOptions.findIndex(
+      candidate => candidate.pricing_option_id === option.pricing_option_id,
+    );
+    if (existingIndex >= 0) {
+      pricingOptions[existingIndex] = option;
+    } else {
+      pricingOptions.push(option);
+    }
+    productMap.set(productId, { ...product, pricing_options: pricingOptions });
+  }
+}
+
 function seededProductIds(session: import('./types.js').SessionState): Set<string> {
   const ids = new Set<string>(session.complyExtensions.seededProducts.keys());
   for (const key of session.complyExtensions.seededPricingOptions.keys()) {
@@ -2899,7 +3086,9 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
   // to repeat boilerplate. Catalog products are not touched.
   const productMap = new Map(products.map(p => [p.product_id, p]));
   overlaySeededProducts(session, productMap);
+  if (buyingMode !== 'wholesale') overlayNegotiatedPricingOptions(session, productMap);
   products = Array.from(productMap.values());
+  const registryProducts = products;
 
   // Apply filters
   if (req.filters) {
@@ -3007,20 +3196,38 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
 
   const refinementApplied: RefinementAppliedEntry[] = [];
   const proposalOmitIds = new Set<string>();
+  const refinedProposalOverrides = new Map<string, Proposal>();
   if (buyingMode === 'refine' && req.refine) {
     const refineOps = req.refine as unknown as RefineEntry[];
-    const previousProducts = session.lastGetProductsContext?.products || products;
     const previousProposals = session.lastGetProductsContext?.proposals || getProposals();
     const omitIds = new Set<string>();
     const includeIds = new Set<string>();
+    const knownProductIds = new Set(
+      registryProducts
+        .filter(product => !product.expires_at || new Date(product.expires_at) >= new Date())
+        .map(product => product.product_id),
+    );
 
     const askAckNotes = (ask?: string) =>
       ask ? { notes: `Ask acknowledged but not applied by training agent: ${ask}` } : {};
 
-    // Validate proposal references before applying any refinements. This keeps
+    // Validate entity references before applying any refinements. This keeps
     // failed multi-entry refine calls from partially finalizing earlier entries.
     for (let opIndex = 0; opIndex < refineOps.length; opIndex++) {
       const op = refineOps[opIndex];
+      if (op.scope === 'product') {
+        if (!knownProductIds.has(op.product_id)) {
+          return {
+            errors: [{
+              code: 'PRODUCT_NOT_FOUND',
+              message: `Product not found: ${op.product_id}`,
+              field: `refine[${opIndex}].product_id`,
+              recovery: 'correctable',
+            }] as TaskError[],
+          };
+        }
+        continue;
+      }
       if (op.scope !== 'proposal') continue;
       let proposal = previousProposals.find(p => p.proposal_id === op.proposal_id);
       if (!proposal && isThreeZeroStoryboardCompat(ctx) && op.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_ID) {
@@ -3042,15 +3249,18 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
       const op = refineOps[opIndex];
       if (op.scope === 'product') {
         const action = op.action ?? 'include';
+        const passesFilters = filteredProducts.some(product => product.product_id === op.product_id);
         if (action === 'omit') {
           omitIds.add(op.product_id);
           refinementApplied.push({ scope: 'product', product_id: op.product_id, status: 'applied' });
         } else if (action === 'include') {
           includeIds.add(op.product_id);
-          refinementApplied.push({ scope: 'product', product_id: op.product_id, status: op.ask ? 'partial' : 'applied', ...askAckNotes(op.ask) });
+          refinementApplied.push(passesFilters
+            ? { scope: 'product', product_id: op.product_id, status: op.ask ? 'partial' : 'applied', ...askAckNotes(op.ask) }
+            : { scope: 'product', product_id: op.product_id, status: 'partial', notes: 'Product is excluded by the request filters' });
         } else if (action === 'more_like_this') {
           includeIds.add(op.product_id);
-          const source = previousProducts.find(p => p.product_id === op.product_id);
+          const source = registryProducts.find(p => p.product_id === op.product_id);
           if (source) {
             const sourceChannels = source.channels;
             for (const p of filteredProducts) {
@@ -3059,11 +3269,14 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
               }
             }
           }
-          refinementApplied.push({ scope: 'product', product_id: op.product_id, status: 'applied' });
+          refinementApplied.push(passesFilters
+            ? { scope: 'product', product_id: op.product_id, status: 'applied' }
+            : { scope: 'product', product_id: op.product_id, status: 'partial', notes: 'Source product is excluded by the request filters' });
         }
       } else if (op.scope === 'proposal') {
         const action = op.action ?? 'include';
-        let proposal = previousProposals.find(p => p.proposal_id === op.proposal_id);
+        let proposal = refinedProposalOverrides.get(op.proposal_id)
+          ?? previousProposals.find(p => p.proposal_id === op.proposal_id);
         if (!proposal && isThreeZeroStoryboardCompat(ctx) && op.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_ID) {
           proposal = resolveThreeZeroProposalAlias([...previousProposals, ...getProposals()]);
         }
@@ -3072,7 +3285,56 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
           proposalOmitIds.add(op.proposal_id);
           refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'applied' });
         } else if (action === 'include') {
-          refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: op.ask ? 'partial' : 'applied', ...askAckNotes(op.ask) });
+          for (const allocation of proposal.allocations) includeIds.add(allocation.product_id);
+          const concreteCpmAsk = parseConcreteCpmAsk(op.ask);
+          if (concreteCpmAsk) {
+            const stagedProducts = new Map<string, ReturnType<typeof concreteCpmPricing>>();
+            let allAllocationsPriced = true;
+            for (const allocation of proposal.allocations) {
+              const product = products.find(p => p.product_id === allocation.product_id);
+              const concretePricing = product && concreteCpmPricing(product, concreteCpmAsk.currency);
+              if (!concretePricing) {
+                allAllocationsPriced = false;
+                break;
+              }
+              stagedProducts.set(allocation.product_id, concretePricing);
+            }
+
+            if (allAllocationsPriced) {
+              products = products.map(product => stagedProducts.get(product.product_id)?.product ?? product);
+              const budget = concreteCpmAsk.budget;
+              let refinedProposal = {
+                ...proposal,
+                allocations: proposal.allocations.map(allocation => ({
+                  ...allocation,
+                  pricing_option_id: stagedProducts.get(allocation.product_id)!.pricingOptionId,
+                })),
+              } as Proposal;
+              if (budget) refinedProposal = withProposalBudgetGuidance(refinedProposal, budget);
+              refinedProposalOverrides.set(op.proposal_id, refinedProposal);
+              for (const [productId, pricing] of stagedProducts) {
+                session.negotiatedPricingOptions.set(`${productId}:${pricing!.pricingOptionId}`, {
+                  productId,
+                  option: pricing!.pricingOption,
+                });
+              }
+              const rates = proposal.allocations.map(allocation => {
+                const pricing = stagedProducts.get(allocation.product_id)!;
+                return `${allocation.product_id}: ${pricing.currency} ${pricing.fixedPrice} CPM`;
+              }).join('; ');
+              const budgetNote = budget ? ` Recommended total set to ${budget.currency} ${budget.amount}.` : '';
+              refinementApplied.push({
+                scope: 'proposal',
+                proposal_id: op.proposal_id,
+                status: 'applied',
+                notes: `Concrete fixed CPM pricing applied (${rates}).${budgetNote}`,
+              });
+            } else {
+              refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'partial', ...askAckNotes(op.ask) });
+            }
+          } else {
+            refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: op.ask ? 'partial' : 'applied', ...askAckNotes(op.ask) });
+          }
         } else if (action === 'finalize') {
           const status = proposalLifecycle(proposal).proposal_status;
           if (status === 'committed') {
@@ -3132,9 +3394,10 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
 
     // Apply includes first (expand), then omits (filter) for products
     if (includeIds.size > 0) {
+      const currentProductsById = new Map(products.map(product => [product.product_id, product]));
       products = filteredProducts
         .filter(p => includeIds.has(p.product_id))
-        .map(p => ({ ...p }));
+        .map(p => currentProductsById.get(p.product_id) ?? { ...p });
     }
     if (omitIds.size > 0) {
       products = products.filter(p => !omitIds.has(p.product_id));
@@ -3168,6 +3431,7 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
 
   const productsById = new Map(products.map(p => [p.product_id, p]));
   const proposals = sourceProposals
+    .map(proposal => refinedProposalOverrides.get(proposal.proposal_id) ?? proposal)
     .filter(proposal =>
       proposal.allocations.every(a => productIds.has(a.product_id)) &&
       !proposalOmitIds.has(proposal.proposal_id),
@@ -3175,7 +3439,10 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
     .map(proposal => ({
       ...proposal,
       allocations: proposal.allocations.map(alloc => {
-        const selectedPricing = productsById.get(alloc.product_id)?.pricing_options[0];
+        const pricingOptions = productsById.get(alloc.product_id)?.pricing_options;
+        const selectedPricing = pricingOptions?.find(
+          option => option.pricing_option_id === alloc.pricing_option_id,
+        ) ?? pricingOptions?.[0];
         return selectedPricing
           ? { ...alloc, pricing_option_id: selectedPricing.pricing_option_id }
           : alloc;
@@ -4265,6 +4532,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   const catalog = getCatalog();
   const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
   overlaySeededProducts(session, productMap);
+  overlayNegotiatedPricingOptions(session, productMap);
 
   // Validate metric-kind optimization_goals against the package's product
   // metric_optimization declarations. reach goals must declare a reach_unit
