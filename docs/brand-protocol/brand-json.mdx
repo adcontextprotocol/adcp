@@ -1383,7 +1383,7 @@ These invariants MUST be enforced by validators and crawlers; JSON Schema cannot
 **Resolution invariants**
 
 - **Compliance fields strictest-of.** For governance fields — including `data_subject_contestation`, `compliance_policies`, `policy_categories`, audience exclusions, regulated-category flags, and brand-level `disclaimers[]` that the house also publishes — the resolved value is the union/strictest of house-level and brand-level. Brand-level publishers MUST NOT rely on weakening house-level assertions. This is distinct from relationship trust — strictest-of is a resolution rule, not a trust gate.
-- **Edge aging.** Mutual-assertion edges SHOULD be aged: consumers SHOULD treat an edge as one-sided when the gap between the publisher-declared `brand_refs[].effective_at` (or, if absent, the consumer's first observation) and the last successful re-validation exceeds the consumer's chosen TTL. AAO's reference crawler ages at 180 days; consumers MAY choose differently.
+- **Edge aging.** Mutual-assertion edges SHOULD be aged on two independent clocks. Consumers SHOULD treat an edge as one-sided when the publisher-declared `brand_refs[].effective_at` (or, if absent, the consumer's durable first observation) exceeds the consumer's declaration-age ceiling, even if re-validation continues to succeed. A future `effective_at` is not active yet and MUST NOT extend trust before that time. Consumers SHOULD separately bound how long a previously confirmed edge may remain trusted while re-validation is unavailable. AgenticAdvertising.org's reference resolver uses a 180-day declaration-age ceiling and a 24-hour confirmation-retention window; consumers MAY choose stricter values.
 
 **Self-healing**
 

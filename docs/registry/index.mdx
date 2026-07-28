@@ -128,12 +128,12 @@ A domain is authoritative for its own identity — TLS proves the document came 
 |---|---|
 | `inline` | The house's own document defines the brand. |
 | `mutual` | Both sides publish the relationship. The trust-extending edge. |
-| `leaf_only` | The brand claims a house that has not named it back. See `claimed_house_domain`. |
+| `leaf_only` | The brand claims a house whose reciprocal declaration is missing, not yet active, or older than the resolver's trust ceiling. See `claimed_house_domain`. |
 | `house_only` | A house claims the brand, which has not claimed the house. |
 | `standalone` | The brand claims no house. |
 | `unverifiable` | A claimed house exists but could not be checked. |
 
-`house_domain` is only set on a reciprocated relationship; a one-sided claim appears as `claimed_house_domain`. For `mutual`, `relationship_verified_at` records when both sides were last seen agreeing — it does not advance while the house side is unreachable, so you can age edges out on your own schedule.
+`house_domain` is only set on a trust-extending relationship; a one-sided claim appears as `claimed_house_domain`. For `mutual`, `relationship_verified_at` records when both sides were last seen agreeing — it does not advance while the house side is unreachable. `relationship_declared_at` records the house's `brand_refs[].effective_at`, falling back to the resolver's durable first observation when the publisher omits it. AgenticAdvertising.org's reference resolver requires both clocks to remain live: confirmation may be retained for at most 24 hours while the house is unreachable, and declarations age out after 180 days even when re-confirmation keeps succeeding. Future declarations remain `leaf_only` until their effective time. Callers can apply stricter policies to either timestamp.
 
 Following a redirect never lets a domain adopt a house's identity. When a domain's brand.json points at a house that does not name the domain back — in `properties[]` as `relationship: "owned"`, or in `brand_refs[]` — the response carries the claim (`claimed_house_domain` with `relationship_trust: leaf_only`) and no brand identity. A house that lists a domain with `direct`, `delegated`, or `ad_network` is declaring a monetization path, not ownership, so it does not resolve that domain's identity either. If you expected an identity here, the house is missing its half of the relationship.
 

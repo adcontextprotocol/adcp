@@ -384,6 +384,25 @@ jobs:
             --model claude-opus-4-8
             --effort high
 
+      - name: Inspect Argus execution trace
+        id: trace
+        if: always() && steps.ai-review.outcome != 'skipped'
+        continue-on-error: true
+        shell: bash
+        env:
+          EXECUTION_FILE: ${{ steps.ai-review.outputs.execution_file }}
+          RECOVERY_FILE: ${{ runner.temp }}/argus-recovered-review.md
+        run: |
+          set -euo pipefail
+          if [ -z "$EXECUTION_FILE" ] || [ ! -f "$EXECUTION_FILE" ]; then
+            echo "::warning::Argus execution trace is unavailable"
+            exit 0
+          fi
+          node .github/ai-review/inspect-execution.mjs \
+            "$EXECUTION_FILE" \
+            "$RECOVERY_FILE" \
+            "$GITHUB_OUTPUT"
+
       - name: Verify Argus posted a review
         id: verify
         if: always() && steps.app-token.outcome == 'success' && steps.review-route.outputs.skip != 'true' && steps.workflow-mod.outputs.modified != 'true' && steps.skip-check.outputs.skip != 'true'
@@ -402,6 +421,7 @@ jobs:
             --jq "[.[] | select(
               .user.login == \"${ARGUS_BOT_LOGIN}\"
               and (((.body // \"\") | contains(\"<!-- argus-skip:\")) | not)
+              and (((.body // \"\") | contains(\"<!-- argus-recovered-output -->\")) | not)
               and (((.body // \"\") | contains(\"Argus is **not auto-reviewing**\")) | not)
               and (((.body // \"\") | contains(\"Argus review could not complete\")) | not)
             )] | sort_by(.submitted_at) | last // {}")"
@@ -424,19 +444,41 @@ jobs:
           echo "review_posted=true" >> "$GITHUB_OUTPUT"
           echo "review_state=$STATE" >> "$GITHUB_OUTPUT"
 
-      - name: Comment on PR if Argus review failed
-        if: steps.review-route.outputs.skip != 'true' && steps.workflow-mod.outputs.modified != 'true' && steps.skip-check.outputs.skip != 'true' && (steps.ai-review.outcome == 'failure' || steps.verify.outputs.review_posted != 'true')
+      - name: Recover completed output or hand off failed review
+        if: steps.review-route.outputs.skip != 'true' && steps.workflow-mod.outputs.modified != 'true' && steps.skip-check.outputs.skip != 'true' && steps.verify.outputs.review_posted != 'true'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ARGUS_COMPLETED: ${{ steps.trace.outputs.completed }}
+          RECOVERY_AVAILABLE: ${{ steps.trace.outputs.recovery_available }}
+          RECOVERY_FILE: ${{ steps.trace.outputs.recovery_file }}
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
+            const fs = require('fs');
             const runUrl = process.env.RUN_URL;
+            const canRecover = process.env.ARGUS_COMPLETED === 'true'
+              && process.env.RECOVERY_AVAILABLE === 'true'
+              && process.env.RECOVERY_FILE
+              && fs.existsSync(process.env.RECOVERY_FILE);
+            const body = canRecover
+              ? [
+                  '⚠️ **Argus — recovered output; no formal verdict recorded.**',
+                  '',
+                  'The model completed its analysis but did not post the required GitHub review. Re-run Argus or have a human issue the verdict before merging.',
+                  '<!-- argus-recovered-output -->',
+                  '',
+                  fs.readFileSync(process.env.RECOVERY_FILE, 'utf8').trim(),
+                  '',
+                  `[View workflow run](${runUrl})`,
+                  '',
+                  '<sub>This is recovered output from the Argus AI review workflow.</sub>'
+                ].join('\n')
+              : `⚠️ **Argus review could not complete**\n\nThe automated review failed before producing a recoverable review body. A human reviewer should take this PR.\n\n[View workflow run](${runUrl})\n\n<sub>This is an automated message from the Argus AI review workflow.</sub>`;
             await github.rest.pulls.createReview({
               pull_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
               event: 'COMMENT',
-              body: `⚠️ **Argus review could not complete**\n\nThe automated review encountered an issue (possibly reached max turns, timed out, or failed to post the final \`gh pr review\`). A human reviewer should take this PR.\n\n[View workflow run](${runUrl})\n\n<sub>This is an automated message from the Argus AI review workflow.</sub>`
+              body
             })

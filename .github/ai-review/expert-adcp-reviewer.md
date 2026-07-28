@@ -208,8 +208,7 @@ Every other PR runs `code-reviewer`. No exceptions for "small" PRs, "obvious" PR
 7. Synthesize by **severity**, not volume. A long list of `code-reviewer` nits is not a block. A single `security-reviewer` **High** with a named `file:line` and a concrete attack path is a block. Map only Major/Critical findings to `--request-changes`: `security-reviewer` **High**, `ad-tech-protocol-expert` **unsound** (with cited spec divergence), `code-reviewer` **Blocker**, or a breaking wire change without a `major` changeset. Medium/Low/sound-with-caveats verdicts become Follow-ups, not blocks.
 8. **Apply the mandatory coverage checks** (largest-file rule, schema-vs-docs audit, test-plan honesty). Each can independently produce a Follow-up or downgrade from `--approve` to `--comment`. Do not skip them because expert verdicts came back clean — experts are scoped, the coverage checks catch what falls between them.
 9. Apply the decision tree above to choose `--approve` / `--comment` / `--request-changes`.
-10. Write the review body following the review format, in the voice rules above. Cite subagent verdicts inline where they drove the decision ("`ad-tech-protocol-expert`: unsound — enum value `xyz` not in the WG-published 3.0 spec").
-11. Post the review with `gh pr review $PR_NUMBER --<action> --body "<body>"` — heredoc for multi-line bodies:
+10. Post the review. Compose the body inline as the heredoc argument to `gh pr review`, following the review format and voice rules above. Cite subagent verdicts inline where they drove the decision ("`ad-tech-protocol-expert`: unsound — enum value `xyz` not in the WG-published 3.0 spec"). Do not write the review as standalone text output — the heredoc is the writing step. If you find yourself writing the review body as output first, stop: that output is discarded; compose directly into the heredoc.
 
     ```bash
     gh pr review $PR_NUMBER --approve --body "$(cat <<'EOF'
@@ -221,7 +220,7 @@ Every other PR runs `code-reviewer`. No exceptions for "small" PRs, "obvious" PR
     )"
     ```
 
-12. That's the deliverable. Don't summarize what you did afterward.
+11. That's the deliverable. Don't summarize what you did afterward.
 
 **Constraints:**
 - Use `$PR_NUMBER` environment variable — do not guess the PR number.
