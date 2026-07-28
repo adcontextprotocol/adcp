@@ -39,6 +39,14 @@
         ],
         "x-adcp-validation": {
           "verifier_constraints": {
+            "localization_capability_gate": {
+              "required_capability": "creative.localization",
+              "source_locale_set": "creative.localization.supported_locales",
+              "target_locale_set": "creative.localization.supported_locales",
+              "translation_mode_set": "creative.localization.translation_modes",
+              "target_count_ceiling": "creative.localization.max_target_variants_or_50",
+              "on_violation": "reject_before_mutation"
+            },
             "existing_localized_source_upsert": {
               "localization_omitted": "top_level_assets_must_equal_prior_source_assets",
               "source_assets_changed": "require_non_null_localization_or_null_removal",

@@ -153,7 +153,9 @@ Native localization is a library/trafficking capability, distinct from
 it only when `get_adcp_capabilities.creative.localization` is present. That
 capability returns the complete BCP 47 locale set accepted for the current
 caller, accepted translation modes, the target-variant ceiling, and whether
-provider review is per variant or creative-wide.
+provider review is per variant or creative-wide. Because exact
+`list_creatives` readback is part of the contract, advertising localization
+also requires `creative.has_creative_library: true`.
 
 `sync_creatives.creatives[].localization` makes every translation request
 explicit. It is the only localization write surface. Inline creatives on

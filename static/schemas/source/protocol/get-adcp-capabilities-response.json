@@ -1331,7 +1331,20 @@
           "description": "Optional. The AdCP canonical-formats catalog version this agent's runtime is built against (e.g., `3.1`, `3.2.0`). Lets buyer SDKs detect canonical-catalog skew between their generated types and the seller's actual support. SDKs MAY declare the version they were generated against (typically the AdCP version they ship for); when seller and SDK versions disagree, SDKs SHOULD soft-warn rather than fail (the open-enum semantics on `canonical-format-kind.json` make unknown canonicals safe to retain, so skew is not a hard error — it just means the older side might not understand newer canonical values). Omitted by sellers who haven't yet generated against a versioned catalog; absence is interpreted as the AdCP version advertised by the broader capabilities response."
         }
       },
-      "additionalProperties": true
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "if": {
+            "required": ["localization"]
+          },
+          "then": {
+            "properties": {
+              "has_creative_library": { "type": "boolean", "const": true }
+            },
+            "required": ["has_creative_library"]
+          }
+        }
+      ]
     },
     "request_signing": {
       "type": "object",

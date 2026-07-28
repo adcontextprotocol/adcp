@@ -2898,6 +2898,15 @@ async function runTests() {
     'sync_creatives accepts explicit buyer-supplied locale variants'
   );
 
+  testValidationAnnotation(
+    '/schemas/core/locale-tag.json',
+    {
+      canonical_form: 'rfc5646',
+      non_canonical: 'reject'
+    },
+    'Locale tags expose machine-readable RFC 5646 canonical-form enforcement'
+  );
+
   await testSchemaValidation(
     '/schemas/creative/sync-creatives-request.json',
     localizedSyncRequest({
@@ -2947,6 +2956,14 @@ async function runTests() {
     '/schemas/creative/sync-creatives-request.json',
     ['properties', 'creatives', 'items'],
     {
+      localization_capability_gate: {
+        required_capability: 'creative.localization',
+        source_locale_set: 'creative.localization.supported_locales',
+        target_locale_set: 'creative.localization.supported_locales',
+        translation_mode_set: 'creative.localization.translation_modes',
+        target_count_ceiling: 'creative.localization.max_target_variants_or_50',
+        on_violation: 'reject_before_mutation'
+      },
       existing_localized_source_upsert: {
         localization_omitted: 'top_level_assets_must_equal_prior_source_assets',
         source_assets_changed: 'require_non_null_localization_or_null_removal',
@@ -3396,6 +3413,20 @@ async function runTests() {
     'list_creatives returns complete localized state with one provider creative ID'
   );
 
+  const localizedCanonicalListItem = structuredClone(localizedListItem);
+  delete localizedCanonicalListItem.format_id;
+  localizedCanonicalListItem.format_kind = 'image';
+  await testSchemaValidation(
+    '/schemas/creative/list-creatives-response.json',
+    {
+      status: 'completed',
+      query_summary: { total_matching: 1, returned: 1 },
+      pagination: { has_more: false },
+      creatives: [localizedCanonicalListItem]
+    },
+    'Localized list readback composes with canonical format identity'
+  );
+
   const localizedListWithoutPlatformId = structuredClone(localizedListItem);
   delete localizedListWithoutPlatformId.platform_id;
   await testSchemaRejection(
@@ -3452,27 +3483,46 @@ async function runTests() {
     'Changed source assets are accepted with explicit localization removal'
   );
 
+  const localizedCapabilitiesResponse = {
+    adcp_version: '3.1',
+    status: 'completed',
+    adcp: {
+      major_versions: [3],
+      idempotency: { supported: true, replay_ttl_seconds: 86400 }
+    },
+    supported_protocols: ['creative'],
+    creative: {
+      has_creative_library: true,
+      localization: {
+        supported_locales: ['en-US', 'es-ES'],
+        translation_modes: ['buyer_supplied'],
+        max_target_variants: 10,
+        review_scope: 'per_variant'
+      }
+    }
+  };
   await testSchemaValidation(
     '/schemas/protocol/get-adcp-capabilities-response.json',
-    {
-      adcp_version: '3.1',
-      status: 'completed',
-      adcp: {
-        major_versions: [3],
-        idempotency: { supported: true, replay_ttl_seconds: 86400 }
-      },
-      supported_protocols: ['creative'],
-      creative: {
-        localization: {
-          supported_locales: ['en-US', 'es-ES'],
-          translation_modes: ['buyer_supplied'],
-          max_target_variants: 10,
-          review_scope: 'per_variant'
-        }
-      }
-    },
+    localizedCapabilitiesResponse,
     'Capabilities advertise discoverable locale and review support'
   );
+
+  for (const [libraryValue, description] of [
+    [undefined, 'Localization capability requires an explicit creative library capability'],
+    [false, 'Localization capability rejects has_creative_library false']
+  ]) {
+    const invalidCapabilities = structuredClone(localizedCapabilitiesResponse);
+    if (libraryValue === undefined) {
+      delete invalidCapabilities.creative.has_creative_library;
+    } else {
+      invalidCapabilities.creative.has_creative_library = libraryValue;
+    }
+    await testSchemaRejection(
+      '/schemas/protocol/get-adcp-capabilities-response.json',
+      invalidCapabilities,
+      description
+    );
+  }
   log('');
 
   // Print results
