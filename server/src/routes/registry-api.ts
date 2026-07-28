@@ -566,7 +566,7 @@ registry.registerPath({
   operationId: "resolveBrand",
   summary: "Resolve brand",
   description:
-    "Resolve a domain to its canonical brand identity. Follows brand.json redirects and returns the resolved brand with its house, architecture type, and optional manifest.",
+    "Resolve a domain to its canonical brand identity. Follows brand.json redirects and returns the resolved brand with its house, architecture type, and optional manifest. The domain must be a bare DNS hostname.\n\n**Rate limit:** 60 requests per minute per IP address.",
   tags: ["Brand Resolution"],
   request: {
     query: z.object({
@@ -576,7 +576,9 @@ registry.registerPath({
   },
   responses: {
     200: { description: "Brand resolved successfully", content: { "application/json": { schema: ResolvedBrandSchema } } },
+    400: { description: "Invalid or missing domain", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "Brand not found", content: { "application/json": { schema: z.object({ error: z.string(), domain: z.string(), file_status: z.number().optional().openapi({ description: "HTTP status code from brand.json fetch (e.g. 404 vs 200 with invalid data)" }) }) } } },
+    429: { description: "Rate limit exceeded", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -593,6 +595,7 @@ registry.registerPath({
   },
   responses: {
     200: { description: "Bulk resolution results", content: { "application/json": { schema: z.object({ results: z.record(z.string(), ResolvedBrandSchema.nullable()) }) } } },
+    400: { description: "Invalid domain list", content: { "application/json": { schema: ErrorSchema } } },
     429: { description: "Rate limit exceeded", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
@@ -602,7 +605,7 @@ registry.registerPath({
   path: "/api/brands/brand-json",
   operationId: "getBrandJson",
   summary: "Get brand.json",
-  description: "Fetch the raw brand.json file for a domain.",
+  description: "Fetch the raw brand.json file for a bare DNS hostname.\n\n**Rate limit:** 60 requests per minute per IP address.",
   tags: ["Brand Resolution"],
   request: {
     query: z.object({
@@ -645,7 +648,9 @@ registry.registerPath({
         },
       },
     },
+    400: { description: "Invalid or missing domain", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "Brand not found", content: { "application/json": { schema: ErrorSchema } } },
+    429: { description: "Rate limit exceeded", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -803,6 +808,34 @@ function stripLegacyBrandContext(manifest: unknown): Record<string, unknown> | u
   if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) return undefined;
   const { brand_context: _brandContext, ...publicManifest } = manifest as Record<string, unknown>;
   return publicManifest;
+}
+
+function storedBrandJsonVariant(
+  manifest: Record<string, unknown> | undefined,
+): 'house_portfolio' | 'brand_canonical' | undefined {
+  if (!manifest) return undefined;
+  if (
+    manifest.house &&
+    typeof manifest.house === 'object' &&
+    !Array.isArray(manifest.house) &&
+    (Array.isArray(manifest.brands) || Array.isArray(manifest.brand_refs))
+  ) {
+    return 'house_portfolio';
+  }
+  if (typeof manifest.id === 'string' && Array.isArray(manifest.names)) {
+    return 'brand_canonical';
+  }
+  return undefined;
+}
+
+function resolvedStoredBrandSource(brand: {
+  workos_organization_id?: string;
+  domain_verified?: boolean;
+  source_type: 'brand_json' | 'community' | 'enriched';
+}): 'hosted' | 'brand_json' | 'community' | 'enriched' {
+  return brand.workos_organization_id && brand.domain_verified === true
+    ? 'hosted'
+    : brand.source_type;
 }
 
 registry.registerPath({
@@ -4098,10 +4131,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
   router.get("/brands/resolve", registryReadRateLimiter, async (req, res) => {
     try {
-      const domain = req.query.domain as string;
+      const domain = typeof req.query.domain === 'string'
+        ? req.query.domain.trim().toLowerCase()
+        : '';
       const fresh = req.query.fresh === "true";
-      if (!domain) {
-        return res.status(400).json({ error: "domain parameter required" });
+      if (!isValidDomain(domain)) {
+        return res.status(400).json({ error: "Invalid domain format" });
       }
 
       const resolved = await brandManager.resolveBrand(domain, { skipCache: fresh });
@@ -4121,7 +4156,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             canonical_id: discovered.canonical_domain || discovered.domain,
             canonical_domain: discovered.canonical_domain || discovered.domain,
             brand_name: discovered.brand_name,
-            source: discovered.workos_organization_id ? 'hosted' : discovered.source_type,
+            source: resolvedStoredBrandSource(discovered),
             brand_manifest: stripLegacyBrandContext(discovered.brand_manifest),
             ...(liveValidation ? {
               live_brand_json: serializeBrandValidation(liveValidation),
@@ -4215,8 +4250,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     try {
       const domain = ((req.query.domain as string) || "").toLowerCase();
       const fresh = req.query.fresh === "true";
-      const domainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
-      if (!domain || !domainPattern.test(domain)) {
+      if (!isValidDomain(domain)) {
         return res.status(400).json({ error: "Invalid domain format" });
       }
 
@@ -4247,7 +4281,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         const data = { name: brand.brand_name || domain, ...manifest };
         const enrichedData = await enrichBrandDataWithVerification(data);
 
-        const variant = brand.source_type === "brand_json" ? "house_portfolio" : undefined;
+        const variant = brand.source_type === "brand_json"
+          ? storedBrandJsonVariant(manifest)
+          : undefined;
         const url = brand.source_type === "brand_json"
           ? `https://${domain}/.well-known/brand.json`
           : `https://agenticadvertising.org/brands/${domain}/brand.json`;
@@ -4384,13 +4420,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       if (domains.length > 100) {
         return res.status(400).json({ error: "Maximum 100 domains per request" });
       }
-      if (!domains.every((d: unknown) => typeof d === "string" && d.length > 0)) {
-        return res.status(400).json({ error: "All domains must be non-empty strings" });
+      if (!domains.every((d: unknown) =>
+        typeof d === "string" && isValidDomain(d.trim().toLowerCase())
+      )) {
+        return res.status(400).json({ error: "All domains must be bare multi-label DNS hostnames" });
       }
 
       const CONCURRENCY = 10;
       const results: Record<string, unknown> = {};
-      const uniqueDomains = [...new Set(domains.map((d: string) => d.toLowerCase()))];
+      const uniqueDomains = [...new Set(domains.map((d: string) => d.trim().toLowerCase()))];
 
       for (let i = 0; i < uniqueDomains.length; i += CONCURRENCY) {
         const batch = uniqueDomains.slice(i, i + CONCURRENCY);
@@ -4413,7 +4451,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
                   canonical_id: discovered.canonical_domain || discovered.domain,
                   canonical_domain: discovered.canonical_domain || discovered.domain,
                   brand_name: discovered.brand_name,
-                  source: discovered.workos_organization_id ? 'hosted' : discovered.source_type,
+                  source: resolvedStoredBrandSource(discovered),
                   brand_manifest: stripLegacyBrandContext(discovered.brand_manifest),
                 },
               };

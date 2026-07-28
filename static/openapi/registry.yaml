@@ -4666,7 +4666,10 @@ paths:
     get:
       operationId: resolveBrand
       summary: Resolve brand
-      description: Resolve a domain to its canonical brand identity. Follows brand.json redirects and returns the resolved brand with its house, architecture type, and optional manifest.
+      description: |-
+        Resolve a domain to its canonical brand identity. Follows brand.json redirects and returns the resolved brand with its house, architecture type, and optional manifest. The domain must be a bare DNS hostname.
+
+        **Rate limit:** 60 requests per minute per IP address.
       tags:
         - Brand Resolution
       parameters:
@@ -4691,6 +4694,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ResolvedBrand"
+        "400":
+          description: Invalid or missing domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Brand not found
           content:
@@ -4708,6 +4717,12 @@ paths:
                 required:
                   - error
                   - domain
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/brands/resolve/bulk:
     post:
       operationId: resolveBrandsBulk
@@ -4749,6 +4764,12 @@ paths:
                             - "null"
                 required:
                   - results
+        "400":
+          description: Invalid domain list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "429":
           description: Rate limit exceeded
           content:
@@ -4759,7 +4780,10 @@ paths:
     get:
       operationId: getBrandJson
       summary: Get brand.json
-      description: Fetch the raw brand.json file for a domain.
+      description: |-
+        Fetch the raw brand.json file for a bare DNS hostname.
+
+        **Rate limit:** 60 requests per minute per IP address.
       tags:
         - Brand Resolution
       parameters:
@@ -4859,8 +4883,20 @@ paths:
                   - domain
                   - url
                   - data
+        "400":
+          description: Invalid or missing domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Brand not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
           content:
             application/json:
               schema:

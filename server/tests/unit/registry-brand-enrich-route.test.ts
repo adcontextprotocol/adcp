@@ -323,12 +323,13 @@ describe('public registry brand read paths', () => {
     expect(res.body.brand_manifest).toEqual({ name: 'Acme', url: 'https://acme.com' });
   });
 
-  it('distinguishes owner-registered fallback records from community records', async () => {
+  it('reports verified owner-registered fallback records as hosted', async () => {
     const brandDb = {
       getDiscoveredBrandByDomain: vi.fn().mockResolvedValue({
         ...discoveredBrandWithContext(),
         source_type: 'community',
         workos_organization_id: 'org_owner',
+        domain_verified: true,
       }),
       upsertDiscoveredBrand: vi.fn(),
     };
@@ -337,6 +338,38 @@ describe('public registry brand read paths', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.source).toBe('hosted');
+  });
+
+  it('does not report an unverified organization-attributed record as hosted', async () => {
+    const brandDb = {
+      getDiscoveredBrandByDomain: vi.fn().mockResolvedValue({
+        ...discoveredBrandWithContext(),
+        source_type: 'community',
+        workos_organization_id: 'org_unverified',
+        domain_verified: false,
+      }),
+      upsertDiscoveredBrand: vi.fn(),
+    };
+
+    const res = await request(buildApp(brandDb)).get('/api/brands/resolve?domain=acme.com');
+
+    expect(res.status).toBe(200);
+    expect(res.body.source).toBe('community');
+  });
+
+  it('rejects path and port lookup inputs before brand resolution', async () => {
+    const resolveBrand = vi.fn().mockResolvedValue(null);
+    const brandDb = {
+      getDiscoveredBrandByDomain: vi.fn().mockResolvedValue(null),
+      upsertDiscoveredBrand: vi.fn(),
+    };
+
+    const res = await request(buildApp(brandDb, false, { resolveBrand }))
+      .get('/api/brands/resolve?domain=public.example%3A8443%2Fadmin');
+
+    expect(res.status).toBe(400);
+    expect(resolveBrand).not.toHaveBeenCalled();
+    expect(brandDb.getDiscoveredBrandByDomain).not.toHaveBeenCalled();
   });
 
   it('surfaces live brand.json diagnostics when fresh resolution falls back', async () => {
@@ -383,6 +416,21 @@ describe('public registry brand read paths', () => {
     expect(res.body.results['acme.com'].brand_manifest).toEqual({ name: 'Acme', url: 'https://acme.com' });
   });
 
+  it('rejects non-hostname inputs from bulk resolution', async () => {
+    const resolveBrand = vi.fn().mockResolvedValue(null);
+    const brandDb = {
+      getDiscoveredBrandByDomain: vi.fn().mockResolvedValue(null),
+      upsertDiscoveredBrand: vi.fn(),
+    };
+
+    const res = await request(buildApp(brandDb, false, { resolveBrand }))
+      .post('/api/brands/resolve/bulk')
+      .send({ domains: ['acme.com', 'public.example:8443/admin'] });
+
+    expect(res.status).toBe(400);
+    expect(resolveBrand).not.toHaveBeenCalled();
+  });
+
   it('strips legacy brand_context from /api/brands/brand-json cached data', async () => {
     const brandDb = {
       getDiscoveredBrandByDomain: vi.fn().mockResolvedValue(discoveredBrandWithContext()),
@@ -393,6 +441,27 @@ describe('public registry brand read paths', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data).toEqual({ name: 'Acme', url: 'https://acme.com' });
+  });
+
+  it('reports a cached canonical document with the canonical variant', async () => {
+    const brandDb = {
+      getDiscoveredBrandByDomain: vi.fn().mockResolvedValue({
+        ...discoveredBrandWithContext(),
+        source_type: 'brand_json',
+        brand_manifest: {
+          $schema: 'https://adcontextprotocol.org/schemas/v3/brand.json',
+          id: 'acme',
+          names: [{ en: 'Acme' }],
+          properties: [{ type: 'website', identifier: 'acme.com', relationship: 'owned' }],
+        },
+      }),
+      upsertDiscoveredBrand: vi.fn(),
+    };
+
+    const res = await request(buildApp(brandDb)).get('/api/brands/brand-json?domain=acme.com');
+
+    expect(res.status).toBe(200);
+    expect(res.body.variant).toBe('brand_canonical');
   });
 
   it('surfaces live validation diagnostics when fresh brand-json falls back to cached data', async () => {

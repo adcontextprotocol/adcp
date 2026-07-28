@@ -122,8 +122,46 @@ describe('BrandManager caching', () => {
       expect((await manager.validateDomain('stable.example')).valid).toBe(true);
       expect((await manager.validateDomain('stable.example', { skipCache: true })).valid).toBe(false);
       expect(manager.getLastValidationResult('stable.example')?.status_code).toBe(503);
+      expect(manager.getLastValidationResult('stable.example')?.raw_data).toBeUndefined();
       expect((await manager.validateDomain('stable.example')).valid).toBe(true);
       expect(mockedSafeFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('rejects non-hostname lookup inputs without issuing a request', async () => {
+      const result = await manager.validateDomain('public.example:8443/admin?probe=true');
+
+      expect(result.valid).toBe(false);
+      expect(result.errors).toEqual(expect.arrayContaining([
+        expect.objectContaining({ field: 'domain' }),
+      ]));
+      expect(mockedSafeFetch).not.toHaveBeenCalled();
+    });
+
+    it('bounds and expires body-free validation diagnostics', () => {
+      vi.useFakeTimers();
+      const recordAttempt = (manager as unknown as {
+        recordLastValidationAttempt(domain: string, result: Record<string, unknown>): void;
+      }).recordLastValidationAttempt.bind(manager);
+      try {
+        for (let i = 0; i <= 500; i++) {
+          recordAttempt(`brand-${i}.example`, {
+            valid: true,
+            errors: [],
+            warnings: [],
+            domain: `brand-${i}.example`,
+            url: `https://brand-${i}.example/.well-known/brand.json`,
+            raw_data: { oversized: 'not retained' },
+          });
+        }
+
+        expect(manager.getLastValidationResult('brand-0.example')).toBeUndefined();
+        expect(manager.getLastValidationResult('brand-500.example')).not.toHaveProperty('raw_data');
+
+        vi.advanceTimersByTime(5 * 60 * 1000);
+        expect(manager.getLastValidationResult('brand-500.example')).toBeUndefined();
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('promotes the narrow legacy portfolio shape without inventing trust relationships', async () => {
@@ -143,6 +181,7 @@ describe('BrandManager caching', () => {
             properties: [
               { type: 'website', identifier: 'example.com', relationship: 'owned' },
               { type: 'website', identifier: 'alias.example' },
+              { type: 'website', identifier: 'distribution.example', relationship: 'direct' },
             ],
           },
           {
@@ -180,6 +219,7 @@ describe('BrandManager caching', () => {
       ]);
       expect(promoted.legacy_properties).toEqual([
         { type: 'website', identifier: 'alias.example' },
+        { type: 'website', identifier: 'distribution.example', relationship: 'direct' },
       ]);
       expect(promoted.legacy_metadata.unpromoted_brands[0].id).toBe('partner');
       expect(promoted.legacy_metadata.legal_operator).toEqual(legacyBrandJson.legal_operator);
@@ -229,6 +269,34 @@ describe('BrandManager caching', () => {
       });
       expect((result.raw_data as Record<string, any>).legacy_properties[0].relationship)
         .toBe('registered_account_operator');
+    });
+
+    it('rejects ambiguous legacy identity when the origin property is duplicated', async () => {
+      const legacyBrandJson = {
+        $schema: 'https://schemas.adcontextprotocol.org/brand/v1/brand.json',
+        brands: [{
+          id: 'ambiguous',
+          name: 'Ambiguous',
+          properties: [
+            { type: 'website', identifier: 'ambiguous.example', relationship: 'owned' },
+            { type: 'website', identifier: 'ambiguous.example', relationship: 'owned' },
+          ],
+        }],
+      };
+      mockedSafeFetch.mockResolvedValueOnce({
+        status: 200,
+        data: Buffer.from(JSON.stringify(legacyBrandJson)),
+      });
+
+      const result = await manager.validateDomain('ambiguous.example');
+
+      expect(result.valid).toBe(false);
+      expect(result.warnings).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          field: 'brands',
+          message: expect.stringContaining('found 2'),
+        }),
+      ]));
     });
 
     it.each([
@@ -541,6 +609,39 @@ describe('BrandManager caching', () => {
         house_name: 'Example House',
         relationship_trust: 'mutual',
       });
+    });
+
+    it('verifies a canonical house claim through an authoritative_location portfolio', async () => {
+      const canonical = {
+        id: 'leaf',
+        names: [{ en: 'Leaf Brand' }],
+        house_domain: 'house.example',
+      };
+      const pointer = {
+        authoritative_location: 'https://cdn.house.example/portfolio/brand.json',
+      };
+      const portfolio = {
+        house: { domain: 'house.example', name: 'Example House' },
+        brand_refs: [{ domain: 'leaf.example', brand_id: 'leaf' }],
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(pointer)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(portfolio)) });
+
+      const result = await manager.resolveBrand('leaf.example');
+
+      expect(result).toMatchObject({
+        house_domain: 'house.example',
+        claimed_house_domain: 'house.example',
+        house_name: 'Example House',
+        relationship_trust: 'mutual',
+      });
+      expect(mockedSafeFetch).toHaveBeenNthCalledWith(
+        3,
+        pointer.authoritative_location,
+        expect.objectContaining({ sameSiteRedirectsOnly: true }),
+      );
     });
 
     it('fetches authoritative_location at the exact published URL', async () => {

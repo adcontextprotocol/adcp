@@ -12,6 +12,7 @@ import type {
 } from './types';
 import { AAO_UA_VALIDATOR } from './config/user-agents.js';
 import { withSdkSafeTransport } from './utils/sdk-safe-fetch.js';
+import { assertValidBrandDomain } from './services/identifier-normalization.js';
 
 export interface BrandValidationError {
   field: string;
@@ -119,7 +120,13 @@ export type BrandJson =
 
 const LEGACY_BRAND_SCHEMA = 'https://schemas.adcontextprotocol.org/brand/v1/brand.json';
 const CURRENT_BRAND_SCHEMA = 'https://adcontextprotocol.org/schemas/v3/brand.json';
-const PROPERTY_RELATIONSHIPS = new Set(['owned', 'direct', 'delegated', 'ad_network']);
+const LAST_VALIDATION_ATTEMPT_TTL_MS = 5 * 60 * 1000;
+const LAST_VALIDATION_ATTEMPT_MAX_ENTRIES = 500;
+
+interface LastValidationAttemptEntry {
+  value: BrandValidationResult;
+  expiresAt: number;
+}
 
 export interface BrandAgentValidationResult {
   agent_url: string;
@@ -140,7 +147,7 @@ export class BrandManager {
   // Most recent network attempt per domain, including fresh failures. Used to
   // report the attempt that actually caused a fallback instead of an older
   // positive cache entry.
-  private lastValidationAttempt = new Map<string, BrandValidationResult>();
+  private lastValidationAttempt = new Map<string, LastValidationAttemptEntry>();
 
   constructor() {
     this.validationCache = new Cache<BrandValidationResult>(24 * 60); // 24 hours
@@ -170,17 +177,56 @@ export class BrandManager {
   }
 
   getLastValidationResult(domain: string): BrandValidationResult | undefined {
-    const normalized = domain.replace(/^https?:\/\//, '').replace(/\/$/, '').toLowerCase();
-    return this.lastValidationAttempt.get(normalized);
+    const normalized = domain.trim().toLowerCase();
+    const entry = this.lastValidationAttempt.get(normalized);
+    if (!entry) return undefined;
+    if (entry.expiresAt <= Date.now()) {
+      this.lastValidationAttempt.delete(normalized);
+      return undefined;
+    }
+    return entry.value;
+  }
+
+  private recordLastValidationAttempt(domain: string, result: BrandValidationResult): void {
+    const normalized = domain.trim().toLowerCase();
+    const { raw_data: _rawData, ...withoutRawData } = result;
+    const diagnostic: BrandValidationResult = {
+      ...withoutRawData,
+      errors: result.errors.slice(0, 20),
+      warnings: result.warnings.slice(0, 20),
+    };
+
+    // Refresh insertion order so the cap evicts the least-recently recorded
+    // domain. The diagnostic cache intentionally never retains response bodies.
+    this.lastValidationAttempt.delete(normalized);
+    this.lastValidationAttempt.set(normalized, {
+      value: diagnostic,
+      expiresAt: Date.now() + LAST_VALIDATION_ATTEMPT_TTL_MS,
+    });
+    while (this.lastValidationAttempt.size > LAST_VALIDATION_ATTEMPT_MAX_ENTRIES) {
+      const oldestKey = this.lastValidationAttempt.keys().next().value;
+      if (oldestKey === undefined) break;
+      this.lastValidationAttempt.delete(oldestKey);
+    }
+  }
+
+  private normalizeLookupDomain(domain: string): string | null {
+    const normalized = domain.trim().toLowerCase();
+    try {
+      assertValidBrandDomain(normalized);
+      return normalized;
+    } catch {
+      return null;
+    }
   }
 
   /**
    * Promote the narrowly identified pre-v3 shape used by early integrations.
    *
    * The legacy schema URL was never part of the canonical AdCP schema tree, so
-   * this adapter intentionally does not guess at trust semantics. Unsupported
-   * property relationships are preserved as opaque legacy data and excluded
-   * from active v3 properties instead of being rewritten as ownership claims.
+   * this adapter intentionally does not guess at trust semantics. Only the
+   * exact TLS-origin identity property is active; every other legacy property
+   * is preserved opaquely instead of being rewritten as a v3 trust claim.
    */
   private normalizeLegacyBrandJson(
     data: unknown,
@@ -202,39 +248,44 @@ export class BrandManager {
 
     // Compatibility promotion is identity-only. Require exactly one explicit
     // website match to the TLS origin; never infer identity from array position.
-    const originMatches = brands.filter((brand) => {
-      if (!Array.isArray(brand.properties)) return false;
-      return brand.properties.some((property) =>
-        this.isRecord(property) &&
-        property.type === 'website' &&
-        typeof property.identifier === 'string' &&
-        property.identifier.toLowerCase() === originDomain &&
-        property.relationship === 'owned'
-      );
-    });
+    const originMatches: Array<{ brand: Record<string, unknown>; brandIndex: number; propertyIndex: number }> = [];
+    for (const [brandIndex, brand] of brands.entries()) {
+      if (!Array.isArray(brand.properties)) continue;
+      for (const [propertyIndex, property] of brand.properties.entries()) {
+        if (
+          this.isRecord(property) &&
+          property.type === 'website' &&
+          typeof property.identifier === 'string' &&
+          property.identifier.toLowerCase() === originDomain &&
+          property.relationship === 'owned'
+        ) {
+          originMatches.push({ brand, brandIndex, propertyIndex });
+        }
+      }
+    }
 
     if (originMatches.length !== 1) {
       warnings.push({
         field: 'brands',
-        message: `Legacy promotion requires exactly one website property matching ${originDomain}; found ${originMatches.length}`,
+        message: `Legacy promotion requires exactly one owned website property matching ${originDomain}; found ${originMatches.length}`,
       });
       return { data, warnings, promotedFromSchema: LEGACY_BRAND_SCHEMA };
     }
 
-    const originBrand = structuredClone(originMatches[0]);
-    const originIndex = brands.indexOf(originMatches[0]);
+    const originMatch = originMatches[0];
+    const originBrand = structuredClone(originMatch.brand);
+    const originIndex = originMatch.brandIndex;
     const legacyProperties: unknown[] = [];
     const activeProperties: unknown[] = [];
     for (const [propertyIndex, property] of (
       Array.isArray(originBrand.properties) ? originBrand.properties : []
     ).entries()) {
-      const relationship = this.isRecord(property) ? property.relationship : undefined;
-      if (typeof relationship !== 'string' || !PROPERTY_RELATIONSHIPS.has(relationship)) {
+      if (propertyIndex !== originMatch.propertyIndex) {
         legacyProperties.push(property);
         warnings.push({
-          field: `brands[${originIndex}].properties[${propertyIndex}].relationship`,
-          message: 'Preserved a property with missing or unsupported legacy relationship as opaque data; it was not promoted to a v3 trust assertion',
-          suggestion: 'Publish owned, direct, delegated, or ad_network explicitly',
+          field: `brands[${originIndex}].properties[${propertyIndex}]`,
+          message: 'Preserved a non-origin legacy property as opaque data; compatibility promotion does not turn it into a v3 trust assertion',
+          suggestion: `Publish the property explicitly in a ${CURRENT_BRAND_SCHEMA} document`,
         });
       } else {
         activeProperties.push(property);
@@ -288,7 +339,7 @@ export class BrandManager {
         message: `Preserved legacy ${key} as opaque metadata; it is not treated as v3 trust evidence`,
       });
     }
-    const otherBrands = brands.filter((brand) => brand !== originMatches[0]);
+    const otherBrands = brands.filter((brand) => brand !== originMatch.brand);
     if (otherBrands.length > 0) {
       metadata.unpromoted_brands = otherBrands;
       warnings.push({
@@ -322,7 +373,22 @@ export class BrandManager {
    * Validates a domain's brand.json file
    */
   async validateDomain(domain: string, options?: { skipCache?: boolean }): Promise<BrandValidationResult> {
-    const normalizedDomain = domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const normalizedDomain = this.normalizeLookupDomain(domain);
+    if (!normalizedDomain) {
+      const invalidResult: BrandValidationResult = {
+        valid: false,
+        errors: [{
+          field: 'domain',
+          message: 'Domain must be a bare multi-label DNS hostname without a scheme, port, path, query, or fragment',
+          severity: 'error',
+        }],
+        warnings: [],
+        domain: domain.trim().toLowerCase(),
+        url: '',
+      };
+      this.recordLastValidationAttempt(domain, invalidResult);
+      return invalidResult;
+    }
     const cacheKey = normalizedDomain;
 
     // Check caches unless explicitly skipped
@@ -378,7 +444,7 @@ export class BrandManager {
         });
         // Cache failed lookups for 1 hour
         this.failedLookupCache.set(cacheKey, result);
-        this.lastValidationAttempt.set(cacheKey, result);
+        this.recordLastValidationAttempt(cacheKey, result);
         return result;
       }
 
@@ -393,7 +459,7 @@ export class BrandManager {
           severity: 'error',
         });
         this.failedLookupCache.set(cacheKey, result);
-        this.lastValidationAttempt.set(cacheKey, result);
+        this.recordLastValidationAttempt(cacheKey, result);
         return result;
       }
 
@@ -412,7 +478,7 @@ export class BrandManager {
       this.failedLookupCache.set(cacheKey, result);
     }
 
-    this.lastValidationAttempt.set(cacheKey, result);
+    this.recordLastValidationAttempt(cacheKey, result);
 
     return result;
   }
@@ -900,7 +966,8 @@ export class BrandManager {
     options: { maxRedirects?: number; skipCache?: boolean } = {}
   ): Promise<ResolvedBrand | null> {
     const { maxRedirects = 3, skipCache = false } = options;
-    const normalizedDomain = domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const normalizedDomain = this.normalizeLookupDomain(domain);
+    if (!normalizedDomain) return null;
     const cacheKey = `resolve:${normalizedDomain}`;
 
     // Check resolution cache unless explicitly skipped
@@ -919,7 +986,7 @@ export class BrandManager {
       const validationResult = currentUrl
         ? await this.validateBrandJsonUrl(currentUrl, currentDomain)
         : await this.validateDomain(currentDomain, { skipCache });
-      this.lastValidationAttempt.set(normalizedDomain, validationResult);
+      this.recordLastValidationAttempt(normalizedDomain, validationResult);
 
       if (!validationResult.valid || !validationResult.raw_data) {
         if (!skipCache) this.resolutionCache.set(cacheKey, null);
@@ -1129,7 +1196,7 @@ export class BrandManager {
     diagnosticDomain: string
   ): Promise<ResolvedBrand | null> {
     const validation = await this.validateCanonicalPointer(pointer.domain, options);
-    this.lastValidationAttempt.set(diagnosticDomain.toLowerCase(), validation);
+    this.recordLastValidationAttempt(diagnosticDomain, validation);
     if (
       !validation.valid ||
       validation.variant !== 'brand_canonical' ||
@@ -1236,8 +1303,9 @@ export class BrandManager {
     const seen = new Set<string>();
 
     for (let redirects = 0; redirects <= options.maxRedirects; redirects++) {
-      if (seen.has(current)) return { mutual: false };
-      seen.add(current);
+      const visitKey = currentUrl ? `url:${currentUrl}` : `domain:${current}`;
+      if (seen.has(visitKey)) return { mutual: false };
+      seen.add(visitKey);
       const validation = currentUrl
         ? await this.validateBrandJsonUrl(currentUrl, current)
         : await this.validateDomain(current, { skipCache: options.skipCache });
