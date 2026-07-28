@@ -1,7 +1,7 @@
 {
   "version": 1,
   "registry": "/schemas/registries/v1-canonical-mapping.json",
-  "registry_version": "1.1.0",
+  "registry_version": "1.1.1",
   "description": "Reference vectors for literal v1 format-id projection. Resolution uses the first exact format_id_glob match; these vectors do not provide a format definition for structural fallback.",
   "vectors": [
     {
@@ -35,9 +35,9 @@
       "expected_v2": { "canonical": "video_hosted", "parameters": { "width": 300, "height": 250 } }
     },
     {
-      "id": "hosted-video-16-by-9-30-seconds",
+      "id": "hosted-video-16-to-9-30-seconds",
       "format_id": "video_16x9_30s",
-      "expected_v2": { "canonical": "video_hosted", "parameters": { "width": 16, "height": 9, "duration_ms_exact": 30000 } }
+      "expected_v2": { "canonical": "video_hosted", "parameters": { "aspect_ratio": "16:9", "duration_ms_exact": 30000 } }
     },
     {
       "id": "vast-token-suffix-640-by-360",

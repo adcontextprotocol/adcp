@@ -74,4 +74,22 @@ describe('v1 canonical literal mapping vectors', () => {
   it('classifies the observed VAST suffix as video_vast', () => {
     expect(literalById.get('video_640x360_vast')?.canonical).toBe('video_vast');
   });
+
+  it('treats small NxN tokens as aspect ratios rather than pixel dimensions', () => {
+    for (const mapping of literalMappings) {
+      const match = mapping.v1_pattern.format_id_glob.match(/(?:^|_)(\d+)x(\d+)(?:_|$)/);
+      if (!match) continue;
+
+      const [, widthToken, heightToken] = match;
+      const width = Number(widthToken);
+      const height = Number(heightToken);
+      if (width >= 50 || height >= 50) continue;
+
+      expect(mapping.v2.parameters, mapping.v1_pattern.format_id_glob).toMatchObject({
+        aspect_ratio: `${widthToken}:${heightToken}`,
+      });
+      expect(mapping.v2.parameters, mapping.v1_pattern.format_id_glob).not.toHaveProperty('width');
+      expect(mapping.v2.parameters, mapping.v1_pattern.format_id_glob).not.toHaveProperty('height');
+    }
+  });
 });
