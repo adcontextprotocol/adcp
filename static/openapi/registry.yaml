@@ -89,8 +89,42 @@ components:
           type: string
         house_domain:
           type: string
+        claimed_house_domain:
+          type: string
+          description: House the requested domain claims. One-sided until the named house names it back, so it never extends relationship trust on its own.
         house_name:
           type: string
+        relationship_trust:
+          type: string
+          enum:
+            - inline
+            - mutual
+            - leaf_only
+            - house_only
+            - standalone
+            - unverifiable
+          description: "How the brand-to-house relationship was established. `inline`: the house's own document defines the brand. `mutual`: both sides publish the relationship — the trust-extending edge. `leaf_only`: the brand claims a house that has not reciprocated. `house_only`: a house claims the brand, which has not reciprocated. `standalone`: the brand claims no house. `unverifiable`: a claimed house could not be checked."
+        relationship_verified_at:
+          type: string
+          description: When both sides of a mutual relationship were last seen agreeing. Present only for `mutual`, and it does not advance while the house side is unreachable, so callers can apply their own edge-aging policy.
+          example: 2026-07-28T12:00:00Z
+        promoted_from_schema:
+          type: string
+          description: Set when a pre-v3 document was promoted to a canonical v3 document for this response. Identity only — legacy relationship data is preserved opaquely, never promoted to a trust claim.
+        migration_warnings:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+              suggestion:
+                type: string
+            required:
+              - field
+              - message
         brand_agent_url:
           type: string
         brand_manifest:
@@ -99,9 +133,57 @@ components:
         source:
           type: string
           enum:
+            - hosted
             - brand_json
             - community
             - enriched
+          description: "Where the record came from. `brand_json`: the domain's own /.well-known/brand.json. `hosted`: registered by an owner whose control of the domain was verified. `community`: contributed by a member. `enriched`: third-party enrichment."
+        live_brand_json:
+          type: object
+          properties:
+            valid:
+              type: boolean
+            url:
+              type: string
+            status_code:
+              type: integer
+            errors:
+              type: array
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                  message:
+                    type: string
+                  severity:
+                    type: string
+                    enum:
+                      - error
+                required:
+                  - field
+                  - message
+                  - severity
+            warnings:
+              type: array
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                  message:
+                    type: string
+                  suggestion:
+                    type: string
+                required:
+                  - field
+                  - message
+          required:
+            - valid
+            - url
+            - errors
+            - warnings
+          description: Live origin-validation diagnostics when fresh=true falls back to a stored registry record.
       required:
         - canonical_id
         - canonical_domain
@@ -4591,7 +4673,12 @@ paths:
     get:
       operationId: resolveBrand
       summary: Resolve brand
-      description: Resolve a domain to its canonical brand identity. Follows brand.json redirects and returns the resolved brand with its house, architecture type, and optional manifest.
+      description: |-
+        Resolve a domain to its canonical brand identity. Follows brand.json redirects and returns the resolved brand with its house, architecture type, and optional manifest. The domain must be a bare DNS hostname.
+
+        A domain is authoritative for its own identity, so `source` tells you who published the record and `relationship_trust` tells you whether a brand-to-house relationship was confirmed by both sides. Only `mutual` and `inline` are reciprocated; treat everything else as a claim.
+
+        **Rate limit:** 60 requests per minute per IP address.
       tags:
         - Brand Resolution
       parameters:
@@ -4606,7 +4693,9 @@ paths:
             enum:
               - "true"
               - "false"
+            description: Bypass the resolution cache and refetch from the origin. When a fresh fetch fails and a stored record is returned instead, `live_brand_json` carries that fetch's diagnostics.
           required: false
+          description: Bypass the resolution cache and refetch from the origin. When a fresh fetch fails and a stored record is returned instead, `live_brand_json` carries that fetch's diagnostics.
           name: fresh
           in: query
       responses:
@@ -4616,6 +4705,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ResolvedBrand"
+        "400":
+          description: Invalid or missing domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Brand not found
           content:
@@ -4633,14 +4728,20 @@ paths:
                 required:
                   - error
                   - domain
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/brands/resolve/bulk:
     post:
       operationId: resolveBrandsBulk
       summary: Bulk resolve brands
       description: |-
-        Resolve up to 100 domains to their canonical brand identities in a single request.
+        Resolve up to 25 domains to their canonical brand identities in a single request. Unresolvable domains map to `null`.
 
-        **Rate limit:** 20 requests per minute per IP address.
+        **Rate limits:** 20 requests and 100 unique domain resolutions per minute per IP address. Request bodies are capped at 16 KB.
       tags:
         - Brand Resolution
       requestBody:
@@ -4653,7 +4754,7 @@ paths:
                   type: array
                   items:
                     type: string
-                  maxItems: 100
+                  maxItems: 25
               required:
                 - domains
       responses:
@@ -4674,8 +4775,26 @@ paths:
                             - "null"
                 required:
                   - results
+        "400":
+          description: Invalid domain list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "413":
+          description: Request body over 16 KB
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "429":
           description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Too much resolution work is already queued
           content:
             application/json:
               schema:
@@ -4684,7 +4803,10 @@ paths:
     get:
       operationId: getBrandJson
       summary: Get brand.json
-      description: Fetch the raw brand.json file for a domain.
+      description: |-
+        Fetch the raw brand.json file for a bare DNS hostname.
+
+        **Rate limit:** 60 requests per minute per IP address.
       tags:
         - Brand Resolution
       parameters:
@@ -4722,13 +4844,82 @@ paths:
                   warnings:
                     type: array
                     items:
-                      type: string
+                      type: object
+                      properties:
+                        field:
+                          type: string
+                        message:
+                          type: string
+                        suggestion:
+                          type: string
+                      required:
+                        - field
+                        - message
+                  promoted_from_schema:
+                    type: string
+                  live_brand_json:
+                    type: object
+                    properties:
+                      valid:
+                        type: boolean
+                      url:
+                        type: string
+                      status_code:
+                        type: integer
+                      errors:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            field:
+                              type: string
+                            message:
+                              type: string
+                            severity:
+                              type: string
+                              enum:
+                                - error
+                          required:
+                            - field
+                            - message
+                            - severity
+                      warnings:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            field:
+                              type: string
+                            message:
+                              type: string
+                            suggestion:
+                              type: string
+                          required:
+                            - field
+                            - message
+                    required:
+                      - valid
+                      - url
+                      - errors
+                      - warnings
                 required:
                   - domain
                   - url
                   - data
+        "400":
+          description: Invalid or missing domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Brand not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
           content:
             application/json:
               schema:

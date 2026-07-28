@@ -62,12 +62,14 @@ print(brand["brand_name"], brand["canonical_domain"])
 
 | Endpoint | Limit |
 |----------|-------|
-| Bulk resolve (`/api/brands/resolve/bulk`, `/api/properties/resolve/bulk`) | 20 requests/minute per IP |
+| Brand bulk resolve (`/api/brands/resolve/bulk`) | 20 requests and 100 unique domain resolutions/minute per IP; 25 domains and 16 KB per request |
+| Property bulk resolve (`/api/properties/resolve/bulk`) | 20 requests/minute per IP |
+| Brand reads (`/api/brands/resolve`, `/api/brands/brand-json`) | 60 requests/minute per IP |
 | Save endpoints (`/api/brands/save`, `/api/properties/save`) | 60 requests/hour per user |
 | Crawl request (`/api/registry/crawl-request`) | 5 minutes per domain, 30 requests/hour per user |
 | All other endpoints | No limit |
 
-Rate-limited endpoints return `429 Too Many Requests` when the limit is exceeded.
+Rate-limited endpoints return `429 Too Many Requests` when the limit is exceeded. Brand bulk resolve returns `503` with a `Retry-After` header when too much resolution work is already queued.
 
 ## Endpoint Groups
 
@@ -111,16 +113,38 @@ These endpoints resolve domains to brand identities. The `source` field in the r
 
 | Source | Meaning |
 |--------|---------|
+| `hosted` | Registered by a domain owner whose control of the domain has been verified |
 | `brand_json` | Resolved from the domain's `/.well-known/brand.json` file |
 | `enriched` | Enriched via Brandfetch API |
 | `community` | Submitted by a community member |
 
 All sources produce the same resolution response structure. To get full brand identity data (logos, colors, tone), use `/api/brands/enrich` or look up the brand in the registry.
 
+#### Reading trust
+
+A domain is authoritative for its own identity — TLS proves the document came from that domain and nothing more. Relationships between a brand and a house need both sides to publish them, so resolution reports how each relationship was established rather than flattening it into a single answer.
+
+| `relationship_trust` | Meaning |
+|---|---|
+| `inline` | The house's own document defines the brand. |
+| `mutual` | Both sides publish the relationship. The trust-extending edge. |
+| `leaf_only` | The brand claims a house that has not named it back. See `claimed_house_domain`. |
+| `house_only` | A house claims the brand, which has not claimed the house. |
+| `standalone` | The brand claims no house. |
+| `unverifiable` | A claimed house exists but could not be checked. |
+
+`house_domain` is only set on a reciprocated relationship; a one-sided claim appears as `claimed_house_domain`. For `mutual`, `relationship_verified_at` records when both sides were last seen agreeing — it does not advance while the house side is unreachable, so you can age edges out on your own schedule.
+
+Following a redirect never lets a domain adopt a house's identity. When a domain's brand.json points at a house that does not name the domain back — in `properties[]` as `relationship: "owned"`, or in `brand_refs[]` — the response carries the claim (`claimed_house_domain` with `relationship_trust: leaf_only`) and no brand identity. A house that lists a domain with `direct`, `delegated`, or `ad_network` is declaring a monetization path, not ownership, so it does not resolve that domain's identity either. If you expected an identity here, the house is missing its half of the relationship.
+
+`fresh=true` bypasses the resolution cache and refetches from the origin. When that fetch fails and a stored record is returned instead, `live_brand_json` carries the failed fetch's diagnostics so you can tell a stale record from a live one.
+
+Pre-v3 documents are promoted to canonical v3 identity for the response, flagged with `promoted_from_schema` and `migration_warnings`. Promotion covers identity only; legacy relationship data is preserved opaquely and never becomes a trust claim.
+
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/brands/resolve` | Resolve a domain to its canonical brand |
-| POST | `/api/brands/resolve/bulk` | Resolve up to 100 domains at once |
+| POST | `/api/brands/resolve/bulk` | Resolve up to 25 domains at once |
 | GET | `/api/brands/brand-json` | Fetch raw brand.json for a domain |
 | GET | `/api/brands/registry` | List all brands (search, pagination) |
 | GET | `/api/brands/enrich` | Enrich brand data via Brandfetch |

@@ -449,6 +449,26 @@ const MemberRefSchema = z.object({
   }),
 });
 
+const BrandValidationIssueSchema = z.object({
+  field: z.string(),
+  message: z.string(),
+  severity: z.literal("error"),
+});
+
+const BrandValidationWarningSchema = z.object({
+  field: z.string(),
+  message: z.string(),
+  suggestion: z.string().optional(),
+});
+
+const LiveBrandJsonValidationSchema = z.object({
+  valid: z.boolean(),
+  url: z.string(),
+  status_code: z.number().int().optional(),
+  errors: z.array(BrandValidationIssueSchema),
+  warnings: z.array(BrandValidationWarningSchema),
+});
+
 export const ResolvedBrandSchema = z
   .object({
     canonical_id: z.string().openapi({ example: "acmecorp.com" }),
@@ -460,10 +480,44 @@ export const ResolvedBrandSchema = z
       .optional(),
     parent_brand: z.string().optional(),
     house_domain: z.string().optional(),
+    claimed_house_domain: z.string().optional().openapi({
+      description: "House the requested domain claims. One-sided until the named house names it back, so it never extends relationship trust on its own.",
+    }),
     house_name: z.string().optional(),
+    relationship_trust: z.enum([
+      "inline",
+      "mutual",
+      "leaf_only",
+      "house_only",
+      "standalone",
+      "unverifiable",
+    ]).optional().openapi({
+      description: [
+        "How the brand-to-house relationship was established.",
+        "`inline`: the house's own document defines the brand.",
+        "`mutual`: both sides publish the relationship — the trust-extending edge.",
+        "`leaf_only`: the brand claims a house that has not reciprocated.",
+        "`house_only`: a house claims the brand, which has not reciprocated.",
+        "`standalone`: the brand claims no house.",
+        "`unverifiable`: a claimed house could not be checked.",
+      ].join(" "),
+    }),
+    relationship_verified_at: z.string().optional().openapi({
+      description: "When both sides of a mutual relationship were last seen agreeing. Present only for `mutual`, and it does not advance while the house side is unreachable, so callers can apply their own edge-aging policy.",
+      example: "2026-07-28T12:00:00Z",
+    }),
+    promoted_from_schema: z.string().optional().openapi({
+      description: "Set when a pre-v3 document was promoted to a canonical v3 document for this response. Identity only — legacy relationship data is preserved opaquely, never promoted to a trust claim.",
+    }),
+    migration_warnings: z.array(BrandValidationWarningSchema).optional(),
     brand_agent_url: z.string().optional(),
     brand_manifest: z.record(z.string(), z.unknown()).optional(),
-    source: z.enum(["brand_json", "community", "enriched"]),
+    source: z.enum(["hosted", "brand_json", "community", "enriched"]).openapi({
+      description: "Where the record came from. `brand_json`: the domain's own /.well-known/brand.json. `hosted`: registered by an owner whose control of the domain was verified. `community`: contributed by a member. `enriched`: third-party enrichment.",
+    }),
+    live_brand_json: LiveBrandJsonValidationSchema.optional().openapi({
+      description: "Live origin-validation diagnostics when fresh=true falls back to a stored registry record.",
+    }),
   })
   .openapi("ResolvedBrand");
 

@@ -20,7 +20,8 @@ import { query } from "../db/client.js";
 import { resolvePrimaryOrganization } from "../db/users-db.js";
 import * as manifestRefsDb from "../db/manifest-refs-db.js";
 import { isUuid } from "../utils/uuid.js";
-import { bulkResolveRateLimiter, brandCreationRateLimiter, storyboardEvalRateLimiter, storyboardStepRateLimiter, agentReadRateLimiter, registryPublisherRateLimiter, registryReadRateLimiter } from "../middleware/rate-limit.js";
+import { AsyncSemaphore, SemaphoreOverloadedError } from "../utils/async-semaphore.js";
+import { bulkResolveRateLimiter, brandBulkDomainRateLimiter, brandCreationRateLimiter, storyboardEvalRateLimiter, storyboardStepRateLimiter, agentReadRateLimiter, registryPublisherRateLimiter, registryReadRateLimiter } from "../middleware/rate-limit.js";
 import { listStoryboards, getStoryboard, getTestKitForStoryboard } from "../services/storyboards.js";
 import {
   hostedComplianceTarget,
@@ -473,6 +474,18 @@ function extractDomain(raw: string): string {
 }
 
 const VALID_DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
+const BRAND_BULK_RESOLVE_MAX_DOMAINS = 25;
+const BRAND_BULK_PROCESS_CONCURRENCY = 10;
+// Four full requests may wait behind the in-flight batch. Past that the work
+// is queued longer than a caller will wait for it, so shed instead of growing.
+const BRAND_BULK_QUEUE_LIMIT = BRAND_BULK_RESOLVE_MAX_DOMAINS * 4;
+
+// Shared by every router instance in this process so simultaneous bulk
+// requests cannot multiply their per-request fan-out into unbounded work.
+const brandBulkResolveSemaphore = new AsyncSemaphore(
+  BRAND_BULK_PROCESS_CONCURRENCY,
+  BRAND_BULK_QUEUE_LIMIT,
+);
 
 function isValidDomain(domain: string): boolean {
   return domain.length <= 253 && VALID_DOMAIN_RE.test(domain);
@@ -500,6 +513,27 @@ export interface RegistryApiConfig {
   };
   requireAuth?: RequestHandler;
   optionalAuth?: RequestHandler;
+}
+
+function serializeBrandValidation(
+  validation: Awaited<ReturnType<RegistryApiConfig['brandManager']['validateDomain']>>
+) {
+  const truncate = (value: string) => value.length > 500 ? `${value.slice(0, 497)}...` : value;
+  return {
+    valid: validation.valid,
+    url: validation.url,
+    status_code: validation.status_code,
+    errors: validation.errors.slice(0, 20).map((issue) => ({
+      field: truncate(issue.field),
+      message: truncate(issue.message),
+      severity: issue.severity,
+    })),
+    warnings: validation.warnings.slice(0, 20).map((warning) => ({
+      field: truncate(warning.field),
+      message: truncate(warning.message),
+      ...(warning.suggestion ? { suggestion: truncate(warning.suggestion) } : {}),
+    })),
+  };
 }
 
 // ── Helpers ─────────────────────────────────────────────────────
@@ -544,18 +578,27 @@ registry.registerPath({
   path: "/api/brands/resolve",
   operationId: "resolveBrand",
   summary: "Resolve brand",
-  description:
-    "Resolve a domain to its canonical brand identity. Follows brand.json redirects and returns the resolved brand with its house, architecture type, and optional manifest.",
+  description: [
+    "Resolve a domain to its canonical brand identity. Follows brand.json redirects and returns the resolved brand with its house, architecture type, and optional manifest. The domain must be a bare DNS hostname.",
+    "",
+    "A domain is authoritative for its own identity, so `source` tells you who published the record and `relationship_trust` tells you whether a brand-to-house relationship was confirmed by both sides. Only `mutual` and `inline` are reciprocated; treat everything else as a claim.",
+    "",
+    "**Rate limit:** 60 requests per minute per IP address.",
+  ].join("\n"),
   tags: ["Brand Resolution"],
   request: {
     query: z.object({
       domain: z.string().openapi({ example: "acmecorp.com" }),
-      fresh: z.enum(["true", "false"]).optional(),
+      fresh: z.enum(["true", "false"]).optional().openapi({
+        description: "Bypass the resolution cache and refetch from the origin. When a fresh fetch fails and a stored record is returned instead, `live_brand_json` carries that fetch's diagnostics.",
+      }),
     }),
   },
   responses: {
     200: { description: "Brand resolved successfully", content: { "application/json": { schema: ResolvedBrandSchema } } },
+    400: { description: "Invalid or missing domain", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "Brand not found", content: { "application/json": { schema: z.object({ error: z.string(), domain: z.string(), file_status: z.number().optional().openapi({ description: "HTTP status code from brand.json fetch (e.g. 404 vs 200 with invalid data)" }) }) } } },
+    429: { description: "Rate limit exceeded", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -564,15 +607,21 @@ registry.registerPath({
   path: "/api/brands/resolve/bulk",
   operationId: "resolveBrandsBulk",
   summary: "Bulk resolve brands",
-  description:
-    "Resolve up to 100 domains to their canonical brand identities in a single request.\n\n**Rate limit:** 20 requests per minute per IP address.",
+  description: [
+    `Resolve up to ${BRAND_BULK_RESOLVE_MAX_DOMAINS} domains to their canonical brand identities in a single request. Unresolvable domains map to \`null\`.`,
+    "",
+    "**Rate limits:** 20 requests and 100 unique domain resolutions per minute per IP address. Request bodies are capped at 16 KB.",
+  ].join("\n"),
   tags: ["Brand Resolution"],
   request: {
-    body: { content: { "application/json": { schema: z.object({ domains: z.array(z.string()).max(100) }) } } },
+    body: { content: { "application/json": { schema: z.object({ domains: z.array(z.string()).max(BRAND_BULK_RESOLVE_MAX_DOMAINS) }) } } },
   },
   responses: {
     200: { description: "Bulk resolution results", content: { "application/json": { schema: z.object({ results: z.record(z.string(), ResolvedBrandSchema.nullable()) }) } } },
+    400: { description: "Invalid domain list", content: { "application/json": { schema: ErrorSchema } } },
+    413: { description: "Request body over 16 KB", content: { "application/json": { schema: ErrorSchema } } },
     429: { description: "Rate limit exceeded", content: { "application/json": { schema: ErrorSchema } } },
+    503: { description: "Too much resolution work is already queued", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -581,7 +630,7 @@ registry.registerPath({
   path: "/api/brands/brand-json",
   operationId: "getBrandJson",
   summary: "Get brand.json",
-  description: "Fetch the raw brand.json file for a domain.",
+  description: "Fetch the raw brand.json file for a bare DNS hostname.\n\n**Rate limit:** 60 requests per minute per IP address.",
   tags: ["Brand Resolution"],
   request: {
     query: z.object({
@@ -590,8 +639,43 @@ registry.registerPath({
     }),
   },
   responses: {
-    200: { description: "Raw brand.json data", content: { "application/json": { schema: z.object({ domain: z.string(), url: z.string(), variant: z.string().optional(), data: z.record(z.string(), z.unknown()), warnings: z.array(z.string()).optional() }) } } },
+    200: {
+      description: "Raw brand.json data",
+      content: {
+        "application/json": {
+          schema: z.object({
+            domain: z.string(),
+            url: z.string(),
+            variant: z.string().optional(),
+            data: z.record(z.string(), z.unknown()),
+            warnings: z.array(z.object({
+              field: z.string(),
+              message: z.string(),
+              suggestion: z.string().optional(),
+            })).optional(),
+            promoted_from_schema: z.string().optional(),
+            live_brand_json: z.object({
+              valid: z.boolean(),
+              url: z.string(),
+              status_code: z.number().int().optional(),
+              errors: z.array(z.object({
+                field: z.string(),
+                message: z.string(),
+                severity: z.literal("error"),
+              })),
+              warnings: z.array(z.object({
+                field: z.string(),
+                message: z.string(),
+                suggestion: z.string().optional(),
+              })),
+            }).optional(),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid or missing domain", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "Brand not found", content: { "application/json": { schema: ErrorSchema } } },
+    429: { description: "Rate limit exceeded", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -749,6 +833,38 @@ function stripLegacyBrandContext(manifest: unknown): Record<string, unknown> | u
   if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) return undefined;
   const { brand_context: _brandContext, ...publicManifest } = manifest as Record<string, unknown>;
   return publicManifest;
+}
+
+function storedBrandJsonVariant(
+  manifest: Record<string, unknown> | undefined,
+): 'house_portfolio' | 'brand_canonical' | undefined {
+  if (!manifest) return undefined;
+  if (
+    manifest.house &&
+    typeof manifest.house === 'object' &&
+    !Array.isArray(manifest.house) &&
+    (Array.isArray(manifest.brands) || Array.isArray(manifest.brand_refs))
+  ) {
+    return 'house_portfolio';
+  }
+  if (typeof manifest.id === 'string' && Array.isArray(manifest.names)) {
+    return 'brand_canonical';
+  }
+  return undefined;
+}
+
+/**
+ * `hosted` means a verified owner registered the row. Same definition as the
+ * registry listing's `OWNER_HOSTED_SQL` — keep the two in step.
+ */
+function resolvedStoredBrandSource(brand: {
+  workos_organization_id?: string;
+  domain_verified?: boolean;
+  source_type: 'brand_json' | 'community' | 'enriched';
+}): 'hosted' | 'brand_json' | 'community' | 'enriched' {
+  return brand.workos_organization_id && brand.domain_verified === true
+    ? 'hosted'
+    : brand.source_type;
 }
 
 registry.registerPath({
@@ -4042,15 +4158,20 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     }
   });
 
-  router.get("/brands/resolve", async (req, res) => {
+  router.get("/brands/resolve", registryReadRateLimiter, async (req, res) => {
     try {
-      const domain = req.query.domain as string;
+      const domain = typeof req.query.domain === 'string'
+        ? req.query.domain.trim().toLowerCase()
+        : '';
       const fresh = req.query.fresh === "true";
-      if (!domain) {
-        return res.status(400).json({ error: "domain parameter required" });
+      if (!isValidDomain(domain)) {
+        return res.status(400).json({ error: "Invalid domain format" });
       }
 
-      const resolved = await brandManager.resolveBrand(domain, { skipCache: fresh });
+      const resolution = await brandManager.resolveBrandWithDiagnostics(domain, { skipCache: fresh });
+      const resolved = resolution.brand;
+      // Report why this request fell back, from this request's own attempt.
+      const liveValidation = fresh && !resolved ? resolution.last_attempt : undefined;
       if (!resolved) {
         const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
         // Hide orphaned manifests and explicitly non-public rows. The manifest
@@ -4064,15 +4185,18 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             canonical_id: discovered.canonical_domain || discovered.domain,
             canonical_domain: discovered.canonical_domain || discovered.domain,
             brand_name: discovered.brand_name,
-            source: discovered.source_type,
+            source: resolvedStoredBrandSource(discovered),
             brand_manifest: stripLegacyBrandContext(discovered.brand_manifest),
+            ...(liveValidation ? {
+              live_brand_json: serializeBrandValidation(liveValidation),
+            } : {}),
           });
         }
         registryRequestsDb
           .trackRequest("brand", domain)
           .catch((err) => logger.debug({ err }, "Registry request tracking failed"));
 
-        const validation = await brandManager.validateDomain(domain);
+        const validation = liveValidation ?? await brandManager.validateDomain(domain);
         return res.status(404).json({
           error: "Brand not found",
           domain,
@@ -4151,18 +4275,20 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     return enriched;
   }
 
-  router.get("/brands/brand-json", async (req, res) => {
+  router.get("/brands/brand-json", registryReadRateLimiter, async (req, res) => {
     try {
       const domain = ((req.query.domain as string) || "").toLowerCase();
       const fresh = req.query.fresh === "true";
-      const domainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
-      if (!domain || !domainPattern.test(domain)) {
+      if (!isValidDomain(domain)) {
         return res.status(400).json({ error: "Invalid domain format" });
       }
+
+      let liveValidation: Awaited<ReturnType<typeof brandManager.validateDomain>> | undefined;
 
       // If fresh=true, fetch live from external domain and update DB cache
       if (fresh) {
         const result = await brandManager.validateDomain(domain, { skipCache: true });
+        liveValidation = result;
         if (result.valid && result.raw_data) {
           const enrichedData = await enrichBrandDataWithVerification(result.raw_data);
           return res.json({
@@ -4171,6 +4297,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             variant: result.variant,
             data: enrichedData,
             warnings: result.warnings,
+            promoted_from_schema: result.promoted_from_schema,
           });
         }
         // Live fetch failed — fall through to DB cache
@@ -4183,12 +4310,22 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         const data = { name: brand.brand_name || domain, ...manifest };
         const enrichedData = await enrichBrandDataWithVerification(data);
 
-        const variant = brand.source_type === "brand_json" ? "house_portfolio" : undefined;
+        const variant = brand.source_type === "brand_json"
+          ? storedBrandJsonVariant(manifest)
+          : undefined;
         const url = brand.source_type === "brand_json"
           ? `https://${domain}/.well-known/brand.json`
           : `https://agenticadvertising.org/brands/${domain}/brand.json`;
 
-        return res.json({ domain, url, variant, data: enrichedData });
+        return res.json({
+          domain,
+          url,
+          variant,
+          data: enrichedData,
+          ...(liveValidation ? {
+            live_brand_json: serializeBrandValidation(liveValidation),
+          } : {}),
+        });
       }
 
       // Nothing in DB — try live fetch as last resort
@@ -4201,6 +4338,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           variant: result.variant,
           data: enrichedData,
           warnings: result.warnings,
+          promoted_from_schema: result.promoted_from_schema,
         });
       }
 
@@ -4301,29 +4439,32 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     }
   });
 
-  router.post("/brands/resolve/bulk", bulkResolveRateLimiter, async (req, res) => {
+  router.post("/brands/resolve/bulk", bulkResolveRateLimiter, brandBulkDomainRateLimiter, async (req, res) => {
     try {
       const { domains } = req.body;
 
       if (!Array.isArray(domains) || domains.length === 0) {
         return res.status(400).json({ error: "domains array required" });
       }
-      if (domains.length > 100) {
-        return res.status(400).json({ error: "Maximum 100 domains per request" });
+      if (domains.length > BRAND_BULK_RESOLVE_MAX_DOMAINS) {
+        return res.status(400).json({ error: `Maximum ${BRAND_BULK_RESOLVE_MAX_DOMAINS} domains per request` });
       }
-      if (!domains.every((d: unknown) => typeof d === "string" && d.length > 0)) {
-        return res.status(400).json({ error: "All domains must be non-empty strings" });
+      if (!domains.every((d: unknown) =>
+        typeof d === "string" && isValidDomain(d.trim().toLowerCase())
+      )) {
+        return res.status(400).json({ error: "All domains must be bare multi-label DNS hostnames" });
       }
 
-      const CONCURRENCY = 10;
       const results: Record<string, unknown> = {};
-      const uniqueDomains = [...new Set(domains.map((d: string) => d.toLowerCase()))];
+      const uniqueDomains = [...new Set(domains.map((d: string) => d.trim().toLowerCase()))];
 
-      for (let i = 0; i < uniqueDomains.length; i += CONCURRENCY) {
-        const batch = uniqueDomains.slice(i, i + CONCURRENCY);
+      for (let i = 0; i < uniqueDomains.length; i += BRAND_BULK_PROCESS_CONCURRENCY) {
+        const batch = uniqueDomains.slice(i, i + BRAND_BULK_PROCESS_CONCURRENCY);
         const settled = await Promise.allSettled(
           batch.map(async (domain) => {
-            const resolved = await brandManager.resolveBrand(domain);
+            const resolved = await brandBulkResolveSemaphore.run(
+              () => brandManager.resolveBrand(domain),
+            );
             if (resolved) {
               registryRequestsDb.markResolved("brand", domain, resolved.canonical_domain).catch((err) => logger.debug({ err }, "Registry request tracking failed"));
               return { domain, result: resolved };
@@ -4340,7 +4481,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
                   canonical_id: discovered.canonical_domain || discovered.domain,
                   canonical_domain: discovered.canonical_domain || discovered.domain,
                   brand_name: discovered.brand_name,
-                  source: discovered.source_type,
+                  source: resolvedStoredBrandSource(discovered),
                   brand_manifest: stripLegacyBrandContext(discovered.brand_manifest),
                 },
               };
@@ -4354,12 +4495,24 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         for (const outcome of settled) {
           if (outcome.status === "fulfilled") {
             results[outcome.value.domain] = outcome.value.result;
+          } else if (outcome.reason instanceof SemaphoreOverloadedError) {
+            // Shedding one domain means the process is saturated; say so rather
+            // than returning a partial map that reads as unresolvable domains.
+            throw outcome.reason;
           }
         }
       }
 
       return res.json({ results });
     } catch (error) {
+      if (error instanceof SemaphoreOverloadedError) {
+        logger.warn({ ip: req.ip }, "Brand bulk resolve shed load");
+        res.setHeader("Retry-After", "5");
+        return res.status(503).json({
+          error: "Brand resolution is busy",
+          message: "Too much resolution work is already queued. Retry shortly.",
+        });
+      }
       logger.error({ error }, "Failed to bulk resolve brands");
       return res.status(500).json({ error: "Failed to bulk resolve brands" });
     }
