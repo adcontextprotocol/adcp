@@ -221,6 +221,11 @@
       "variants": 2,
       "note": "0:[results] | 1:[errors]"
     },
+    "creative/list-creatives-response.json##/properties/creatives/items/oneOf": {
+      "kind": "narrowable",
+      "variants": 2,
+      "note": "0:[format_id] | 1:[format_kind]"
+    },
     "creative/list-creatives-response.json##/properties/creatives/items/properties/assets/patternProperties/^[a-z0-9_]+$/oneOf": {
       "kind": "dangerous",
       "variants": 2,
@@ -265,11 +270,6 @@
       "kind": "narrowable",
       "variants": 3,
       "note": "0:[media_buy_id,confirmed_at,revision,packages] | 1:[errors] | 2:[status,task_id]"
-    },
-    "media-buy/get-media-buy-delivery-request.json##/properties/reporting_dimensions/properties/geo/properties/system/oneOf": {
-      "kind": "dangerous",
-      "variants": 2,
-      "note": "shared-required=[∅]; 0:ref-only(/schemas/enums/metro-system.json) | 1:ref-only(/schemas/enums/postal-system.json)"
     },
     "media-buy/get-media-buy-delivery-request.json##/properties/status_filter/oneOf": {
       "kind": "dangerous",
