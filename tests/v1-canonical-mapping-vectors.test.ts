@@ -75,6 +75,13 @@ describe('v1 canonical literal mapping vectors', () => {
     expect(literalById.get('video_640x360_vast')?.canonical).toBe('video_vast');
   });
 
+  it('keeps display_static intentionally free of size constraints', () => {
+    const mapping = literalById.get('display_static');
+    expect(mapping).toEqual({ canonical: 'image' });
+    expect(mapping).not.toHaveProperty('parameters.width');
+    expect(mapping).not.toHaveProperty('parameters.height');
+  });
+
   it('treats small NxN tokens as aspect ratios rather than pixel dimensions', () => {
     for (const mapping of literalMappings) {
       const match = mapping.v1_pattern.format_id_glob.match(/(?:^|_)(\d+)x(\d+)(?:_|$)/);
@@ -90,6 +97,25 @@ describe('v1 canonical literal mapping vectors', () => {
       });
       expect(mapping.v2.parameters, mapping.v1_pattern.format_id_glob).not.toHaveProperty('width');
       expect(mapping.v2.parameters, mapping.v1_pattern.format_id_glob).not.toHaveProperty('height');
+    }
+  });
+
+  it('treats pixel-sized NxN tokens as exact dimensions', () => {
+    for (const mapping of literalMappings) {
+      const match = mapping.v1_pattern.format_id_glob.match(/(?:^|_)(\d+)x(\d+)(?:_|$)/);
+      if (!match) continue;
+
+      const [, widthToken, heightToken] = match;
+      const width = Number(widthToken);
+      const height = Number(heightToken);
+      if (width < 50 && height < 50) continue;
+
+      expect(width >= 50 && height >= 50, mapping.v1_pattern.format_id_glob).toBe(true);
+      expect(mapping.v2.parameters, mapping.v1_pattern.format_id_glob).toMatchObject({
+        width,
+        height,
+      });
+      expect(mapping.v2.parameters, mapping.v1_pattern.format_id_glob).not.toHaveProperty('aspect_ratio');
     }
   });
 });

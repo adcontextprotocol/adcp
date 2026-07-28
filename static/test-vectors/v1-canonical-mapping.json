@@ -1,9 +1,75 @@
 {
   "version": 1,
   "registry": "/schemas/registries/v1-canonical-mapping.json",
-  "registry_version": "1.1.1",
+  "registry_version": "1.2.0",
   "description": "Reference vectors for literal v1 format-id projection. Resolution uses the first exact format_id_glob match; these vectors do not provide a format definition for structural fallback.",
   "vectors": [
+    {
+      "id": "static-display-with-no-size-constraint",
+      "format_id": "display_static",
+      "expected_v2": { "canonical": "image" },
+      "notes": "The missing width and height are intentional; the id declares no size constraint."
+    },
+    {
+      "id": "display-300-by-250",
+      "format_id": "display_300x250",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 300, "height": 250 } }
+    },
+    {
+      "id": "display-728-by-90",
+      "format_id": "display_728x90",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 728, "height": 90 } }
+    },
+    {
+      "id": "display-320-by-50",
+      "format_id": "display_320x50",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 320, "height": 50 } }
+    },
+    {
+      "id": "display-300-by-600",
+      "format_id": "display_300x600",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 300, "height": 600 } }
+    },
+    {
+      "id": "display-970-by-250",
+      "format_id": "display_970x250",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 970, "height": 250 } }
+    },
+    {
+      "id": "display-250-by-250",
+      "format_id": "display_250x250",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 250, "height": 250 } }
+    },
+    {
+      "id": "display-200-by-200",
+      "format_id": "display_200x200",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 200, "height": 200 } }
+    },
+    {
+      "id": "display-300-by-50",
+      "format_id": "display_300x50",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 300, "height": 50 } }
+    },
+    {
+      "id": "display-320-by-480",
+      "format_id": "display_320x480",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 320, "height": 480 } }
+    },
+    {
+      "id": "display-320-by-400",
+      "format_id": "display_320x400",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 320, "height": 400 } }
+    },
+    {
+      "id": "display-320-by-320",
+      "format_id": "display_320x320",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 320, "height": 320 } }
+    },
+    {
+      "id": "display-320-by-250",
+      "format_id": "display_320x250",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 320, "height": 250 } }
+    },
     {
       "id": "hosted-video-30-seconds",
       "format_id": "video_30s",
