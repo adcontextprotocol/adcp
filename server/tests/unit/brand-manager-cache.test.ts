@@ -52,6 +52,10 @@ describe('BrandManager caching', () => {
       const result1 = await manager.validateDomain('acme.com');
       expect(result1.valid).toBe(true);
       expect(mockedSafeFetch).toHaveBeenCalledTimes(1);
+      expect(mockedSafeFetch).toHaveBeenCalledWith(
+        'https://acme.com/.well-known/brand.json',
+        expect.objectContaining({ maxResponseBytes: 256 * 1024 }),
+      );
 
       // Second call - should use cache
       const result2 = await manager.validateDomain('acme.com');
@@ -71,6 +75,7 @@ describe('BrandManager caching', () => {
       // First call - should fetch and fail
       const result1 = await manager.validateDomain('missing.com');
       expect(result1.valid).toBe(false);
+      expect(result1.raw_data).toBeUndefined();
       expect(mockedSafeFetch).toHaveBeenCalledTimes(1);
 
       // Second call - should use failed lookup cache
@@ -264,9 +269,12 @@ describe('BrandManager caching', () => {
       expect(result.raw_data).toMatchObject({
         id: 'leaf',
         names: [{ und: 'Leaf Brand' }],
-        house_domain: 'house.example',
         properties: [{ type: 'website', identifier: 'leaf.example', relationship: 'owned' }],
+        legacy_metadata: {
+          legacy_house: { domain: 'house.example', name: 'Example House' },
+        },
       });
+      expect(result.raw_data).not.toHaveProperty('house_domain');
       expect((result.raw_data as Record<string, any>).legacy_properties[0].relationship)
         .toBe('registered_account_operator');
     });
@@ -326,6 +334,28 @@ describe('BrandManager caching', () => {
 
       expect(result.valid).toBe(false);
       expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.raw_data).toBeUndefined();
+    });
+
+    it('does not retain an invalid parsed document in the failed cache', async () => {
+      const invalidDocument = {
+        id: 'invalid',
+        names: [{ en: 'Invalid' }],
+        properties: [{ type: 'website', identifier: 'invalid.example', relationship: 'bogus' }],
+        attacker_padding: 'x'.repeat(64 * 1024),
+      };
+      mockedSafeFetch.mockResolvedValueOnce({
+        status: 200,
+        data: Buffer.from(JSON.stringify(invalidDocument)),
+      });
+
+      const first = await manager.validateDomain('invalid.example');
+      const cached = await manager.validateDomain('invalid.example');
+
+      expect(first.valid).toBe(false);
+      expect(first.raw_data).toBeUndefined();
+      expect(cached.raw_data).toBeUndefined();
+      expect(mockedSafeFetch).toHaveBeenCalledTimes(1);
     });
 
     it('rejects a House Portfolio whose house.domain is not bound to the TLS origin', async () => {
@@ -519,13 +549,74 @@ describe('BrandManager caching', () => {
         canonical_domain: 'leaf.example',
         brand_name: 'Leaf Brand',
         claimed_house_domain: 'house.example',
-        relationship_trust: 'leaf_only',
+        relationship_trust: 'unverifiable',
         source: 'brand_json',
         brand_manifest: { description: 'Leaf-owned identity' },
       });
       expect(result?.house_domain).toBeUndefined();
       expect(result?.brand_manifest).not.toHaveProperty('house_domain');
       expect(result?.brand_manifest).not.toHaveProperty('$schema');
+    });
+
+    it('marks a valid house portfolio without reciprocity as leaf_only', async () => {
+      const canonical = {
+        id: 'leaf',
+        names: [{ en: 'Leaf Brand' }],
+        house_domain: 'house.example',
+      };
+      const silentPortfolio = {
+        house: { domain: 'house.example', name: 'Example House' },
+        brand_refs: [{ domain: 'different.example', brand_id: 'different' }],
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(silentPortfolio)) });
+
+      const result = await manager.resolveBrand('leaf.example');
+
+      expect(result).toMatchObject({
+        claimed_house_domain: 'house.example',
+        relationship_trust: 'leaf_only',
+      });
+      expect(result?.house_domain).toBeUndefined();
+    });
+
+    it('marks a failed house fetch as unverifiable', async () => {
+      const canonical = {
+        id: 'leaf',
+        names: [{ en: 'Leaf Brand' }],
+        house_domain: 'house.example',
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({ status: 503, data: Buffer.from('unavailable') });
+
+      const result = await manager.resolveBrand('leaf.example');
+
+      expect(result).toMatchObject({
+        claimed_house_domain: 'house.example',
+        relationship_trust: 'unverifiable',
+      });
+    });
+
+    it('marks a house redirect loop as unverifiable', async () => {
+      const canonical = {
+        id: 'leaf',
+        names: [{ en: 'Leaf Brand' }],
+        house_domain: 'house.example',
+      };
+      const loop = { house: 'house.example' };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(loop)) });
+
+      const result = await manager.resolveBrand('leaf.example');
+
+      expect(result).toMatchObject({
+        claimed_house_domain: 'house.example',
+        relationship_trust: 'unverifiable',
+      });
+      expect(mockedSafeFetch).toHaveBeenCalledTimes(2);
     });
 
     it('follows a house brand_refs pointer only to the matching canonical brand', async () => {
@@ -640,7 +731,10 @@ describe('BrandManager caching', () => {
       expect(mockedSafeFetch).toHaveBeenNthCalledWith(
         3,
         pointer.authoritative_location,
-        expect.objectContaining({ sameSiteRedirectsOnly: true }),
+        expect.objectContaining({
+          maxResponseBytes: 256 * 1024,
+          sameSiteRedirectsOnly: true,
+        }),
       );
     });
 
@@ -666,7 +760,10 @@ describe('BrandManager caching', () => {
       expect(mockedSafeFetch).toHaveBeenNthCalledWith(
         2,
         'https://cdn.example/custom/brand.json',
-        expect.objectContaining({ sameSiteRedirectsOnly: true })
+        expect.objectContaining({
+          maxResponseBytes: 256 * 1024,
+          sameSiteRedirectsOnly: true,
+        })
       );
     });
 

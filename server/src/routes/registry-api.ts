@@ -473,6 +473,7 @@ function extractDomain(raw: string): string {
 }
 
 const VALID_DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
+const BRAND_BULK_RESOLVE_MAX_DOMAINS = 25;
 
 function isValidDomain(domain: string): boolean {
   return domain.length <= 253 && VALID_DOMAIN_RE.test(domain);
@@ -588,10 +589,10 @@ registry.registerPath({
   operationId: "resolveBrandsBulk",
   summary: "Bulk resolve brands",
   description:
-    "Resolve up to 100 domains to their canonical brand identities in a single request.\n\n**Rate limit:** 20 requests per minute per IP address.",
+    `Resolve up to ${BRAND_BULK_RESOLVE_MAX_DOMAINS} domains to their canonical brand identities in a single request.\n\n**Rate limit:** 20 requests per minute per IP address.`,
   tags: ["Brand Resolution"],
   request: {
-    body: { content: { "application/json": { schema: z.object({ domains: z.array(z.string()).max(100) }) } } },
+    body: { content: { "application/json": { schema: z.object({ domains: z.array(z.string()).max(BRAND_BULK_RESOLVE_MAX_DOMAINS) }) } } },
   },
   responses: {
     200: { description: "Bulk resolution results", content: { "application/json": { schema: z.object({ results: z.record(z.string(), ResolvedBrandSchema.nullable()) }) } } },
@@ -4417,8 +4418,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       if (!Array.isArray(domains) || domains.length === 0) {
         return res.status(400).json({ error: "domains array required" });
       }
-      if (domains.length > 100) {
-        return res.status(400).json({ error: "Maximum 100 domains per request" });
+      if (domains.length > BRAND_BULK_RESOLVE_MAX_DOMAINS) {
+        return res.status(400).json({ error: `Maximum ${BRAND_BULK_RESOLVE_MAX_DOMAINS} domains per request` });
       }
       if (!domains.every((d: unknown) =>
         typeof d === "string" && isValidDomain(d.trim().toLowerCase())

@@ -4728,7 +4728,7 @@ paths:
       operationId: resolveBrandsBulk
       summary: Bulk resolve brands
       description: |-
-        Resolve up to 100 domains to their canonical brand identities in a single request.
+        Resolve up to 25 domains to their canonical brand identities in a single request.
 
         **Rate limit:** 20 requests per minute per IP address.
       tags:
@@ -4743,7 +4743,7 @@ paths:
                   type: array
                   items:
                     type: string
-                  maxItems: 100
+                  maxItems: 25
               required:
                 - domains
       responses:

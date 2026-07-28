@@ -431,6 +431,22 @@ describe('public registry brand read paths', () => {
     expect(resolveBrand).not.toHaveBeenCalled();
   });
 
+  it('caps anonymous bulk resolution at 25 domains', async () => {
+    const resolveBrand = vi.fn().mockResolvedValue(null);
+    const brandDb = {
+      getDiscoveredBrandByDomain: vi.fn().mockResolvedValue(null),
+      upsertDiscoveredBrand: vi.fn(),
+    };
+
+    const res = await request(buildApp(brandDb, false, { resolveBrand }))
+      .post('/api/brands/resolve/bulk')
+      .send({ domains: Array.from({ length: 26 }, (_, i) => `brand-${i}.example`) });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Maximum 25 domains per request');
+    expect(resolveBrand).not.toHaveBeenCalled();
+  });
+
   it('strips legacy brand_context from /api/brands/brand-json cached data', async () => {
     const brandDb = {
       getDiscoveredBrandByDomain: vi.fn().mockResolvedValue(discoveredBrandWithContext()),

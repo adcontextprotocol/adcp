@@ -120,6 +120,9 @@ export type BrandJson =
 
 const LEGACY_BRAND_SCHEMA = 'https://schemas.adcontextprotocol.org/brand/v1/brand.json';
 const CURRENT_BRAND_SCHEMA = 'https://adcontextprotocol.org/schemas/v3/brand.json';
+const BRAND_JSON_MAX_RESPONSE_BYTES = 256 * 1024;
+const BRAND_CACHE_MAX_ENTRIES = 200;
+const BRAND_FAILED_CACHE_MAX_ENTRIES = 1000;
 const LAST_VALIDATION_ATTEMPT_TTL_MS = 5 * 60 * 1000;
 const LAST_VALIDATION_ATTEMPT_MAX_ENTRIES = 500;
 
@@ -127,6 +130,11 @@ interface LastValidationAttemptEntry {
   value: BrandValidationResult;
   expiresAt: number;
 }
+
+type CanonicalHouseVerification =
+  | { status: 'mutual'; houseDomain: string; houseName?: string }
+  | { status: 'leaf_only' }
+  | { status: 'unverifiable' };
 
 export interface BrandAgentValidationResult {
   agent_url: string;
@@ -150,9 +158,9 @@ export class BrandManager {
   private lastValidationAttempt = new Map<string, LastValidationAttemptEntry>();
 
   constructor() {
-    this.validationCache = new Cache<BrandValidationResult>(24 * 60); // 24 hours
-    this.resolutionCache = new Cache<ResolvedBrand | null>(24 * 60); // 24 hours
-    this.failedLookupCache = new Cache<BrandValidationResult>(60); // 1 hour
+    this.validationCache = new Cache<BrandValidationResult>(24 * 60, BRAND_CACHE_MAX_ENTRIES); // 24 hours
+    this.resolutionCache = new Cache<ResolvedBrand | null>(24 * 60, BRAND_CACHE_MAX_ENTRIES); // 24 hours
+    this.failedLookupCache = new Cache<BrandValidationResult>(60, BRAND_FAILED_CACHE_MAX_ENTRIES); // 1 hour
   }
 
   /**
@@ -349,13 +357,11 @@ export class BrandManager {
     }
 
     const house = this.isRecord(document.house) ? document.house : undefined;
-    const houseDomain = house && typeof house.domain === 'string' ? house.domain.toLowerCase() : undefined;
     if (house) metadata.legacy_house = house;
 
     const canonical: Record<string, unknown> = {
       ...originBrand,
       $schema: CURRENT_BRAND_SCHEMA,
-      ...(houseDomain && houseDomain !== originDomain ? { house_domain: houseDomain } : {}),
       ...(Object.keys(metadata).length > 0 ? { legacy_metadata: metadata } : {}),
     };
     warnings.push({
@@ -423,6 +429,7 @@ export class BrandManager {
       // /api/registry/publisher auto-crawl path (PR #4128 / issue #4129).
       const response = await safeFetchAxiosLike(url, {
         timeoutMs: 10000,
+        maxResponseBytes: BRAND_JSON_MAX_RESPONSE_BYTES,
         sameSiteRedirectsOnly: true,
         headers: {
           Accept: 'application/json',
@@ -492,8 +499,6 @@ export class BrandManager {
     brandData = normalized.data;
     result.warnings.push(...normalized.warnings);
     result.promoted_from_schema = normalized.promotedFromSchema;
-    result.raw_data = brandData;
-
     const schemaValidation = validateBrandJsonSchema(brandData);
     if (!schemaValidation.valid) {
       for (const issue of schemaValidation.errors.slice(0, 20)) {
@@ -541,6 +546,8 @@ export class BrandManager {
         });
     }
     result.valid = result.errors.length === 0;
+    if (result.valid) result.raw_data = brandData;
+    else delete result.raw_data;
   }
 
   private async validateBrandJsonUrl(
@@ -557,6 +564,7 @@ export class BrandManager {
     try {
       const response = await safeFetchAxiosLike(url, {
         timeoutMs: 10000,
+        maxResponseBytes: BRAND_JSON_MAX_RESPONSE_BYTES,
         sameSiteRedirectsOnly: true,
         headers: { Accept: 'application/json', 'User-Agent': AAO_UA_VALIDATOR },
       });
@@ -1244,7 +1252,7 @@ export class BrandManager {
     const primaryName = this.getPrimaryName(data.names);
     const claimedHouseDomain = data.house_domain?.toLowerCase();
     let relationshipTrust: ResolvedBrand['relationship_trust'] = claimedHouseDomain
-      ? 'leaf_only'
+      ? 'unverifiable'
       : 'standalone';
     let verifiedHouseDomain = options.verifiedHouseDomain;
     let houseName: string | undefined;
@@ -1258,9 +1266,9 @@ export class BrandManager {
         claimedHouseDomain,
         options
       );
-      relationshipTrust = verification.mutual ? 'mutual' : 'leaf_only';
-      verifiedHouseDomain = verification.mutual ? verification.houseDomain : undefined;
-      houseName = verification.mutual ? verification.houseName : undefined;
+      relationshipTrust = verification.status;
+      verifiedHouseDomain = verification.status === 'mutual' ? verification.houseDomain : undefined;
+      houseName = verification.status === 'mutual' ? verification.houseName : undefined;
     }
 
     return {
@@ -1297,19 +1305,19 @@ export class BrandManager {
     brandId: string,
     claimedHouseDomain: string,
     options: { skipCache?: boolean; maxRedirects: number }
-  ): Promise<{ mutual: boolean; houseDomain?: string; houseName?: string }> {
+  ): Promise<CanonicalHouseVerification> {
     let current = claimedHouseDomain;
     let currentUrl: string | undefined;
     const seen = new Set<string>();
 
     for (let redirects = 0; redirects <= options.maxRedirects; redirects++) {
       const visitKey = currentUrl ? `url:${currentUrl}` : `domain:${current}`;
-      if (seen.has(visitKey)) return { mutual: false };
+      if (seen.has(visitKey)) return { status: 'unverifiable' };
       seen.add(visitKey);
       const validation = currentUrl
         ? await this.validateBrandJsonUrl(currentUrl, current)
         : await this.validateDomain(current, { skipCache: options.skipCache });
-      if (!validation.valid || !validation.raw_data) return { mutual: false };
+      if (!validation.valid || !validation.raw_data) return { status: 'unverifiable' };
 
       if (validation.variant === 'house_redirect') {
         current = (validation.raw_data as HouseRedirectVariant).house.toLowerCase();
@@ -1321,7 +1329,7 @@ export class BrandManager {
         currentUrl = location;
         continue;
       }
-      if (validation.variant !== 'house_portfolio') return { mutual: false };
+      if (validation.variant !== 'house_portfolio') return { status: 'unverifiable' };
 
       const portfolio = validation.raw_data as HousePortfolioVariant;
       const reciprocal = portfolio.brand_refs?.some((ref) =>
@@ -1329,13 +1337,13 @@ export class BrandManager {
       );
       return reciprocal
         ? {
-            mutual: true,
+            status: 'mutual',
             houseDomain: portfolio.house.domain,
             houseName: portfolio.house.name,
           }
-        : { mutual: false };
+        : { status: 'leaf_only' };
     }
-    return { mutual: false };
+    return { status: 'unverifiable' };
   }
 
   /**
