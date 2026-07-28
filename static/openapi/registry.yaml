@@ -4730,7 +4730,7 @@ paths:
       description: |-
         Resolve up to 25 domains to their canonical brand identities in a single request.
 
-        **Rate limit:** 20 requests per minute per IP address.
+        **Rate limits:** 20 requests and 100 unique domain resolutions per minute per IP address.
       tags:
         - Brand Resolution
       requestBody:

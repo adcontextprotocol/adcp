@@ -702,6 +702,70 @@ describe('BrandManager caching', () => {
       });
     });
 
+    it('retains cached mutual trust when a fresh reciprocal check is temporarily unavailable', async () => {
+      const canonical = {
+        id: 'leaf',
+        names: [{ en: 'Leaf Brand' }],
+        house_domain: 'house.example',
+      };
+      const portfolio = {
+        house: { domain: 'house.example', name: 'Example House' },
+        brand_refs: [{ domain: 'leaf.example', brand_id: 'leaf' }],
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(portfolio)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({ status: 503, data: Buffer.from('temporarily unavailable') });
+
+      expect(await manager.resolveBrand('leaf.example')).toMatchObject({
+        relationship_trust: 'mutual',
+        house_domain: 'house.example',
+      });
+      expect(await manager.resolveBrand('leaf.example', { skipCache: true })).toMatchObject({
+        relationship_trust: 'mutual',
+        house_domain: 'house.example',
+      });
+
+      vi.clearAllMocks();
+      expect(await manager.resolveBrand('leaf.example')).toMatchObject({
+        relationship_trust: 'mutual',
+        house_domain: 'house.example',
+      });
+      expect(mockedSafeFetch).not.toHaveBeenCalled();
+    });
+
+    it('replaces cached mutual trust when the house returns a definitive non-portfolio document', async () => {
+      const canonical = {
+        id: 'leaf',
+        names: [{ en: 'Leaf Brand' }],
+        house_domain: 'house.example',
+      };
+      const portfolio = {
+        house: { domain: 'house.example', name: 'Example House' },
+        brand_refs: [{ domain: 'leaf.example', brand_id: 'leaf' }],
+      };
+      const replacement = { id: 'house', names: [{ en: 'House' }] };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(portfolio)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(replacement)) });
+
+      expect(await manager.resolveBrand('leaf.example')).toMatchObject({
+        relationship_trust: 'mutual',
+      });
+      expect(await manager.resolveBrand('leaf.example', { skipCache: true })).toMatchObject({
+        relationship_trust: 'unverifiable',
+      });
+
+      vi.clearAllMocks();
+      expect(await manager.resolveBrand('leaf.example')).toMatchObject({
+        relationship_trust: 'unverifiable',
+      });
+      expect(mockedSafeFetch).not.toHaveBeenCalled();
+    });
+
     it('verifies a canonical house claim through an authoritative_location portfolio', async () => {
       const canonical = {
         id: 'leaf',

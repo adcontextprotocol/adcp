@@ -20,7 +20,7 @@ import { query } from "../db/client.js";
 import { resolvePrimaryOrganization } from "../db/users-db.js";
 import * as manifestRefsDb from "../db/manifest-refs-db.js";
 import { isUuid } from "../utils/uuid.js";
-import { bulkResolveRateLimiter, brandCreationRateLimiter, storyboardEvalRateLimiter, storyboardStepRateLimiter, agentReadRateLimiter, registryPublisherRateLimiter, registryReadRateLimiter } from "../middleware/rate-limit.js";
+import { bulkResolveRateLimiter, brandBulkDomainRateLimiter, brandCreationRateLimiter, storyboardEvalRateLimiter, storyboardStepRateLimiter, agentReadRateLimiter, registryPublisherRateLimiter, registryReadRateLimiter } from "../middleware/rate-limit.js";
 import { listStoryboards, getStoryboard, getTestKitForStoryboard } from "../services/storyboards.js";
 import {
   hostedComplianceTarget,
@@ -474,6 +474,45 @@ function extractDomain(raw: string): string {
 
 const VALID_DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
 const BRAND_BULK_RESOLVE_MAX_DOMAINS = 25;
+const BRAND_BULK_PROCESS_CONCURRENCY = 10;
+
+class AsyncSemaphore {
+  private active = 0;
+  private readonly queue: Array<() => void> = [];
+
+  constructor(private readonly limit: number) {}
+
+  async run<T>(task: () => Promise<T>): Promise<T> {
+    await this.acquire();
+    try {
+      return await task();
+    } finally {
+      this.release();
+    }
+  }
+
+  private acquire(): Promise<void> {
+    if (this.active < this.limit) {
+      this.active++;
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => this.queue.push(resolve));
+  }
+
+  private release(): void {
+    const next = this.queue.shift();
+    if (next) {
+      // Transfer the released permit directly to the oldest waiter.
+      next();
+      return;
+    }
+    this.active--;
+  }
+}
+
+// Shared by every router instance in this process so simultaneous bulk
+// requests cannot multiply their per-request fan-out into unbounded work.
+const brandBulkResolveSemaphore = new AsyncSemaphore(BRAND_BULK_PROCESS_CONCURRENCY);
 
 function isValidDomain(domain: string): boolean {
   return domain.length <= 253 && VALID_DOMAIN_RE.test(domain);
@@ -589,7 +628,7 @@ registry.registerPath({
   operationId: "resolveBrandsBulk",
   summary: "Bulk resolve brands",
   description:
-    `Resolve up to ${BRAND_BULK_RESOLVE_MAX_DOMAINS} domains to their canonical brand identities in a single request.\n\n**Rate limit:** 20 requests per minute per IP address.`,
+    `Resolve up to ${BRAND_BULK_RESOLVE_MAX_DOMAINS} domains to their canonical brand identities in a single request.\n\n**Rate limits:** 20 requests and 100 unique domain resolutions per minute per IP address.`,
   tags: ["Brand Resolution"],
   request: {
     body: { content: { "application/json": { schema: z.object({ domains: z.array(z.string()).max(BRAND_BULK_RESOLVE_MAX_DOMAINS) }) } } },
@@ -4168,7 +4207,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           .trackRequest("brand", domain)
           .catch((err) => logger.debug({ err }, "Registry request tracking failed"));
 
-        const validation = await brandManager.validateDomain(domain);
+        const validation = liveValidation ?? await brandManager.validateDomain(domain);
         return res.status(404).json({
           error: "Brand not found",
           domain,
@@ -4411,7 +4450,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     }
   });
 
-  router.post("/brands/resolve/bulk", bulkResolveRateLimiter, async (req, res) => {
+  router.post("/brands/resolve/bulk", bulkResolveRateLimiter, brandBulkDomainRateLimiter, async (req, res) => {
     try {
       const { domains } = req.body;
 
@@ -4427,15 +4466,16 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         return res.status(400).json({ error: "All domains must be bare multi-label DNS hostnames" });
       }
 
-      const CONCURRENCY = 10;
       const results: Record<string, unknown> = {};
       const uniqueDomains = [...new Set(domains.map((d: string) => d.trim().toLowerCase()))];
 
-      for (let i = 0; i < uniqueDomains.length; i += CONCURRENCY) {
-        const batch = uniqueDomains.slice(i, i + CONCURRENCY);
+      for (let i = 0; i < uniqueDomains.length; i += BRAND_BULK_PROCESS_CONCURRENCY) {
+        const batch = uniqueDomains.slice(i, i + BRAND_BULK_PROCESS_CONCURRENCY);
         const settled = await Promise.allSettled(
           batch.map(async (domain) => {
-            const resolved = await brandManager.resolveBrand(domain);
+            const resolved = await brandBulkResolveSemaphore.run(
+              () => brandManager.resolveBrand(domain),
+            );
             if (resolved) {
               registryRequestsDb.markResolved("brand", domain, resolved.canonical_domain).catch((err) => logger.debug({ err }, "Registry request tracking failed"));
               return { domain, result: resolved };

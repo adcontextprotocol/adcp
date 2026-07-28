@@ -134,7 +134,12 @@ interface LastValidationAttemptEntry {
 type CanonicalHouseVerification =
   | { status: 'mutual'; houseDomain: string; houseName?: string }
   | { status: 'leaf_only' }
-  | { status: 'unverifiable' };
+  | { status: 'unverifiable'; transient: boolean };
+
+interface CanonicalResolution {
+  result: ResolvedBrand;
+  retainCachedMutual: boolean;
+}
 
 export interface BrandAgentValidationResult {
   agent_url: string;
@@ -977,6 +982,9 @@ export class BrandManager {
     const normalizedDomain = this.normalizeLookupDomain(domain);
     if (!normalizedDomain) return null;
     const cacheKey = `resolve:${normalizedDomain}`;
+    const cachedBeforeRefresh = skipCache
+      ? this.resolutionCache.get(cacheKey)
+      : undefined;
 
     // Check resolution cache unless explicitly skipped
     if (!skipCache) {
@@ -1114,7 +1122,7 @@ export class BrandManager {
         }
 
         case 'brand_canonical': {
-          const result = await this.resolveCanonicalDocument(
+          const freshResolution = await this.resolveCanonicalDocument(
             data as BrandCanonicalDocument,
             currentDomain,
             {
@@ -1122,6 +1130,11 @@ export class BrandManager {
               maxRedirects,
               ...this.promotionMetadata(validationResult),
             }
+          );
+          const result = this.retainCachedMutualRelationship(
+            cachedBeforeRefresh,
+            freshResolution.result,
+            freshResolution.retainCachedMutual,
           );
           this.resolutionCache.set(cacheKey, result);
           return result;
@@ -1216,13 +1229,14 @@ export class BrandManager {
     const canonical = validation.raw_data as BrandCanonicalDocument;
     if (canonical.id !== pointer.brand_id) return null;
     const reciprocal = canonical.house_domain?.toLowerCase() === expectedHouseDomain.toLowerCase();
-    return this.resolveCanonicalDocument(canonical, pointer.domain, {
+    const resolution = await this.resolveCanonicalDocument(canonical, pointer.domain, {
       skipCache: options.skipCache,
       maxRedirects: 3,
       knownRelationship: reciprocal ? 'mutual' : 'house_only',
       verifiedHouseDomain: reciprocal ? expectedHouseDomain : undefined,
       ...this.promotionMetadata(validation),
     });
+    return resolution.result;
   }
 
   private async validateCanonicalPointer(
@@ -1248,7 +1262,7 @@ export class BrandManager {
       promoted_from_schema?: string;
       migration_warnings?: BrandValidationWarning[];
     }
-  ): Promise<ResolvedBrand> {
+  ): Promise<CanonicalResolution> {
     const primaryName = this.getPrimaryName(data.names);
     const claimedHouseDomain = data.house_domain?.toLowerCase();
     let relationshipTrust: ResolvedBrand['relationship_trust'] = claimedHouseDomain
@@ -1256,6 +1270,7 @@ export class BrandManager {
       : 'standalone';
     let verifiedHouseDomain = options.verifiedHouseDomain;
     let houseName: string | undefined;
+    let retainCachedMutual = false;
 
     if (options.knownRelationship) {
       relationshipTrust = options.knownRelationship;
@@ -1269,23 +1284,27 @@ export class BrandManager {
       relationshipTrust = verification.status;
       verifiedHouseDomain = verification.status === 'mutual' ? verification.houseDomain : undefined;
       houseName = verification.status === 'mutual' ? verification.houseName : undefined;
+      retainCachedMutual = verification.status === 'unverifiable' && verification.transient;
     }
 
     return {
-      canonical_id: data.id,
-      canonical_domain: domain,
-      brand_name: primaryName || data.id,
-      names: data.names,
-      keller_type: data.keller_type,
-      parent_brand: data.parent_brand,
-      house_domain: verifiedHouseDomain,
-      claimed_house_domain: claimedHouseDomain,
-      house_name: houseName,
-      relationship_trust: relationshipTrust,
-      promoted_from_schema: options.promoted_from_schema,
-      migration_warnings: options.migration_warnings,
-      brand_manifest: this.buildBrandManifest(data),
-      source: 'brand_json',
+      result: {
+        canonical_id: data.id,
+        canonical_domain: domain,
+        brand_name: primaryName || data.id,
+        names: data.names,
+        keller_type: data.keller_type,
+        parent_brand: data.parent_brand,
+        house_domain: verifiedHouseDomain,
+        claimed_house_domain: claimedHouseDomain,
+        house_name: houseName,
+        relationship_trust: relationshipTrust,
+        promoted_from_schema: options.promoted_from_schema,
+        migration_warnings: options.migration_warnings,
+        brand_manifest: this.buildBrandManifest(data),
+        source: 'brand_json',
+      },
+      retainCachedMutual,
     };
   }
 
@@ -1297,6 +1316,37 @@ export class BrandManager {
     return {
       promoted_from_schema: validation.promoted_from_schema,
       migration_warnings: validation.warnings.slice(0, 20),
+    };
+  }
+
+  /**
+   * A fresh leaf document can succeed while its reciprocal house check fails
+   * transiently. Reuse a still-live mutual verification only when the leaf's
+   * identity and claimed house are unchanged; otherwise the fresh relationship
+   * result replaces the cache normally (including a verified leaf_only result).
+   */
+  private retainCachedMutualRelationship(
+    cached: ResolvedBrand | null | undefined,
+    fresh: ResolvedBrand,
+    verificationFailedTransiently: boolean,
+  ): ResolvedBrand {
+    if (
+      !verificationFailedTransiently ||
+      cached?.relationship_trust !== 'mutual' ||
+      fresh.relationship_trust !== 'unverifiable' ||
+      cached.canonical_id !== fresh.canonical_id ||
+      cached.canonical_domain !== fresh.canonical_domain ||
+      !cached.house_domain ||
+      cached.house_domain.toLowerCase() !== fresh.claimed_house_domain?.toLowerCase()
+    ) {
+      return fresh;
+    }
+
+    return {
+      ...fresh,
+      house_domain: cached.house_domain,
+      house_name: cached.house_name,
+      relationship_trust: 'mutual',
     };
   }
 
@@ -1312,12 +1362,17 @@ export class BrandManager {
 
     for (let redirects = 0; redirects <= options.maxRedirects; redirects++) {
       const visitKey = currentUrl ? `url:${currentUrl}` : `domain:${current}`;
-      if (seen.has(visitKey)) return { status: 'unverifiable' };
+      if (seen.has(visitKey)) return { status: 'unverifiable', transient: false };
       seen.add(visitKey);
       const validation = currentUrl
         ? await this.validateBrandJsonUrl(currentUrl, current)
         : await this.validateDomain(current, { skipCache: options.skipCache });
-      if (!validation.valid || !validation.raw_data) return { status: 'unverifiable' };
+      if (!validation.valid || !validation.raw_data) {
+        return {
+          status: 'unverifiable',
+          transient: this.isTransientValidationFailure(validation),
+        };
+      }
 
       if (validation.variant === 'house_redirect') {
         current = (validation.raw_data as HouseRedirectVariant).house.toLowerCase();
@@ -1329,7 +1384,9 @@ export class BrandManager {
         currentUrl = location;
         continue;
       }
-      if (validation.variant !== 'house_portfolio') return { status: 'unverifiable' };
+      if (validation.variant !== 'house_portfolio') {
+        return { status: 'unverifiable', transient: false };
+      }
 
       const portfolio = validation.raw_data as HousePortfolioVariant;
       const reciprocal = portfolio.brand_refs?.some((ref) =>
@@ -1343,7 +1400,17 @@ export class BrandManager {
           }
         : { status: 'leaf_only' };
     }
-    return { status: 'unverifiable' };
+    return { status: 'unverifiable', transient: false };
+  }
+
+  private isTransientValidationFailure(validation: BrandValidationResult): boolean {
+    if (validation.status_code === 429 || (validation.status_code ?? 0) >= 500) {
+      return true;
+    }
+    if (validation.status_code !== undefined) return false;
+    return validation.errors.some((error) =>
+      ['timeout', 'connection', 'network', 'unknown'].includes(error.field)
+    );
   }
 
   /**

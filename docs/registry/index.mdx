@@ -62,7 +62,8 @@ print(brand["brand_name"], brand["canonical_domain"])
 
 | Endpoint | Limit |
 |----------|-------|
-| Bulk resolve (`/api/brands/resolve/bulk`, `/api/properties/resolve/bulk`) | 20 requests/minute per IP |
+| Brand bulk resolve (`/api/brands/resolve/bulk`) | 20 requests and 100 unique domain resolutions/minute per IP; 25 domains/request |
+| Property bulk resolve (`/api/properties/resolve/bulk`) | 20 requests/minute per IP |
 | Save endpoints (`/api/brands/save`, `/api/properties/save`) | 60 requests/hour per user |
 | Crawl request (`/api/registry/crawl-request`) | 5 minutes per domain, 30 requests/hour per user |
 | All other endpoints | No limit |
@@ -111,6 +112,7 @@ These endpoints resolve domains to brand identities. The `source` field in the r
 
 | Source | Meaning |
 |--------|---------|
+| `hosted` | Registered by a domain owner whose control of the domain has been verified |
 | `brand_json` | Resolved from the domain's `/.well-known/brand.json` file |
 | `enriched` | Enriched via Brandfetch API |
 | `community` | Submitted by a community member |
@@ -120,7 +122,7 @@ All sources produce the same resolution response structure. To get full brand id
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/brands/resolve` | Resolve a domain to its canonical brand |
-| POST | `/api/brands/resolve/bulk` | Resolve up to 100 domains at once |
+| POST | `/api/brands/resolve/bulk` | Resolve up to 25 domains at once |
 | GET | `/api/brands/brand-json` | Fetch raw brand.json for a domain |
 | GET | `/api/brands/registry` | List all brands (search, pagination) |
 | GET | `/api/brands/enrich` | Enrich brand data via Brandfetch |

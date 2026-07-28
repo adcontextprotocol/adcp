@@ -402,6 +402,37 @@ describe('public registry brand read paths', () => {
     });
   });
 
+  it('uses the latest fresh failure status in a not-found response', async () => {
+    const brandDb = {
+      getDiscoveredBrandByDomain: vi.fn().mockResolvedValue(null),
+      upsertDiscoveredBrand: vi.fn(),
+    };
+    const freshFailure = {
+      valid: false,
+      domain: 'acme.com',
+      url: 'https://acme.com/.well-known/brand.json',
+      status_code: 503,
+      errors: [{ field: 'http_status', message: 'HTTP 503', severity: 'error' }],
+      warnings: [],
+    };
+    const validateDomain = vi.fn().mockResolvedValue({
+      valid: true,
+      status_code: 200,
+      errors: [],
+      warnings: [],
+    });
+
+    const res = await request(buildApp(brandDb, false, {
+      resolveBrand: vi.fn().mockResolvedValue(null),
+      getLastValidationResult: vi.fn().mockReturnValue(freshFailure),
+      validateDomain,
+    })).get('/api/brands/resolve?domain=acme.com&fresh=true');
+
+    expect(res.status).toBe(404);
+    expect(res.body.file_status).toBe(503);
+    expect(validateDomain).not.toHaveBeenCalled();
+  });
+
   it('strips legacy brand_context from /api/brands/resolve/bulk fallback manifests', async () => {
     const brandDb = {
       getDiscoveredBrandByDomain: vi.fn().mockResolvedValue(discoveredBrandWithContext()),
@@ -445,6 +476,41 @@ describe('public registry brand read paths', () => {
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('Maximum 25 domains per request');
     expect(resolveBrand).not.toHaveBeenCalled();
+  });
+
+  it('shares one concurrency ceiling across simultaneous bulk requests', async () => {
+    let active = 0;
+    let maxActive = 0;
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const resolveBrand = vi.fn().mockImplementation(async () => {
+      active++;
+      maxActive = Math.max(maxActive, active);
+      await gate;
+      active--;
+      return null;
+    });
+    const brandDb = {
+      getDiscoveredBrandByDomain: vi.fn().mockResolvedValue(null),
+      upsertDiscoveredBrand: vi.fn(),
+    };
+    const app = buildApp(brandDb, false, { resolveBrand });
+    const firstDomains = Array.from({ length: 10 }, (_, i) => `first-${i}.example`);
+    const secondDomains = Array.from({ length: 10 }, (_, i) => `second-${i}.example`);
+
+    const pending = Promise.all([
+      request(app).post('/api/brands/resolve/bulk').send({ domains: firstDomains }),
+      request(app).post('/api/brands/resolve/bulk').send({ domains: secondDomains }),
+    ]);
+
+    await vi.waitFor(() => expect(resolveBrand).toHaveBeenCalledTimes(10));
+    expect(maxActive).toBe(10);
+    release?.();
+
+    const responses = await pending;
+    expect(responses.map((response) => response.status)).toEqual([200, 200]);
+    expect(maxActive).toBe(10);
+    expect(resolveBrand).toHaveBeenCalledTimes(20);
   });
 
   it('strips legacy brand_context from /api/brands/brand-json cached data', async () => {

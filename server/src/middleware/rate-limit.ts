@@ -1,5 +1,5 @@
 import rateLimit from 'express-rate-limit';
-import type { Store } from 'express-rate-limit';
+import type { IncrementResponse, Options, Store } from 'express-rate-limit';
 import type { Request, Response } from 'express';
 import { createLogger } from '../logger.js';
 import { CachedPostgresStore, PostgresStore } from './pg-rate-limit-store.js';
@@ -365,7 +365,8 @@ export const agentReadRateLimiter = createAgentReadRateLimiter();
 
 /**
  * Rate limiter for bulk resolve endpoints
- * Limits: 20 requests per minute per IP (each request resolves up to 100 domains)
+ * Limits: 20 requests per minute per user/IP. Individual endpoints may add a
+ * stricter work-weighted limiter when one request can fan out to many targets.
  */
 export const bulkResolveRateLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
@@ -388,6 +389,105 @@ export const bulkResolveRateLimiter = rateLimit({
     });
   },
 });
+
+/**
+ * Adapts an express-rate-limit store so one request can consume multiple hits.
+ * The weight is encoded before the first colon in the generated key; the
+ * underlying store only sees the stable caller key, so all request sizes share
+ * one counter.
+ */
+class WeightedStore implements Store {
+  readonly localKeys?: boolean;
+  readonly prefix?: string;
+
+  constructor(private readonly inner: Store) {
+    this.localKeys = inner.localKeys;
+    this.prefix = inner.prefix;
+  }
+
+  init(options: Options): void | Promise<void> {
+    return this.inner.init?.(options);
+  }
+
+  async increment(weightedKey: string): Promise<IncrementResponse> {
+    const { key, weight } = this.parseKey(weightedKey);
+    let result = await this.inner.increment(key);
+    for (let i = 1; i < weight; i++) {
+      result = await this.inner.increment(key);
+    }
+    return result;
+  }
+
+  async decrement(weightedKey: string): Promise<void> {
+    const { key, weight } = this.parseKey(weightedKey);
+    for (let i = 0; i < weight; i++) {
+      await this.inner.decrement(key);
+    }
+  }
+
+  resetKey(weightedKey: string): void | Promise<void> {
+    return this.inner.resetKey(this.parseKey(weightedKey).key);
+  }
+
+  resetAll(): void | Promise<void> {
+    return this.inner.resetAll?.();
+  }
+
+  shutdown(): void | Promise<void> {
+    return this.inner.shutdown?.();
+  }
+
+  private parseKey(weightedKey: string): { key: string; weight: number } {
+    const separator = weightedKey.indexOf(':');
+    const parsed = Number.parseInt(weightedKey.slice(0, separator), 10);
+    return {
+      key: separator >= 0 ? weightedKey.slice(separator + 1) : weightedKey,
+      weight: Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 1,
+    };
+  }
+}
+
+export function createBrandBulkDomainRateLimiter(options: {
+  windowMs?: number;
+  maxDomains?: number;
+  maxDomainsPerRequest?: number;
+  store?: Store;
+} = {}) {
+  const maxDomainsPerRequest = options.maxDomainsPerRequest ?? 25;
+  return rateLimit({
+    windowMs: options.windowMs ?? 60 * 1000,
+    max: options.maxDomains ?? 100,
+    standardHeaders: true,
+    legacyHeaders: false,
+    store: new WeightedStore(options.store ?? new CachedPostgresStore('brand-resolve-domains:')),
+    keyGenerator: (req: Request) => {
+      const domains = Array.isArray(req.body?.domains) ? req.body.domains : [];
+      const uniqueDomains = new Set(
+        domains
+          .filter((domain: unknown): domain is string => typeof domain === 'string')
+          .map((domain: string) => domain.trim().toLowerCase()),
+      );
+      const weight = Math.max(1, Math.min(uniqueDomains.size, maxDomainsPerRequest));
+      return `${weight}:${generateKey(req)}`;
+    },
+    validate: { keyGeneratorIpFallback: false },
+    handler: (req: Request, res: Response) => {
+      logger.warn({
+        userId: (req as any).user?.id,
+        ip: req.ip,
+        path: req.path,
+      }, 'Domain-weighted rate limit exceeded for brand bulk resolve');
+
+      res.status(429).json({
+        error: 'Too many requests',
+        message: 'Bulk brand resolution domain limit exceeded. Please try again later.',
+        retryAfter: 60,
+      });
+    },
+  });
+}
+
+export const brandBulkDomainRateLimiter = createBrandBulkDomainRateLimiter();
 
 export const emailPrefsRateLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
@@ -562,8 +662,8 @@ export const contentFetchUrlRateLimiter = rateLimit({
  * Rate limiter for the unauthenticated /api/registry/publisher endpoint.
  * Tighter than the generic registry read limit because each request fans out
  * to up to 50 DB queries (per-agent rollup cap from PR #4106). At 20 req/min
- * the worst-case load per IP is ~1,000 DB queries/min — comparable to
- * bulkResolveRateLimiter (20 × 100 domains).
+ * the worst-case load per IP is ~1,000 DB queries/min. Brand bulk resolution
+ * has its own domain-weighted limiter because its external-fetch cost differs.
  */
 export const registryPublisherRateLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute

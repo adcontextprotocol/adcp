@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import express from 'express';
 import request from 'supertest';
-import { parseRetryAfterSeconds, createAgentReadRateLimiter } from '../../src/middleware/rate-limit.js';
+import { MemoryStore } from 'express-rate-limit';
+import { parseRetryAfterSeconds, createAgentReadRateLimiter, createBrandBulkDomainRateLimiter } from '../../src/middleware/rate-limit.js';
 
 /**
  * Tests for the retryAfter fallback field we surface on the 429 body
@@ -81,4 +82,26 @@ describe('agentReadRateLimiter 429 body', () => {
     expect(headerSeconds).toBeGreaterThan(0);
     expect(last!.body.retryAfter).toBe(headerSeconds);
   }, 30_000);
+});
+
+describe('brand bulk domain rate limiter', () => {
+  it('charges each request by unique domain count', async () => {
+    const app = express();
+    app.use(express.json());
+    app.post('/resolve', createBrandBulkDomainRateLimiter({
+      maxDomains: 3,
+      store: new MemoryStore(),
+    }), (_req, res) => res.json({ ok: true }));
+
+    const first = await request(app)
+      .post('/resolve')
+      .send({ domains: ['one.example', 'one.example', 'two.example'] });
+    const second = await request(app)
+      .post('/resolve')
+      .send({ domains: ['three.example', 'four.example'] });
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(429);
+    expect(second.body.message).toContain('domain limit exceeded');
+  });
 });
