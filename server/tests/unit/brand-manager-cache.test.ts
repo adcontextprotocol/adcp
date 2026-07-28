@@ -126,8 +126,6 @@ describe('BrandManager caching', () => {
 
       expect((await manager.validateDomain('stable.example')).valid).toBe(true);
       expect((await manager.validateDomain('stable.example', { skipCache: true })).valid).toBe(false);
-      expect(manager.getLastValidationResult('stable.example')?.status_code).toBe(503);
-      expect(manager.getLastValidationResult('stable.example')?.raw_data).toBeUndefined();
       expect((await manager.validateDomain('stable.example')).valid).toBe(true);
       expect(mockedSafeFetch).toHaveBeenCalledTimes(2);
     });
@@ -142,31 +140,26 @@ describe('BrandManager caching', () => {
       expect(mockedSafeFetch).not.toHaveBeenCalled();
     });
 
-    it('bounds and expires body-free validation diagnostics', () => {
-      vi.useFakeTimers();
-      const recordAttempt = (manager as unknown as {
-        recordLastValidationAttempt(domain: string, result: Record<string, unknown>): void;
-      }).recordLastValidationAttempt.bind(manager);
-      try {
-        for (let i = 0; i <= 500; i++) {
-          recordAttempt(`brand-${i}.example`, {
-            valid: true,
-            errors: [],
-            warnings: [],
-            domain: `brand-${i}.example`,
-            url: `https://brand-${i}.example/.well-known/brand.json`,
-            raw_data: { oversized: 'not retained' },
-          });
-        }
+    it('reports body-free diagnostics scoped to each resolution', async () => {
+      const oversized = {
+        id: 'oversized',
+        names: [{ en: 'Oversized' }],
+        description: 'x'.repeat(1024),
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(oversized)) })
+        .mockResolvedValueOnce({ status: 503, data: Buffer.from('unavailable') });
 
-        expect(manager.getLastValidationResult('brand-0.example')).toBeUndefined();
-        expect(manager.getLastValidationResult('brand-500.example')).not.toHaveProperty('raw_data');
+      const resolved = await manager.resolveBrandWithDiagnostics('body.example');
+      expect(resolved.brand?.canonical_id).toBe('oversized');
+      expect(resolved.last_attempt).not.toHaveProperty('raw_data');
 
-        vi.advanceTimersByTime(5 * 60 * 1000);
-        expect(manager.getLastValidationResult('brand-500.example')).toBeUndefined();
-      } finally {
-        vi.useRealTimers();
-      }
+      const failed = await manager.resolveBrandWithDiagnostics('other.example');
+      expect(failed.brand).toBeNull();
+      expect(failed.last_attempt).toMatchObject({
+        domain: 'other.example',
+        status_code: 503,
+      });
     });
 
     it('promotes the narrow legacy portfolio shape without inventing trust relationships', async () => {
@@ -514,14 +507,16 @@ describe('BrandManager caching', () => {
       expect(mockedSafeFetch).toHaveBeenCalledTimes(2);
     });
 
-    it('retains terminal redirect diagnostics under the originally requested domain', async () => {
+    it('reports the terminal redirect attempt that ended the resolution', async () => {
       const redirect = { house: 'house.example' };
       mockedSafeFetch
         .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(redirect)) })
         .mockResolvedValueOnce({ status: 503, data: Buffer.from('unavailable') });
 
-      expect(await manager.resolveBrand('leaf.example', { skipCache: true })).toBeNull();
-      expect(manager.getLastValidationResult('leaf.example')).toMatchObject({
+      const resolution = await manager.resolveBrandWithDiagnostics('leaf.example', { skipCache: true });
+
+      expect(resolution.brand).toBeNull();
+      expect(resolution.last_attempt).toMatchObject({
         valid: false,
         domain: 'house.example',
         status_code: 503,
@@ -848,6 +843,211 @@ describe('BrandManager caching', () => {
 
       expect(result).toBeNull();
       expect(mockedSafeFetch).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // brand.json trust invariant: relationship trust requires reciprocation.
+  // A House Redirect is the leaf's one-sided claim, so the named house's
+  // document must name the leaf before its identity can answer for the leaf.
+  describe('house redirect reciprocation', () => {
+    const redirect = { house: 'house.example' };
+
+    it('does not hand a house master brand to a domain the house never names', async () => {
+      const portfolio = {
+        house: { domain: 'house.example', name: 'Example House' },
+        brands: [{
+          id: 'house_master',
+          names: [{ en: 'Example House' }],
+          keller_type: 'master',
+          properties: [{ type: 'website', identifier: 'house.example', relationship: 'owned' }],
+        }],
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(redirect)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(portfolio)) });
+
+      const result = await manager.resolveBrand('squatter.example');
+
+      expect(result).toMatchObject({
+        canonical_id: 'squatter.example',
+        canonical_domain: 'squatter.example',
+        claimed_house_domain: 'house.example',
+        relationship_trust: 'leaf_only',
+      });
+      expect(result?.house_domain).toBeUndefined();
+      expect(result?.names).toBeUndefined();
+    });
+
+    it('resolves a redirect the house reciprocates with an owned property', async () => {
+      const portfolio = {
+        house: { domain: 'house.example', name: 'Example House' },
+        brands: [{
+          id: 'regional',
+          names: [{ en: 'Regional Brand' }],
+          properties: [{ type: 'website', identifier: 'regional.example', relationship: 'owned' }],
+        }],
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(redirect)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(portfolio)) });
+
+      expect(await manager.resolveBrand('regional.example')).toMatchObject({
+        canonical_id: 'regional',
+        brand_name: 'Regional Brand',
+        house_domain: 'house.example',
+        relationship_trust: 'inline',
+      });
+    });
+
+    it('treats a monetization property as a path to inventory, not an identity', async () => {
+      const portfolio = {
+        house: { domain: 'house.example', name: 'Example House' },
+        brands: [{
+          id: 'network',
+          names: [{ en: 'Ad Network' }],
+          properties: [{ type: 'website', identifier: 'publisher.example', relationship: 'delegated' }],
+        }],
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(redirect)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(portfolio)) });
+
+      const result = await manager.resolveBrand('publisher.example');
+
+      expect(result).toMatchObject({
+        canonical_id: 'publisher.example',
+        relationship_trust: 'leaf_only',
+      });
+      expect(result?.brand_name).not.toBe('Ad Network');
+    });
+
+    it('does not hand a house canonical document to an unnamed domain', async () => {
+      const houseCanonical = {
+        id: 'house_brand',
+        names: [{ en: 'House Brand' }],
+        properties: [{ type: 'website', identifier: 'house.example', relationship: 'owned' }],
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(redirect)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(houseCanonical)) });
+
+      const result = await manager.resolveBrand('squatter.example');
+
+      expect(result).toMatchObject({
+        canonical_id: 'squatter.example',
+        claimed_house_domain: 'house.example',
+        relationship_trust: 'leaf_only',
+      });
+      expect(result?.brand_name).not.toBe('House Brand');
+    });
+
+    it('resolves a redirect to a house canonical document that names the leaf', async () => {
+      const houseCanonical = {
+        id: 'house_brand',
+        names: [{ en: 'House Brand' }],
+        properties: [
+          { type: 'website', identifier: 'house.example', relationship: 'owned' },
+          { type: 'website', identifier: 'legacy.example', relationship: 'owned' },
+        ],
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(redirect)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(houseCanonical)) });
+
+      expect(await manager.resolveBrand('legacy.example')).toMatchObject({
+        canonical_id: 'house_brand',
+        brand_name: 'House Brand',
+      });
+    });
+
+    it('keeps a redirected brand agent pointer without adopting the house identity', async () => {
+      const agentDocument = {
+        brand_agent: { id: 'house_agent', url: 'https://agent.house.example/mcp' },
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(redirect)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(agentDocument)) });
+
+      expect(await manager.resolveBrand('squatter.example')).toMatchObject({
+        canonical_id: 'squatter.example',
+        canonical_domain: 'squatter.example',
+        brand_agent_url: 'https://agent.house.example/mcp',
+        claimed_house_domain: 'house.example',
+        relationship_trust: 'leaf_only',
+      });
+    });
+  });
+
+  describe('mutual trust aging', () => {
+    const canonical = {
+      id: 'leaf',
+      names: [{ en: 'Leaf Brand' }],
+      house_domain: 'house.example',
+    };
+    const portfolio = {
+      house: { domain: 'house.example', name: 'Example House' },
+      brand_refs: [{ domain: 'leaf.example', brand_id: 'leaf' }],
+    };
+
+    it('stamps a mutual edge with the time both sides were seen', async () => {
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(portfolio)) });
+
+      const result = await manager.resolveBrand('leaf.example');
+
+      expect(result?.relationship_trust).toBe('mutual');
+      expect(Date.parse(result?.relationship_verified_at ?? '')).toBeGreaterThan(0);
+    });
+
+    it('does not advance the verification time while reusing a retained edge', async () => {
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(portfolio)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({ status: 503, data: Buffer.from('unavailable') });
+
+      const verified = await manager.resolveBrand('leaf.example');
+      const retained = await manager.resolveBrand('leaf.example', { skipCache: true });
+
+      expect(retained?.relationship_trust).toBe('mutual');
+      expect(retained?.relationship_verified_at).toBe(verified?.relationship_verified_at);
+    });
+
+    it('ages a retained edge out even while refreshes keep the cache entry alive', async () => {
+      const hour = 60 * 60 * 1000;
+      vi.useFakeTimers();
+      try {
+        mockedSafeFetch
+          .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+          .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(portfolio)) });
+        expect((await manager.resolveBrand('leaf.example'))?.relationship_trust).toBe('mutual');
+
+        // A refresh inside the window rewrites the cache entry with a fresh TTL,
+        // so the entry outlives the verification it was built from.
+        vi.advanceTimersByTime(12 * hour);
+        mockedSafeFetch
+          .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+          .mockResolvedValueOnce({ status: 503, data: Buffer.from('unavailable') });
+        expect(
+          (await manager.resolveBrand('leaf.example', { skipCache: true }))?.relationship_trust,
+        ).toBe('mutual');
+
+        vi.advanceTimersByTime(13 * hour);
+        mockedSafeFetch
+          .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+          .mockResolvedValueOnce({ status: 503, data: Buffer.from('unavailable') });
+        const aged = await manager.resolveBrand('leaf.example', { skipCache: true });
+
+        expect(aged).toMatchObject({
+          relationship_trust: 'unverifiable',
+          claimed_house_domain: 'house.example',
+        });
+        expect(aged?.house_domain).toBeUndefined();
+        expect(aged?.relationship_verified_at).toBeUndefined();
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 

@@ -123,22 +123,36 @@ const CURRENT_BRAND_SCHEMA = 'https://adcontextprotocol.org/schemas/v3/brand.jso
 const BRAND_JSON_MAX_RESPONSE_BYTES = 256 * 1024;
 const BRAND_CACHE_MAX_ENTRIES = 200;
 const BRAND_FAILED_CACHE_MAX_ENTRIES = 1000;
-const LAST_VALIDATION_ATTEMPT_TTL_MS = 5 * 60 * 1000;
-const LAST_VALIDATION_ATTEMPT_MAX_ENTRIES = 500;
-
-interface LastValidationAttemptEntry {
-  value: BrandValidationResult;
-  expiresAt: number;
-}
+/**
+ * How long a confirmed mutual-assertion edge may be reused while the house
+ * side is transiently unreachable, measured from the last successful
+ * reciprocal check — not from the last resolution. Past this the edge reports
+ * `unverifiable`, per the brand.json edge-aging rule.
+ */
+const MUTUAL_TRUST_RETENTION_MS = 24 * 60 * 60 * 1000;
 
 type CanonicalHouseVerification =
-  | { status: 'mutual'; houseDomain: string; houseName?: string }
+  | { status: 'mutual'; houseDomain: string; houseName?: string; verifiedAt: number }
   | { status: 'leaf_only' }
   | { status: 'unverifiable'; transient: boolean };
 
 interface CanonicalResolution {
   result: ResolvedBrand;
   retainCachedMutual: boolean;
+}
+
+/**
+ * A resolution plus the terminal network attempt that produced it. Diagnostics
+ * are per-call so concurrent resolutions never read each other's state.
+ */
+export interface BrandResolution {
+  brand: ResolvedBrand | null;
+  /** Terminal validation attempt for this call, without the response body. */
+  last_attempt?: BrandValidationResult;
+}
+
+interface ResolutionDiagnostics {
+  last_attempt?: BrandValidationResult;
 }
 
 export interface BrandAgentValidationResult {
@@ -157,10 +171,6 @@ export class BrandManager {
   private resolutionCache: Cache<ResolvedBrand | null>;
   // Cache for failed lookups (1 hour)
   private failedLookupCache: Cache<BrandValidationResult>;
-  // Most recent network attempt per domain, including fresh failures. Used to
-  // report the attempt that actually caused a fallback instead of an older
-  // positive cache entry.
-  private lastValidationAttempt = new Map<string, LastValidationAttemptEntry>();
 
   constructor() {
     this.validationCache = new Cache<BrandValidationResult>(24 * 60, BRAND_CACHE_MAX_ENTRIES); // 24 hours
@@ -175,7 +185,6 @@ export class BrandManager {
     this.validationCache.clear();
     this.resolutionCache.clear();
     this.failedLookupCache.clear();
-    this.lastValidationAttempt.clear();
   }
 
   /**
@@ -189,38 +198,21 @@ export class BrandManager {
     };
   }
 
-  getLastValidationResult(domain: string): BrandValidationResult | undefined {
-    const normalized = domain.trim().toLowerCase();
-    const entry = this.lastValidationAttempt.get(normalized);
-    if (!entry) return undefined;
-    if (entry.expiresAt <= Date.now()) {
-      this.lastValidationAttempt.delete(normalized);
-      return undefined;
-    }
-    return entry.value;
-  }
-
-  private recordLastValidationAttempt(domain: string, result: BrandValidationResult): void {
-    const normalized = domain.trim().toLowerCase();
+  /**
+   * Record the attempt that a caller may report as the reason a resolution
+   * fell back. Bodies are dropped and lists capped so the diagnostic stays
+   * small enough to return over the wire.
+   */
+  private recordAttempt(
+    diagnostics: ResolutionDiagnostics,
+    result: BrandValidationResult
+  ): void {
     const { raw_data: _rawData, ...withoutRawData } = result;
-    const diagnostic: BrandValidationResult = {
+    diagnostics.last_attempt = {
       ...withoutRawData,
       errors: result.errors.slice(0, 20),
       warnings: result.warnings.slice(0, 20),
     };
-
-    // Refresh insertion order so the cap evicts the least-recently recorded
-    // domain. The diagnostic cache intentionally never retains response bodies.
-    this.lastValidationAttempt.delete(normalized);
-    this.lastValidationAttempt.set(normalized, {
-      value: diagnostic,
-      expiresAt: Date.now() + LAST_VALIDATION_ATTEMPT_TTL_MS,
-    });
-    while (this.lastValidationAttempt.size > LAST_VALIDATION_ATTEMPT_MAX_ENTRIES) {
-      const oldestKey = this.lastValidationAttempt.keys().next().value;
-      if (oldestKey === undefined) break;
-      this.lastValidationAttempt.delete(oldestKey);
-    }
   }
 
   private normalizeLookupDomain(domain: string): string | null {
@@ -397,7 +389,6 @@ export class BrandManager {
         domain: domain.trim().toLowerCase(),
         url: '',
       };
-      this.recordLastValidationAttempt(domain, invalidResult);
       return invalidResult;
     }
     const cacheKey = normalizedDomain;
@@ -456,7 +447,6 @@ export class BrandManager {
         });
         // Cache failed lookups for 1 hour
         this.failedLookupCache.set(cacheKey, result);
-        this.recordLastValidationAttempt(cacheKey, result);
         return result;
       }
 
@@ -471,7 +461,6 @@ export class BrandManager {
           severity: 'error',
         });
         this.failedLookupCache.set(cacheKey, result);
-        this.recordLastValidationAttempt(cacheKey, result);
         return result;
       }
 
@@ -489,8 +478,6 @@ export class BrandManager {
       // Cache failed lookups for 1 hour
       this.failedLookupCache.set(cacheKey, result);
     }
-
-    this.recordLastValidationAttempt(cacheKey, result);
 
     return result;
   }
@@ -978,6 +965,27 @@ export class BrandManager {
     domain: string,
     options: { maxRedirects?: number; skipCache?: boolean } = {}
   ): Promise<ResolvedBrand | null> {
+    return (await this.resolveBrandWithDiagnostics(domain, options)).brand;
+  }
+
+  /**
+   * Resolve a domain and report the terminal validation attempt alongside the
+   * result, so a caller can explain a fallback without repeating the fetch.
+   */
+  async resolveBrandWithDiagnostics(
+    domain: string,
+    options: { maxRedirects?: number; skipCache?: boolean } = {}
+  ): Promise<BrandResolution> {
+    const diagnostics: ResolutionDiagnostics = {};
+    const brand = await this.resolveBrandInternal(domain, options, diagnostics);
+    return { brand, last_attempt: diagnostics.last_attempt };
+  }
+
+  private async resolveBrandInternal(
+    domain: string,
+    options: { maxRedirects?: number; skipCache?: boolean },
+    diagnostics: ResolutionDiagnostics
+  ): Promise<ResolvedBrand | null> {
     const { maxRedirects = 3, skipCache = false } = options;
     const normalizedDomain = this.normalizeLookupDomain(domain);
     if (!normalizedDomain) return null;
@@ -997,12 +1005,16 @@ export class BrandManager {
     let currentDomain = normalizedDomain;
     let currentUrl: string | undefined;
     let redirectCount = 0;
+    // Set once a House Redirect moves resolution to another domain. From that
+    // point the document we are reading belongs to the house, not to the
+    // requested domain, so it may only answer for a domain it names.
+    let redirectedHouseDomain: string | undefined;
 
     while (redirectCount <= maxRedirects) {
       const validationResult = currentUrl
         ? await this.validateBrandJsonUrl(currentUrl, currentDomain)
         : await this.validateDomain(currentDomain, { skipCache });
-      this.recordLastValidationAttempt(normalizedDomain, validationResult);
+      this.recordAttempt(diagnostics, validationResult);
 
       if (!validationResult.valid || !validationResult.raw_data) {
         if (!skipCache) this.resolutionCache.set(cacheKey, null);
@@ -1027,7 +1039,10 @@ export class BrandManager {
 
         case 'house_redirect': {
           const redirectData = data as HouseRedirectVariant;
-          currentDomain = redirectData.house;
+          currentDomain = redirectData.house.toLowerCase();
+          redirectedHouseDomain = currentDomain === normalizedDomain
+            ? undefined
+            : currentDomain;
           currentUrl = undefined;
           redirectCount++;
           continue;
@@ -1040,11 +1055,20 @@ export class BrandManager {
             if (!skipCache) this.resolutionCache.set(cacheKey, null);
             return null;
           }
+          // A house's agent is authoritative for the house. Reached through a
+          // redirect it has not yet spoken for the requested domain, so the
+          // identity stays with the requested domain and the house stays a claim.
           const result: ResolvedBrand = {
-            canonical_id: currentDomain,
-            canonical_domain: currentDomain,
-            brand_name: currentDomain, // Agent should provide the name via MCP
+            canonical_id: normalizedDomain,
+            canonical_domain: normalizedDomain,
+            brand_name: normalizedDomain, // Agent should provide the name via MCP
             brand_agent_url: agent.url,
+            ...(redirectedHouseDomain
+              ? {
+                  claimed_house_domain: redirectedHouseDomain,
+                  relationship_trust: 'leaf_only' as const,
+                }
+              : {}),
             ...this.promotionMetadata(validationResult),
             source: 'brand_json',
           };
@@ -1087,14 +1111,18 @@ export class BrandManager {
               pointer,
               { skipCache },
               portfolioData.house.domain,
-              normalizedDomain
+              diagnostics
             );
-            this.resolutionCache.set(cacheKey, pointed);
+            // Same rule as every other branch: a fresh probe that fails must
+            // not overwrite a live entry with a negative one.
+            if (pointed || !skipCache) this.resolutionCache.set(cacheKey, pointed);
             return pointed;
           }
 
-          // Check if the query domain is the house domain itself
-          if (currentDomain === portfolioData.house.domain) {
+          // The house's own master brand answers only for the house domain.
+          // Reached through a redirect from another domain, returning it would
+          // let any domain adopt the house's identity unreciprocated.
+          if (normalizedDomain === portfolioData.house.domain.toLowerCase()) {
             // Return the master brand if there is one
             const masterBrand = brands.find((b) => b.keller_type === 'master');
             if (masterBrand) {
@@ -1117,13 +1145,35 @@ export class BrandManager {
             }
           }
 
+          if (redirectedHouseDomain) {
+            const claim = this.unreciprocatedHouseClaim(
+              normalizedDomain,
+              redirectedHouseDomain,
+              validationResult
+            );
+            this.resolutionCache.set(cacheKey, claim);
+            return claim;
+          }
+
           if (!skipCache) this.resolutionCache.set(cacheKey, null);
           return null;
         }
 
         case 'brand_canonical': {
+          const canonical = data as BrandCanonicalDocument;
+          // The house's own brand document answers for the requested domain
+          // only when it names that domain as an owned property.
+          if (redirectedHouseDomain && !this.documentOwnsWebsite(canonical, normalizedDomain)) {
+            const claim = this.unreciprocatedHouseClaim(
+              normalizedDomain,
+              redirectedHouseDomain,
+              validationResult
+            );
+            this.resolutionCache.set(cacheKey, claim);
+            return claim;
+          }
           const freshResolution = await this.resolveCanonicalDocument(
-            data as BrandCanonicalDocument,
+            canonical,
             currentDomain,
             {
               skipCache,
@@ -1203,21 +1253,66 @@ export class BrandManager {
 
       const pointer = portfolio.brand_refs?.find((entry) => entry.brand_id === ref.brand_id);
       if (pointer) {
-        return this.resolveBrandPointer(pointer, options, portfolio.house.domain, ref.domain);
+        return this.resolveBrandPointer(pointer, options, portfolio.house.domain);
       }
     }
 
     return null;
   }
 
+  /**
+   * A House Redirect the named house has not reciprocated. The requested
+   * domain keeps its own identity and the house stays a claim — the house's
+   * brand is never handed to a domain it does not name.
+   */
+  private unreciprocatedHouseClaim(
+    domain: string,
+    claimedHouseDomain: string,
+    validation: BrandValidationResult
+  ): ResolvedBrand {
+    return {
+      canonical_id: domain,
+      canonical_domain: domain,
+      brand_name: domain,
+      claimed_house_domain: claimedHouseDomain,
+      relationship_trust: 'leaf_only',
+      ...this.promotionMetadata(validation),
+      source: 'brand_json',
+    };
+  }
+
+  /**
+   * Whether a document declares the domain as a website property it owns.
+   * `relationship` defaults to `owned` per the brand.json schema; the other
+   * values (`direct`, `delegated`, `ad_network`) describe monetization paths,
+   * not identity, so they never bind the domain to this brand.
+   */
+  private documentOwnsWebsite(
+    brand: BrandDefinition | BrandCanonicalDocument,
+    domain: string
+  ): boolean {
+    return (brand.properties ?? []).some(
+      (property: BrandProperty) =>
+        property.type === 'website' &&
+        typeof property.identifier === 'string' &&
+        property.identifier.toLowerCase() === domain &&
+        this.isOwnedProperty(property)
+    );
+  }
+
+  private isOwnedProperty(property: BrandProperty): boolean {
+    const relationship = property.relationship as string | undefined;
+    return relationship === undefined || relationship === 'owned';
+  }
+
   private async resolveBrandPointer(
     pointer: NonNullable<HousePortfolioVariant['brand_refs']>[number],
     options: { skipCache?: boolean },
     expectedHouseDomain: string,
-    diagnosticDomain: string
+    diagnostics: ResolutionDiagnostics = {}
   ): Promise<ResolvedBrand | null> {
     const validation = await this.validateCanonicalPointer(pointer.domain, options);
-    this.recordLastValidationAttempt(diagnosticDomain, validation);
+    this.recordAttempt(diagnostics, validation);
     if (
       !validation.valid ||
       validation.variant !== 'brand_canonical' ||
@@ -1271,9 +1366,13 @@ export class BrandManager {
     let verifiedHouseDomain = options.verifiedHouseDomain;
     let houseName: string | undefined;
     let retainCachedMutual = false;
+    let relationshipVerifiedAt: string | undefined;
 
     if (options.knownRelationship) {
       relationshipTrust = options.knownRelationship;
+      if (options.knownRelationship === 'mutual') {
+        relationshipVerifiedAt = new Date().toISOString();
+      }
     } else if (claimedHouseDomain) {
       const verification = await this.verifyCanonicalHouseRelationship(
         domain,
@@ -1284,6 +1383,9 @@ export class BrandManager {
       relationshipTrust = verification.status;
       verifiedHouseDomain = verification.status === 'mutual' ? verification.houseDomain : undefined;
       houseName = verification.status === 'mutual' ? verification.houseName : undefined;
+      relationshipVerifiedAt = verification.status === 'mutual'
+        ? new Date(verification.verifiedAt).toISOString()
+        : undefined;
       retainCachedMutual = verification.status === 'unverifiable' && verification.transient;
     }
 
@@ -1299,6 +1401,7 @@ export class BrandManager {
         claimed_house_domain: claimedHouseDomain,
         house_name: houseName,
         relationship_trust: relationshipTrust,
+        relationship_verified_at: relationshipVerifiedAt,
         promoted_from_schema: options.promoted_from_schema,
         migration_warnings: options.migration_warnings,
         brand_manifest: this.buildBrandManifest(data),
@@ -1324,6 +1427,9 @@ export class BrandManager {
    * transiently. Reuse a still-live mutual verification only when the leaf's
    * identity and claimed house are unchanged; otherwise the fresh relationship
    * result replaces the cache normally (including a verified leaf_only result).
+   *
+   * The retained edge keeps its original verification timestamp, so repeated
+   * transient failures cannot renew it past MUTUAL_TRUST_RETENTION_MS.
    */
   private retainCachedMutualRelationship(
     cached: ResolvedBrand | null | undefined,
@@ -1337,7 +1443,8 @@ export class BrandManager {
       cached.canonical_id !== fresh.canonical_id ||
       cached.canonical_domain !== fresh.canonical_domain ||
       !cached.house_domain ||
-      cached.house_domain.toLowerCase() !== fresh.claimed_house_domain?.toLowerCase()
+      cached.house_domain.toLowerCase() !== fresh.claimed_house_domain?.toLowerCase() ||
+      !this.withinMutualRetentionWindow(cached.relationship_verified_at)
     ) {
       return fresh;
     }
@@ -1347,7 +1454,15 @@ export class BrandManager {
       house_domain: cached.house_domain,
       house_name: cached.house_name,
       relationship_trust: 'mutual',
+      relationship_verified_at: cached.relationship_verified_at,
     };
+  }
+
+  private withinMutualRetentionWindow(verifiedAt: string | undefined): boolean {
+    if (!verifiedAt) return false;
+    const verifiedAtMs = Date.parse(verifiedAt);
+    if (Number.isNaN(verifiedAtMs)) return false;
+    return Date.now() - verifiedAtMs <= MUTUAL_TRUST_RETENTION_MS;
   }
 
   private async verifyCanonicalHouseRelationship(
@@ -1397,6 +1512,7 @@ export class BrandManager {
             status: 'mutual',
             houseDomain: portfolio.house.domain,
             houseName: portfolio.house.name,
+            verifiedAt: Date.now(),
           }
         : { status: 'leaf_only' };
     }
@@ -1452,7 +1568,9 @@ export class BrandManager {
   }
 
   /**
-   * Find a brand in a portfolio by property identifier
+   * Find a brand in a portfolio by property identifier. Only owned properties
+   * bind an identifier to a brand's identity — a house that merely sells or
+   * operates a property does not become that property's brand.
    */
   private findBrandByProperty(
     portfolio: HousePortfolioVariant,
@@ -1467,7 +1585,7 @@ export class BrandManager {
       // Check properties
       if (brand.properties) {
         for (const prop of brand.properties) {
-          if (prop.identifier === identifier) {
+          if (prop.identifier === identifier && this.isOwnedProperty(prop)) {
             return brand;
           }
         }

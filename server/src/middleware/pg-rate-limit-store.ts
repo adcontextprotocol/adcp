@@ -28,7 +28,15 @@ function startCleanup(): void {
   timer.unref();
 }
 
-export class PostgresStore implements Store {
+/**
+ * A store that can consume several hits as one atomic operation, for endpoints
+ * where a single request costs more than one unit of work.
+ */
+export interface WeightedIncrementStore extends Store {
+  incrementBy(key: string, weight: number): Promise<IncrementResponse>;
+}
+
+export class PostgresStore implements WeightedIncrementStore {
   private windowMs = 60_000;
   prefix: string;
 
@@ -42,6 +50,10 @@ export class PostgresStore implements Store {
   }
 
   async increment(key: string): Promise<IncrementResponse> {
+    return this.incrementBy(key, 1);
+  }
+
+  async incrementBy(key: string, weight: number): Promise<IncrementResponse> {
     if (!isDatabaseInitialized()) {
       // Permit requests if DB not yet ready (startup window)
       return { totalHits: 0, resetTime: undefined };
@@ -52,11 +64,11 @@ export class PostgresStore implements Store {
     try {
       const result = await query<{ hits: number; reset_at: Date }>(
         `INSERT INTO rate_limit_hits (key, hits, reset_at)
-         VALUES ($1, 1, NOW() + interval '1 millisecond' * $2::integer)
+         VALUES ($1, $3::integer, NOW() + interval '1 millisecond' * $2::integer)
          ON CONFLICT (key) DO UPDATE SET
            hits = CASE
-             WHEN rate_limit_hits.reset_at <= NOW() THEN 1
-             ELSE rate_limit_hits.hits + 1
+             WHEN rate_limit_hits.reset_at <= NOW() THEN $3::integer
+             ELSE rate_limit_hits.hits + $3::integer
            END,
            reset_at = CASE
              WHEN rate_limit_hits.reset_at <= NOW()
@@ -64,7 +76,7 @@ export class PostgresStore implements Store {
              ELSE rate_limit_hits.reset_at
            END
          RETURNING hits, reset_at`,
-        [prefixedKey, this.windowMs],
+        [prefixedKey, this.windowMs, weight],
       );
 
       const row = result.rows[0];
@@ -128,7 +140,10 @@ interface CachedEntry {
  * periodically syncs to/from Postgres so counters are shared across pods.
  *
  * This avoids a DB round-trip on every request while still enforcing
- * approximate cross-pod limits.
+ * approximate cross-pod limits. The flush merges with `GREATEST`, so what
+ * crosses pods is each pod's peak rather than the sum: the effective limit
+ * grows with pod count. Use `PostgresStore` where the limit has to hold
+ * exactly across the fleet.
  */
 export class CachedPostgresStore implements Store {
   private windowMs = 60_000;

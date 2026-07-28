@@ -601,6 +601,8 @@ export interface ResolvedBrand {
   claimed_house_domain?: string;
   house_name?: string;
   relationship_trust?: 'inline' | 'mutual' | 'leaf_only' | 'house_only' | 'standalone' | 'unverifiable';
+  /** When the mutual-assertion edge was last confirmed by both sides. */
+  relationship_verified_at?: string;
   promoted_from_schema?: string;
   migration_warnings?: Array<{ field: string; message: string; suggestion?: string }>;
   brand_agent_url?: string;

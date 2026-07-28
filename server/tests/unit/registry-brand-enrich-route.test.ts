@@ -43,8 +43,8 @@ function buildApp(
   app.use('/api', createRegistryApiRouter({
     brandManager: {
       resolveBrand: vi.fn().mockResolvedValue(null),
+      resolveBrandWithDiagnostics: vi.fn().mockResolvedValue({ brand: null }),
       validateDomain: vi.fn().mockResolvedValue({ valid: false, errors: [] }),
-      getLastValidationResult: vi.fn().mockReturnValue(undefined),
       ...brandManager,
     } as RegistryApiConfig['brandManager'],
     brandDb: brandDb as RegistryApiConfig['brandDb'],
@@ -387,8 +387,10 @@ describe('public registry brand read paths', () => {
     };
 
     const res = await request(buildApp(brandDb, false, {
-      resolveBrand: vi.fn().mockResolvedValue(null),
-      validateDomain: vi.fn().mockResolvedValue(validation),
+      resolveBrandWithDiagnostics: vi.fn().mockResolvedValue({
+        brand: null,
+        last_attempt: validation,
+      }),
     })).get('/api/brands/resolve?domain=acme.com&fresh=true');
 
     expect(res.status).toBe(200);
@@ -402,7 +404,7 @@ describe('public registry brand read paths', () => {
     });
   });
 
-  it('uses the latest fresh failure status in a not-found response', async () => {
+  it("uses this request's own fresh failure status in a not-found response", async () => {
     const brandDb = {
       getDiscoveredBrandByDomain: vi.fn().mockResolvedValue(null),
       upsertDiscoveredBrand: vi.fn(),
@@ -423,8 +425,10 @@ describe('public registry brand read paths', () => {
     });
 
     const res = await request(buildApp(brandDb, false, {
-      resolveBrand: vi.fn().mockResolvedValue(null),
-      getLastValidationResult: vi.fn().mockReturnValue(freshFailure),
+      resolveBrandWithDiagnostics: vi.fn().mockResolvedValue({
+        brand: null,
+        last_attempt: freshFailure,
+      }),
       validateDomain,
     })).get('/api/brands/resolve?domain=acme.com&fresh=true');
 

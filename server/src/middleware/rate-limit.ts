@@ -2,7 +2,7 @@ import rateLimit from 'express-rate-limit';
 import type { IncrementResponse, Options, Store } from 'express-rate-limit';
 import type { Request, Response } from 'express';
 import { createLogger } from '../logger.js';
-import { CachedPostgresStore, PostgresStore } from './pg-rate-limit-store.js';
+import { CachedPostgresStore, PostgresStore, type WeightedIncrementStore } from './pg-rate-limit-store.js';
 
 const logger = createLogger('rate-limit');
 
@@ -392,15 +392,15 @@ export const bulkResolveRateLimiter = rateLimit({
 
 /**
  * Adapts an express-rate-limit store so one request can consume multiple hits.
- * The weight is encoded before the first colon in the generated key; the
- * underlying store only sees the stable caller key, so all request sizes share
- * one counter.
+ * express-rate-limit hands the store nothing but a key, so the weight rides in
+ * front of the first colon and is stripped here; the underlying store only ever
+ * sees the stable caller key, so all request sizes share one counter.
  */
 class WeightedStore implements Store {
   readonly localKeys?: boolean;
   readonly prefix?: string;
 
-  constructor(private readonly inner: Store) {
+  constructor(private readonly inner: WeightedIncrementStore) {
     this.localKeys = inner.localKeys;
     this.prefix = inner.prefix;
   }
@@ -411,11 +411,10 @@ class WeightedStore implements Store {
 
   async increment(weightedKey: string): Promise<IncrementResponse> {
     const { key, weight } = this.parseKey(weightedKey);
-    let result = await this.inner.increment(key);
-    for (let i = 1; i < weight; i++) {
-      result = await this.inner.increment(key);
-    }
-    return result;
+    // Consume the whole weight in one atomic operation. A loop of single
+    // increments lets concurrent requests interleave, so each reads a total
+    // lower than what they collectively spent and both are admitted.
+    return this.inner.incrementBy(key, weight);
   }
 
   async decrement(weightedKey: string): Promise<void> {
@@ -447,11 +446,17 @@ class WeightedStore implements Store {
   }
 }
 
+/**
+ * Domain-weighted limiter for brand bulk resolution: each unique domain in the
+ * request body costs one hit, because each one can trigger its own chain of
+ * external brand.json fetches. Backed by PostgresStore rather than the cached
+ * store so the ceiling holds across the fleet instead of per pod.
+ */
 export function createBrandBulkDomainRateLimiter(options: {
   windowMs?: number;
   maxDomains?: number;
   maxDomainsPerRequest?: number;
-  store?: Store;
+  store?: WeightedIncrementStore;
 } = {}) {
   const maxDomainsPerRequest = options.maxDomainsPerRequest ?? 25;
   return rateLimit({
@@ -459,7 +464,7 @@ export function createBrandBulkDomainRateLimiter(options: {
     max: options.maxDomains ?? 100,
     standardHeaders: true,
     legacyHeaders: false,
-    store: new WeightedStore(options.store ?? new CachedPostgresStore('brand-resolve-domains:')),
+    store: new WeightedStore(options.store ?? new PostgresStore('brand-resolve-domains:')),
     keyGenerator: (req: Request) => {
       const domains = Array.isArray(req.body?.domains) ? req.body.domains : [];
       const uniqueDomains = new Set(

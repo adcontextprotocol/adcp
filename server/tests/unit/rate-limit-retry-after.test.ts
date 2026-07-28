@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import express from 'express';
 import request from 'supertest';
-import { MemoryStore } from 'express-rate-limit';
+import type { IncrementResponse, Options } from 'express-rate-limit';
 import { parseRetryAfterSeconds, createAgentReadRateLimiter, createBrandBulkDomainRateLimiter } from '../../src/middleware/rate-limit.js';
+import type { WeightedIncrementStore } from '../../src/middleware/pg-rate-limit-store.js';
 
 /**
  * Tests for the retryAfter fallback field we surface on the 429 body
@@ -85,13 +86,54 @@ describe('agentReadRateLimiter 429 body', () => {
 });
 
 describe('brand bulk domain rate limiter', () => {
-  it('charges each request by unique domain count', async () => {
+  /**
+   * Records every weighted increment so the test can assert the limiter spends
+   * a request's whole domain count in one atomic operation. A loop of single
+   * increments would let concurrent requests interleave and each read a total
+   * below what they collectively spent.
+   */
+  class RecordingWeightedStore implements WeightedIncrementStore {
+    readonly increments: Array<{ key: string; weight: number }> = [];
+    private windowMs = 60_000;
+    private hits = new Map<string, number>();
+
+    init(options: Options): void {
+      this.windowMs = options.windowMs;
+    }
+
+    async increment(key: string): Promise<IncrementResponse> {
+      return this.incrementBy(key, 1);
+    }
+
+    async incrementBy(key: string, weight: number): Promise<IncrementResponse> {
+      this.increments.push({ key, weight });
+      const totalHits = (this.hits.get(key) ?? 0) + weight;
+      this.hits.set(key, totalHits);
+      return { totalHits, resetTime: new Date(Date.now() + this.windowMs) };
+    }
+
+    async decrement(key: string): Promise<void> {
+      this.hits.set(key, Math.max((this.hits.get(key) ?? 0) - 1, 0));
+    }
+
+    async resetKey(key: string): Promise<void> {
+      this.hits.delete(key);
+    }
+  }
+
+  function buildApp(store: WeightedIncrementStore) {
     const app = express();
     app.use(express.json());
     app.post('/resolve', createBrandBulkDomainRateLimiter({
       maxDomains: 3,
-      store: new MemoryStore(),
+      store,
     }), (_req, res) => res.json({ ok: true }));
+    return app;
+  }
+
+  it('charges each request by unique domain count', async () => {
+    const store = new RecordingWeightedStore();
+    const app = buildApp(store);
 
     const first = await request(app)
       .post('/resolve')
@@ -103,5 +145,26 @@ describe('brand bulk domain rate limiter', () => {
     expect(first.status).toBe(200);
     expect(second.status).toBe(429);
     expect(second.body.message).toContain('domain limit exceeded');
+  });
+
+  it('spends the whole request weight in one store operation', async () => {
+    const store = new RecordingWeightedStore();
+
+    await request(buildApp(store))
+      .post('/resolve')
+      .send({ domains: ['one.example', 'two.example', 'one.example'] });
+
+    expect(store.increments).toHaveLength(1);
+    expect(store.increments[0].weight).toBe(2);
+  });
+
+  it('keys all request sizes to the same counter', async () => {
+    const store = new RecordingWeightedStore();
+    const app = buildApp(store);
+
+    await request(app).post('/resolve').send({ domains: ['one.example'] });
+    await request(app).post('/resolve').send({ domains: ['two.example', 'three.example'] });
+
+    expect(new Set(store.increments.map((entry) => entry.key)).size).toBe(1);
   });
 });

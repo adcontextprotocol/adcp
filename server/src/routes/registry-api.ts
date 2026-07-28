@@ -20,6 +20,7 @@ import { query } from "../db/client.js";
 import { resolvePrimaryOrganization } from "../db/users-db.js";
 import * as manifestRefsDb from "../db/manifest-refs-db.js";
 import { isUuid } from "../utils/uuid.js";
+import { AsyncSemaphore, SemaphoreOverloadedError } from "../utils/async-semaphore.js";
 import { bulkResolveRateLimiter, brandBulkDomainRateLimiter, brandCreationRateLimiter, storyboardEvalRateLimiter, storyboardStepRateLimiter, agentReadRateLimiter, registryPublisherRateLimiter, registryReadRateLimiter } from "../middleware/rate-limit.js";
 import { listStoryboards, getStoryboard, getTestKitForStoryboard } from "../services/storyboards.js";
 import {
@@ -475,44 +476,16 @@ function extractDomain(raw: string): string {
 const VALID_DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
 const BRAND_BULK_RESOLVE_MAX_DOMAINS = 25;
 const BRAND_BULK_PROCESS_CONCURRENCY = 10;
-
-class AsyncSemaphore {
-  private active = 0;
-  private readonly queue: Array<() => void> = [];
-
-  constructor(private readonly limit: number) {}
-
-  async run<T>(task: () => Promise<T>): Promise<T> {
-    await this.acquire();
-    try {
-      return await task();
-    } finally {
-      this.release();
-    }
-  }
-
-  private acquire(): Promise<void> {
-    if (this.active < this.limit) {
-      this.active++;
-      return Promise.resolve();
-    }
-    return new Promise((resolve) => this.queue.push(resolve));
-  }
-
-  private release(): void {
-    const next = this.queue.shift();
-    if (next) {
-      // Transfer the released permit directly to the oldest waiter.
-      next();
-      return;
-    }
-    this.active--;
-  }
-}
+// Four full requests may wait behind the in-flight batch. Past that the work
+// is queued longer than a caller will wait for it, so shed instead of growing.
+const BRAND_BULK_QUEUE_LIMIT = BRAND_BULK_RESOLVE_MAX_DOMAINS * 4;
 
 // Shared by every router instance in this process so simultaneous bulk
 // requests cannot multiply their per-request fan-out into unbounded work.
-const brandBulkResolveSemaphore = new AsyncSemaphore(BRAND_BULK_PROCESS_CONCURRENCY);
+const brandBulkResolveSemaphore = new AsyncSemaphore(
+  BRAND_BULK_PROCESS_CONCURRENCY,
+  BRAND_BULK_QUEUE_LIMIT,
+);
 
 function isValidDomain(domain: string): boolean {
   return domain.length <= 253 && VALID_DOMAIN_RE.test(domain);
@@ -605,13 +578,20 @@ registry.registerPath({
   path: "/api/brands/resolve",
   operationId: "resolveBrand",
   summary: "Resolve brand",
-  description:
-    "Resolve a domain to its canonical brand identity. Follows brand.json redirects and returns the resolved brand with its house, architecture type, and optional manifest. The domain must be a bare DNS hostname.\n\n**Rate limit:** 60 requests per minute per IP address.",
+  description: [
+    "Resolve a domain to its canonical brand identity. Follows brand.json redirects and returns the resolved brand with its house, architecture type, and optional manifest. The domain must be a bare DNS hostname.",
+    "",
+    "A domain is authoritative for its own identity, so `source` tells you who published the record and `relationship_trust` tells you whether a brand-to-house relationship was confirmed by both sides. Only `mutual` and `inline` are reciprocated; treat everything else as a claim.",
+    "",
+    "**Rate limit:** 60 requests per minute per IP address.",
+  ].join("\n"),
   tags: ["Brand Resolution"],
   request: {
     query: z.object({
       domain: z.string().openapi({ example: "acmecorp.com" }),
-      fresh: z.enum(["true", "false"]).optional(),
+      fresh: z.enum(["true", "false"]).optional().openapi({
+        description: "Bypass the resolution cache and refetch from the origin. When a fresh fetch fails and a stored record is returned instead, `live_brand_json` carries that fetch's diagnostics.",
+      }),
     }),
   },
   responses: {
@@ -627,8 +607,11 @@ registry.registerPath({
   path: "/api/brands/resolve/bulk",
   operationId: "resolveBrandsBulk",
   summary: "Bulk resolve brands",
-  description:
-    `Resolve up to ${BRAND_BULK_RESOLVE_MAX_DOMAINS} domains to their canonical brand identities in a single request.\n\n**Rate limits:** 20 requests and 100 unique domain resolutions per minute per IP address.`,
+  description: [
+    `Resolve up to ${BRAND_BULK_RESOLVE_MAX_DOMAINS} domains to their canonical brand identities in a single request. Unresolvable domains map to \`null\`.`,
+    "",
+    "**Rate limits:** 20 requests and 100 unique domain resolutions per minute per IP address. Request bodies are capped at 16 KB.",
+  ].join("\n"),
   tags: ["Brand Resolution"],
   request: {
     body: { content: { "application/json": { schema: z.object({ domains: z.array(z.string()).max(BRAND_BULK_RESOLVE_MAX_DOMAINS) }) } } },
@@ -636,7 +619,9 @@ registry.registerPath({
   responses: {
     200: { description: "Bulk resolution results", content: { "application/json": { schema: z.object({ results: z.record(z.string(), ResolvedBrandSchema.nullable()) }) } } },
     400: { description: "Invalid domain list", content: { "application/json": { schema: ErrorSchema } } },
+    413: { description: "Request body over 16 KB", content: { "application/json": { schema: ErrorSchema } } },
     429: { description: "Rate limit exceeded", content: { "application/json": { schema: ErrorSchema } } },
+    503: { description: "Too much resolution work is already queued", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -868,6 +853,10 @@ function storedBrandJsonVariant(
   return undefined;
 }
 
+/**
+ * `hosted` means a verified owner registered the row. Same definition as the
+ * registry listing's `OWNER_HOSTED_SQL` — keep the two in step.
+ */
 function resolvedStoredBrandSource(brand: {
   workos_organization_id?: string;
   domain_verified?: boolean;
@@ -4179,10 +4168,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         return res.status(400).json({ error: "Invalid domain format" });
       }
 
-      const resolved = await brandManager.resolveBrand(domain, { skipCache: fresh });
-      const liveValidation = fresh && !resolved
-        ? brandManager.getLastValidationResult(domain) ?? await brandManager.validateDomain(domain)
-        : undefined;
+      const resolution = await brandManager.resolveBrandWithDiagnostics(domain, { skipCache: fresh });
+      const resolved = resolution.brand;
+      // Report why this request fell back, from this request's own attempt.
+      const liveValidation = fresh && !resolved ? resolution.last_attempt : undefined;
       if (!resolved) {
         const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
         // Hide orphaned manifests and explicitly non-public rows. The manifest
@@ -4506,12 +4495,24 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         for (const outcome of settled) {
           if (outcome.status === "fulfilled") {
             results[outcome.value.domain] = outcome.value.result;
+          } else if (outcome.reason instanceof SemaphoreOverloadedError) {
+            // Shedding one domain means the process is saturated; say so rather
+            // than returning a partial map that reads as unresolvable domains.
+            throw outcome.reason;
           }
         }
       }
 
       return res.json({ results });
     } catch (error) {
+      if (error instanceof SemaphoreOverloadedError) {
+        logger.warn({ ip: req.ip }, "Brand bulk resolve shed load");
+        res.setHeader("Retry-After", "5");
+        return res.status(503).json({
+          error: "Brand resolution is busy",
+          message: "Too much resolution work is already queued. Retry shortly.",
+        });
+      }
       logger.error({ error }, "Failed to bulk resolve brands");
       return res.status(500).json({ error: "Failed to bulk resolve brands" });
     }
