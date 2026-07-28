@@ -140,6 +140,24 @@ describe('BrandManager caching', () => {
       expect(mockedSafeFetch).not.toHaveBeenCalled();
     });
 
+    // Agents pass through whatever identifier a human gave them.
+    it.each(['https://acme.example', 'https://acme.example/', 'ACME.example'])(
+      'accepts %s as the acme.example lookup',
+      async (input) => {
+        const canonical = { id: 'acme', names: [{ en: 'Acme' }] };
+        mockedSafeFetch.mockResolvedValueOnce({
+          status: 200,
+          data: Buffer.from(JSON.stringify(canonical)),
+        });
+
+        expect((await manager.resolveBrand(input))?.canonical_domain).toBe('acme.example');
+        expect(mockedSafeFetch).toHaveBeenCalledWith(
+          'https://acme.example/.well-known/brand.json',
+          expect.anything(),
+        );
+      },
+    );
+
     it('reports body-free diagnostics scoped to each resolution', async () => {
       const oversized = {
         id: 'oversized',
@@ -298,6 +316,35 @@ describe('BrandManager caching', () => {
           message: expect.stringContaining('found 2'),
         }),
       ]));
+      // The document was returned untouched, so nothing was promoted.
+      expect(result.promoted_from_schema).toBeUndefined();
+    });
+
+    // `relationship` defaults to owned in the schema and postdates these
+    // documents, so a v1 property that omits it is an ownership claim.
+    it('promotes a legacy origin property that omits relationship', async () => {
+      const legacyBrandJson = {
+        $schema: 'https://schemas.adcontextprotocol.org/brand/v1/brand.json',
+        brands: [{
+          id: 'implicit',
+          name: 'Implicit Owner',
+          properties: [{ type: 'website', identifier: 'implicit.example' }],
+        }],
+      };
+      mockedSafeFetch.mockResolvedValueOnce({
+        status: 200,
+        data: Buffer.from(JSON.stringify(legacyBrandJson)),
+      });
+
+      const result = await manager.validateDomain('implicit.example');
+
+      expect(result.valid).toBe(true);
+      expect(result.variant).toBe('brand_canonical');
+      expect(result.promoted_from_schema).toBe('https://schemas.adcontextprotocol.org/brand/v1/brand.json');
+      expect(result.raw_data).toMatchObject({
+        id: 'implicit',
+        names: [{ und: 'Implicit Owner' }],
+      });
     });
 
     it.each([
@@ -824,6 +871,72 @@ describe('BrandManager caching', () => {
           sameSiteRedirectsOnly: true,
         })
       );
+    });
+
+    // The schema documents central hosting as the use for authoritative_location
+    // ("hosted at the brand's own /.well-known/brand.json or via
+    // authoritative_location indirection"), so an off-site target resolves —
+    // but it has to be consistent with the domain it answers for.
+    it('does not adopt an off-site document that names other domains as its own', async () => {
+      const pointer = { authoritative_location: 'https://victim.example/.well-known/brand.json' };
+      const victimCanonical = {
+        id: 'victim',
+        names: [{ en: 'Victim Brand' }],
+        properties: [{ type: 'website', identifier: 'victim.example', relationship: 'owned' }],
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(pointer)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(victimCanonical)) });
+
+      expect(await manager.resolveBrand('evil.example')).toBeNull();
+    });
+
+    it('resolves an off-site document that names the requested domain', async () => {
+      const pointer = { authoritative_location: 'https://cdn.provider.example/brands/acme.json' };
+      const canonical = {
+        id: 'acme',
+        names: [{ en: 'Acme' }],
+        properties: [
+          { type: 'website', identifier: 'acme.example', relationship: 'owned' },
+          { type: 'website', identifier: 'acme.co.uk', relationship: 'owned' },
+        ],
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(pointer)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) });
+
+      expect(await manager.resolveBrand('acme.example')).toMatchObject({
+        canonical_id: 'acme',
+        canonical_domain: 'acme.example',
+        brand_name: 'Acme',
+      });
+    });
+
+    it('resolves a centrally hosted document that declares no websites', async () => {
+      const pointer = { authoritative_location: 'https://cdn.provider.example/brands/minimal.json' };
+      const canonical = { id: 'minimal', names: [{ en: 'Minimal' }] };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(pointer)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) });
+
+      expect(await manager.resolveBrand('minimal.example')).toMatchObject({
+        canonical_id: 'minimal',
+        canonical_domain: 'minimal.example',
+      });
+    });
+
+    it('accepts a same-site authoritative_location that names other domains', async () => {
+      const pointer = { authoritative_location: 'https://cdn.acme.example/brand.json' };
+      const canonical = {
+        id: 'acme',
+        names: [{ en: 'Acme' }],
+        properties: [{ type: 'website', identifier: 'acme-shop.example', relationship: 'owned' }],
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(pointer)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) });
+
+      expect(await manager.resolveBrand('acme.example')).toMatchObject({ canonical_id: 'acme' });
     });
 
     it('does not follow brand_refs from a portfolio forged for another house origin', async () => {

@@ -1,3 +1,4 @@
+import { getDomain } from 'tldts';
 import { Cache } from './cache.js';
 import { safeFetchAxiosLike, classifySafeFetchError } from './utils/url-security.js';
 import { validateBrandJsonSchema } from './services/brand-json-schema-validator.js';
@@ -215,8 +216,18 @@ export class BrandManager {
     };
   }
 
+  /**
+   * Agents call the MCP tools with whatever identifier a human gave them, so a
+   * bare `https://` prefix or trailing slash is stripped before validating.
+   * Everything else — ports, paths, queries — is still rejected outright
+   * rather than guessed at.
+   */
   private normalizeLookupDomain(domain: string): string | null {
-    const normalized = domain.trim().toLowerCase();
+    const normalized = domain
+      .trim()
+      .toLowerCase()
+      .replace(/^https?:\/\//, '')
+      .replace(/\/$/, '');
     try {
       assertValidBrandDomain(normalized);
       return normalized;
@@ -251,8 +262,11 @@ export class BrandManager {
       ? document.brands.filter((brand): brand is Record<string, unknown> => this.isRecord(brand))
       : [];
 
-    // Compatibility promotion is identity-only. Require exactly one explicit
-    // website match to the TLS origin; never infer identity from array position.
+    // Compatibility promotion is identity-only. Require exactly one website
+    // match to the TLS origin; never infer identity from array position.
+    // `relationship` defaults to `owned` and predates these documents, so an
+    // absent value counts — otherwise promotion never fires for the shape it
+    // exists to carry.
     const originMatches: Array<{ brand: Record<string, unknown>; brandIndex: number; propertyIndex: number }> = [];
     for (const [brandIndex, brand] of brands.entries()) {
       if (!Array.isArray(brand.properties)) continue;
@@ -262,19 +276,22 @@ export class BrandManager {
           property.type === 'website' &&
           typeof property.identifier === 'string' &&
           property.identifier.toLowerCase() === originDomain &&
-          property.relationship === 'owned'
+          this.isOwnedProperty(property as BrandProperty)
         ) {
           originMatches.push({ brand, brandIndex, propertyIndex });
         }
       }
     }
 
+    // The early exits below return the document untouched. They keep the
+    // warnings that explain why, but must not report a promotion that did not
+    // happen — `promoted_from_schema` describes the document in the response.
     if (originMatches.length !== 1) {
       warnings.push({
         field: 'brands',
         message: `Legacy promotion requires exactly one owned website property matching ${originDomain}; found ${originMatches.length}`,
       });
-      return { data, warnings, promotedFromSchema: LEGACY_BRAND_SCHEMA };
+      return { data, warnings };
     }
 
     const originMatch = originMatches[0];
@@ -309,7 +326,7 @@ export class BrandManager {
     }
     if (!Array.isArray(originBrand.names) || originBrand.names.length === 0) {
       warnings.push({ field: `brands[${originIndex}].names`, message: 'Legacy origin brand has no promotable name' });
-      return { data, warnings, promotedFromSchema: LEGACY_BRAND_SCHEMA };
+      return { data, warnings };
     }
 
     const topName = typeof document.name === 'string' ? document.name.trim() : '';
@@ -482,10 +499,15 @@ export class BrandManager {
     return result;
   }
 
+  /**
+   * @param fetchedFrom URL the document was actually served from, when that is
+   *   not the attributed domain's own well-known path.
+   */
   private async validateBrandData(
     brandData: unknown,
     attributedDomain: string,
-    result: BrandValidationResult
+    result: BrandValidationResult,
+    fetchedFrom?: string
   ): Promise<void> {
     const normalized = this.normalizeLegacyBrandJson(brandData, attributedDomain);
     brandData = normalized.data;
@@ -529,6 +551,12 @@ export class BrandManager {
         break;
       case 'brand_canonical':
         this.validateCanonicalDocument(brandData as BrandCanonicalDocument, result);
+        this.validateCanonicalDocumentAttribution(
+          brandData as BrandCanonicalDocument,
+          attributedDomain,
+          result,
+          fetchedFrom
+        );
         break;
       default:
         result.errors.push({
@@ -572,7 +600,7 @@ export class BrandManager {
         result.errors.push({ field: 'json', message: 'Invalid JSON at authoritative_location', severity: 'error' });
         return result;
       }
-      await this.validateBrandData(data, attributedDomain, result);
+      await this.validateBrandData(data, attributedDomain, result, url);
     } catch (error) {
       const classified = classifySafeFetchError(error, attributedDomain);
       result.errors.push({ ...classified, severity: 'error' });
@@ -864,6 +892,52 @@ export class BrandManager {
     result: BrandValidationResult
   ): void {
     this.validateBrand(data, 'root', result);
+  }
+
+  /**
+   * An `authoritative_location` may point off-site — central hosting by a
+   * service provider is the documented use for it, and the target is still
+   * "the brand's own document". A document served from another site therefore
+   * has to be consistent with the domain it is answering for: if it declares
+   * owned websites at all, the requested domain must be among them. A document
+   * that names no websites contradicts nothing and still resolves.
+   */
+  private validateCanonicalDocumentAttribution(
+    data: BrandCanonicalDocument,
+    attributedDomain: string,
+    result: BrandValidationResult,
+    fetchedFrom?: string
+  ): void {
+    if (!fetchedFrom || this.isSameSite(fetchedFrom, attributedDomain)) return;
+
+    const ownedWebsites = (data.properties ?? []).filter(
+      (property: BrandProperty) => property.type === 'website' && this.isOwnedProperty(property)
+    );
+    if (ownedWebsites.length === 0) return;
+
+    const namesDomain = ownedWebsites.some(
+      (property: BrandProperty) =>
+        typeof property.identifier === 'string' &&
+        property.identifier.toLowerCase() === attributedDomain.toLowerCase()
+    );
+    if (!namesDomain) {
+      result.errors.push({
+        field: 'properties',
+        message: `Document served from ${fetchedFrom} declares owned websites that do not include ${attributedDomain}, so it is not this domain's brand document`,
+        severity: 'error',
+      });
+    }
+  }
+
+  /** Same registrable domain (eTLD+1), with the PSL private section as the registrant boundary. */
+  private isSameSite(url: string, domain: string): boolean {
+    try {
+      const host = new URL(url).hostname;
+      const site = getDomain(host, { allowPrivateDomains: true });
+      return site !== null && site === getDomain(domain, { allowPrivateDomains: true });
+    } catch {
+      return false;
+    }
   }
 
   /**

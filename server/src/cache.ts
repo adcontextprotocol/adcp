@@ -15,7 +15,11 @@ export class Cache<T> {
   }
 
   set(key: string, value: T): void {
-    this.pruneExpired();
+    // Only a bounded cache needs this: it keeps expired entries from consuming
+    // the entry budget and evicting a live one. An unbounded cache never
+    // evicts, so scanning the whole map on every write would be pure cost —
+    // `get` expires entries lazily instead.
+    if (Number.isFinite(this.maxEntries)) this.pruneExpired();
     // Refresh insertion order on overwrite so finite caches evict the least
     // recently written/read entry rather than a hot key.
     this.cache.delete(key);
