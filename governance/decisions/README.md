@@ -6,7 +6,7 @@ future proposals must be consistent with.
 
 Records serve two audiences:
 
-1. **The Secretariat** (Argus PR review, issue triage, secretary jobs — see
+1. **The Secretariat** (Ladon PR review, issue triage, secretary jobs — see
    `.agents/wg/constitution.md`) cites records by ID when reviewing. A settled
    question is applied, not re-litigated; departing from a record requires
    naming it and the reason.
