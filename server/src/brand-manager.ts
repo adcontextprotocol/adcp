@@ -14,6 +14,10 @@ import type {
 import { AAO_UA_VALIDATOR } from './config/user-agents.js';
 import { withSdkSafeTransport } from './utils/sdk-safe-fetch.js';
 import { assertValidBrandDomain } from './services/identifier-normalization.js';
+import {
+  observeBrandRelationshipDeclaration,
+  type BrandRelationshipDeclaration,
+} from './db/brand-relationship-db.js';
 
 export interface BrandValidationError {
   field: string;
@@ -131,10 +135,26 @@ const BRAND_FAILED_CACHE_MAX_ENTRIES = 1000;
  * `unverifiable`, per the brand.json edge-aging rule.
  */
 const MUTUAL_TRUST_RETENTION_MS = 24 * 60 * 60 * 1000;
+/**
+ * Maximum age of the house's ownership declaration, independent of how
+ * recently both sides were re-validated. This implements the 180-day ceiling
+ * documented for the AgenticAdvertising.org reference resolver.
+ */
+const MUTUAL_DECLARATION_MAX_AGE_MS = 180 * 24 * 60 * 60 * 1000;
+
+type RelationshipDeclarationObserver = (
+  declaration: BrandRelationshipDeclaration,
+) => Promise<number>;
 
 type CanonicalHouseVerification =
-  | { status: 'mutual'; houseDomain: string; houseName?: string; verifiedAt: number }
-  | { status: 'leaf_only' }
+  | {
+      status: 'mutual';
+      houseDomain: string;
+      houseName?: string;
+      verifiedAt: number;
+      declaredAt: number;
+    }
+  | { status: 'leaf_only'; declaredAt?: number }
   | { status: 'unverifiable'; transient: boolean };
 
 interface CanonicalResolution {
@@ -172,11 +192,16 @@ export class BrandManager {
   private resolutionCache: Cache<ResolvedBrand | null>;
   // Cache for failed lookups (1 hour)
   private failedLookupCache: Cache<BrandValidationResult>;
+  private observeRelationshipDeclaration: RelationshipDeclarationObserver;
 
-  constructor() {
+  constructor(options: {
+    observeRelationshipDeclaration?: RelationshipDeclarationObserver;
+  } = {}) {
     this.validationCache = new Cache<BrandValidationResult>(24 * 60, BRAND_CACHE_MAX_ENTRIES); // 24 hours
     this.resolutionCache = new Cache<ResolvedBrand | null>(24 * 60, BRAND_CACHE_MAX_ENTRIES); // 24 hours
     this.failedLookupCache = new Cache<BrandValidationResult>(60, BRAND_FAILED_CACHE_MAX_ENTRIES); // 1 hour
+    this.observeRelationshipDeclaration = options.observeRelationshipDeclaration
+      ?? observeBrandRelationshipDeclaration;
   }
 
   /**
@@ -1072,7 +1097,9 @@ export class BrandManager {
     if (!skipCache) {
       const cached = this.resolutionCache.get(cacheKey);
       if (cached !== undefined) {
-        return cached;
+        const aged = this.applyDeclarationAgeCeiling(cached);
+        if (aged !== cached) this.resolutionCache.set(cacheKey, aged);
+        return aged;
       }
     }
 
@@ -1398,11 +1425,28 @@ export class BrandManager {
     const canonical = validation.raw_data as BrandCanonicalDocument;
     if (canonical.id !== pointer.brand_id) return null;
     const reciprocal = canonical.house_domain?.toLowerCase() === expectedHouseDomain.toLowerCase();
+    let knownRelationship: 'mutual' | 'house_only' | 'unverifiable' = reciprocal
+      ? 'mutual'
+      : 'house_only';
+    let relationshipDeclaredAt: number | undefined;
+    if (reciprocal) {
+      try {
+        relationshipDeclaredAt = await this.relationshipDeclaredAt(
+          pointer,
+          pointer.domain,
+          pointer.brand_id,
+          expectedHouseDomain,
+        );
+      } catch {
+        knownRelationship = 'unverifiable';
+      }
+    }
     const resolution = await this.resolveCanonicalDocument(canonical, pointer.domain, {
       skipCache: options.skipCache,
       maxRedirects: 3,
-      knownRelationship: reciprocal ? 'mutual' : 'house_only',
-      verifiedHouseDomain: reciprocal ? expectedHouseDomain : undefined,
+      knownRelationship,
+      verifiedHouseDomain: knownRelationship === 'mutual' ? expectedHouseDomain : undefined,
+      relationshipDeclaredAt,
       ...this.promotionMetadata(validation),
     });
     return resolution.result;
@@ -1426,8 +1470,9 @@ export class BrandManager {
     options: {
       skipCache?: boolean;
       maxRedirects: number;
-      knownRelationship?: 'mutual' | 'house_only';
+      knownRelationship?: 'mutual' | 'house_only' | 'unverifiable';
       verifiedHouseDomain?: string;
+      relationshipDeclaredAt?: number;
       promoted_from_schema?: string;
       migration_warnings?: BrandValidationWarning[];
     }
@@ -1441,11 +1486,20 @@ export class BrandManager {
     let houseName: string | undefined;
     let retainCachedMutual = false;
     let relationshipVerifiedAt: string | undefined;
+    let relationshipDeclaredAt = options.relationshipDeclaredAt;
 
     if (options.knownRelationship) {
       relationshipTrust = options.knownRelationship;
       if (options.knownRelationship === 'mutual') {
-        relationshipVerifiedAt = new Date().toISOString();
+        if (
+          relationshipDeclaredAt !== undefined &&
+          this.withinDeclarationAgeCeiling(relationshipDeclaredAt)
+        ) {
+          relationshipVerifiedAt = new Date().toISOString();
+        } else {
+          relationshipTrust = 'leaf_only';
+          verifiedHouseDomain = undefined;
+        }
       }
     } else if (claimedHouseDomain) {
       const verification = await this.verifyCanonicalHouseRelationship(
@@ -1457,6 +1511,9 @@ export class BrandManager {
       relationshipTrust = verification.status;
       verifiedHouseDomain = verification.status === 'mutual' ? verification.houseDomain : undefined;
       houseName = verification.status === 'mutual' ? verification.houseName : undefined;
+      relationshipDeclaredAt = verification.status === 'mutual' || verification.status === 'leaf_only'
+        ? verification.declaredAt
+        : undefined;
       relationshipVerifiedAt = verification.status === 'mutual'
         ? new Date(verification.verifiedAt).toISOString()
         : undefined;
@@ -1476,6 +1533,9 @@ export class BrandManager {
         house_name: houseName,
         relationship_trust: relationshipTrust,
         relationship_verified_at: relationshipVerifiedAt,
+        relationship_declared_at: relationshipDeclaredAt === undefined
+          ? undefined
+          : new Date(relationshipDeclaredAt).toISOString(),
         promoted_from_schema: options.promoted_from_schema,
         migration_warnings: options.migration_warnings,
         brand_manifest: this.buildBrandManifest(data),
@@ -1523,12 +1583,21 @@ export class BrandManager {
       return fresh;
     }
 
+    if (!this.withinDeclarationAgeCeiling(cached.relationship_declared_at)) {
+      return {
+        ...fresh,
+        relationship_trust: 'leaf_only',
+        relationship_declared_at: cached.relationship_declared_at,
+      };
+    }
+
     return {
       ...fresh,
       house_domain: cached.house_domain,
       house_name: cached.house_name,
       relationship_trust: 'mutual',
       relationship_verified_at: cached.relationship_verified_at,
+      relationship_declared_at: cached.relationship_declared_at,
     };
   }
 
@@ -1537,6 +1606,56 @@ export class BrandManager {
     const verifiedAtMs = Date.parse(verifiedAt);
     if (Number.isNaN(verifiedAtMs)) return false;
     return Date.now() - verifiedAtMs <= MUTUAL_TRUST_RETENTION_MS;
+  }
+
+  private withinDeclarationAgeCeiling(declaredAt: number | string | undefined): boolean {
+    if (declaredAt === undefined) return false;
+    const declaredAtMs = typeof declaredAt === 'number' ? declaredAt : Date.parse(declaredAt);
+    if (Number.isNaN(declaredAtMs)) return false;
+    const now = Date.now();
+    return declaredAtMs <= now
+      && now - declaredAtMs <= MUTUAL_DECLARATION_MAX_AGE_MS;
+  }
+
+  private applyDeclarationAgeCeiling(cached: ResolvedBrand | null): ResolvedBrand | null {
+    if (
+      cached?.relationship_trust !== 'mutual' ||
+      this.withinDeclarationAgeCeiling(cached.relationship_declared_at)
+    ) {
+      return cached;
+    }
+    return {
+      ...cached,
+      house_domain: undefined,
+      house_name: undefined,
+      relationship_trust: 'leaf_only',
+      relationship_verified_at: undefined,
+    };
+  }
+
+  private async relationshipDeclaredAt(
+    ref: NonNullable<HousePortfolioVariant['brand_refs']>[number],
+    leafDomain: string,
+    brandId: string,
+    houseDomain: string,
+  ): Promise<number> {
+    try {
+      return await this.observeRelationshipDeclaration({
+        houseDomain,
+        leafDomain,
+        brandId,
+        effectiveAt: ref.effective_at,
+      });
+    } catch (error) {
+      // An explicit publisher timestamp is still usable if persistence is
+      // temporarily unavailable. Missing effective_at must fail closed: using
+      // Date.now() would silently renew an edge after every storage outage.
+      if (ref.effective_at) {
+        const declaredAt = Date.parse(ref.effective_at);
+        if (!Number.isNaN(declaredAt)) return declaredAt;
+      }
+      throw error;
+    }
   }
 
   private async verifyCanonicalHouseRelationship(
@@ -1578,17 +1697,31 @@ export class BrandManager {
       }
 
       const portfolio = validation.raw_data as HousePortfolioVariant;
-      const reciprocal = portfolio.brand_refs?.some((ref) =>
+      const reciprocal = portfolio.brand_refs?.find((ref) =>
         ref.domain.toLowerCase() === leafDomain.toLowerCase() && ref.brand_id === brandId
       );
-      return reciprocal
-        ? {
-            status: 'mutual',
-            houseDomain: portfolio.house.domain,
-            houseName: portfolio.house.name,
-            verifiedAt: Date.now(),
-          }
-        : { status: 'leaf_only' };
+      if (!reciprocal) return { status: 'leaf_only' };
+      let declaredAt: number;
+      try {
+        declaredAt = await this.relationshipDeclaredAt(
+          reciprocal,
+          leafDomain,
+          brandId,
+          portfolio.house.domain,
+        );
+      } catch {
+        return { status: 'unverifiable', transient: true };
+      }
+      if (!this.withinDeclarationAgeCeiling(declaredAt)) {
+        return { status: 'leaf_only', declaredAt };
+      }
+      return {
+        status: 'mutual',
+        houseDomain: portfolio.house.domain,
+        houseName: portfolio.house.name,
+        verifiedAt: Date.now(),
+        declaredAt,
+      };
     }
     return { status: 'unverifiable', transient: false };
   }

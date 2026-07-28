@@ -85,7 +85,7 @@
         "effective_at": {
           "type": "string",
           "format": "date-time",
-          "description": "ISO 8601 timestamp when the house established this ownership claim. Consumers age mutual-assertion edges from this date for TTL purposes. Optional; absent means the consumer ages from its own first observation."
+          "description": "ISO 8601 timestamp when the house established this ownership claim. Consumers age mutual-assertion edges from this date for TTL purposes and MUST NOT extend relationship trust before a future effective_at is reached. Optional; absent means the consumer ages from its own durable first observation."
         }
       },
       "required": ["domain", "brand_id"],

@@ -15,9 +15,31 @@ const mockedSafeFetch = vi.mocked(safeFetchAxiosLike);
 
 describe('BrandManager caching', () => {
   let manager: BrandManager;
+  let relationshipDeclarations: Map<string, number>;
+
+  const createManager = () => new BrandManager({
+    observeRelationshipDeclaration: async (declaration) => {
+      const key = [
+        declaration.houseDomain.toLowerCase(),
+        declaration.leafDomain.toLowerCase(),
+        declaration.brandId,
+      ].join('|');
+      if (declaration.effectiveAt) {
+        const declaredAt = Date.parse(declaration.effectiveAt);
+        relationshipDeclarations.set(key, declaredAt);
+        return declaredAt;
+      }
+      const firstObserved = relationshipDeclarations.get(key);
+      if (firstObserved !== undefined) return firstObserved;
+      const observedAt = Date.now();
+      relationshipDeclarations.set(key, observedAt);
+      return observedAt;
+    },
+  });
 
   beforeEach(() => {
-    manager = new BrandManager();
+    relationshipDeclarations = new Map();
+    manager = createManager();
     vi.clearAllMocks();
   });
 
@@ -1111,6 +1133,190 @@ describe('BrandManager caching', () => {
 
       expect(result?.relationship_trust).toBe('mutual');
       expect(Date.parse(result?.relationship_verified_at ?? '')).toBeGreaterThan(0);
+      expect(Date.parse(result?.relationship_declared_at ?? '')).toBeGreaterThan(0);
+    });
+
+    it('exposes effective_at as the declaration clock', async () => {
+      const effectiveAt = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({
+          status: 200,
+          data: Buffer.from(JSON.stringify({
+            ...portfolio,
+            brand_refs: [{ ...portfolio.brand_refs[0], effective_at: effectiveAt }],
+          })),
+        });
+
+      const result = await manager.resolveBrand('leaf.example');
+
+      expect(result?.relationship_trust).toBe('mutual');
+      expect(result?.relationship_declared_at).toBe(effectiveAt);
+    });
+
+    it('degrades a reciprocal declaration older than 180 days to leaf_only', async () => {
+      const effectiveAt = new Date(Date.now() - 181 * 24 * 60 * 60 * 1000).toISOString();
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({
+          status: 200,
+          data: Buffer.from(JSON.stringify({
+            ...portfolio,
+            brand_refs: [{ ...portfolio.brand_refs[0], effective_at: effectiveAt }],
+          })),
+        });
+
+      const result = await manager.resolveBrand('leaf.example');
+
+      expect(result).toMatchObject({
+        relationship_trust: 'leaf_only',
+        claimed_house_domain: 'house.example',
+        relationship_declared_at: effectiveAt,
+      });
+      expect(result?.house_domain).toBeUndefined();
+      expect(result?.relationship_verified_at).toBeUndefined();
+    });
+
+    it('keeps first observation stable across manager instances when effective_at is absent', async () => {
+      const hour = 60 * 60 * 1000;
+      vi.useFakeTimers();
+      try {
+        mockedSafeFetch
+          .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+          .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(portfolio)) });
+        const first = await manager.resolveBrand('leaf.example');
+
+        vi.advanceTimersByTime(30 * 24 * hour);
+        manager = createManager();
+        mockedSafeFetch
+          .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+          .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(portfolio)) });
+        const refreshed = await manager.resolveBrand('leaf.example', { skipCache: true });
+
+        expect(refreshed?.relationship_trust).toBe('mutual');
+        expect(refreshed?.relationship_declared_at).toBe(first?.relationship_declared_at);
+        expect(refreshed?.relationship_verified_at).not.toBe(first?.relationship_verified_at);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('does not activate a future declaration before its effective time', async () => {
+      const effectiveAt = new Date(Date.now() + 4 * 60 * 1000).toISOString();
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({
+          status: 200,
+          data: Buffer.from(JSON.stringify({
+            ...portfolio,
+            brand_refs: [{ ...portfolio.brand_refs[0], effective_at: effectiveAt }],
+          })),
+        });
+
+      const result = await manager.resolveBrand('leaf.example');
+
+      expect(result).toMatchObject({
+        relationship_trust: 'leaf_only',
+        relationship_declared_at: effectiveAt,
+      });
+      expect(result?.house_domain).toBeUndefined();
+      expect(result?.relationship_verified_at).toBeUndefined();
+    });
+
+    it('fails closed when a missing effective_at cannot be durably observed', async () => {
+      manager = new BrandManager({
+        observeRelationshipDeclaration: async () => {
+          throw new Error('database unavailable');
+        },
+      });
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(portfolio)) });
+
+      const result = await manager.resolveBrand('leaf.example');
+
+      expect(result?.relationship_trust).toBe('unverifiable');
+      expect(result?.house_domain).toBeUndefined();
+      expect(result?.relationship_declared_at).toBeUndefined();
+    });
+
+    it('can evaluate explicit effective_at while durable storage is unavailable', async () => {
+      const effectiveAt = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      manager = new BrandManager({
+        observeRelationshipDeclaration: async () => {
+          throw new Error('database unavailable');
+        },
+      });
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({
+          status: 200,
+          data: Buffer.from(JSON.stringify({
+            ...portfolio,
+            brand_refs: [{ ...portfolio.brand_refs[0], effective_at: effectiveAt }],
+          })),
+        });
+
+      const result = await manager.resolveBrand('leaf.example');
+
+      expect(result?.relationship_trust).toBe('mutual');
+      expect(result?.relationship_declared_at).toBe(effectiveAt);
+    });
+
+    it('does not reset the declaration clock when effective_at is later omitted', async () => {
+      const hour = 60 * 60 * 1000;
+      vi.useFakeTimers();
+      try {
+        const effectiveAt = new Date(Date.now() - 30 * 24 * hour).toISOString();
+        mockedSafeFetch
+          .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+          .mockResolvedValueOnce({
+            status: 200,
+            data: Buffer.from(JSON.stringify({
+              ...portfolio,
+              brand_refs: [{ ...portfolio.brand_refs[0], effective_at: effectiveAt }],
+            })),
+          });
+        await manager.resolveBrand('leaf.example');
+
+        vi.advanceTimersByTime(30 * 24 * hour);
+        manager = createManager();
+        mockedSafeFetch
+          .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+          .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(portfolio)) });
+        const refreshed = await manager.resolveBrand('leaf.example', { skipCache: true });
+
+        expect(refreshed?.relationship_declared_at).toBe(effectiveAt);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('applies the declaration ceiling to a cached mutual edge', async () => {
+      const hour = 60 * 60 * 1000;
+      vi.useFakeTimers();
+      try {
+        const effectiveAt = new Date(Date.now() - (179 * 24 + 18) * hour).toISOString();
+        mockedSafeFetch
+          .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+          .mockResolvedValueOnce({
+            status: 200,
+            data: Buffer.from(JSON.stringify({
+              ...portfolio,
+              brand_refs: [{ ...portfolio.brand_refs[0], effective_at: effectiveAt }],
+            })),
+          });
+        expect((await manager.resolveBrand('leaf.example'))?.relationship_trust).toBe('mutual');
+
+        vi.advanceTimersByTime(7 * hour);
+        const aged = await manager.resolveBrand('leaf.example');
+
+        expect(aged?.relationship_trust).toBe('leaf_only');
+        expect(aged?.relationship_declared_at).toBe(effectiveAt);
+        expect(aged?.house_domain).toBeUndefined();
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('does not advance the verification time while reusing a retained edge', async () => {

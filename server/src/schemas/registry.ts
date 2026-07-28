@@ -481,7 +481,7 @@ export const ResolvedBrandSchema = z
     parent_brand: z.string().optional(),
     house_domain: z.string().optional(),
     claimed_house_domain: z.string().optional().openapi({
-      description: "House the requested domain claims. One-sided until the named house names it back, so it never extends relationship trust on its own.",
+      description: "House the requested domain claims. This field never extends trust on its own; `relationship_trust` reports whether the reciprocal declaration is current enough to do so.",
     }),
     house_name: z.string().optional(),
     relationship_trust: z.enum([
@@ -496,15 +496,19 @@ export const ResolvedBrandSchema = z
         "How the brand-to-house relationship was established.",
         "`inline`: the house's own document defines the brand.",
         "`mutual`: both sides publish the relationship — the trust-extending edge.",
-        "`leaf_only`: the brand claims a house that has not reciprocated.",
+        "`leaf_only`: the brand claims a house whose reciprocal declaration is missing, not yet active, or too old to extend trust.",
         "`house_only`: a house claims the brand, which has not reciprocated.",
         "`standalone`: the brand claims no house.",
         "`unverifiable`: a claimed house could not be checked.",
       ].join(" "),
     }),
-    relationship_verified_at: z.string().optional().openapi({
+    relationship_verified_at: z.string().datetime().optional().openapi({
       description: "When both sides of a mutual relationship were last seen agreeing. Present only for `mutual`, and it does not advance while the house side is unreachable, so callers can apply their own edge-aging policy.",
       example: "2026-07-28T12:00:00Z",
+    }),
+    relationship_declared_at: z.string().datetime().optional().openapi({
+      description: "When the house declared the relationship in `brand_refs[].effective_at`, or the resolver's durable first observation if the publisher omitted that field. Callers can apply a declaration-age ceiling independently of `relationship_verified_at`.",
+      example: "2026-01-29T12:00:00Z",
     }),
     promoted_from_schema: z.string().optional().openapi({
       description: "Set when a pre-v3 document was promoted to a canonical v3 document for this response. Identity only — legacy relationship data is preserved opaquely, never promoted to a trust claim.",
