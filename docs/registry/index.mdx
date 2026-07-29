@@ -109,7 +109,7 @@ Three endpoints answer different questions about who is in the registry. They sp
 
 ### Brand Resolution
 
-These endpoints resolve domains to brand identities. The `source` field in the response indicates where the data came from:
+These endpoints resolve domains to brand identities. The `source` field identifies the provenance of the selected registry record. When more than one candidate fact exists for a domain, selection is deterministic: `hosted` wins over `brand_json`, then `community`, then `enriched`. Ties among stored rows use the most recently validated record and a stable ID tie-breaker. A normal read prefers that durable stored winner on a source tie; `fresh=true` lets a successful live origin read win a tie, but never override a higher-provenance stored record. Identical normal requests therefore do not randomly change records or labels.
 
 | Source | Meaning |
 |--------|---------|
@@ -118,11 +118,20 @@ These endpoints resolve domains to brand identities. The `source` field in the r
 | `enriched` | Enriched via Brandfetch API |
 | `community` | Submitted by a community member |
 
-All sources produce the same resolution response structure. To get full brand identity data (logos, colors, tone), use `/api/brands/enrich` or look up the brand in the registry.
+All sources produce the same resolution response structure, but they are not equivalent evidence. `hosted` and `brand_json` are backed by domain control; `community` and `enriched` describe what the registry has learned without proving that the domain operator asserted it. `source` is identity provenance, not proof of a house relationship—use `relationship_trust` for that. To get full brand identity data (logos, colors, tone), use `/api/brands/enrich` or look up the brand in the registry.
 
 #### Reading trust
 
 A domain is authoritative for its own identity — TLS proves the document came from that domain and nothing more. Relationships between a brand and a house need both sides to publish them, so resolution reports how each relationship was established rather than flattening it into a single answer.
+
+For third-party verification, call `GET /api/brands/resolve?domain=<leaf-domain>` and inspect `relationship_trust`. Only `mutual` and `inline` are reciprocated relationships suitable for extending trust to `house_domain`:
+
+- `mutual` means the leaf publishes `house_domain` and the house names the leaf in `brand_refs[]`; `relationship_verified_at` reports when the resolver last observed both sides agreeing.
+- `inline` means the house's own canonical document defines the leaf, so the ownership statement and identity come from the house authority itself.
+
+Every other value is non-reciprocated. In particular, `claimed_house_domain` with `leaf_only` is one side's self-assertion and must not authorize the leaf as part of that house. There is no separate ordered-chain endpoint in v3: the hierarchy is one level deep, and the reciprocated `house_domain` edge in this response is the supported ownership-verification result.
+
+An absent `relationship_trust` is not the same as `standalone`: it means the selected record carries no relationship verdict. Consumers must treat missing evidence as unknown, not as evidence that no relationship exists.
 
 | `relationship_trust` | Meaning |
 |---|---|
@@ -137,9 +146,9 @@ A domain is authoritative for its own identity — TLS proves the document came 
 
 Following a redirect never lets a domain adopt a house's identity. When a domain's brand.json points at a house that does not name the domain back — in `properties[]` as `relationship: "owned"`, or in `brand_refs[]` — the response carries the claim (`claimed_house_domain` with `relationship_trust: leaf_only`) and no brand identity. A house that lists a domain with `direct`, `delegated`, or `ad_network` is declaring a monetization path, not ownership, so it does not resolve that domain's identity either. If you expected an identity here, the house is missing its half of the relationship.
 
-`fresh=true` bypasses the resolution cache and refetches from the origin. When that fetch fails and a stored record is returned instead, `live_brand_json` carries the failed fetch's diagnostics so you can tell a stale record from a live one.
+`fresh=true` bypasses the resolution cache and refetches from the origin. When that fetch fails and a stored record is returned instead, `live_brand_json` carries that request's failed-fetch diagnostics so you can distinguish “stored evidence returned” from “origin checked successfully.” Apply your own freshness policy to that fallback rather than silently treating it as live.
 
-Pre-v3 documents are promoted to canonical v3 identity for the response, flagged with `promoted_from_schema` and `migration_warnings`. Promotion covers identity only; legacy relationship data is preserved opaquely and never becomes a trust claim.
+Pre-v3 documents are promoted to canonical v3 identity for the response, flagged with `promoted_from_schema` and `migration_warnings`. Promotion covers identity only; legacy relationship data is preserved opaquely and never becomes a trust claim. In particular, a warning with `field: "house"` means the legacy house object was moved to `legacy_metadata.legacy_house` and did **not** establish `house_domain`. The publisher must add `house_domain` to the leaf document and a reciprocal `brand_refs[]` entry to the house document.
 
 | Method | Path | Description |
 |--------|------|-------------|

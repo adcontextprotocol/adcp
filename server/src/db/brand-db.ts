@@ -36,6 +36,19 @@ import type {
 const DISALLOWED_MANIFEST_KEYS: ReadonlySet<string> = new Set(['classification', 'brand_context']);
 
 /**
+ * Stable precedence for selecting a registry fact when legacy or partially
+ * migrated databases contain more than one row for a domain. `hosted` is
+ * derived from verified ownership columns rather than stored in source_type.
+ */
+const BRAND_RESOLUTION_SOURCE_PRIORITY_SQL = `CASE
+  WHEN workos_organization_id IS NOT NULL AND domain_verified IS TRUE THEN 1
+  WHEN source_type = 'brand_json' THEN 2
+  WHEN source_type = 'community' THEN 3
+  WHEN source_type = 'enriched' THEN 4
+  ELSE 5
+END`;
+
+/**
  * Strip auth-relevant keys from a caller-supplied brand_manifest. Returns
  * undefined when the input is undefined so caller checks for "provided"
  * still work. Mutates a shallow copy — does not touch the caller's object.
@@ -738,7 +751,14 @@ export class BrandDatabase {
    */
   async getDiscoveredBrandByDomain(domain: string): Promise<DiscoveredBrand | null> {
     const result = await query<DiscoveredBrand>(
-      'SELECT * FROM brands WHERE domain = $1',
+      `SELECT *
+       FROM brands
+       WHERE domain = $1
+       ORDER BY ${BRAND_RESOLUTION_SOURCE_PRIORITY_SQL},
+                last_validated DESC NULLS LAST,
+                discovered_at DESC NULLS LAST,
+                id ASC
+       LIMIT 1`,
       [domain.toLowerCase()]
     );
     return result.rows[0] ? this.deserializeDiscoveredBrand(result.rows[0]) : null;
@@ -753,12 +773,19 @@ export class BrandDatabase {
     const lower = domains.map(d => d.toLowerCase());
     const placeholders = lower.map((_, i) => `$${i + 1}`).join(', ');
     const result = await query<DiscoveredBrand>(
-      `SELECT * FROM brands WHERE domain IN (${placeholders})`,
+      `SELECT DISTINCT ON (domain) *
+       FROM brands
+       WHERE domain IN (${placeholders})
+       ORDER BY domain,
+                ${BRAND_RESOLUTION_SOURCE_PRIORITY_SQL},
+                last_validated DESC NULLS LAST,
+                discovered_at DESC NULLS LAST,
+                id ASC`,
       lower
     );
     const map = new Map<string, DiscoveredBrand>();
     for (const row of result.rows) {
-      map.set(row.domain, this.deserializeDiscoveredBrand(row));
+      map.set(row.domain.toLowerCase(), this.deserializeDiscoveredBrand(row));
     }
     return map;
   }

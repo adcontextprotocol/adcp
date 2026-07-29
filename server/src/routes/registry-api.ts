@@ -582,6 +582,8 @@ registry.registerPath({
     "Resolve a domain to its canonical brand identity. Follows brand.json redirects and returns the resolved brand with its house, architecture type, and optional manifest. The domain must be a bare DNS hostname.",
     "",
     "A domain is authoritative for its own identity, so `source` tells you who published the record and `relationship_trust` tells you whether a brand-to-house relationship was confirmed by both sides. Only `mutual` and `inline` are reciprocated; treat everything else as a claim.",
+    "Record selection is deterministic: `hosted` > `brand_json` > `community` > `enriched`. `source` reports provenance only and must not be used as a substitute for `relationship_trust`.",
+    "The v3 hierarchy is one level deep. There is no ordered-chain endpoint: third-party verifiers use the reciprocated `house_domain` edge returned here. `claimed_house_domain` is unilateral and never extends trust.",
     "",
     "**Rate limit:** 60 requests per minute per IP address.",
   ].join("\n"),
@@ -865,6 +867,55 @@ function resolvedStoredBrandSource(brand: {
   return brand.workos_organization_id && brand.domain_verified === true
     ? 'hosted'
     : brand.source_type;
+}
+
+type ResolvedBrandResponse = z.infer<typeof ResolvedBrandSchema>;
+type StoredBrandResolutionRecord = NonNullable<
+  Awaited<ReturnType<BrandDatabase["getDiscoveredBrandByDomain"]>>
+>;
+
+const RESOLVED_BRAND_SOURCE_PRIORITY: Record<ResolvedBrandResponse["source"], number> = {
+  hosted: 1,
+  brand_json: 2,
+  community: 3,
+  enriched: 4,
+};
+
+function storedBrandResolutionResponse(
+  brand: StoredBrandResolutionRecord,
+  liveValidation?: ReturnType<typeof serializeBrandValidation>,
+): ResolvedBrandResponse {
+  return {
+    canonical_id: brand.canonical_domain || brand.domain,
+    canonical_domain: brand.canonical_domain || brand.domain,
+    brand_name: brand.brand_name || brand.domain,
+    source: resolvedStoredBrandSource(brand),
+    brand_manifest: stripLegacyBrandContext(brand.brand_manifest),
+    ...(liveValidation ? { live_brand_json: liveValidation } : {}),
+  };
+}
+
+/**
+ * Select the actual response candidate, not just its label. Default reads use
+ * the durable stored candidate on a source-priority tie so every pod returns
+ * the same document. `fresh=true` lets a successful live read win a tie, while
+ * a strictly higher-provenance stored record (for example `hosted`) still wins.
+ */
+function selectResolvedBrandResponse(
+  live: ResolvedBrandResponse,
+  stored: StoredBrandResolutionRecord | null,
+  fresh: boolean,
+): ResolvedBrandResponse {
+  // A private or orphaned row is not a public resolution candidate. In
+  // particular, it must never replace a valid live-origin response merely
+  // because its provenance would otherwise rank higher.
+  if (!stored || stored.manifest_orphaned || stored.is_public === false) return live;
+  const storedCandidate = storedBrandResolutionResponse(stored);
+  const storedPriority = RESOLVED_BRAND_SOURCE_PRIORITY[storedCandidate.source];
+  const livePriority = RESOLVED_BRAND_SOURCE_PRIORITY[live.source];
+  return storedPriority < livePriority || (storedPriority === livePriority && !fresh)
+    ? storedCandidate
+    : live;
 }
 
 registry.registerPath({
@@ -4170,10 +4221,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
       const resolution = await brandManager.resolveBrandWithDiagnostics(domain, { skipCache: fresh });
       const resolved = resolution.brand;
+      const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
       // Report why this request fell back, from this request's own attempt.
       const liveValidation = fresh && !resolved ? resolution.last_attempt : undefined;
       if (!resolved) {
-        const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
         // Hide orphaned manifests and explicitly non-public rows. The manifest
         // is preserved server-side for adoption-at-claim-time but must not
         // surface on public read paths until the next claim is applied.
@@ -4181,16 +4232,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           registryRequestsDb
             .markResolved("brand", domain, discovered.canonical_domain || discovered.domain)
             .catch((err) => logger.debug({ err }, "Registry request tracking failed"));
-          return res.json({
-            canonical_id: discovered.canonical_domain || discovered.domain,
-            canonical_domain: discovered.canonical_domain || discovered.domain,
-            brand_name: discovered.brand_name,
-            source: resolvedStoredBrandSource(discovered),
-            brand_manifest: stripLegacyBrandContext(discovered.brand_manifest),
-            ...(liveValidation ? {
-              live_brand_json: serializeBrandValidation(liveValidation),
-            } : {}),
-          });
+          return res.json(storedBrandResolutionResponse(
+            discovered,
+            liveValidation ? serializeBrandValidation(liveValidation) : undefined,
+          ));
         }
         registryRequestsDb
           .trackRequest("brand", domain)
@@ -4204,10 +4249,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         });
       }
 
+      const selected = selectResolvedBrandResponse(resolved, discovered, fresh);
       registryRequestsDb
-        .markResolved("brand", domain, resolved.canonical_domain)
+        .markResolved("brand", domain, selected.canonical_domain)
         .catch((err) => logger.debug({ err }, "Registry request tracking failed"));
-      return res.json(resolved);
+      return res.json(selected);
     } catch (error) {
       logger.error({ error }, "Failed to resolve brand");
       return res.status(500).json({ error: "Failed to resolve brand" });
@@ -4465,25 +4511,23 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             const resolved = await brandBulkResolveSemaphore.run(
               () => brandManager.resolveBrand(domain),
             );
+            const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
             if (resolved) {
-              registryRequestsDb.markResolved("brand", domain, resolved.canonical_domain).catch((err) => logger.debug({ err }, "Registry request tracking failed"));
-              return { domain, result: resolved };
+              const selected = selectResolvedBrandResponse(resolved, discovered, false);
+              registryRequestsDb.markResolved("brand", domain, selected.canonical_domain).catch((err) => logger.debug({ err }, "Registry request tracking failed"));
+              return {
+                domain,
+                result: selected,
+              };
             }
 
-            const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
             // Hide orphaned manifests and explicitly non-public rows; same
             // rationale as the single-resolve route above.
             if (discovered && !discovered.manifest_orphaned && discovered.is_public !== false) {
               registryRequestsDb.markResolved("brand", domain, discovered.canonical_domain || discovered.domain).catch((err) => logger.debug({ err }, "Registry request tracking failed"));
               return {
                 domain,
-                result: {
-                  canonical_id: discovered.canonical_domain || discovered.domain,
-                  canonical_domain: discovered.canonical_domain || discovered.domain,
-                  brand_name: discovered.brand_name,
-                  source: resolvedStoredBrandSource(discovered),
-                  brand_manifest: stripLegacyBrandContext(discovered.brand_manifest),
-                },
+                result: storedBrandResolutionResponse(discovered),
               };
             }
 

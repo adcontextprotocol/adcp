@@ -310,6 +310,16 @@ describe('BrandManager caching', () => {
       expect(result.raw_data).not.toHaveProperty('house_domain');
       expect((result.raw_data as Record<string, any>).legacy_properties[0].relationship)
         .toBe('registered_account_operator');
+      expect(result.warnings).toContainEqual(expect.objectContaining({
+        field: 'house',
+        suggestion: expect.stringContaining('brand_refs[]'),
+      }));
+
+      const resolved = await manager.resolveBrand('leaf.example');
+      expect(resolved?.migration_warnings).toContainEqual(expect.objectContaining({
+        field: 'house',
+        suggestion: expect.stringContaining('house_domain'),
+      }));
     });
 
     it('rejects ambiguous legacy identity when the origin property is duplicated', async () => {
