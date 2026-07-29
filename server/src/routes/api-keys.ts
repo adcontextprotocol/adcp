@@ -11,8 +11,17 @@ import { Router } from "express";
 import { WorkOS } from "@workos-inc/node";
 import { createLogger } from "../logger.js";
 import { requireAuth } from "../middleware/auth.js";
+import {
+  resolveUserOrgMembership,
+  type UserOrgMembership,
+} from "../utils/resolve-user-org-membership.js";
 
 const logger = createLogger("api-keys-routes");
+
+// These are the only elevated permissions the server recognizes for
+// tenant-scoped WorkOS API keys. Keep this allow-list next to issuance so a
+// caller cannot mint new authority merely by inventing a permission string.
+const ALLOWED_PRIVILEGED_PERMISSIONS = new Set(["admin:read", "admin:*"]);
 
 const WORKOS_API_KEY = process.env.WORKOS_API_KEY;
 const WORKOS_BASE_URL = "https://api.workos.com";
@@ -79,31 +88,52 @@ async function workosRequest(
 }
 
 /**
- * Verify the authenticated user is a member of the specified organization.
- * Returns true if verified, false if not (and sends the appropriate error response).
+ * Resolve the authenticated user's active membership in the specified organization.
+ * Returns null and sends the appropriate error response when access is denied.
  */
 async function verifyOrgMembership(
   req: Request,
   res: Response,
   organizationId: string,
-): Promise<boolean> {
-  const memberships =
-    await workos!.userManagement.listOrganizationMemberships({
-      userId: req.user!.id,
-    });
-
-  const isMember = memberships.data.some(
-    (m) => m.organizationId === organizationId,
+): Promise<UserOrgMembership | null> {
+  const membership = await resolveUserOrgMembership(
+    workos,
+    req.user!.id,
+    organizationId,
   );
 
-  if (!isMember) {
+  // resolveUserOrgMembership currently derives roles from active rows only,
+  // but keep the status check at this key-management boundary so a future
+  // resolver change (or inconsistent upstream response) cannot create, expose,
+  // or revoke keys for a pending or inactive membership.
+  if (!membership || membership.status !== "active") {
     res.status(403).json({
       error: "Access denied",
       message: "You are not a member of this organization",
     });
-    return false;
+    return null;
   }
-  return true;
+  return membership;
+}
+
+/**
+ * API key creation, inventory, and revocation are organization-wide
+ * operations: keys act for the organization, listing exposes privileged
+ * automation keys, and revocation can disable them. Keep the full lifecycle
+ * restricted to active organization owners and admins.
+ */
+function requireOrgAdmin(
+  membership: UserOrgMembership,
+  res: Response,
+  action: "create" | "list" | "revoke",
+): boolean {
+  if (membership.role === "owner" || membership.role === "admin") return true;
+
+  res.status(403).json({
+    error: "Access denied",
+    message: `Only organization owners and admins can ${action} API keys`,
+  });
+  return false;
 }
 
 /**
@@ -140,7 +170,8 @@ export function createApiKeysRouter(): Router {
           .json({ error: "org query parameter is required" });
       }
 
-      if (!(await verifyOrgMembership(req, res, organizationId))) return;
+      const membership = await verifyOrgMembership(req, res, organizationId);
+      if (!membership || !requireOrgAdmin(membership, res, "list")) return;
 
       const params: Record<string, string> = {};
       if (req.query.after) params.after = req.query.after as string;
@@ -176,16 +207,41 @@ export function createApiKeysRouter(): Router {
         });
       }
 
-      if (!(await verifyOrgMembership(req, res, organizationId))) return;
+      const membership = await verifyOrgMembership(req, res, organizationId);
+      if (!membership || !requireOrgAdmin(membership, res, "create")) return;
 
       const { name, permissions } = req.body;
       if (!name) {
         return res.status(400).json({ error: "name is required" });
       }
 
+      if (
+        permissions !== undefined &&
+        (!Array.isArray(permissions) ||
+          permissions.some((permission) => typeof permission !== "string"))
+      ) {
+        return res.status(400).json({
+          error: "Invalid permissions",
+          message: "permissions must be an array of supported permission strings",
+        });
+      }
+
+      const requestedPermissions = [
+        ...new Set((permissions as string[] | undefined) ?? []),
+      ];
+      const unsupportedPermissions = requestedPermissions.filter(
+        (permission) => !ALLOWED_PRIVILEGED_PERMISSIONS.has(permission),
+      );
+      if (unsupportedPermissions.length > 0) {
+        return res.status(400).json({
+          error: "Invalid permissions",
+          message: "One or more requested permissions are not supported",
+        });
+      }
+
       const body: { name: string; permissions?: string[] } = { name };
-      if (permissions && permissions.length > 0) {
-        body.permissions = permissions;
+      if (requestedPermissions.length > 0) {
+        body.permissions = requestedPermissions;
       }
 
       const result = await workosRequest(
@@ -221,7 +277,8 @@ export function createApiKeysRouter(): Router {
           .json({ error: "org query parameter is required" });
       }
 
-      if (!(await verifyOrgMembership(req, res, organizationId))) return;
+      const membership = await verifyOrgMembership(req, res, organizationId);
+      if (!membership || !requireOrgAdmin(membership, res, "revoke")) return;
 
       const apiKeyId = req.params.id;
       try {

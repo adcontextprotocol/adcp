@@ -2388,15 +2388,33 @@ export class WorkingGroupDatabase {
     return result.rows[0];
   }
 
-  async getDocumentAssetData(id: string): Promise<{ asset_data: Buffer; mime_type: string } | null> {
-    const result = await query<{ asset_data: Buffer; mime_type: string }>(
-      `SELECT asset_data, mime_type FROM committee_document_assets WHERE id = $1`,
+  async getDocumentAssetMetadata(id: string): Promise<{ mime_type: string; working_group_id: string } | null> {
+    const result = await query<{ mime_type: string; working_group_id: string }>(
+      `SELECT cda.mime_type, cda.working_group_id
+       FROM committee_document_assets cda
+       JOIN committee_documents cd
+         ON cd.id = cda.document_id
+        AND cd.working_group_id = cda.working_group_id
+       WHERE cda.id = $1`,
       [id]
     );
     return result.rows[0] || null;
   }
 
-  async getDocumentAssets(documentId: string): Promise<Array<{
+  async getDocumentAssetData(id: string, workingGroupId: string): Promise<{ asset_data: Buffer; mime_type: string } | null> {
+    const result = await query<{ asset_data: Buffer; mime_type: string }>(
+      `SELECT cda.asset_data, cda.mime_type
+       FROM committee_document_assets cda
+       JOIN committee_documents cd
+         ON cd.id = cda.document_id
+        AND cd.working_group_id = cda.working_group_id
+       WHERE cda.id = $1 AND cda.working_group_id = $2`,
+      [id, workingGroupId]
+    );
+    return result.rows[0] || null;
+  }
+
+  async getDocumentAssets(documentId: string, workingGroupId: string): Promise<Array<{
     id: string;
     filename: string;
     mime_type: string;
@@ -2417,10 +2435,16 @@ export class WorkingGroupDatabase {
       extraction_order: number;
     }>(
       `SELECT id, filename, mime_type, width, height, description, page_number, extraction_order
-       FROM committee_document_assets
-       WHERE document_id = $1
-       ORDER BY extraction_order`,
-      [documentId]
+       FROM committee_document_assets cda
+       WHERE cda.document_id = $1
+         AND cda.working_group_id = $2
+         AND EXISTS (
+           SELECT 1 FROM committee_documents cd
+           WHERE cd.id = cda.document_id
+             AND cd.working_group_id = cda.working_group_id
+         )
+       ORDER BY cda.extraction_order`,
+      [documentId, workingGroupId]
     );
     return result.rows;
   }

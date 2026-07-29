@@ -10751,11 +10751,16 @@ paths:
                 brand_json:
                   type: object
                   additionalProperties: {}
-                  description: Optional full brand.json draft to host in the registry
+                  description: "Optional full brand.json draft to host in the registry. Every recognized logo URL must be an absolute HTTPS URL of at most 2048 characters without userinfo credentials, backslashes, or markup-significant characters. The primary brand color must use #RRGGBB format."
                 logo_url:
                   type: string
+                  maxLength: 2048
+                  format: uri
+                  description: Absolute HTTPS URL for the brand logo. Userinfo credentials, backslashes, and markup-significant characters are not allowed.
+                  example: https://cdn.example.com/brand/logo.svg
                 brand_color:
                   type: string
+                  pattern: ^#[0-9a-fA-F]{6}$
               required:
                 - domain
                 - brand_name
