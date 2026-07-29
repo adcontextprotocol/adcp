@@ -67,6 +67,18 @@ function setMembership(
   });
 }
 
+function setUnboundMembership(organizationId?: string) {
+  mocks.listOrganizationMemberships.mockResolvedValue({
+    data: [
+      {
+        ...(organizationId ? { organizationId } : {}),
+        role: { slug: 'owner' },
+        status: 'active',
+      },
+    ],
+  });
+}
+
 function setNoMembership() {
   mocks.listOrganizationMemberships.mockResolvedValue({ data: [] });
 }
@@ -250,6 +262,33 @@ describe('organization-wide API key management permissions', () => {
     );
     expect(options.method).toBe('DELETE');
   });
+
+  it.each([
+    ['another organization', 'org_attacker'],
+    ['no organization ID', undefined],
+  ] as const)(
+    'refuses all key operations when WorkOS returns an owner membership for %s',
+    async (_label, returnedOrganizationId) => {
+      for (const operation of ['create', 'list', 'revoke'] as const) {
+        vi.clearAllMocks();
+        setUnboundMembership(returnedOrganizationId);
+
+        const response = operation === 'create'
+          ? await request(app)
+            .post('/api/me/api-keys?org=org_target')
+            .send({ name: 'Cross-org key', permissions: [] })
+          : operation === 'list'
+          ? await request(app).get('/api/me/api-keys?org=org_target')
+          : await request(app).delete(
+            '/api/me/api-keys/key_cross_org?org=org_target',
+          );
+
+        expect(response.status).toBe(403);
+        expect(response.body.error).toBe('Access denied');
+        expect(mocks.fetch).not.toHaveBeenCalled();
+      }
+    },
+  );
 });
 
 describe('inactive API key lifecycle principals', () => {

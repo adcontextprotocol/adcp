@@ -162,16 +162,18 @@ export function createApiKeysRouter(): Router {
         return res.status(500).json({ error: "Authentication not configured" });
       }
 
-      // codeql[js/user-controlled-bypass] - org ID is validated by verifyOrgMembership before use
-      const organizationId = req.query.org as string;
-      if (!organizationId) {
+      const requestedOrganizationId = req.query.org as string;
+      // Missing IDs terminate here; authorization below returns a canonical
+      // organization ID from an exact-match WorkOS membership.
+      if (!requestedOrganizationId) {
         return res
           .status(400)
           .json({ error: "org query parameter is required" });
       }
 
-      const membership = await verifyOrgMembership(req, res, organizationId);
+      const membership = await verifyOrgMembership(req, res, requestedOrganizationId);
       if (!membership || !requireOrgAdmin(membership, res, "list")) return;
+      const authorizedOrganizationId = membership.organizationId;
 
       const params: Record<string, string> = {};
       if (req.query.after) params.after = req.query.after as string;
@@ -180,7 +182,7 @@ export function createApiKeysRouter(): Router {
 
       const result = await workosRequest(
         "GET",
-        `/organizations/${organizationId}/api_keys`,
+        `/organizations/${authorizedOrganizationId}/api_keys`,
         { query: params },
       );
 
@@ -198,17 +200,19 @@ export function createApiKeysRouter(): Router {
         return res.status(500).json({ error: "Authentication not configured" });
       }
 
-      // codeql[js/user-controlled-bypass] - org ID is validated by verifyOrgMembership before use
-      const organizationId =
+      const requestedOrganizationId =
         (req.query.org as string) || req.body.organizationId;
-      if (!organizationId) {
+      // Missing IDs terminate here; authorization below returns a canonical
+      // organization ID from an exact-match WorkOS membership.
+      if (!requestedOrganizationId) {
         return res.status(400).json({
           error: "org query parameter or organizationId in body is required",
         });
       }
 
-      const membership = await verifyOrgMembership(req, res, organizationId);
+      const membership = await verifyOrgMembership(req, res, requestedOrganizationId);
       if (!membership || !requireOrgAdmin(membership, res, "create")) return;
+      const authorizedOrganizationId = membership.organizationId;
 
       const { name, permissions } = req.body;
       if (!name) {
@@ -246,12 +250,16 @@ export function createApiKeysRouter(): Router {
 
       const result = await workosRequest(
         "POST",
-        `/organizations/${organizationId}/api_keys`,
+        `/organizations/${authorizedOrganizationId}/api_keys`,
         { body },
       );
 
       logger.info(
-        { userId: req.user!.id, organizationId, keyName: name },
+        {
+          userId: req.user!.id,
+          organizationId: authorizedOrganizationId,
+          keyName: name,
+        },
         "API key created",
       );
 
@@ -269,22 +277,28 @@ export function createApiKeysRouter(): Router {
         return res.status(500).json({ error: "Authentication not configured" });
       }
 
-      // codeql[js/user-controlled-bypass] - org ID is validated by verifyOrgMembership before use
-      const organizationId = req.query.org as string;
-      if (!organizationId) {
+      const requestedOrganizationId = req.query.org as string;
+      // Missing IDs terminate here; authorization below returns a canonical
+      // organization ID from an exact-match WorkOS membership.
+      if (!requestedOrganizationId) {
         return res
           .status(400)
           .json({ error: "org query parameter is required" });
       }
 
-      const membership = await verifyOrgMembership(req, res, organizationId);
+      const membership = await verifyOrgMembership(req, res, requestedOrganizationId);
       if (!membership || !requireOrgAdmin(membership, res, "revoke")) return;
+      const authorizedOrganizationId = membership.organizationId;
 
       const apiKeyId = req.params.id;
       try {
-        await workosRequest("DELETE", `/organizations/${organizationId}/api_keys/${apiKeyId}`);
+        await workosRequest("DELETE", `/organizations/${authorizedOrganizationId}/api_keys/${apiKeyId}`);
         logger.info(
-          { userId: req.user!.id, organizationId, apiKeyId },
+          {
+            userId: req.user!.id,
+            organizationId: authorizedOrganizationId,
+            apiKeyId,
+          },
           "API key revoked",
         );
       } catch (error) {
@@ -294,7 +308,11 @@ export function createApiKeysRouter(): Router {
             : null;
         if (status !== 404) throw error;
         logger.info(
-          { userId: req.user!.id, organizationId, apiKeyId },
+          {
+            userId: req.user!.id,
+            organizationId: authorizedOrganizationId,
+            apiKeyId,
+          },
           "API key revoke: already absent in WorkOS",
         );
       }
