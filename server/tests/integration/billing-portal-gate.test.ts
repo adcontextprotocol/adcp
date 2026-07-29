@@ -23,7 +23,7 @@ const {
     TEST_USER_ID: 'user_portal_test',
     TEST_ORG: 'org_portal_gate_test',
     mockListMemberships: vi.fn().mockResolvedValue({
-      data: [{ id: 'om_test', role: { slug: 'owner' }, status: 'active' }],
+      data: [{ id: 'om_test', organizationId: 'org_portal_gate_test', role: { slug: 'owner' }, status: 'active' }],
     }),
     mockCreatePortalSession: vi.fn().mockResolvedValue('https://billing.stripe.com/p/session/x'),
   };
