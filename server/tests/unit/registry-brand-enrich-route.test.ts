@@ -389,6 +389,60 @@ describe('public registry brand read paths', () => {
     expect(liveResponse.body.source).toBe('hosted');
   });
 
+  it('retains live relationship evidence when a hosted stored identity wins', async () => {
+    const brandDb = {
+      getDiscoveredBrandByDomain: vi.fn().mockResolvedValue({
+        ...discoveredBrandWithContext(),
+        canonical_domain: 'stored-acme',
+        brand_name: 'Stored Acme',
+        source_type: 'community',
+        workos_organization_id: 'org_owner',
+        domain_verified: true,
+      }),
+      upsertDiscoveredBrand: vi.fn(),
+    };
+    const live = {
+      canonical_id: 'live-acme',
+      canonical_domain: 'acme.com',
+      brand_name: 'Live Acme',
+      names: [{ en: 'Live Acme' }],
+      keller_type: 'sub_brand' as const,
+      parent_brand: 'parent-acme',
+      house_domain: 'house.example',
+      claimed_house_domain: 'house.example',
+      house_name: 'Example House',
+      relationship_trust: 'mutual' as const,
+      relationship_verified_at: '2026-07-29T12:00:00.000Z',
+      relationship_declared_at: '2026-07-28T12:00:00.000Z',
+      promoted_from_schema: 'https://schemas.adcontextprotocol.org/brand/v1/brand.json',
+      migration_warnings: [{ field: 'house', message: 'Preserved as opaque metadata' }],
+      source: 'brand_json' as const,
+    };
+
+    const res = await request(buildApp(brandDb, false, {
+      resolveBrandWithDiagnostics: vi.fn().mockResolvedValue({ brand: live }),
+    })).get('/api/brands/resolve?domain=acme.com&fresh=true');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      canonical_id: 'stored-acme',
+      canonical_domain: 'stored-acme',
+      brand_name: 'Stored Acme',
+      source: 'hosted',
+      names: live.names,
+      keller_type: live.keller_type,
+      parent_brand: live.parent_brand,
+      house_domain: live.house_domain,
+      claimed_house_domain: live.claimed_house_domain,
+      house_name: live.house_name,
+      relationship_trust: live.relationship_trust,
+      relationship_verified_at: live.relationship_verified_at,
+      relationship_declared_at: live.relationship_declared_at,
+      promoted_from_schema: live.promoted_from_schema,
+      migration_warnings: live.migration_warnings,
+    });
+  });
+
   it('lets a live brand_json record outrank stored enrichment', async () => {
     const brandDb = {
       getDiscoveredBrandByDomain: vi.fn().mockResolvedValue(discoveredBrandWithContext()),

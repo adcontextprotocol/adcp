@@ -889,6 +889,10 @@ function storedBrandResolutionResponse(
     canonical_id: brand.canonical_domain || brand.domain,
     canonical_domain: brand.canonical_domain || brand.domain,
     brand_name: brand.brand_name || brand.domain,
+    ...(brand.brand_names?.length ? { names: brand.brand_names } : {}),
+    ...(brand.keller_type ? { keller_type: brand.keller_type } : {}),
+    ...(brand.parent_brand ? { parent_brand: brand.parent_brand } : {}),
+    ...(brand.brand_agent_url ? { brand_agent_url: brand.brand_agent_url } : {}),
     source: resolvedStoredBrandSource(brand),
     brand_manifest: stripLegacyBrandContext(brand.brand_manifest),
     ...(liveValidation ? { live_brand_json: liveValidation } : {}),
@@ -913,9 +917,16 @@ function selectResolvedBrandResponse(
   const storedCandidate = storedBrandResolutionResponse(stored);
   const storedPriority = RESOLVED_BRAND_SOURCE_PRIORITY[storedCandidate.source];
   const livePriority = RESOLVED_BRAND_SOURCE_PRIORITY[live.source];
-  return storedPriority < livePriority || (storedPriority === livePriority && !fresh)
-    ? storedCandidate
-    : live;
+  if (storedPriority > livePriority || (storedPriority === livePriority && fresh)) {
+    return live;
+  }
+
+  // Identity provenance and persisted identity fields come from the selected
+  // stored winner. Relationship trust, verification timestamps, and promotion
+  // diagnostics are computed by the live resolver for the requested domain;
+  // retain them instead of collapsing a verified edge to "unknown" merely
+  // because a higher-provenance stored identity exists.
+  return { ...live, ...storedCandidate };
 }
 
 registry.registerPath({
