@@ -75,10 +75,12 @@ vi.mock('../../src/utils/html-config.js', () => ({
 
 const { createAddieAdminRouter } = await import('../../src/routes/addie-admin.js');
 const { stopAuthTimers } = await import('../../src/middleware/auth.js');
+const { csrfProtection } = await import('../../src/middleware/csrf.js');
 
 function createApp() {
   const app = express();
   app.use(cookieParser());
+  app.use(csrfProtection);
   const { pageRouter, apiRouter } = createAddieAdminRouter();
   app.use('/admin/addie', pageRouter);
   app.use('/api/admin/addie', apiRouter);

@@ -78,10 +78,12 @@ vi.mock('../../src/db/working-group-db.js', () => ({
 
 const { createCommitteeRouters } = await import('../../src/routes/committees.js');
 const { stopAuthTimers } = await import('../../src/middleware/auth.js');
+const { csrfProtection } = await import('../../src/middleware/csrf.js');
 
 function createApp() {
   const app = express();
   app.use(cookieParser());
+  app.use(csrfProtection);
   app.use(express.json());
   const { adminApiRouter } = createCommitteeRouters();
   app.use('/api/admin/working-groups', adminApiRouter);
@@ -206,6 +208,20 @@ describe('working-group real global-admin boundary', () => {
         added_by_user_id: 'admin_api_key',
       }),
     );
+  });
+
+  it('rejects an SSO cookie write without a matching CSRF token', async () => {
+    const response = await request(app)
+      .post('/api/admin/working-groups/wg_aao_admin/members')
+      .set('Cookie', 'wos-session=valid-sso-admin-session')
+      .send({ workos_user_id: 'user_new_member' });
+
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual(expect.objectContaining({
+      error: 'CSRF validation failed',
+      reason: 'cookie_expired',
+    }));
+    expect(mocks.addMembership).not.toHaveBeenCalled();
   });
 });
 
