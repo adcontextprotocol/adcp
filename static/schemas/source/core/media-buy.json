@@ -62,8 +62,25 @@
     },
     "total_budget": {
       "type": "number",
-      "description": "Total budget amount",
+      "description": "Hard aggregate lifetime budget amount",
       "minimum": 0
+    },
+    "currency": {
+      "type": "string",
+      "description": "ISO 4217 currency for total_budget and package constraints unless a package explicitly overrides it. Seller-optimized buys require one shared currency across all packages.",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "budget_allocation": {
+      "allOf": [
+        {
+          "$ref": "/schemas/core/budget-allocation.json"
+        }
+      ],
+      "description": "Accepted cross-package budget allocation configuration. Omitted means fixed allocation for legacy buys."
+    },
+    "pacing": {
+      "$ref": "/schemas/enums/pacing.json",
+      "description": "Aggregate pacing strategy for total_budget across the media-buy flight."
     },
     "packages": {
       "type": "array",

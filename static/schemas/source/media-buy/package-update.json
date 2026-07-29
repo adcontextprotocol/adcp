@@ -12,7 +12,12 @@
     },
     "budget": {
       "type": "number",
-      "description": "Updated budget allocation for this package in the currency specified by the pricing option",
+      "description": "Updated hard spend cap for this package in the currency specified by the pricing option. In seller-optimized mode this changes the package ceiling, not a current allocation.",
+      "minimum": 0
+    },
+    "min_spend_target": {
+      "type": "number",
+      "description": "Updated soft lifetime spend target for this package. Only valid for seller-optimized budget allocation and must not exceed the package budget when both are present.",
       "minimum": 0
     },
     "pacing": {

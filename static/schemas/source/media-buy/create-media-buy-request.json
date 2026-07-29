@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/create-media-buy-request.json",
   "title": "Create Media Buy Request",
-  "description": "Request parameters for creating a media buy. Supports two modes: (1) Manual mode - provide packages array with explicit line item configurations, or (2) Proposal mode - provide proposal_id and total_budget to execute a proposal from get_products. One of packages or proposal_id must be provided.",
+  "description": "Request parameters for creating a media buy. Supports explicit packages with fixed or seller-optimized budget allocation, or execution of a committed proposal with proposal_id and total_budget. Exactly one of packages or proposal_id must be provided.",
   "type": "object",
   "allOf": [
     {
@@ -29,11 +29,11 @@
     },
     "proposal_id": {
       "type": "string",
-      "description": "ID of a committed proposal from get_products to execute. When provided with total_budget, the publisher converts the proposal's allocation percentages into packages automatically. Alternative to providing packages array. If the referenced proposal has proposal_status: 'draft', the seller MUST reject with PROPOSAL_NOT_COMMITTED; the buyer finalizes first via get_products refine action 'finalize'."
+      "description": "ID of a committed proposal from get_products to execute. With total_budget, the publisher creates packages using the proposal's fixed percentages or seller-optimized constraints. Alternative to providing packages. If the referenced proposal has proposal_status: 'draft', the seller MUST reject with PROPOSAL_NOT_COMMITTED; the buyer finalizes first via get_products refine action 'finalize'."
     },
     "total_budget": {
       "type": "object",
-      "description": "Total budget for the media buy when executing a proposal. The publisher applies the proposal's allocation percentages to this amount to derive package budgets.",
+      "description": "Hard aggregate lifetime budget for the media buy. Required when executing a proposal and for seller-optimized explicit packages. Optional in fixed explicit-package mode; when present there, amount MUST equal the sum of package budgets. For a fixed proposal, the publisher applies allocation percentages to this amount. For a seller-optimized proposal or explicit buy, packages draw dynamically from this shared total.",
       "properties": {
         "amount": {
           "type": "number",
@@ -51,9 +51,17 @@
       ],
       "additionalProperties": false
     },
+    "budget_allocation": {
+      "allOf": [
+        {
+          "$ref": "/schemas/core/budget-allocation.json"
+        }
+      ],
+      "description": "How budget is allocated across explicit packages. Omit for legacy fixed allocation. In proposal mode the committed proposal supplies this configuration and callers MUST omit it here."
+    },
     "packages": {
       "type": "array",
-      "description": "Array of package configurations. Required when not using proposal_id. When executing a proposal, this can be omitted and packages will be derived from the proposal's allocations.",
+      "description": "Array of package configurations. Required when not using proposal_id. Fixed allocation requires budget on every package. Seller-optimized allocation permits package budget to be omitted or to act as a hard cap. When executing a proposal, omit packages; the seller derives them from the committed proposal.",
       "items": {
         "$ref": "/schemas/media-buy/package-request.json"
       },
@@ -118,6 +126,10 @@
       "type": "string",
       "format": "date-time",
       "description": "Campaign end date/time in ISO 8601 format"
+    },
+    "pacing": {
+      "$ref": "/schemas/enums/pacing.json",
+      "description": "Aggregate pacing strategy for the media-buy budget across the media-buy flight. This controls how much the buy spends over time. Package pacing is subordinate and influences which package receives the aggregate spend; package pacing MUST NOT cause aggregate delivery to exceed this strategy. Defaults to even when total_budget is present. When executing a proposal that carries pacing, omit this field or send the identical value; the seller MUST reject a conflicting override with TERMS_REJECTED."
     },
     "paused": {
       "type": "boolean",
@@ -215,6 +227,98 @@
     "brand",
     "start_time",
     "end_time"
+  ],
+  "anyOf": [
+    {
+      "title": "Explicit packages with fixed allocation",
+      "properties": {
+        "budget_allocation": {
+          "properties": {
+            "mode": {
+              "const": "fixed"
+            }
+          },
+          "required": [
+            "mode"
+          ]
+        },
+        "packages": {
+          "items": {
+            "allOf": [
+              {
+                "$ref": "/schemas/media-buy/package-request.json"
+              },
+              {
+                "required": [
+                  "budget"
+                ]
+              },
+              {
+                "not": {
+                  "required": [
+                    "min_spend_target"
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      },
+      "required": [
+        "packages"
+      ],
+      "not": {
+        "required": [
+          "proposal_id"
+        ]
+      }
+    },
+    {
+      "title": "Explicit packages with seller-optimized allocation",
+      "properties": {
+        "budget_allocation": {
+          "properties": {
+            "mode": {
+              "const": "seller_optimized"
+            }
+          },
+          "required": [
+            "mode"
+          ]
+        }
+      },
+      "required": [
+        "packages",
+        "total_budget",
+        "budget_allocation"
+      ],
+      "not": {
+        "required": [
+          "proposal_id"
+        ]
+      }
+    },
+    {
+      "title": "Committed proposal execution",
+      "required": [
+        "proposal_id",
+        "total_budget"
+      ],
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "packages"
+            ]
+          },
+          {
+            "required": [
+              "budget_allocation"
+            ]
+          }
+        ]
+      }
+    }
   ],
   "dependencies": {
     "proposal_id": [

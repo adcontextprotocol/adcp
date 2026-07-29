@@ -414,6 +414,120 @@ async function runTests() {
     'Create media buy with natural key account'
   );
 
+  await testSchemaValidation(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      idempotency_key: 'shared-budget-create-0001',
+      account: { account_id: 'acc_test_001' },
+      total_budget: { amount: 100000, currency: 'USD' },
+      budget_allocation: {
+        mode: 'seller_optimized',
+        optimization_goals: [
+          { kind: 'metric', metric: 'clicks' }
+        ]
+      },
+      pacing: 'even',
+      packages: [
+        {
+          product_id: 'prospecting',
+          pricing_option_id: 'cpm_auction',
+          budget: 70000,
+          min_spend_target: 20000
+        },
+        {
+          product_id: 'retargeting',
+          pricing_option_id: 'cpm_auction',
+          pacing: 'front_loaded'
+        }
+      ],
+      brand: { domain: 'acmecorp.com' },
+      start_time: 'asap',
+      end_time: '2099-12-31T23:59:59Z'
+    },
+    'Create media buy accepts seller-optimized shared budget with package constraints'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      idempotency_key: 'fixed-missing-budget-001',
+      account: { account_id: 'acc_test_001' },
+      packages: [
+        {
+          product_id: 'display_standard',
+          pricing_option_id: 'cpm_fixed'
+        }
+      ],
+      brand: { domain: 'acmecorp.com' },
+      start_time: 'asap',
+      end_time: '2099-12-31T23:59:59Z'
+    },
+    'Create media buy keeps package budget required in fixed mode'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      idempotency_key: 'shared-missing-total-001',
+      account: { account_id: 'acc_test_001' },
+      budget_allocation: {
+        mode: 'seller_optimized',
+        optimization_goals: [
+          { kind: 'metric', metric: 'clicks' }
+        ]
+      },
+      packages: [
+        {
+          product_id: 'display_standard',
+          pricing_option_id: 'cpm_fixed'
+        }
+      ],
+      brand: { domain: 'acmecorp.com' },
+      start_time: 'asap',
+      end_time: '2099-12-31T23:59:59Z'
+    },
+    'Create media buy rejects seller-optimized allocation without total_budget'
+  );
+
+  await testSchemaValidation(
+    '/schemas/core/proposal.json',
+    {
+      proposal_id: 'prop_shared_001',
+      name: 'Seller-optimized performance plan',
+      budget_allocation: {
+        mode: 'seller_optimized',
+        optimization_goals: [
+          { kind: 'metric', metric: 'clicks' }
+        ]
+      },
+      pacing: 'even',
+      allocations: [
+        {
+          product_id: 'prospecting',
+          min_spend_target_percentage: 20,
+          max_spend_percentage: 70
+        },
+        {
+          product_id: 'retargeting',
+          max_spend_percentage: 60
+        }
+      ]
+    },
+    'Proposal accepts seller-optimized percentage constraints without exact allocations'
+  );
+
+  await testSchemaRejection(
+    '/schemas/core/proposal.json',
+    {
+      proposal_id: 'prop_fixed_invalid_001',
+      name: 'Invalid fixed plan',
+      allocations: [
+        { product_id: 'display_standard' }
+      ]
+    },
+    'Proposal keeps allocation_percentage required in fixed mode'
+  );
+
   log('');
 
   log('Build Creative Request Schema (push_notification_config field):', 'info');

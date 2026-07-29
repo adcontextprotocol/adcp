@@ -63,6 +63,18 @@
       "description": "ISO 4217 currency code for the budget.",
       "pattern": "^[A-Z]{3}$"
     },
+    "budget_allocation": {
+      "allOf": [
+        {
+          "$ref": "/schemas/core/budget-allocation.json"
+        }
+      ],
+      "description": "Seller-accepted cross-package allocation authority and goals. Presence with seller_optimized mode means automatic within-buy reallocations are part of the committed delivery, not separate modification actions."
+    },
+    "pacing": {
+      "$ref": "/schemas/enums/pacing.json",
+      "description": "Aggregate pacing strategy the seller will apply to total_budget."
+    },
     "enforced_policies": {
       "type": "array",
       "description": "Registry policy IDs the seller will enforce for this delivery.",

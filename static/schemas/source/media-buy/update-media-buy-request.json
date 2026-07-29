@@ -47,6 +47,37 @@
       "format": "date-time",
       "description": "New end date/time in ISO 8601 format"
     },
+    "total_budget": {
+      "type": "object",
+      "description": "Updated hard aggregate lifetime budget. In fixed mode the amount MUST equal the sum of package budgets after applying this update. In seller-optimized mode this changes the shared pool; already-spent amounts still count against the new total.",
+      "properties": {
+        "amount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      },
+      "required": [
+        "amount",
+        "currency"
+      ],
+      "additionalProperties": false
+    },
+    "budget_allocation": {
+      "allOf": [
+        {
+          "$ref": "/schemas/core/budget-allocation.json"
+        }
+      ],
+      "description": "Updated allocation configuration. Switching between fixed and seller-optimized modes is allowed only when update_budget_allocation is advertised in available_actions and the resulting package constraints are valid."
+    },
+    "pacing": {
+      "$ref": "/schemas/enums/pacing.json",
+      "description": "Updated aggregate media-buy pacing. Package pacing remains subordinate to this aggregate strategy."
+    },
     "packages": {
       "type": "array",
       "description": "Package-specific updates for existing packages",

@@ -44,8 +44,20 @@
         },
         "total_budget": {
           "type": "number",
-          "description": "Updated total budget amount across all packages, denominated in currency. Echoed when the update affects package budgets so buyers can verify the new aggregate without a round-trip to get_media_buys. Matches the total_budget field in subsequent get_media_buys responses.",
+          "description": "Updated hard aggregate lifetime budget, denominated in currency. Echoed when the update affects the shared total or package budgets so buyers can verify the new aggregate without a round-trip to get_media_buys.",
           "minimum": 0
+        },
+        "budget_allocation": {
+          "allOf": [
+            {
+              "$ref": "/schemas/core/budget-allocation.json"
+            }
+          ],
+          "description": "Post-update cross-package allocation configuration when affected by the update."
+        },
+        "pacing": {
+          "$ref": "/schemas/enums/pacing.json",
+          "description": "Post-update aggregate pacing when affected by the update."
         },
         "implementation_date": {
           "type": [

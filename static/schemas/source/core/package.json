@@ -17,7 +17,12 @@
     },
     "budget": {
       "type": "number",
-      "description": "Budget allocation for this package in the currency specified by the pricing option",
+      "description": "Hard lifetime spend cap for this package in the currency specified by the pricing option. In seller-optimized allocation mode this is a ceiling, not a current allocation. May be omitted when the package is bounded only by the shared media-buy total.",
+      "minimum": 0
+    },
+    "min_spend_target": {
+      "type": "number",
+      "description": "Soft lifetime spend target accepted for this package under seller-optimized budget allocation. This is an allocation preference, not a billing or delivery guarantee.",
       "minimum": 0
     },
     "pacing": {

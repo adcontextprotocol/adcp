@@ -45,7 +45,12 @@
     },
     "budget": {
       "type": "number",
-      "description": "Budget allocation for this package in the media buy's currency",
+      "description": "Hard lifetime spend cap for this package in the media buy's currency. Required in fixed allocation mode. Optional in seller-optimized mode; when omitted, the package is bounded by the shared total_budget and any other package constraints. In seller-optimized mode this is a ceiling, not a reserved or current allocation.",
+      "minimum": 0
+    },
+    "min_spend_target": {
+      "type": "number",
+      "description": "Soft lifetime spend target for this package in the media buy's currency. Only valid with seller-optimized budget allocation. The seller SHOULD attempt to deliver at least this amount before allocating incremental spend elsewhere, but inventory, policy, optimization targets, or other delivery constraints may prevent it. This is not a billing guarantee. Must not exceed the package budget when both are present.",
       "minimum": 0
     },
     "pacing": {
@@ -215,7 +220,6 @@
   },
   "required": [
     "product_id",
-    "budget",
     "pricing_option_id"
   ],
   "dependencies": {

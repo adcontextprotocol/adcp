@@ -67,8 +67,20 @@
           },
           "total_budget": {
             "type": "number",
-            "description": "Total budget amount across all packages, denominated in media_buy.currency",
+            "description": "Hard aggregate lifetime budget, denominated in media_buy.currency",
             "minimum": 0
+          },
+          "budget_allocation": {
+            "allOf": [
+              {
+                "$ref": "/schemas/core/budget-allocation.json"
+              }
+            ],
+            "description": "Current cross-package allocation configuration. Omitted means fixed allocation for legacy buys."
+          },
+          "pacing": {
+            "$ref": "/schemas/enums/pacing.json",
+            "description": "Aggregate pacing strategy for the media-buy budget."
           },
           "start_time": {
             "type": "string",
@@ -223,7 +235,12 @@
                 },
                 "budget": {
                   "type": "number",
-                  "description": "Package budget amount, denominated in package.currency when present, otherwise media_buy.currency",
+                  "description": "Hard lifetime package spend cap, denominated in package.currency when present, otherwise media_buy.currency. In seller-optimized mode this is not a current allocation.",
+                  "minimum": 0
+                },
+                "min_spend_target": {
+                  "type": "number",
+                  "description": "Accepted soft lifetime spend target for this package under seller-optimized allocation.",
                   "minimum": 0
                 },
                 "currency": {
@@ -265,6 +282,10 @@
                   "type": "number",
                   "description": "Goal impression count for impression-based packages",
                   "minimum": 0
+                },
+                "pacing": {
+                  "$ref": "/schemas/enums/pacing.json",
+                  "description": "Package-level pacing preference. Under seller-optimized allocation this is subordinate to the media-buy aggregate pacing."
                 },
                 "targeting_overlay": {
                   "$ref": "/schemas/core/targeting.json",

@@ -96,7 +96,7 @@ Packages are the building blocks of media buys:
 - **Single product** selection from discovery results - when you buy a product, you buy the entire product (unless using property targeting)
 - **Creative formats** to be provided for this package
 - **Targeting overlays** for refinements including geo restrictions, frequency caps, and property targeting
-- **Budget allocation** as portion of overall media buy budget
+- **Budget controls** as an independent fixed budget or a cap/soft minimum within seller-optimized allocation
 - **Pricing option** selection from product's available pricing models
 - **Pacing strategy** for budget delivery (even, asap, or front_loaded)
 - **Bid price** for auction-based pricing models (when applicable)
@@ -109,7 +109,7 @@ Packages can have independent flight dates within a media buy. This enables week
 
 - **Inheritance**: When `start_time` or `end_time` is omitted on a package, the package inherits the media buy's dates. Each field inherits independently — a package may specify `start_time` while inheriting the media buy's `end_time`, or vice versa.
 - **Validation**: Package dates must fall within the parent media buy's date range. Sellers SHOULD reject packages where `start_time` is equal to or after `end_time`.
-- **Overlapping flights**: Multiple packages for the same product may have overlapping date ranges. Each package maintains its own independent budget.
+- **Overlapping flights**: Multiple packages for the same product may have overlapping date ranges. In fixed mode each package maintains an independent budget; in seller-optimized mode the packages draw from the shared total within their constraints.
 - **Format**: Plain ISO 8601 date-time — packages do not support `"asap"`
 
 **Weekly flights example:**

@@ -30,20 +30,20 @@ The mapping is normative — sellers and SDKs MUST use this table to translate b
 | `extend_flight` | `end_time`, `packages[].end_time` (later than current) | End-time push only |
 | `shorten_flight` | `end_time`, `packages[].end_time` (earlier than current) | End-time pull only |
 | `update_flight_dates` | `start_time`, `end_time`, `packages[].start_time`, `packages[].end_time` (shift) | Start-shift distinct from extend/shorten; covers both buy-level and package-level dates |
-| `increase_budget` | `packages[].budget` (raise) |  |
-| `decrease_budget` | `packages[].budget` (lower) | Sellers typically bound by already-spent |
+| `increase_budget` | `total_budget`, `packages[].budget` (raise) |  |
+| `decrease_budget` | `total_budget`, `packages[].budget` (lower) | Sellers typically bound by already-spent |
 | `reallocate_budget` | `packages[].budget` (redistribute, aggregate unchanged) |  |
-
-The direction-of-change actions (`extend_flight` / `shorten_flight`, `increase_budget` / `decrease_budget` / `reallocate_budget`) share their `update_fields` paths; the action is determined by comparing the requested value against the buy's current state, not by which field is set. Server-side dispatch enforcement MUST diff request-vs-current to pick the right action and reject with `ACTION_NOT_ALLOWED` if the resolved action is not in the buy's `available_actions[]`.
-
+| `update_budget_allocation` | `budget_allocation`, `packages[].min_spend_target` | Changes fixed/shared mode, cross-package goals, or soft minimum targets. Automatic allocation inside an accepted seller-optimized buy is not an update action. |
 | `update_targeting` | `packages[].targeting_overlay`, `packages[].keyword_targets_add`, `packages[].keyword_targets_remove`, `packages[].negative_keywords_add`, `packages[].negative_keywords_remove` |  |
-| `update_pacing` | `packages[].pacing` |  |
+| `update_pacing` | `pacing`, `packages[].pacing` | Media-buy pacing controls aggregate spend; package pacing is subordinate. |
 | `update_frequency_caps` | `packages[].targeting_overlay.frequency_cap` | Renegotiated mid-flight more often than other targeting. Field is singular `frequency_cap` (single rule), not plural. |
 | `replace_creative` | `packages[].creatives[]` swap (assignments unchanged) | Distinct AM workflow from changing assignment set |
 | `update_creative_assignments` | `packages[].creative_assignments` | Which creatives go where |
 | `remove_creative` | Creative omitted from `packages[].creatives[]` and/or `packages[].creative_assignments` on a replacement payload | Both arrays use replacement semantics, so removal is expressed by sending the desired post-state with the creative absent (no explicit delete primitive in 3.x). Time-sensitive; sellers SHOULD support self_serve removal even when add/swap require approval |
 | `add_packages` | `new_packages[]` |  |
 | `remove_packages` | `packages[].canceled: true` |  |
+
+The direction-of-change actions (`extend_flight` / `shorten_flight`, `increase_budget` / `decrease_budget` / `reallocate_budget`) share their `update_fields` paths; the action is determined by comparing the requested value against the buy's current state, not by which field is set. Server-side dispatch enforcement MUST diff request-vs-current to pick the right action and reject with `ACTION_NOT_ALLOWED` if the resolved action is not in the buy's `available_actions[]`.
 
 The coarse legacy actions (`update_budget`, `update_dates`, `update_packages`, `sync_creatives`) cover the finer-grained vocabulary in a single value for sellers still emitting the 3.0 enum surface. Sellers SHOULD migrate to the finer set; the legacy values are removed in 4.0.
 
@@ -200,6 +200,9 @@ asyncio.run(create_and_pause_campaign())
 | `idempotency_key` | string | No | Unique key for safe retries. If an update with the same key has already been processed, the seller returns the original response. MUST be unique per (seller, request) pair. Min 16 chars. |
 | `invoice_recipient` | [BusinessEntity](/docs/building/by-layer/L2/accounts-and-agents#billing-entity-and-invoice-recipient) | No | Override who receives the invoice for this buy. The seller MUST validate authorization and include in `check_governance` when governance agents are configured. |
 | `new_packages` | PackageRequest[] | No | New packages to add to this media buy. Same shape as `create_media_buy` packages. Only supported by sellers that advertise `add_packages` in `valid_actions`. |
+| `total_budget` | TotalBudget | No | Updated hard aggregate lifetime budget. Already-spent amounts continue to count against the new total. |
+| `budget_allocation` | BudgetAllocation | No | Updated fixed or seller-optimized allocation configuration. Mode changes require `update_budget_allocation` in `available_actions`. |
+| `pacing` | string | No | Updated aggregate media-buy pacing strategy. |
 | `push_notification_config` | object | No | Webhook for async operation notifications |
 
 `account` and `media_buy_id` are always required.
@@ -232,7 +235,8 @@ Configure automated delivery reporting for this media buy:
 | `paused` | boolean | Pause/resume specific package (`true` = paused, `false` = active) |
 | `canceled` | boolean | Cancel this package (irreversible). Must be `true` when present. Seller may reject with `NOT_CANCELLABLE`. |
 | `cancellation_reason` | string | Reason for canceling this package |
-| `budget` | number | Updated budget allocation |
+| `budget` | number | Updated hard package spend cap. In seller-optimized mode this is not a current allocation. |
+| `min_spend_target` | number | Updated soft package minimum-spend target for seller-optimized allocation. |
 | `impressions` | number | Updated impression goal for this package |
 | `start_time` | string | Updated flight start date/time in ISO 8601 format. Must fall within the media buy's date range. |
 | `end_time` | string | Updated flight end date/time in ISO 8601 format. Must fall within the media buy's date range. |
