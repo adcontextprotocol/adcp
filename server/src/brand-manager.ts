@@ -396,7 +396,14 @@ export class BrandManager {
     }
 
     const house = this.isRecord(document.house) ? document.house : undefined;
-    if (house) metadata.legacy_house = house;
+    if (house) {
+      metadata.legacy_house = house;
+      warnings.push({
+        field: 'house',
+        message: 'Preserved legacy house object as opaque metadata; it is not treated as a v3 portfolio claim.',
+        suggestion: 'Set house_domain on this Brand Canonical Document pointing at the parent domain. The parent must declare this domain in brand_refs[] for mutual-assertion trust.',
+      });
+    }
 
     const canonical: Record<string, unknown> = {
       ...originBrand,

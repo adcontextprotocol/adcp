@@ -513,14 +513,16 @@ export const ResolvedBrandSchema = z
     promoted_from_schema: z.string().optional().openapi({
       description: "Set when a pre-v3 document was promoted to a canonical v3 document for this response. Identity only — legacy relationship data is preserved opaquely, never promoted to a trust claim.",
     }),
-    migration_warnings: z.array(BrandValidationWarningSchema).optional(),
+    migration_warnings: z.array(BrandValidationWarningSchema).optional().openapi({
+      description: "Loss or ambiguity encountered while promoting a pre-v3 document. A `house` warning means the legacy house object was preserved only as opaque metadata and did not establish a trusted relationship.",
+    }),
     brand_agent_url: z.string().optional(),
     brand_manifest: z.record(z.string(), z.unknown()).optional(),
     source: z.enum(["hosted", "brand_json", "community", "enriched"]).openapi({
-      description: "Where the record came from. `brand_json`: the domain's own /.well-known/brand.json. `hosted`: registered by an owner whose control of the domain was verified. `community`: contributed by a member. `enriched`: third-party enrichment.",
+      description: "Provenance of the selected record, not relationship authorization. Deterministic precedence is `hosted` > `brand_json` > `community` > `enriched`; normal reads prefer the durable stored winner on a source tie, while `fresh=true` lets a successful live origin read win a tie. `brand_json`: the domain's own /.well-known/brand.json. `hosted`: registered by an owner whose control of the domain was verified. `community`: contributed by a member. `enriched`: third-party enrichment.",
     }),
     live_brand_json: LiveBrandJsonValidationSchema.optional().openapi({
-      description: "Live origin-validation diagnostics when fresh=true falls back to a stored registry record.",
+      description: "This request's origin-validation diagnostics when `fresh=true` falls back to a stored registry record. Presence means the response is stored evidence, not a successful live-origin read.",
     }),
   })
   .openapi("ResolvedBrand");
