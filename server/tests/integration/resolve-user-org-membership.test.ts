@@ -62,7 +62,12 @@ describe('resolveUserOrgMembership', () => {
       // workos arg is a no-op in dev path — pass null to prove it.
       const result = await resolveUserOrgMembership(null, DEV_ADMIN_USER, DEV_ORG);
 
-      expect(result).toEqual({ role: 'owner', status: 'active', via_dev_bypass: true });
+      expect(result).toEqual({
+        organizationId: DEV_ORG,
+        role: 'owner',
+        status: 'active',
+        via_dev_bypass: true,
+      });
     });
 
     it('returns null for a dev user who has no membership in the requested org', async () => {
@@ -80,14 +85,19 @@ describe('resolveUserOrgMembership', () => {
 
       const result = await resolveUserOrgMembership(null, DEV_MEMBER_USER, DEV_ORG);
 
-      expect(result).toEqual({ role: 'member', status: 'active', via_dev_bypass: true });
+      expect(result).toEqual({
+        organizationId: DEV_ORG,
+        role: 'member',
+        status: 'active',
+        via_dev_bypass: true,
+      });
     });
 
     it('falls through to WorkOS for users not in DEV_USERS even when dev mode is enabled', async () => {
       const mockWorkos = {
         userManagement: {
           listOrganizationMemberships: vi.fn().mockResolvedValue({
-            data: [{ status: 'active', role: { slug: 'admin' } }],
+            data: [{ organizationId: NON_DEV_ORG, status: 'active', role: { slug: 'admin' } }],
           }),
         },
       } as unknown as WorkOS;
@@ -95,7 +105,12 @@ describe('resolveUserOrgMembership', () => {
       // NON_DEV_USER isn't in DEV_USERS, so we hit WorkOS even in dev mode.
       const result = await resolveUserOrgMembership(mockWorkos, NON_DEV_USER, NON_DEV_ORG);
 
-      expect(result).toEqual({ role: 'admin', status: 'active', via_dev_bypass: false });
+      expect(result).toEqual({
+        organizationId: NON_DEV_ORG,
+        role: 'admin',
+        status: 'active',
+        via_dev_bypass: false,
+      });
       expect(mockWorkos.userManagement.listOrganizationMemberships).toHaveBeenCalledWith({
         userId: NON_DEV_USER,
         organizationId: NON_DEV_ORG,
@@ -109,9 +124,9 @@ describe('resolveUserOrgMembership', () => {
         userManagement: {
           listOrganizationMemberships: vi.fn().mockResolvedValue({
             data: [
-              { status: 'pending', role: { slug: 'owner' } },
-              { status: 'active', role: { slug: 'admin' } },
-              { status: 'active', role: { slug: 'member' } },
+              { organizationId: NON_DEV_ORG, status: 'pending', role: { slug: 'owner' } },
+              { organizationId: NON_DEV_ORG, status: 'active', role: { slug: 'admin' } },
+              { organizationId: NON_DEV_ORG, status: 'active', role: { slug: 'member' } },
             ],
           }),
         },
@@ -136,13 +151,30 @@ describe('resolveUserOrgMembership', () => {
       expect(result).toBeNull();
     });
 
+    it.each([
+      ['another organization', { organizationId: 'org_other' }],
+      ['no organization ID', {}],
+    ])('returns null for an active owner membership bound to %s', async (_label, identity) => {
+      const mockWorkos = {
+        userManagement: {
+          listOrganizationMemberships: vi.fn().mockResolvedValue({
+            data: [{ ...identity, status: 'active', role: { slug: 'owner' } }],
+          }),
+        },
+      } as unknown as WorkOS;
+
+      const result = await resolveUserOrgMembership(mockWorkos, NON_DEV_USER, NON_DEV_ORG);
+
+      expect(result).toBeNull();
+    });
+
     it('returns null when only inactive memberships exist (no active role)', async () => {
       const mockWorkos = {
         userManagement: {
           listOrganizationMemberships: vi.fn().mockResolvedValue({
             data: [
-              { status: 'pending', role: { slug: 'admin' } },
-              { status: 'inactive', role: { slug: 'owner' } },
+              { organizationId: NON_DEV_ORG, status: 'pending', role: { slug: 'admin' } },
+              { organizationId: NON_DEV_ORG, status: 'inactive', role: { slug: 'owner' } },
             ],
           }),
         },

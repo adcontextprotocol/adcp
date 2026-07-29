@@ -98,7 +98,7 @@ import {
 } from "../schemas/registry.js";
 
 import type { BrandManager } from "../brand-manager.js";
-import type { BrandDatabase } from "../db/brand-db.js";
+import { resolveBrandFromJson, type BrandDatabase } from "../db/brand-db.js";
 import type { PropertyDatabase } from "../db/property-db.js";
 import { CatalogDatabase } from "../db/catalog-db.js";
 import type { AdAgentsManager } from "../adagents-manager.js";
@@ -153,6 +153,56 @@ type PublisherBrandSummary = {
   colors?: string[];
   industries?: string[];
 };
+
+const BRAND_LOGO_URL_MAX_LENGTH = 2048;
+const BRAND_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
+
+function normalizeBrandLogoUrl(value: unknown): string | null {
+  if (typeof value !== "string" || value.length === 0 || value.length > BRAND_LOGO_URL_MAX_LENGTH) {
+    return null;
+  }
+
+  // Reject markup-significant characters instead of relying on URL parsing to
+  // percent-encode them. Branding is rendered on multiple public surfaces, so
+  // keeping the stored value attribute-safe is useful defense in depth.
+  if (["\"", "'", "<", ">", "`", "\\"].some(char => value.includes(char))) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "https:" || parsed.username || parsed.password || !parsed.hostname) {
+      return null;
+    }
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+function isValidBrandColor(value: unknown): value is string {
+  return typeof value === "string" && BRAND_COLOR_PATTERN.test(value);
+}
+
+type BrandManifestBrandingError = "invalid_brand_data" | "unsafe_logo" | "unsafe_color";
+
+function validateBrandManifestBranding(
+  domain: string,
+  brandJson: Record<string, unknown>,
+): BrandManifestBrandingError | null {
+  try {
+    const resolvedBrand = resolveBrandFromJson(domain, brandJson, false);
+    if (resolvedBrand.logos?.some(logo => normalizeBrandLogoUrl(logo.url) === null)) {
+      return "unsafe_logo";
+    }
+    if (resolvedBrand.brand_color !== undefined && !isValidBrandColor(resolvedBrand.brand_color)) {
+      return "unsafe_color";
+    }
+    return null;
+  } catch {
+    return "invalid_brand_data";
+  }
+}
 
 type PublisherFormatSummary = {
   format_option_id?: string;
@@ -3686,9 +3736,21 @@ registry.registerPath({
           schema: z.object({
             domain: z.string().openapi({ example: "acmecorp.com" }),
             brand_name: z.string(),
-            brand_json: z.record(z.string(), z.any()).optional().openapi({ description: "Optional full brand.json draft to host in the registry" }),
-            logo_url: z.string().optional(),
-            brand_color: z.string().optional(),
+            brand_json: z.record(z.string(), z.any()).optional().openapi({
+              description: "Optional full brand.json draft to host in the registry. Every recognized logo URL must be an absolute HTTPS URL of at most 2048 characters without userinfo credentials, backslashes, or markup-significant characters. The primary brand color must use #RRGGBB format.",
+            }),
+            logo_url: z.string()
+              .url()
+              .max(BRAND_LOGO_URL_MAX_LENGTH)
+              .refine(value => normalizeBrandLogoUrl(value) !== null, "Logo URL must be an absolute HTTPS URL without credentials")
+              .optional()
+              .openapi({
+                description: "Absolute HTTPS URL for the brand logo. Userinfo credentials, backslashes, and markup-significant characters are not allowed.",
+                example: "https://cdn.example.com/brand/logo.svg",
+              }),
+            brand_color: z.string()
+              .regex(BRAND_COLOR_PATTERN, "Brand color must use #RRGGBB format")
+              .optional(),
           }),
         },
       },
@@ -9273,11 +9335,32 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       return res.status(400).json({ error: "brand_json exceeds maximum size (100KB)" });
     }
 
+    const normalizedLogoUrl = logo_url === undefined ? undefined : normalizeBrandLogoUrl(logo_url);
+    if (logo_url !== undefined && normalizedLogoUrl === null) {
+      return res.status(400).json({ error: "logo_url must be an absolute HTTPS URL without credentials" });
+    }
+    if (brand_color !== undefined && !isValidBrandColor(brand_color)) {
+      return res.status(400).json({ error: "brand_color must use #RRGGBB format" });
+    }
+
     const domain = extractDomain(rawDomain).replace(/^www\./, "");
 
     const domainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
     if (!domainPattern.test(domain)) {
       return res.status(400).json({ error: "Invalid domain format" });
+    }
+
+    if (brand_json !== undefined) {
+      const brandingError = validateBrandManifestBranding(domain, brand_json as Record<string, unknown>);
+      if (brandingError === "unsafe_logo") {
+        return res.status(400).json({ error: "brand_json logo URLs must be absolute HTTPS URLs without credentials" });
+      }
+      if (brandingError === "unsafe_color") {
+        return res.status(400).json({ error: "brand_json primary brand color must use #RRGGBB format" });
+      }
+      if (brandingError === "invalid_brand_data") {
+        return res.status(400).json({ error: "brand_json contains invalid brand data" });
+      }
     }
 
     try {
@@ -9325,9 +9408,16 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         // Otherwise build a minimal entry from the request params.
         let brandJson: Record<string, unknown>;
         const manifest = discovered?.brand_manifest as Record<string, unknown> | undefined;
+        const canAdoptDiscoveredManifest = !!(
+          manifest
+          && discovered!.review_status !== 'pending'
+          && typeof manifest.house === 'object'
+          && manifest.house !== null
+          && validateBrandManifestBranding(domain, manifest) === null
+        );
         if (brand_json) {
           brandJson = brand_json as Record<string, unknown>;
-        } else if (manifest && discovered!.review_status !== 'pending' && typeof manifest.house === 'object' && manifest.house !== null) {
+        } else if (canAdoptDiscoveredManifest) {
           brandJson = manifest;
         } else {
           const brandId = brand_name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
@@ -9336,7 +9426,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             keller_type: 'master',
             names: [{ en: brand_name }],
           };
-          if (logo_url) brandEntry.logos = [{ url: logo_url }];
+          if (normalizedLogoUrl) brandEntry.logos = [{ url: normalizedLogoUrl }];
           if (brand_color) brandEntry.colors = { primary: brand_color };
           brandJson = {
             house: { domain, name: brand_name },

@@ -1001,7 +1001,7 @@ async function loadWorkingGroupDocuments(): Promise<IndexedDoc[]> {
 
     // Append asset descriptions so visual content is searchable
     try {
-      const assets = await workingGroupDb.getDocumentAssets(doc.id);
+      const assets = await workingGroupDb.getDocumentAssets(doc.id, doc.working_group_id);
       const described = assets.filter(a => a.description);
       if (described.length > 0) {
         const assetSection = described
