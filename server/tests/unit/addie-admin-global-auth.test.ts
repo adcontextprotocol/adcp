@@ -79,8 +79,6 @@ const { csrfProtection } = await import('../../src/middleware/csrf.js');
 
 function createApp() {
   const app = express();
-  // Test fixture installs the real custom CSRF middleware immediately below.
-  // codeql[js/missing-token-validation]
   app.use(cookieParser());
   app.use(csrfProtection);
   const { pageRouter, apiRouter } = createAddieAdminRouter();
