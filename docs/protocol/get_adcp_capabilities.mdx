@@ -85,6 +85,7 @@ Core AdCP protocol information:
 |-------|------|-------------|
 | `major_versions` | integer[] | **Required.** AdCP major versions supported (e.g., `[3]`) |
 | `idempotency` | object | **Required.** Idempotency semantics. See [idempotency](#idempotency). |
+| `capability_changes` | object | Optional. Freshness metadata and opt-in `capabilities.changed` invalidation webhooks for cached capability documents. See [capability_changes](#capability_changes). |
 
 #### idempotency
 
@@ -116,6 +117,45 @@ Sellers that do not support replay dedup declare it explicitly:
 ```
 
 **Verifying the declaration.** `idempotency.supported: true` is a trust-bearing claim that enables buyers to safely retry spend-committing operations. A compromised or buggy seller could advertise `true` while silently ignoring keys, causing buyer double-spend on retry. Buyers and conformance runners SHOULD probe the declaration with a deliberate payload-mutation replay: send two requests with the same `idempotency_key` but different canonical payloads — a conformant seller MUST return `IDEMPOTENCY_CONFLICT` on the second. Sellers declaring `supported: true` MUST pass this probe as part of the baseline compliance storyboard before the declaration is considered verified.
+
+#### capability_changes
+
+Declares how consumers should cache and invalidate this agent's capability document. Capabilities are agent-wide and usually stable, so buyers and registries can cache them; this block gives them a bounded TTL, an opaque revision token, and an optional push signal for material changes.
+
+When `notifications.supported: true`, sellers MUST include `cache_ttl_seconds` and at least one revision marker (`capabilities_version` or `last_modified`). The webhook is the fast path; the TTL and revision marker are the recovery path when delivery is missed or delayed.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `capabilities_version` | string | Opaque revision token for the full capability document. Sellers SHOULD change it whenever any material field in `get_adcp_capabilities` changes. Buyers compare for equality only. |
+| `last_modified` | date-time | Timestamp when the seller last changed the advertised capability document. Use this instead of legacy top-level `last_updated` when both are present. |
+| `cache_ttl_seconds` | integer | Maximum time a buyer or registry SHOULD reuse this response without a fresher invalidation signal. Required when `notifications.supported: true` so receivers recover from missed fires. |
+| `notifications` | object | Whether the seller supports `capabilities.changed` webhooks. When `supported: true`, register subscribers with [`sync_agent_notification_configs`](/docs/protocol/sync_agent_notification_configs). |
+
+```json
+{
+  "adcp": {
+    "major_versions": [3],
+    "idempotency": { "supported": true, "replay_ttl_seconds": 86400 },
+    "capability_changes": {
+      "capabilities_version": "rev_20260702_091455",
+      "last_modified": "2026-07-02T09:14:55Z",
+      "cache_ttl_seconds": 3600,
+      "notifications": {
+        "supported": true,
+        "registration_task": "sync_agent_notification_configs",
+        "event_types": ["capabilities.changed"],
+        "coalescence_window_seconds": 300
+      }
+    }
+  }
+}
+```
+
+A **material capability change** is any externally advertised contract change that can affect routing, validation, conformance coverage, or task behavior. Examples include sandbox support, `require_operator_auth`, supported billing, account resolution mode, supported protocol versions, task availability, reporting delivery methods, creative-library support, targeting support, and any feature gate a buyer checks before sending a request.
+
+Non-contract operational changes that do not alter the `get_adcp_capabilities` response body do not require a revision or webhook fire.
+
+`capabilities.changed` webhooks are invalidation signals, not replacement documents. The payload identifies the agent, change time, reason, optional `capabilities_version`, and optional advisory `changed_paths[]`; receivers SHOULD re-run `get_adcp_capabilities` and replace their cached snapshot from the fresh response. The payload schema is [`/schemas/latest/core/capabilities-changed-webhook.json`](https://adcontextprotocol.org/schemas/latest/core/capabilities-changed-webhook.json).
 
 ### supported_protocols
 
@@ -160,7 +200,29 @@ Account and authentication capabilities. All sellers should declare this section
 | `authorization_endpoint` | string | OAuth URL for operator authentication. Present when the seller supports OAuth for operator authentication. Relevant when `require_operator_auth: true`; if absent, operators obtain credentials out-of-band (seller portal, API key). |
 | `required_for_products` | boolean | Default: `false`. When `true`, the buyer must establish an account before calling `get_products`. When `false`, the buyer can browse products without an account — useful for price comparison and discovery before committing to a seller. |
 | `account_financials` | boolean | Default: `false`. When `true`, the seller supports [`get_account_financials`](/docs/accounts/tasks/get_account_financials) for querying spend, credit, and invoice status. Only applicable to operator-billed accounts. |
+| `notifications` | object | Optional. Declares durable account lifecycle webhook support. When `supported: true`, buyers may register `account.status_changed` subscribers with `sync_accounts.accounts[].notification_configs[]` and repair by re-reading `list_accounts`. |
 | `sandbox` | boolean | Default: `false`. Strongly recommended for production sales agents. When `true`, the seller supports sandbox accounts for testing. For sandbox, account-id namespaces discover pre-existing test accounts through `list_accounts` or out-of-band setup; buyer-declared accounts declare sandbox via `sync_accounts` with `sandbox: true` — no real platform calls or spend. See [Sandbox mode](/docs/media-buy/advanced-topics/sandbox). |
+
+#### account.notifications
+
+Declares whether the seller supports durable account lifecycle invalidation webhooks. This is the capability gate for `account.status_changed`, including billing-related status transitions such as `payment_required`, `suspended`, recovery to `active`, and terminal `closed`.
+
+```json
+{
+  "account": {
+    "supported_billing": ["operator", "agent"],
+    "notifications": {
+      "supported": true,
+      "registration_task": "sync_accounts",
+      "read_task": "list_accounts",
+      "event_types": ["account.status_changed"],
+      "supports_webhook_activity": true
+    }
+  }
+}
+```
+
+When `supported: false` or absent, buyers MUST NOT assume durable account status webhooks are available. They can still use the one-shot `sync_accounts.push_notification_config` callback for the initial provisioning result when offered, and poll `list_accounts` for later account status changes.
 
 #### Auth models
 
@@ -548,14 +610,14 @@ Compliance testing is sandbox-only at the deployment level — production deploy
 
 ### webhook_signing
 
-Declares a seller's webhook-signing posture. Any seller whose capability surface advertises mutating-webhook emission — including but not limited to `media_buy.reporting_delivery_methods` containing `webhook`, `media_buy.content_standards.supports_webhook_delivery: true`, or `wholesale_feed_webhooks.supported: true` — MUST include this block with `supported: true`. A seller that emits no webhooks at all MAY omit the block entirely; the absence of both mutating-webhook emission in other capabilities and this block is an unambiguous "does not emit webhooks" posture. Buyers read the block at onboarding to determine which algorithms to expect per the [AdCP webhook-signing profile](/docs/building/implementation/security#webhook-callbacks). Buyers integrating with a seller that advertises mutating-webhook emission while advertising `supported: false` or omitting this block MUST fail onboarding with a user-actionable error; silent integration with a non-signing-but-webhook-emitting seller is unsafe for any mutating-webhook use case.
+Declares a seller's webhook-signing posture. Any seller whose capability surface advertises mutating-webhook emission — including but not limited to `media_buy.reporting_delivery_methods` containing `webhook`, `media_buy.content_standards.supports_webhook_delivery: true`, `wholesale_feed_webhooks.supported: true`, `adcp.capability_changes.notifications.supported: true`, or `account.notifications.supported: true` — MUST include this block with `supported: true`. A seller that emits no webhooks at all MAY omit the block entirely; the absence of both mutating-webhook emission in other capabilities and this block is an unambiguous "does not emit webhooks" posture. Buyers read the block at onboarding to determine which algorithms to expect per the [AdCP webhook-signing profile](/docs/building/implementation/security#webhook-callbacks). Buyers integrating with a seller that advertises mutating-webhook emission while advertising `supported: false` or omitting this block MUST fail onboarding with a user-actionable error; silent integration with a non-signing-but-webhook-emitting seller is unsafe for any mutating-webhook use case.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `supported` | boolean | **Required when the seller advertises mutating-webhook emission elsewhere in its capability surface.** `true` iff the seller signs outbound webhooks. `false` means the seller emits webhooks but does not sign them; buyers MUST fail onboarding. Sellers that emit no webhooks SHOULD omit the entire block rather than set `supported: false` — `false` is reserved for the unsafe posture of unsigned-webhook emission, not absence-of-webhooks. |
 | `profile` | string | **Required when `supported: true`.** The profile version string. Currently `"adcp/webhook-signing/v1"`. Future versions bump the string. |
 | `algorithms` | string[] | **Required when `supported: true`.** Subset of `["ed25519", "ecdsa-p256-sha256"]` — the algorithms this seller will sign webhooks with. Matches the webhook-signing verifier allowlist (see [Verifier checklist for webhooks](/docs/building/implementation/security#webhook-callbacks), step 4). Buyers MUST be prepared to verify any algorithm listed AND MUST reject onboarding with a user-actionable error if an advertised algorithm is outside this enumerated set — a seller advertising an out-of-set algorithm (e.g., `hs256`) is either misconfigured or signalling a non-conforming profile. |
-| `legacy_hmac_fallback` | boolean | **Required when `supported: true`.** `true` iff the seller supports the legacy HMAC-SHA256 scheme when the buyer populates `push_notification_config.authentication.credentials` or `accounts[].notification_configs[].authentication.credentials`. `false` is the recommended posture in 3.x — the HMAC scheme is removed in AdCP 4.0. |
+| `legacy_hmac_fallback` | boolean | **Required when `supported: true`.** `true` iff the seller supports the legacy HMAC-SHA256 scheme when the buyer populates `push_notification_config.authentication.credentials`, `accounts[].notification_configs[].authentication.credentials`, or `sync_agent_notification_configs.notification_configs[].authentication.credentials`. `false` is the recommended posture in 3.x — the HMAC scheme is removed in AdCP 4.0. |
 
 **Example:**
 
@@ -1014,7 +1076,17 @@ An agent can implement multiple protocols from a single endpoint. This is common
   "status": "completed",
   "adcp": {
     "major_versions": [3],
-    "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
+    "idempotency": { "supported": true, "replay_ttl_seconds": 86400 },
+    "capability_changes": {
+      "capabilities_version": "rev_20260702_091455",
+      "last_modified": "2026-07-02T09:14:55Z",
+      "cache_ttl_seconds": 3600,
+      "notifications": {
+        "supported": true,
+        "registration_task": "sync_agent_notification_configs",
+        "event_types": ["capabilities.changed"]
+      }
+    }
   },
   "supported_protocols": ["media_buy", "creative"],
   "account": {
@@ -1096,7 +1168,7 @@ New fields:
 ## Best Practices
 
 **1. Cache Capabilities**
-Capabilities rarely change. Cache results and use `last_updated` for staleness detection.
+Capabilities rarely change. Cache results for no longer than `adcp.capability_changes.cache_ttl_seconds` when present, compare `capabilities_version` or `last_modified` on refresh, and subscribe to `capabilities.changed` if the seller advertises notification support. Fall back to legacy `last_updated` only when `capability_changes` is absent.
 
 **2. Check Protocol Support First**
 Before accessing protocol-specific fields, verify the protocol is in `supported_protocols`.

@@ -1,0 +1,112 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/capabilities-changed-webhook.json",
+  "title": "Capabilities Changed Webhook",
+  "description": "Agent-level webhook payload fired when the seller's advertised `get_adcp_capabilities` document materially changes. Registered through `sync_agent_notification_configs` using `event_types: [\"capabilities.changed\"]`. The payload is an invalidation signal, not a replacement capability document: receivers SHOULD re-run `get_adcp_capabilities`, compare the returned `adcp.capability_changes.capabilities_version` or `last_modified` value, and update their cache from the fresh response. Sellers SHOULD coalesce bursts of configuration changes and fire once for the post-change revision.",
+  "type": "object",
+  "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "description": "Sender-generated key stable across retries of the same fire. Sellers MUST generate a cryptographically random value (UUID v4 recommended) per distinct fire and reuse it on every retry of the same fire. Receivers MUST dedupe by this key, scoped to the authenticated sender identity.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "notification_id": {
+      "type": "string",
+      "description": "Stable identifier for this logical capability-change event. Re-emissions of the same logical change reuse this value under a new idempotency_key; a later material capability revision receives a new id.",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+    },
+    "notification_type": {
+      "type": "string",
+      "const": "capabilities.changed",
+      "description": "Fixed notification type discriminator. Matches the value registered on the subscriber's `event_types`."
+    },
+    "fired_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the seller initiated this fire. Distinct from `changed_at`, which is when the seller recorded the material capability change."
+    },
+    "subscriber_id": {
+      "type": "string",
+      "description": "Identifies which `sync_agent_notification_configs.notification_configs[]` entry is receiving this fire. Echoed verbatim from the entry's `subscriber_id`.",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+    },
+    "agent_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Canonical seller agent URL whose capabilities changed. Receivers that subscribe to multiple agents use this to select the cache entry to invalidate."
+    },
+    "changed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the seller recorded the material capability change. SHOULD match or precede `adcp.capability_changes.last_modified` on the next `get_adcp_capabilities` response."
+    },
+    "reason": {
+      "type": "string",
+      "enum": [
+        "configuration_changed",
+        "deployment_changed",
+        "capability_enabled",
+        "capability_disabled",
+        "protocol_versions_changed",
+        "manual_refresh",
+        "other"
+      ],
+      "description": "Coarse reason for the invalidation. This is advisory routing/debug metadata; receivers MUST re-read `get_adcp_capabilities` rather than relying on the reason to infer the new capability surface."
+    },
+    "capabilities_version": {
+      "type": "string",
+      "description": "Optional opaque revision token for the capability document after the change. SHOULD equal `adcp.capability_changes.capabilities_version` on the next `get_adcp_capabilities` response when the seller emits that field. Receivers MUST treat the token as opaque and compare it only for equality.",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "changed_paths": {
+      "type": "array",
+      "description": "Optional advisory JSON Pointer-style paths that identify the top-level or nested capability subtrees that changed (for example `/account/sandbox` or `/supported_protocols`). Receivers MAY use this for logging or selective downstream invalidation, but MUST still treat the full `get_adcp_capabilities` response as the authoritative replacement snapshot.",
+      "items": {
+        "type": "string",
+        "pattern": "^(/[^\\s]*)$"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "notification_id",
+    "notification_type",
+    "fired_at",
+    "subscriber_id",
+    "agent_url",
+    "changed_at",
+    "reason"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "Seller enabled sandbox support",
+      "data": {
+        "idempotency_key": "whk_01J1T3K6YZR7V5P9Q2M4N6B8CD",
+        "notification_id": "capchg_20260702_0001",
+        "notification_type": "capabilities.changed",
+        "fired_at": "2026-07-02T09:15:30Z",
+        "subscriber_id": "registry-cache",
+        "agent_url": "https://seller.example/adcp",
+        "changed_at": "2026-07-02T09:14:55Z",
+        "reason": "capability_enabled",
+        "capabilities_version": "rev_20260702_091455",
+        "changed_paths": [
+          "/account/sandbox"
+        ]
+      }
+    }
+  ]
+}

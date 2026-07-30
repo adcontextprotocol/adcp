@@ -794,6 +794,7 @@
                       "docs/building/by-layer/L0/a2a-guide",
                       "docs/building/by-layer/L0/a2a-response-format",
                       "docs/protocol/get_adcp_capabilities",
+                      "docs/protocol/sync_agent_notification_configs",
                       "docs/building/by-layer/L0/mcp-response-extraction",
                       "docs/building/by-layer/L0/a2a-response-extraction"
                     ]
@@ -1399,6 +1400,7 @@
                       "docs/building/by-layer/L0/a2a-guide",
                       "docs/building/by-layer/L0/a2a-response-format",
                       "docs/protocol/get_adcp_capabilities",
+                      "docs/protocol/sync_agent_notification_configs",
                       "docs/building/by-layer/L0/mcp-response-extraction",
                       "docs/building/by-layer/L0/a2a-response-extraction"
                     ]
