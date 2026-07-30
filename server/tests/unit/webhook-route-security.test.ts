@@ -39,7 +39,10 @@ vi.mock('../../src/addie/error-notifier.js', () => ({
 
 import { WEBHOOK_RAW_BODY_LIMIT_BYTES } from '../../src/middleware/bounded-raw-json.js';
 import { getWorkos } from '../../src/auth/workos-client.js';
-import { createWebhooksRouter } from '../../src/routes/webhooks.js';
+import {
+  createWebhooksRouter,
+  parseCertificationReviewEmailMetadata,
+} from '../../src/routes/webhooks.js';
 import { createWorkOSWebhooksRouter } from '../../src/routes/workos-webhooks.js';
 
 function zoomSignature(rawBody: string, timestamp: string): string {
@@ -143,6 +146,23 @@ describe('webhook route security boundaries', () => {
 
     expect(response.status).toBe(401);
     expect(response.body).toEqual({ error: 'Invalid signature' });
+  });
+
+  it('parses certification metadata without regular expressions over inbound text', () => {
+    const metadata = parseCertificationReviewEmailMetadata([
+      'Learner ID: user-123',
+      'Learner Email: learner@example.com',
+      'Module: module-456',
+      'Status: needs_review',
+      `Untrusted trailing text: ${' '.repeat(10_000)}!`,
+    ].join('\r\n'));
+
+    expect(metadata).toEqual({
+      userId: 'user-123',
+      learnerEmail: 'learner@example.com',
+      moduleId: 'module-456',
+      status: 'needs_review',
+    });
   });
 
   it('verifies WorkOS signatures against the exact noncanonical raw JSON bytes', async () => {

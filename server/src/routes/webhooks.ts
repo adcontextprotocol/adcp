@@ -902,6 +902,41 @@ async function handleUnroutedEmail(data: ResendInboundPayload['data']): Promise<
 // Certification Review Handler
 // ============================================================================
 
+export interface CertificationReviewEmailMetadata {
+  userId?: string;
+  learnerEmail?: string;
+  moduleId?: string;
+  status?: string;
+}
+
+/**
+ * Extract the structured fields emitted by the certification review route.
+ * Line-prefix parsing keeps runtime linear even when an inbound email contains
+ * very long whitespace sequences or other attacker-controlled text.
+ */
+export function parseCertificationReviewEmailMetadata(
+  emailText: string,
+): CertificationReviewEmailMetadata {
+  let userId: string | undefined;
+  let learnerEmail: string | undefined;
+  let moduleId: string | undefined;
+  let status: string | undefined;
+
+  for (const line of emailText.split('\n')) {
+    if (userId === undefined && line.startsWith('Learner ID:')) {
+      userId = line.slice('Learner ID:'.length).trim() || undefined;
+    } else if (learnerEmail === undefined && line.startsWith('Learner Email:')) {
+      learnerEmail = line.slice('Learner Email:'.length).trim() || undefined;
+    } else if (moduleId === undefined && line.startsWith('Module:')) {
+      moduleId = line.slice('Module:'.length).trim() || undefined;
+    } else if (status === undefined && line.startsWith('Status:')) {
+      status = line.slice('Status:'.length).trim() || undefined;
+    }
+  }
+
+  return { userId, learnerEmail, moduleId, status };
+}
+
 /**
  * Handle inbound emails addressed to addie+certification@updates.agenticadvertising.org.
  *
@@ -913,16 +948,8 @@ async function handleUnroutedEmail(data: ResendInboundPayload['data']): Promise<
  */
 async function handleCertificationEmail(data: ResendInboundPayload['data']): Promise<void> {
   const emailText = data.text || '';
-
-  const userIdMatch = emailText.match(/^Learner ID:\s*(.+)$/m);
-  const learnerEmailMatch = emailText.match(/^Learner Email:\s*(.+)$/m);
-  const moduleIdMatch = emailText.match(/^Module:\s*(.+)$/m);
-  const statusMatch = emailText.match(/^Status:\s*(.+)$/m);
-
-  const userId = userIdMatch?.[1]?.trim();
-  const learnerEmail = learnerEmailMatch?.[1]?.trim();
-  const moduleId = moduleIdMatch?.[1]?.trim();
-  const status = statusMatch?.[1]?.trim();
+  const { userId, learnerEmail, moduleId, status } =
+    parseCertificationReviewEmailMetadata(emailText);
 
   logger.info({
     emailId: data.email_id,

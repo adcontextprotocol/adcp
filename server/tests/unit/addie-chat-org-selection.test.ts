@@ -1,5 +1,4 @@
 import express from 'express';
-import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -104,7 +103,16 @@ describe('mounted Addie web-thread ownership', () => {
   function app() {
     const instance = express();
     instance.use(express.json());
-    instance.use(cookieParser());
+    instance.use((req, _res, next) => {
+      const ownerCookie = req.get('cookie')
+        ?.split(';')
+        .map(value => value.trim())
+        .find(value => value.startsWith('addie-anonymous-owner='));
+      req.cookies = ownerCookie
+        ? { 'addie-anonymous-owner': ownerCookie.slice('addie-anonymous-owner='.length) }
+        : {};
+      next();
+    });
     instance.use('/api/addie/chat', createAddieChatRouter({ chatClient }).apiRouter);
     return instance;
   }
