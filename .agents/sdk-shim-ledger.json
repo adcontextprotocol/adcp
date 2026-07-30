@@ -24,7 +24,7 @@
     "owner": "compliance",
     "upstream": "adcontextprotocol/adcp-client#2105",
     "problem": "The SDK package ships a snapshot of compliance bundles, schema bundles, and generated validators. Current PR storyboard runs need to grade current repo source before a new protocol bundle exists.",
-    "localBehavior": "Build current compliance/schema bundles, copy them into the SDK cache, and patch generated validator enum literals for same-PR comply_test_controller additions.",
+    "localBehavior": "Build current compliance/schema bundles, copy them into the SDK cache, and patch generated validators for same-PR controller enums and request/response schema additions.",
     "removalCondition": "Remove when the storyboard matrix passes current compliance and schema roots through public SDK options instead of overlaying the SDK cache.",
     "paths": [
       "scripts/overlay-compliance-cache.sh",
@@ -34,6 +34,7 @@
       "node_modules/@adcp/sdk/compliance/cache",
       "node_modules/@adcp/sdk/ADCP_VERSION",
       "node_modules/@adcp/sdk/dist/lib/types/schemas.generated.js",
+      "node_modules/@adcp/sdk/dist/lib/types/schemas.generated.mjs",
       "schemas.generated.js"
     ]
   }

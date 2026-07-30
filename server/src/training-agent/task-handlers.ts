@@ -75,6 +75,7 @@ type InlineCreativeInput = {
   name?: string;
   format_id?: FormatID;
   format_kind?: string;
+  format_option_ref?: Record<string, unknown>;
   assets?: Record<string, unknown>;
   manifest?: CreativeManifest;
 };
@@ -345,11 +346,18 @@ function persistInlineCreatives(
       accountId: accountId ?? existing?.accountId,
       accountRef: accountRef ?? existing?.accountRef,
       formatId,
+      formatKind: creative.format_kind,
+      formatOptionRef: creative.format_option_ref,
       name: creative.name ?? existing?.name,
       status: existing?.status ?? 'approved',
       syncedAt,
       manifest: creative.manifest ?? (creative.assets ? {
-        format_id: formatId,
+        ...(creative.format_kind
+          ? {
+            format_kind: creative.format_kind,
+            ...(creative.format_option_ref && { format_option_ref: creative.format_option_ref }),
+          }
+          : { format_id: formatId }),
         assets: creative.assets as CreativeManifest['assets'],
       } : existing?.manifest),
       pricingOptionId: existing?.pricingOptionId,
@@ -2404,6 +2412,22 @@ const ACCOUNT_REF_SCHEMA = {
   ],
 } as const;
 
+const FORMAT_ID_INPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    agent_url: { type: 'string', format: 'uri' },
+    id: { type: 'string', pattern: '^[a-zA-Z0-9_-]+$' },
+    width: { type: 'integer', minimum: 1 },
+    height: { type: 'integer', minimum: 1 },
+    duration_ms: { type: 'number', minimum: 1 },
+  },
+  required: ['agent_url', 'id'],
+  dependencies: {
+    width: ['height'],
+    height: ['width'],
+  },
+} as const;
+
 // Tools whose response schema defines an Error variant at top level
 // (oneOf success | {errors: [...]}). Handler-returned errors are placed
 // in the response body rather than wrapped in an MCP isError envelope,
@@ -2789,7 +2813,7 @@ const TOOLS = [
   },
   {
     name: 'list_creatives',
-    description: 'List creative assets for the current session. Filter by creative_ids or media_buy_id to narrow results. When include_pricing is true and account is provided, returns per-creative pricing from the account rate card. Not for uploading or updating creatives (use sync_creatives).',
+    description: 'List creative assets for the current session. Filter by creative_ids, format_ids, asset_types, status, or media_buy_id to narrow results. When include_pricing is true and account is provided, returns per-creative pricing from the account rate card. Not for uploading or updating creatives (use sync_creatives).',
     annotations: { readOnlyHint: true, idempotentHint: true },
     execution: { taskSupport: 'forbidden' as const },
     inputSchema: {
@@ -2810,7 +2834,33 @@ const TOOLS = [
         include_purged: { type: 'boolean', description: 'Include soft-purged creative tombstones' },
         include_webhook_activity: { type: 'boolean', description: 'Include recent lifecycle webhook activity per creative' },
         webhook_activity_limit: { type: 'integer', minimum: 1, maximum: 200 },
-        filters: { type: 'object', properties: { creative_ids: { type: 'array', items: { type: 'string' } }, statuses: { type: 'array', items: { type: 'string' } } } },
+        fields: {
+          type: 'array',
+          description: 'Optional sparse field selection. Response-required identity and lifecycle fields are always retained.',
+          items: {
+            type: 'string',
+            enum: ['creative_id', 'name', 'format_id', 'assets', 'status', 'created_date', 'updated_date', 'tags', 'assignments', 'snapshot', 'items', 'variables', 'concept', 'pricing_options'],
+          },
+          minItems: 1,
+        },
+        filters: {
+          type: 'object',
+          properties: {
+            creative_ids: { type: 'array', items: { type: 'string' } },
+            statuses: { type: 'array', items: { type: 'string' } },
+            format_ids: { type: 'array', items: FORMAT_ID_INPUT_SCHEMA, minItems: 1 },
+            asset_types: {
+              type: 'array',
+              description: 'Filter creatives by exact asset_type values on direct object values in the top-level assets map (OR within this field; no array or nested traversal).',
+              items: {
+                type: 'string',
+                enum: ['image', 'video', 'audio', 'text', 'markdown', 'html', 'css', 'javascript', 'vast', 'daast', 'url', 'webhook', 'brief', 'catalog', 'published_post'],
+              },
+              minItems: 1,
+              uniqueItems: true,
+            },
+          },
+        },
         // See list_creative_formats above — declared so legacy dispatch keeps
         // `pagination` on the wire.
         pagination: {
@@ -5720,7 +5770,15 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
       };
     }
     const creativeId = creative.creative_id;
-    const formatId = creative.format_id as FormatID;
+    const formatId = creative.format_id as FormatID | undefined;
+    const formatKind = typeof creative.format_kind === 'string' ? creative.format_kind : undefined;
+    const formatOptionRef = (creative as unknown as { format_option_ref?: Record<string, unknown> }).format_option_ref;
+
+    if (!formatId && !formatKind) {
+      return {
+        errors: [{ code: 'INVALID_REQUEST', message: 'Each creative requires either format_id or format_kind.' }] as TaskError[],
+      };
+    }
 
     // Enforce creative_policy.provenance_required / provenance_requirements /
     // accepted_verifiers BEFORE persisting the creative. Per-creative failure
@@ -5770,16 +5828,33 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     const existingCreative = session.creatives.get(creativeId);
 
     if (!isDryRun) {
+      const internalFormatId = formatId ?? {
+        agent_url: getAgentUrl(),
+        id: formatKind!,
+      };
       session.creatives.set(creativeId, {
         creativeId,
         accountId: accountId ?? existingCreative?.accountId,
         accountRef: req.account ?? existingCreative?.accountRef,
-        formatId,
+        formatId: internalFormatId,
+        formatKind,
+        formatOptionRef,
         name: creative.name,
         status: existingCreative?.status ?? 'approved',
         syncedAt: new Date().toISOString(),
-        // manifest is a training-agent extension, not in SDK CreativeAsset type
-        manifest: (creative as unknown as { manifest?: CreativeManifest }).manifest,
+        // manifest is a training-agent extension, not in SDK CreativeAsset type.
+        // Preserve direct assets too: list_creatives asset-type filtering must
+        // inspect the same library payload accepted by sync_creatives.
+        manifest: (creative as unknown as { manifest?: CreativeManifest }).manifest
+          ?? ((creative as unknown as { assets?: Record<string, unknown> }).assets ? {
+            ...(formatKind
+              ? {
+                format_kind: formatKind,
+                ...(formatOptionRef && { format_option_ref: formatOptionRef }),
+              }
+              : { format_id: internalFormatId }),
+            assets: (creative as unknown as { assets: Record<string, unknown> }).assets as CreativeManifest['assets'],
+          } : existingCreative?.manifest),
         pricingOptionId: existingCreative?.pricingOptionId,
         purge: existingCreative?.purge,
         webhookActivity: existingCreative?.webhookActivity,
@@ -5850,6 +5925,40 @@ function accountRefsOverlap(stored: AccountRef | undefined, requested: AccountRe
   return Boolean(requested.brand?.domain && stored.brand?.domain && requested.brand.domain === stored.brand.domain);
 }
 
+type CreativeListFilters = {
+  creative_ids?: string[];
+  statuses?: string[];
+  format_ids?: FormatID[];
+  asset_types?: string[];
+};
+
+function creativeMatchesAnyFormatId(creative: CreativeState, requested: FormatID[]): boolean {
+  if (creative.formatKind) return false;
+  const actual = creative.formatId;
+  if (!actual?.id) return false;
+  const actualAgentUrl = actual.agent_url ?? getAgentUrl();
+  return requested.some(wanted => {
+    if (!wanted?.id || wanted.id !== actual.id) return false;
+    if (!wanted.agent_url
+      || canonicalizeAgentUrl(wanted.agent_url) !== canonicalizeAgentUrl(actualAgentUrl)) return false;
+    for (const parameter of ['width', 'height', 'duration_ms'] as const) {
+      if (wanted[parameter] !== actual[parameter]) return false;
+    }
+    return true;
+  });
+}
+
+function creativeHasAnyTopLevelAssetType(creative: CreativeState, requested: Set<string>): boolean {
+  const assets = creative.manifest?.assets as Record<string, unknown> | undefined;
+  if (!assets) return false;
+  for (const slotValue of Object.values(assets)) {
+    if (!slotValue || typeof slotValue !== 'object' || Array.isArray(slotValue)) continue;
+    const assetType = (slotValue as { asset_type?: unknown }).asset_type;
+    if (typeof assetType === 'string' && requested.has(assetType)) return true;
+  }
+  return false;
+}
+
 export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as ListCreativesRequest & ToolArgs & {
     creative_ids?: string[];
@@ -5858,10 +5967,12 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
     include_purged?: boolean;
     include_webhook_activity?: boolean;
     webhook_activity_limit?: number;
+    fields?: string[];
   };
+  const filters = (req.filters ?? {}) as CreativeListFilters;
   const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
   const session = await getSession(sessionKey);
-  const filterIds = req.creative_ids || req.filters?.creative_ids;
+  const filterIds = req.creative_ids || filters.creative_ids;
   const requestedAccountId = resolveAccountIdForRef(sessionKey, ctx.principal, req.account);
 
   let creatives = Array.from(session.creatives.values());
@@ -5895,9 +6006,16 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
   if (!req.include_purged) {
     creatives = creatives.filter(c => !c.purge);
   }
-  if (req.filters?.statuses?.length) {
-    const statuses = new Set<string>(req.filters.statuses as string[]);
+  if (filters.statuses?.length) {
+    const statuses = new Set(filters.statuses);
     creatives = creatives.filter(c => statuses.has(c.status));
+  }
+  if (filters.format_ids?.length) {
+    creatives = creatives.filter(c => creativeMatchesAnyFormatId(c, filters.format_ids!));
+  }
+  if (filters.asset_types?.length) {
+    const assetTypes = new Set(filters.asset_types);
+    creatives = creatives.filter(c => creativeHasAnyTopLevelAssetType(c, assetTypes));
   }
 
   const totalMatching = creatives.length;
@@ -5926,6 +6044,7 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
   // gate in #2847 and tracks the spec-side clarification referenced there.
   const emitPricing = creativeBillsThroughAdcp(ctx) && Boolean(req.account) && req.include_pricing !== false;
   const agentUrl = getAgentUrl();
+  const selectedFields = req.fields?.length ? new Set(req.fields) : undefined;
 
   return {
     query_summary: {
@@ -5949,18 +6068,24 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
       // in for format_id.agent_url. Keeps list_creatives response-schema
       // valid regardless of what was synced.
       const formatId = {
-        ...(c.formatId ?? { id: 'unknown' }),
-        agent_url: c.formatId?.agent_url ?? agentUrl,
+        ...c.formatId,
+        agent_url: c.formatId.agent_url ?? agentUrl,
       };
       const base: Record<string, unknown> = {
         creative_id: c.creativeId,
-        format_id: formatId,
+        ...(c.formatKind
+          ? {
+            format_kind: c.formatKind,
+            ...(c.formatOptionRef && { format_option_ref: c.formatOptionRef }),
+          }
+          : { format_id: formatId }),
         name: c.name ?? c.creativeId,
         status: c.status,
         created_date: c.syncedAt,
         updated_date: c.syncedAt,
+        ...(c.manifest?.assets && (!selectedFields || selectedFields.has('assets')) && { assets: c.manifest.assets }),
       };
-      if (emitPricing && c.formatId?.id) {
+      if (emitPricing && c.formatId?.id && (!selectedFields || selectedFields.has('pricing_options'))) {
         base.pricing_options = [getCreativePricing(req.account!, c)];
       }
       if (req.include_snapshot) {
