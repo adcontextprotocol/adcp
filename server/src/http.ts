@@ -56,6 +56,7 @@ import { getCompanyDomain, getGoogleEmailAliases } from "./utils/email-domain.js
 import { isUuid } from "./utils/uuid.js";
 import { resolveUserNameWithFallbacks, sanitizeName } from "./utils/resolve-user-name.js";
 import { scrubCommunityAuthorizedAgents } from "./utils/community-adagents.js";
+import { formatPerspectiveUrlAsMarkdownDestination, normalizePerspectiveExternalUrl } from "./utils/perspective-url.js";
 import { requireAuth, requireAdmin, requireGlobalAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, encodeDevSessionCookie, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter, newsletterSubscribeRateLimiter, newsletterConfirmRateLimiter } from "./middleware/rate-limit.js";
 import { findOrCreateUserByEmail } from "./auth/workos-client.js";
@@ -252,9 +253,10 @@ function buildPerspectiveUrl(slug: string): string {
 }
 
 function getPerspectiveCrawlerUrl(item: PublicPerspectiveCrawlerItem): string {
-  return item.content_type === 'link' && item.external_url
-    ? item.external_url
-    : buildPerspectiveUrl(item.slug);
+  const externalUrl = item.content_type === 'link'
+    ? normalizePerspectiveExternalUrl(item.external_url)
+    : null;
+  return externalUrl ?? buildPerspectiveUrl(item.slug);
 }
 
 async function getPublicPerspectiveCrawlerItems(limit = PERSPECTIVES_CRAWLER_LIMIT): Promise<PublicPerspectiveCrawlerItem[]> {
@@ -282,6 +284,10 @@ async function getPublicPerspectiveCrawlerItems(limit = PERSPECTIVES_CRAWLER_LIM
 }
 
 function buildLlmsTxt(items: PublicPerspectiveCrawlerItem[]): string {
+  const markdownDestination = (url: string): string => (
+    formatPerspectiveUrlAsMarkdownDestination(url)
+    ?? formatPerspectiveUrlAsMarkdownDestination(PUBLIC_SITE_URL)!
+  );
   const lines = [
     '# AgenticAdvertising.org',
     '',
@@ -289,20 +295,21 @@ function buildLlmsTxt(items: PublicPerspectiveCrawlerItem[]): string {
     '',
     '## Discoverability',
     '',
-    `- [Sitemap](${PUBLIC_SITE_URL}/sitemap.xml)`,
-    `- [Perspectives RSS feed](${PUBLIC_SITE_URL}/perspectives/feed.xml)`,
+    `- [Sitemap](${markdownDestination(`${PUBLIC_SITE_URL}/sitemap.xml`)})`,
+    `- [Perspectives RSS feed](${markdownDestination(`${PUBLIC_SITE_URL}/perspectives/feed.xml`)})`,
     '',
     '## Perspectives',
     '',
   ];
 
   if (items.length === 0) {
-    lines.push(`- [Latest perspectives](${PUBLIC_SITE_URL}/latest/perspectives)`);
+    lines.push(`- [Latest perspectives](${markdownDestination(`${PUBLIC_SITE_URL}/latest/perspectives`)})`);
   } else {
     for (const item of items) {
       const title = escapeMarkdownText(item.title);
       const excerpt = escapeMarkdownText(item.excerpt);
-      lines.push(`- [${title}](${getPerspectiveCrawlerUrl(item)})${excerpt ? `: ${excerpt}` : ''}`);
+      const destination = markdownDestination(getPerspectiveCrawlerUrl(item));
+      lines.push(`- [${title}](${destination})${excerpt ? `: ${excerpt}` : ''}`);
     }
   }
 

@@ -542,44 +542,54 @@
 
     function displayValidationResults(data) {
       const container = document.getElementById('validationResults');
-      const isValid = data.valid;
+      const isValid = data.valid === true;
+      const result = document.createElement('div');
+      result.className = `validation-result ${isValid ? 'valid' : 'invalid'}`;
 
-      let html = `<div class="validation-result ${isValid ? 'valid' : 'invalid'}">`;
-      html += `<h4 style="margin-bottom: var(--space-2);">${isValid ? 'Valid adagents.json found' : 'No valid adagents.json'}</h4>`;
-      html += `<p><strong>URL:</strong> ${data.url}</p>`;
-      html += `<p><strong>Status:</strong> ${data.status_code || 'N/A'}</p>`;
+      const heading = document.createElement('h4');
+      heading.style.marginBottom = 'var(--space-2)';
+      heading.textContent = isValid ? 'Valid adagents.json found' : 'No valid adagents.json';
+      result.appendChild(heading);
 
-      if (data.errors && data.errors.length > 0) {
-        html += '<p style="margin-top: var(--space-2);"><strong>Errors:</strong></p><ul>';
-        data.errors.forEach(e => {
-          html += `<li style="color: var(--color-error-600);">${e.message}</li>`;
+      const appendLabeledValue = (label, value, marginTop = null) => {
+        const paragraph = document.createElement('p');
+        if (marginTop) paragraph.style.marginTop = marginTop;
+        const strong = document.createElement('strong');
+        strong.textContent = `${label}:`;
+        paragraph.append(strong, document.createTextNode(` ${String(value ?? '')}`));
+        result.appendChild(paragraph);
+      };
+
+      appendLabeledValue('URL', data.url || 'N/A');
+      appendLabeledValue('Status', data.status_code || 'N/A');
+
+      const appendMessages = (label, messages, color) => {
+        if (!Array.isArray(messages) || messages.length === 0) return;
+        appendLabeledValue(label, '', 'var(--space-2)');
+        const list = document.createElement('ul');
+        messages.forEach(message => {
+          const item = document.createElement('li');
+          item.style.color = color;
+          item.textContent = String(message?.message ?? '');
+          list.appendChild(item);
         });
-        html += '</ul>';
-      }
+        result.appendChild(list);
+      };
 
-      if (data.warnings && data.warnings.length > 0) {
-        html += '<p style="margin-top: var(--space-2);"><strong>Warnings:</strong></p><ul>';
-        data.warnings.forEach(w => {
-          html += `<li style="color: var(--color-warning-600);">${w.message}</li>`;
-        });
-        html += '</ul>';
-      }
+      appendMessages('Errors', data.errors, 'var(--color-error-600)');
+      appendMessages('Warnings', data.warnings, 'var(--color-warning-600)');
 
       if (isValid && data.raw_data) {
-        const agents = data.raw_data.authorized_agents || [];
-        const props = data.raw_data.properties || [];
-        html += `<p style="margin-top: var(--space-2);"><strong>Authorized Agents:</strong> ${agents.length}</p>`;
-        html += `<p><strong>Properties:</strong> ${props.length}</p>`;
+        const agents = Array.isArray(data.raw_data.authorized_agents) ? data.raw_data.authorized_agents : [];
+        const props = Array.isArray(data.raw_data.properties) ? data.raw_data.properties : [];
+        appendLabeledValue('Authorized agents', agents.length, 'var(--space-2)');
+        appendLabeledValue('Properties', props.length);
       }
-
-      html += '</div>';
 
       // Show save button if no valid adagents.json found (for creating synthetic)
-      if (!isValid) {
-        document.getElementById('saveValidatedBtn').style.display = 'inline-block';
-      }
+      document.getElementById('saveValidatedBtn').style.display = isValid ? 'none' : 'inline-block';
 
-      container.innerHTML = html;
+      container.replaceChildren(result);
       container.style.display = 'block';
       document.getElementById('validateError').style.display = 'none';
     }
@@ -666,19 +676,25 @@
     async function viewProperty(domain) {
       document.getElementById('viewModal').style.display = 'block';
       document.getElementById('viewModalTitle').textContent = domain;
-      document.getElementById('viewContent').innerHTML = '<div class="loading">Loading...</div>';
+      const viewContent = document.getElementById('viewContent');
+      viewContent.innerHTML = '<div class="loading">Loading...</div>';
 
       try {
         const response = await fetch(`/api/properties/resolve?domain=${encodeURIComponent(domain)}`);
         const data = await response.json();
 
-        let html = '<pre style="background: var(--color-bg-subtle); padding: var(--space-4); border-radius: var(--radius-md); overflow: auto;">';
-        html += JSON.stringify(data, null, 2);
-        html += '</pre>';
-
-        document.getElementById('viewContent').innerHTML = html;
+        const preview = document.createElement('pre');
+        preview.style.background = 'var(--color-bg-subtle)';
+        preview.style.padding = 'var(--space-4)';
+        preview.style.borderRadius = 'var(--radius-md)';
+        preview.style.overflow = 'auto';
+        preview.textContent = JSON.stringify(data, null, 2);
+        viewContent.replaceChildren(preview);
       } catch (error) {
-        document.getElementById('viewContent').innerHTML = `<div class="error-message">${error.message}</div>`;
+        const errorMessage = document.createElement('div');
+        errorMessage.className = 'error-message';
+        errorMessage.textContent = error.message;
+        viewContent.replaceChildren(errorMessage);
       }
     }
 
