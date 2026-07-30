@@ -7017,7 +7017,8 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       // The OAuth provider controls whether a callback contains `code`. This branch does not
       // bypass authentication: native state was atomically consumed and validated above, and
       // the no-code path can only return an error. Successful authentication still requires
-      // WorkOS code redemption below. lgtm[js/user-controlled-bypass]
+      // WorkOS code redemption below.
+      // codeql[js/user-controlled-bypass] - provider code presence selects only error vs redemption
       if (!code) {
         if (nativePending) {
           res.setHeader('Cache-Control', 'no-store');
