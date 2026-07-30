@@ -9,7 +9,12 @@ import { Router } from "express";
 import Stripe from "stripe";
 import type { PoolClient } from "pg";
 import { createLogger } from "../logger.js";
-import { requireAuth, requireAdmin, requireGlobalAdmin } from "../middleware/auth.js";
+import {
+  requireAuth,
+  requireAdmin,
+  requireGlobalAdmin,
+  requireTenantAdminForOrganization,
+} from "../middleware/auth.js";
 import { serveHtmlWithConfig } from "../utils/html-config.js";
 import { getPool } from "../db/client.js";
 import {
@@ -188,7 +193,7 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
   apiRouter.get(
     "/orgs/:orgId/invite-products",
     requireAuth,
-    requireAdmin,
+    requireTenantAdminForOrganization,
     async (req, res) => {
       try {
         const { orgId } = req.params;
