@@ -29,6 +29,7 @@ import { refreshWorkingGroupDocs } from '../addie/mcp/docs-indexer.js';
 import { isUuid } from '../utils/uuid.js';
 import { notifySystemError } from '../addie/error-notifier.js';
 import type { WorkingGroupServiceUser } from './working-group-membership-service.js';
+import { normalizeOptionalExternalHttpUrl } from '../utils/external-http-url.js';
 
 const logger = createLogger('working-group-content-service');
 
@@ -84,6 +85,7 @@ export type WorkingGroupContentErrorCode =
   | 'leader_required_for_public_post'
   | 'missing_required_fields'
   | 'invalid_post_slug'
+  | 'invalid_external_url'
   | 'invalid_document_url'
   | 'invalid_document_id'
   | 'document_not_found'
@@ -96,6 +98,7 @@ export interface WorkingGroupContentErrorMetaByCode {
   leader_required_for_public_post: { slug: string };
   missing_required_fields: { slug: string; fields: string[] };
   invalid_post_slug: { slug: string; postSlug: string };
+  invalid_external_url: { slug: string };
   invalid_document_url: { slug: string };
   invalid_document_id: { slug: string; documentId: string };
   document_not_found: { slug: string; documentId: string };
@@ -204,6 +207,23 @@ export async function createWorkingGroupPost(input: CreateWorkingGroupPostInput)
   const normalizedContentType: WorkingGroupPostContentType = VALID_POST_CONTENT_TYPES.includes(contentType as WorkingGroupPostContentType)
     ? (contentType as WorkingGroupPostContentType)
     : 'article';
+  let normalizedExternalUrl: string | null | undefined;
+  try {
+    normalizedExternalUrl = normalizeOptionalExternalHttpUrl(externalUrl);
+  } catch {
+    throw new WorkingGroupContentError(
+      'invalid_external_url',
+      'External URL must be a valid HTTP or HTTPS URL without embedded credentials',
+      { slug },
+    );
+  }
+  if (normalizedContentType === 'link' && !normalizedExternalUrl) {
+    throw new WorkingGroupContentError(
+      'invalid_external_url',
+      'External URL is required for link type posts',
+      { slug },
+    );
+  }
 
   let inserted;
   try {
@@ -222,7 +242,7 @@ export async function createWorkingGroupPost(input: CreateWorkingGroupPostInput)
         content || null,
         category || null,
         excerpt || null,
-        externalUrl || null,
+        normalizedExternalUrl ?? null,
         externalSiteName || null,
         authorName,
         user.id,
@@ -251,7 +271,7 @@ export async function createWorkingGroupPost(input: CreateWorkingGroupPostInput)
     authorName,
     contentType: normalizedContentType,
     excerpt: excerpt || undefined,
-    externalUrl: externalUrl || undefined,
+    externalUrl: normalizedExternalUrl || undefined,
     category: category || undefined,
     isMembersOnly: finalMembersOnly,
   }).catch((err) => {

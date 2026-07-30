@@ -30,6 +30,7 @@ import { createIllustration, approveIllustration } from '../db/illustration-db.j
 import { resolveEscalationsForPerspective } from '../db/escalation-db.js';
 import { listMyContent as listMyContentService, MyContentError } from '../services/my-content-service.js';
 import { checkContentSubmissionTier } from '../services/membership-tiers.js';
+import { normalizeOptionalExternalHttpUrl } from '../utils/external-http-url.js';
 
 const logger = createLogger('content-routes');
 
@@ -445,8 +446,18 @@ export async function proposeContentForUser(
     return { success: false, error: 'collection.committee_slug or collection.slug is required' };
   }
 
+  let normalizedExternalUrl: string | null | undefined;
+  try {
+    normalizedExternalUrl = normalizeOptionalExternalHttpUrl(external_url);
+  } catch (error) {
+    return {
+      success: false,
+      error: `external_url ${error instanceof Error ? error.message : 'must be a valid HTTP or HTTPS URL'}`,
+    };
+  }
+
   // Validate content_type requirements
-  if (content_type === 'link' && !external_url) {
+  if (content_type === 'link' && !normalizedExternalUrl) {
     return { success: false, error: 'external_url is required for link type content' };
   }
 
@@ -547,7 +558,7 @@ export async function proposeContentForUser(
     RETURNING *`,
     [
       slug, content_type, title, subtitle || null, content, excerpt,
-      external_url, external_site_name, category, tags,
+      normalizedExternalUrl, external_site_name, category, tags,
       authorName, requestAuthorTitle || null, user.id,
       featured_image_url || null, effectiveOrigin,
       user.id, proposedAt,
@@ -638,7 +649,7 @@ export async function proposeContentForUser(
       authorName,
       contentType: content_type,
       excerpt: excerpt || undefined,
-      externalUrl: external_url || undefined,
+      externalUrl: normalizedExternalUrl || undefined,
       category: category || undefined,
       isMembersOnly: false,
     }).catch(err => {
@@ -1685,6 +1696,16 @@ export function createMyContentRouter(): Router {
         });
       }
 
+      let normalizedExternalUrl: string | null | undefined;
+      try {
+        normalizedExternalUrl = normalizeOptionalExternalHttpUrl(external_url);
+      } catch (error) {
+        return res.status(400).json({
+          error: 'Invalid external URL',
+          message: `external_url ${error instanceof Error ? error.message : 'must be a valid HTTP or HTTPS URL'}`,
+        });
+      }
+
       // Published content has already passed editorial review. Any actual
       // content change by a non-admin must go through that review again,
       // regardless of whether the caller omits status or asks to keep it
@@ -1703,7 +1724,7 @@ export function createMyContentRouter(): Router {
         changed(content, contentItem.content),
         changed(content_type, contentItem.content_type),
         changed(excerpt, contentItem.excerpt),
-        changed(external_url, contentItem.external_url),
+        changed(normalizedExternalUrl, contentItem.external_url),
         changed(external_site_name, contentItem.external_site_name),
         changed(category, contentItem.category),
         changed(tags, contentItem.tags),
@@ -1736,7 +1757,7 @@ export function createMyContentRouter(): Router {
       }
       if (external_url !== undefined) {
         updates.push(`external_url = $${paramIndex++}`);
-        values.push(external_url);
+        values.push(normalizedExternalUrl ?? null);
       }
       if (external_site_name !== undefined) {
         updates.push(`external_site_name = $${paramIndex++}`);

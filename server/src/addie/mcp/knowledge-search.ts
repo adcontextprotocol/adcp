@@ -17,6 +17,7 @@ import { createLogger } from '../../logger.js';
 
 const logger = createLogger('addie-knowledge-search');
 import { ToolError } from '../tool-error.js';
+import { wrapUntrustedInput } from './untrusted-input.js';
 import type { AddieTool } from '../types.js';
 import {
   initializeDocsIndex,
@@ -813,21 +814,21 @@ ${formatted}
             ? '★'.repeat(resource.quality_score) + '☆'.repeat(5 - resource.quality_score)
             : 'Not rated';
           const tagsDisplay = resource.relevance_tags?.length
-            ? resource.relevance_tags.join(', ')
+            ? wrapUntrustedInput(resource.relevance_tags.join(', '), 1_000)
             : 'No tags';
 
           // Anonymous callers don't see addie_notes — those are LLM-generated from
           // arbitrary fetched URL content and could carry prompt-injection text.
           const addieNotesBlock = !anonymous && resource.addie_notes
-            ? `**Addie's Take:** ${resource.addie_notes}`
+            ? `**Addie's Take:** ${wrapUntrustedInput(resource.addie_notes, 2_000)}`
             : '';
 
-          return `### ${i + 1}. ${resource.title}
+          return `### ${i + 1}. ${wrapUntrustedInput(resource.title, 500)}
 **Quality:** ${qualityStars}
 **Tags:** ${tagsDisplay}
-**URL:** ${resource.source_url}
+**URL:** ${wrapUntrustedInput(resource.source_url, 2_048)}
 
-${resource.summary || resource.headline}
+${wrapUntrustedInput(resource.summary || resource.headline || '', 4_000)}
 
 ${addieNotesBlock}`;
         })
@@ -907,7 +908,7 @@ ${addieNotesBlock}`;
             ? '★'.repeat(article.quality_score) + '☆'.repeat(5 - article.quality_score)
             : 'Not rated';
           const tagsDisplay = article.relevance_tags?.length
-            ? article.relevance_tags.join(', ')
+            ? wrapUntrustedInput(article.relevance_tags.join(', '), 1_000)
             : 'No tags';
           const dateStr = new Date(article.last_fetched_at).toLocaleDateString('en-US', {
             month: 'short',
@@ -918,15 +919,15 @@ ${addieNotesBlock}`;
           // Anonymous callers don't see addie_notes — those are LLM-generated from
           // arbitrary fetched URL content and could carry prompt-injection text.
           const addieNotesBlock = !anonymous && article.addie_notes
-            ? `**Addie's Take:** ${article.addie_notes}`
+            ? `**Addie's Take:** ${wrapUntrustedInput(article.addie_notes, 2_000)}`
             : '';
 
-          return `### ${i + 1}. ${article.title}
+          return `### ${i + 1}. ${wrapUntrustedInput(article.title, 500)}
 **Date:** ${dateStr} | **Quality:** ${qualityStars}
 **Tags:** ${tagsDisplay}
-**URL:** ${article.source_url}
+**URL:** ${wrapUntrustedInput(article.source_url, 2_048)}
 
-${article.summary || 'No summary available.'}
+${wrapUntrustedInput(article.summary || 'No summary available.', 4_000)}
 
 ${addieNotesBlock}`;
         })

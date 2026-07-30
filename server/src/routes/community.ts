@@ -13,6 +13,7 @@ import { query } from "../db/client.js";
 import { resolvePrimaryOrganization } from "../db/users-db.js";
 import { VALID_MEMBER_OFFERINGS, type MemberOffering } from "../types.js";
 import { notifyUser } from "../notifications/notification-service.js";
+import { normalizeOptionalExternalHttpUrl } from "../utils/external-http-url.js";
 
 const logger = createLogger("community-routes");
 const AVATAR_MAX_FILE_SIZE = 5 * 1024 * 1024;
@@ -327,6 +328,22 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
         return res.status(400).json({ error: 'No valid fields to update' });
       }
 
+      let normalizedContactWebsite: string | null | undefined;
+      try {
+        for (const field of ['linkedin_url', 'twitter_url'] as const) {
+          if (updates[field] !== undefined) {
+            updates[field] = normalizeOptionalExternalHttpUrl(updates[field]);
+          }
+        }
+        if (req.body.contact_website !== undefined) {
+          normalizedContactWebsite = normalizeOptionalExternalHttpUrl(req.body.contact_website);
+        }
+      } catch (error) {
+        return res.status(400).json({
+          error: error instanceof Error ? error.message : 'Profile URLs must be valid HTTP or HTTPS URLs',
+        });
+      }
+
       // Validate boolean fields
       for (const boolField of ['is_public', 'open_to_coffee_chat', 'open_to_intros'] as const) {
         if (updates[boolField] !== undefined && typeof updates[boolField] !== 'boolean') {
@@ -366,21 +383,6 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
         updates.slug = slug;
       }
 
-      // Validate URL fields are HTTP(S) only
-      for (const urlField of ['linkedin_url', 'twitter_url'] as const) {
-        const value = updates[urlField];
-        if (value && typeof value === 'string') {
-          try {
-            const parsed = new URL(value);
-            if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-              return res.status(400).json({ error: `${urlField} must be an HTTP or HTTPS URL` });
-            }
-          } catch {
-            return res.status(400).json({ error: `${urlField} must be a valid URL` });
-          }
-        }
-      }
-
       // Validate GitHub username format
       if (updates.github_username && typeof updates.github_username === 'string') {
         if (!/^[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?$/.test(updates.github_username) || updates.github_username.length > 39) {
@@ -405,17 +407,6 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
           return res.status(400).json({ error: 'Invalid contact phone' });
         }
       }
-      if (req.body.contact_website !== undefined && typeof req.body.contact_website === 'string' && req.body.contact_website) {
-        try {
-          const parsed = new URL(req.body.contact_website);
-          if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-            return res.status(400).json({ error: 'contact_website must be an HTTP or HTTPS URL' });
-          }
-        } catch {
-          return res.status(400).json({ error: 'contact_website must be a valid URL' });
-        }
-      }
-
       const existingProfile = await communityDb.getProfile(user.id);
 
       // Check if github_username is being set for the first time (for one-time points award)
@@ -460,7 +451,7 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
         const memberFields: MemberDirectoryFields = {
           offerings: Array.isArray(req.body.offerings) ? req.body.offerings as MemberOffering[] : undefined,
           contact_email: typeof req.body.contact_email === 'string' ? req.body.contact_email : undefined,
-          contact_website: typeof req.body.contact_website === 'string' ? req.body.contact_website : undefined,
+          contact_website: normalizedContactWebsite,
           contact_phone: typeof req.body.contact_phone === 'string' ? req.body.contact_phone : undefined,
         };
         try {
@@ -541,7 +532,7 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
 interface MemberDirectoryFields {
   offerings?: MemberOffering[];
   contact_email?: string;
-  contact_website?: string;
+  contact_website?: string | null;
   contact_phone?: string;
 }
 
@@ -629,7 +620,7 @@ async function syncIndividualMemberProfile(
       tagline: communityProfile.headline || undefined,
       description: communityProfile.bio || undefined,
       contact_email: memberFields.contact_email,
-      contact_website: memberFields.contact_website,
+      contact_website: memberFields.contact_website ?? undefined,
       contact_phone: memberFields.contact_phone,
       offerings: memberFields.offerings || [],
       is_public: memberIsPublic,

@@ -24,6 +24,19 @@ const offeringLabels = {
   publisher: 'Publisher',
 };
 
+function safeMemberExternalUrl(value) {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 2048) return '';
+  try {
+    const parsed = new URL(value);
+    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || !parsed.hostname) {
+      return '';
+    }
+    return parsed.toString();
+  } catch {
+    return '';
+  }
+}
+
 /**
  * Render a member card
  * @param {Object} member - Member profile data
@@ -142,10 +155,15 @@ function renderMemberCard(member, options = {}) {
       <div class="member-card-footer">
         <div class="member-contact">
           ${(() => {
-            const website = member.contact_website || (brand?.contact?.domain ? `https://${escapeHtmlSafe(brand.contact.domain)}` : '');
-            return website ? `<a href="${escapeHtmlSafe(website)}" target="_blank" onclick="event.stopPropagation()">Website</a>` : '';
+            const website = safeMemberExternalUrl(
+              member.contact_website || (brand?.contact?.domain ? `https://${brand.contact.domain}` : ''),
+            );
+            return website ? `<a href="${escapeHtmlSafe(website)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">Website</a>` : '';
           })()}
-          ${member.linkedin_url ? `<a href="${member.linkedin_url}" target="_blank" onclick="event.stopPropagation()">LinkedIn</a>` : ''}
+          ${(() => {
+            const linkedInUrl = safeMemberExternalUrl(member.linkedin_url);
+            return linkedInUrl ? `<a href="${escapeHtmlSafe(linkedInUrl)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">LinkedIn</a>` : '';
+          })()}
         </div>
         ${viewBtn}
       </div>

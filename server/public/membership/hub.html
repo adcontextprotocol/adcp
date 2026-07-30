@@ -1335,6 +1335,7 @@
 <body>
   <div id="adcp-nav"></div>
   <script src="/nav.js"></script>
+  <script src="/external-url.js"></script>
 
   <div class="hub-container">
     <div id="hub-loading" class="hub-loading">
@@ -2192,8 +2193,10 @@
         : `<span class="profile-field-value profile-field-value--empty">No expertise tags yet</span>`;
 
       const socials = [];
-      if (profile.linkedin_url) socials.push(`<a class="profile-social-link" href="${escapeHtml(profile.linkedin_url)}" target="_blank" rel="noopener">LinkedIn ↗</a>`);
-      if (profile.twitter_url) socials.push(`<a class="profile-social-link" href="${escapeHtml(profile.twitter_url)}" target="_blank" rel="noopener">X ↗</a>`);
+      const linkedInUrl = safeExternalHttpUrl(profile.linkedin_url);
+      const twitterUrl = safeExternalHttpUrl(profile.twitter_url);
+      if (linkedInUrl) socials.push(`<a class="profile-social-link" href="${escapeHtml(linkedInUrl)}" target="_blank" rel="noopener noreferrer">LinkedIn ↗</a>`);
+      if (twitterUrl) socials.push(`<a class="profile-social-link" href="${escapeHtml(twitterUrl)}" target="_blank" rel="noopener noreferrer">X ↗</a>`);
       if (profile.github_username) socials.push(`<a class="profile-social-link" href="https://github.com/${encodeURIComponent(profile.github_username)}" target="_blank" rel="noopener">GitHub ↗</a>`);
 
       return `

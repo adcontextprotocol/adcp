@@ -277,6 +277,52 @@ describe('Agent visibility E2E', () => {
     await pool.query(`DELETE FROM brands WHERE domain LIKE $1`, [`%.example`]);
   });
 
+  it('organization members cannot change profile visibility or delete the profile when org is omitted', async () => {
+    const userId = 'user_profile_member_authz';
+    const orgId = `${TEST_PREFIX}_member_authz`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await addMembership(userId, orgId, 'member');
+    await createProfile(orgId, 'member-authz');
+    (app as any).setCurrentUser(userId);
+
+    await request(app)
+      .put('/api/me/member-profile/visibility')
+      .send({ is_public: false })
+      .expect(403);
+
+    await request(app)
+      .put('/api/me/member-profile')
+      .send({ show_in_carousel: false })
+      .expect(403);
+
+    await request(app)
+      .delete('/api/me/member-profile')
+      .expect(403);
+
+    const profile = await memberDb.getProfileByOrgId(orgId);
+    expect(profile).not.toBeNull();
+    expect(profile!.is_public).toBe(true);
+  });
+
+  it('rejects unsafe profile URLs at the write boundary', async () => {
+    const userId = 'user_profile_url_validation';
+    const orgId = `${TEST_PREFIX}_url_validation`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await createProfile(orgId, 'url-validation');
+    (app as any).setCurrentUser(userId);
+
+    const response = await request(app)
+      .put('/api/me/member-profile')
+      .send({ linkedin_url: 'javascript:alert(document.domain)' })
+      .expect(400);
+
+    expect(response.body.field).toBe('linkedin_url');
+    const profile = await memberDb.getProfileByOrgId(orgId);
+    expect(profile!.linkedin_url).toBeFalsy();
+  });
+
   it('Explorer tier: PATCH visibility=public returns 403', async () => {
     const orgId = `${TEST_PREFIX}_explorer`;
     const userId = `${TEST_PREFIX}_explorer_user`;

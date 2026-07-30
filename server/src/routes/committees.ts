@@ -49,6 +49,7 @@ import {
   WorkingGroupContentError,
 } from "../services/working-group-content-service.js";
 import type { WorkingGroup } from "../types.js";
+import { normalizeOptionalExternalHttpUrl } from "../utils/external-http-url.js";
 
 const logger = createLogger("committee-routes");
 
@@ -1431,6 +1432,9 @@ export function createCommitteeRouters(): {
             message: 'Slug must contain only lowercase letters, numbers, and hyphens',
           });
         }
+        if (error.is('invalid_external_url')) {
+          return res.status(400).json({ error: 'Invalid external URL', message: error.message });
+        }
         if (error.is('duplicate_post_slug')) {
           return res.status(409).json({
             error: 'Slug already exists',
@@ -1493,6 +1497,22 @@ export function createCommitteeRouters(): {
 
       const finalMembersOnly = isLeader ? (is_members_only ?? post.is_members_only) : true;
 
+      let normalizedExternalUrl: string | null | undefined;
+      try {
+        normalizedExternalUrl = external_url === undefined
+          ? post.external_url
+          : normalizeOptionalExternalHttpUrl(external_url);
+      } catch (error) {
+        return res.status(400).json({
+          error: 'Invalid external URL',
+          message: `external_url ${error instanceof Error ? error.message : 'must be a valid HTTP or HTTPS URL'}`,
+        });
+      }
+      const effectiveContentType = content_type ?? post.content_type;
+      if (effectiveContentType === 'link' && !normalizedExternalUrl) {
+        return res.status(400).json({ error: 'Missing external URL', message: 'External URL is required for link type posts' });
+      }
+
       if (post_slug && post_slug !== post.slug) {
         const slugPattern = /^[a-z0-9-]+$/;
         if (!slugPattern.test(post_slug)) {
@@ -1524,7 +1544,7 @@ export function createCommitteeRouters(): {
           content ?? post.content,
           category ?? post.category,
           excerpt ?? post.excerpt,
-          external_url ?? post.external_url,
+          normalizedExternalUrl ?? null,
           external_site_name ?? post.external_site_name,
           finalMembersOnly,
           postId,
@@ -2274,7 +2294,16 @@ export function createCommitteeRouters(): {
         });
       }
 
-      if (content_type === 'link' && !external_url) {
+      let normalizedExternalUrl: string | null | undefined;
+      try {
+        normalizedExternalUrl = normalizeOptionalExternalHttpUrl(external_url);
+      } catch (error) {
+        return res.status(400).json({
+          error: 'Invalid external URL',
+          message: `external_url ${error instanceof Error ? error.message : 'must be a valid HTTP or HTTPS URL'}`,
+        });
+      }
+      if (content_type === 'link' && !normalizedExternalUrl) {
         return res.status(400).json({
           error: 'Missing external URL',
           message: 'External URL is required for link type posts',
@@ -2301,7 +2330,7 @@ export function createCommitteeRouters(): {
           category || null,
           excerpt || null,
           content || null,
-          external_url || null,
+          normalizedExternalUrl ?? null,
           external_site_name || null,
           authorNameFinal,
           author_title || null,
@@ -2328,7 +2357,7 @@ export function createCommitteeRouters(): {
           authorName: authorNameFinal,
           contentType: content_type || 'article',
           excerpt: excerpt || undefined,
-          externalUrl: external_url || undefined,
+          externalUrl: normalizedExternalUrl || undefined,
           category: category || undefined,
           isMembersOnly: is_members_only || false,
         }).catch(err => {
@@ -2397,6 +2426,21 @@ export function createCommitteeRouters(): {
       const publishedAt = willBePublished && !wasPublished
         ? new Date()
         : existing.rows[0].published_at;
+      let normalizedExternalUrl: string | null | undefined;
+      try {
+        normalizedExternalUrl = external_url === undefined
+          ? existing.rows[0].external_url
+          : normalizeOptionalExternalHttpUrl(external_url);
+      } catch (error) {
+        return res.status(400).json({
+          error: 'Invalid external URL',
+          message: `external_url ${error instanceof Error ? error.message : 'must be a valid HTTP or HTTPS URL'}`,
+        });
+      }
+      const effectiveContentType = content_type ?? existing.rows[0].content_type;
+      if (effectiveContentType === 'link' && !normalizedExternalUrl) {
+        return res.status(400).json({ error: 'Missing external URL', message: 'External URL is required for link type posts' });
+      }
 
       const result = await pool.query(
         `UPDATE perspectives SET
@@ -2428,7 +2472,7 @@ export function createCommitteeRouters(): {
           category || null,
           excerpt || null,
           content || null,
-          external_url || null,
+          normalizedExternalUrl ?? null,
           external_site_name || null,
           author_name || null,
           author_title || null,

@@ -14,6 +14,7 @@ import { createCipheriv, createDecipheriv, randomBytes, randomUUID, scryptSync }
 import { createLogger } from '../../logger.js';
 import { classifyProbeError, probeReasonLabel } from '../../utils/probe-error.js';
 import { validateExternalUrl } from '../../utils/url-security.js';
+import { normalizeOptionalExternalHttpUrl } from '../../utils/external-http-url.js';
 import { parseOAuthClientCredentialsInput } from '../../routes/helpers/oauth-client-credentials-input.js';
 import {
   verifyAgentHostname,
@@ -2826,18 +2827,15 @@ export function createMemberToolHandlers(
       }
     }
 
-    // Validate URL fields
+    // Normalize URL fields using the same policy as REST and every other
+    // profile writer. This rejects credentials, executable schemes, relative
+    // URLs, and oversized values while preserving explicit clearing as null.
     for (const urlField of ['linkedin_url', 'twitter_url'] as const) {
-      const value = updates[urlField];
-      if (value && typeof value === 'string') {
-        try {
-          const parsed = new URL(value);
-          if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-            return `${urlField} must be an HTTP or HTTPS URL.`;
-          }
-        } catch {
-          return `${urlField} must be a valid URL.`;
-        }
+      if (input[urlField] === undefined) continue;
+      try {
+        updates[urlField] = normalizeOptionalExternalHttpUrl(input[urlField]);
+      } catch (error) {
+        return `${urlField} ${error instanceof Error ? error.message : 'must be a valid HTTP or HTTPS URL'}.`;
       }
     }
 
@@ -2966,18 +2964,13 @@ export function createMemberToolHandlers(
       return 'Tagline must be 200 characters or fewer.';
     }
 
-    // Validate URL fields
+    // Normalize URL fields at the write boundary.
     for (const urlField of ['linkedin_url', 'twitter_url', 'contact_website'] as const) {
-      const value = updates[urlField];
-      if (value && typeof value === 'string') {
-        try {
-          const parsed = new URL(value);
-          if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-            return `${urlField} must be an HTTP or HTTPS URL.`;
-          }
-        } catch {
-          return `${urlField} must be a valid URL.`;
-        }
+      if (updates[urlField] === undefined) continue;
+      try {
+        updates[urlField] = normalizeOptionalExternalHttpUrl(updates[urlField]);
+      } catch (error) {
+        return `${urlField} ${error instanceof Error ? error.message : 'must be a valid HTTP or HTTPS URL'}.`;
       }
     }
 

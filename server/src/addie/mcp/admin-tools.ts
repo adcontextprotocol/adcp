@@ -44,6 +44,7 @@ import {
 } from "../../services/founding-member-grant.js";
 import { BrandDatabase } from "../../db/brand-db.js";
 import { coerceStringArray } from "./input-coercion.js";
+import { normalizeOptionalExternalHttpUrl } from "../../utils/external-http-url.js";
 import {
   getPendingInvoices,
   getAllOpenInvoices,
@@ -10653,6 +10654,15 @@ Use add_committee_leader to assign a leader.`;
         if (input[field] !== undefined) {
           updates[field] = (input[field] as string) || null;
           updatedFields.push(field);
+        }
+      }
+
+      for (const field of ["contact_website", "linkedin_url", "twitter_url"] as const) {
+        if (updates[field] === undefined) continue;
+        try {
+          updates[field] = normalizeOptionalExternalHttpUrl(updates[field]);
+        } catch (error) {
+          return `❌ ${field} ${error instanceof Error ? error.message : "must be a valid HTTP or HTTPS URL"}`;
         }
       }
 

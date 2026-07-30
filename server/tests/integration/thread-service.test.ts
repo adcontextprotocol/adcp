@@ -258,6 +258,28 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
       expect(messages[1].content).toBe('Second');
       expect(messages[2].content).toBe('Third');
     });
+
+    it('returns bounded newest pages in chronological order and clamps options', async () => {
+      const thread = await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: 'test-paginated-thread',
+        user_type: 'workos',
+      });
+      for (let index = 1; index <= 5; index += 1) {
+        await threadService.addMessage({
+          thread_id: thread.thread_id,
+          role: index % 2 ? 'user' : 'assistant',
+          content: `page-${index}`,
+        });
+      }
+
+      expect((await threadService.getThreadMessages(thread.thread_id, { limit: 2 })).map(m => m.content))
+        .toEqual(['page-4', 'page-5']);
+      expect((await threadService.getThreadMessages(thread.thread_id, { limit: 2, offset: 2 })).map(m => m.content))
+        .toEqual(['page-2', 'page-3']);
+      expect((await threadService.getThreadMessages(thread.thread_id, { limit: 0, offset: -1 })).map(m => m.content))
+        .toEqual(['page-5']);
+    });
   });
 
   describe('addMessageFeedback', () => {
@@ -290,6 +312,39 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
       expect(ratedMsg?.rating).toBe(5);
       expect(ratedMsg?.rating_category).toBe('helpfulness');
       expect(ratedMsg?.rated_by).toBe('user_test');
+    });
+
+    it('atomically rejects feedback scoped to a different thread', async () => {
+      const ownerThread = await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: 'test-feedback-owner-thread',
+        user_type: 'workos',
+      });
+      const otherThread = await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: 'test-feedback-other-thread',
+        user_type: 'workos',
+      });
+      const message = await threadService.addMessage({
+        thread_id: ownerThread.thread_id,
+        role: 'assistant',
+        content: 'Scoped answer',
+      });
+      const feedback = { rating: 4, rated_by: 'user_test' };
+
+      expect(await threadService.addMessageFeedbackForThread(
+        message.message_id,
+        otherThread.thread_id,
+        feedback,
+      )).toBe(false);
+      expect((await threadService.getThreadMessages(ownerThread.thread_id))[0].rating).toBeNull();
+
+      expect(await threadService.addMessageFeedbackForThread(
+        message.message_id,
+        ownerThread.thread_id,
+        feedback,
+      )).toBe(true);
+      expect((await threadService.getThreadMessages(ownerThread.thread_id))[0].rating).toBe(4);
     });
   });
 

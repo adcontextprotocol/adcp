@@ -665,6 +665,7 @@
     </div>
   </div>
 
+  <script src="/external-url.js"></script>
   <script>
     let feeds = [];
     let filteredFeeds = [];
@@ -930,6 +931,7 @@
 
         let html = '';
         articles.forEach(article => {
+          const articleUrl = safeExternalHttpUrl(article.external_url);
           const quality = article.quality_score ? `Quality: ${article.quality_score}/5` : '';
           const date = article.published_at ? formatDate(article.published_at) : '';
           const isPending = !article.summary;
@@ -940,7 +942,7 @@
           html += `
             <div class="article-item">
               <div class="article-title-row">
-                ${pendingIcon}<a href="${escapeHtml(article.external_url)}" target="_blank">${escapeHtml(article.title)}</a>
+                ${pendingIcon}${articleUrl ? `<a href="${escapeHtml(articleUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(article.title)}</a>` : escapeHtml(article.title)}
               </div>
               <div class="article-meta">${date} ${quality}</div>
               ${summary}

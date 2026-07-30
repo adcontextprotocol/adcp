@@ -5,6 +5,7 @@
 
 import { query } from './client.js';
 import { logger } from '../logger.js';
+import { normalizeOptionalExternalHttpUrl } from '../utils/external-http-url.js';
 
 // ============== Types ==============
 
@@ -277,8 +278,17 @@ export async function rssArticleExists(feedId: number, guid: string, externalUrl
  * Returns the perspective ID if created, null if it already exists
  */
 export async function createRssPerspective(article: RssArticleInput): Promise<string | null> {
+  let normalizedLink: string;
+  try {
+    normalizedLink = normalizeOptionalExternalHttpUrl(article.link) as string;
+    if (!normalizedLink) return null;
+  } catch {
+    logger.warn({ feedId: article.feed_id }, 'Skipping RSS article with unsafe external URL');
+    return null;
+  }
+
   // Check if we already have this article (by guid or URL to catch cross-feed duplicates)
-  const existing = await rssArticleExists(article.feed_id, article.guid, article.link);
+  const existing = await rssArticleExists(article.feed_id, article.guid, normalizedLink);
   if (existing) {
     return null;
   }
@@ -306,7 +316,7 @@ export async function createRssPerspective(article: RssArticleInput): Promise<st
           article.title,
           article.category || 'Industry News',
           article.description?.substring(0, 500),
-          article.link,
+          normalizedLink,
           article.feed_name,
           article.author,
           article.published_at || new Date(),
@@ -707,8 +717,20 @@ export async function createEmailPerspective(article: EmailArticleInput): Promis
   const slug = generateSlug(article.subject, article.message_id);
 
   // For email newsletters, we create the perspective with the email content as the body
-  // and extract the first link as the external_url if available
-  const primaryLink = article.links[0]?.url;
+  // and extract the first safe HTTP(S) link as the external_url if available
+  let primaryLink: string | null = null;
+  for (const link of article.links) {
+    try {
+      const normalized = normalizeOptionalExternalHttpUrl(link.url);
+      if (normalized) {
+        primaryLink = normalized;
+        break;
+      }
+    } catch {
+      // Email links are untrusted. Ignore unsafe candidates and retain the
+      // newsletter body as an article if no safe HTTP(S) link remains.
+    }
+  }
 
   const result = await query<{ id: string }>(
     `INSERT INTO perspectives (

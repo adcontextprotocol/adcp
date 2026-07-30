@@ -38,6 +38,13 @@ import type { MCPAuthContext } from './auth.js';
 
 const logger = createLogger('mcp-chat');
 
+export const MCP_CHAT_LIMITS = {
+  messageLength: 4_000,
+  historyItems: 20,
+  historyItemLength: 4_000,
+  historyTotalLength: 32_000,
+} as const;
+
 /**
  * Knowledge tools safe for anonymous users (no Slack access, no writes)
  * Directory tools are also available to anonymous users (public data)
@@ -154,10 +161,12 @@ Include 'history' for multi-turn conversations.`,
       message: {
         type: 'string',
         description: 'The message to send to Addie',
+        maxLength: MCP_CHAT_LIMITS.messageLength,
       },
       history: {
         type: 'array',
         description: 'Optional conversation history for context (most recent last)',
+        maxItems: MCP_CHAT_LIMITS.historyItems,
         items: {
           type: 'object',
           properties: {
@@ -169,6 +178,7 @@ Include 'history' for multi-turn conversations.`,
             content: {
               type: 'string',
               description: 'The message content',
+              maxLength: MCP_CHAT_LIMITS.historyItemLength,
             },
           },
           required: ['role', 'content'],
@@ -193,6 +203,39 @@ export async function handleChatTool(
     return JSON.stringify({
       error: 'message is required and must be a string',
     });
+  }
+
+  if (message.length > MCP_CHAT_LIMITS.messageLength) {
+    return JSON.stringify({
+      error: `message must be at most ${MCP_CHAT_LIMITS.messageLength} characters`,
+    });
+  }
+
+  if (history !== undefined) {
+    if (!Array.isArray(history) || history.length > MCP_CHAT_LIMITS.historyItems) {
+      return JSON.stringify({
+        error: `history must contain at most ${MCP_CHAT_LIMITS.historyItems} messages`,
+      });
+    }
+
+    let totalHistoryLength = 0;
+    for (const entry of history) {
+      if (!entry || typeof entry !== 'object' ||
+          (entry.role !== 'user' && entry.role !== 'assistant') ||
+          typeof entry.content !== 'string' ||
+          entry.content.length > MCP_CHAT_LIMITS.historyItemLength) {
+        return JSON.stringify({
+          error: `history entries require a valid role and content of at most ${MCP_CHAT_LIMITS.historyItemLength} characters`,
+        });
+      }
+      totalHistoryLength += entry.content.length;
+    }
+
+    if (totalHistoryLength > MCP_CHAT_LIMITS.historyTotalLength) {
+      return JSON.stringify({
+        error: `history content must total at most ${MCP_CHAT_LIMITS.historyTotalLength} characters`,
+      });
+    }
   }
 
   // Check if knowledge search is ready

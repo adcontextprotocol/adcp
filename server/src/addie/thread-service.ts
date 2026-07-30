@@ -526,7 +526,30 @@ export class ThreadService {
   /**
    * Get all messages in a thread
    */
-  async getThreadMessages(threadId: string): Promise<ThreadMessage[]> {
+  async getThreadMessages(
+    threadId: string,
+    options?: { limit?: number; offset?: number },
+  ): Promise<ThreadMessage[]> {
+    if (options) {
+      const limit = Number.isFinite(options.limit)
+        ? Math.min(Math.max(Math.trunc(options.limit!), 1), 200)
+        : 100;
+      const offset = Number.isFinite(options.offset)
+        ? Math.min(Math.max(Math.trunc(options.offset!), 0), 10_000)
+        : 0;
+      const result = await query<ThreadMessage>(
+        `SELECT * FROM (
+           SELECT * FROM addie_thread_messages
+           WHERE thread_id = $1
+           ORDER BY sequence_number DESC
+           LIMIT $2 OFFSET $3
+         ) recent_messages
+         ORDER BY sequence_number ASC`,
+        [threadId, limit, offset],
+      );
+      return result.rows;
+    }
+
     const result = await query<ThreadMessage>(
       `SELECT * FROM addie_thread_messages
        WHERE thread_id = $1
@@ -627,6 +650,39 @@ export class ThreadService {
         feedback.rated_by,
         feedback.rating_source,
       ]
+    );
+    return result.rowCount !== null && result.rowCount > 0;
+  }
+
+  /** Add feedback only when the message belongs to the authorized thread. */
+  async addMessageFeedbackForThread(
+    messageId: string,
+    threadId: string,
+    feedback: MessageFeedback,
+  ): Promise<boolean> {
+    const result = await query(
+      `UPDATE addie_thread_messages
+       SET
+         rating = $3,
+         rating_category = $4,
+         rating_notes = $5,
+         feedback_tags = $6,
+         improvement_suggestion = $7,
+         rated_by = $8,
+         rating_source = $9,
+         rated_at = NOW()
+       WHERE message_id = $1 AND thread_id = $2`,
+      [
+        messageId,
+        threadId,
+        feedback.rating,
+        feedback.rating_category || null,
+        feedback.rating_notes || null,
+        JSON.stringify(feedback.feedback_tags || []),
+        feedback.improvement_suggestion || null,
+        feedback.rated_by,
+        feedback.rating_source,
+      ],
     );
     return result.rowCount !== null && result.rowCount > 0;
   }
