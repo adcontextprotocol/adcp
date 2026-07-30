@@ -11,7 +11,6 @@
 
 import { Router } from 'express';
 import { createLogger } from '../logger.js';
-import { isSlackSigningConfigured } from '../slack/verify.js';
 import { handleSlashCommand } from '../slack/commands.js';
 import { handleSlackEvent } from '../slack/events.js';
 import {
@@ -30,6 +29,10 @@ const logger = createLogger('slack-routes');
  */
 export function createSlackRouter(): { aaobotRouter: Router; addieRouter: Router } {
   const aaobotRouter = Router();
+  const verifyAaoSlackSignature = createSlackSignatureVerifier(
+    process.env.SLACK_SIGNING_SECRET,
+    'AAO Bot'
+  );
   // Create wrapper router for Addie that handles URL verification first
   const addieRouter = Router();
 
@@ -41,7 +44,7 @@ export function createSlackRouter(): { aaobotRouter: Router; addieRouter: Router
   aaobotRouter.post(
     '/commands',
     slackUrlencodedParser(),
-    createSlackSignatureVerifier(process.env.SLACK_SIGNING_SECRET, 'AAO Bot'),
+    verifyAaoSlackSignature,
     async (req, res) => {
       try {
         const command = req.body;
@@ -71,26 +74,12 @@ export function createSlackRouter(): { aaobotRouter: Router; addieRouter: Router
   aaobotRouter.post(
     '/events',
     slackJsonParser(),
+    verifyAaoSlackSignature,
     async (req, res) => {
       try {
-        // Handle URL verification challenge (before signature verification)
+        // Signature verification runs before URL verification and event handling.
         if (handleUrlVerification(req, res)) {
           return;
-        }
-
-        // Verify the request is from Slack
-        if (isSlackSigningConfigured()) {
-          const verifier = createSlackSignatureVerifier(
-            process.env.SLACK_SIGNING_SECRET,
-            'AAO Bot'
-          );
-          // Run verification manually since we already parsed the body
-          const result = await new Promise<boolean>((resolve) => {
-            verifier(req, res, () => resolve(true));
-            // If verifier doesn't call next(), it sent a response
-            setTimeout(() => resolve(false), 0);
-          });
-          if (!result) return;
         }
 
         // Handle events asynchronously (don't block response)
