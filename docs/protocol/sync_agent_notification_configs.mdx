@@ -9,8 +9,8 @@ Register, replace, pause, or clear caller-scoped agent-level webhook subscribers
 
 The initial event type is `capabilities.changed`, an invalidation signal for cached [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) responses.
 
-**Request Schema**: [`/schemas/latest/protocol/sync-agent-notification-configs-request.json`](https://adcontextprotocol.org/schemas/latest/protocol/sync-agent-notification-configs-request.json)
-**Response Schema**: [`/schemas/latest/protocol/sync-agent-notification-configs-response.json`](https://adcontextprotocol.org/schemas/latest/protocol/sync-agent-notification-configs-response.json)
+**Request Schema**: [`/schemas/v3/protocol/sync-agent-notification-configs-request.json`](https://adcontextprotocol.org/schemas/v3/protocol/sync-agent-notification-configs-request.json)
+**Response Schema**: [`/schemas/v3/protocol/sync-agent-notification-configs-response.json`](https://adcontextprotocol.org/schemas/v3/protocol/sync-agent-notification-configs-response.json)
 
 ## When to call
 
@@ -54,7 +54,7 @@ Each `notification_configs[]` entry has:
 
 ## Endpoint proof
 
-Before activating a new or changed active subscriber, the seller MUST validate the URL and complete endpoint proof of control. The challenge POST is signed with the seller's RFC 9421 webhook profile key and uses [`agent-webhook-challenge.json`](https://adcontextprotocol.org/schemas/latest/core/agent-webhook-challenge.json). The receiver echoes the challenge with [`webhook-challenge-response.json`](https://adcontextprotocol.org/schemas/v3/core/webhook-challenge-response.json).
+Before activating a new or changed active subscriber, the seller MUST validate the URL and complete endpoint proof of control. The challenge POST is signed with the seller's RFC 9421 webhook profile key and uses [`agent-webhook-challenge.json`](https://adcontextprotocol.org/schemas/v3/core/agent-webhook-challenge.json). The receiver echoes the challenge with [`webhook-challenge-response.json`](https://adcontextprotocol.org/schemas/v3/core/webhook-challenge-response.json).
 
 Agent-level challenges intentionally do not carry `account_id` because capability notifications are valid before any account exists. The proof scope is `(authenticated caller identity, seller_agent_url, subscriber_id, normalized url, authentication mode/credential binding, normalized event_types)`. Changing any element of that tuple requires fresh proof before the subscriber can become active.
 

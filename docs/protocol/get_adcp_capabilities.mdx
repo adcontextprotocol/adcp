@@ -155,7 +155,7 @@ A **material capability change** is any externally advertised contract change th
 
 Non-contract operational changes that do not alter the `get_adcp_capabilities` response body do not require a revision or webhook fire.
 
-`capabilities.changed` webhooks are invalidation signals, not replacement documents. The payload identifies the agent, change time, reason, optional `capabilities_version`, and optional advisory `changed_paths[]`; receivers SHOULD re-run `get_adcp_capabilities` and replace their cached snapshot from the fresh response. The payload schema is [`/schemas/latest/core/capabilities-changed-webhook.json`](https://adcontextprotocol.org/schemas/latest/core/capabilities-changed-webhook.json).
+`capabilities.changed` webhooks are invalidation signals, not replacement documents. The payload identifies the agent, change time, reason, optional `capabilities_version`, and optional advisory `changed_paths[]`; receivers SHOULD re-run `get_adcp_capabilities` and replace their cached snapshot from the fresh response. The payload schema is [`/schemas/v3/core/capabilities-changed-webhook.json`](https://adcontextprotocol.org/schemas/v3/core/capabilities-changed-webhook.json).
 
 ### supported_protocols
 
