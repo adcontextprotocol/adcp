@@ -27,6 +27,10 @@
       "minimum": 0,
       "maximum": 100
     },
+    "pacing": {
+      "$ref": "/schemas/enums/pacing.json",
+      "description": "Recommended subordinate package pacing. On proposal execution this becomes pacing on the derived package and MUST NOT cause delivery to exceed aggregate proposal/media-buy pacing. On a committed proposal it is a firm delivery term."
+    },
     "pricing_option_id": {
       "type": "string",
       "description": "Recommended pricing option ID from the product's pricing_options array"

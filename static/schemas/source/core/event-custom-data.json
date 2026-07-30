@@ -7,13 +7,13 @@
   "properties": {
     "value": {
       "type": "number",
-      "description": "Monetary value of the event (should be accompanied by currency)",
+      "description": "Monetary value of the event. currency is required and MUST appear in the event source's declared value_currencies.",
       "minimum": 0
     },
     "currency": {
       "type": "string",
       "pattern": "^[A-Z]{3}$",
-      "description": "ISO 4217 currency code"
+      "description": "ISO 4217 currency code. When value is present, this MUST appear in the event source's declared value_currencies."
     },
     "order_id": {
       "type": "string",
@@ -90,6 +90,9 @@
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
+  },
+  "dependencies": {
+    "value": ["currency"]
   },
   "additionalProperties": true
 }

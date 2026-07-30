@@ -224,22 +224,31 @@ Optional media-buy features. Boolean declarations are commitments when true. Str
 | `property_list_filtering` | Honors `property_list` parameter in `get_products` |
 | `catalog_management` | Supports `sync_catalogs` for catalog feed management |
 | `seller_optimized_budget` | Supports shared media-buy budgets and cross-package allocation goals |
-| `bidding_policy` | Structured canonical bidding support by `media_buy`/`package` scope, modes, strengths, and supported combinations |
+| `bidding_policy` | Structured canonical bidding support by authored scope, allocation context, modes, strengths, and supported combinations |
 
-`bidding_policy` is intentionally not a boolean. Each scope declares `modes` from `automatic`, `bid_amount`, `max_bid`, `cost_per`, and `roas`. A scope advertising `cost_per` also declares `cost_per_strengths`; `roas` similarly declares `roas_strengths`. Optional `supported_combinations` lists `max_bid_with_cost_per` and/or `max_bid_with_roas`. Presence of one scope or mode makes no claim about another.
+`bidding_policy` is intentionally not a boolean. Each `media_buy` or `package` scope contains independent `fixed` and/or `seller_optimized` profiles. Every profile's `modes` lists standalone support from `automatic`, `bid_amount`, `max_bid`, `cost_per`, and `roas`. A profile advertising standalone `cost_per` also declares `cost_per_strengths`; `roas` similarly declares `roas_strengths`. Optional `supported_combinations` entries independently identify `max_bid_with_cost_per` or `max_bid_with_roas` and list the strengths supported in that combination; a combination-only component need not appear in `modes`. Presence of one scope, allocation context, mode, strength, or combination makes no claim about another.
 
 ```json
 {
   "features": {
     "bidding_policy": {
       "media_buy": {
-        "modes": ["max_bid", "cost_per"],
-        "cost_per_strengths": ["cap", "target"],
-        "supported_combinations": ["max_bid_with_cost_per"]
+        "fixed": {
+          "modes": ["max_bid", "cost_per"],
+          "cost_per_strengths": ["cap", "target"],
+          "supported_combinations": [
+            {
+              "kind": "max_bid_with_cost_per",
+              "cost_per_strengths": ["cap"]
+            }
+          ]
+        }
       },
       "package": {
-        "modes": ["automatic", "cost_per"],
-        "cost_per_strengths": ["cap"]
+        "seller_optimized": {
+          "modes": ["automatic", "cost_per"],
+          "cost_per_strengths": ["cap"]
+        }
       }
     }
   }
@@ -955,13 +964,29 @@ const buy = await client.createMediaBuy({
       "seller_optimized_budget": true,
       "bidding_policy": {
         "media_buy": {
-          "modes": ["max_bid", "cost_per"],
-          "cost_per_strengths": ["cap", "target"],
-          "supported_combinations": ["max_bid_with_cost_per"]
+          "fixed": {
+            "modes": ["max_bid", "cost_per"],
+            "cost_per_strengths": ["cap", "target"],
+            "supported_combinations": [
+              {
+                "kind": "max_bid_with_cost_per",
+                "cost_per_strengths": ["cap"]
+              }
+            ]
+          },
+          "seller_optimized": {
+            "modes": ["cost_per"],
+            "cost_per_strengths": ["cap"]
+          }
         },
         "package": {
-          "modes": ["automatic", "bid_amount", "cost_per"],
-          "cost_per_strengths": ["cap"]
+          "fixed": {
+            "modes": ["automatic", "bid_amount", "cost_per"],
+            "cost_per_strengths": ["cap"]
+          },
+          "seller_optimized": {
+            "modes": ["automatic"]
+          }
         }
       }
     },

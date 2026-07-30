@@ -313,7 +313,7 @@
                     },
                     "currency": {
                       "type": "string",
-                      "description": "ISO 4217 currency code (e.g., USD, EUR, GBP) for this package's pricing. Indicates the currency in which the rate and spend values are denominated. Different packages can use different currencies when supported by the publisher.",
+                      "description": "ISO 4217 currency code for this package's pricing rate and spend. For AdCP-authored media buys this MUST equal the media-buy currency. A different package currency may appear only when reporting a legacy or externally created buy whose original contract allowed mixed denominations.",
                       "pattern": "^[A-Z]{3}$"
                     },
                     "delivery_status": {

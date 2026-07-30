@@ -30,10 +30,10 @@ The mapping is normative — sellers and SDKs MUST use this table to translate b
 | `extend_flight` | `end_time`, `packages[].end_time` (later than current) | End-time push only |
 | `shorten_flight` | `end_time`, `packages[].end_time` (earlier than current) | End-time pull only |
 | `update_flight_dates` | `start_time`, `end_time`, `packages[].start_time`, `packages[].end_time` (shift) | Start-shift distinct from extend/shorten; covers both buy-level and package-level dates |
-| `increase_budget` | `total_budget`, `packages[].budget` (raise) |  |
+| `increase_budget` | `total_budget`, `packages[].budget` (raise or `null`) | `packages[].budget: null` removes a seller-optimized package cap and therefore relaxes, rather than lowers, its ceiling. |
 | `decrease_budget` | `total_budget`, `packages[].budget` (lower) | Sellers typically bound by already-spent |
 | `reallocate_budget` | `packages[].budget` (redistribute, aggregate unchanged) |  |
-| `update_budget_allocation` | `budget_allocation`, `packages[].min_spend_target` | Changes fixed/shared mode, cross-package goals, or soft minimum targets. Automatic allocation inside an accepted seller-optimized buy is not an update action. |
+| `update_budget_allocation` | `budget_allocation`, `packages[].min_spend_target` | Changes fixed/shared mode, cross-package goals, or soft minimum targets, including `null` to clear a target. Automatic allocation inside an accepted seller-optimized buy is not an update action. |
 | `update_targeting` | `packages[].targeting_overlay`, `packages[].keyword_targets_add`, `packages[].keyword_targets_remove`, `packages[].negative_keywords_add`, `packages[].negative_keywords_remove` |  |
 | `update_pacing` | `pacing`, `packages[].pacing` | Media-buy pacing controls aggregate spend; package pacing is subordinate. |
 | `update_bidding` | `bidding`, `packages[].bidding` | Replaces or clears complete authored bidding blocks. The seller validates every resulting effective package policy before mutation. |
@@ -45,6 +45,8 @@ The mapping is normative — sellers and SDKs MUST use this table to translate b
 | `remove_packages` | `packages[].canceled: true` |  |
 
 The direction-of-change actions (`extend_flight` / `shorten_flight`, `increase_budget` / `decrease_budget` / `reallocate_budget`) share their `update_fields` paths; the action is determined by comparing the requested value against the buy's current state, not by which field is set. Server-side dispatch enforcement MUST diff request-vs-current to pick the right action and reject with `ACTION_NOT_ALLOWED` if the resolved action is not in the buy's `available_actions[]`.
+
+For seller-optimized constraints, clearing `packages[].budget` with `null` resolves to `increase_budget` because it removes a hard ceiling. Clearing `packages[].min_spend_target` resolves to `update_budget_allocation`. A request clearing both requires both actions when the seller enforces field-level actions conjunctively. Sellers that do not advertise the required action reject the update without mutation; `seller_optimized_budget: true` alone does not promise mid-flight constraint changes.
 
 The coarse legacy actions (`update_budget`, `update_dates`, `update_packages`, `sync_creatives`) cover the finer-grained vocabulary in a single value for sellers still emitting the 3.0 enum surface. Sellers SHOULD migrate to the finer set; the legacy values are removed in 4.0.
 
@@ -201,7 +203,7 @@ asyncio.run(create_and_pause_campaign())
 | `idempotency_key` | string | No | Unique key for safe retries. If an update with the same key has already been processed, the seller returns the original response. MUST be unique per (seller, request) pair. Min 16 chars. |
 | `invoice_recipient` | [BusinessEntity](/docs/building/by-layer/L2/accounts-and-agents#billing-entity-and-invoice-recipient) | No | Override who receives the invoice for this buy. The seller MUST validate authorization and include in `check_governance` when governance agents are configured. |
 | `new_packages` | PackageRequest[] | No | New packages to add to this media buy. Same shape as `create_media_buy` packages. When `budget_allocation` is omitted or fixed, each new package requires `budget` and cannot use `min_spend_target`. To add an uncapped package to an existing seller-optimized buy, include the resulting seller-optimized `budget_allocation` block so the allocation context is explicit. Only supported by sellers that advertise `add_packages` in `valid_actions`. |
-| `total_budget` | TotalBudget | No | Updated hard aggregate lifetime budget. Already-spent amounts continue to count against the new total. |
+| `total_budget` | TotalBudget | No | Updated hard aggregate lifetime budget. Already-spent amounts continue to count against the new total. `currency` must equal the existing media-buy currency; updates do not redenominate a buy. |
 | `budget_allocation` | BudgetAllocation | No | Updated fixed or seller-optimized allocation configuration. Mode changes require `update_budget_allocation` in `available_actions`. |
 | `pacing` | string | No | Updated aggregate media-buy pacing strategy. |
 | `bidding` | BiddingPolicy \| null | No | Replace the complete media-buy bidding default, use `{automatic: true}` for an explicit automatic policy, or clear it with `null`. Goal binding follows the resulting allocation mode; monetary amounts remain in the media-buy currency. Package-authored overrides remain explicit. |
@@ -237,8 +239,8 @@ Configure automated delivery reporting for this media buy:
 | `paused` | boolean | Pause/resume specific package (`true` = paused, `false` = active) |
 | `canceled` | boolean | Cancel this package (irreversible). Must be `true` when present. Seller may reject with `NOT_CANCELLABLE`. |
 | `cancellation_reason` | string | Reason for canceling this package |
-| `budget` | number | Updated hard package spend cap in the media-buy currency. In seller-optimized mode this is not a current allocation. |
-| `min_spend_target` | number | Updated soft package minimum-spend target in the media-buy currency for seller-optimized allocation. |
+| `budget` | number \| null | Updated hard package spend cap in the media-buy currency. In seller-optimized mode this is not a current allocation; `null` removes the cap. A resulting fixed allocation still requires a budget on every package. |
+| `min_spend_target` | number \| null | Updated soft package minimum-spend target in the media-buy currency for seller-optimized allocation; `null` removes the target. |
 | `impressions` | number | Updated impression goal for this package |
 | `start_time` | string | Updated flight start date/time in ISO 8601 format. Must fall within the media buy's date range. |
 | `end_time` | string | Updated flight end date/time in ISO 8601 format. Must fall within the media buy's date range. |

@@ -397,7 +397,7 @@ Publishers may return proposals alongside products - structured media plans with
 | `name` | string | Human-readable name for the media plan |
 | `budget_allocation` | BudgetAllocation | Optional cross-product allocation configuration. Omission means a fixed proposal; `seller_optimized` delegates continuous allocation to the seller. |
 | `pacing` | string | Optional aggregate media-buy pacing recommendation. On a committed proposal this is part of the firm delivery terms. |
-| `allocations` | ProductAllocation[] | Fixed proposals use exact `allocation_percentage` values summing to 100. Seller-optimized proposals omit exact percentages and may use `min_spend_target_percentage` and `max_spend_percentage`. Each allocation may include optional flight dates. |
+| `allocations` | ProductAllocation[] | Fixed proposals use exact `allocation_percentage` values summing to 100. Seller-optimized proposals omit exact percentages and may use `min_spend_target_percentage` and `max_spend_percentage`. Each allocation may include optional flight dates and subordinate `pacing`, which becomes package pacing on execution. |
 | `forecast` | DeliveryForecast | Aggregate delivery forecast for the proposal. Contains forecast points with metric ranges. See [Delivery Forecasts](/docs/media-buy/product-discovery/media-products#delivery-forecasts) |
 | `total_budget_guidance` | object | Optional min/recommended/max budget guidance |
 | `brief_alignment` | string | How this proposal addresses the campaign brief |

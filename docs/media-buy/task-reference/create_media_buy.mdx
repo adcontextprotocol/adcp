@@ -216,7 +216,7 @@ When executing a proposal, `proposal_status` on the returned proposal determines
 
 ### BiddingPolicy Object
 
-`optimization_goals` select the objective; `bidding` constrains how the seller executes against it. Every monetary amount is in the media-buy currency, which is not repeated in the block. The pricing option contributes only the auction unit (CPM, CPC, CPCV, and so on), never a second currency. Every package's selected pricing option must declare the media-buy currency; split packages requiring another currency into a separate media buy.
+`optimization_goals` select the objective; `bidding` constrains how the seller executes against it. Every monetary amount is in the media-buy currency, which is not repeated in the block. The pricing option contributes only the auction unit, never a second currency. Every package's selected pricing option must declare the media-buy currency; split packages requiring another currency into a separate media buy.
 
 | Field | Meaning |
 |-------|---------|
@@ -224,7 +224,7 @@ When executing a proposal, `proposal_status` on the returned proposal determines
 | `bid_amount` | Manual auction bid in media-buy currency per the selected pricing option's auction unit. It is not a promise that the clearing price equals the bid. |
 | `max_bid` | Hard per-auction ceiling in media-buy currency per the selected pricing option's auction unit. It is the only canonical hard auction ceiling. |
 | `cost_per: { amount, strength }` | Average cost in media-buy currency per scope-bound primary-goal result. `strength` is `cap` or `target`; neither is a per-result guarantee. |
-| `roas: { value, strength }` | Dimensionless return per unit of ad spend. `strength` is `floor` or `target`; value-bearing event sources are required. |
+| `roas: { value, strength }` | Dimensionless return per unit of ad spend. `strength` is `floor` or `target`; value-bearing event sources must declare `value_currencies` containing the media-buy currency. Each buy consumes only exact-currency value records; no conversion is permitted. |
 
 `automatic`, `bid_amount`, `cost_per`, and `roas` are mutually exclusive primary modes. `max_bid` can stand alone or supplement `cost_per`/`roas` only where the relevant scope capability advertises the combination; `bid_amount` and `max_bid` cannot coexist.
 
@@ -232,9 +232,9 @@ Goal binding is determined by authored scope:
 
 1. A seller-optimized media-buy `cost_per` or `roas` binds to the primary goal in `budget_allocation.optimization_goals`.
 2. A package-authored override binds to that package's primary `optimization_goals` goal.
-3. A fixed-allocation media-buy `cost_per` binds separately to every inheriting package and is valid only when their primary-goal result units are compatible. Metric goals must identify the same metric and result-defining qualifier; vendor metrics must identify the same vendor and metric; event goals must identify the same event-type/custom-name set. A fixed media-buy `roas` may span different event identities, but every inheriting primary goal must be value-bearing.
+3. A fixed-allocation media-buy `cost_per` binds separately to every inheriting package and is valid only when their primary-goal result units are compatible. Metric goals must identify the same metric and result-defining qualifier; vendor metrics must identify the same vendor and metric; event goals must identify the same event-type/custom-name set and resolved attribution window. A fixed media-buy `roas` may span different event identities, but every inheriting primary goal must be value-bearing.
 
-The primary goal is priority 1, otherwise the lowest numeric priority, otherwise the first array entry. `bid_amount` and `max_bid` use the selected pricing option's auction unit, which permits a package conversion-cost target plus a max-CPC ceiling while keeping both monetary amounts in one currency. A media-buy `bid_amount` or `max_bid` may be inherited only by packages whose pricing options resolve compatible auction units; packages with different units need package overrides.
+The primary goal is the earliest array entry among goals tied for the lowest explicit numeric priority. Unprioritized goals follow explicitly prioritized goals; when every priority is omitted, the first entry is primary. `bid_amount` and `max_bid` use the selected pricing option's auction unit, which permits a package conversion-cost target plus a max-CPC ceiling while keeping both monetary amounts in one currency. Auction-unit identity is the pricing model plus all billing-event qualifiers after defaults: for example CPV view threshold, CPP demographic, time unit, or flat-rate/DOOH parameters. A media-buy `bid_amount` or `max_bid` may be inherited only by packages with the same auction-unit identity; other packages need package overrides.
 
 Precedence is complete-block inheritance:
 
@@ -256,8 +256,10 @@ Capability discovery is structured. Sellers advertise only the scopes, modes, st
     "features": {
       "bidding_policy": {
         "package": {
-          "modes": ["cost_per", "automatic"],
-          "cost_per_strengths": ["cap"]
+          "fixed": {
+            "modes": ["cost_per", "automatic"],
+            "cost_per_strengths": ["cap"]
+          }
         }
       }
     }
@@ -265,7 +267,7 @@ Capability discovery is structured. Sellers advertise only the scopes, modes, st
 }
 ```
 
-`supported_combinations` may contain `max_bid_with_cost_per` or `max_bid_with_roas`. Presence of `bidding_policy` alone is not a blanket claim, and the former boolean form is invalid in 3.2.
+Each scope is partitioned into `fixed` and `seller_optimized` profiles so support in one allocation context makes no claim about the other. `supported_combinations` entries use `kind: "max_bid_with_cost_per"` or `kind: "max_bid_with_roas"` and list the exact cost/ROAS strengths supported in that combination. Presence of `bidding_policy` alone is not a blanket claim, and the former boolean form is invalid in 3.2.
 
 During 3.2, sellers accept either canonical `bidding` or one legacy representation on an effective package, never both. Mixed input is rejected with `AMBIGUOUS_BIDDING_POLICY`. Legacy normalization is deterministic: `bid_price` plus pricing-option `max_bid: true` becomes `bidding.max_bid`; other `bid_price` becomes `bidding.bid_amount`; goal `target.cost_per` becomes `bidding.cost_per` with `strength: "target"`; and goal `target.per_ad_spend` becomes `bidding.roas` with `strength: "target"`.
 
@@ -992,7 +994,9 @@ asyncio.run(execute_proposal())
 </CodeGroup>
 
 When executing a proposal:
-- The publisher converts allocation percentages to actual budgets using `total_budget`
+- For fixed allocation, the publisher converts exact allocation percentages to package budgets using `total_budget`
+- For seller-optimized allocation, the publisher preserves the shared allocation goals and converts minimum/maximum percentage constraints to package targets/caps
+- Allocation-level pacing becomes subordinate package pacing; aggregate proposal pacing becomes media-buy pacing
 - Packages are created automatically based on the proposal's allocations
 - All other fields (brand, start_time, end_time, etc.) work the same as manual mode
 
@@ -1159,11 +1163,10 @@ Full brand identity data (colors, fonts, product catalog) is resolved from brand
 ### Pricing & Currency
 
 Each package specifies its `pricing_option_id`, which determines:
-- Currency (USD, EUR, etc.)
 - Pricing model (CPM, CPCV, CPP, etc.)
 - Rate and whether it's fixed or auction-based
 
-Packages can use different currencies when sellers support it. See [Pricing Models](/docs/media-buy/advanced-topics/pricing-models).
+The media buy has one currency. Every selected pricing option MUST declare that currency; the option does not introduce a package-specific denomination. Split products requiring another currency into a separate media buy. See [Pricing Models](/docs/media-buy/advanced-topics/pricing-models).
 
 ### Budget & Pacing Controls
 

@@ -477,8 +477,10 @@ async function runTests() {
     {
       bidding_policy: {
         package: {
-          modes: ['cost_per'],
-          cost_per_strengths: ['cap']
+          fixed: {
+            modes: ['cost_per'],
+            cost_per_strengths: ['cap']
+          }
         }
       }
     },
@@ -490,12 +492,18 @@ async function runTests() {
     {
       bidding_policy: {
         media_buy: {
-          modes: ['max_bid', 'roas'],
-          roas_strengths: ['floor', 'target'],
-          supported_combinations: ['max_bid_with_roas']
+          fixed: {
+            modes: ['max_bid', 'roas'],
+            roas_strengths: ['floor', 'target'],
+            supported_combinations: [
+              { kind: 'max_bid_with_roas', roas_strengths: ['floor'] }
+            ]
+          }
         },
         package: {
-          modes: ['automatic', 'bid_amount']
+          seller_optimized: {
+            modes: ['automatic', 'bid_amount']
+          }
         }
       }
     },
@@ -511,20 +519,55 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/core/bidding-policy-capability.json',
     {
-      package: { modes: ['cost_per'] }
+      package: { fixed: { modes: ['cost_per'] } }
     },
     'Bidding capability requires strengths for cost_per support'
+  );
+
+  await testSchemaValidation(
+    '/schemas/core/bidding-policy-capability.json',
+    {
+      media_buy: {
+        fixed: {
+          supported_combinations: [
+            { kind: 'max_bid_with_cost_per', cost_per_strengths: ['cap'] }
+          ]
+        }
+      }
+    },
+    'Bidding capability advertises combination-only support without standalone component modes'
   );
 
   await testSchemaRejection(
     '/schemas/core/bidding-policy-capability.json',
     {
-      media_buy: {
-        modes: ['max_bid'],
-        supported_combinations: ['max_bid_with_cost_per']
+      package: {
+        modes: ['automatic']
       }
     },
-    'Bidding capability rejects a combination whose component mode is absent'
+    'Bidding capability requires an explicit allocation context'
+  );
+
+  await testSchemaValidation(
+    '/schemas/media-buy/sync-event-sources-request.json',
+    {
+      idempotency_key: 'value-currency-source-0001',
+      account: { account_id: 'acc_test_001' },
+      event_sources: [
+        {
+          event_source_id: 'commerce_events',
+          event_types: ['purchase'],
+          value_currencies: ['USD', 'EUR']
+        }
+      ]
+    },
+    'Event source declares the currencies available to canonical ROAS buys'
+  );
+
+  await testSchemaRejection(
+    '/schemas/core/event-custom-data.json',
+    { value: 25 },
+    'Monetary event custom data requires an explicit currency'
   );
 
   await testSchemaValidation(
@@ -593,6 +636,16 @@ async function runTests() {
       bidding: null
     },
     'Package update accepts clearing an authored bidding override to restore inheritance'
+  );
+
+  await testSchemaValidation(
+    '/schemas/media-buy/package-update.json',
+    {
+      package_id: 'pkg_shared_001',
+      budget: null,
+      min_spend_target: null
+    },
+    'Package update accepts clearing seller-optimized package spend constraints'
   );
 
   await testSchemaValidation(
@@ -814,6 +867,55 @@ async function runTests() {
     'Create media buy rejects seller-optimized allocation without total_budget'
   );
 
+  await testSchemaRejection(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      idempotency_key: 'lowercase-currency-0001',
+      account: { account_id: 'acc_test_001' },
+      total_budget: { amount: 10000, currency: 'usd' },
+      packages: [
+        {
+          product_id: 'display_standard',
+          pricing_option_id: 'cpm_fixed',
+          budget: 10000
+        }
+      ],
+      brand: { domain: 'acmecorp.com' },
+      start_time: 'asap',
+      end_time: '2099-12-31T23:59:59Z'
+    },
+    'Create media buy rejects a malformed media-buy currency'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      idempotency_key: 'allocation-legacy-target-0001',
+      account: { account_id: 'acc_test_001' },
+      total_budget: { amount: 10000, currency: 'USD' },
+      budget_allocation: {
+        mode: 'seller_optimized',
+        optimization_goals: [
+          {
+            kind: 'metric',
+            metric: 'clicks',
+            target: { kind: 'cost_per', value: 3 }
+          }
+        ]
+      },
+      packages: [
+        {
+          product_id: 'display_standard',
+          pricing_option_id: 'cpm_fixed'
+        }
+      ],
+      brand: { domain: 'acmecorp.com' },
+      start_time: 'asap',
+      end_time: '2099-12-31T23:59:59Z'
+    },
+    'Seller-optimized allocation goals reject legacy monetary targets'
+  );
+
   await testSchemaValidation(
     '/schemas/core/proposal.json',
     {
@@ -830,11 +932,13 @@ async function runTests() {
         {
           product_id: 'prospecting',
           min_spend_target_percentage: 20,
-          max_spend_percentage: 70
+          max_spend_percentage: 70,
+          pacing: 'even'
         },
         {
           product_id: 'retargeting',
-          max_spend_percentage: 60
+          max_spend_percentage: 60,
+          pacing: 'front_loaded'
         }
       ]
     },

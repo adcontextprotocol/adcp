@@ -76,7 +76,8 @@
         },
         "currency": {
           "type": "string",
-          "description": "ISO 4217 currency code"
+          "description": "ISO 4217 currency code",
+          "pattern": "^[A-Z]{3}$"
         }
       },
       "required": [

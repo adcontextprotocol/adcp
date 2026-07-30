@@ -46,6 +46,16 @@
             },
             "minItems": 1
           },
+          "value_currencies": {
+            "type": "array",
+            "description": "ISO 4217 currencies this source accepts for monetary custom_data values. Required for a source used by canonical ROAS. log_event monetary records MUST include a currency from this list. One source may list multiple currencies; each media buy consumes only records matching its own currency and no conversion occurs.",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
           "action_source": {
             "$ref": "/schemas/enums/action-source.json",
             "description": "Flat action-source category for this event source, such as website, app, in_store, system_generated, or other. Producers SHOULD also populate `surface` when the flat value is too coarse, and SHOULD keep this field aligned with `surface.category` when the category is also an ActionSource value."

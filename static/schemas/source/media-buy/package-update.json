@@ -11,13 +11,13 @@
       "x-entity": "package"
     },
     "budget": {
-      "type": "number",
-      "description": "Updated hard spend cap for this package in the media-buy currency. Every selected pricing option in an AdCP-authored media buy MUST declare that same currency. In seller-optimized mode this changes the package ceiling, not a current allocation.",
+      "type": ["number", "null"],
+      "description": "Updated hard spend cap for this package in the media-buy currency. Every selected pricing option in an AdCP-authored media buy MUST declare that same currency. In seller-optimized mode a number changes the package ceiling and null removes it so only the shared total and other constraints bound the package. null is invalid when the resulting allocation mode is fixed.",
       "minimum": 0
     },
     "min_spend_target": {
-      "type": "number",
-      "description": "Updated soft lifetime spend target for this package. Only valid for seller-optimized budget allocation and must not exceed the package budget when both are present.",
+      "type": ["number", "null"],
+      "description": "Updated soft lifetime spend target for this package. A number is valid only for seller-optimized allocation and must not exceed the resulting package budget when one exists. null removes the target. Sellers MUST validate the complete post-update state atomically.",
       "minimum": 0
     },
     "pacing": {

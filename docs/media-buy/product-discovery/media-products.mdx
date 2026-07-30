@@ -1002,13 +1002,14 @@ A seller-optimized proposal names the eligible products and cross-package goal w
     },
     {
       "product_id": "retargeting",
-      "max_spend_percentage": 60
+      "max_spend_percentage": 60,
+      "pacing": "front_loaded"
     }
   ]
 }
 ```
 
-Seller-optimized allocations MUST omit `allocation_percentage`. Minimum targets across allocations must sum to no more than 100, and maximums must collectively permit 100 percent of the budget to be spent. When executed, the seller converts percentage constraints into absolute package constraints and continuously allocates the shared total budget. The seller's internal allocation changes are delivery decisions, not `update_media_buy` mutations.
+Seller-optimized allocations MUST omit `allocation_percentage`. Minimum targets across allocations must sum to no more than 100, and maximums must collectively permit 100 percent of the budget to be spent. Optional allocation `pacing` becomes subordinate package pacing on execution; aggregate proposal pacing remains the media-buy pacing ceiling. When executed, the seller converts percentage constraints into absolute package constraints and continuously allocates the shared total budget. The seller's internal allocation changes are delivery decisions, not `update_media_buy` mutations.
 
 ### Iterating on Proposals
 
@@ -1066,7 +1067,7 @@ Finalization is the seller commitment step: it firms pricing, terms, availabilit
 - `ch_desktop_fr`: 30% × \$50,000 = \$15,000
 - etc.
 
-For a seller-optimized proposal, the publisher instead converts minimum and maximum percentage constraints into absolute package constraints and activates the proposal's cross-package optimization goals and aggregate pacing. In either mode, proposal execution simplifies a complex multi-package campaign to one acceptance call.
+For a seller-optimized proposal, the publisher instead converts minimum and maximum percentage constraints into absolute package constraints, activates the proposal's cross-package optimization goals and aggregate pacing, and copies allocation pacing onto the corresponding derived package. In either mode, proposal execution simplifies a complex multi-package campaign to one acceptance call.
 
 ### When Publishers Return Proposals
 

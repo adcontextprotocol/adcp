@@ -112,7 +112,7 @@
     },
     "total_budget": {
       "type": "object",
-      "description": "Updated hard aggregate lifetime budget. In fixed mode the amount MUST equal the sum of package budgets after applying this update. In seller-optimized mode this changes the shared pool; already-spent amounts still count against the new total.",
+      "description": "Updated hard aggregate lifetime budget. currency MUST equal the existing media-buy currency; an update does not redenominate a buy. In fixed mode the amount MUST equal the sum of package budgets after applying this update. In seller-optimized mode this changes the shared pool; already-spent amounts still count against the new total.",
       "properties": {
         "amount": {
           "type": "number",
