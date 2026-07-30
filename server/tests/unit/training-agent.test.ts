@@ -4822,6 +4822,146 @@ describe('list_creatives handler', () => {
     expect(pg.has_more).toBe(false);
     expect(pg.total_count).toBe(1);
   });
+
+  it('filters by top-level asset type and composes with format_ids', async () => {
+    const account = { brand: { domain: 'assetfilters.example' }, operator: 'assetfilters.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [
+        {
+          creative_id: 'cr_post_mixed',
+          format_id: { agent_url: TEST_AGENT_URL, id: 'existing_post' },
+          name: 'Mixed published post',
+          assets: {
+            published_post: { asset_type: 'published_post', post_url: 'https://community.example/posts/1' },
+            landing_page_url: { asset_type: 'url', url: 'https://acme.example/landing' },
+          },
+        },
+        {
+          creative_id: 'cr_post_canonical',
+          format_kind: 'video_hosted',
+          format_option_ref: {
+            scope: 'publisher',
+            publisher_domain: 'community.example',
+            format_option_id: 'existing_published_post',
+          },
+          name: 'Canonical published post',
+          assets: {
+            published_post: { asset_type: 'published_post', platform_post_id: 'post-2', platform: 'community' },
+          },
+        },
+        {
+          creative_id: 'cr_image',
+          format_id: { agent_url: TEST_AGENT_URL, id: 'existing_post', width: 300, height: 250 },
+          name: 'Image creative',
+          assets: {
+            image: { asset_type: 'image', url: 'https://cdn.example/image.png', width: 300, height: 250 },
+          },
+        },
+        {
+          creative_id: 'cr_zip_bundle',
+          format_id: { agent_url: TEST_AGENT_URL, id: 'html5_bundle' },
+          name: 'HTML5 bundle creative',
+          assets: {
+            bundle: { asset_type: 'zip', url: 'https://cdn.example/html5-bundle.zip', mime_type: 'application/zip' },
+          },
+        },
+        {
+          creative_id: 'cr_nested_card_image',
+          format_kind: 'image_carousel',
+          name: 'Nested card image',
+          assets: {
+            cards: [{
+              asset_type: 'card',
+              media: { asset_type: 'image', url: 'https://cdn.example/card.png', width: 1200, height: 628 },
+            }],
+          },
+        },
+      ],
+    });
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const ids = ['cr_post_mixed', 'cr_post_canonical', 'cr_image', 'cr_zip_bundle', 'cr_nested_card_image'];
+
+    const { result: byAsset } = await simulateCallTool(server2, 'list_creatives', {
+      account,
+      filters: { creative_ids: ids, asset_types: ['published_post', 'audio'] },
+    });
+    expect((byAsset.creatives as Array<{ creative_id: string }>).map(c => c.creative_id)).toEqual([
+      'cr_post_mixed',
+      'cr_post_canonical',
+    ]);
+    expect((byAsset.creatives as Array<Record<string, any>>)[0].assets).toMatchObject({
+      published_post: { asset_type: 'published_post' },
+      landing_page_url: { asset_type: 'url' },
+    });
+    expect((byAsset.creatives as Array<Record<string, any>>)[1]).toMatchObject({
+      format_kind: 'video_hosted',
+      format_option_ref: { format_option_id: 'existing_published_post' },
+      assets: { published_post: { asset_type: 'published_post' } },
+    });
+    expect((byAsset.creatives as Array<Record<string, any>>)[1].format_id).toBeUndefined();
+
+    const { result: sparseAssets } = await simulateCallTool(server2, 'list_creatives', {
+      account,
+      filters: { creative_ids: ['cr_post_mixed'], asset_types: ['published_post'] },
+      fields: ['assets'],
+    });
+    expect((sparseAssets.creatives as Array<Record<string, any>>)[0]).toMatchObject({
+      creative_id: 'cr_post_mixed',
+      name: 'Mixed published post',
+      format_id: { id: 'existing_post' },
+      status: 'approved',
+      assets: { published_post: { asset_type: 'published_post' } },
+    });
+
+    const { result: sparseWithoutAssets } = await simulateCallTool(server2, 'list_creatives', {
+      account,
+      filters: { creative_ids: ['cr_post_mixed'] },
+      fields: ['creative_id'],
+    });
+    expect((sparseWithoutAssets.creatives as Array<Record<string, any>>)[0].assets).toBeUndefined();
+
+    const { result: composed } = await simulateCallTool(server2, 'list_creatives', {
+      account,
+      filters: {
+        creative_ids: ids,
+        asset_types: ['published_post'],
+        format_ids: [{ agent_url: TEST_AGENT_URL, id: 'existing_post' }],
+      },
+    });
+    expect((composed.creatives as Array<{ creative_id: string }>).map(c => c.creative_id)).toEqual(['cr_post_mixed']);
+
+    const { result: exactParameterizedFormat } = await simulateCallTool(server2, 'list_creatives', {
+      account,
+      filters: {
+        creative_ids: ['cr_image'],
+        format_ids: [{ agent_url: TEST_AGENT_URL, id: 'existing_post' }],
+      },
+    });
+    expect(exactParameterizedFormat.creatives).toEqual([]);
+
+    const { result: zipBundle } = await simulateCallTool(server2, 'list_creatives', {
+      account,
+      filters: { creative_ids: ids, asset_types: ['zip'] },
+    });
+    expect((zipBundle.creatives as Array<{ creative_id: string }>).map(c => c.creative_id)).toEqual(['cr_zip_bundle']);
+
+    const { result: nested } = await simulateCallTool(server2, 'list_creatives', {
+      account,
+      filters: { creative_ids: ['cr_nested_card_image'], asset_types: ['image'] },
+    });
+    expect(nested.creatives).toEqual([]);
+
+    const { result: empty } = await simulateCallTool(server2, 'list_creatives', {
+      account,
+      filters: { creative_ids: ids, asset_types: ['audio'] },
+    });
+    expect(empty.creatives).toEqual([]);
+    expect((empty.query_summary as { total_matching: number }).total_matching).toBe(0);
+  });
 });
 
 // ── list_creatives pricing ─────────────────────────────────────────
