@@ -628,6 +628,425 @@ async function runTests() {
 
   log('');
 
+  log('Get AdCP Capabilities Response (adcp.capability_changes.notifications oneOf discriminator):', 'info');
+
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: {
+        ...capabilitiesBase.adcp,
+        idempotency: { supported: true, replay_ttl_seconds: 86400 },
+        capability_changes: {
+          capabilities_version: 'rev_20260702_091455',
+          last_modified: '2026-07-02T09:14:55Z',
+          cache_ttl_seconds: 3600,
+          notifications: {
+            supported: true,
+            registration_task: 'sync_agent_notification_configs',
+            event_types: ['capabilities.changed']
+          }
+        }
+      }
+    },
+    'CapabilityChangeNotificationsSupported accepts registration task and event type'
+  );
+
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: {
+        ...capabilitiesBase.adcp,
+        idempotency: { supported: true, replay_ttl_seconds: 86400 },
+        capability_changes: {
+          notifications: { supported: false }
+        }
+      }
+    },
+    'CapabilityChangeNotificationsUnsupported accepts supported: false'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: {
+        ...capabilitiesBase.adcp,
+        idempotency: { supported: true, replay_ttl_seconds: 86400 },
+        capability_changes: {
+          capabilities_version: 'rev_20260702_091455',
+          cache_ttl_seconds: 3600,
+          notifications: {
+            supported: true,
+            event_types: ['capabilities.changed']
+          }
+        }
+      }
+    },
+    'Rejects capability-change notifications supported branch without registration_task'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: {
+        ...capabilitiesBase.adcp,
+        idempotency: { supported: true, replay_ttl_seconds: 86400 },
+        capability_changes: {
+          capabilities_version: 'rev_20260702_091455',
+          notifications: {
+            supported: true,
+            registration_task: 'sync_agent_notification_configs',
+            event_types: ['capabilities.changed']
+          }
+        }
+      }
+    },
+    'Rejects capability-change notifications supported branch without cache_ttl_seconds'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: {
+        ...capabilitiesBase.adcp,
+        idempotency: { supported: true, replay_ttl_seconds: 86400 },
+        capability_changes: {
+          cache_ttl_seconds: 3600,
+          notifications: {
+            supported: true,
+            registration_task: 'sync_agent_notification_configs',
+            event_types: ['capabilities.changed']
+          }
+        }
+      }
+    },
+    'Rejects capability-change notifications supported branch without capabilities_version'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: {
+        ...capabilitiesBase.adcp,
+        idempotency: { supported: true, replay_ttl_seconds: 86400 },
+        capability_changes: {
+          last_modified: '2026-07-02T09:14:55Z',
+          cache_ttl_seconds: 3600,
+          notifications: {
+            supported: true,
+            registration_task: 'sync_agent_notification_configs',
+            event_types: ['capabilities.changed']
+          }
+        }
+      }
+    },
+    'Rejects capability-change notifications supported branch with last_modified but no capabilities_version'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: {
+        ...capabilitiesBase.adcp,
+        idempotency: { supported: true, replay_ttl_seconds: 86400 },
+        capability_changes: {
+          notifications: {
+            supported: false,
+            event_types: ['capabilities.changed']
+          }
+        }
+      }
+    },
+    'Rejects event_types on capability-change notifications unsupported branch'
+  );
+
+  log('');
+
+  log('Get AdCP Capabilities Response (account.notifications oneOf discriminator):', 'info');
+
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 86400 } },
+      account: {
+        supported_billing: ['operator', 'agent'],
+        notifications: {
+          supported: true,
+          registration_task: 'sync_accounts',
+          read_task: 'list_accounts',
+          event_types: ['account.status_changed'],
+          supports_webhook_activity: true
+        }
+      }
+    },
+    'AccountNotificationsSupported accepts registration task, read task, and account status event type'
+  );
+
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 86400 } },
+      account: {
+        supported_billing: ['operator', 'agent'],
+        notifications: { supported: false }
+      }
+    },
+    'AccountNotificationsUnsupported accepts supported: false'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 86400 } },
+      account: {
+        supported_billing: ['operator', 'agent'],
+        notifications: {
+          supported: true,
+          registration_task: 'sync_accounts',
+          event_types: ['account.status_changed']
+        }
+      }
+    },
+    'Rejects account notifications supported branch without read_task'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 86400 } },
+      account: {
+        supported_billing: ['operator', 'agent'],
+        notifications: {
+          supported: false,
+          event_types: ['account.status_changed']
+        }
+      }
+    },
+    'Rejects event_types on account notifications unsupported branch'
+  );
+
+  totalTests++;
+  try {
+    const capabilitiesSchema = JSON.parse(
+      fs.readFileSync(
+        path.join(SCHEMA_BASE_DIR, 'protocol/get-adcp-capabilities-response.json'),
+        'utf8'
+      )
+    );
+    const webhookSigningConstraints =
+      capabilitiesSchema.properties.webhook_signing.properties.supported['x-adcp-validation']
+        .verifier_constraints.must_equal_when.any_of;
+    const gatedFields = new Set(webhookSigningConstraints.map((constraint) => constraint.field));
+    const expectedGates = [
+      'adcp.capability_changes.notifications.supported',
+      'account.notifications.supported'
+    ];
+    const missingGates = expectedGates.filter((field) => !gatedFields.has(field));
+
+    if (missingGates.length === 0) {
+      log('  ✓ webhook_signing gate covers agent and account notification capabilities', 'success');
+      passedTests++;
+    } else {
+      log(`  ✗ webhook_signing gate missing notification capabilities: ${missingGates.join(', ')}`, 'error');
+      failedTests++;
+    }
+  } catch (error) {
+    log(`  ✗ webhook_signing gate covers agent and account notification capabilities: ${error.message}`, 'error');
+    failedTests++;
+  }
+
+  log('');
+
+  log('Account and agent notification payloads:', 'info');
+
+  await testSchemaValidation(
+    '/schemas/core/capabilities-changed-webhook.json',
+    {
+      idempotency_key: 'whk_01J1T3K6YZR7V5P9Q2M4N6B8CD',
+      notification_id: 'capchg_20260702_0001',
+      notification_type: 'capabilities.changed',
+      fired_at: '2026-07-02T09:15:30Z',
+      subscriber_id: 'registry-cache',
+      agent_url: 'https://seller.example/adcp',
+      changed_at: '2026-07-02T09:14:55Z',
+      reason: 'capability_enabled',
+      capabilities_version: 'rev_20260702_091455',
+      changed_paths: ['/account/sandbox']
+    },
+    'capabilities-changed-webhook requires and accepts post-change capabilities_version'
+  );
+
+  await testSchemaRejection(
+    '/schemas/core/capabilities-changed-webhook.json',
+    {
+      idempotency_key: 'whk_01J1T3K6YZR7V5P9Q2M4N6B8CD',
+      notification_id: 'capchg_20260702_0001',
+      notification_type: 'capabilities.changed',
+      fired_at: '2026-07-02T09:15:30Z',
+      subscriber_id: 'registry-cache',
+      agent_url: 'https://seller.example/adcp',
+      changed_at: '2026-07-02T09:14:55Z',
+      reason: 'capability_enabled'
+    },
+    'capabilities-changed-webhook rejects missing capabilities_version'
+  );
+
+  await testSchemaValidation(
+    '/schemas/account/sync-accounts-request.json',
+    {
+      idempotency_key: 'acct-status-subscribe-0001',
+      accounts: [
+        {
+          account: { account_id: 'acc_glow_pending' },
+          notification_configs: [
+            {
+              subscriber_id: 'account-lifecycle',
+              url: 'https://buyer.example/webhooks/adcp/accounts',
+              event_types: ['account.status_changed'],
+              active: true
+            }
+          ]
+        }
+      ]
+    },
+    'sync_accounts accepts account.status_changed in account-level notification_configs[]'
+  );
+
+  await testSchemaRejection(
+    '/schemas/account/sync-accounts-request.json',
+    {
+      idempotency_key: 'acct-status-subscribe-0002',
+      accounts: [
+        {
+          account: { account_id: 'acc_glow_pending' },
+          notification_configs: [
+            {
+              subscriber_id: 'registry-cache',
+              url: 'https://buyer.example/webhooks/adcp/capabilities',
+              event_types: ['capabilities.changed']
+            }
+          ]
+        }
+      ]
+    },
+    'sync_accounts rejects agent-level capabilities.changed in account-level notification_configs[]'
+  );
+
+  await testSchemaRejection(
+    '/schemas/account/sync-accounts-request.json',
+    {
+      idempotency_key: 'acct-status-subscribe-0003',
+      accounts: [
+        {
+          account: { account_id: 'acc_glow_pending' },
+          notification_configs: [
+            {
+              subscriber_id: 'delivery-report',
+              url: 'https://buyer.example/webhooks/adcp/media-buy',
+              event_types: ['scheduled']
+            }
+          ]
+        }
+      ]
+    },
+    'sync_accounts rejects media-buy scheduled in account-level notification_configs[]'
+  );
+
+  await testSchemaValidation(
+    '/schemas/core/account-status-changed-webhook.json',
+    {
+      idempotency_key: 'whk_01K18GM0Z7J3Q6WBH7DYK2R4VM',
+      notification_id: 'acctchg_acc_glow_20260719T100712Z',
+      notification_type: 'account.status_changed',
+      fired_at: '2026-07-19T10:07:15Z',
+      subscriber_id: 'account-lifecycle',
+      account_id: 'acc_glow_pending',
+      previous_status: 'pending_approval',
+      status: 'payment_required',
+      observed_at: '2026-07-19T10:07:12Z',
+      reason_code: 'setup_required',
+      setup: {
+        message: 'Complete advertiser billing setup.',
+        expires_at: '2026-07-30T00:00:00Z'
+      }
+    },
+    'account-status-changed-webhook accepts reduced setup hint without setup.url'
+  );
+
+  await testSchemaRejection(
+    '/schemas/core/account-status-changed-webhook.json',
+    {
+      idempotency_key: 'whk_01K18GM0Z7J3Q6WBH7DYK2R4VM',
+      notification_id: 'acctchg_acc_glow_20260719T100712Z',
+      notification_type: 'account.status_changed',
+      fired_at: '2026-07-19T10:07:15Z',
+      subscriber_id: 'account-lifecycle',
+      account_id: 'acc_glow_pending',
+      previous_status: 'pending_approval',
+      status: 'payment_required',
+      observed_at: '2026-07-19T10:07:12Z',
+      reason_code: 'setup_required',
+      setup: {
+        url: 'https://seller.example/onboard?token=secret',
+        message: 'Complete advertiser billing setup.'
+      }
+    },
+    'account-status-changed-webhook rejects setup.url fan-out'
+  );
+
+  await testSchemaRejection(
+    '/schemas/core/agent-notification-config.json',
+    {
+      subscriber_id: 'account-lifecycle',
+      url: 'https://buyer.example/webhooks/adcp/accounts',
+      event_types: ['account.status_changed']
+    },
+    'agent-level notification config rejects account.status_changed'
+  );
+
+  await testSchemaValidation(
+    '/schemas/account/list-accounts-response.json',
+    {
+      status: 'completed',
+      accounts: [
+        {
+          account_id: 'acc_glow_pending',
+          name: 'Glow',
+          status: 'payment_required',
+          webhook_activity: [
+            {
+              idempotency_key: 'whk_01K18GM0Z7J3Q6WBH7DYK2R4VM',
+              subscriber_id: 'account-lifecycle',
+              fired_at: '2026-07-19T10:07:15Z',
+              completed_at: '2026-07-19T10:07:15Z',
+              notification_type: 'account.status_changed',
+              attempt: 1,
+              status: 'success',
+              url: 'https://buyer.example/webhooks/adcp/accounts',
+              http_status_code: 200,
+              response_time_ms: 142,
+              payload_size_bytes: 512,
+              error_message: null
+            }
+          ]
+        }
+      ]
+    },
+    'list_accounts response accepts account-scoped webhook_activity for account.status_changed'
+  );
+
+  log('');
+
   // request_signing.protocol_methods_* — JSON-RPC method namespace (adcp#4318).
   // The `protocol_methods_supported_for` / `_warn_for` / `_required_for` arrays
   // carry JSON-RPC method strings (e.g. `tasks/cancel`); plain AdCP tool names

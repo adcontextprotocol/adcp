@@ -102,6 +102,130 @@
               }
             }
           ]
+        },
+        "capability_changes": {
+          "type": "object",
+          "description": "Freshness metadata and optional invalidation webhooks for this `get_adcp_capabilities` document. Buyers and registries MAY cache capabilities for up to `cache_ttl_seconds` when present, SHOULD compare `capabilities_version` across refreshes when present, and SHOULD re-run `get_adcp_capabilities` after receiving a `capabilities.changed` webhook. This block describes the agent-wide capability document, not per-caller authorization or account-scoped settings. A material capability change is any externally advertised contract change that can affect routing, validation, conformance coverage, task availability, auth/account handling, sandbox support, billing support, reporting delivery methods, creative-library support, targeting support, protocol versions, or other buyer-visible feature gates. Non-contract operational changes that do not alter the response body do not require a revision or webhook fire.",
+          "properties": {
+            "capabilities_version": {
+              "type": "string",
+              "description": "Opaque revision token for the full capability document. Required when `notifications.supported: true` because `capabilities.changed` webhooks use this as the read-after-notify fence. Sellers SHOULD change this value whenever any material field in `get_adcp_capabilities` changes. Buyers MUST treat it as opaque and compare it only for equality.",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "last_modified": {
+              "type": "string",
+              "format": "date-time",
+              "description": "ISO 8601 timestamp when the seller last changed the advertised capability document. This is the scoped replacement for legacy top-level `last_updated` when buyers need cache validation semantics."
+            },
+            "cache_ttl_seconds": {
+              "type": "integer",
+              "description": "Maximum time a buyer or registry SHOULD reuse this capability response before refreshing when it has no fresher invalidation signal. Sellers that emit `capabilities.changed` webhooks SHOULD still set a bounded TTL so consumers can recover from missed notifications. This is a cache hint, not an authorization lifetime.",
+              "minimum": 60,
+              "maximum": 604800
+            },
+            "notifications": {
+              "type": "object",
+              "description": "Whether the seller supports agent-level capability-change webhooks. When supported, interested consumers register endpoint subscribers with `sync_agent_notification_configs`; each `capabilities.changed` fire is a small invalidation payload, and consumers repair by re-reading `get_adcp_capabilities`.",
+              "oneOf": [
+                {
+                  "title": "CapabilityChangeNotificationsSupported",
+                  "properties": {
+                    "supported": {
+                      "type": "boolean",
+                      "const": true,
+                      "description": "Discriminator. True means the seller accepts `sync_agent_notification_configs` for `capabilities.changed` subscriptions."
+                    },
+                    "registration_task": {
+                      "type": "string",
+                      "const": "sync_agent_notification_configs",
+                      "description": "Task consumers call to manage their caller-scoped agent-level subscriber set."
+                    },
+                    "event_types": {
+                      "type": "array",
+                      "description": "Agent-level notification types this seller can emit for capability changes. Currently only `capabilities.changed` is defined.",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "capabilities.changed"
+                        ]
+                      },
+                      "minItems": 1,
+                      "uniqueItems": true
+                    },
+                    "coalescence_window_seconds": {
+                      "type": "integer",
+                      "description": "Maximum coalescence window the seller applies before firing a `capabilities.changed` webhook after a burst of related capability edits. The default recommendation is at most 300 seconds; latency-sensitive deactivations SHOULD fire sooner.",
+                      "minimum": 0,
+                      "maximum": 86400
+                    }
+                  },
+                  "required": [
+                    "supported",
+                    "registration_task",
+                    "event_types"
+                  ],
+                  "additionalProperties": true
+                },
+                {
+                  "title": "CapabilityChangeNotificationsUnsupported",
+                  "properties": {
+                    "supported": {
+                      "type": "boolean",
+                      "const": false,
+                      "description": "Discriminator. False means consumers must rely on TTL refresh, manual refresh, or registry polling for capability changes."
+                    }
+                  },
+                  "required": [
+                    "supported"
+                  ],
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "registration_task"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "event_types"
+                        ]
+                      }
+                    ]
+                  },
+                  "additionalProperties": true
+                }
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "notifications": {
+                    "properties": {
+                      "supported": {
+                        "const": true
+                      }
+                    },
+                    "required": [
+                      "supported"
+                    ]
+                  }
+                },
+                "required": [
+                  "notifications"
+                ]
+              },
+              "then": {
+                "required": [
+                  "cache_ttl_seconds",
+                  "capabilities_version"
+                ]
+              }
+            }
+          ],
+          "additionalProperties": true
         }
       },
       "required": ["major_versions", "idempotency"]
@@ -154,6 +278,89 @@
           "type": "boolean",
           "description": "Whether this seller exposes the `get_account_financials` task for querying account-level financial status (spend, credit, invoices). Acts as a **pre-call discriminator** — buyers MUST consult this field before issuing `get_account_financials`; when `false` (or absent), sellers MAY reject the call with an `UNSUPPORTED_FEATURE` / `OPERATION_NOT_SUPPORTED` error. Companion pattern to `creative.bills_through_adcp` (issue #2881) — both fields let buyers gate optional capability calls on a single declared boolean rather than probing for support. Only applicable to operator-billed accounts; sellers using buyer-billed flows omit or set to `false`.",
           "default": false
+        },
+        "notifications": {
+          "type": "object",
+          "description": "Whether the seller supports durable account-lifecycle webhooks through account-level `notification_configs[]`. This capability is specifically for account status changes such as approval, rejection, payment-required, suspension, recovery, and closure. When supported, buyers register subscribers with `sync_accounts.accounts[].notification_configs[]`; each `account.status_changed` fire is an invalidation payload, and buyers repair by re-reading `list_accounts` for the account_id.",
+          "oneOf": [
+            {
+              "title": "AccountNotificationsSupported",
+              "properties": {
+                "supported": {
+                  "type": "boolean",
+                  "const": true,
+                  "description": "Discriminator. True means the seller accepts account-level `notification_configs[]` registrations for account lifecycle events."
+                },
+                "registration_task": {
+                  "type": "string",
+                  "const": "sync_accounts",
+                  "description": "Task buyers call to manage account-level subscriber sets."
+                },
+                "read_task": {
+                  "type": "string",
+                  "const": "list_accounts",
+                  "description": "Authoritative repair read after receiving an account lifecycle invalidation."
+                },
+                "event_types": {
+                  "type": "array",
+                  "description": "Account lifecycle notification types this seller can emit. Currently only `account.status_changed` is defined.",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "account.status_changed"
+                    ]
+                  },
+                  "minItems": 1,
+                  "uniqueItems": true
+                },
+                "supports_webhook_activity": {
+                  "type": "boolean",
+                  "description": "Whether `list_accounts` can return recent delivery attempts in `accounts[].webhook_activity[]` when the buyer requests `include_webhook_activity: true`.",
+                  "default": false
+                }
+              },
+              "required": [
+                "supported",
+                "registration_task",
+                "read_task",
+                "event_types"
+              ],
+              "additionalProperties": true
+            },
+            {
+              "title": "AccountNotificationsUnsupported",
+              "properties": {
+                "supported": {
+                  "type": "boolean",
+                  "const": false,
+                  "description": "Discriminator. False means buyers must rely on `sync_accounts` results, `push_notification_config` for one-shot provisioning callbacks, and polling `list_accounts` for later status changes."
+                }
+              },
+              "required": [
+                "supported"
+              ],
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "registration_task"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "read_task"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "event_types"
+                    ]
+                  }
+                ]
+              },
+              "additionalProperties": true
+            }
+          ]
         },
         "sandbox": {
           "type": "boolean",
@@ -1180,7 +1387,7 @@
       "properties": {
         "supported": {
           "type": "boolean",
-          "description": "Whether this agent signs outbound webhooks with the AdCP RFC 9421 webhook profile. When false or absent, webhooks are delivered with legacy Bearer or HMAC-SHA256 auth only and receivers MUST NOT expect a Signature header. When the seller advertises mutating-webhook emission (i.e., `media_buy.reporting_delivery_methods` includes `webhook`, `media_buy.content_standards.supports_webhook_delivery` is true, or `wholesale_feed_webhooks.supported` is true), this MUST be `true` — emitting state-changing webhooks unsigned is a downgrade vector that lets an on-path attacker forge delivery callbacks. See `x-adcp-validation`.",
+          "description": "Whether this agent signs outbound webhooks with the AdCP RFC 9421 webhook profile. When false or absent, webhooks are delivered with legacy Bearer or HMAC-SHA256 auth only and receivers MUST NOT expect a Signature header. When the seller advertises mutating-webhook emission (i.e., `media_buy.reporting_delivery_methods` includes `webhook`, `media_buy.content_standards.supports_webhook_delivery` is true, `wholesale_feed_webhooks.supported` is true, `adcp.capability_changes.notifications.supported` is true, or `account.notifications.supported` is true), this MUST be `true` — emitting state-changing webhooks unsigned is a downgrade vector that lets an on-path attacker forge delivery callbacks. See `x-adcp-validation`.",
           "x-adcp-validation": {
             "verifier_constraints": {
               "must_equal_when": {
@@ -1196,6 +1403,14 @@
                   },
                   {
                     "field": "wholesale_feed_webhooks.supported",
+                    "equals": true
+                  },
+                  {
+                    "field": "adcp.capability_changes.notifications.supported",
+                    "equals": true
+                  },
+                  {
+                    "field": "account.notifications.supported",
                     "equals": true
                   }
                 ]
@@ -1221,7 +1436,7 @@
         },
         "legacy_hmac_fallback": {
           "type": "boolean",
-          "description": "Whether this agent will fall back to HMAC-SHA256 on the legacy push_notification_config.authentication or accounts[].notification_configs[].authentication paths for receivers that have not adopted RFC 9421. Deprecated; removed in AdCP 4.0.",
+          "description": "Whether this agent will fall back to HMAC-SHA256 on the legacy push_notification_config.authentication, accounts[].notification_configs[].authentication, or sync_agent_notification_configs.notification_configs[].authentication paths for receivers that have not adopted RFC 9421. Deprecated; removed in AdCP 4.0.",
           "default": false
         }
       },

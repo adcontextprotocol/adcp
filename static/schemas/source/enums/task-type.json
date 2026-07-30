@@ -28,7 +28,8 @@
     "get_brand_identity",
     "search_brands",
     "get_rights",
-    "acquire_rights"
+    "acquire_rights",
+    "sync_agent_notification_configs"
   ],
   "enumDescriptions": {
     "create_media_buy": "Media-buy domain: Create a new advertising campaign with one or more packages",
@@ -54,7 +55,8 @@
     "get_brand_identity": "Brand domain: Retrieve brand identity data (logos, colors, tone, assets, voice config) from a brand agent",
     "search_brands": "Brand domain: Discover brands on a brand agent's roster via natural language query; returns lightweight identity stubs",
     "get_rights": "Brand domain: Search for licensable rights across a brand agent's roster with pricing",
-    "acquire_rights": "Brand domain: Acquire rights from a brand agent with contractual clearance and generation credentials"
+    "acquire_rights": "Brand domain: Acquire rights from a brand agent with contractual clearance and generation credentials",
+    "sync_agent_notification_configs": "Protocol domain: Register agent-level webhook subscribers such as capabilities.changed cache-invalidation notifications"
   },
   "notes": [
     "Task types map to specific AdCP task operations",

@@ -429,6 +429,22 @@
           "$ref": "/schemas/core/mcp-webhook-payload.json",
           "description": "MCP-specific webhook payload structure for HTTP-based push notifications. Protocol-level fields at top-level (task_id, status, etc.) and AdCP data layer nested under 'result'. NOT used in A2A (uses native statusUpdate)."
         },
+        "agent-notification-config": {
+          "$ref": "/schemas/core/agent-notification-config.json",
+          "description": "Agent-level webhook subscriber configuration for notifications such as capabilities.changed"
+        },
+        "agent-webhook-challenge": {
+          "$ref": "/schemas/core/agent-webhook-challenge.json",
+          "description": "Proof-of-control challenge payload for agent-level notification endpoint activation"
+        },
+        "capabilities-changed-webhook": {
+          "$ref": "/schemas/core/capabilities-changed-webhook.json",
+          "description": "Agent-level webhook payload that invalidates cached get_adcp_capabilities responses"
+        },
+        "account-status-changed-webhook": {
+          "$ref": "/schemas/core/account-status-changed-webhook.json",
+          "description": "Account-level webhook payload that invalidates a list_accounts account status snapshot"
+        },
         "destination": {
           "$ref": "/schemas/core/destination.json",
           "description": "A destination platform where signals can be activated (DSP, sales agent, etc.)"
@@ -631,7 +647,7 @@
         },
         "webhook-challenge": {
           "$ref": "/schemas/core/webhook-challenge.json",
-          "description": "Proof-of-control challenge payload for account-level notification_configs[] endpoint activation"
+          "description": "Proof-of-control challenge payload for account-level notification endpoint activation"
         },
         "webhook-challenge-response": {
           "$ref": "/schemas/core/webhook-challenge-response.json",
@@ -1756,6 +1772,16 @@
           "response": {
             "$ref": "/schemas/protocol/list-tasks-response.json",
             "description": "Filtered AdCP application-layer async task list for reconciliation; alias response for legacy tasks/list"
+          }
+        },
+        "sync-agent-notification-configs": {
+          "request": {
+            "$ref": "/schemas/protocol/sync-agent-notification-configs-request.json",
+            "description": "Register, replace, pause, or clear agent-level webhook subscribers such as capabilities.changed"
+          },
+          "response": {
+            "$ref": "/schemas/protocol/sync-agent-notification-configs-response.json",
+            "description": "Applied agent-level webhook subscriber set with credentials redacted"
           }
         }
       }

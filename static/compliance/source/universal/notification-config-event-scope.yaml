@@ -2,18 +2,18 @@ id: notification_config_event_scope
 version: "1.0.0"
 title: "Notification config event-scope rejection"
 category: schema_validation
-summary: "Validates that sync_accounts.accounts[].notification_configs[] rejects media-buy-anchored notification types even though they are valid notification-type enum values."
+summary: "Validates that sync_accounts.accounts[].notification_configs[] rejects media-buy-anchored notification types."
 track: core
 required_tools:
   - sync_accounts
 
 narrative: |
-  `notification-type.json` intentionally contains both media-buy-anchored
+  `notification-type.json` historically contained both media-buy-anchored
   event types (`scheduled`, `final`, `delayed`, `adjusted`, `impairment`) and
   account-anchored event types (`creative.*`, `product.*`, `signal.*`,
-  `wholesale_feed.bulk_change`). JSON Schema can validate that a value is in
-  the enum, but it cannot know which registration surface the value belongs
-  on.
+  `wholesale_feed.bulk_change`). Account-level notification config schemas now
+  expose only account-anchored event types so media-buy registrations fail
+  closed before persistence.
 
   This storyboard closes that semantic gap for the account-level surface:
   `sync_accounts.accounts[].notification_configs[]` MUST reject media-buy-
@@ -21,10 +21,10 @@ narrative: |
   `push_notification_config`; accepting them on account-level configs would
   imply a subscription lifecycle and payload contract the spec does not define.
 
-  The request is schema-valid on purpose. A seller that only performs JSON
-  Schema validation and persists the entry will fail the storyboard; a
-  conformant seller returns a per-account failure with a correctable validation
-  error.
+  The request is schema-invalid on purpose. A conformant seller rejects it
+  rather than silently persisting or dropping a subscriber for an event whose
+  subscription lifecycle and payload contract belong on media-buy-scoped
+  `push_notification_config`.
 
 agent:
   interaction_model: media_buy_seller
@@ -51,12 +51,12 @@ phases:
   - id: reject_media_buy_anchored_event_type
     title: "Reject media-buy-anchored event type on account config"
     narrative: |
-      The buyer submits a schema-valid notification config that asks an
+      The buyer submits a schema-invalid notification config that asks an
       account-level subscriber to receive `scheduled` delivery reports.
-      `scheduled` is a valid `notification-type.json` value, but it is
-      media-buy anchored and belongs on `push_notification_config`, not on
-      `sync_accounts.accounts[].notification_configs[]`. The seller must reject the
-      per-account entry rather than silently persisting or dropping the
+      `scheduled` is media-buy anchored and belongs on
+      `push_notification_config`, not on
+      `sync_accounts.accounts[].notification_configs[]`. The seller must
+      reject the entry rather than silently persisting or dropping the
       subscriber.
 
     steps:
@@ -66,9 +66,7 @@ phases:
         schema_ref: "account/sync-accounts-request.json"
         response_schema_ref: "account/sync-accounts-response.json"
         doc_ref: "/accounts/tasks/sync_accounts"
-        # sync_accounts reports per-entry validation failures in
-        # accounts[].errors[] under a transport-level success. This is not a
-        # transport-layer error.
+        sample_request_skip_schema: true
         stateful: false
         expected: |
           Reject the per-account entry with:
