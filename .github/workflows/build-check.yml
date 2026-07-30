@@ -88,6 +88,9 @@ jobs:
       - name: Validate schemas
         run: npm run test:schemas && npm run test:json-schema && npm run test:adagents-catalog-only && npm run test:extension-schemas && npm run test:composed
 
+      - name: Validate MCP schema projection
+        run: npm run test:mcp-schema-projection
+
       - name: Canonical reference resolver fixtures
         run: npm run test:canonical-reference-resolver
 

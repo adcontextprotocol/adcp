@@ -56,6 +56,11 @@ if [ "${SRC}" = "dist/compliance/latest" ]; then
   CACHE_VERSION="${PINNED_VERSION:-$(basename "$DST")}"
   SCHEMA_STAGE_DIR=$(mktemp -d -t "adcp-schema-overlay.XXXXXX")
   (cd "dist/schemas/latest" && tar -cf - .) | (cd "$SCHEMA_STAGE_DIR" && tar -xf -)
+  # MCP projections are downloadable JSON Schema 2020-12 artifacts, not part of
+  # the v3 draft-07 SDK validation bundle. The legacy SDK recursively loads this
+  # staging tree, so including mcp/ would make its draft-07 Ajv compile the
+  # projection with the wrong dialect.
+  rm -rf "$SCHEMA_STAGE_DIR/mcp"
   node - <<'NODE' "$SCHEMA_STAGE_DIR" "$CACHE_VERSION"
 const fs = require('node:fs');
 const path = require('node:path');
