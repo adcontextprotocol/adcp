@@ -9,6 +9,10 @@ const assert = require('node:assert/strict');
 const AjvDraft07 = require('ajv');
 const Ajv2020 = require('ajv/dist/2020');
 const addFormats = require('ajv-formats');
+const yaml = require('js-yaml');
+const {
+  normalizeSubstitutions,
+} = require('../scripts/lint-storyboard-sample-request-schema.cjs');
 const {
   JSON_SCHEMA_2020_12,
   MAX_SCHEMA_BYTES,
@@ -24,9 +28,10 @@ const {
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const SOURCE_DIR = path.join(REPO_ROOT, 'static', 'schemas', 'source');
+const STORYBOARD_DIR = path.join(REPO_ROOT, 'static', 'compliance', 'source');
 const LATEST_DIR = path.join(REPO_ROOT, 'dist', 'schemas', 'latest');
 const PROJECTION_DIR = path.join(LATEST_DIR, 'mcp', MCP_PROTOCOL_VERSION);
-const REPRESENTATIVE_COMPILE_LIMIT = 1_000_000;
+const PARITY_COMPILE_LIMIT = 1_000_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
@@ -42,6 +47,43 @@ function createValidator(AjvClass) {
   });
   addFormats(ajv);
   return ajv;
+}
+
+function walkYamlFiles(directory) {
+  const files = [];
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const filename = path.join(directory, entry.name);
+    if (entry.isDirectory()) files.push(...walkYamlFiles(filename));
+    if (entry.isFile() && /\.ya?ml$/.test(entry.name)) files.push(filename);
+  }
+  return files;
+}
+
+function collectStoryboardRequestFixtures() {
+  const fixtures = new Map();
+  for (const filename of walkYamlFiles(STORYBOARD_DIR)) {
+    const storyboard = yaml.load(fs.readFileSync(filename, 'utf8'));
+    for (const phase of storyboard?.phases || []) {
+      for (const step of phase?.steps || []) {
+        if (
+          !step?.schema_ref
+          || step.schema_ref.startsWith('$')
+          || !step.sample_request
+          || typeof step.sample_request !== 'object'
+        ) {
+          continue;
+        }
+        const relativePath = step.schema_ref.replace(/^\/schemas\//, '');
+        const sourcePath = path.join(SOURCE_DIR, relativePath);
+        if (!fs.existsSync(sourcePath)) continue;
+        const sourceSchema = readJson(sourcePath);
+        const fixture = normalizeSubstitutions(step.sample_request, sourceSchema);
+        if (!fixtures.has(relativePath)) fixtures.set(relativePath, []);
+        fixtures.get(relativePath).push(fixture);
+      }
+    }
+  }
+  return fixtures;
 }
 
 test('schema bounds include the complete JSON document', () => {
@@ -103,6 +145,51 @@ test('draft-07 projection converts dialect-specific keywords without tightening'
   assert.equal(projected.definitions, undefined);
   assert.equal(projected.dependencies, undefined);
   assert.equal(projected.additionalItems, undefined);
+});
+
+test('draft-07 and 2020-12 validators preserve high-risk conversion boundaries', () => {
+  const source = {
+    $schema: 'http://json-schema.org/draft-07/schema#',
+    type: 'object',
+    definitions: {
+      Name: { type: 'string', minLength: 1 },
+    },
+    properties: {
+      name: { $ref: '#/definitions/Name' },
+      tuple: {
+        type: 'array',
+        items: [{ type: 'string' }, { type: 'integer' }],
+        additionalItems: false,
+      },
+    },
+    dependencies: {
+      name: ['tuple'],
+      tuple: { required: ['name'] },
+    },
+    additionalProperties: false,
+  };
+  const projected = projectDraft07Node(source);
+  const validateSource = createValidator(AjvDraft07).compile(source);
+  const validateProjected = createValidator(Ajv2020).compile(projected);
+  const corpus = [
+    {},
+    { name: 'Ada', tuple: ['primary', 1] },
+    { name: 'Ada' },
+    { tuple: ['primary', 1] },
+    { name: 'Ada', tuple: ['primary', 1, 'extra'] },
+    { name: 'Ada', tuple: ['primary', 1], unexpected: true },
+  ];
+
+  const sourceOutcomes = corpus.map(instance => validateSource(instance));
+  assert.ok(sourceOutcomes.includes(true), 'parity corpus must exercise an accepted instance');
+  assert.ok(sourceOutcomes.includes(false), 'parity corpus must exercise rejected instances');
+  for (const [index, instance] of corpus.entries()) {
+    assert.equal(
+      validateProjected(instance),
+      sourceOutcomes[index],
+      `high-risk conversion changed outcome for ${JSON.stringify(instance)}`
+    );
+  }
 });
 
 test('projection rewrites only definitions keyword segments in local refs', () => {
@@ -225,6 +312,7 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
 
   const canonicalManifest = readJson(path.join(LATEST_DIR, 'manifest.json'));
   const projectionManifest = readJson(path.join(PROJECTION_DIR, 'manifest.json'));
+  const storyboardFixtures = collectStoryboardRequestFixtures();
   assert.equal(projectionManifest.mcp_protocol_version, MCP_PROTOCOL_VERSION);
   assert.equal(projectionManifest.schema_dialect, JSON_SCHEMA_2020_12);
   assert.match(projectionManifest.delivery, /downloadable schema artifacts/);
@@ -234,7 +322,7 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   );
 
   const seen = new Set();
-  const representatives = new Map();
+  const paritySchemas = new Map();
   let totalBytes = 0;
   let localRefCount = 0;
 
@@ -266,10 +354,13 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
         assert.equal(projectedSchema.type, 'object', `${toolName} inputSchema must have an object root`);
       }
 
-      const protocol = canonicalManifest.tools[toolName].protocol;
-      const current = representatives.get(protocol);
-      if (!current || metrics.bytes < current.bytes) {
-        representatives.set(protocol, { relativePath, bytes: metrics.bytes });
+      const fixtures = storyboardFixtures.get(relativePath);
+      if (fixtures?.length) {
+        paritySchemas.set(relativePath, {
+          bytes: metrics.bytes,
+          fixtures,
+          sourceSchema: readJson(sourcePath),
+        });
       }
     }
   }
@@ -279,21 +370,68 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
 
   const draft07 = createValidator(AjvDraft07);
   const draft2020 = createValidator(Ajv2020);
-  for (const { relativePath, bytes } of representatives.values()) {
-    if (bytes > REPRESENTATIVE_COMPILE_LIMIT) continue;
+  let validParityCaseCount = 0;
+  let invalidParityCaseCount = 0;
+  for (const [relativePath, { bytes, fixtures, sourceSchema }] of paritySchemas) {
+    assert.ok(
+      bytes <= PARITY_COMPILE_LIMIT,
+      `${relativePath} example-bearing schema exceeds parity compile limit`
+    );
     const sourcePath = path.join(SOURCE_DIR, relativePath);
-    const sourceSchema = readJson(sourcePath);
     const compactSource = compactDraft07Schema(sourceSchema, sourcePath, SOURCE_DIR);
     const projectedSchema = readJson(path.join(PROJECTION_DIR, relativePath));
     const validateSource = draft07.compile(compactSource);
     const validateProjected = draft2020.compile(projectedSchema);
-    const parityCorpus = sourceSchema.examples?.length ? sourceSchema.examples : [{}];
-    for (const example of parityCorpus) {
+
+    let firstValidFixture;
+    for (const [index, fixture] of fixtures.entries()) {
+      const sourceValid = validateSource(fixture);
       assert.equal(
-        validateProjected(example),
-        validateSource(example),
-        `${relativePath} changed validation outcome for a parity instance`
+        validateProjected(fixture),
+        sourceValid,
+        `${relativePath} changed storyboard fixture ${index} validation outcome`
       );
+      if (sourceValid) {
+        firstValidFixture ||= fixture;
+        validParityCaseCount++;
+      } else {
+        invalidParityCaseCount++;
+      }
+    }
+
+    assert.ok(firstValidFixture, `${relativePath} needs at least one valid storyboard fixture`);
+    assert.equal(sourceSchema.type, 'object', `${relativePath} parity mutation assumes an object root`);
+    const invalidRootMutation = [structuredClone(firstValidFixture)];
+    assert.equal(validateSource(invalidRootMutation), false, `${relativePath} root mutation must be invalid`);
+    assert.equal(
+      validateProjected(invalidRootMutation),
+      false,
+      `${relativePath} projected schema accepted an invalid root mutation`
+    );
+    invalidParityCaseCount++;
+
+    const requiredKey = sourceSchema.required?.find(key => Object.hasOwn(firstValidFixture, key));
+    if (requiredKey) {
+      const missingRequired = structuredClone(firstValidFixture);
+      delete missingRequired[requiredKey];
+      assert.equal(
+        validateSource(missingRequired),
+        false,
+        `${relativePath} missing-required mutation must be invalid`
+      );
+      assert.equal(
+        validateProjected(missingRequired),
+        false,
+        `${relativePath} projected schema accepted missing required property ${requiredKey}`
+      );
+      invalidParityCaseCount++;
     }
   }
+
+  assert.ok(paritySchemas.size >= 55, `expected fixtures from at least 55 schemas, saw ${paritySchemas.size}`);
+  assert.ok(validParityCaseCount >= 650, `expected at least 650 valid parity cases, saw ${validParityCaseCount}`);
+  assert.ok(
+    invalidParityCaseCount >= paritySchemas.size,
+    `expected an invalid mutation for every parity schema, saw ${invalidParityCaseCount}`
+  );
 });
