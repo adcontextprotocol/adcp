@@ -196,10 +196,20 @@ function pathResolves(node, segments, seen = new Set()) {
 
   const [seg, ...rest] = segments;
 
-  if (/^\d+$/.test(seg) || seg === '*') {
-    if (node.items && pathResolves(node.items, rest, seen)) return true;
-  } else if (node.properties && Object.prototype.hasOwnProperty.call(node.properties, seg)) {
-    if (pathResolves(node.properties[seg], rest, seen)) return true;
+  if ((/^\d+$/.test(seg) || seg === '*') && node.items) {
+    if (pathResolves(node.items, rest, seen)) return true;
+  } else {
+    const isDeclaredProperty =
+      node.properties && Object.prototype.hasOwnProperty.call(node.properties, seg);
+    if (isDeclaredProperty) {
+      if (pathResolves(node.properties[seg], rest, seen)) return true;
+    } else if (
+      node.additionalProperties &&
+      typeof node.additionalProperties === 'object' &&
+      pathResolves(node.additionalProperties, rest, seen)
+    ) {
+      return true;
+    }
   }
 
   // Union semantics across `oneOf` / `anyOf` / `allOf` — see

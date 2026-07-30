@@ -9,7 +9,7 @@
  *      in the response schema (the offering_id / offering.offering_id typo
  *      that surfaced this lint).
  *   3. The path resolver follows the bracket / dot equivalence and descends
- *      through oneOf / anyOf variants and items.
+ *      through oneOf / anyOf variants, items, and typed dynamic maps.
  *   4. The allowlist mechanism suppresses entries for paths the lint can't
  *      statically verify (error.details polymorphism, additionalProperties
  *      runtime conventions).
@@ -167,6 +167,24 @@ test('mixed schemas (declared properties + additionalProperties: true) stay stri
   assert.equal(pathResolves(schema, parsePath('offering.offering_id')), true);
   assert.equal(pathResolves(schema, parsePath('offering_id')), false);
   assert.equal(pathResolves(schema, parsePath('not_a_real_field')), false);
+});
+
+test('schema-valued additionalProperties resolves typed dynamic map keys', () => {
+  const schema = loadSchema('protocol/get-adcp-capabilities-response.json');
+  assert.equal(
+    pathResolves(
+      schema,
+      parsePath('media_buy.execution.targeting.geo_places.geonames.catalog.current_version'),
+    ),
+    true,
+  );
+  assert.equal(
+    pathResolves(
+      schema,
+      parsePath('media_buy.execution.targeting.geo_places.geonames.not_a_real_field'),
+    ),
+    false,
+  );
 });
 
 test('parsePath accepts both bracket and dotted forms', () => {

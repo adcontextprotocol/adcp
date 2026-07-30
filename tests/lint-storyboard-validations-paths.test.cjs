@@ -8,7 +8,8 @@
  *      asserts on a path that doesn't resolve in the response schema.
  *   3. Non-path-bearing checks (error_code, response_schema, http_status,
  *      etc.) are silently skipped — they have no path to validate.
- *   4. The path resolver follows $ref / oneOf / anyOf / allOf / items.
+ *   4. The path resolver follows $ref / oneOf / anyOf / allOf / items and
+ *      schema-valued additionalProperties for typed dynamic maps.
  *   5. Pure extension points (additionalProperties: true with no
  *      properties / variants — like core/context.json and error.details)
  *      accept any further segments without flagging.
@@ -264,6 +265,24 @@ test('pure extension points only loosen when there are no defined properties', (
   // `not_a_real_field` does NOT resolve — additionalProperties: true at the
   // root doesn't make typos legal because `properties` is non-empty
   assert.equal(pathResolves(schema, parsePath('not_a_real_field')), false);
+});
+
+test('schema-valued additionalProperties resolves typed dynamic map keys', () => {
+  const schema = loadSchema('protocol/get-adcp-capabilities-response.json');
+  assert.equal(
+    pathResolves(
+      schema,
+      parsePath('media_buy.execution.targeting.geo_places.geonames.catalog.current_version'),
+    ),
+    true,
+  );
+  assert.equal(
+    pathResolves(
+      schema,
+      parsePath('media_buy.execution.targeting.geo_places.geonames.not_a_real_field'),
+    ),
+    false,
+  );
 });
 
 test('pathResolves descends through error.json $ref for errors[0].code', () => {

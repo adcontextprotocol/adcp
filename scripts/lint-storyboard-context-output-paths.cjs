@@ -128,8 +128,9 @@ function isPureExtensionPoint(node) {
 /**
  * Walk a JSON Schema node to determine whether a dotted path resolves to
  * any defined element. Follows `$ref`, descends through `properties.<name>`
- * for object steps and `items` for numeric-index steps, and accepts any
- * variant of `oneOf` / `anyOf` / `allOf` that resolves. Returns true when
+ * for object steps, schema-valued `additionalProperties` for dynamic map
+ * keys, and `items` for numeric-index steps, and accepts any variant of
+ * `oneOf` / `anyOf` / `allOf` that resolves. Returns true when
  * EVERY segment was either resolved by a defined property/items, accepted
  * by at least one composite variant, or descended into a pure extension
  * point (e.g., `core/context.json`, `error.details`).
@@ -153,8 +154,18 @@ function pathResolves(node, segments, seen = new Set()) {
   // Numeric — array index. Only valid when this node has `items`.
   if (/^\d+$/.test(seg)) {
     if (node.items && pathResolves(node.items, rest, seen)) return true;
-  } else if (node.properties && Object.prototype.hasOwnProperty.call(node.properties, seg)) {
-    if (pathResolves(node.properties[seg], rest, seen)) return true;
+  } else {
+    const isDeclaredProperty =
+      node.properties && Object.prototype.hasOwnProperty.call(node.properties, seg);
+    if (isDeclaredProperty) {
+      if (pathResolves(node.properties[seg], rest, seen)) return true;
+    } else if (
+      node.additionalProperties &&
+      typeof node.additionalProperties === 'object' &&
+      pathResolves(node.additionalProperties, rest, seen)
+    ) {
+      return true;
+    }
   }
 
   // Composite variants — any variant that resolves the FULL remaining path
