@@ -594,7 +594,7 @@ See [Task Reference](/docs/media-buy/task-reference) for details on `reporting_w
 
 Agent-level webhooks outlive any account or media buy. They are registered with [`sync_agent_notification_configs`](/docs/protocol/sync_agent_notification_configs), not with account-level `notification_configs[]` or per-task `push_notification_config`.
 
-The initial agent-level event type is `capabilities.changed`. It invalidates cached [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) responses. The webhook payload is deliberately small and does not contain the full capability document; receivers re-read `get_adcp_capabilities` and replace their cached snapshot from the fresh response.
+The initial agent-level event type is `capabilities.changed`. It invalidates cached [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) responses. The webhook payload is deliberately small and does not contain the full capability document; receivers re-read `get_adcp_capabilities` and replace their cached snapshot from the fresh response. Sellers MUST publish the new capability snapshot before firing so the webhook's `capabilities_version` is observable on read. Receivers SHOULD retry the read with normal transient-error backoff if the webhook revision is not yet observable.
 
 ## Persistent channel contract
 

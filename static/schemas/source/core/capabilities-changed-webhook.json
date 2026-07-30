@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/capabilities-changed-webhook.json",
   "title": "Capabilities Changed Webhook",
-  "description": "Agent-level webhook payload fired when the seller's advertised `get_adcp_capabilities` document materially changes. Registered through `sync_agent_notification_configs` using `event_types: [\"capabilities.changed\"]`. The payload is an invalidation signal, not a replacement capability document: receivers SHOULD re-run `get_adcp_capabilities`, compare the returned `adcp.capability_changes.capabilities_version` or `last_modified` value, and update their cache from the fresh response. Sellers SHOULD coalesce bursts of configuration changes and fire once for the post-change revision.",
+  "description": "Agent-level webhook payload fired when the seller's advertised `get_adcp_capabilities` document materially changes. Registered through `sync_agent_notification_configs` using `event_types: [\"capabilities.changed\"]`. The payload is an invalidation signal, not a replacement capability document: receivers SHOULD re-run `get_adcp_capabilities`, compare the returned `adcp.capability_changes.capabilities_version`, and update their cache from the fresh response. Sellers MUST publish the new capability snapshot before firing so the webhook's `capabilities_version` is observable on read. Sellers SHOULD coalesce bursts of configuration changes and fire once for the post-change revision.",
   "type": "object",
   "properties": {
     "idempotency_key": {
@@ -61,7 +61,7 @@
     },
     "capabilities_version": {
       "type": "string",
-      "description": "Optional opaque revision token for the capability document after the change. SHOULD equal `adcp.capability_changes.capabilities_version` on the next `get_adcp_capabilities` response when the seller emits that field. Receivers MUST treat the token as opaque and compare it only for equality.",
+      "description": "Required opaque revision token for the capability document after the change. MUST equal `adcp.capability_changes.capabilities_version` on the authoritative `get_adcp_capabilities` response available before this webhook is sent. Receivers MUST treat the token as opaque and compare it only for equality.",
       "minLength": 1,
       "maxLength": 255
     },
@@ -87,7 +87,8 @@
     "subscriber_id",
     "agent_url",
     "changed_at",
-    "reason"
+    "reason",
+    "capabilities_version"
   ],
   "additionalProperties": false,
   "examples": [

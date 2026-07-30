@@ -122,11 +122,11 @@ Sellers that do not support replay dedup declare it explicitly:
 
 Declares how consumers should cache and invalidate this agent's capability document. Capabilities are agent-wide and usually stable, so buyers and registries can cache them; this block gives them a bounded TTL, an opaque revision token, and an optional push signal for material changes.
 
-When `notifications.supported: true`, sellers MUST include `cache_ttl_seconds` and at least one revision marker (`capabilities_version` or `last_modified`). The webhook is the fast path; the TTL and revision marker are the recovery path when delivery is missed or delayed.
+When `notifications.supported: true`, sellers MUST include `cache_ttl_seconds` and `capabilities_version`. The webhook is the fast path; the TTL and opaque revision marker are the recovery path when delivery is missed or delayed. `last_modified` remains useful human-readable metadata, but it is not sufficient as the notification fence.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `capabilities_version` | string | Opaque revision token for the full capability document. Sellers SHOULD change it whenever any material field in `get_adcp_capabilities` changes. Buyers compare for equality only. |
+| `capabilities_version` | string | Opaque revision token for the full capability document. Required when `notifications.supported: true`. Sellers SHOULD change it whenever any material field in `get_adcp_capabilities` changes. Buyers compare for equality only. |
 | `last_modified` | date-time | Timestamp when the seller last changed the advertised capability document. Use this instead of legacy top-level `last_updated` when both are present. |
 | `cache_ttl_seconds` | integer | Maximum time a buyer or registry SHOULD reuse this response without a fresher invalidation signal. Required when `notifications.supported: true` so receivers recover from missed fires. |
 | `notifications` | object | Whether the seller supports `capabilities.changed` webhooks. When `supported: true`, register subscribers with [`sync_agent_notification_configs`](/docs/protocol/sync_agent_notification_configs). |
@@ -155,7 +155,7 @@ A **material capability change** is any externally advertised contract change th
 
 Non-contract operational changes that do not alter the `get_adcp_capabilities` response body do not require a revision or webhook fire.
 
-`capabilities.changed` webhooks are invalidation signals, not replacement documents. The payload identifies the agent, change time, reason, optional `capabilities_version`, and optional advisory `changed_paths[]`; receivers SHOULD re-run `get_adcp_capabilities` and replace their cached snapshot from the fresh response. The payload schema is [`/schemas/v3/core/capabilities-changed-webhook.json`](https://adcontextprotocol.org/schemas/v3/core/capabilities-changed-webhook.json).
+`capabilities.changed` webhooks are invalidation signals, not replacement documents. The payload identifies the agent, change time, reason, required post-change `capabilities_version`, and optional advisory `changed_paths[]`; receivers SHOULD re-run `get_adcp_capabilities` and replace their cached snapshot from the fresh response. Sellers MUST publish the new capability snapshot before firing the webhook so the webhook's `capabilities_version` is observable on read. If a receiver reads before the webhook revision is observable, it SHOULD retry with normal transient-error backoff and retain the prior cached snapshot until a matching or newer authoritative snapshot is available. The payload schema is [`/schemas/v3/core/capabilities-changed-webhook.json`](https://adcontextprotocol.org/schemas/v3/core/capabilities-changed-webhook.json).
 
 ### supported_protocols
 
@@ -1168,7 +1168,7 @@ New fields:
 ## Best Practices
 
 **1. Cache Capabilities**
-Capabilities rarely change. Cache results for no longer than `adcp.capability_changes.cache_ttl_seconds` when present, compare `capabilities_version` or `last_modified` on refresh, and subscribe to `capabilities.changed` if the seller advertises notification support. Fall back to legacy `last_updated` only when `capability_changes` is absent.
+Capabilities rarely change. Cache results for no longer than `adcp.capability_changes.cache_ttl_seconds` when present, compare `capabilities_version` on refresh when present, and subscribe to `capabilities.changed` if the seller advertises notification support. When notifications are enabled, `capabilities_version` is the required read-after-notify fence; retry refresh if a webhook revision is not yet observable. Fall back to `last_modified` or legacy `last_updated` only when `capability_changes.notifications.supported` is absent or false.
 
 **2. Check Protocol Support First**
 Before accessing protocol-specific fields, verify the protocol is in `supported_protocols`.

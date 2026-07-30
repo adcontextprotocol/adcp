@@ -724,7 +724,28 @@ async function runTests() {
         }
       }
     },
-    'Rejects capability-change notifications supported branch without revision marker'
+    'Rejects capability-change notifications supported branch without capabilities_version'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: {
+        ...capabilitiesBase.adcp,
+        idempotency: { supported: true, replay_ttl_seconds: 86400 },
+        capability_changes: {
+          last_modified: '2026-07-02T09:14:55Z',
+          cache_ttl_seconds: 3600,
+          notifications: {
+            supported: true,
+            registration_task: 'sync_agent_notification_configs',
+            event_types: ['capabilities.changed']
+          }
+        }
+      }
+    },
+    'Rejects capability-change notifications supported branch with last_modified but no capabilities_version'
   );
 
   await testSchemaRejection(
@@ -847,6 +868,38 @@ async function runTests() {
   log('');
 
   log('Account and agent notification payloads:', 'info');
+
+  await testSchemaValidation(
+    '/schemas/core/capabilities-changed-webhook.json',
+    {
+      idempotency_key: 'whk_01J1T3K6YZR7V5P9Q2M4N6B8CD',
+      notification_id: 'capchg_20260702_0001',
+      notification_type: 'capabilities.changed',
+      fired_at: '2026-07-02T09:15:30Z',
+      subscriber_id: 'registry-cache',
+      agent_url: 'https://seller.example/adcp',
+      changed_at: '2026-07-02T09:14:55Z',
+      reason: 'capability_enabled',
+      capabilities_version: 'rev_20260702_091455',
+      changed_paths: ['/account/sandbox']
+    },
+    'capabilities-changed-webhook requires and accepts post-change capabilities_version'
+  );
+
+  await testSchemaRejection(
+    '/schemas/core/capabilities-changed-webhook.json',
+    {
+      idempotency_key: 'whk_01J1T3K6YZR7V5P9Q2M4N6B8CD',
+      notification_id: 'capchg_20260702_0001',
+      notification_type: 'capabilities.changed',
+      fired_at: '2026-07-02T09:15:30Z',
+      subscriber_id: 'registry-cache',
+      agent_url: 'https://seller.example/adcp',
+      changed_at: '2026-07-02T09:14:55Z',
+      reason: 'capability_enabled'
+    },
+    'capabilities-changed-webhook rejects missing capabilities_version'
+  );
 
   await testSchemaValidation(
     '/schemas/account/sync-accounts-request.json',

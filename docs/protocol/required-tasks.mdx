@@ -20,7 +20,7 @@ Every AdCP agent, regardless of protocol, implements:
 | Task | Requirement | Reference |
 |------|------------|-----------|
 | `get_adcp_capabilities` | Required | [Capability discovery](/docs/protocol/get_adcp_capabilities) |
-| `sync_agent_notification_configs` | Conditional | Required when `get_adcp_capabilities.adcp.capability_changes.notifications.supported` is `true`; registers agent-level `capabilities.changed` webhooks. |
+| `sync_agent_notification_configs` | Conditional | Required when `get_adcp_capabilities.adcp.capability_changes.notifications.supported` is `true`; registers caller-scoped agent-level `capabilities.changed` webhooks. Sellers MUST reject registrations without a stable authenticated principal. |
 
 Caller-scope RBAC introspection is not a standalone task. Sellers that support scope introspection return a per-account `authorization` object on `sync_accounts` and `list_accounts` responses. See [Accounts Protocol — Caller authorization](/docs/accounts/overview#caller-authorization).
 

@@ -2,7 +2,6 @@
 title: sync_agent_notification_configs
 description: "Register agent-level webhook subscribers, starting with capabilities.changed notifications that invalidate cached get_adcp_capabilities responses."
 "og:title": "AdCP — sync_agent_notification_configs"
-testable: false
 ---
 
 Register, replace, pause, or clear caller-scoped agent-level webhook subscribers. This task manages notifications whose lifecycle belongs to the seller agent itself rather than to an account, media buy, creative, or other account-scoped resource.
@@ -32,14 +31,20 @@ First call `get_adcp_capabilities`. Only call this task when the seller advertis
 }
 ```
 
-Sellers that do not advertise support MUST reject the task rather than silently accepting a subscriber that will never fire. When `notifications.supported: true`, the same `capability_changes` block MUST include `cache_ttl_seconds` and at least one revision marker (`capabilities_version` or `last_modified`) so receivers have a bounded polling fallback and a stable comparison after missed webhooks.
+Sellers that do not advertise support MUST reject the task rather than silently accepting a subscriber that will never fire. When `notifications.supported: true`, the same `capability_changes` block MUST include `cache_ttl_seconds` and `capabilities_version` so receivers have a bounded polling fallback and a stable comparison after missed webhooks.
+
+## Authentication and Caller Scope
+
+This task MUST only be accepted when the transport request resolves to a stable authenticated principal. The principal can be an OAuth client subject, API-key subject, verified signed-request subject, registry identity, or equivalent deployment identity, but it MUST be stable across retries and future replacements. Sellers MUST reject NO_AUTH, anonymous, or otherwise unbound registrations with `AUTH_MISSING` when no credentials are present, `AUTH_INVALID` when presented credentials fail validation, or `INVALID_REQUEST` when the transport exposes anonymous registration as a malformed request.
+
+The authenticated principal is the owner key for declarative replacement. Sellers MUST NOT key agent-level subscribers only by `subscriber_id` or URL, because two callers can legitimately choose the same local subscriber ID. One caller's replacement set MUST NOT read, delete, pause, overwrite, or infer subscribers owned by another principal.
 
 ## Request Parameters
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `idempotency_key` | string | **Required.** Unique key for at-most-once replacement. Reuse the same key and same payload on retry. |
-| `notification_configs` | array | **Required.** Complete desired agent-level subscriber set for the authenticated caller or registry identity. Send `[]` to clear this caller's subscribers. |
+| `notification_configs` | array | **Required.** Complete desired agent-level subscriber set for the authenticated principal. Send `[]` to clear this principal's subscribers. |
 | `dry_run` | boolean | Optional. Validate without applying changes or sending endpoint proof challenges. |
 
 Each `notification_configs[]` entry has:
@@ -60,7 +65,7 @@ Agent-level challenges intentionally do not carry `account_id` because capabilit
 
 ## Replacement Semantics
 
-The submitted array is declarative and complete for the authenticated caller or registry identity:
+The submitted array is declarative and complete for the authenticated principal:
 
 - Omit `notification_configs` is invalid.
 - Send `notification_configs: []` to remove every agent-level subscriber owned by this caller.
@@ -73,7 +78,7 @@ One caller's replacement MUST NOT delete, pause, or mutate subscribers registere
 
 ## Webhook Payload
 
-When the seller's advertised capability document materially changes, it fires `capabilities.changed` to active subscribers:
+When the seller's advertised capability document materially changes, it publishes the new `get_adcp_capabilities` snapshot first, then fires `capabilities.changed` to active subscribers:
 
 ```json
 {
@@ -90,7 +95,7 @@ When the seller's advertised capability document materially changes, it fires `c
 }
 ```
 
-The webhook does not carry the full capability document. Receivers SHOULD re-run `get_adcp_capabilities`, compare `adcp.capability_changes.capabilities_version` or `last_modified` when present, and replace their local cache with the fresh response.
+The webhook does not carry the full capability document. The `capabilities_version` in the webhook is the post-change revision token and MUST be observable in `get_adcp_capabilities` before the seller sends the webhook. Receivers SHOULD re-run `get_adcp_capabilities`, compare `adcp.capability_changes.capabilities_version` with the webhook's `capabilities_version`, and replace their local cache with the fresh response. If the webhook's `capabilities_version` is not yet observable, receivers SHOULD retry `get_adcp_capabilities` with normal transient-error backoff and MUST retain their prior cached snapshot until a fresher authoritative snapshot is read or the cache TTL expires.
 
 ## Example
 
