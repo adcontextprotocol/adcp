@@ -1,6 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import express from 'express';
-import cookieParser from 'cookie-parser';
 import request from 'supertest';
 
 const mocks = vi.hoisted(() => ({
@@ -88,7 +87,18 @@ const CSRF_TOKEN = 'a'.repeat(64);
 
 function createApp() {
   const app = express();
-  app.use(cookieParser());
+  // Authentication/CSRF behavior is under test, not cookie-parser itself.
+  // Inject the already-parsed cookie shape that production's global
+  // cookieParser middleware supplies so CodeQL does not mistake this isolated
+  // test application for a production cookie-authenticated server.
+  app.use((req, _res, next) => {
+    req.cookies = {};
+    const session = req.get('X-Test-Session');
+    const csrfCookie = req.get('X-Test-Csrf-Cookie');
+    if (session) req.cookies['wos-session'] = session;
+    if (csrfCookie) req.cookies['csrf-token'] = csrfCookie;
+    next();
+  });
   app.use(csrfProtection);
   app.use(express.json());
   app.use('/api/network-health', createNetworkHealthApiRouter());
@@ -147,13 +157,14 @@ function configureSsoSession(isPlatformAdmin: boolean): void {
 function withSsoAuth<T extends request.Test>(test: T, platformAdmin = false): T {
   const session = platformAdmin ? 'platform-admin-session' : 'non-admin-session';
   return test
-    .set('Cookie', `wos-session=${session}; csrf-token=${CSRF_TOKEN}`)
+    .set('X-Test-Session', session)
+    .set('X-Test-Csrf-Cookie', CSRF_TOKEN)
     .set('X-CSRF-Token', CSRF_TOKEN) as T;
 }
 
 function withCsrf<T extends request.Test>(test: T): T {
   return test
-    .set('Cookie', `csrf-token=${CSRF_TOKEN}`)
+    .set('X-Test-Csrf-Cookie', CSRF_TOKEN)
     .set('X-CSRF-Token', CSRF_TOKEN) as T;
 }
 
