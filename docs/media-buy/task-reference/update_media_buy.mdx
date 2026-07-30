@@ -200,7 +200,7 @@ asyncio.run(create_and_pause_campaign())
 | `reporting_webhook` | object | No | Update reporting webhook configuration (see below) |
 | `idempotency_key` | string | No | Unique key for safe retries. If an update with the same key has already been processed, the seller returns the original response. MUST be unique per (seller, request) pair. Min 16 chars. |
 | `invoice_recipient` | [BusinessEntity](/docs/building/by-layer/L2/accounts-and-agents#billing-entity-and-invoice-recipient) | No | Override who receives the invoice for this buy. The seller MUST validate authorization and include in `check_governance` when governance agents are configured. |
-| `new_packages` | PackageRequest[] | No | New packages to add to this media buy. Same shape as `create_media_buy` packages. Only supported by sellers that advertise `add_packages` in `valid_actions`. |
+| `new_packages` | PackageRequest[] | No | New packages to add to this media buy. Same shape as `create_media_buy` packages. When `budget_allocation` is omitted or fixed, each new package requires `budget` and cannot use `min_spend_target`. To add an uncapped package to an existing seller-optimized buy, include the resulting seller-optimized `budget_allocation` block so the allocation context is explicit. Only supported by sellers that advertise `add_packages` in `valid_actions`. |
 | `total_budget` | TotalBudget | No | Updated hard aggregate lifetime budget. Already-spent amounts continue to count against the new total. |
 | `budget_allocation` | BudgetAllocation | No | Updated fixed or seller-optimized allocation configuration. Mode changes require `update_budget_allocation` in `available_actions`. |
 | `pacing` | string | No | Updated aggregate media-buy pacing strategy. |

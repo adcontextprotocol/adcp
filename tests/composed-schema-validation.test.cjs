@@ -571,6 +571,62 @@ async function runTests() {
   );
 
   await testSchemaRejection(
+    '/schemas/media-buy/update-media-buy-request.json',
+    {
+      idempotency_key: 'fixed-add-missing-budget-001',
+      account: { account_id: 'acc_test_001' },
+      media_buy_id: 'mb_fixed_001',
+      new_packages: [
+        {
+          product_id: 'display_standard',
+          pricing_option_id: 'cpm_fixed'
+        }
+      ]
+    },
+    'Update media buy keeps new-package budget required when allocation is fixed or omitted'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/update-media-buy-request.json',
+    {
+      idempotency_key: 'explicit-fixed-add-missing-001',
+      account: { account_id: 'acc_test_001' },
+      media_buy_id: 'mb_fixed_002',
+      budget_allocation: { mode: 'fixed' },
+      new_packages: [
+        {
+          product_id: 'display_standard',
+          pricing_option_id: 'cpm_fixed'
+        }
+      ]
+    },
+    'Update media buy requires new-package budget when fixed allocation is explicit'
+  );
+
+  await testSchemaValidation(
+    '/schemas/media-buy/update-media-buy-request.json',
+    {
+      idempotency_key: 'shared-add-uncapped-001',
+      account: { account_id: 'acc_test_001' },
+      media_buy_id: 'mb_shared_001',
+      budget_allocation: {
+        mode: 'seller_optimized',
+        optimization_goals: [
+          { kind: 'metric', metric: 'clicks' }
+        ]
+      },
+      new_packages: [
+        {
+          product_id: 'retargeting',
+          pricing_option_id: 'cpm_auction',
+          min_spend_target: 5000
+        }
+      ]
+    },
+    'Update media buy accepts an uncapped new package with explicit seller-optimized allocation context'
+  );
+
+  await testSchemaRejection(
     '/schemas/media-buy/create-media-buy-request.json',
     {
       idempotency_key: 'shared-missing-total-001',

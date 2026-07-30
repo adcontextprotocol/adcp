@@ -83,6 +83,7 @@ Returns an array of media buys with current status, creative approval state, and
 | `product_id` | Product identifier this package is purchased from. For packages created from an explicit `create_media_buy` package request, sellers MUST echo the request package's `product_id` on every response package object that represents that requested package. |
 | `budget` | Hard lifetime package spend cap. In seller-optimized mode this is not a current allocation and may be absent. |
 | `min_spend_target` | Soft lifetime package spend target accepted for seller-optimized allocation. |
+| `pacing` | Package pacing preference. It is subordinate to media-buy aggregate `pacing` and cannot cause aggregate delivery to exceed that strategy. |
 | `currency` | Optional package-level currency override (defaults to media buy `currency`) |
 | `bidding` | Package-authored bidding override. Omitted when the package inherits media-buy `bidding`. |
 | `bid_price` | Deprecated legacy bid representation; 3.2 sellers should normalize and echo `bidding`. |

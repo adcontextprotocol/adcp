@@ -44,6 +44,32 @@
           }
         }
       }
+    },
+    {
+      "if": {
+        "required": ["new_packages"],
+        "not": {
+          "properties": {
+            "budget_allocation": {
+              "properties": {
+                "mode": { "const": "seller_optimized" }
+              },
+              "required": ["mode"]
+            }
+          },
+          "required": ["budget_allocation"]
+        }
+      },
+      "then": {
+        "properties": {
+          "new_packages": {
+            "items": {
+              "required": ["budget"],
+              "not": { "required": ["min_spend_target"] }
+            }
+          }
+        }
+      }
     }
   ],
   "x-mutates-state": true,
@@ -136,7 +162,7 @@
     },
     "new_packages": {
       "type": "array",
-      "description": "New packages to add to this media buy. Uses the same schema as create_media_buy packages. Sellers that support mid-flight package additions advertise `add_packages` in both `valid_actions[]` (deprecated) and as an entry in `available_actions[]` (authoritative). Sellers that do not support this MUST reject with ACTION_NOT_ALLOWED (preferred) or UNSUPPORTED_FEATURE (legacy).",
+      "description": "New packages to add to this media buy. Uses the same schema as create_media_buy packages. When budget_allocation is omitted or fixed, every new package MUST carry budget and MUST NOT carry min_spend_target. To add a package without a hard cap to an existing seller-optimized buy, include its resulting seller_optimized budget_allocation block in the update so the allocation context is schema-visible. Repeating an unchanged allocation block does not itself switch modes. Sellers that support mid-flight package additions advertise `add_packages` in both `valid_actions[]` (deprecated) and as an entry in `available_actions[]` (authoritative). Sellers that do not support this MUST reject with ACTION_NOT_ALLOWED (preferred) or UNSUPPORTED_FEATURE (legacy).",
       "items": {
         "$ref": "/schemas/media-buy/package-request.json"
       },
