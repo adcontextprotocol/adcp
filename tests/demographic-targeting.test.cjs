@@ -94,6 +94,15 @@ describe('portable demographic targeting', () => {
     }), false, 'enumerated mode requires its authoritative interval catalog');
   });
 
+  it('keeps omitted continuous bounds unbounded beyond explicit-bound limits', () => {
+    const capability = readSchema('/schemas/core/demographic-targeting-capability.json');
+    const age = capability.properties.age.properties;
+
+    assert.match(age.execution_modes.description, /omitted min or max remains unbounded/);
+    assert.match(age.min_supported_age.description, /omission means no lower age restriction/);
+    assert.match(age.max_supported_age.description, /min 65 remains 65\+/);
+  });
+
   it('requires age-sensitive signals to declare the age restricted attribute', () => {
     const definition = {
       id: 'adults_25_34',

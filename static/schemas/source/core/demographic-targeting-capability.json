@@ -11,7 +11,7 @@
       "properties": {
         "execution_modes": {
           "type": "array",
-          "description": "Ways this product can execute canonical age intent. continuous_bounds accepts any integer bounds inside the declared domain; enumerated_intervals accepts exact unions of the declared intervals; signals resolves through signals carrying authoritative demographic_predicate metadata.",
+          "description": "Ways this product can execute canonical age intent. continuous_bounds accepts any canonical predicate whose explicit integer bounds fall between min_supported_age and max_supported_age, inclusive. An omitted min or max remains unbounded in that direction and MUST NOT be replaced by the corresponding supported-age limit. enumerated_intervals accepts exact unions of the declared intervals; signals resolves through signals carrying authoritative demographic_predicate metadata.",
           "items": {
             "type": "string",
             "enum": ["continuous_bounds", "enumerated_intervals", "signals"]
@@ -23,13 +23,13 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 150,
-          "description": "Lowest inclusive bound accepted by continuous_bounds. Required when that execution mode is declared."
+          "description": "Lowest integer accepted as an explicit min or max bound by continuous_bounds. This limit does not replace an omitted min: omission means no lower age restriction. Required when that execution mode is declared."
         },
         "max_supported_age": {
           "type": "integer",
           "minimum": 0,
           "maximum": 150,
-          "description": "Highest inclusive bound accepted by continuous_bounds. Required when that execution mode is declared."
+          "description": "Highest integer accepted as an explicit min or max bound by continuous_bounds. This limit does not replace an omitted max: omission means no upper age restriction, so a request such as min 65 remains 65+ even when max_supported_age is 65. Required when that execution mode is declared."
         },
         "unknown_handling": {
           "type": "string",
