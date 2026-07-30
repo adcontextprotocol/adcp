@@ -213,6 +213,7 @@
           "signal_targeting_allowed",
           "signal_targeting_options",
           "signal_targeting_rules",
+          "demographic_targeting",
           "max_optimization_goals",
           "catalog_match",
           "collections",

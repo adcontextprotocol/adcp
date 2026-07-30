@@ -354,6 +354,18 @@
                     }
                   }
                 },
+                "demographics": {
+                  "type": "object",
+                  "description": "Seller-wide discovery rollup for canonical demographic targeting. supported=true means at least one product implements the demographic targeting contract; it does not authorize demographic targeting on every product. Buyers MUST inspect Product.demographic_targeting for exact execution modes, bounds, intervals, and unknown-age behavior.",
+                  "properties": {
+                    "supported": {
+                      "type": "boolean",
+                      "description": "Whether at least one seller product supports canonical demographic targeting."
+                    }
+                  },
+                  "required": ["supported"],
+                  "additionalProperties": true
+                },
                 "language": {
                   "type": "boolean",
                   "description": "Whether seller supports language targeting (ISO 639-1 codes)"

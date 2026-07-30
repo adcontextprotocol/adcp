@@ -13,6 +13,10 @@
       },
       "minItems": 1
     },
+    "demographic_predicate": {
+      "$ref": "/schemas/core/demographic-predicate.json",
+      "description": "Projected authoritative demographic meaning for the signal. When projected from another provider, this MUST match the provider's definition exactly. Signal names alone never establish demographic semantics."
+    },
     "policy_categories": {
       "type": "array",
       "description": "Policy categories this signal is sensitive for.",
@@ -324,5 +328,18 @@
       "type": "string"
     }
   },
+  "allOf": [
+    {
+      "if": { "required": ["demographic_predicate"] },
+      "then": {
+        "properties": {
+          "restricted_attributes": {
+            "contains": { "const": "age" }
+          }
+        },
+        "required": ["restricted_attributes"]
+      }
+    }
+  ],
   "additionalProperties": true
 }

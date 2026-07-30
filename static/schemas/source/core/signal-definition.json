@@ -49,6 +49,10 @@
       },
       "minItems": 1
     },
+    "demographic_predicate": {
+      "$ref": "/schemas/core/demographic-predicate.json",
+      "description": "Authoritative machine-readable demographic meaning for this signal. Signal names and taxonomy labels alone never establish exact demographic equivalence. Signals carrying this field MUST also declare restricted_attributes including age."
+    },
     "policy_categories": {
       "type": "array",
       "description": "Policy categories this signal is sensitive for (e.g., a children's interest signal declares ['children_directed']). Governance agents match these against a plan's policy_categories to flag sensitive data usage.",
@@ -495,6 +499,17 @@
         "required": ["data_sources"]
       },
       "then": { "required": ["onboarder"] }
+    },
+    {
+      "if": { "required": ["demographic_predicate"] },
+      "then": {
+        "properties": {
+          "restricted_attributes": {
+            "contains": { "const": "age" }
+          }
+        },
+        "required": ["restricted_attributes"]
+      }
     }
   ],
   "additionalProperties": true

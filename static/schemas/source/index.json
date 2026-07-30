@@ -73,6 +73,22 @@
           "$ref": "/schemas/core/targeting.json",
           "description": "Audience targeting criteria"
         },
+        "demographic-age-range": {
+          "$ref": "/schemas/core/demographic-age-range.json",
+          "description": "Canonical inclusive age interval with explicit unknown-age membership"
+        },
+        "demographic-predicate": {
+          "$ref": "/schemas/core/demographic-predicate.json",
+          "description": "Portable demographic audience intent, beginning with age in AdCP 3.2"
+        },
+        "demographic-targeting-capability": {
+          "$ref": "/schemas/core/demographic-targeting-capability.json",
+          "description": "Product-scoped demographic execution modes and exact interval capabilities"
+        },
+        "demographic-targeting-resolution": {
+          "$ref": "/schemas/core/demographic-targeting-resolution.json",
+          "description": "Requested, applied, execution, and exact-equivalence demographic readback"
+        },
         "duration": {
           "$ref": "/schemas/core/duration.json",
           "description": "A time duration with value and unit (hours or days)"
