@@ -154,7 +154,7 @@
     },
     "demographics": {
       "$ref": "/schemas/core/demographic-predicate.json",
-      "description": "Canonical demographic audience targeting intent. AdCP 3.2 standardizes age first. This is distinct from age_restriction: demographics selects an audience, while age_restriction expresses a legal eligibility or verification floor. Sellers MUST compile this predicate exactly using the selected product's demographic_targeting capability, or reject it and return explicit alternatives; they MUST NOT silently broaden, narrow, default, or drop it."
+      "description": "Canonical demographic audience targeting intent. AdCP 3.2 standardizes age first. This is distinct from age_restriction: demographics selects an audience, while age_restriction expresses a legal eligibility or verification floor. Sellers MUST compile this predicate exactly using the selected product's demographic_targeting capability or reject it; they MUST NOT silently broaden, narrow, default, or drop it. A buyer choosing a suggested supported predicate submits that predicate as a new request."
     },
     "frequency_cap": {
       "$ref": "/schemas/core/frequency-cap.json"

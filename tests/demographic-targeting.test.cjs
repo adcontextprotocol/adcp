@@ -64,6 +64,8 @@ describe('portable demographic targeting', () => {
         execution_modes: ['continuous_bounds'],
         min_supported_age: 18,
         max_supported_age: 65,
+        supports_unbounded_min: true,
+        supports_unbounded_max: true,
         unknown_handling: 'selectable',
       },
     }), true);
@@ -71,9 +73,18 @@ describe('portable demographic targeting', () => {
     assert.equal(validateCapability({
       age: {
         execution_modes: ['continuous_bounds'],
+        min_supported_age: 18,
+        max_supported_age: 65,
         unknown_handling: 'selectable',
       },
-    }), false, 'continuous bounds require the supported domain');
+    }), false, 'continuous bounds require explicit support flags for both open directions');
+
+    assert.equal(validateCapability({
+      age: {
+        execution_modes: ['continuous_bounds'],
+        unknown_handling: 'selectable',
+      },
+    }), false, 'continuous bounds require the supported domain and explicit open-bound flags');
 
     assert.equal(validateCapability({
       age: {
@@ -94,13 +105,26 @@ describe('portable demographic targeting', () => {
     }), false, 'enumerated mode requires its authoritative interval catalog');
   });
 
-  it('keeps omitted continuous bounds unbounded beyond explicit-bound limits', () => {
+  it('requires explicit support for each omitted continuous bound', () => {
     const capability = readSchema('/schemas/core/demographic-targeting-capability.json');
     const age = capability.properties.age.properties;
 
-    assert.match(age.execution_modes.description, /omitted min or max remains unbounded/);
+    assert.match(age.execution_modes.description, /supports_unbounded_min or supports_unbounded_max/);
     assert.match(age.min_supported_age.description, /omission means no lower age restriction/);
     assert.match(age.max_supported_age.description, /min 65 remains 65\+/);
+    assert.match(age.supports_unbounded_min.description, /MUST reject open-lower predicates/);
+    assert.match(age.supports_unbounded_max.description, /min 65 remains 65\+/);
+
+    assert.equal(validateCapability({
+      age: {
+        execution_modes: ['continuous_bounds'],
+        min_supported_age: 18,
+        max_supported_age: 65,
+        supports_unbounded_min: false,
+        supports_unbounded_max: true,
+        unknown_handling: 'selectable',
+      },
+    }), true, 'support for each open direction is declared independently');
   });
 
   it('requires age-sensitive signals to declare the age restricted attribute', () => {
@@ -143,7 +167,7 @@ describe('portable demographic targeting', () => {
     }), true);
   });
 
-  it('makes every non-equivalent readback explain the difference', () => {
+  it('rejects every non-equivalent or self-approved stored resolution', () => {
     const nonExact = {
       requested: { age: { min: 21, max: 35, include_unknown: false } },
       applied: { age: { min: 25, max: 34, include_unknown: false } },
@@ -151,8 +175,13 @@ describe('portable demographic targeting', () => {
       execution: { type: 'enumerated_intervals', interval_ids: ['age_25_34'] },
     };
     assert.equal(validateResolution(nonExact), false);
-    assert.equal(validateResolution({ ...nonExact, difference_reason: 'Narrower alternative', buyer_approved: false }), false);
-    assert.equal(validateResolution({ ...nonExact, difference_reason: 'Buyer-approved narrower alternative', buyer_approved: true }), true);
+    assert.equal(validateResolution({ ...nonExact, difference_reason: 'Narrower alternative', buyer_approved: true }), false);
+    assert.equal(validateResolution({
+      ...nonExact,
+      applied: nonExact.requested,
+      equivalent: true,
+      difference_reason: 'No difference',
+    }), false, 'legacy alternative-approval fields are forbidden even on exact resolutions');
   });
 
   it('locks the request, product, capability-rollup, and package-readback schema paths', () => {

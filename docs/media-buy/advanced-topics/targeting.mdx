@@ -6,19 +6,21 @@ testable: true
 ---
 
 
-AdCP's targeting philosophy centers on **brief-based targeting** where targeting requirements are communicated through natural language briefs, and publishers return products that include all necessary targeting capabilities.
+AdCP starts with **brief-based targeting** for semantic preferences and uses typed overlays when a buyer needs an exact, auditable constraint. Publishers return products that describe which overlay semantics they can execute.
 
-## Core Principle: Targeting Through Briefs
+## Core principle: semantic intent in briefs, exact constraints in overlays
 
-The primary way to specify targeting in AdCP is through campaign briefs. Instead of configuring complex targeting parameters, buyers describe their audience requirements in plain language:
+Use campaign briefs for audience meaning, strategy, and seller-led discovery. Instead of configuring every platform-specific targeting parameter, buyers describe those preferences in plain language:
 
 ```json
 {
-  "brief": "We want to reach millennial parents (ages 25-40) in major US metro areas who are interested in sustainable products. Focus on mobile and desktop during evening hours when families are planning purchases."
+  "brief": "We want to reach millennial parents in major US metro areas who are interested in sustainable products. Focus on mobile and desktop during evening hours when families are planning purchases."
 }
 ```
 
 Publishers then return products that include the targeting capabilities to reach this audience, with targeting costs built into the media pricing.
+
+Use a typed `targeting_overlay` for controls whose exact wire semantics must survive booking and readback. In particular, numeric demographic predicates such as ages 25–40 belong in `targeting_overlay.demographics`; prose such as “millennial parents interested in sustainable products” remains in the brief. If both are supplied, the prose guides discovery while the overlay is the auditable package constraint.
 
 When the buyer wants package-level control over specific selectable signals that the seller offers, use `targeting_overlay.signal_targeting_groups` on the package. Buy-time eligibility comes from the selected product's signal targeting contract: `signal_targeting_allowed`, inline `Product.signal_targeting_options` when present, the seller's `get_signals` feed for wholesale products that omit inline options, and `signal_targeting_rules`. Signals are named targetable dimensions, referenced with `signal_ref`: `scope: "product"` for product-local signal options, `scope: "data_provider"` with `data_provider_domain` for signals defined in a data provider's published adagents.json `signals[]`, or `scope: "signal_source"` with `signal_source_url` for source-native signals that are not published in adagents.json `signals[]`. `signal_ref.scope` is the buy-time resolution path, not provenance, and authoritative enrichment lives on the seller, data provider, or source signal definition. Do not overload `audience_include` or `audience_exclude` for this purpose; those fields are only for first-party audiences registered through `sync_audiences`.
 
@@ -42,7 +44,7 @@ Use `targeting_overlay.demographics` when the buyer needs a demographic predicat
 }
 ```
 
-`min` and `max` are inclusive integer ages in completed years. Either may be omitted for an open bound, but at least one is required. `include_unknown` is always required and has no default: people whose age is unavailable are not silently included in a numeric interval. Sellers also reject a range whose `min` is greater than its `max`.
+`min` and `max` are inclusive integer ages in completed years. Either may be omitted for an open bound, but at least one is required. Before using an open bound, check the product's `supports_unbounded_min` or `supports_unbounded_max` flag; a seller that declares `false` rejects that direction rather than substituting its supported-age limit. `include_unknown` is always required and has no default: people whose age is unavailable are not silently included in a numeric interval. Sellers also reject a range whose `min` is greater than its `max`.
 
 This field is audience selection, not eligibility policy. Continue to use `age_restriction` for a legal minimum age and verification requirements such as alcohol or gambling controls.
 
@@ -61,6 +63,8 @@ A product that accepts arbitrary bounds declares `continuous_bounds`:
       "execution_modes": ["continuous_bounds"],
       "min_supported_age": 18,
       "max_supported_age": 65,
+      "supports_unbounded_min": true,
+      "supports_unbounded_max": true,
       "unknown_handling": "selectable"
     }
   }
@@ -85,7 +89,7 @@ A bucket-backed product publishes its actual intervals rather than pretending th
 }
 ```
 
-That product cannot execute ages 21–35 exactly: `18–24 ∪ 25–34 ∪ 35–44` broadens the request, while `25–34` narrows it. The seller rejects the request or returns explicit alternatives for buyer approval. It never books a widened range silently.
+That product cannot execute ages 21–35 exactly: `18–24 ∪ 25–34 ∪ 35–44` broadens the request, while `25–34` narrows it. The seller rejects the request and may suggest supported predicates. If the buyer chooses one, it submits that predicate as a new request; the seller never stores a widened or narrowed alternative under the original request.
 
 `unknown_handling` is one of:
 
@@ -139,7 +143,7 @@ Whenever demographic targeting was requested or applied, package state includes 
 }
 ```
 
-`targeting_overlay.demographics` is applied state and matches the resolution's `applied` predicate. Buyers should recompute `equivalent` from `requested` and `applied`. A non-equivalent readback includes `difference_reason` and `buyer_approved: true`; the schema does not permit a stored non-equivalent package to claim that approval was absent. The same core `Package` schema carries this readback in synchronous `CreateMediaBuySuccess` responses and terminal async completion artifacts; `get_media_buys` exposes the corresponding `PackageStatus` field. Updates use the normal full-overlay replacement semantics and refresh the resolution atomically.
+`targeting_overlay.demographics` is applied state and matches the resolution's `applied` predicate. `equivalent` is always `true` for stored packages, and buyers should still recompute equality from `requested` and `applied`. A seller rejects any non-equivalent compilation; selecting a suggested predicate requires a new buyer request, which becomes the new auditable intent. The same core `Package` schema carries this readback in synchronous `CreateMediaBuySuccess` responses and terminal async completion artifacts; `get_media_buys` exposes the corresponding `PackageStatus` field. Updates use the normal full-overlay replacement semantics and refresh the resolution atomically.
 
 ## Why Brief-Based Targeting?
 

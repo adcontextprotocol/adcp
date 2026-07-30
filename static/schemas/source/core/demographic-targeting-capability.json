@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/demographic-targeting-capability.json",
   "title": "Demographic Targeting Capability",
-  "description": "Product-scoped demographic execution capability. This declaration is product-scoped because one seller may route products through different ad servers. Buyers compare a requested canonical predicate with these capabilities before purchase; sellers MUST reject or return explicit alternatives when they cannot compile the predicate exactly.",
+  "description": "Product-scoped demographic execution capability. This declaration is product-scoped because one seller may route products through different ad servers. Buyers compare a requested canonical predicate with these capabilities before purchase; sellers MUST reject predicates they cannot compile exactly. A buyer that chooses a supported alternative submits that predicate as a new request.",
   "type": "object",
   "properties": {
     "age": {
@@ -11,7 +11,7 @@
       "properties": {
         "execution_modes": {
           "type": "array",
-          "description": "Ways this product can execute canonical age intent. continuous_bounds accepts any canonical predicate whose explicit integer bounds fall between min_supported_age and max_supported_age, inclusive. An omitted min or max remains unbounded in that direction and MUST NOT be replaced by the corresponding supported-age limit. enumerated_intervals accepts exact unions of the declared intervals; signals resolves through signals carrying authoritative demographic_predicate metadata.",
+          "description": "Ways this product can execute canonical age intent. continuous_bounds accepts canonical predicates whose explicit integer bounds fall between min_supported_age and max_supported_age, inclusive; omitted bounds additionally require the corresponding supports_unbounded_min or supports_unbounded_max flag. enumerated_intervals accepts exact unions of the declared intervals; signals resolves through signals carrying authoritative demographic_predicate metadata.",
           "items": {
             "type": "string",
             "enum": ["continuous_bounds", "enumerated_intervals", "signals"]
@@ -30,6 +30,14 @@
           "minimum": 0,
           "maximum": 150,
           "description": "Highest integer accepted as an explicit min or max bound by continuous_bounds. This limit does not replace an omitted max: omission means no upper age restriction, so a request such as min 65 remains 65+ even when max_supported_age is 65. Required when that execution mode is declared."
+        },
+        "supports_unbounded_min": {
+          "type": "boolean",
+          "description": "Whether continuous_bounds accepts a predicate with min omitted. When true, the omitted min means no lower age restriction and MUST NOT be replaced by min_supported_age. When false, the seller MUST reject open-lower predicates. Required when continuous_bounds is declared."
+        },
+        "supports_unbounded_max": {
+          "type": "boolean",
+          "description": "Whether continuous_bounds accepts a predicate with max omitted. When true, the omitted max means no upper age restriction and MUST NOT be replaced by max_supported_age; for example, min 65 remains 65+. When false, the seller MUST reject open-upper predicates. Required when continuous_bounds is declared."
         },
         "unknown_handling": {
           "type": "string",
@@ -68,7 +76,7 @@
             "required": ["execution_modes"]
           },
           "then": {
-            "required": ["min_supported_age", "max_supported_age"]
+            "required": ["min_supported_age", "max_supported_age", "supports_unbounded_min", "supports_unbounded_max"]
           }
         },
         {

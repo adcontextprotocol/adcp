@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/demographic-targeting-resolution.json",
   "title": "Demographic Targeting Resolution",
-  "description": "Lossless package readback for demographic targeting. requested preserves canonical buyer intent; applied states the canonical predicate actually booked; execution identifies the seller mechanism. equivalent is true only when requested and applied denote exactly the same set. Buyers SHOULD recompute equivalence from the two predicates. Sellers MUST NOT confirm a non-equivalent package without explicit buyer approval of the applied alternative, and MUST never silently broaden targeting.",
+  "description": "Lossless package readback for exact demographic targeting. requested preserves canonical buyer intent; applied states the canonical predicate actually booked; execution identifies the seller mechanism. Sellers MUST book only when requested and applied denote exactly the same set, including unknown-age membership. Unsupported predicates are rejected; a buyer that chooses another supported predicate submits it as a new request. Buyers SHOULD recompute equality from the two predicates.",
   "type": "object",
   "properties": {
     "requested": {
@@ -15,15 +15,8 @@
     },
     "equivalent": {
       "type": "boolean",
-      "description": "Whether requested and applied are exactly equal, including unknown-age membership. This is derived readback, not permission to omit either predicate."
-    },
-    "difference_reason": {
-      "type": "string",
-      "description": "Human-readable explanation when equivalent is false. Omission is allowed only when equivalent is true."
-    },
-    "buyer_approved": {
-      "type": "boolean",
-      "description": "Whether the buyer explicitly approved a non-equivalent applied alternative before booking. Required and true when equivalent is false; omitted for exact resolutions."
+      "const": true,
+      "description": "Always true for a stored package. requested and applied MUST denote exactly the same set, including unknown-age membership; sellers reject non-equivalent requests instead of storing an alternative."
     },
     "execution": {
       "oneOf": [
@@ -96,21 +89,11 @@
     }
   },
   "required": ["requested", "applied", "equivalent", "execution"],
-  "allOf": [
-    {
-      "if": {
-        "properties": {
-          "equivalent": { "const": false }
-        },
-        "required": ["equivalent"]
-      },
-      "then": {
-        "properties": {
-          "buyer_approved": { "const": true }
-        },
-        "required": ["difference_reason", "buyer_approved"]
-      }
-    }
-  ],
+  "not": {
+    "anyOf": [
+      { "required": ["difference_reason"] },
+      { "required": ["buyer_approved"] }
+    ]
+  },
   "additionalProperties": true
 }
