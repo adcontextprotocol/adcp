@@ -64,6 +64,7 @@ Returns an array of media buys with current status, creative approval state, and
 | `total_budget` | Hard aggregate lifetime budget (in `currency`) |
 | `budget_allocation` | Fixed or seller-optimized cross-package allocation configuration. Omission means fixed for legacy buys. |
 | `pacing` | Aggregate media-buy pacing strategy |
+| `bidding` | Media-buy-authored bidding policy. Packages that inherit it omit their own `bidding` block. |
 | `creative_deadline` | Creative upload deadline (ISO 8601) |
 | `confirmed_at` | ISO 8601 timestamp when the seller committed to this media buy. May be `null` until seller commitment occurs in deferred/manual approval flows; stable after it is set. |
 | `cancellation` | Cancellation metadata (present only when `status` is `canceled`). Object with `canceled_at` (ISO 8601), `canceled_by` (`"buyer"` or `"seller"`), and optional `reason`. |
@@ -83,7 +84,9 @@ Returns an array of media buys with current status, creative approval state, and
 | `budget` | Hard lifetime package spend cap. In seller-optimized mode this is not a current allocation and may be absent. |
 | `min_spend_target` | Soft lifetime package spend target accepted for seller-optimized allocation. |
 | `currency` | Optional package-level currency override (defaults to media buy `currency`) |
-| `bid_price` | Current bid price for auction-based packages (in package `currency` if present, otherwise media buy `currency`) |
+| `bidding` | Package-authored bidding override. Omitted when the package inherits media-buy `bidding`. |
+| `bid_price` | Deprecated legacy bid representation; 3.2 sellers should normalize and echo `bidding`. |
+| `optimization_goals` | Current package objective functions, separate from currency-bearing `bidding` policy. |
 | `format_ids` | Legacy named-format IDs supplied on `create_media_buy`, echoed whenever the original request included them, including dual-emission cases where another selector won precedence. |
 | `format_option_refs` | Structured 3.1+ format option references supplied on `create_media_buy`, echoed whenever the original request included them. |
 | `format_kind` | Direct canonical selector supplied on `create_media_buy`, echoed whenever the original request included it, including informational-echo cases where another selector won precedence. |

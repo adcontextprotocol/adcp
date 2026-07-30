@@ -7,6 +7,40 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "if": { "required": ["bidding"] },
+      "then": {
+        "properties": {
+          "packages": {
+            "items": {
+              "not": {
+                "anyOf": [
+                  { "required": ["bid_price"] },
+                  {
+                    "properties": {
+                      "optimization_goals": {
+                        "contains": {
+                          "properties": {
+                            "target": {
+                              "properties": {
+                                "kind": { "enum": ["cost_per", "per_ad_spend"] }
+                              },
+                              "required": ["kind"]
+                            }
+                          },
+                          "required": ["target"]
+                        }
+                      }
+                    },
+                    "required": ["optimization_goals"]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
     }
   ],
   "x-mutates-state": true,
@@ -130,6 +164,12 @@
     "pacing": {
       "$ref": "/schemas/enums/pacing.json",
       "description": "Aggregate pacing strategy for the media-buy budget across the media-buy flight. This controls how much the buy spends over time. Package pacing is subordinate and influences which package receives the aggregate spend; package pacing MUST NOT cause aggregate delivery to exceed this strategy. Defaults to even when total_budget is present. When executing a proposal that carries pacing, omit this field or send the identical value; the seller MUST reject a conflicting override with TERMS_REJECTED."
+    },
+    "bidding": {
+      "allOf": [
+        { "$ref": "/schemas/core/bidding-policy.json" }
+      ],
+      "description": "Complete media-buy bidding default inherited by packages that omit package.bidding. In seller-optimized/shared-budget mode this is authoritative for provider-native campaign strategy. Sellers MUST reject incompatible units, combinations, or package overrides before mutation with BIDDING_PLACEMENT_CONFLICT. Media-buy bidding combined with any inheriting package's legacy bid_price or legacy monetary optimization-goal target is ambiguous and MUST be rejected with AMBIGUOUS_BIDDING_POLICY."
     },
     "paused": {
       "type": "boolean",

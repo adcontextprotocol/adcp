@@ -75,6 +75,12 @@
       "$ref": "/schemas/enums/pacing.json",
       "description": "Aggregate pacing strategy the seller will apply to total_budget."
     },
+    "bidding": {
+      "allOf": [
+        { "$ref": "/schemas/core/bidding-policy.json" }
+      ],
+      "description": "Seller-interpreted media-buy bidding policy used for governance and delivery transparency. Package-authored overrides remain on packages rather than being copied into this aggregate field."
+    },
     "enforced_policies": {
       "type": "array",
       "description": "Registry policy IDs the seller will enforce for this delivery.",

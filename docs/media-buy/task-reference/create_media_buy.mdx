@@ -50,7 +50,7 @@ const result = await testAgent.createMediaBuy({
         }
       ],
       budget: 2500,
-      bid_price: 5.00
+      bidding: { bid_amount: 5.00 }
     },
     {
       product_id: 'prod_e8fd6012',
@@ -62,7 +62,7 @@ const result = await testAgent.createMediaBuy({
         }
       ],
       budget: 2500,
-      bid_price: 4.50
+      bidding: { bid_amount: 4.50 }
     }
   ],
   start_time: tomorrow.toISOString(),
@@ -114,7 +114,7 @@ async def create_campaign():
                     }
                 ],
                 'budget': 2500,
-                'bid_price': 5.00
+                'bidding': {'bid_amount': 5.00}
             },
             {
                 'product_id': 'prod_e8fd6012',
@@ -126,7 +126,7 @@ async def create_campaign():
                     }
                 ],
                 'budget': 2500,
-                'bid_price': 4.50
+                'bidding': {'bid_amount': 4.50}
             }
         ],
         start_time=tomorrow.isoformat().replace('+00:00', 'Z'),
@@ -148,7 +148,7 @@ asyncio.run(create_campaign())
 npx @adcp/sdk@latest \
   https://test-agent.adcontextprotocol.org/sales/mcp \
   create_media_buy \
-  '{"brand":{"domain":"acmecorp.com"},"packages":[{"product_id":"prod_d979b543","pricing_option_id":"cpm_usd_auction","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_image"}],"budget":30000,"bid_price":5.00},{"product_id":"prod_e8fd6012","pricing_option_id":"cpm_usd_auction","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_html"}],"budget":20000,"bid_price":4.50}],"start_time":"2025-06-01T00:00:00Z","end_time":"2025-08-31T23:59:59Z"}' \
+  '{"brand":{"domain":"acmecorp.com"},"packages":[{"product_id":"prod_d979b543","pricing_option_id":"cpm_usd_auction","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_image"}],"budget":30000,"bidding":{"bid_amount":5.00}},{"product_id":"prod_e8fd6012","pricing_option_id":"cpm_usd_auction","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_html"}],"budget":20000,"bidding":{"bid_amount":4.50}}],"start_time":"2025-06-01T00:00:00Z","end_time":"2025-08-31T23:59:59Z"}' \
   --auth $ADCP_AUTH_TOKEN
 ```
 
@@ -167,6 +167,7 @@ npx @adcp/sdk@latest \
 | `start_time` | string | Yes | `"asap"` or ISO 8601 date-time. For new media buys, concrete date-times must not be in the past. |
 | `end_time` | string | Yes | ISO 8601 date-time (UTC unless timezone specified) |
 | `pacing` | string | No | Aggregate pacing for the media-buy budget: `even`, `asap`, or `front_loaded`. Defaults to `even` when `total_budget` is present. For proposal execution, omit it or match the committed proposal's pacing; conflicting overrides are rejected. |
+| `bidding` | BiddingPolicy | No | Complete media-buy bidding default inherited by packages that omit `packages[].bidding`. In shared-budget mode it is authoritative for provider-native campaign strategy. |
 | `paused` | boolean | No | Create the media buy with delivery held. When true and the buy would otherwise be active, `media_buy_status` is `paused`. Setup blockers still take precedence: missing creatives yield `pending_creatives`, and future flights yield `pending_start`; the hold becomes visible as `paused` after those blockers clear. |
 | `invoice_recipient` | [BusinessEntity](/docs/building/by-layer/L2/accounts-and-agents#billing-entity-and-invoice-recipient) | No | Override the account's default billing entity for this buy. The seller MUST validate the recipient is authorized and include it in `check_governance` when governance agents are configured. |
 | `po_number` | string | No | Purchase order number |
@@ -200,8 +201,9 @@ When executing a proposal, `proposal_status` on the returned proposal determines
 | `impressions` | number | No | Impression goal for this package |
 | `paused` | boolean | No | Create package in paused state (default: `false`) |
 | `pacing` | string | No | `"even"` (default), `"asap"`, or `"front_loaded"` |
-| `bid_price` | number | No | Bid price for auction pricing. This is the exact bid/price to honor unless the selected pricing option has `max_bid: true`, in which case it is treated as the buyer's maximum willingness to pay (ceiling). |
-| `optimization_goals` | [OptimizationGoal[]](/docs/media-buy/conversion-tracking/#optimization-goals) | No | Optimization targets for this package. Each goal is either `kind: "event"` (conversion events with `event_sources` array, optional `cost_per`, `per_ad_spend`, or `maximize_value` target) or `kind: "metric"` (seller-native metric with optional `cost_per` or `threshold_rate` target). Event goals require `conversion_tracking.supported_targets` on the product; metric goals require `metric_optimization.supported_metrics`. |
+| `bidding` | BiddingPolicy | No | Complete package-authored bidding override. Omit to inherit media-buy `bidding`. This is replacement inheritance, not a field-by-field merge. |
+| `bid_price` | number | No | **Deprecated in 3.2.** Use `bidding.bid_amount` or `bidding.max_bid`. A package cannot supply both representations. |
+| `optimization_goals` | [OptimizationGoal[]](/docs/media-buy/conversion-tracking/#optimization-goals) | No | Objective functions for this package: what to optimize and in what priority. Currency controls belong in `bidding`; legacy `target.cost_per` and `target.per_ad_spend` remain accepted only for migration. |
 | `targeting_overlay` | TargetingOverlay | No | Additional targeting criteria (see [Targeting](/docs/media-buy/advanced-topics/targeting)) |
 | `start_time` | string | No | ISO 8601 date-time for this package's flight start. When omitted, inherits the media buy's `start_time`. Must fall within the media buy's date range. Does not support `"asap"`. |
 | `end_time` | string | No | ISO 8601 date-time for this package's flight end. When omitted, inherits the media buy's `end_time`. Must fall within the media buy's date range. |
@@ -211,6 +213,34 @@ When executing a proposal, `proposal_status` on the returned proposal determines
 | `measurement_terms` | [MeasurementTerms](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | No | Buyer's proposed billing measurement and makegood terms. Overrides product defaults. Seller accepts (echoed on confirmed package), rejects with `TERMS_REJECTED`, or adjusts. When omitted, product's `measurement_terms` apply. |
 | `performance_standards` | [PerformanceStandard[]](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | No | Buyer's proposed performance standards (viewability, IVT, completion rate, brand safety, attention score). Overrides product defaults. Seller accepts, rejects with `TERMS_REJECTED`, or adjusts. When omitted, product's `performance_standards` apply. |
 | `committed_metrics` | object[] | No | Buyer's proposed reporting contract — metrics the buyer wants the seller to commit to populating in delivery reports. Same negotiation pattern as `measurement_terms`/`performance_standards`: each entry tags `scope: "standard"` (with `metric_id` from the closed enum) or `scope: "vendor"` (with `vendor` BrandRef + vendor's `metric_id`). Request-side entries do NOT carry `committed_at` — that timestamp is stamped by the seller on accept. Seller accepts (echoes on response with `committed_at`), rejects with `TERMS_REJECTED`, or normalizes (echoes a different but compatible list). When omitted, the seller decides what to commit based on the product's `available_metrics` plus any `required_metrics` filter the buyer passed at discovery. |
+
+### BiddingPolicy Object
+
+`optimization_goals` select the objective; `bidding` constrains how the seller executes against it. Currency is inherited from the media buy and is not repeated in the block.
+
+| Field | Meaning |
+|-------|---------|
+| `bid_amount` | Manual auction bid in the selected pricing option's auction unit. It is not a promise that the clearing price equals the bid. |
+| `max_bid` | Hard per-auction ceiling in the selected pricing option's auction unit. It is the only canonical hard auction ceiling. |
+| `cost_per: { amount, strength }` | Average cost per primary-goal result. `strength` is `cap` or `target`; neither is a per-result guarantee. |
+| `roas: { value, strength }` | Dimensionless return per unit of ad spend. `strength` is `floor` or `target`; value-bearing event sources are required. |
+
+`bid_amount`, `cost_per`, and `roas` are mutually exclusive primary modes. `max_bid` can stand alone or supplement `cost_per`/`roas` only where the provider supports it; `bid_amount` and `max_bid` cannot coexist. `cost_per` resolves against the package's primary optimization goal. `bid_amount` and `max_bid` resolve against the selected pricing option's auction unit, which permits combinations such as a conversion-cost target plus a max-CPC ceiling.
+
+Precedence is complete-block inheritance:
+
+1. Package `bidding` replaces media-buy `bidding` for that package.
+2. An omitted package block inherits the complete media-buy block.
+3. If both scopes are absent, provider automatic delivery applies.
+4. Sellers preserve authored scope on readback and never copy an inherited media-buy policy into every package.
+
+In seller-optimized/shared-budget mode, media-buy bidding is authoritative for any strategy the provider requires at campaign level. Package overrides are permitted only for controls that provider supports under the shared strategy. Sellers validate all effective policies before mutation and reject incompatible placement with `BIDDING_PLACEMENT_CONFLICT`; they never choose one conflicting package policy based on package order.
+
+In independent-package budget mode, sellers normally write each effective policy to the package-native object. When a provider requires one campaign strategy and all effective package policies are identical, a seller may lift that policy to the native campaign, but readback still preserves whether the buyer authored it at media-buy or package scope.
+
+During 3.2, sellers accept either canonical `bidding` or one legacy representation on an effective package, never both. Mixed input is rejected with `AMBIGUOUS_BIDDING_POLICY`. Legacy normalization is deterministic: `bid_price` plus pricing-option `max_bid: true` becomes `bidding.max_bid`; other `bid_price` becomes `bidding.bid_amount`; goal `target.cost_per` becomes `bidding.cost_per` with `strength: "target"`; and goal `target.per_ad_spend` becomes `bidding.roas` with `strength: "target"`.
+
+Google portfolio bidding illustrates the current abstraction boundary. This contract represents the numeric policy but does not model a provider portfolio resource or shared identity above a media buy. A seller may create and own a single-buy provider strategy to honor a portfolio-only ceiling. Selecting an existing strategy, sharing learning across media buys, or updating several buys atomically requires a future provider-neutral bidding-policy resource/reference; provider identity may be returned under `ext` until then.
 
 ## Response
 
@@ -332,7 +362,7 @@ const result = await testAgent.createMediaBuy({
       id: 'display_300x250_image'
     }],
     budget: 2500,
-    bid_price: 5.00,
+    bidding: { bid_amount: 5.00 },
     targeting_overlay: {
       geo_countries: ['US'],
       geo_regions: ['US-CA', 'US-NY'],
@@ -381,7 +411,7 @@ async def create_targeted_campaign():
                 'id': 'display_300x250_image'
             }],
             'budget': 2500,
-            'bid_price': 5.00,
+            'bidding': {'bid_amount': 5.00},
             'targeting_overlay': {
                 'geo_countries': ['US'],
                 'geo_regions': ['US-CA', 'US-NY'],
@@ -406,7 +436,7 @@ asyncio.run(create_targeted_campaign())
 
 ### Campaign with Conversion Optimization
 
-Set a per_ad_spend target for conversion-optimized delivery. The product must declare support in `conversion_tracking.supported_targets`, and you must have an event source configured via `sync_event_sources`:
+Keep the purchase event as the objective, then express target ROAS and the max-CPC auction ceiling separately in `bidding`. You must have an event source configured via `sync_event_sources`:
 
 <CodeGroup>
 
@@ -425,13 +455,15 @@ const result = await testAgent.createMediaBuy({
     product_id: 'prod_retail_sp',
     pricing_option_id: 'cpc_usd_auction',
     budget: 10000,
-    bid_price: 1.20,
+    bidding: {
+      roas: { value: 4.0, strength: 'target' },
+      max_bid: 1.20
+    },
     optimization_goals: [{
       kind: 'event',
       event_sources: [
         { event_source_id: 'retailer_sales', event_type: 'purchase', value_field: 'value' }
       ],
-      target: { kind: 'per_ad_spend', value: 4.0 },
       priority: 1
     }]
   }],
@@ -449,7 +481,7 @@ if ('errors' in validated && validated.errors) {
 }
 
 if ('media_buy_id' in validated) {
-  console.log(`Campaign ${validated.media_buy_id} created with per_ad_spend target`);
+  console.log(`Campaign ${validated.media_buy_id} created with target ROAS`);
 }
 ```
 
@@ -470,13 +502,15 @@ async def create_optimized_campaign():
             'product_id': 'prod_retail_sp',
             'pricing_option_id': 'cpc_usd_auction',
             'budget': 10000,
-            'bid_price': 1.20,
+            'bidding': {
+                'roas': {'value': 4.0, 'strength': 'target'},
+                'max_bid': 1.20
+            },
             'optimization_goals': [{
                 'kind': 'event',
                 'event_sources': [
                     { 'event_source_id': 'retailer_sales', 'event_type': 'purchase', 'value_field': 'value' }
                 ],
-                'target': { 'kind': 'per_ad_spend', 'value': 4.0 },
                 'priority': 1
             }]
         }],
@@ -487,7 +521,7 @@ async def create_optimized_campaign():
     if hasattr(result, 'errors') and result.errors:
         raise Exception(f"Creation failed: {result.errors}")
 
-    print(f"Campaign {result.media_buy_id} created with per_ad_spend target")
+    print(f"Campaign {result.media_buy_id} created with target ROAS")
 
 asyncio.run(create_optimized_campaign())
 ```
@@ -509,7 +543,7 @@ Include the `catalogs` field in a package to make it catalog-driven. Each catalo
     "product_id": "prod_job_board",
     "pricing_option_id": "cpc_eur_auction",
     "budget": 5000,
-    "bid_price": 2.50,
+    "bidding": { "bid_amount": 2.50 },
     "catalogs": [{
       "catalog_id": "chef-vacancies",
       "type": "job"
@@ -529,7 +563,7 @@ Include the `catalogs` field in a package to make it catalog-driven. Each catalo
     "product_id": "prod_retail_sp",
     "pricing_option_id": "cpc_usd_auction",
     "budget": 10000,
-    "bid_price": 1.20,
+    "bidding": { "bid_amount": 1.20 },
     "catalogs": [{
       "catalog_id": "gmc-primary",
       "type": "product",
@@ -660,7 +694,7 @@ const result = await testAgent.createMediaBuy({
       id: 'display_300x250_image'
     }],
     budget: 2500,
-    bid_price: 5.00,
+    bidding: { bid_amount: 5.00 },
     creatives: [{
       creative_id: 'hero_video_30s',
       name: 'Hero Video',
@@ -717,7 +751,7 @@ async def create_with_creatives():
                 'id': 'display_300x250_image'
             }],
             'budget': 2500,
-            'bid_price': 5.00,
+            'bidding': {'bid_amount': 5.00},
             'creatives': [{
                 'creative_id': 'hero_video_30s',
                 'name': 'Hero Video',
@@ -774,7 +808,7 @@ const result = await testAgent.createMediaBuy({
       id: 'display_300x250_image'
     }],
     budget: 2500,
-    bid_price: 5.00
+    bidding: { bid_amount: 5.00 }
   }],
   start_time: 'asap',
   end_time: endDate.toISOString(),
@@ -825,7 +859,7 @@ async def create_with_reporting():
                 'id': 'display_300x250_image'
             }],
             'budget': 2500,
-            'bid_price': 5.00
+            'bidding': {'bid_amount': 5.00}
         }],
         start_time='asap',
         end_time=end_date.isoformat().replace('+00:00', 'Z'),
@@ -960,7 +994,7 @@ When targeting mixed seller populations, include package context such as `contex
       "product_id": "prod_d979b543",
       "pricing_option_id": "cpm_usd_auction",
       "budget": 15000,
-      "bid_price": 5.00,
+      "bidding": { "bid_amount": 5.00 },
       "context": {
         "line_item_id": "li-001",
         "flight": "june-awareness"
@@ -970,7 +1004,7 @@ When targeting mixed seller populations, include package context such as `contex
       "product_id": "prod_e8fd6012",
       "pricing_option_id": "cpm_usd_auction",
       "budget": 10000,
-      "bid_price": 4.50,
+      "bidding": { "bid_amount": 4.50 },
       "context": {
         "line_item_id": "li-002",
         "flight": "june-retargeting"
@@ -1071,7 +1105,7 @@ Selector precedence is deterministic: `format_option_refs[]` wins when present; 
         }
       ],
       "budget": 2500,
-      "bid_price": 5.00
+      "bidding": { "bid_amount": 5.00 }
     }
   ]
 }
@@ -1115,7 +1149,8 @@ AdCP supports fixed package budgets and media-buy-level shared budgets. `budget_
 | `impressions` | Package | number | Impression goal for the package. An alternative volume target to `budget`; a seller may pace to whichever binds first. |
 | `pacing` | Media buy | enum | How the seller spreads aggregate spend across the media-buy flight. |
 | `packages[].pacing` | Package | enum | Subordinate temporal preference affecting which package receives the aggregate spend. |
-| `bid_price` | Package | number | For auction pricing options — the exact bid, or the ceiling when the pricing option has `max_bid: true`. |
+| `bidding` | Media buy or package | BiddingPolicy | Buyer execution policy. Media-buy is the inherited default; package is a complete override. |
+| `bid_price` | Package | number | Deprecated legacy representation normalized to `bidding.bid_amount` or `bidding.max_bid`. |
 | `start_time` / `end_time` | Package | string | The flight window the budget is spread across. When omitted, the package inherits the media buy's flight dates. |
 
 **Pacing modes** (from [`/schemas/v3/enums/pacing.json`](https://adcontextprotocol.org/schemas/v3/enums/pacing.json)):
@@ -1149,6 +1184,7 @@ Seller-optimized allocation is a nested optimization:
 2. Media-buy pacing controls how much the buy spends over time.
 3. Package pacing influences which eligible package receives that spend and MUST NOT cause aggregate delivery to exceed the media-buy pacing plan.
 4. `budget_allocation.optimization_goals` choose allocation across packages; `packages[].optimization_goals` optimize delivery within one package.
+5. Media-buy `bidding` governs campaign-level execution policy; package overrides are allowed only when the provider can preserve their authored semantics under the shared strategy.
 
 All packages in a seller-optimized buy MUST use the `total_budget.currency`. Every participating product MUST support the primary cross-package optimization goal. Sellers reject incompatible product combinations, currencies, pricing terms, or delivery constraints with `TERMS_REJECTED` or `UNSUPPORTED_FEATURE` and identify the incompatible package.
 
@@ -1174,6 +1210,10 @@ Continuous allocation decisions inside an accepted seller-optimized buy are deli
     ]
   },
   "pacing": "even",
+  "bidding": {
+    "cost_per": { "amount": 25, "strength": "cap" },
+    "max_bid": 8
+  },
   "packages": [
     {
       "product_id": "prospecting",
@@ -1197,7 +1237,7 @@ The package caps total $130,000, creating room for the seller to allocate the $1
 
 #### Known gap: no explicit daily cap
 
-AdCP 3.1 has **no per-day (or per-hour) budget cap field.** Delivery rate is governed by the combination of `budget`, `pacing`, and the flight window (`start_time` / `end_time`) — not a hard daily ceiling the buyer can pin. To constrain daily spend today:
+AdCP 3.2 has **no per-day (or per-hour) budget cap field.** Delivery rate is governed by the combination of `budget`, `pacing`, and the flight window (`start_time` / `end_time`) — not a hard daily ceiling the buyer can pin. To constrain daily spend today:
 
 - **Approximate a daily rate** by setting `pacing: "even"` and choosing `budget` and flight length so `budget ÷ flight_days` lands near the target daily spend. Enforcement is seller-side and best-effort, not a guaranteed hard cap.
 - **Tighten the window** by splitting a long flight into shorter packages (e.g. weekly packages), each with its own `budget`, when finer control is needed.

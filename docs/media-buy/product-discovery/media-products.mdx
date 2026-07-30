@@ -125,7 +125,7 @@ Each pricing option includes:
 }
 ```
 
-For auction-based pricing (no `fixed_price`), use `floor_price` for minimum bid constraints and optional `price_guidance` for percentile hints. Bid-based auction models (`cpm`, `vcpm`, `cpc`, `cpcv`, `cpv`) may also include `max_bid` as a boolean signal that `bid_price` switches from exact honored price to buyer ceiling mode:
+For auction-based pricing (no `fixed_price`), use `floor_price` for the seller's minimum and optional `price_guidance` for non-binding percentile hints. The buyer expresses execution intent separately through `bidding.bid_amount`, `bidding.max_bid`, `bidding.cost_per`, or `bidding.roas` on `create_media_buy`. Pricing-option `max_bid` and package `bid_price` are deprecated legacy migration fields in 3.2:
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/cpm-option.json",
@@ -133,7 +133,6 @@ For auction-based pricing (no `fixed_price`), use `floor_price` for minimum bid 
   "pricing_model": "cpm",
   "currency": "USD",
   "floor_price": 10.00,
-  "max_bid": true,
   "price_guidance": {
     "p25": 12.50,
     "p50": 15.00,

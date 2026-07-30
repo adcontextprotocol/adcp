@@ -82,6 +82,12 @@
             "$ref": "/schemas/enums/pacing.json",
             "description": "Aggregate pacing strategy for the media-buy budget."
           },
+          "bidding": {
+            "allOf": [
+              { "$ref": "/schemas/core/bidding-policy.json" }
+            ],
+            "description": "Current media-buy-authored bidding policy. Package entries omit bidding when they inherit this block."
+          },
           "start_time": {
             "type": "string",
             "format": "date-time",
@@ -250,8 +256,23 @@
                 },
                 "bid_price": {
                   "type": "number",
-                  "description": "Current bid price for auction-based packages. Denominated in package.currency when present, otherwise media_buy.currency. Relevant for automated price optimization loops.",
+                  "deprecated": true,
+                  "description": "DEPRECATED legacy bid representation. 3.2 sellers SHOULD normalize and echo package.bidding instead.",
                   "minimum": 0
+                },
+                "bidding": {
+                  "allOf": [
+                    { "$ref": "/schemas/core/bidding-policy.json" }
+                  ],
+                  "description": "Package-authored bidding override. Omitted when this package inherits media_buy.bidding; sellers MUST NOT copy an inherited block here."
+                },
+                "optimization_goals": {
+                  "type": "array",
+                  "description": "Current package objective functions. Currency-bearing execution controls are returned separately in package.bidding or inherited from media_buy.bidding.",
+                  "items": {
+                    "$ref": "/schemas/core/optimization-goal.json"
+                  },
+                  "minItems": 1
                 },
                 "format_ids": {
                   "type": "array",
@@ -450,6 +471,35 @@
               },
               "required": [
                 "package_id"
+              ],
+              "allOf": [
+                {
+                  "not": {
+                    "required": ["bidding", "bid_price"]
+                  }
+                },
+                {
+                  "if": { "required": ["bidding"] },
+                  "then": {
+                    "properties": {
+                      "optimization_goals": {
+                        "not": {
+                          "contains": {
+                            "properties": {
+                              "target": {
+                                "properties": {
+                                  "kind": { "enum": ["cost_per", "per_ad_spend"] }
+                                },
+                                "required": ["kind"]
+                              }
+                            },
+                            "required": ["target"]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
               ],
               "dependencies": {
                 "params": ["format_kind"]

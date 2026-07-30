@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/optimization-goal.json",
   "title": "Optimization Goal",
-  "description": "A single optimization target. Used on packages to optimize delivery within one package and on seller-optimized budget allocations to allocate spend across packages. When multiple goals are present, priority determines which the seller focuses on — 1 is highest priority (primary goal); higher numbers are secondary. When priorities are present but no goal is priority 1, the goal with the lowest priority value is primary (e.g., priorities of 2 and 3 mean 2 is primary). Duplicate priority values result in undefined seller behavior.",
+  "description": "A single objective function: what to maximize or optimize, in what units, and in what priority order. Used on packages to optimize delivery within one package and on seller-optimized budget allocations to allocate spend across packages. Currency-bearing execution policy belongs in BiddingPolicy in 3.2. Legacy target.cost_per and target.per_ad_spend remain accepted for migration but are deprecated. When multiple goals are present, priority determines which the seller focuses on — 1 is highest priority (primary goal); higher numbers are secondary. When priorities are present but no goal is priority 1, the goal with the lowest priority value is primary; when all priorities are omitted, the first array entry is primary. Duplicate priority values result in undefined seller behavior.",
   "discriminator": {
     "propertyName": "kind"
   },
@@ -60,7 +60,8 @@
           "oneOf": [
             {
               "type": "object",
-              "description": "Target cost per unit of the metric (e.g., cost per click, cost per completed view).",
+              "deprecated": true,
+              "description": "DEPRECATED legacy target cost per unit of the metric. Normalize to package.bidding.cost_per with strength target while retaining this goal as the objective.",
               "properties": {
                 "kind": { "type": "string", "const": "cost_per" },
                 "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target cost per metric unit in the buy currency" }
@@ -136,7 +137,8 @@
           "oneOf": [
             {
               "type": "object",
-              "description": "Target cost per conversion event (after deduplication across event_sources).",
+              "deprecated": true,
+              "description": "DEPRECATED legacy target cost per conversion event. Normalize to package.bidding.cost_per with strength target while retaining this event goal as the objective.",
               "properties": {
                 "kind": { "type": "string", "const": "cost_per" },
                 "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target cost per event in the buy currency" }
@@ -146,7 +148,8 @@
             },
             {
               "type": "object",
-              "description": "Target return per unit of ad spend, calculated as sum(value_field * value_factor) / spend across all deduplicated events. Requires value_field on at least one event_sources entry.",
+              "deprecated": true,
+              "description": "DEPRECATED legacy target return per unit of ad spend. Normalize to package.bidding.roas with strength target while retaining this event goal and its value-bearing event source. Requires value_field on at least one event_sources entry.",
               "properties": {
                 "kind": { "type": "string", "const": "per_ad_spend" },
                 "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target return ratio (e.g., 4.0 means $4 of value per $1 spent)" }
@@ -199,7 +202,8 @@
           "oneOf": [
             {
               "type": "object",
-              "description": "Target cost per unit of the vendor metric (e.g., cost per attention-second).",
+              "deprecated": true,
+              "description": "DEPRECATED legacy target cost per vendor-metric unit. Normalize to package.bidding.cost_per with strength target while retaining this vendor-metric goal as the objective.",
               "properties": {
                 "kind": { "type": "string", "const": "cost_per" },
                 "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target cost per metric unit in the buy currency. Units of the metric are vendor-defined." }

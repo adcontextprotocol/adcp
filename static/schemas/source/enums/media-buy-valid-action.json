@@ -24,6 +24,7 @@
     "update_budget_allocation",
     "update_targeting",
     "update_pacing",
+    "update_bidding",
     "update_frequency_caps",
     "replace_creative",
     "update_creative_assignments",
@@ -48,6 +49,7 @@
     "update_budget_allocation": "Change fixed versus seller-optimized allocation mode or the cross-package optimization goals. Maps to `budget_allocation`. Automatic seller allocation within an already-authorized seller-optimized buy is delivery behavior, not this action.",
     "update_targeting": "Update targeting overlays on existing packages.",
     "update_pacing": "Update aggregate media-buy pacing or pacing on existing packages.",
+    "update_bidding": "Replace or clear the media-buy bidding default or package-authored bidding overrides. Maps to `bidding` and `packages[].bidding`; the seller validates the resulting effective policies atomically before mutation.",
     "update_frequency_caps": "Update frequency capping rules. Distinct from targeting because frequency is renegotiated mid-flight on a different cadence (especially for CTV/video buys).",
     "replace_creative": "Swap a creative for another without changing assignment logic. Distinct AM workflow from changing the assignment set.",
     "update_creative_assignments": "Change which creatives are assigned to which packages.",
@@ -73,6 +75,7 @@
     "update_budget_allocation":    { "update_fields": ["budget_allocation", "packages[].min_spend_target"] },
     "update_targeting":            { "update_fields": ["packages[].targeting_overlay", "packages[].keyword_targets_add", "packages[].keyword_targets_remove", "packages[].negative_keywords_add", "packages[].negative_keywords_remove"] },
     "update_pacing":               { "update_fields": ["pacing", "packages[].pacing"] },
+    "update_bidding":              { "update_fields": ["bidding", "packages[].bidding"] },
     "update_frequency_caps":       { "update_fields": ["packages[].targeting_overlay.frequency_cap"] },
     "replace_creative":            { "update_fields": ["packages[].creatives"] },
     "update_creative_assignments": { "update_fields": ["packages[].creative_assignments"] },
@@ -81,7 +84,7 @@
     "remove_packages":             { "update_fields": ["packages[].canceled"] },
     "update_budget":               { "update_fields": ["total_budget", "budget_allocation", "packages[].budget", "packages[].min_spend_target"], "rollup": ["increase_budget", "decrease_budget", "reallocate_budget", "update_budget_allocation"] },
     "update_dates":                { "update_fields": ["start_time", "end_time", "packages[].start_time", "packages[].end_time"], "rollup": ["extend_flight", "shorten_flight", "update_flight_dates"] },
-    "update_packages":             { "update_fields": ["packages[]"], "rollup": ["update_targeting", "update_pacing", "update_frequency_caps", "reallocate_budget", "remove_packages"] },
+    "update_packages":             { "update_fields": ["packages[]"], "rollup": ["update_targeting", "update_pacing", "update_bidding", "update_frequency_caps", "reallocate_budget", "remove_packages"] },
     "sync_creatives":              { "update_fields": ["packages[].creatives", "packages[].creative_assignments"], "rollup": ["replace_creative", "update_creative_assignments", "remove_creative"] }
   }
 }

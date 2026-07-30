@@ -82,6 +82,12 @@
       "$ref": "/schemas/enums/pacing.json",
       "description": "Aggregate pacing strategy for total_budget across the media-buy flight."
     },
+    "bidding": {
+      "allOf": [
+        { "$ref": "/schemas/core/bidding-policy.json" }
+      ],
+      "description": "Media-buy-authored bidding policy. This is the complete default inherited by packages that omit package.bidding. In seller-optimized/shared-budget mode it is authoritative for strategies the provider requires at campaign level. Package overrides are permitted only where the provider supports them; placement conflicts MUST be rejected atomically with BIDDING_PLACEMENT_CONFLICT."
+    },
     "packages": {
       "type": "array",
       "description": "Array of packages within this media buy",

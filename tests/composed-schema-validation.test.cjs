@@ -427,6 +427,10 @@ async function runTests() {
         ]
       },
       pacing: 'even',
+      bidding: {
+        cost_per: { amount: 25, strength: 'cap' },
+        max_bid: 8
+      },
       packages: [
         {
           product_id: 'prospecting',
@@ -445,6 +449,107 @@ async function runTests() {
       end_time: '2099-12-31T23:59:59Z'
     },
     'Create media buy accepts seller-optimized shared budget with package constraints'
+  );
+
+  await testSchemaValidation(
+    '/schemas/core/bidding-policy.json',
+    {
+      cost_per: { amount: 25, strength: 'target' },
+      max_bid: 4.5
+    },
+    'Bidding policy accepts average-cost target with a provider-supported auction ceiling'
+  );
+
+  await testSchemaValidation(
+    '/schemas/media-buy/package-request.json',
+    {
+      product_id: 'search_clicks',
+      pricing_option_id: 'cpc_auction',
+      budget: 10000,
+      bidding: { bid_amount: 2.25 },
+      optimization_goals: [
+        { kind: 'metric', metric: 'clicks' }
+      ]
+    },
+    'Package accepts explicit manual bidding separately from its objective'
+  );
+
+  await testSchemaValidation(
+    '/schemas/media-buy/package-update.json',
+    {
+      package_id: 'pkg_search_001',
+      bidding: null
+    },
+    'Package update accepts clearing an authored bidding override to restore inheritance'
+  );
+
+  await testSchemaRejection(
+    '/schemas/core/bidding-policy.json',
+    {
+      bid_amount: 2.25,
+      max_bid: 3
+    },
+    'Bidding policy rejects simultaneous manual bid and hard auction ceiling'
+  );
+
+  await testSchemaRejection(
+    '/schemas/core/bidding-policy.json',
+    {
+      cost_per: { amount: 25, strength: 'cap' },
+      roas: { value: 4, strength: 'floor' }
+    },
+    'Bidding policy rejects multiple primary policy modes'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/package-request.json',
+    {
+      product_id: 'search_clicks',
+      pricing_option_id: 'cpc_auction',
+      budget: 10000,
+      bid_price: 2.25,
+      bidding: { max_bid: 3 }
+    },
+    'Package rejects canonical bidding combined with legacy bid_price'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/package-request.json',
+    {
+      product_id: 'conversion_search',
+      pricing_option_id: 'cpc_auction',
+      budget: 10000,
+      bidding: { cost_per: { amount: 25, strength: 'target' } },
+      optimization_goals: [
+        {
+          kind: 'event',
+          event_sources: [{ event_source_id: 'purchases', event_type: 'purchase' }],
+          target: { kind: 'cost_per', value: 25 }
+        }
+      ]
+    },
+    'Package rejects canonical bidding combined with a legacy monetary goal target'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      idempotency_key: 'ambiguous-media-bidding-001',
+      account: { account_id: 'acc_test_001' },
+      bidding: { max_bid: 5 },
+      packages: [
+        {
+          product_id: 'display_standard',
+          pricing_option_id: 'cpm_auction',
+          budget: 10000,
+          bid_price: 4
+        }
+      ],
+      brand: { domain: 'acmecorp.com' },
+      start_time: 'asap',
+      end_time: '2099-12-31T23:59:59Z'
+    },
+    'Media-buy bidding rejects an inheriting package with legacy bid_price'
   );
 
   await testSchemaRejection(

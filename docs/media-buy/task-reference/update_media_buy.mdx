@@ -36,6 +36,7 @@ The mapping is normative — sellers and SDKs MUST use this table to translate b
 | `update_budget_allocation` | `budget_allocation`, `packages[].min_spend_target` | Changes fixed/shared mode, cross-package goals, or soft minimum targets. Automatic allocation inside an accepted seller-optimized buy is not an update action. |
 | `update_targeting` | `packages[].targeting_overlay`, `packages[].keyword_targets_add`, `packages[].keyword_targets_remove`, `packages[].negative_keywords_add`, `packages[].negative_keywords_remove` |  |
 | `update_pacing` | `pacing`, `packages[].pacing` | Media-buy pacing controls aggregate spend; package pacing is subordinate. |
+| `update_bidding` | `bidding`, `packages[].bidding` | Replaces or clears complete authored bidding blocks. The seller validates every resulting effective package policy before mutation. |
 | `update_frequency_caps` | `packages[].targeting_overlay.frequency_cap` | Renegotiated mid-flight more often than other targeting. Field is singular `frequency_cap` (single rule), not plural. |
 | `replace_creative` | `packages[].creatives[]` swap (assignments unchanged) | Distinct AM workflow from changing assignment set |
 | `update_creative_assignments` | `packages[].creative_assignments` | Which creatives go where |
@@ -93,7 +94,7 @@ const createResult = await testAgent.createMediaBuy({
       id: 'display_300x250_image'
     }],
     budget: 800,
-    bid_price: 5.00
+    bidding: { bid_amount: 5.00 }
   }],
   start_time: startDate.toISOString(),
   end_time: endDate.toISOString()
@@ -154,7 +155,7 @@ async def create_and_pause_campaign():
                 'id': 'display_300x250_image'
             }],
             'budget': 800,
-            'bid_price': 5.00
+            'bidding': {'bid_amount': 5.00}
         }],
         start_time=start_date.strftime('%Y-%m-%dT%H:%M:%SZ'),
         end_time=end_date.strftime('%Y-%m-%dT%H:%M:%SZ')
@@ -203,6 +204,7 @@ asyncio.run(create_and_pause_campaign())
 | `total_budget` | TotalBudget | No | Updated hard aggregate lifetime budget. Already-spent amounts continue to count against the new total. |
 | `budget_allocation` | BudgetAllocation | No | Updated fixed or seller-optimized allocation configuration. Mode changes require `update_budget_allocation` in `available_actions`. |
 | `pacing` | string | No | Updated aggregate media-buy pacing strategy. |
+| `bidding` | BiddingPolicy \| null | No | Replace the complete media-buy bidding default, or clear it with `null`. Package-authored overrides remain explicit. |
 | `push_notification_config` | object | No | Webhook for async operation notifications |
 
 `account` and `media_buy_id` are always required.
@@ -241,8 +243,9 @@ Configure automated delivery reporting for this media buy:
 | `start_time` | string | Updated flight start date/time in ISO 8601 format. Must fall within the media buy's date range. |
 | `end_time` | string | Updated flight end date/time in ISO 8601 format. Must fall within the media buy's date range. |
 | `pacing` | string | Updated pacing strategy |
-| `bid_price` | number | Updated bid price (auction products only). This is the exact bid/price to honor unless the selected pricing option has `max_bid: true`, in which case it is treated as the buyer's maximum willingness to pay (ceiling). |
-| `optimization_goals` | OptimizationGoal[] | Replace all optimization goals for this package. Uses replacement semantics — omit to leave goals unchanged. |
+| `bidding` | BiddingPolicy \| null | Replace the complete package-authored override, or clear it with `null` so the package inherits media-buy bidding. |
+| `bid_price` | number | **Deprecated in 3.2.** Legacy package bid representation; cannot be combined with `bidding`. |
+| `optimization_goals` | OptimizationGoal[] | Replace objective functions for this package. Currency-bearing policy belongs in `bidding`; legacy monetary targets cannot be combined with canonical bidding. |
 | `targeting_overlay` | TargetingOverlay | Updated targeting restrictions. Uses replacement semantics; changing `signal_targeting_groups` can alter priced signal selection, so sellers MAY reject with `REQUOTE_REQUIRED` when the selected signal, group expression, or signal `pricing_option_id` falls outside the original quote. Sellers SHOULD reject attempts to change fixed signal selections and MUST echo applied fixed/default signal groups on the resulting package state. |
 | `catalogs` | Catalog[] | Replace the catalogs this package promotes. Uses replacement semantics — omit to leave unchanged. |
 | `keyword_targets_add` | KeywordTarget[] | Keyword targets to add or upsert by (keyword, match_type) identity. On create, these are set as `keyword_targets` inside `targeting_overlay`. |
@@ -254,7 +257,7 @@ Configure automated delivery reporting for this media buy:
 
 `package_id` is required to identify the package to update.
 
-For how `budget`, `pacing`, `impressions`, and flight dates interact — and the current lack of an explicit daily-cap field — see [Budget & Pacing Controls](/docs/media-buy/task-reference/create_media_buy#budget--pacing-controls) on the `create_media_buy` reference.
+For budget/pacing interaction and bidding inheritance, see [Budget & Pacing Controls](/docs/media-buy/task-reference/create_media_buy#budget--pacing-controls) and [BiddingPolicy Object](/docs/media-buy/task-reference/create_media_buy#biddingpolicy-object) on the `create_media_buy` reference.
 
 ## Response
 
@@ -784,7 +787,7 @@ When approval is needed, `implementation_date` will be `null` and `affected_pack
       "product_id": "sports_display_auction",
       "pricing_option_id": "cpm_auction",
       "budget": 50000,
-      "bid_price": 7.25,
+      "bidding": { "bid_amount": 7.25 },
       "pacing": "even",
       "creative_assignments": [
         { "creative_id": "creative_video_v2" }
@@ -851,7 +854,7 @@ Updates may be asynchronous, especially with seller approval.
       "product_id": "sports_display_auction",
       "pricing_option_id": "cpm_auction",
       "budget": 50000,
-      "bid_price": 7.25,
+      "bidding": { "bid_amount": 7.25 },
       "pacing": "even",
       "creative_assignments": [
         { "creative_id": "creative_video_v2" }

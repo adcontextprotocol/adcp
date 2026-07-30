@@ -25,8 +25,16 @@
     },
     "bid_price": {
       "type": "number",
-      "description": "Updated bid price for auction-based pricing options. This is the exact bid/price to honor unless selected pricing_option has max_bid=true, in which case bid_price is the buyer's maximum willingness to pay (ceiling).",
+      "deprecated": true,
+      "description": "DEPRECATED in 3.2 and removed in the next major. Use bidding. A package update MUST NOT supply both bidding and bid_price.",
       "minimum": 0
+    },
+    "bidding": {
+      "description": "Replace the complete package-authored bidding policy. An object replaces any prior package block and remains a complete override of the media-buy default. null clears the package-authored block so the package inherits media-buy bidding; if the media-buy block is also absent, provider automatic delivery applies.",
+      "anyOf": [
+        { "$ref": "/schemas/core/bidding-policy.json" },
+        { "type": "null" }
+      ]
     },
     "impressions": {
       "type": "number",
@@ -189,6 +197,30 @@
   "required": [
     "package_id"
   ],
+  "allOf": [
+    {
+      "if": { "required": ["bidding"] },
+      "then": {
+        "properties": {
+          "optimization_goals": {
+            "not": {
+              "contains": {
+                "properties": {
+                  "target": {
+                    "properties": {
+                      "kind": { "enum": ["cost_per", "per_ad_spend"] }
+                    },
+                    "required": ["kind"]
+                  }
+                },
+                "required": ["target"]
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
   "not": {
     "anyOf": [
       { "required": ["product_id"] },
@@ -197,7 +229,8 @@
       { "required": ["format_kind"] },
       { "required": ["params"] },
       { "required": ["capability_ids"] },
-      { "required": ["pricing_option_id"] }
+      { "required": ["pricing_option_id"] },
+      { "required": ["bidding", "bid_price"] }
     ]
   },
   "additionalProperties": true

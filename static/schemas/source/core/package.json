@@ -35,8 +35,15 @@
     },
     "bid_price": {
       "type": "number",
-      "description": "Bid price for auction-based pricing. This is the exact bid/price to honor unless the selected pricing option has max_bid=true, in which case bid_price is the buyer's maximum willingness to pay (ceiling).",
+      "deprecated": true,
+      "description": "DEPRECATED legacy bidding representation. 3.2 sellers normalize accepted legacy input and SHOULD echo bidding instead. Removed in the next major.",
       "minimum": 0
+    },
+    "bidding": {
+      "allOf": [
+        { "$ref": "/schemas/core/bidding-policy.json" }
+      ],
+      "description": "Package-authored bidding policy, echoed only when the buyer authored a package override. Omission means the package inherits media-buy bidding or, when both scopes are absent, uses provider automatic delivery. Sellers MUST NOT materialize inherited media-buy policy here."
     },
     "price_breakdown": {
       "description": "Breakdown of the effective price for this package. On fixed-price packages, echoes the pricing option's breakdown. On auction packages, shows the clearing price breakdown including any commission or settlement terms.",
@@ -200,6 +207,35 @@
   },
   "required": [
     "package_id"
+  ],
+  "allOf": [
+    {
+      "not": {
+        "required": ["bidding", "bid_price"]
+      }
+    },
+    {
+      "if": { "required": ["bidding"] },
+      "then": {
+        "properties": {
+          "optimization_goals": {
+            "not": {
+              "contains": {
+                "properties": {
+                  "target": {
+                    "properties": {
+                      "kind": { "enum": ["cost_per", "per_ad_spend"] }
+                    },
+                    "required": ["kind"]
+                  }
+                },
+                "required": ["target"]
+              }
+            }
+          }
+        }
+      }
+    }
   ],
   "dependencies": {
     "params": ["format_kind"]

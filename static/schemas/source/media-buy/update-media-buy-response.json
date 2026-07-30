@@ -59,6 +59,12 @@
           "$ref": "/schemas/enums/pacing.json",
           "description": "Post-update aggregate pacing when affected by the update."
         },
+        "bidding": {
+          "allOf": [
+            { "$ref": "/schemas/core/bidding-policy.json" }
+          ],
+          "description": "Post-update media-buy-authored bidding policy when affected by the update. Omitted when the authored media-buy block was cleared."
+        },
         "implementation_date": {
           "type": [
             "string",

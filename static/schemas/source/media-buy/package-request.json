@@ -7,10 +7,35 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "if": { "required": ["bidding"] },
+      "then": {
+        "properties": {
+          "optimization_goals": {
+            "not": {
+              "contains": {
+                "properties": {
+                  "target": {
+                    "properties": {
+                      "kind": { "enum": ["cost_per", "per_ad_spend"] }
+                    },
+                    "required": ["kind"]
+                  }
+                },
+                "required": ["target"]
+              }
+            }
+          }
+        }
+      }
     }
   ],
   "not": {
-    "required": ["capability_ids"]
+    "anyOf": [
+      { "required": ["capability_ids"] },
+      { "required": ["bidding", "bid_price"] }
+    ]
   },
   "properties": {
     "product_id": {
@@ -63,8 +88,15 @@
     },
     "bid_price": {
       "type": "number",
-      "description": "Bid price for auction-based pricing options. This is the exact bid/price to honor unless selected pricing_option has max_bid=true, in which case bid_price is the buyer's maximum willingness to pay (ceiling).",
+      "deprecated": true,
+      "description": "DEPRECATED in 3.2 and removed in the next major. Use bidding.bid_amount or bidding.max_bid. Legacy normalization: selected pricing_option.max_bid=true maps to bidding.max_bid; otherwise maps to bidding.bid_amount. A package MUST NOT supply both representations.",
       "minimum": 0
+    },
+    "bidding": {
+      "allOf": [
+        { "$ref": "/schemas/core/bidding-policy.json" }
+      ],
+      "description": "Package-authored bidding policy. This complete block replaces, rather than field-merges with, any media-buy bidding policy for this package. When omitted, the package inherits the complete media-buy block. Sellers MUST reject a new bidding block combined with legacy bid_price or legacy monetary optimization-goal targets on the same effective package with AMBIGUOUS_BIDDING_POLICY."
     },
     "impressions": {
       "type": "number",

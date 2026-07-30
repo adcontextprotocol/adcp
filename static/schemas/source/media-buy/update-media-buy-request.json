@@ -7,6 +7,43 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "if": {
+        "properties": { "bidding": { "type": "object" } },
+        "required": ["bidding"]
+      },
+      "then": {
+        "properties": {
+          "packages": {
+            "items": {
+              "not": {
+                "anyOf": [
+                  { "required": ["bid_price"] },
+                  {
+                    "properties": {
+                      "optimization_goals": {
+                        "contains": {
+                          "properties": {
+                            "target": {
+                              "properties": {
+                                "kind": { "enum": ["cost_per", "per_ad_spend"] }
+                              },
+                              "required": ["kind"]
+                            }
+                          },
+                          "required": ["target"]
+                        }
+                      }
+                    },
+                    "required": ["optimization_goals"]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
     }
   ],
   "x-mutates-state": true,
@@ -77,6 +114,13 @@
     "pacing": {
       "$ref": "/schemas/enums/pacing.json",
       "description": "Updated aggregate media-buy pacing. Package pacing remains subordinate to this aggregate strategy."
+    },
+    "bidding": {
+      "description": "Replace the complete media-buy-authored bidding default. An object replaces the prior block. null clears it; packages with explicit package.bidding remain explicit, while packages without overrides fall back to provider automatic delivery. The seller MUST validate all resulting effective package policies and provider placement constraints atomically before mutation.",
+      "anyOf": [
+        { "$ref": "/schemas/core/bidding-policy.json" },
+        { "type": "null" }
+      ]
     },
     "packages": {
       "type": "array",

@@ -77,6 +77,12 @@
           "$ref": "/schemas/enums/pacing.json",
           "description": "Accepted aggregate media-buy pacing strategy."
         },
+        "bidding": {
+          "allOf": [
+            { "$ref": "/schemas/core/bidding-policy.json" }
+          ],
+          "description": "Accepted media-buy-authored bidding policy. Packages that inherit it omit package.bidding; only explicit package overrides carry their own block."
+        },
         "valid_actions": {
           "type": "array",
           "description": "Flat-vocabulary actions the buyer can perform on this media buy after creation. Saves a round-trip to get_media_buys. Deprecated in favor of `available_actions[]`, which carries `mode`, optional SLA, and optional `terms_ref`. Sellers SHOULD populate both during the 3.x deprecation window; consumers MUST prefer `available_actions[]` when both are present. Removed in 4.0.",
