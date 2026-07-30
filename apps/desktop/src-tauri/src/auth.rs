@@ -1,5 +1,15 @@
 //! State- and PKCE-bound native authentication for Addie Desktop.
 
+#[cfg(not(any(
+    target_os = "macos",
+    target_os = "ios",
+    target_os = "windows",
+    target_os = "linux",
+    target_os = "freebsd",
+    target_os = "openbsd",
+)))]
+compile_error!("Addie authentication requires a persistent native keyring backend");
+
 use keyring::{Entry, Error as KeyringError};
 use serde::Deserialize;
 use std::time::Duration;
@@ -299,6 +309,24 @@ pub fn clear_session() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn keyring_uses_the_native_platform_backend() {
+        let credential = entry("native-backend-probe").unwrap();
+        let credential = credential.get_credential();
+
+        #[cfg(target_os = "macos")]
+        assert!(credential.is::<keyring::macos::MacCredential>());
+
+        #[cfg(target_os = "ios")]
+        assert!(credential.is::<keyring::ios::IosCredential>());
+
+        #[cfg(target_os = "windows")]
+        assert!(credential.is::<keyring::windows::WinCredential>());
+
+        #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
+        assert!(credential.is::<keyring::secret_service::SsCredential>());
+    }
 
     #[test]
     fn rejects_an_oversized_chunk_before_buffering_it() {
