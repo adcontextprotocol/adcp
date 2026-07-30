@@ -127,6 +127,15 @@
       },
       "minItems": 1
     },
+    "places": {
+      "type": "array",
+      "description": "DEPRECATED. Use get_products.targeting_overlay.geo_places for known values or required_overlay_support.geo_places when values will be supplied on packages later.",
+      "deprecated": true,
+      "items": {
+        "$ref": "/schemas/core/geo-place-area.json"
+      },
+      "minItems": 1
+    },
     "channels": {
       "type": "array",
       "description": "Filter by advertising channels (e.g., ['display', 'ctv', 'dooh'])",
@@ -231,23 +240,30 @@
     },
     "required_geo_targeting": {
       "type": "array",
-      "description": "DEPRECATED. Use get_products.required_overlay_support, which is product-scoped and applies consistently to geographic and non-geographic targeting dimensions.",
+      "description": "DEPRECATED. Use get_products.required_overlay_support, which is product-scoped and applies consistently to geographic and non-geographic targeting dimensions. Legacy place entries require country, system, and place_type and may require an exact system_version.",
       "deprecated": true,
       "items": {
         "type": "object",
         "properties": {
           "level": {
-            "$ref": "/schemas/enums/geo-level.json",
-            "description": "Geographic targeting level (country, region, metro, postal_area)"
+            "$ref": "/schemas/enums/geo-targeting-level.json"
           },
           "country": {
             "type": "string",
             "pattern": "^[A-Z]{2}$",
-            "description": "ISO 3166-1 alpha-2 country code. Required for native postal_area system filters; not applicable to country, region, or metro filters."
+            "description": "ISO 3166-1 alpha-2 country code. Required for native postal_area system filters and place filters; not applicable to country, region, or metro filters."
           },
           "system": {
             "type": "string",
-            "description": "Optional classification system within the level. Use for a specific metro system (e.g., 'nielsen_dma'), native postal_area system (e.g., 'zip' with country 'US'), or deprecated legacy postal alias (e.g., 'us_zip'). Not applicable for country/region which use ISO standards."
+            "description": "Optional classification system within the level. Use for a specific metro system (e.g., 'nielsen_dma'), native postal_area system (e.g., 'zip' with country 'US'), deprecated legacy postal alias (e.g., 'us_zip'), or place identifier namespace (e.g., 'geonames'). Not applicable for country/region which use ISO standards."
+          },
+          "place_type": {
+            "$ref": "/schemas/core/geo-place-type.json"
+          },
+          "system_version": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Exact place catalog version required for level=place. Not applicable to other levels."
           }
         },
         "required": ["level"],
@@ -258,12 +274,12 @@
               "required": ["level"]
             },
             "then": {
-              "not": {
-                "anyOf": [
-                  { "required": ["country"] },
-                  { "required": ["system"] }
-                ]
-              }
+              "not": { "anyOf": [
+                { "required": ["country"] },
+                { "required": ["system"] },
+                { "required": ["place_type"] },
+                { "required": ["system_version"] }
+              ] }
             }
           },
           {
@@ -283,7 +299,11 @@
                   "required": ["system"]
                 }
               ],
-              "not": { "required": ["country"] }
+              "not": { "anyOf": [
+                { "required": ["country"] },
+                { "required": ["place_type"] },
+                { "required": ["system_version"] }
+              ] }
             }
           },
           {
@@ -314,6 +334,30 @@
                   "not": { "required": ["country"] }
                 }
               ]
+            }
+          },
+          {
+            "if": {
+              "properties": { "level": { "const": "postal_area" } },
+              "required": ["level"]
+            },
+            "then": {
+              "not": { "anyOf": [
+                { "required": ["place_type"] },
+                { "required": ["system_version"] }
+              ] }
+            }
+          },
+          {
+            "if": {
+              "properties": { "level": { "const": "place" } },
+              "required": ["level"]
+            },
+            "then": {
+              "properties": {
+                "system": { "$ref": "/schemas/core/geo-place-system.json" }
+              },
+              "required": ["country", "system", "place_type"]
             }
           }
         ],

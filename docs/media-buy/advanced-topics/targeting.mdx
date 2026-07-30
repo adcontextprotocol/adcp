@@ -411,7 +411,11 @@ from prose should be confirmed separately in
 `required_overlay_support` asks whether a product lets the buyer choose a
 dimension later. For example, requesting `geo_metros` support asks for products
 that can be narrowed by metro on packages; it does not ask the seller to return
-one product per metro. The product answers with `overlay_support`.
+one product per metro. Named places follow the same rule: known IDs belong in
+`targeting_overlay.geo_places`, while a buyer that will choose them later asks
+for `required_overlay_support.geo_places`. The product answers with binding
+selectable permission in `overlay_support`; that permission is not a
+value-specific availability guarantee.
 
 Coverage is an implementation detail of the same targeting contract. A
 constraint may be satisfied by the product's inherent inventory scope or by a
@@ -455,12 +459,14 @@ Use geo fields **only** for:
 - `geo_regions`: ISO 3166-2 subdivision codes (e.g., `["US-CA", "GB-SCT"]`)
 - `geo_metros`: Structured metro areas with explicit system (e.g., `nielsen_dma`, `uk_itl2`) — not all publishers support metro-level targeting
 - `geo_postal_areas`: Structured postal areas with explicit country and system (e.g., `US` / `zip`, `GB` / `outward`, `ZA` / `postal_code`) — not all publishers support postal-level targeting
+- `geo_places`: Catalog-backed named places with explicit country, identifier system, place type, and stable IDs — use this for platform place entities such as cities or municipalities, not raw place names
 
 **Exclusion fields** (exclude these locations from delivery):
 - `geo_countries_exclude`: Same format as `geo_countries`
 - `geo_regions_exclude`: Same format as `geo_regions`
 - `geo_metros_exclude`: Same format as `geo_metros`
 - `geo_postal_areas_exclude`: Same format as `geo_postal_areas`
+- `geo_places_exclude`: Same format as `geo_places`
 
 **Note**: Inclusion and exclusion can be combined. Metro and postal targeting require specifying the classification system, enabling international support. Not all geographic granularities are supported by all publishers. Country and region are most widely supported.
 
@@ -740,6 +746,32 @@ Geographic targeting supports both inclusion (restrict to) and exclusion (exclud
 - **Example**: `[{ "country": "US", "system": "zip", "values": ["90210"] }]`
 - **Use cases**: RCT holdout zip codes, restricted delivery areas
 - **Note**: Seller must declare supported systems in `get_adcp_capabilities`; the deprecated legacy form remains accepted during the 3.x migration.
+
+### geo_places
+
+- **Description**: Restrict delivery to named administrative or local places represented by stable catalog identifiers
+- **Format**: Array of objects with required `country`, `system`, `place_type`, and `values`; optional `system_version`, `value_labels`, and `ext`
+- **Systems**: Registered namespaces are `geonames`, `google_ads`, and `microsoft_ads`. Other catalogs use an owner-controlled absolute HTTPS URI, such as `https://seller.example/geo/catalogs/places`. MaxMind `geoname_id` values use the `geonames` namespace; MaxMind is a catalog source/version, not a separate identifier namespace.
+- **Example**: `[{ "country": "NL", "system": "geonames", "system_version": "2026-05", "place_type": "city", "values": ["2759794"], "value_labels": { "2759794": "Amsterdam, North Holland, Netherlands" } }]`
+- **Use cases**: Target a platform's named city, municipality, borough, neighborhood, post town, city region, or county entity without relying on ambiguous names
+- **Note**: `values` are the authoritative targeting keys. Every `value_labels` key MUST appear in `values`; labels exist only for diagnostics and audit readability, and sellers MUST NOT resolve or apply targeting from them. Raw names such as `Amsterdam` are unresolved intent, not valid values.
+
+Within `geo_places`, values and entries have union semantics: delivery may occur in any included place. `geo_places_exclude` subtracts matching places from the current candidate geography, including when no `geo_places` inclusion is present. Inclusion across different geographic dimensions is intersected. Sellers MUST reject the same `(country, system, place_type, value)` in both include and exclude lists, even when the include and exclude entries specify different catalog versions: version is not part of stable place identity. Sellers MAY reject cross-level combinations they cannot resolve safely rather than silently approximating them.
+
+Before sending a place target, buyers inspect `get_adcp_capabilities.media_buy.execution.targeting.geo_places`. Support is declared as exact country/type pairs, not independent lists. Each system also declares `catalog.current_version`, exact `supported_versions`, and an `adcp_geo_place_resolver_v1` endpoint. Buyers resolve raw names—or refresh an existing ID—using an HTTPS GET with exactly one of `q` or `value` from `get-geo-place-resolution-request.json`. The response echoes the normalized request and follows `get-geo-place-resolution-response.json`, carrying machine-readable country/subdivision/type context plus active, removal-planned, or deprecated identifiers and replacements. Ambiguous results require user or agent disambiguation before trafficking.
+
+If `system_version` is omitted from a new target, the seller applies its declared `current_version`. Sellers MUST reject unsupported systems, country/type pairs, versions, deprecated identifiers, and unknown identifiers rather than silently dropping or reinterpreting them. If an identifier is stale, the seller returns a validation error and may surface resolver-provided replacements; it MUST NOT silently substitute a replacement. Sellers MUST echo persisted `geo_places` and `geo_places_exclude` in package `targeting_overlay` state with the exact applied `system_version` and values.
+
+Accepted place targeting is pinned to the echoed `system_version` for the life of the package. Removing that version from `supported_versions` stops new targeting and target-changing updates from using it, but MUST NOT silently mutate, drop, or invalidate an existing package. An unrelated package update preserves the pinned place overlay. If a seller can no longer execute a pinned target, `get_media_buys` MUST still echo it and return a nonfatal `errors[]` entry with `code: "PLACE_TARGET_UNAVAILABLE"`, `recovery: "correctable"`, `field` pointing to the exact `media_buys[N].packages[M].targeting_overlay.geo_places[_exclude][A].values[V]` response path, and `details` containing `media_buy_id`, `package_id`, `system`, `system_version`, `country`, `place_type`, and `value`. The buyer can use resolver `value` lookup against the current catalog to find lifecycle status and proposed replacements, then submit an intentional target update.
+
+Place forecast and delivery breakdown rows are intentionally not part of this release: `geo_level: "place"` remains invalid on reporting surfaces. Package-state echo provides configuration auditability, but not delivery-by-place verification. Place-level forecast, delivery, pacing, and reconciliation require a follow-up reporting RFC.
+
+### geo_places_exclude
+
+- **Description**: Exclude catalog-backed named places
+- **Format**: Same as `geo_places`
+- **Example**: `[{ "country": "US", "system": "geonames", "place_type": "city", "values": ["5392171"], "value_labels": { "5392171": "San Jose, California, United States" } }]`
+- **Note**: Seller must declare the system, exact country/type pair, and applied catalog version in `get_adcp_capabilities` and echo the persisted exclusion on package state.
 
 ### axe_include_segment
 - **Description**: Segment ID for inclusion targeting (legacy AXE field)
@@ -1145,7 +1177,7 @@ To remove all keyword targeting while preserving other overlay fields, send the 
 
 ### Publishers MUST:
 
-1. **Support Geographic Targeting**: Handle geographic inclusion and exclusion parameters (`geo_countries`, `geo_countries_exclude`, `geo_regions`, `geo_regions_exclude`, `geo_metros`, `geo_metros_exclude`, `geo_postal_areas`, `geo_postal_areas_exclude`) to the extent your platform supports them. Declare supported metro and postal systems in `get_adcp_capabilities`
+1. **Support Geographic Targeting**: Handle geographic inclusion and exclusion parameters (`geo_countries`, `geo_countries_exclude`, `geo_regions`, `geo_regions_exclude`, `geo_metros`, `geo_metros_exclude`, `geo_postal_areas`, `geo_postal_areas_exclude`, `geo_places`, `geo_places_exclude`) to the extent your platform supports them. Declare supported metro, postal, and place systems in `get_adcp_capabilities`
 2. **Interpret Briefs**: Use briefs to determine appropriate audience and content targeting
 3. **Validate Targeting**: Reject media buys with targeting that cannot be supported
 4. **Document Limitations**: Clearly communicate any geographic targeting limitations in product descriptions

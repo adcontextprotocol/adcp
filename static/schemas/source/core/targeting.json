@@ -3,6 +3,14 @@
   "$id": "/schemas/core/targeting.json",
   "title": "Targeting Overlay",
   "description": "Concrete delivery constraints used during product discovery and media-buy execution. Targeting includes both audience eligibility and purchased-inventory selection: geography, demographics, placements, properties, collections, device compatibility, language, keywords, and other explicit controls. Sellers resolve requested outcomes against inherent product scope or selectable execution. A fresh create/update request MUST be applied exactly or rejected; get_products may instead return a request-scoped configured product with sparse, buyer-reviewable targeting_resolution modifications.",
+  "x-adcp-validation": {
+    "disjoint_place_fields": {
+      "include": "geo_places",
+      "exclude": "geo_places_exclude",
+      "identity": ["country", "system", "place_type", "value"]
+    },
+    "description": "JSON Schema draft-07 cannot compare values across sibling arrays. Conformance tooling MUST reject any place identity present in both geo_places and geo_places_exclude. Catalog version is deliberately not part of identity: a stable ID cannot be both included and excluded by assigning different versions."
+  },
   "type": "object",
   "properties": {
     "geo_countries": {
@@ -102,6 +110,22 @@
       "description": "Exclude specific postal areas from delivery. Prefer the native country + postal system form. The deprecated legacy country-fused postal-system tokens remain accepted for compatibility. Seller must declare supported systems in get_adcp_capabilities.",
       "items": {
         "$ref": "/schemas/core/postal-area.json"
+      },
+      "minItems": 1
+    },
+    "geo_places": {
+      "type": "array",
+      "description": "Restrict delivery to catalog-backed named places. Values MUST be stable identifiers in the declared system, not display names. Sellers must declare supported systems, countries, and place types in get_adcp_capabilities and reject unsupported entries rather than silently dropping them.",
+      "items": {
+        "$ref": "/schemas/core/geo-place-area.json"
+      },
+      "minItems": 1
+    },
+    "geo_places_exclude": {
+      "type": "array",
+      "description": "Exclude catalog-backed named places. Uses the same identifier-based shape as geo_places. Sellers MUST reject overlap with geo_places for the same country, system, place_type, and value.",
+      "items": {
+        "$ref": "/schemas/core/geo-place-area.json"
       },
       "minItems": 1
     },

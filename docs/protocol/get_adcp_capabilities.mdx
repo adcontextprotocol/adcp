@@ -411,6 +411,7 @@ Buyers discover AXE support via `get_adcp_capabilities` and filter products to A
 | `geo_regions` | boolean | Region/state-level targeting using ISO 3166-2 codes (e.g., `US-NY`, `GB-SCT`) |
 | `geo_metros` | object | Metro area targeting with system-specific support |
 | `geo_postal_areas` | object | Postal area targeting with country and precision support |
+| `geo_places` | object | Named-place targeting keyed by collision-safe identifier system, with exact country/type support, catalog versions, and resolver metadata |
 | `age_restriction` | object | Age restriction capabilities with `supported` flag and `verification_methods` |
 | `demographics` | object | Seller-wide discovery rollup for canonical demographic targeting. `supported: true` means at least one product supports the surface; inspect each product's `demographic_targeting` declaration for exact execution. |
 | `language` | boolean | Language targeting (ISO 639-1 codes) |
@@ -459,6 +460,95 @@ Sellers that support a geographic targeting level SHOULD support both inclusion 
 ```
 
 Use `postal_code` for the normal postal code string in countries without a more specific registered local system. During the 3.x migration, sellers SHOULD emit equivalent deprecated aliases such as `us_zip` alongside native country keys where an alias exists. Buyers and SDKs SHOULD normalize both shapes before making capability decisions.
+
+**geo_places** is keyed by place identifier system. Registered keys are `geonames`, `google_ads`, and `microsoft_ads`; private or additional catalogs use an owner-controlled absolute HTTPS URI. Each system declares exact country-to-place-type support, exact accepted versions, and a machine-readable resolver:
+
+```json
+{
+  "geonames": {
+    "countries": {
+      "US": ["city", "county"],
+      "NL": ["city", "municipality"],
+      "GB": ["city", "post_town"]
+    },
+    "catalog": {
+      "source": "https://seller.example/data-sources/geonames-mirror",
+      "current_version": "2026-05",
+      "supported_versions": ["2026-05", "2026-04"],
+      "resolver": {
+        "url": "https://seller.example/adcp/geo/resolve/geonames",
+        "auth": "seller_credentials",
+        "protocol": "adcp_geo_place_resolver_v1"
+      }
+    }
+  },
+  "https://seller.example/geo/catalogs/places": {
+    "countries": {
+      "NL": ["city"]
+    },
+    "catalog": {
+      "current_version": "2026-q2",
+      "supported_versions": ["2026-q2"],
+      "resolver": {
+        "url": "https://seller.example/adcp/geo/resolve/private",
+        "auth": "seller_credentials",
+        "protocol": "adcp_geo_place_resolver_v1"
+      }
+    }
+  }
+}
+```
+
+If `geo_places` is absent, buyers MUST NOT assume place targeting is available. If present, the seller MUST honor only the explicitly declared country/type pairs and exact `supported_versions`, or return a validation error. `current_version` MUST appear in `supported_versions` and is applied when the buyer omits `system_version` on new targeting. `supported_versions` describes versions accepted for new targets and target-changing updates; removing a version MUST NOT silently mutate, drop, or invalidate existing packages already pinned to that version. Optional `source` identifies a dataset or derivative without creating a new ID namespace—for example, a MaxMind-derived catalog still uses `system: "geonames"`. The resolver accepts an HTTPS GET with `get-geo-place-resolution-request.json` query fields and returns `get-geo-place-resolution-response.json`, including lifecycle status and replacement IDs. Unsupported or deprecated identifiers must be rejected rather than silently ignored or replaced. Display labels are never authoritative targeting keys.
+
+Registered system semantics are exact:
+
+| System | Authoritative `values` namespace | Type mapping |
+|---|---|---|
+| `geonames` | GeoNames `geonameId` integers encoded as strings. MaxMind `geoname_id` uses this same namespace. | The resolver maps GeoNames feature class/code into the registered AdCP type. Populated-place targets such as `PPL`, `PPLA`, `PPLC`, and `PPLG` map to `city`; administrative features map according to their official country-specific meaning. |
+| `google_ads` | Google Ads geo target Criterion IDs encoded as strings | Lowercase snake-case mapping of Google target types to the registered AdCP type when one exists; otherwise use an owner-controlled HTTPS type URI. |
+| `microsoft_ads` | Microsoft Advertising Location IDs encoded as strings | Lowercase snake-case mapping of Microsoft location types to the registered AdCP type when one exists; otherwise use an owner-controlled HTTPS type URI. |
+
+Registered place types are semantic classes, not a universal hierarchy. `city`, `municipality`, and `post_town` are distinct; likewise `borough`, `neighborhood`, `quarter`, and `ward` are not interchangeable. The resolver's country-specific mapping is authoritative for the system/version it serves. Sellers MUST NOT claim a country/type pair unless their resolver returns that type and their execution platform can honor it.
+
+Resolver calls use HTTPS GET. Supply exactly one of `q` for name search or `value` to refresh an existing identifier against a catalog version. For example:
+
+```text
+GET https://seller.example/adcp/geo/resolve/geonames?q=Springfield&country=US&subdivision=US-IL&place_type=city&system_version=2026-05&limit=20
+```
+
+`auth: "seller_credentials"` means the buyer uses the same authorization credentials as the seller's AdCP endpoint and is valid only when the resolver has the same origin as that endpoint. Buyers MUST NOT forward seller credentials cross-origin and MUST apply normal SSRF protections to resolver requests. `auth: "none"` declares a public resolver. A URI-valued `system` is an opaque namespace identifier and is not automatically fetched. Results identify the exact system version and lifecycle state:
+
+```json
+{
+  "request": {
+    "q": "Springfield",
+    "country": "US",
+    "subdivision": "US-IL",
+    "place_type": "city",
+    "system_version": "2026-05",
+    "limit": 20
+  },
+  "system": "geonames",
+  "system_version": "2026-05",
+  "matches": [{
+    "value": "4250542",
+    "country": "US",
+    "subdivision": "US-IL",
+    "place_type": "city",
+    "label": "Springfield",
+    "canonical_name": "Springfield, Illinois, United States",
+    "parent_labels": ["Illinois", "United States"],
+    "status": "active"
+  }]
+}
+```
+
+The response `system` MUST equal the capability-map key that advertised the resolver. Its version MUST equal the requested `system_version`, or the advertised `current_version` when omitted. The response echoes the normalized request, and every match MUST equal its `country` and any requested `subdivision` and `place_type`. `canonical_name` and `parent_labels` are required so same-named results remain distinguishable; `subdivision` is also required on a match when the request constrained it. Registered numeric systems reject non-numeric values and replacement IDs.
+
+Successful searches, including zero matches, return `200` with `Content-Type: application/json` and the response schema above. Invalid queries return `400`; missing or invalid credentials return `401` or `403`; throttling returns `429`; and resolver failures return an appropriate `5xx`. Non-`200` responses MUST NOT be interpreted as an empty result set. Pagination repeats the normalized original request and uses `cursor`/`next_cursor`.
+
+Buyers MUST traffic only an unambiguous `active` result. `removal_planned` results may still describe an existing target but should not be used for a new buy. `deprecated` results are invalid for new targeting; `replaced_by_values` may guide a new resolution, but sellers MUST require the buyer to submit the replacement rather than silently changing intent. To refresh a persisted ID after catalog rollover, query `value=<existing ID>` against the current version. Existing packages remain pinned to their echoed applied version until the buyer intentionally changes targeting; unrelated updates preserve that overlay. If the seller can no longer execute it, `get_media_buys` MUST preserve the echoed target and return nonfatal `PLACE_TARGET_UNAVAILABLE` in response-level `errors[]`, with `recovery: "correctable"`, an exact package-target `field` path, and target identity in `details`, rather than silently changing geography.
 
 #### audience_targeting
 
@@ -1102,6 +1192,39 @@ const buy = await client.createMediaBuy({
           "GB": ["outward", "full"],
           "CA": ["fsa", "full"],
           "ZA": ["postal_code"]
+        },
+        "geo_places": {
+          "geonames": {
+            "countries": {
+              "US": ["city", "county"],
+              "NL": ["city", "municipality"],
+              "GB": ["city", "post_town"]
+            },
+            "catalog": {
+              "source": "https://seller.example/data-sources/geonames-mirror",
+              "current_version": "2026-05",
+              "supported_versions": ["2026-05", "2026-04"],
+              "resolver": {
+                "url": "https://seller.example/adcp/geo/resolve/geonames",
+                "auth": "seller_credentials",
+                "protocol": "adcp_geo_place_resolver_v1"
+              }
+            }
+          },
+          "https://seller.example/geo/catalogs/places": {
+            "countries": {
+              "NL": ["city"]
+            },
+            "catalog": {
+              "current_version": "2026-q2",
+              "supported_versions": ["2026-q2"],
+              "resolver": {
+                "url": "https://seller.example/adcp/geo/resolve/private",
+                "auth": "seller_credentials",
+                "protocol": "adcp_geo_place_resolver_v1"
+              }
+            }
+          }
         },
         "language": true,
         "keyword_targets": {

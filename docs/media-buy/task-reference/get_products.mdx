@@ -281,18 +281,55 @@ targeting filter and the legacy top-level `property_list`.
 | `countries` | string[] | Deprecated. Use `targeting_overlay.geo_countries`. |
 | `regions` | string[] | Deprecated. Use `targeting_overlay.geo_regions`. |
 | `metros` | object[] | Deprecated. Use `targeting_overlay.geo_metros` for known values or `required_overlay_support.geo_metros` for future selection. |
+| `places` | object[] | Deprecated. Use `targeting_overlay.geo_places` for known catalog-backed place IDs or `required_overlay_support.geo_places` for future selection. |
 | `channels` | string[] | Filter by advertising channels (e.g., `["display", "ctv", "social", "streaming_audio"]`). See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy) |
 | `video_placement_types` | string[] | Match product metadata when the declared video placement types intersect `instream`, `accompanying_content`, `interstitial`, or `standalone`. Classification only; it does not promise exclusive delivery on a requested type. |
 | `audio_distribution_types` | string[] | Match product metadata when declared audio distribution types intersect the requested values. Classification only; it does not promise exclusive delivery on a requested type. |
 | `sponsored_placement_types` | string[] | Match retail-media product metadata when declared sponsored-placement types intersect the requested values. Classification only. |
 | `social_placement_surfaces` | string[] | Match social-product metadata when declared surfaces intersect `feed`, `stories`, `short_video`, `explore`, or `search`. Classification only; exact public-placement inventory uses `targeting_overlay.placement_selection`. |
 | `postal_areas` | object[] | Deprecated. Use `targeting_overlay.geo_postal_areas` or `required_overlay_support.geo_postal_areas`. |
+| `required_geo_targeting` | object[] | Deprecated. Use `required_overlay_support`. Legacy place entries use `{ level: "place", country, system, place_type, system_version? }`. |
 | `geo_proximity` | object[] | Deprecated. Use `targeting_overlay.geo_proximity`. |
 | `keywords` | object[] | Deprecated. Use `targeting_overlay.keyword_targets`; broad thematic intent remains in `brief`. |
 | `signal_targeting` | SignalTargeting[] | Deprecated. Use `targeting_overlay.signal_targeting_groups` for known selections or `required_overlay_support.signal_targeting_groups` for later selection. |
 | `required_performance_standards` | [PerformanceStandard[]](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | Filter to products that can meet the buyer's performance standard requirements. Each entry specifies a metric, threshold, and vendor (e.g., "DoubleVerify for viewability at 70% MRC"). Products that cannot meet these thresholds or do not support the specified vendors are excluded. |
 | `required_metrics` | string[] ([metric vocabulary](/docs/media-buy/media-buys/optimization-reporting)) | Filter to products whose `reporting_capabilities.available_metrics` is a superset of these metrics — i.e., products that commit to reporting all listed metrics in delivery. Use for capability discovery (e.g., `["completed_views"]` for a CTV CPCV buy). Sellers MUST silently exclude products that cannot meet the list — filter-not-fail; do not return an error. The product's declared `available_metrics` becomes the binding reporting contract carried into the resulting media buy. |
 | `required_vendor_metrics` | object[] | Filter to products whose `reporting_capabilities.vendor_metrics` covers vendor-defined metrics (proprietary attention, emissions, panel demographics, brand-lift surveys, etc.). Each entry pins `vendor` (BrandRef) and/or `metric_id` — at least one. Cross-vendor discovery (e.g., "any attention measurement") is the buyer agent's responsibility: resolve which vendors offer a category via the vendors' `brand.json` records, then enumerate them as filter entries. Same filter-not-fail semantics as `required_metrics`. |
+
+Known place IDs belong in `targeting_overlay`, so the returned product's
+availability, pricing, and forecast are scoped to the effective place
+constraint. If the buyer will choose IDs later, `required_overlay_support`
+asks for the country, identifier system, place type, and optional catalog
+version that the product must let the buyer select:
+
+```json
+{
+  "$schema": "/schemas/media-buy/get-products-request.json",
+  "buying_mode": "brief",
+  "brief": "Local video inventory for a municipal services campaign",
+  "targeting_overlay": {
+    "geo_places": [{
+      "country": "NL",
+      "system": "geonames",
+      "system_version": "2026-05",
+      "place_type": "city",
+      "values": ["2759794"]
+    }]
+  },
+  "required_overlay_support": {
+    "geo_places": {
+      "country": "NL",
+      "system": "geonames",
+      "system_version": "2026-05",
+      "place_type": "city"
+    }
+  }
+}
+```
+
+The returned Product `overlay_support.geo_places` is binding permission to
+supply matching place IDs on packages later, subject to disclosed limits. It
+does not guarantee value-specific inventory before the IDs are provided.
 
 ### Placement fields
 

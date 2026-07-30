@@ -100,6 +100,11 @@ describe('PackageStatus targeting_overlay echo vectors', () => {
       packageStatusSchema.properties.targeting_overlay.$ref,
       '/schemas/core/targeting.json'
     );
+    assert.match(
+      packageStatusSchema.properties.targeting_overlay.description,
+      /MUST echo geo_places and geo_places_exclude/,
+      'PackageStatus targeting_overlay contract must make place echo normative'
+    );
   });
 
   for (const vector of data.vectors) {
@@ -124,9 +129,10 @@ describe('PackageStatus targeting_overlay echo vectors', () => {
     });
   }
 
-  it('covers both the specialism MUST and the general SHOULD paths', () => {
+  it('covers specialism, place-targeting, and general echo paths', () => {
     const ids = new Set(data.vectors.map(v => v.id));
     assert.ok(ids.has('property-and-collection-list-echo'), 'specialism MUST vector required');
+    assert.ok(ids.has('geo-place-targeting-echo'), 'place-targeting MUST vector required');
     assert.ok(ids.has('plain-overlay-fields-echo'), 'general SHOULD vector required');
   });
 });
