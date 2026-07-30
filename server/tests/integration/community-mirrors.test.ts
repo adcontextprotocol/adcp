@@ -13,12 +13,17 @@ vi.hoisted(() => {
 
 // Mutable identity for the authenticated caller so a re-publish can come from a
 // different user (used to assert created_by_* is preserved).
-const authState = vi.hoisted(() => ({ userId: 'user_test_mirrors', email: 'mirrors@test.com' }));
+const authState = vi.hoisted(() => ({
+  userId: 'user_test_mirrors',
+  email: 'mirrors@test.com',
+  organizationId: null as string | null,
+}));
 
 vi.mock('../../src/middleware/auth.js', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('../../src/middleware/auth.js');
-  const pass = (req: { user: unknown }, _res: unknown, next: () => void) => {
+  const pass = (req: { user: unknown; apiKey?: unknown }, _res: unknown, next: () => void) => {
     req.user = { id: authState.userId, email: authState.email };
+    req.apiKey = authState.organizationId ? { organizationId: authState.organizationId } : undefined;
     next();
   };
   return { ...actual, requireAuth: pass, requireAdmin: (_r: unknown, _s: unknown, n: () => void) => n() };
@@ -148,6 +153,7 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
     await pool.query('DELETE FROM catalog_properties WHERE created_by = $1', [`community_adagents:${PLATFORM}`]);
     await pool.query('DELETE FROM discovered_properties WHERE publisher_domain = ANY($1::text[])', [[PUBLISHER_DOMAIN, REMOVED_PUBLISHER_DOMAIN]]);
     await pool.query('DELETE FROM publishers WHERE domain = ANY($1::text[])', [[PUBLISHER_DOMAIN, REMOVED_PUBLISHER_DOMAIN]]);
+    await pool.query('DELETE FROM community_mirror_proposals WHERE platform LIKE $1', [PLATFORM_LIKE]);
     await pool.query('DELETE FROM community_mirrors WHERE platform LIKE $1', [PLATFORM_LIKE]);
   }
 
@@ -175,12 +181,13 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
     isWebUserAAOAdmin.mockResolvedValue(false);
     authState.userId = 'user_test_mirrors';
     authState.email = 'mirrors@test.com';
+    authState.organizationId = null;
     await clear();
   });
 
   it('publishes a catalog-only mirror (authorized_agents forced to [])', async () => {
     const res = await request(app).put(`/api/registry/mirrors/${PLATFORM}`).send(publishBody());
-    expect(res.status).toBe(200);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.platform).toBe(PLATFORM);
     expect(res.body.catalog_etag).toBe('test-etag-1');
@@ -339,7 +346,7 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
     isRegistryModerator.mockResolvedValue(false);
     isWebUserAAOAdmin.mockResolvedValue(true);
     const res = await request(app).put(`/api/registry/mirrors/${PLATFORM}`).send(publishBody());
-    expect(res.status).toBe(200);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
   });
 
   it('re-publish is idempotent — updates in place, no duplicate row', async () => {
@@ -406,6 +413,39 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
     expect((await pool.query('SELECT 1 FROM discovered_properties WHERE publisher_domain = $1', [REMOVED_PUBLISHER_DOMAIN])).rows).toHaveLength(0);
   });
 
+  it('serializes concurrent publications so the final projection matches the final mirror', async () => {
+    const [first, second] = await Promise.all([
+      request(app)
+        .put(`/api/registry/mirrors/${PLATFORM}`)
+        .send(publishBody({ catalog_etag: 'concurrent-a', properties: [MINIMAL_PROPERTY] })),
+      request(app)
+        .put(`/api/registry/mirrors/${PLATFORM}`)
+        .send(publishBody({ catalog_etag: 'concurrent-b', properties: [REMOVED_PROPERTY] })),
+    ]);
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+
+    const mirror = await pool.query<{ adagents_json: { properties: Array<{ publisher_domain: string }> } }>(
+      'SELECT adagents_json FROM community_mirrors WHERE platform = $1',
+      [PLATFORM],
+    );
+    const finalDomains = mirror.rows[0].adagents_json.properties.map((property) => property.publisher_domain);
+    const projected = await pool.query<{ domain: string }>(
+      'SELECT domain FROM publishers WHERE domain = ANY($1::text[]) ORDER BY domain',
+      [[PUBLISHER_DOMAIN, REMOVED_PUBLISHER_DOMAIN]],
+    );
+    expect(projected.rows.map((row) => row.domain)).toEqual([...finalDomains].sort());
+    const projectedProperties = await pool.query<{ publisher_domain: string }>(
+      `SELECT DISTINCT publisher_domain
+         FROM discovered_properties
+        WHERE publisher_domain = ANY($1::text[])
+          AND source_type = 'community'
+        ORDER BY publisher_domain`,
+      [[PUBLISHER_DOMAIN, REMOVED_PUBLISHER_DOMAIN]],
+    );
+    expect(projectedProperties.rows.map((row) => row.publisher_domain)).toEqual([...finalDomains].sort());
+  });
+
   it('preserves created_by_* across a re-publish by a different user', async () => {
     authState.userId = 'creator-A';
     await request(app).put(`/api/registry/mirrors/${PLATFORM}`).send(publishBody({ catalog_etag: 'v1' }));
@@ -439,11 +479,244 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
     expect(res.status).toBe(400);
   });
 
-  it('rejects a non-moderator, non-admin caller (403)', async () => {
+  it('queues a valid non-moderator submission for review without publishing it', async () => {
     isRegistryModerator.mockResolvedValue(false);
     isWebUserAAOAdmin.mockResolvedValue(false);
+    authState.userId = 'api_key_test_mirrors';
+    authState.organizationId = 'org_test_mirrors';
     const res = await request(app).put(`/api/registry/mirrors/${PLATFORM}`).send(publishBody());
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(202);
+    expect(res.body).toMatchObject({
+      success: true,
+      status: 'pending',
+      proposal_id: expect.any(String),
+      proposal_digest: expect.stringMatching(/^[a-f0-9]{64}$/),
+      platform: PLATFORM,
+      status_url: `/api/registry/mirror-proposals/${res.body.proposal_id}`,
+    });
+    expect(res.headers.location).toBe(res.body.status_url);
+    expect((await pool.query('SELECT 1 FROM community_mirrors WHERE platform = $1', [PLATFORM])).rows).toHaveLength(0);
+    expect((await pool.query('SELECT 1 FROM publishers WHERE domain = $1', [PUBLISHER_DOMAIN])).rows).toHaveLength(0);
+
+    const mine = await request(app).get('/api/registry/mirror-proposals');
+    expect(mine.status).toBe(200);
+    expect(mine.body.total).toBe(1);
+    expect(mine.body.proposals[0]).toMatchObject({
+      id: res.body.proposal_id,
+      platform: PLATFORM,
+      status: 'pending',
+      proposal_digest: res.body.proposal_digest,
+    });
+    expect(mine.body.proposals[0]).not.toHaveProperty('adagents_json');
+    expect(mine.body.proposals[0]).not.toHaveProperty('proposed_by_email');
+  });
+
+  it('updates an organization\'s pending proposal in place on retry', async () => {
+    isRegistryModerator.mockResolvedValue(false);
+    authState.userId = 'api_key_test_mirrors';
+    authState.organizationId = 'org_test_mirrors';
+    const first = await request(app)
+      .put(`/api/registry/mirrors/${PLATFORM}`)
+      .send(publishBody({ catalog_etag: 'proposal-v1' }));
+    const second = await request(app)
+      .put(`/api/registry/mirrors/${PLATFORM}`)
+      .send(publishBody({ catalog_etag: 'proposal-v2' }));
+
+    expect(second.status).toBe(202);
+    expect(second.body.proposal_id).toBe(first.body.proposal_id);
+    expect(second.body.proposal_digest).not.toBe(first.body.proposal_digest);
+    const rows = await pool.query(
+      'SELECT catalog_etag FROM community_mirror_proposals WHERE platform = $1',
+      [PLATFORM],
+    );
+    expect(rows.rows).toEqual([{ catalog_etag: 'proposal-v2' }]);
+  });
+
+  it('refuses approval when a contributor changed the proposal after review', async () => {
+    isRegistryModerator.mockResolvedValue(false);
+    authState.userId = 'api_key_test_mirrors';
+    authState.organizationId = 'org_test_mirrors';
+    const reviewed = await request(app)
+      .put(`/api/registry/mirrors/${PLATFORM}`)
+      .send(publishBody({ catalog_etag: 'reviewed-v1' }));
+    const changed = await request(app)
+      .put(`/api/registry/mirrors/${PLATFORM}`)
+      .send(publishBody({ catalog_etag: 'changed-v2', formats: [{ ...MINIMAL_FORMAT, display_name: 'Changed' }] }));
+    expect(changed.body.proposal_id).toBe(reviewed.body.proposal_id);
+
+    authState.userId = 'user_registry_moderator';
+    authState.organizationId = null;
+    isRegistryModerator.mockResolvedValue(true);
+    const staleApproval = await request(app)
+      .post(`/api/registry/mirror-proposals/${reviewed.body.proposal_id}/approve`)
+      .send({ proposal_digest: reviewed.body.proposal_digest });
+
+    expect(staleApproval.status).toBe(409);
+    expect(staleApproval.body.error).toMatch(/changed after review/i);
+    expect((await pool.query('SELECT 1 FROM community_mirrors WHERE platform = $1', [PLATFORM])).rows).toHaveLength(0);
+  });
+
+  it('refuses approval when the public mirror changed after proposal submission', async () => {
+    isRegistryModerator.mockResolvedValue(false);
+    authState.userId = 'api_key_test_mirrors';
+    authState.organizationId = 'org_test_mirrors';
+    const submitted = await request(app).put(`/api/registry/mirrors/${PLATFORM}`).send(publishBody());
+
+    authState.userId = 'user_registry_moderator';
+    authState.organizationId = null;
+    isRegistryModerator.mockResolvedValue(true);
+    await request(app)
+      .put(`/api/registry/mirrors/${PLATFORM}`)
+      .send(publishBody({ catalog_etag: 'newer-public-state' }));
+    const staleApproval = await request(app)
+      .post(`/api/registry/mirror-proposals/${submitted.body.proposal_id}/approve`)
+      .send({ proposal_digest: submitted.body.proposal_digest });
+
+    expect(staleApproval.status).toBe(409);
+    expect(staleApproval.body.error).toMatch(/published mirror changed/i);
+    const mirror = await pool.query('SELECT catalog_etag FROM community_mirrors WHERE platform = $1', [PLATFORM]);
+    expect(mirror.rows).toEqual([{ catalog_etag: 'newer-public-state' }]);
+  });
+
+  it('changes the review digest when identical content is rebased onto a newer public mirror', async () => {
+    isRegistryModerator.mockResolvedValue(false);
+    authState.userId = 'api_key_test_mirrors';
+    authState.organizationId = 'org_test_mirrors';
+    const original = await request(app).put(`/api/registry/mirrors/${PLATFORM}`).send(publishBody());
+
+    authState.userId = 'user_registry_moderator';
+    authState.organizationId = null;
+    isRegistryModerator.mockResolvedValue(true);
+    await request(app)
+      .put(`/api/registry/mirrors/${PLATFORM}`)
+      .send(publishBody({ catalog_etag: 'new-public-base', formats: [{ ...MINIMAL_FORMAT, display_name: 'Live' }] }));
+
+    authState.userId = 'api_key_test_mirrors';
+    authState.organizationId = 'org_test_mirrors';
+    isRegistryModerator.mockResolvedValue(false);
+    const rebased = await request(app).put(`/api/registry/mirrors/${PLATFORM}`).send(publishBody());
+    expect(rebased.body.proposal_id).toBe(original.body.proposal_id);
+    expect(rebased.body.proposal_digest).not.toBe(original.body.proposal_digest);
+
+    authState.userId = 'user_registry_moderator';
+    authState.organizationId = null;
+    isRegistryModerator.mockResolvedValue(true);
+    const staleApproval = await request(app)
+      .post(`/api/registry/mirror-proposals/${original.body.proposal_id}/approve`)
+      .send({ proposal_digest: original.body.proposal_digest });
+    expect(staleApproval.status).toBe(409);
+    expect(staleApproval.body.error).toMatch(/changed after review/i);
+  });
+
+  it('scopes proposal list and detail reads to the submitting organization', async () => {
+    isRegistryModerator.mockResolvedValue(false);
+    authState.userId = 'api_key_test_mirrors';
+    authState.organizationId = 'org_test_mirrors';
+    const submitted = await request(app).put(`/api/registry/mirrors/${PLATFORM}`).send(publishBody());
+
+    authState.userId = 'api_key_other_org';
+    authState.organizationId = 'org_other';
+    const list = await request(app).get('/api/registry/mirror-proposals');
+    const detail = await request(app).get(`/api/registry/mirror-proposals/${submitted.body.proposal_id}`);
+    expect(list.status).toBe(200);
+    expect(list.body.total).toBe(0);
+    expect(detail.status).toBe(404);
+  });
+
+  it('requires organization context and caps contributor proposal bodies at 1 MiB', async () => {
+    isRegistryModerator.mockResolvedValue(false);
+    authState.userId = 'user_without_org';
+    authState.organizationId = null;
+    const noOrg = await request(app).put(`/api/registry/mirrors/${PLATFORM}`).send(publishBody());
+    expect(noOrg.status).toBe(403);
+    expect(noOrg.body.error).toMatch(/organization context/i);
+
+    authState.userId = 'api_key_test_mirrors';
+    authState.organizationId = 'org_test_mirrors';
+    const oversized = await request(app)
+      .put(`/api/registry/mirrors/${PLATFORM}`)
+      .send(publishBody({ contributor_notes: 'x'.repeat(1024 * 1024) }));
+    expect(oversized.status).toBe(413);
+  });
+
+  it('lets a moderator approve and atomically publish a pending proposal', async () => {
+    isRegistryModerator.mockResolvedValue(false);
+    authState.userId = 'api_key_test_mirrors';
+    authState.organizationId = 'org_test_mirrors';
+    const submitted = await request(app).put(`/api/registry/mirrors/${PLATFORM}`).send(publishBody());
+
+    authState.userId = 'user_registry_moderator';
+    authState.organizationId = null;
+    isRegistryModerator.mockResolvedValue(true);
+    const approved = await request(app)
+      .post(`/api/registry/mirror-proposals/${submitted.body.proposal_id}/approve`)
+      .send({
+        proposal_digest: submitted.body.proposal_digest,
+        review_notes: 'Catalog checked against platform documentation.',
+      });
+
+    expect(approved.status).toBe(200);
+    expect(approved.body).toMatchObject({
+      success: true,
+      proposal_id: submitted.body.proposal_id,
+      platform: PLATFORM,
+      publisher_domains: [PUBLISHER_DOMAIN],
+    });
+    const proposal = await pool.query(
+      'SELECT status, reviewed_by_user_id, published_at FROM community_mirror_proposals WHERE id = $1',
+      [submitted.body.proposal_id],
+    );
+    expect(proposal.rows[0]).toMatchObject({
+      status: 'approved',
+      reviewed_by_user_id: 'user_registry_moderator',
+      published_at: expect.any(Date),
+    });
+    expect((await pool.query('SELECT 1 FROM community_mirrors WHERE platform = $1', [PLATFORM])).rows).toHaveLength(1);
+    expect((await pool.query('SELECT 1 FROM publishers WHERE domain = $1', [PUBLISHER_DOMAIN])).rows).toHaveLength(1);
+
+    const repeated = await request(app)
+      .post(`/api/registry/mirror-proposals/${submitted.body.proposal_id}/approve`)
+      .send({ proposal_digest: submitted.body.proposal_digest });
+    expect(repeated.status).toBe(409);
+    expect(repeated.body.error).toMatch(/already approved/i);
+  });
+
+  it('does not let a non-moderator approve another proposal', async () => {
+    isRegistryModerator.mockResolvedValue(false);
+    authState.userId = 'api_key_test_mirrors';
+    authState.organizationId = 'org_test_mirrors';
+    const submitted = await request(app).put(`/api/registry/mirrors/${PLATFORM}`).send(publishBody());
+
+    const approved = await request(app)
+      .post(`/api/registry/mirror-proposals/${submitted.body.proposal_id}/approve`)
+      .send({});
+    expect(approved.status).toBe(403);
+    expect((await pool.query('SELECT 1 FROM community_mirrors WHERE platform = $1', [PLATFORM])).rows).toHaveLength(0);
+  });
+
+  it('lets a moderator reject a pending proposal without publishing it', async () => {
+    isRegistryModerator.mockResolvedValue(false);
+    authState.userId = 'api_key_test_mirrors';
+    authState.organizationId = 'org_test_mirrors';
+    const submitted = await request(app).put(`/api/registry/mirrors/${PLATFORM}`).send(publishBody());
+
+    authState.userId = 'user_registry_moderator';
+    authState.organizationId = null;
+    isRegistryModerator.mockResolvedValue(true);
+    const rejected = await request(app)
+      .post(`/api/registry/mirror-proposals/${submitted.body.proposal_id}/reject`)
+      .send({
+        proposal_digest: submitted.body.proposal_digest,
+        review_notes: 'Source evidence needs updating.',
+      });
+
+    expect(rejected.status).toBe(200);
+    expect(rejected.body.proposal).toMatchObject({
+      id: submitted.body.proposal_id,
+      status: 'rejected',
+      review_notes: 'Source evidence needs updating.',
+    });
+    expect((await pool.query('SELECT 1 FROM community_mirrors WHERE platform = $1', [PLATFORM])).rows).toHaveLength(0);
   });
 
   it('returns 404 for an unknown mirror', async () => {
@@ -459,16 +732,36 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
     expect(served.headers['content-type']).toMatch(/^application\/json/);
     expect(served.headers['access-control-allow-origin']).toBe('*');
     expect(served.headers['x-content-type-options']).toBe('nosniff');
-    expect(served.headers['etag']).toBe('"serve-etag"');
+    expect(served.headers['etag']).toMatch(/^"[0-9a-f]{32}"$/);
+    expect(served.headers['etag']).not.toBe('"serve-etag"');
     expect(served.body.authorized_agents).toEqual([]);
 
     const revalidate = await request(app)
       .get(`/api/creative-agent/translated/${PLATFORM}/adagents.json`)
-      .set('If-None-Match', '"serve-etag"');
-    expect(revalidate.status).toBe(304);
+      .set('If-None-Match', served.headers['etag']);
+    expect(revalidate.status, JSON.stringify(revalidate.body)).toBe(304);
   });
 
-  it('falls back to a content-hash ETag when catalog_etag is absent', async () => {
+  it('changes the HTTP ETag when content changes even if catalog_etag is reused', async () => {
+    await request(app).put(`/api/registry/mirrors/${PLATFORM}`).send(publishBody({ catalog_etag: 'reused-token' }));
+    const first = await request(app).get(`/api/creative-agent/translated/${PLATFORM}/adagents.json`);
+
+    await request(app)
+      .put(`/api/registry/mirrors/${PLATFORM}`)
+      .send(publishBody({
+        catalog_etag: 'reused-token',
+        formats: [{ ...MINIMAL_FORMAT, display_name: 'Updated display name' }],
+      }));
+    const second = await request(app)
+      .get(`/api/creative-agent/translated/${PLATFORM}/adagents.json`)
+      .set('If-None-Match', first.headers['etag']);
+
+    expect(second.status).toBe(200);
+    expect(second.headers['etag']).not.toBe(first.headers['etag']);
+    expect(second.body.formats[0].display_name).toBe('Updated display name');
+  });
+
+  it('uses a content-hash ETag when catalog_etag is absent', async () => {
     await request(app).put(`/api/registry/mirrors/${PLATFORM}`).send(publishBody({ catalog_etag: undefined }));
     const served = await request(app).get(`/api/creative-agent/translated/${PLATFORM}/adagents.json`);
     expect(served.status).toBe(200);
@@ -477,7 +770,7 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
     const revalidate = await request(app)
       .get(`/api/creative-agent/translated/${PLATFORM}/adagents.json`)
       .set('If-None-Match', served.headers['etag']);
-    expect(revalidate.status).toBe(304);
+    expect(revalidate.status, JSON.stringify(revalidate.body)).toBe(304);
   });
 
   it('serving carries superseded_by in the body and advertises it via a Link header', async () => {
