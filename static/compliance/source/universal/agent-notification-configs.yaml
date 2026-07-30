@@ -111,7 +111,7 @@ phases:
         stateful: false
         auth: none
         expect_error: true
-        negative_path: schema_invalid
+        negative_path: payload_well_formed
         expected: |
           Reject the unauthenticated registration with:
           - HTTP 401 (preferred) or 403
