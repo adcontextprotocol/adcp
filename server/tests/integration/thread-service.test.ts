@@ -275,12 +275,13 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
         content: 'Answer',
       });
 
-      await threadService.addMessageFeedback(assistantMsg.message_id, {
+      await threadService.addMessageFeedback(thread.thread_id, assistantMsg.message_id, {
         rating: 5,
         rating_category: 'helpfulness',
         rating_notes: 'Very helpful!',
         feedback_tags: ['clear', 'accurate'],
         rated_by: 'user_test',
+        rating_source: 'user',
       });
 
       // Fetch the message again to verify
@@ -290,6 +291,39 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
       expect(ratedMsg?.rating).toBe(5);
       expect(ratedMsg?.rating_category).toBe('helpfulness');
       expect(ratedMsg?.rated_by).toBe('user_test');
+    });
+
+    it('does not update a message when the supplied thread does not own it', async () => {
+      const ownerThread = await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: `${TEST_WEB_EXTERNAL_ID}-owner`,
+        user_type: 'workos',
+      });
+      const otherThread = await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: `${TEST_WEB_EXTERNAL_ID}-other`,
+        user_type: 'workos',
+      });
+      const ownerMessage = await threadService.addMessage({
+        thread_id: ownerThread.thread_id,
+        role: 'assistant',
+        content: 'Private answer',
+      });
+
+      const updated = await threadService.addMessageFeedback(
+        otherThread.thread_id,
+        ownerMessage.message_id,
+        {
+          rating: 1,
+          rating_notes: 'Cross-thread overwrite',
+          rated_by: 'user_other',
+          rating_source: 'user',
+        },
+      );
+
+      expect(updated).toBe(false);
+      const messages = await threadService.getThreadMessages(ownerThread.thread_id);
+      expect(messages.find((message) => message.message_id === ownerMessage.message_id)?.rating).toBeNull();
     });
   });
 

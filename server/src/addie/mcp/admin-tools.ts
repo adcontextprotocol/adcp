@@ -76,6 +76,7 @@ import {
 } from "../../services/lusha.js";
 import { COMPANY_TYPE_VALUES } from "../../config/company-types.js";
 import { createProspect, updateProspect } from "../../services/prospect.js";
+import { validateMemberProfileUrlFields } from "../../utils/member-profile-url.js";
 import {
   getAllFeedsWithStats,
   addFeed,
@@ -10654,6 +10655,11 @@ Use add_committee_leader to assign a leader.`;
           updates[field] = (input[field] as string) || null;
           updatedFields.push(field);
         }
+      }
+
+      const invalidMemberProfileUrlField = validateMemberProfileUrlFields(updates);
+      if (invalidMemberProfileUrlField) {
+        return `❌ ${invalidMemberProfileUrlField} must be an HTTPS URL without credentials.`;
       }
 
       if (input.markets !== undefined) {

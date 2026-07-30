@@ -11,6 +11,7 @@ import { createLogger } from "../logger.js";
 import {
   requireAuth,
   requireAdmin,
+  requireGlobalAdmin,
   refuseCrossTenantAdminApiKey,
   isDevModeEnabled,
   DEV_USERS,
@@ -64,6 +65,7 @@ import { recordProfilePublishedIfNeeded } from "../services/profile-publish-even
 import { gateAgentVisibilityForCaller, computeAgentVisibilityGate, type VisibilityWarning, type AgentVisibilityGate } from "../services/agent-visibility-gate.js";
 import { getBrandPrimaryDomain, getBrandPrimaryDomainRecord } from "../services/brand-domain-resolver.js";
 import { normalizeFoundingMemberGrant } from "../services/founding-member-grant.js";
+import { validateMemberProfileUrlFields } from "../utils/member-profile-url.js";
 
 const orgKnowledgeDb = new OrgKnowledgeDatabase();
 const snapshotDb = new AgentSnapshotDatabase();
@@ -829,6 +831,14 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         });
       }
 
+      const invalidProfileUrlField = validateMemberProfileUrlFields(req.body);
+      if (invalidProfileUrlField) {
+        return res.status(400).json({
+          error: 'Invalid profile URL',
+          message: `${invalidProfileUrlField} must be an HTTPS URL without credentials`,
+        });
+      }
+
       // Validate tagline length
       if (tagline && typeof tagline === 'string' && tagline.length > 200) {
         return res.status(400).json({
@@ -1156,6 +1166,14 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       const user = req.user!;
       const requestedOrgId = req.query.org as string | undefined;
       const updates = req.body;
+
+      const invalidProfileUrlField = validateMemberProfileUrlFields(updates);
+      if (invalidProfileUrlField) {
+        return res.status(400).json({
+          error: 'Invalid profile URL',
+          message: `${invalidProfileUrlField} must be an HTTPS URL without credentials`,
+        });
+      }
 
       // Dev mode: handle dev organizations without WorkOS
       const isDevUserProfile = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id) && requestedOrgId?.startsWith('org_dev_');
@@ -2610,8 +2628,8 @@ export function createAdminMemberProfileRouter(config: MemberProfileRoutesConfig
   const { memberDb, invalidateMemberContextCache } = config;
   const router = Router();
 
-  // GET /api/admin/member-profiles - List all member profiles (admin)
-  router.get('/', requireAuth, requireAdmin, async (req, res) => {
+  // GET /api/admin/member-profiles - List all member profiles (global admin)
+  router.get('/', ...requireGlobalAdmin, async (req, res) => {
     try {
       const { is_public, search, limit, offset } = req.query;
 
@@ -2631,11 +2649,20 @@ export function createAdminMemberProfileRouter(config: MemberProfileRoutesConfig
     }
   });
 
-  // PUT /api/admin/member-profiles/:id - Update any member profile (admin)
+  // PUT /api/admin/member-profiles/:id - Global admins may update any profile;
+  // tenant admin keys remain limited to a profile owned by their issuing org.
   router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
     try {
       const { id } = req.params;
       const updates = req.body;
+
+      const invalidProfileUrlField = validateMemberProfileUrlFields(updates);
+      if (invalidProfileUrlField) {
+        return res.status(400).json({
+          error: 'Invalid profile URL',
+          message: `${invalidProfileUrlField} must be an HTTPS URL without credentials`,
+        });
+      }
 
       // Cross-tenant gate. `requireAdmin` keys off `:orgId` in the path,
       // but this route uses `:id` (a profile UUID) — resolve the profile's
@@ -2712,7 +2739,7 @@ export function createAdminMemberProfileRouter(config: MemberProfileRoutesConfig
     }
   });
 
-  // DELETE /api/admin/member-profiles/:id - Delete any member profile (admin)
+  // DELETE /api/admin/member-profiles/:id - Same global/same-tenant split as PUT.
   router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
     try {
       const { id } = req.params;

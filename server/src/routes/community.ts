@@ -13,6 +13,7 @@ import { query } from "../db/client.js";
 import { resolvePrimaryOrganization } from "../db/users-db.js";
 import { VALID_MEMBER_OFFERINGS, type MemberOffering } from "../types.js";
 import { notifyUser } from "../notifications/notification-service.js";
+import { validateMemberProfileUrlFields } from "../utils/member-profile-url.js";
 
 const logger = createLogger("community-routes");
 const AVATAR_MAX_FILE_SIZE = 5 * 1024 * 1024;
@@ -366,19 +367,14 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
         updates.slug = slug;
       }
 
-      // Validate URL fields are HTTP(S) only
-      for (const urlField of ['linkedin_url', 'twitter_url'] as const) {
-        const value = updates[urlField];
-        if (value && typeof value === 'string') {
-          try {
-            const parsed = new URL(value);
-            if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-              return res.status(400).json({ error: `${urlField} must be an HTTP or HTTPS URL` });
-            }
-          } catch {
-            return res.status(400).json({ error: `${urlField} must be a valid URL` });
-          }
-        }
+      const invalidMemberProfileUrlField = validateMemberProfileUrlFields({
+        ...updates,
+        contact_website: req.body.contact_website,
+      });
+      if (invalidMemberProfileUrlField) {
+        return res.status(400).json({
+          error: `${invalidMemberProfileUrlField} must be an HTTPS URL without credentials`,
+        });
       }
 
       // Validate GitHub username format
@@ -405,17 +401,6 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
           return res.status(400).json({ error: 'Invalid contact phone' });
         }
       }
-      if (req.body.contact_website !== undefined && typeof req.body.contact_website === 'string' && req.body.contact_website) {
-        try {
-          const parsed = new URL(req.body.contact_website);
-          if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-            return res.status(400).json({ error: 'contact_website must be an HTTP or HTTPS URL' });
-          }
-        } catch {
-          return res.status(400).json({ error: 'contact_website must be a valid URL' });
-        }
-      }
-
       const existingProfile = await communityDb.getProfile(user.id);
 
       // Check if github_username is being set for the first time (for one-time points award)
@@ -571,12 +556,27 @@ async function syncIndividualMemberProfile(
   // Build mapped fields for member_profiles
   const memberUpdates: Record<string, unknown> = {
     display_name: displayName,
-    linkedin_url: communityProfile.linkedin_url || null,
-    twitter_url: communityProfile.twitter_url || null,
   };
 
+  // Legacy community rows may contain URL values that predate the current
+  // HTTPS-only policy. An unrelated profile edit must still sync its safe
+  // fields, without copying those legacy values into a new member write.
+  for (const [field, value] of [
+    ['linkedin_url', communityProfile.linkedin_url || null],
+    ['twitter_url', communityProfile.twitter_url || null],
+  ] as const) {
+    if (!validateMemberProfileUrlFields({ [field]: value })) {
+      memberUpdates[field] = value;
+    }
+  }
+
   if (memberFields.contact_email !== undefined) memberUpdates.contact_email = memberFields.contact_email;
-  if (memberFields.contact_website !== undefined) memberUpdates.contact_website = memberFields.contact_website;
+  if (
+    memberFields.contact_website !== undefined
+    && !validateMemberProfileUrlFields({ contact_website: memberFields.contact_website })
+  ) {
+    memberUpdates.contact_website = memberFields.contact_website;
+  }
   if (memberFields.contact_phone !== undefined) memberUpdates.contact_phone = memberFields.contact_phone;
 
   const existingProfile = await memberDb.getProfileByOrgId(orgId);

@@ -25,6 +25,7 @@
 
   <link rel="stylesheet" href="/design-system.css">
   <script src="/nav.js"></script>
+  <script src="/perspective-url.js"></script>
   <style>
     body { padding-top: 60px; background: var(--color-bg-page); }
 
@@ -289,6 +290,10 @@
         for (const article of data.articles) {
           const tags = (article.relevance_tags || []).slice(0, 3);
           const tagsHtml = tags.map(t => `<span class="article-tag">${escapeHtml(t)}</span>`).join('');
+          const safeSourceUrl = getSafePerspectiveExternalUrl(article.source_url);
+          const titleHtml = safeSourceUrl
+            ? `<a href="${escapeHtml(safeSourceUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(article.title)}</a>`
+            : escapeHtml(article.title);
 
           html += `
             <div class="article-card">
@@ -298,7 +303,7 @@
                   ${article.feed_name ? `<span>${escapeHtml(article.feed_name)}</span>` : ''}
                 </div>
                 <h3 class="article-title">
-                  <a href="${escapeHtml(article.source_url)}" target="_blank" rel="noopener">${escapeHtml(article.title)}</a>
+                  ${titleHtml}
                 </h3>
                 ${article.summary ? `<p class="article-summary">${escapeHtml(article.summary)}</p>` : ''}
                 ${tags.length > 0 ? `<div class="article-tags">${tagsHtml}</div>` : ''}

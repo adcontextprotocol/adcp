@@ -29,6 +29,7 @@ import { refreshWorkingGroupDocs } from '../addie/mcp/docs-indexer.js';
 import { isUuid } from '../utils/uuid.js';
 import { notifySystemError } from '../addie/error-notifier.js';
 import type { WorkingGroupServiceUser } from './working-group-membership-service.js';
+import { normalizePerspectiveExternalUrl } from '../utils/perspective-url.js';
 
 const logger = createLogger('working-group-content-service');
 
@@ -84,6 +85,7 @@ export type WorkingGroupContentErrorCode =
   | 'leader_required_for_public_post'
   | 'missing_required_fields'
   | 'invalid_post_slug'
+  | 'invalid_external_url'
   | 'invalid_document_url'
   | 'invalid_document_id'
   | 'document_not_found'
@@ -96,6 +98,7 @@ export interface WorkingGroupContentErrorMetaByCode {
   leader_required_for_public_post: { slug: string };
   missing_required_fields: { slug: string; fields: string[] };
   invalid_post_slug: { slug: string; postSlug: string };
+  invalid_external_url: { slug: string };
   invalid_document_url: { slug: string };
   invalid_document_id: { slug: string; documentId: string };
   document_not_found: { slug: string; documentId: string };
@@ -205,6 +208,17 @@ export async function createWorkingGroupPost(input: CreateWorkingGroupPostInput)
     ? (contentType as WorkingGroupPostContentType)
     : 'article';
 
+  const normalizedExternalUrl = externalUrl == null
+    ? null
+    : normalizePerspectiveExternalUrl(externalUrl);
+  if ((externalUrl != null && !normalizedExternalUrl) || (normalizedContentType === 'link' && !normalizedExternalUrl)) {
+    throw new WorkingGroupContentError(
+      'invalid_external_url',
+      'Link posts require an HTTPS external URL without credentials',
+      { slug },
+    );
+  }
+
   let inserted;
   try {
     const result = await pool.query(
@@ -222,7 +236,7 @@ export async function createWorkingGroupPost(input: CreateWorkingGroupPostInput)
         content || null,
         category || null,
         excerpt || null,
-        externalUrl || null,
+        normalizedExternalUrl,
         externalSiteName || null,
         authorName,
         user.id,
