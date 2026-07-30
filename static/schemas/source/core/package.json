@@ -17,7 +17,7 @@
     },
     "budget": {
       "type": "number",
-      "description": "Hard lifetime spend cap for this package in the currency specified by the pricing option. In seller-optimized allocation mode this is a ceiling, not a current allocation. May be omitted when the package is bounded only by the shared media-buy total.",
+      "description": "Hard lifetime spend cap for this package in the media-buy currency. Every selected pricing option in an AdCP-authored media buy MUST declare that same currency. In seller-optimized allocation mode this is a ceiling, not a current allocation. May be omitted when the package is bounded only by the shared media-buy total.",
       "minimum": 0
     },
     "min_spend_target": {
@@ -43,7 +43,7 @@
       "allOf": [
         { "$ref": "/schemas/core/bidding-policy.json" }
       ],
-      "description": "Package-authored bidding policy, echoed only when the buyer authored a package override. Omission means the package inherits media-buy bidding or, when both scopes are absent, uses provider automatic delivery. Sellers MUST NOT materialize inherited media-buy policy here."
+      "description": "Package-authored bidding policy, echoed only when the buyer authored a package override. `{automatic:true}` is an explicit automatic-bidding override. Omission means the package inherits media-buy bidding or, when both scopes are absent, uses provider automatic delivery. Monetary fields are denominated in the media-buy currency. Sellers MUST NOT materialize inherited media-buy policy here."
     },
     "price_breakdown": {
       "description": "Breakdown of the effective price for this package. On fixed-price packages, echoes the pricing option's breakdown. On auction packages, shows the clearing price breakdown including any commission or settlement terms.",

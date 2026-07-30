@@ -142,7 +142,7 @@
       "description": "Updated aggregate media-buy pacing. Package pacing remains subordinate to this aggregate strategy."
     },
     "bidding": {
-      "description": "Replace the complete media-buy-authored bidding default. An object replaces the prior block. null clears it; packages with explicit package.bidding remain explicit, while packages without overrides fall back to provider automatic delivery. The seller MUST validate all resulting effective package policies and provider placement constraints atomically before mutation.",
+      "description": "Replace the complete media-buy-authored bidding default. An object replaces the prior block; `{automatic:true}` records an explicit automatic policy. null clears it; packages with explicit package.bidding remain explicit, while packages without overrides fall back to provider automatic delivery. Goal binding follows the resulting budget allocation: seller-optimized outcome controls bind to allocation goals, while fixed inherited cost_per requires compatible package result units. Monetary fields use the media-buy currency and all affected pricing options MUST match it. The seller MUST validate all resulting policies atomically before mutation.",
       "anyOf": [
         { "$ref": "/schemas/core/bidding-policy.json" },
         { "type": "null" }

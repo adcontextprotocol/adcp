@@ -96,7 +96,7 @@
       "allOf": [
         { "$ref": "/schemas/core/bidding-policy.json" }
       ],
-      "description": "Package-authored bidding policy. This complete block replaces, rather than field-merges with, any media-buy bidding policy for this package. When omitted, the package inherits the complete media-buy block. Sellers MUST reject a new bidding block combined with legacy bid_price or legacy monetary optimization-goal targets on the same effective package with AMBIGUOUS_BIDDING_POLICY."
+      "description": "Package-authored bidding policy. This complete block replaces, rather than field-merges with, any media-buy bidding policy for this package. `{automatic:true}` explicitly overrides a media-buy policy with provider automatic bidding; omission inherits the complete media-buy block. Monetary fields use the media-buy currency, while the selected pricing option supplies only the auction unit and MUST declare that same currency. Sellers MUST reject a new bidding block combined with legacy bid_price or legacy monetary optimization-goal targets on the same effective package with AMBIGUOUS_BIDDING_POLICY."
     },
     "impressions": {
       "type": "number",

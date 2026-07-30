@@ -734,7 +734,7 @@ Publishers can offer the same product in multiple currencies:
 - Common for non-guaranteed inventory
 - Buyer expresses execution intent explicitly with `bidding.bid_amount` or `bidding.max_bid`
 
-The pricing option is the seller's commercial offer; `bidding` is the buyer's execution instruction. In 3.2, pricing-option `max_bid` and package `bid_price` remain only as deprecated migration fields. A seller-offered boolean no longer determines whether buyer input is a manual bid, auction ceiling, or average outcome-cost control.
+The pricing option is the seller's commercial offer; `bidding` is the buyer's execution instruction. The pricing option supplies the auction unit and must use the media-buy currency. Every package budget, minimum-spend target, and canonical bidding amount uses that single denomination; split packages requiring another currency into a separate media buy. In 3.2, pricing-option `max_bid` and package `bid_price` remain only as deprecated migration fields. A seller-offered boolean no longer determines whether buyer input is a manual bid, auction ceiling, or average outcome-cost control.
 
 **Auction Example**:
 ```json
@@ -754,7 +754,7 @@ The pricing option is the seller's commercial offer; `bidding` is the buyer's ex
 
 ## Buyer Selection Process
 
-Each package specifies its own pricing option, which determines currency and pricing model:
+Each package specifies its own pricing option, which determines pricing model and auction unit. Its declared currency must match the single media-buy currency:
 
 ```json
 {
@@ -777,10 +777,10 @@ Each package specifies its own pricing option, which determines currency and pri
 
 **How it works:**
 1. Package selects `pricing_option_id` from product (e.g., "cpcv_usd_auction")
-2. Pricing option determines currency, pricing model, and fixed vs auction
-3. Package `budget` is in the pricing option's currency
-4. Auction-based pricing uses explicit `bidding.bid_amount` for a manual auction bid or `bidding.max_bid` for a hard per-auction ceiling
-5. Sellers validate currency compatibility across packages
+2. Pricing option determines pricing model, auction unit, and fixed vs auction; its currency must match the media buy
+3. Package `budget` and all canonical `bidding` amounts use the media-buy currency
+4. Auction-based pricing uses explicit `bidding.bid_amount` for a manual auction bid or `bidding.max_bid` for a hard per-auction ceiling, expressed per the pricing option's unit
+5. Sellers reject currency-mismatched packages rather than converting amounts; buyers split them into separate media buys
 
 ## Reporting Metrics by Pricing Model
 

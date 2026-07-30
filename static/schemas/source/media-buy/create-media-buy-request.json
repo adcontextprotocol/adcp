@@ -169,7 +169,7 @@
       "allOf": [
         { "$ref": "/schemas/core/bidding-policy.json" }
       ],
-      "description": "Complete media-buy bidding default inherited by packages that omit package.bidding. In seller-optimized/shared-budget mode this is authoritative for provider-native campaign strategy. Sellers MUST reject incompatible units, combinations, or package overrides before mutation with BIDDING_PLACEMENT_CONFLICT. Media-buy bidding combined with any inheriting package's legacy bid_price or legacy monetary optimization-goal target is ambiguous and MUST be rejected with AMBIGUOUS_BIDDING_POLICY."
+      "description": "Complete media-buy bidding default inherited by packages that omit package.bidding. `{automatic:true}` records an explicit automatic policy. In seller-optimized mode, cost_per/roas bind to the primary budget_allocation.optimization_goals goal. In fixed mode, inherited cost_per is valid only when inheriting package primary-goal result units are compatible; inherited roas requires value-bearing primary goals. Every monetary field uses total_budget.currency or the single currency derived for the media buy, and every affected pricing option MUST declare that currency. Sellers MUST reject incompatible units, combinations, currency, or overrides before mutation with BIDDING_PLACEMENT_CONFLICT. Media-buy bidding combined with any inheriting package's legacy bid_price or legacy monetary optimization-goal target is ambiguous and MUST be rejected with AMBIGUOUS_BIDDING_POLICY."
     },
     "paused": {
       "type": "boolean",

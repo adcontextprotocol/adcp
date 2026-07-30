@@ -67,7 +67,7 @@
     },
     "currency": {
       "type": "string",
-      "description": "ISO 4217 currency for total_budget and package constraints unless a package explicitly overrides it. Seller-optimized buys require one shared currency across all packages.",
+      "description": "Single ISO 4217 denomination for total_budget, every package budget/minimum, and every canonical BiddingPolicy monetary field. Every package's selected pricing option MUST declare this currency; packages requiring another currency belong in a separate media buy.",
       "pattern": "^[A-Z]{3}$"
     },
     "budget_allocation": {
@@ -86,7 +86,7 @@
       "allOf": [
         { "$ref": "/schemas/core/bidding-policy.json" }
       ],
-      "description": "Media-buy-authored bidding policy. This is the complete default inherited by packages that omit package.bidding. In seller-optimized/shared-budget mode it is authoritative for strategies the provider requires at campaign level. Package overrides are permitted only where the provider supports them; placement conflicts MUST be rejected atomically with BIDDING_PLACEMENT_CONFLICT."
+      "description": "Media-buy-authored bidding policy. This is the complete default inherited by packages that omit package.bidding; `{automatic:true}` is an explicit authored automatic policy. In seller-optimized mode, cost_per/roas bind to the primary budget_allocation optimization goal. In fixed mode, inherited cost_per requires compatible package primary-goal result units and inherited roas requires value-bearing primary goals. Monetary fields use media_buy.currency; every affected pricing option MUST declare the same currency. Package overrides are permitted only where advertised; conflicts MUST be rejected atomically with BIDDING_PLACEMENT_CONFLICT."
     },
     "packages": {
       "type": "array",

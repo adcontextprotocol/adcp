@@ -461,6 +461,118 @@ async function runTests() {
   );
 
   await testSchemaValidation(
+    '/schemas/core/bidding-policy.json',
+    { automatic: true },
+    'Bidding policy accepts an explicit automatic policy override'
+  );
+
+  await testSchemaRejection(
+    '/schemas/core/bidding-policy.json',
+    { automatic: true, max_bid: 4.5 },
+    'Bidding policy rejects automatic combined with a monetary mode'
+  );
+
+  await testSchemaValidation(
+    '/schemas/core/media-buy-features.json',
+    {
+      bidding_policy: {
+        package: {
+          modes: ['cost_per'],
+          cost_per_strengths: ['cap']
+        }
+      }
+    },
+    'Bidding capability can advertise only package cost caps'
+  );
+
+  await testSchemaValidation(
+    '/schemas/core/media-buy-features.json',
+    {
+      bidding_policy: {
+        media_buy: {
+          modes: ['max_bid', 'roas'],
+          roas_strengths: ['floor', 'target'],
+          supported_combinations: ['max_bid_with_roas']
+        },
+        package: {
+          modes: ['automatic', 'bid_amount']
+        }
+      }
+    },
+    'Bidding capability declares independent scopes, strengths, and combinations'
+  );
+
+  await testSchemaRejection(
+    '/schemas/core/media-buy-features.json',
+    { bidding_policy: true },
+    'Bidding capability rejects the former coarse boolean claim'
+  );
+
+  await testSchemaRejection(
+    '/schemas/core/bidding-policy-capability.json',
+    {
+      package: { modes: ['cost_per'] }
+    },
+    'Bidding capability requires strengths for cost_per support'
+  );
+
+  await testSchemaRejection(
+    '/schemas/core/bidding-policy-capability.json',
+    {
+      media_buy: {
+        modes: ['max_bid'],
+        supported_combinations: ['max_bid_with_cost_per']
+      }
+    },
+    'Bidding capability rejects a combination whose component mode is absent'
+  );
+
+  await testSchemaValidation(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      idempotency_key: 'automatic-package-override-001',
+      account: { account_id: 'acc_test_001' },
+      total_budget: { amount: 20000, currency: 'USD' },
+      bidding: { max_bid: 5 },
+      packages: [
+        {
+          product_id: 'display_default',
+          pricing_option_id: 'cpm_usd_auction',
+          budget: 10000
+        },
+        {
+          product_id: 'display_automatic',
+          pricing_option_id: 'cpm_usd_auction',
+          budget: 10000,
+          bidding: { automatic: true }
+        }
+      ],
+      brand: { domain: 'acmecorp.com' },
+      start_time: 'asap',
+      end_time: '2099-12-31T23:59:59Z'
+    },
+    'Package automatic policy explicitly overrides a media-buy bidding default'
+  );
+
+  await testSchemaValidation(
+    '/schemas/media-buy/package-update.json',
+    {
+      package_id: 'pkg_automatic_001',
+      bidding: { automatic: true }
+    },
+    'Package update accepts an explicit automatic bidding override'
+  );
+
+  await testSchemaValidation(
+    '/schemas/core/package.json',
+    {
+      package_id: 'pkg_automatic_001',
+      bidding: { automatic: true }
+    },
+    'Package readback preserves an explicit automatic bidding override'
+  );
+
+  await testSchemaValidation(
     '/schemas/media-buy/package-request.json',
     {
       product_id: 'search_clicks',

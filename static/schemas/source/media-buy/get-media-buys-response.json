@@ -62,7 +62,7 @@
           },
           "currency": {
             "type": "string",
-            "description": "ISO 4217 currency code (e.g., USD, EUR, GBP) for monetary values at this media buy level. total_budget is always denominated in this currency. Package-level fields may override with package.currency.",
+            "description": "Single ISO 4217 denomination for total_budget, package budget constraints, and canonical BiddingPolicy monetary fields. Every selected pricing option on an AdCP-authored media buy MUST declare this currency. Legacy or externally-created mixed-currency buys must not expose canonical bidding until normalized or split.",
             "pattern": "^[A-Z]{3}$"
           },
           "total_budget": {
@@ -86,7 +86,7 @@
             "allOf": [
               { "$ref": "/schemas/core/bidding-policy.json" }
             ],
-            "description": "Current media-buy-authored bidding policy. Package entries omit bidding when they inherit this block."
+            "description": "Current media-buy-authored bidding policy with scope-specific goal binding and media-buy-currency denomination. Package entries omit bidding when they inherit this block; explicit package automatic overrides remain visible as `{automatic:true}`."
           },
           "start_time": {
             "type": "string",
@@ -241,7 +241,7 @@
                 },
                 "budget": {
                   "type": "number",
-                  "description": "Hard lifetime package spend cap, denominated in package.currency when present, otherwise media_buy.currency. In seller-optimized mode this is not a current allocation.",
+                  "description": "Hard lifetime package spend cap denominated in media_buy.currency. In seller-optimized mode this is not a current allocation.",
                   "minimum": 0
                 },
                 "min_spend_target": {
@@ -251,7 +251,7 @@
                 },
                 "currency": {
                   "type": "string",
-                  "description": "ISO 4217 currency code for monetary values at this package level (budget, bid_price, snapshot.spend). When absent, inherit media_buy.currency.",
+                  "description": "Legacy/readback package denomination for buys created outside the canonical 3.2 path. For AdCP-authored media buys this MUST equal media_buy.currency; canonical package budget and BiddingPolicy values always use media_buy.currency. Snapshot currency may still identify externally reported spend denomination.",
                   "pattern": "^[A-Z]{3}$"
                 },
                 "bid_price": {
@@ -264,7 +264,7 @@
                   "allOf": [
                     { "$ref": "/schemas/core/bidding-policy.json" }
                   ],
-                  "description": "Package-authored bidding override. Omitted when this package inherits media_buy.bidding; sellers MUST NOT copy an inherited block here."
+                  "description": "Package-authored bidding override. `{automatic:true}` explicitly overrides media_buy.bidding with provider automatic delivery. Omitted when this package inherits; sellers MUST NOT copy an inherited block here. Monetary fields use media_buy.currency."
                 },
                 "optimization_goals": {
                   "type": "array",

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/budget-allocation.json",
   "title": "Budget Allocation",
-  "description": "How a media buy's total budget is allocated across its packages. Fixed allocation preserves independent package budgets. Seller-optimized allocation delegates continuous cross-package allocation to the seller within the media-buy total, package caps, minimum-spend targets, flight windows, and pacing controls.",
+  "description": "How a media buy's total budget is allocated across its packages. Fixed allocation preserves independent package budgets. Seller-optimized allocation delegates continuous cross-package allocation to the seller within the media-buy total, package caps, minimum-spend targets, flight windows, and pacing controls. When a seller-optimized media-buy BiddingPolicy carries cost_per or roas, that control binds to this allocation block's primary optimization goal rather than independently to each package goal.",
   "x-adcp-hoist": true,
   "discriminator": {
     "propertyName": "mode"
@@ -32,7 +32,7 @@
         },
         "optimization_goals": {
           "type": "array",
-          "description": "Goals the seller uses to allocate the shared budget across packages. These are distinct from packages[].optimization_goals, which optimize delivery within an individual package. Every participating product MUST support the primary cross-package goal; otherwise the seller MUST reject the request with TERMS_REJECTED or UNSUPPORTED_FEATURE and identify the incompatible package.",
+          "description": "Goals the seller uses to allocate the shared budget across packages. These are distinct from packages[].optimization_goals, which optimize delivery within an individual package. The primary goal (priority 1, otherwise lowest priority, otherwise first entry) is the result unit/value source for media-buy bidding.cost_per or bidding.roas. Every participating product MUST support that primary cross-package goal; otherwise the seller MUST reject the request with TERMS_REJECTED or UNSUPPORTED_FEATURE and identify the incompatible package.",
           "items": {
             "$ref": "/schemas/core/optimization-goal.json"
           },

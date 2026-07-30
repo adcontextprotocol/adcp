@@ -26,8 +26,10 @@
       "description": "Supports media-buy-level shared budgets with budget_allocation.mode `seller_optimized`. Sellers declaring true MUST accept eligible explicit-package and proposal executions, enforce the aggregate budget and package constraints, apply media-buy-level pacing, and echo the allocation configuration on buy read surfaces. Product combinations may still be rejected when their currencies, optimization capabilities, pricing terms, or delivery constraints are incompatible."
     },
     "bidding_policy": {
-      "type": "boolean",
-      "description": "Supports the canonical bidding block at media-buy and package scope, including authored-scope-preserving readback and complete-block inheritance. Sellers declaring true MUST validate policy modes, units, provider-native placement, and shared-budget compatibility before mutation; they MUST reject unsupported combinations rather than silently changing semantics."
+      "allOf": [
+        { "$ref": "/schemas/core/bidding-policy-capability.json" }
+      ],
+      "description": "Structured support for canonical bidding by authored scope, mode, strength, and multi-field combination. Presence does not imply support for both scopes or every mode. Sellers MUST preserve every advertised semantic exactly and reject unadvertised policies rather than translating them."
     }
   },
   "additionalProperties": {

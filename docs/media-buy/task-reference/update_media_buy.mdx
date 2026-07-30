@@ -204,7 +204,7 @@ asyncio.run(create_and_pause_campaign())
 | `total_budget` | TotalBudget | No | Updated hard aggregate lifetime budget. Already-spent amounts continue to count against the new total. |
 | `budget_allocation` | BudgetAllocation | No | Updated fixed or seller-optimized allocation configuration. Mode changes require `update_budget_allocation` in `available_actions`. |
 | `pacing` | string | No | Updated aggregate media-buy pacing strategy. |
-| `bidding` | BiddingPolicy \| null | No | Replace the complete media-buy bidding default, or clear it with `null`. Package-authored overrides remain explicit. |
+| `bidding` | BiddingPolicy \| null | No | Replace the complete media-buy bidding default, use `{automatic: true}` for an explicit automatic policy, or clear it with `null`. Goal binding follows the resulting allocation mode; monetary amounts remain in the media-buy currency. Package-authored overrides remain explicit. |
 | `push_notification_config` | object | No | Webhook for async operation notifications |
 
 `account` and `media_buy_id` are always required.
@@ -237,13 +237,13 @@ Configure automated delivery reporting for this media buy:
 | `paused` | boolean | Pause/resume specific package (`true` = paused, `false` = active) |
 | `canceled` | boolean | Cancel this package (irreversible). Must be `true` when present. Seller may reject with `NOT_CANCELLABLE`. |
 | `cancellation_reason` | string | Reason for canceling this package |
-| `budget` | number | Updated hard package spend cap. In seller-optimized mode this is not a current allocation. |
-| `min_spend_target` | number | Updated soft package minimum-spend target for seller-optimized allocation. |
+| `budget` | number | Updated hard package spend cap in the media-buy currency. In seller-optimized mode this is not a current allocation. |
+| `min_spend_target` | number | Updated soft package minimum-spend target in the media-buy currency for seller-optimized allocation. |
 | `impressions` | number | Updated impression goal for this package |
 | `start_time` | string | Updated flight start date/time in ISO 8601 format. Must fall within the media buy's date range. |
 | `end_time` | string | Updated flight end date/time in ISO 8601 format. Must fall within the media buy's date range. |
 | `pacing` | string | Updated pacing strategy |
-| `bidding` | BiddingPolicy \| null | Replace the complete package-authored override, or clear it with `null` so the package inherits media-buy bidding. During legacy migration, `null` may accompany `bid_price` or a monetary optimization-goal target; only a non-null canonical block conflicts with those representations. |
+| `bidding` | BiddingPolicy \| null | Replace the complete package-authored override, use `{automatic: true}` to explicitly disable inherited buyer controls, or clear it with `null` so the package inherits media-buy bidding. During legacy migration, `null` may accompany `bid_price` or a monetary optimization-goal target; only a non-null canonical block conflicts with those representations. |
 | `bid_price` | number | **Deprecated in 3.2.** Legacy package bid representation; cannot be combined with a non-null `bidding` object. |
 | `optimization_goals` | OptimizationGoal[] | Replace objective functions for this package. Currency-bearing policy belongs in `bidding`; legacy monetary targets cannot be combined with canonical bidding. |
 | `targeting_overlay` | TargetingOverlay | Updated targeting restrictions. Uses replacement semantics; changing `signal_targeting_groups` can alter priced signal selection, so sellers MAY reject with `REQUOTE_REQUIRED` when the selected signal, group expression, or signal `pricing_option_id` falls outside the original quote. Sellers SHOULD reject attempts to change fixed signal selections and MUST echo applied fixed/default signal groups on the resulting package state. A demographic change is compiled against the product's current `demographic_targeting` declaration and refreshes `demographic_targeting_resolution` atomically; unsupported or inexact changes are rejected rather than broadened. |

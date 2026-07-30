@@ -216,13 +216,35 @@ Sellers with mixed approval policies SHOULD declare `require_human` unless every
 
 #### features
 
-Optional media-buy features. **If declared true, seller MUST honor requests using that feature.**
+Optional media-buy features. Boolean declarations are commitments when true. Structured declarations commit only to the explicitly advertised sub-capabilities.
 
 | Feature | Description |
 |---------|-------------|
 | `inline_creative_management` | Accepts creatives inline in `create_media_buy` and `update_media_buy` package payloads |
 | `property_list_filtering` | Honors `property_list` parameter in `get_products` |
 | `catalog_management` | Supports `sync_catalogs` for catalog feed management |
+| `seller_optimized_budget` | Supports shared media-buy budgets and cross-package allocation goals |
+| `bidding_policy` | Structured canonical bidding support by `media_buy`/`package` scope, modes, strengths, and supported combinations |
+
+`bidding_policy` is intentionally not a boolean. Each scope declares `modes` from `automatic`, `bid_amount`, `max_bid`, `cost_per`, and `roas`. A scope advertising `cost_per` also declares `cost_per_strengths`; `roas` similarly declares `roas_strengths`. Optional `supported_combinations` lists `max_bid_with_cost_per` and/or `max_bid_with_roas`. Presence of one scope or mode makes no claim about another.
+
+```json
+{
+  "features": {
+    "bidding_policy": {
+      "media_buy": {
+        "modes": ["max_bid", "cost_per"],
+        "cost_per_strengths": ["cap", "target"],
+        "supported_combinations": ["max_bid_with_cost_per"]
+      },
+      "package": {
+        "modes": ["automatic", "cost_per"],
+        "cost_per_strengths": ["cap"]
+      }
+    }
+  }
+}
+```
 
 #### content_standards
 
@@ -929,7 +951,19 @@ const buy = await client.createMediaBuy({
     "creative_approval_mode": "auto_approve",
     "features": {
       "inline_creative_management": true,
-      "property_list_filtering": true
+      "property_list_filtering": true,
+      "seller_optimized_budget": true,
+      "bidding_policy": {
+        "media_buy": {
+          "modes": ["max_bid", "cost_per"],
+          "cost_per_strengths": ["cap", "target"],
+          "supported_combinations": ["max_bid_with_cost_per"]
+        },
+        "package": {
+          "modes": ["automatic", "bid_amount", "cost_per"],
+          "cost_per_strengths": ["cap"]
+        }
+      }
     },
     "execution": {
       "axe_integrations": ["https://axe.example.com"],

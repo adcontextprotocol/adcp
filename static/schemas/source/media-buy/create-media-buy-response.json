@@ -57,7 +57,7 @@
         },
         "currency": {
           "type": "string",
-          "description": "ISO 4217 currency code (e.g., USD, EUR, GBP) for monetary values at this media buy level. total_budget is denominated in this currency. Package-level fields may override with package.currency. In proposal mode the seller derives this from the request's total_budget object (total_budget.currency); in manual mode it is present when all packages share a currency. Matches the currency field in subsequent get_media_buys responses.",
+          "description": "Single ISO 4217 currency code for total_budget, package budget constraints, and canonical BiddingPolicy monetary fields. Every selected pricing option MUST declare this currency; packages needing another currency belong in another media buy. In proposal mode the seller derives it from total_budget.currency; in explicit-package mode the seller derives or validates one common pricing-option currency. Matches subsequent get_media_buys responses.",
           "pattern": "^[A-Z]{3}$"
         },
         "total_budget": {
@@ -81,7 +81,7 @@
           "allOf": [
             { "$ref": "/schemas/core/bidding-policy.json" }
           ],
-          "description": "Accepted media-buy-authored bidding policy. Packages that inherit it omit package.bidding; only explicit package overrides carry their own block."
+          "description": "Accepted media-buy-authored bidding policy with goal binding and monetary denomination preserved. Packages that inherit it omit package.bidding; explicit package policies, including `{automatic:true}`, remain at package scope."
         },
         "valid_actions": {
           "type": "array",

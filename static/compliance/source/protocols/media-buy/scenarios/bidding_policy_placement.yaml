@@ -1,13 +1,13 @@
 id: media_buy_seller/bidding_policy_placement
 version: "1.0.0"
-title: "Seller preserves media-buy bidding inheritance and package override scope"
+title: "Seller preserves bidding scope and rejects ambiguous goal binding"
 category: media_buy_seller
-summary: "Verifies that a seller advertising bidding_policy accepts a media-buy bidding default plus one package override, echoes only authored blocks, and preserves authored scope on get_media_buys. Sellers without the feature grade not_applicable."
+summary: "Verifies that a seller advertising media-buy max_bid support accepts an inherited default, echoes it once, and does not materialize package copies. When the seller also advertises media-buy cost caps, it rejects a fixed default spanning incompatible package result units."
 track: media_buy
 
 requires_capability:
-  path: media_buy.features.bidding_policy
-  equals: true
+  path: media_buy.features.bidding_policy.media_buy.modes
+  contains: max_bid
 
 required_tools:
   - get_products
@@ -19,10 +19,12 @@ invariants:
 
 narrative: |
   Media-buy bidding is a complete default inherited by packages that omit a
-  package block. A package bidding block is a complete override, not a
-  field-by-field merge. Readback preserves authored scope: the seller echoes
-  media-buy bidding once and MUST NOT materialize that inherited policy on each
-  package.
+  package block. Readback preserves authored scope: the seller echoes media-buy
+  bidding once and MUST NOT materialize that inherited policy on each package.
+
+  A capability-gated negative phase also verifies that a fixed media-buy cost
+  control is not assigned two meanings: one amount cannot mean cost per click
+  for one inheriting package and cost per view for another.
 
   This scenario uses fixed package budgets so it does not require the separate
   seller_optimized_budget capability. The same placement rules apply under a
@@ -37,7 +39,6 @@ agent:
     - bidding_policy
   examples:
     - "Campaign-level auction ceiling inherited by ad sets"
-    - "Package-specific manual bid override in an independent-budget campaign"
 
 caller:
   role: buyer_agent
@@ -46,7 +47,7 @@ caller:
 prerequisites:
   description: |
     The seller supports two non-guaranteed CPM products in USD and canonical
-    bidding policy at both media-buy and package scope.
+    max_bid policy at media-buy scope.
   test_kit: "test-kits/acme-outdoor.yaml"
   controller_seeding: true
 
@@ -133,9 +134,8 @@ phases:
         doc_ref: "/media-buy/task-reference/create_media_buy"
         stateful: true
         expected: |
-          Accept the media-buy max bid and the second package's manual-bid
-          override. Echo the media-buy block once, omit bidding from the first
-          inheriting package, and echo the second package's authored override.
+          Accept the media-buy max bid. Echo the media-buy block once and omit
+          bidding from both inheriting packages.
         sample_request:
           account:
             brand:
@@ -155,8 +155,6 @@ phases:
             - product_id: "bidding_override_display"
               pricing_option_id: "override_cpm"
               budget: 40000
-              bidding:
-                bid_amount: 5
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
           idempotency_key: "$generate:uuid_v4#bidding_policy_placement_create"
@@ -176,10 +174,9 @@ phases:
           - check: field_absent
             path: "packages[0].bidding"
             description: "Inherited media-buy bidding is not copied into the package"
-          - check: field_value
-            path: "packages[1].bidding.bid_amount"
-            value: 5
-            description: "Response preserves the explicit package override"
+          - check: field_absent
+            path: "packages[1].bidding"
+            description: "The second inheriting package also omits a copied policy"
 
   - id: read_bidding_buy
     title: "Verify durable authored-scope readback"
@@ -191,7 +188,7 @@ phases:
         response_schema_ref: "media-buy/get-media-buys-response.json"
         doc_ref: "/media-buy/task-reference/get_media_buys"
         stateful: true
-        expected: "Return the media-buy default and package override at their authored scopes."
+        expected: "Return the media-buy default once and keep inherited package policy implicit."
         sample_request:
           account:
             brand:
@@ -209,7 +206,69 @@ phases:
           - check: field_absent
             path: "media_buys[0].packages[0].bidding"
             description: "Read preserves inheritance rather than materializing a package copy"
+          - check: field_absent
+            path: "media_buys[0].packages[1].bidding"
+            description: "Read keeps the second inherited package implicit"
+
+  - id: reject_incompatible_fixed_cost_binding
+    title: "Reject one fixed cost control across incompatible goal units"
+    requires_capability:
+      path: media_buy.features.bidding_policy.media_buy.cost_per_strengths
+      contains: cap
+    steps:
+      - id: create_media_buy_with_ambiguous_fixed_cost_binding
+        title: "Reject a shared cost cap that would mean different results"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: false
+        expect_error: true
+        negative_path: payload_well_formed
+        expected: |
+          Reject before mutation with BIDDING_PLACEMENT_CONFLICT. In fixed
+          allocation the media-buy cost cap would bind to clicks for the first
+          package and views for the second, so the single amount has no common
+          result unit.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          total_budget:
+            amount: 100000
+            currency: "USD"
+          budget_allocation:
+            mode: "fixed"
+          bidding:
+            cost_per:
+              amount: 4
+              strength: "cap"
+          packages:
+            - product_id: "bidding_default_display"
+              pricing_option_id: "default_cpm"
+              budget: 60000
+              optimization_goals:
+                - kind: "metric"
+                  metric: "clicks"
+                  priority: 1
+            - product_id: "bidding_override_display"
+              pricing_option_id: "override_cpm"
+              budget: 40000
+              optimization_goals:
+                - kind: "metric"
+                  metric: "views"
+                  priority: 1
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#bidding_policy_placement_incompatible_cost_binding"
+        validations:
+          - check: error_code
+            value: "BIDDING_PLACEMENT_CONFLICT"
+            description: "Seller rejects a fixed media-buy cost control whose inheriting package goal units differ"
           - check: field_value
-            path: "media_buys[0].packages[1].bidding.bid_amount"
-            value: 5
-            description: "Read preserves the package-authored override"
+            path: "errors[0].field"
+            value: "bidding.cost_per"
+            description: "Error identifies the ambiguous media-buy cost control"

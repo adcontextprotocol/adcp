@@ -79,7 +79,7 @@
       "allOf": [
         { "$ref": "/schemas/core/bidding-policy.json" }
       ],
-      "description": "Seller-interpreted media-buy bidding policy used for governance and delivery transparency. Package-authored overrides remain on packages rather than being copied into this aggregate field."
+      "description": "Seller-interpreted media-buy bidding policy used for governance and delivery transparency. Goal-bound controls follow budget-allocation scope semantics and monetary fields use the planned delivery currency. Package-authored overrides, including explicit automatic overrides, remain on packages rather than being copied into this aggregate field."
     },
     "enforced_policies": {
       "type": "array",

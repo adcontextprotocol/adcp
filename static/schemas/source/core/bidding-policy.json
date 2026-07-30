@@ -2,27 +2,32 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/bidding-policy.json",
   "title": "Bidding Policy",
-  "description": "Buyer-authored execution policy for auction bidding, average outcome cost, or return on ad spend. The containing object determines authored scope: media-buy `bidding` is a complete inherited default and package `bidding` is a complete package override. Sellers MUST preserve authored scope on readback and MUST NOT copy an inherited media-buy policy into package `bidding`. Currency is the media-buy currency and is not repeated here. A media-buy policy is valid only when every inheriting package resolves compatible units for each supplied field. Absence means seller/provider automatic delivery; it does not mean a zero bid. Sellers MUST reject unsupported modes, combinations, units, or native placements before any provider mutation and MUST NOT silently convert between bid amount, auction ceiling, cost cap/target, or ROAS floor/target semantics.",
+  "description": "Buyer-authored execution policy for automatic delivery, auction bidding, average outcome cost, or return on ad spend. The containing object determines authored scope: media-buy `bidding` is a complete inherited default and package `bidding` is a complete package override. Sellers MUST preserve authored scope on readback and MUST NOT copy an inherited media-buy policy into package `bidding`. Every monetary field in this block is denominated in the media-buy currency; the selected pricing option supplies the auction unit (for example CPM or CPC), never a different denomination. Every package to which a canonical policy applies MUST select a pricing option in the media-buy currency; split currency-mismatched packages into separate media buys. A media-buy bid_amount or max_bid is valid only when every inheriting package resolves a compatible pricing-option auction unit. Seller-optimized media-buy cost_per/roas bind to the primary budget_allocation.optimization_goals goal. Package-authored cost_per/roas bind to the package primary optimization goal. In fixed allocation, an inherited media-buy cost_per is valid only when all inheriting packages have compatible primary-goal result units; inherited roas requires value-bearing primary goals on every inheriting package. Absence invokes inheritance or provider automatic delivery; `{automatic:true}` is an explicit authored policy that overrides inheritance. Sellers MUST reject unsupported modes, combinations, units, currency, goal bindings, or native placements before any provider mutation and MUST NOT silently translate semantics.",
   "type": "object",
   "properties": {
+    "automatic": {
+      "type": "boolean",
+      "const": true,
+      "description": "Explicitly use seller/provider automatic bidding at this authored scope. At package scope this is a complete override of a media-buy policy, not inheritance. It MUST be the only field in the block and MUST be preserved on readback."
+    },
     "bid_amount": {
       "type": "number",
       "exclusiveMinimum": 0,
-      "description": "Manual auction bid in the selected pricing option's auction unit. This is the amount submitted to the auction, not a promise that the clearing price equals this amount. Requires an auction-priced pricing option."
+      "description": "Manual auction bid denominated in the media-buy currency and expressed per the selected pricing option's auction unit. For example, a CPM option interprets the amount per thousand impressions. This is the amount submitted to the auction, not a promise that the clearing price equals it. Requires an auction-priced pricing option whose currency equals the media-buy currency."
     },
     "max_bid": {
       "type": "number",
       "exclusiveMinimum": 0,
-      "description": "Hard per-auction ceiling in the selected pricing option's auction unit. This is the only canonical hard auction ceiling and MUST NOT be translated into an average outcome-cost control. Requires an auction-priced pricing option. May stand alone or supplement cost_per/roas only when the provider supports that combination."
+      "description": "Hard per-auction ceiling denominated in the media-buy currency and expressed per the selected pricing option's auction unit. This is the only canonical hard auction ceiling and MUST NOT be translated into an average outcome-cost control. Requires an auction-priced pricing option whose currency equals the media-buy currency. May stand alone or supplement cost_per/roas only when the relevant scope capability advertises that combination."
     },
     "cost_per": {
       "type": "object",
-      "description": "Average cost control per result of the package's primary optimization goal. The primary goal is priority 1, otherwise the lowest numeric priority, otherwise the first array entry.",
+      "description": "Average cost control per result of the scope-bound primary optimization goal. At seller-optimized media-buy scope it binds to budget_allocation.optimization_goals; at package scope it binds to that package's optimization_goals; at fixed media-buy scope it binds independently to each inheriting package and is valid only when their primary-goal result units are compatible. Metric goals are compatible only when metric and every result-defining qualifier match; vendor_metric goals only when vendor and metric_id match; event goals only when the event_type/custom_type set matches. Primary means priority 1, otherwise lowest numeric priority, otherwise first array entry.",
       "properties": {
         "amount": {
           "type": "number",
           "exclusiveMinimum": 0,
-          "description": "Average cost amount per primary-goal result in the media-buy currency."
+          "description": "Average cost amount per scope-bound primary-goal result, denominated in the media-buy currency."
         },
         "strength": {
           "type": "string",
@@ -35,7 +40,7 @@
     },
     "roas": {
       "type": "object",
-      "description": "Dimensionless return-on-ad-spend control. Requires value-bearing event sources on every package to which the policy applies.",
+      "description": "Dimensionless return-on-ad-spend control bound to the same scope-specific primary goal rules as cost_per. The bound goal must be value-bearing; a fixed media-buy default requires a value-bearing primary goal on every inheriting package.",
       "properties": {
         "value": {
           "type": "number",
@@ -57,6 +62,10 @@
     {
       "not": {
         "anyOf": [
+          { "required": ["automatic", "bid_amount"] },
+          { "required": ["automatic", "max_bid"] },
+          { "required": ["automatic", "cost_per"] },
+          { "required": ["automatic", "roas"] },
           { "required": ["bid_amount", "max_bid"] },
           { "required": ["bid_amount", "cost_per"] },
           { "required": ["bid_amount", "roas"] },

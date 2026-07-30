@@ -2,7 +2,7 @@ id: media_buy_seller/seller_optimized_budget
 version: "1.0.0"
 title: "Seller accepts and persists a seller-optimized budget across packages"
 category: media_buy_seller
-summary: "Verifies that a seller advertising seller_optimized_budget accepts a shared media-buy total with cross-package goals, package caps, a soft minimum-spend target, and two-level pacing, then persists the accepted configuration on get_media_buys. Sellers without the feature grade not_applicable."
+summary: "Verifies that a seller advertising seller_optimized_budget accepts and persists a shared total with cross-package goals, package caps, a soft minimum-spend target, and two-level pacing. When media-buy cost caps are also advertised, verifies that the control binds to the allocation goal."
 track: media_buy
 
 requires_capability:
@@ -27,6 +27,9 @@ narrative: |
   optimizer algorithm: acceptance, aggregate budget and pacing echo, package
   constraint echo, and durable readback. Continuous internal allocation is
   delivery behavior and does not mutate package caps or the buy revision.
+  An optional phase for sellers advertising media-buy cost caps verifies that
+  the outcome-cost control binds to the allocation goal, not independently to
+  unrelated package-local goals.
 
 agent:
   interaction_model: media_buy_seller
@@ -233,3 +236,60 @@ phases:
             path: "media_buys[0].packages[0].min_spend_target"
             value: 20000
             description: "Read preserves the package minimum-spend target"
+
+  - id: bind_media_buy_cost_to_allocation_goal
+    title: "Bind a shared cost control to the allocation goal"
+    requires_capability:
+      path: media_buy.features.bidding_policy.media_buy.cost_per_strengths
+      contains: cap
+    steps:
+      - id: create_shared_budget_buy_with_cost_cap
+        title: "Create a shared buy with a cross-package click cost cap"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        expected: |
+          Accept the cost cap as a control on the primary allocation goal
+          (clicks), independent of any package-local optimization goals.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          total_budget:
+            amount: 100000
+            currency: "USD"
+          budget_allocation:
+            mode: "seller_optimized"
+            optimization_goals:
+              - kind: "metric"
+                metric: "clicks"
+                priority: 1
+          bidding:
+            cost_per:
+              amount: 4
+              strength: "cap"
+          packages:
+            - product_id: "shared_budget_prospecting"
+              pricing_option_id: "prospecting_cpm"
+              budget: 70000
+            - product_id: "shared_budget_retargeting"
+              pricing_option_id: "retargeting_cpm"
+              budget: 60000
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#seller_optimized_budget_cost_cap"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller accepts the allocation-goal cost cap"
+          - check: field_value
+            path: "bidding.cost_per.amount"
+            value: 4
+            description: "Response preserves the media-buy-authored allocation cost cap"
