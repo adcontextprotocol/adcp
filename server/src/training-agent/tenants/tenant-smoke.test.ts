@@ -904,6 +904,39 @@ describe('tenant routing smoke', () => {
     }
   }, 15000);
 
+  it('adapts omitted get_products keys only on the frozen 3.0 compatibility route', async () => {
+    const { baseUrl, close } = await bootServer({ storyboardCompat: { version: '3.0' } });
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      await initializeTenant(url);
+      const account = {
+        brand: { domain: 'tenant-products-legacy.example' },
+        operator: 'tenant-products-legacy.example',
+      };
+      const payload = { buying_mode: 'wholesale', account };
+      const first = await callTenantTool(url, 2, 'get_products', payload) as {
+        result?: { structuredContent?: { products?: unknown[]; replayed?: boolean } };
+      };
+      const replay = await callTenantTool(url, 3, 'get_products', payload) as {
+        result?: { structuredContent?: { products?: unknown[]; replayed?: boolean } };
+      };
+      expect(first.result?.structuredContent?.products?.length).toBeGreaterThan(0);
+      expect(first.result?.structuredContent?.replayed).toBeUndefined();
+      expect(replay.result?.structuredContent?.products).toEqual(first.result?.structuredContent?.products);
+      expect(replay.result?.structuredContent?.replayed).toBe(true);
+
+      const changed = await callTenantTool(url, 4, 'get_products', {
+        buying_mode: 'brief',
+        brief: 'A different frozen 3.0 request',
+        account,
+      }) as { result?: { structuredContent?: { products?: unknown[]; replayed?: boolean } } };
+      expect(changed.result?.structuredContent?.products).toBeDefined();
+      expect(changed.result?.structuredContent?.replayed).toBeUndefined();
+    } finally {
+      await close();
+    }
+  }, 15000);
+
   it('replays v6 get_products advisory-success responses', async () => {
     const { baseUrl, close } = await bootServer();
     try {

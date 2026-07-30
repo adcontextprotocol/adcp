@@ -1418,6 +1418,7 @@ import {
   validateKeyFormat,
   scopedPrincipal,
   getIdempotencyStore,
+  payloadHash,
   REPLAY_TTL_SECONDS,
 } from './idempotency.js';
 import { maybeEmitCompletionWebhook } from './webhooks.js';
@@ -9711,6 +9712,42 @@ function validateIdempotencyProtectedInput(
   return undefined;
 }
 
+function applyThreeZeroGetProductsIdempotencyCompatibility(
+  toolName: string,
+  args: Record<string, unknown>,
+  scopedCallerPrincipal: string,
+  compatibilityEnabled: boolean,
+): Record<string, unknown> {
+  if (
+    toolName !== 'get_products'
+    || !compatibilityEnabled
+    || args.idempotency_key !== undefined
+  ) {
+    return args;
+  }
+
+  // Frozen 3.0 get_products examples predate the now-required key. Give only
+  // that legacy wire shape a deterministic internal key so exact retries still
+  // converge through the normal schema/cache/task/finalize path. Context and
+  // version negotiation are envelope concerns, not logical request identity.
+  const {
+    context: _context,
+    context_id: _contextId,
+    adcp_version: _adcpVersion,
+    adcp_major_version: _adcpMajorVersion,
+    ...canonicalRequest
+  } = args;
+  const fingerprint = createHash('sha256')
+    .update(scopedCallerPrincipal)
+    .update('\0')
+    .update(payloadHash(canonicalRequest))
+    .digest('hex');
+  return {
+    ...canonicalRequest,
+    idempotency_key: `compat30:${fingerprint}`,
+  };
+}
+
 /**
  * Execute a training agent tool in-process (no HTTP round-trip).
  * Used by Addie's adcp-tools during certification demos.
@@ -9733,8 +9770,8 @@ async function executeTrainingAgentToolInContext(
   // Keeping it out of the cached inner response prevents a replay from
   // returning the original caller's correlation data.
   const rawArgs = args as unknown as Record<string, unknown>;
-  const { context: callerContext, ...handlerArgs } = rawArgs;
-  const versionResolution = resolveServedAdcpVersionForTool(toolName, handlerArgs);
+  const { context: callerContext, ...initialHandlerArgs } = rawArgs;
+  const versionResolution = resolveServedAdcpVersionForTool(toolName, initialHandlerArgs);
   if (!versionResolution.ok) {
     return { success: false, error: versionResolution.message };
   }
@@ -9749,8 +9786,14 @@ async function executeTrainingAgentToolInContext(
     return { success: false, error: `Unknown tool: ${toolName}` };
   }
   const authPrincipal = ctx.principal ?? ctx.userId ?? 'anonymous';
-  const accountScope = deriveAccountScope(handlerArgs);
+  const accountScope = deriveAccountScope(initialHandlerArgs);
   const principal = scopedPrincipal(authPrincipal, accountScope);
+  const handlerArgs = applyThreeZeroGetProductsIdempotencyCompatibility(
+    toolName,
+    initialHandlerArgs,
+    principal,
+    ctx.storyboardCompat?.version === '3.0' || initialHandlerArgs.adcp_version === '3.0',
+  );
   const idempotencyKey = handlerArgs.idempotency_key;
   let claim: { payloadHash: string } | undefined;
 
@@ -9872,8 +9915,8 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     // Extract and strip context before passing args to handlers (AdCP requirement:
     // echo caller's context object back unchanged in every response).
     const rawArgs = (args as Record<string, unknown> | undefined) ?? {};
-    const { context: callerContext, ...handlerArgs } = rawArgs;
-    const versionResolution = resolveServedAdcpVersionForTool(name, handlerArgs);
+    const { context: callerContext, ...initialHandlerArgs } = rawArgs;
+    const versionResolution = resolveServedAdcpVersionForTool(name, initialHandlerArgs);
 
     const handler = HANDLER_MAP[name];
 
@@ -9922,8 +9965,14 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     // callers can already enumerate their own account's keys — so the
     // scoping adds no useful probing surface while closing the cross-caller
     // leak.
-    const accountScope = deriveAccountScope(handlerArgs);
+    const accountScope = deriveAccountScope(initialHandlerArgs);
     const idempotencyPrincipal = scopedPrincipal(authPrincipal, accountScope);
+    const handlerArgs = applyThreeZeroGetProductsIdempotencyCompatibility(
+      name,
+      initialHandlerArgs,
+      idempotencyPrincipal,
+      ctx.storyboardCompat?.version === '3.0' || initialHandlerArgs.adcp_version === '3.0',
+    );
     const idempotencyKey = (handlerArgs as { idempotency_key?: unknown }).idempotency_key;
     let toolResult: CallToolResult | null = null;
     let taskFailed = false;
