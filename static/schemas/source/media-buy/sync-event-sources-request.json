@@ -48,7 +48,7 @@
           },
           "value_currencies": {
             "type": "array",
-            "description": "ISO 4217 currencies this source accepts for monetary custom_data values. Required for a source used by canonical ROAS. log_event monetary records MUST include a currency from this list. One source may list multiple currencies; each media buy consumes only records matching its own currency and no conversion occurs.",
+            "description": "ISO 4217 currencies this source accepts for monetary custom_data values. Required for a source used by canonical ROAS. Once declared, log_event monetary records for this source MUST include a currency from this list. Sources omitting the field retain legacy event compatibility but are ineligible for canonical ROAS. One source may list multiple currencies; each media buy consumes only records matching its own currency and no conversion occurs.",
             "items": {
               "type": "string",
               "pattern": "^[A-Z]{3}$"

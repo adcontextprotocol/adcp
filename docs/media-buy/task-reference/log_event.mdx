@@ -147,8 +147,8 @@ At least one of `uids`, `hashed_email`, `hashed_phone`, `click_id`, or `client_i
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `value` | number | Monetary value of the event; requires `currency` |
-| `currency` | string | ISO 4217 code declared in the event source's `value_currencies` (e.g. `USD`, `EUR`, `GBP`) |
+| `value` | number | Monetary value of the event. Requires `currency` when the source declares `value_currencies`; legacy sources remain compatible but cannot feed canonical ROAS. |
+| `currency` | string | ISO 4217 code declared in the event source's `value_currencies` when that contract is present (e.g. `USD`, `EUR`, `GBP`) |
 | `order_id` | string | Unique order or transaction identifier |
 | `content_ids` | string[] | Product or content identifiers. For catalog-driven campaigns, these match the catalog's `content_id_type` (e.g., SKUs, GTINs, job IDs). See [catalog-item attribution](/docs/media-buy/conversion-tracking#catalog-item-attribution). |
 | `content_type` | string | Category of content (product, service, etc.) |
@@ -554,7 +554,7 @@ Choose `event_id` values that are stable across retries:
 
 4. **Batch when possible** - Send up to 10,000 events per request to reduce API calls. Events within a batch are processed independently.
 
-5. **Include contracted value and currency** - Monetary events require both `custom_data.value` and `custom_data.currency`; the currency must appear in the source's `value_currencies` declared through `sync_event_sources`. Each ROAS buy consumes only records matching its media-buy currency.
+5. **Include contracted value and currency for ROAS** - A source used for canonical ROAS declares `value_currencies` through `sync_event_sources`; its monetary records require `custom_data.currency` from that list. Each ROAS buy consumes only records matching its media-buy currency. Legacy sources without this contract remain valid for non-ROAS events.
 
 6. **Stable event IDs** - Use deterministic event IDs (order numbers, transaction IDs) rather than random UUIDs. This ensures safe retries without duplicate counting.
 

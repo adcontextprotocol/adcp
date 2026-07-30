@@ -564,10 +564,10 @@ async function runTests() {
     'Event source declares the currencies available to canonical ROAS buys'
   );
 
-  await testSchemaRejection(
+  await testSchemaValidation(
     '/schemas/core/event-custom-data.json',
     { value: 25 },
-    'Monetary event custom data requires an explicit currency'
+    'Legacy monetary event data remains compatible without a source currency contract'
   );
 
   await testSchemaValidation(

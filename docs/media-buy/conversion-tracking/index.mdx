@@ -149,7 +149,7 @@ Send multiple identifier types when available. The seller uses the best availabl
 
 ## Custom data
 
-Event-specific data for attribution and reporting. A monetary `value` always requires `currency`, and that currency must appear in the event source's `value_currencies` contract.
+Event-specific data for attribution and reporting. Sources used for canonical ROAS declare `value_currencies`; monetary records from those sources require `currency` from that list. Legacy sources without the contract remain valid for non-ROAS use.
 
 ```json
 {
