@@ -312,15 +312,8 @@
                       "pattern": "^[A-Z]{3}$"
                     },
                     "delivery_status": {
-                      "type": "string",
-                      "description": "System-reported operational state of this package. Reflects actual delivery state independent of buyer pause control.",
-                      "enum": [
-                        "delivering",
-                        "completed",
-                        "budget_exhausted",
-                        "flight_ended",
-                        "goal_met"
-                      ]
+                      "$ref": "/schemas/enums/delivery-status.json",
+                      "description": "System-reported operational state of this package. Reflects actual delivery state independent of buyer pause control."
                     },
                     "paused": {
                       "type": "boolean",

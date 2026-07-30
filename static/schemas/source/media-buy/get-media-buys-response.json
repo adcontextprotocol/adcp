@@ -403,16 +403,8 @@
                       "minimum": 0
                     },
                     "delivery_status": {
-                      "type": "string",
-                      "description": "Operational delivery state of this package. 'not_delivering' means the package is within its scheduled flight but has delivered zero impressions for at least one full staleness cycle — the signal for automated price adjustments or buyer alerts. Implementers must not return 'not_delivering' until at least staleness_seconds have elapsed since package activation.",
-                      "enum": [
-                        "delivering",
-                        "not_delivering",
-                        "completed",
-                        "budget_exhausted",
-                        "flight_ended",
-                        "goal_met"
-                      ]
+                      "$ref": "/schemas/enums/delivery-status.json",
+                      "description": "Operational delivery state of this package. 'not_delivering' means the package is within its scheduled flight but has delivered zero impressions for at least one full staleness cycle — the signal for automated price adjustments or buyer alerts. Implementers must not return 'not_delivering' until at least staleness_seconds have elapsed since package activation."
                     },
                     "ext": {
                       "$ref": "/schemas/core/ext.json",

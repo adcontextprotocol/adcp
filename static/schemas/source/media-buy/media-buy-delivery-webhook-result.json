@@ -163,14 +163,7 @@
                       "pattern": "^[A-Z]{3}$"
                     },
                     "delivery_status": {
-                      "type": "string",
-                      "enum": [
-                        "delivering",
-                        "completed",
-                        "budget_exhausted",
-                        "flight_ended",
-                        "goal_met"
-                      ]
+                      "$ref": "/schemas/enums/delivery-status.json"
                     },
                     "paused": {
                       "type": "boolean"
