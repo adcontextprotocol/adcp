@@ -55,6 +55,10 @@ const CAPS: Record<string, ToolRateLimitConfig> = {
   read_google_doc: { windowMs: 10 * 60 * 1000, max: 20 },
   attach_content_asset: { windowMs: 10 * 60 * 1000, max: 20 },
   generate_perspective_illustration: { windowMs: 10 * 60 * 1000, max: 10 },
+  // Signing grades spawn a Node child for up to 90 seconds; OAuth diagnosis
+  // performs several outbound probes. Keep both well below the generic cap.
+  grade_agent_signing: { windowMs: 10 * 60 * 1000, max: 3 },
+  diagnose_agent_auth: { windowMs: 10 * 60 * 1000, max: 10 },
 };
 const DEFAULT_CAP: ToolRateLimitConfig = { windowMs: 10 * 60 * 1000, max: 60 };
 const GLOBAL_CAP: ToolRateLimitConfig = { windowMs: 10 * 60 * 1000, max: 200 };
@@ -76,6 +80,9 @@ export const WORKSPACE_CAPS: Record<string, ToolRateLimitConfig> = {
   // (~1500 generations/mo max). The per-user 5/month quota + per-user
   // 10/10min tool limit still apply on top.
   generate_perspective_illustration: { windowMs: 24 * 60 * 60 * 1000, max: 50 },
+  // Service-wide child-process budget. The in-process semaphore also limits
+  // bursts to two concurrent children per server instance.
+  grade_agent_signing: { windowMs: 10 * 60 * 1000, max: 12 },
 };
 
 /**

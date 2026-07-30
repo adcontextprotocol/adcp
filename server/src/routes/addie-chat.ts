@@ -598,12 +598,12 @@ export async function prepareRequestWithMemberTools(
   }
 
   // Auth graders — RFC 9421 signing + OAuth handshake diagnosis. Authenticated
-  // users only on the web path; each call spawns a child Node process and
-  // makes outbound HTTP probes from the server, so we keep it gated behind a
+  // users only on the web path; signing grades spawn a child Node process and
+  // both tools make outbound HTTP probes, so we keep them gated behind a
   // signed-in identity. (The Slack path in bolt-app.ts is always authenticated.)
   if (userId) {
     allTools.push(...AUTH_GRADER_TOOLS);
-    for (const [name, handler] of createAuthGraderToolHandlers()) {
+    for (const [name, handler] of createAuthGraderToolHandlers(userId)) {
       combinedHandlers.set(name, handler);
     }
   }

@@ -82,6 +82,25 @@ describe('checkToolRateLimit', () => {
     expect((await checkToolRateLimit('some_unknown_tool', 'u4')).ok).toBe(false);
   });
 
+  it('limits signing graders to three calls per user in ten minutes', async () => {
+    for (let i = 0; i < 3; i++) {
+      expect((await checkToolRateLimit('grade_agent_signing', 'grader-user')).ok).toBe(true);
+    }
+    const blocked = await checkToolRateLimit('grade_agent_signing', 'grader-user');
+    expect(blocked.ok).toBe(false);
+    expect(blocked.scope).toBe('per_tool');
+    expect((await checkToolRateLimit('grade_agent_signing', 'different-grader-user')).ok).toBe(true);
+  });
+
+  it('limits auth diagnosis to ten calls per user in ten minutes', async () => {
+    for (let i = 0; i < 10; i++) {
+      expect((await checkToolRateLimit('diagnose_agent_auth', 'diagnosis-user')).ok).toBe(true);
+    }
+    const blocked = await checkToolRateLimit('diagnose_agent_auth', 'diagnosis-user');
+    expect(blocked.ok).toBe(false);
+    expect(blocked.scope).toBe('per_tool');
+  });
+
   it('retryAfterMs is a positive value within the window bound', async () => {
     for (let i = 0; i < 10; i++) await checkToolRateLimit('generate_perspective_illustration', 'u-retry');
     const blocked = await checkToolRateLimit('generate_perspective_illustration', 'u-retry');
@@ -135,6 +154,15 @@ describe('checkToolRateLimit', () => {
     }
     expect(blockedAt).toBe(50);
     expect(blockedScope).toBe('workspace');
+  });
+
+  it('enforces the service-wide signing-grader cap across distinct users', async () => {
+    for (let i = 0; i < 12; i++) {
+      expect((await checkToolRateLimit('grade_agent_signing', `grader-${i}`)).ok).toBe(true);
+    }
+    const blocked = await checkToolRateLimit('grade_agent_signing', 'grader-13');
+    expect(blocked.ok).toBe(false);
+    expect(blocked.scope).toBe('workspace');
   });
 
   it('workspace cap does not apply to tools not listed in WORKSPACE_CAPS', async () => {

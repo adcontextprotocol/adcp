@@ -989,7 +989,7 @@ async function buildRequestContext(
  */
 async function createUserScopedTools(
   memberContext: MemberContext | null,
-  slackUserId?: string,
+  slackUserId: string,
   threadId?: string,
   threadContext?: ThreadContext | null
 ): Promise<UserScopedToolsResult> {
@@ -1063,10 +1063,10 @@ async function createUserScopedTools(
   }
   logger.debug('Addie Bolt: AdCP protocol tools enabled');
 
-  // Auth graders — RFC 9421 signing + OAuth handshake diagnosis. Available
-  // to every user; the underlying graders only probe the target agent's
-  // public surface and live-side-effect vectors are opt-in.
-  const authGraderHandlers = createAuthGraderToolHandlers();
+  // Auth graders use a stable WorkOS identity when mapped and a namespaced
+  // Slack identity otherwise, so unmapped Slack users cannot bypass limits.
+  const authGraderCallerId = memberContext?.workos_user?.workos_user_id ?? `slack:${slackUserId}`;
+  const authGraderHandlers = createAuthGraderToolHandlers(authGraderCallerId);
   allTools.push(...AUTH_GRADER_TOOLS);
   for (const [name, handler] of authGraderHandlers) {
     allHandlers.set(name, handler);
