@@ -34,7 +34,6 @@ import { recordEvent } from '../../db/person-events-db.js';
 import {
   canManageOrganizationBilling,
 } from '../../billing/billing-authorization.js';
-import { resolveUserOrgMembership } from '../../utils/resolve-user-org-membership.js';
 import { getWorkos } from '../../auth/workos-client.js';
 
 const logger = createLogger('addie-billing-tools');
@@ -627,6 +626,10 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
       // MemberContext is cached for conversational continuity. Financial
       // authorization is not: resolve the current active role for this exact
       // org immediately before reading the billing account or calling Stripe.
+      // Load the canonical resolver only on this privileged path: it imports
+      // auth middleware for the dev-user bypass, whose WorkOS constructor must
+      // not run while unrelated billing tools are being initialized.
+      const { resolveUserOrgMembership } = await import('../../utils/resolve-user-org-membership.js');
       const membership = await resolveUserOrgMembership(getWorkos(), workosUserId, orgId);
       if (!canManageOrganizationBilling(membership, orgId)) {
         return JSON.stringify({
