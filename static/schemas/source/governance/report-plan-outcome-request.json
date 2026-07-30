@@ -108,7 +108,8 @@
         },
         "spend": {
           "type": "number",
-          "description": "Spend in the period."
+          "minimum": 0,
+          "description": "Non-negative spend in the period."
         },
         "cpm": {
           "type": "number",

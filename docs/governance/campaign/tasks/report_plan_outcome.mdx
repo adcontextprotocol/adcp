@@ -123,6 +123,14 @@ The governance agent still commits the seller's actual amount (\$120K, not the r
 }
 ```
 
+All reported monetary values are cumulative-ledger inputs and MUST be finite,
+non-negative numbers. This applies to `delivery.spend`,
+`seller_response.committed_budget`, and every
+`seller_response.packages[].budget`. A governance agent rejects an invalid
+value before updating budget totals or writing an audit outcome. It also rejects
+an otherwise finite value when adding it would overflow either the plan total or
+the purchase-type subtotal.
+
 ### Response (on track)
 
 ```json
