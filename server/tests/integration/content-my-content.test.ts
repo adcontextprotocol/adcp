@@ -33,6 +33,7 @@ vi.mock('../../src/middleware/auth.js', () => {
   return {
     requireAuth: requireAuthMock,
     requireAdmin: passthrough,
+    requireTenantAdminForOrganization: passthrough,
     optionalAuth: (req: any, _res: any, next: any) => { setTestUser(req); next(); },
     requireCompanyAccess: passthrough,
     requireActiveSubscription: passthrough,
@@ -40,12 +41,11 @@ vi.mock('../../src/middleware/auth.js', () => {
     requireRole: () => passthrough,
     createRequireWorkingGroupLeader: () => passthrough,
     createRequireWorkingGroupMember: () => passthrough,
-    refuseCrossTenantAdminApiKey: () => false,
     refuseAnyApiKeyOnGlobalAdmin: () => false,
     // Composite chain for /api/admin/users routes — see auth.ts.
     // Captured-at-load-time references mean the per-export mocks above
     // can't propagate into the production array, so re-build it here.
-    requireGlobalAdmin: [requireAuthMock, passthrough, passthrough],
+    requireGlobalAdmin: [requireAuthMock, passthrough],
     invalidateSessionCache: vi.fn(),
     invalidateBanCache: vi.fn(),
     invalidateSessionsForUsers: vi.fn(),

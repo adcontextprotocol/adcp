@@ -11,7 +11,6 @@ import { createLogger } from "../logger.js";
 import {
   requireAuth,
   requireAdmin,
-  refuseCrossTenantAdminApiKey,
   isDevModeEnabled,
   DEV_USERS,
 } from "../middleware/auth.js";
@@ -2637,21 +2636,12 @@ export function createAdminMemberProfileRouter(config: MemberProfileRoutesConfig
       const { id } = req.params;
       const updates = req.body;
 
-      // Cross-tenant gate. `requireAdmin` keys off `:orgId` in the path,
-      // but this route uses `:id` (a profile UUID) — resolve the profile's
-      // org and apply the gate here. Without this, any WorkOS API key
-      // holding `admin:*` (issued by any org) could mutate any
-      // member_profiles row by guessing the UUID. Surfaced by security
-      // review on #4498.
       const existingProfile = await memberDb.getProfileById(id);
       if (!existingProfile) {
         return res.status(404).json({
           error: 'Profile not found',
           message: `No member profile found with ID: ${id}`,
         });
-      }
-      if (refuseCrossTenantAdminApiKey(req, res, existingProfile.workos_organization_id)) {
-        return;
       }
 
       // Validate offerings if provided
@@ -2717,16 +2707,12 @@ export function createAdminMemberProfileRouter(config: MemberProfileRoutesConfig
     try {
       const { id } = req.params;
 
-      // Cross-tenant gate — see PUT above for context.
       const existingProfile = await memberDb.getProfileById(id);
       if (!existingProfile) {
         return res.status(404).json({
           error: 'Profile not found',
           message: `No member profile found with ID: ${id}`,
         });
-      }
-      if (refuseCrossTenantAdminApiKey(req, res, existingProfile.workos_organization_id)) {
-        return;
       }
 
       const deleted = await memberDb.deleteProfile(id);

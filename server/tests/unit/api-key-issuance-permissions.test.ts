@@ -130,7 +130,8 @@ describe('tenant API key issuance permissions', () => {
         .send({ name: 'Automation key', permissions: [permission] });
 
       expect(response.status).toBe(201);
-      const [, options] = mocks.fetch.mock.calls[0] as [string, RequestInit];
+      const [url, options] = mocks.fetch.mock.calls[0] as [string, RequestInit];
+      expect(new URL(url).pathname).toBe('/organizations/org_target/api_keys');
       expect(JSON.parse(options.body as string)).toEqual({
         name: 'Automation key',
         permissions: [permission],
