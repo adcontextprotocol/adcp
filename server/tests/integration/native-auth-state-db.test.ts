@@ -71,6 +71,15 @@ describe.skipIf(!process.env.DATABASE_URL)('native OAuth PostgreSQL consumption'
       sealedSession: 'sealed-session-test-value',
       user: { id: 'user_native_auth_test', email: 'native-auth-test@example.com' },
     };
+    const expectedGrant: NativeGrant = {
+      clientId: value.clientId,
+      redirectUri: value.redirectUri,
+      clientState: value.clientState,
+      codeChallenge: value.codeChallenge,
+      issuer: value.issuer,
+      sealedSession: value.sealedSession,
+      user: value.user,
+    };
     await setGrant(code, value);
 
     const binding = {
@@ -86,7 +95,7 @@ describe.skipIf(!process.env.DATABASE_URL)('native OAuth PostgreSQL consumption'
       consumeGrant(code, binding),
     ]);
 
-    expect(results.filter((result) => result !== undefined)).toEqual([value]);
+    expect(results.filter((result) => result !== undefined)).toEqual([expectedGrant]);
   });
 
   it('rejects expired pending states and grants in PostgreSQL', async () => {
