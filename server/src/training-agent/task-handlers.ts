@@ -7642,6 +7642,10 @@ interface ReportUsageArgs extends ToolArgs {
     media_buy_id?: string;
     creative_id?: string;
     signal_agent_segment_id?: string;
+    standards_id?: string;
+    rights_id?: string;
+    build_variant_id?: string;
+    property_list_id?: string;
     pricing_option_id?: string;
     impressions?: number;
     media_spend?: number;
@@ -8010,7 +8014,15 @@ export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
       continue;
     }
 
-    const pricingContexts = pricingContextsForUsage(session, record);
+    const usesVendorPricingNamespace = Boolean(
+      record.creative_id
+      || record.signal_agent_segment_id
+      || record.standards_id
+      || record.rights_id
+      || record.build_variant_id
+      || record.property_list_id,
+    );
+    const pricingContexts = usesVendorPricingNamespace ? undefined : pricingContextsForUsage(session, record);
     if (record.pricing_option_id && pricingContexts && !pricingContexts.packagePricingOptionIds.has(record.pricing_option_id)) {
       errors.push({
         code: 'INVALID_PRICING_OPTION',

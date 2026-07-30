@@ -5265,6 +5265,28 @@ describe('report_usage handler', () => {
     expect(result.rejected).toBeUndefined();
   });
 
+  it('keeps vendor pricing_option_id validation when creative usage also names a media buy', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await setupCreativeWithPricing(server);
+    const mediaBuyId = await setupRevenueShareBuy(server);
+    const { result } = await simulateCallTool(server, 'report_usage', {
+      account,
+      reporting_period: period,
+      usage: [{
+        account,
+        media_buy_id: mediaBuyId,
+        creative_id: 'cr_usage',
+        pricing_option_id: 'po_display_300x250_cpm',
+        impressions: 1000000,
+        vendor_cost: 200,
+        currency: 'USD',
+      }],
+    });
+
+    expect(result.accepted).toBe(1);
+    expect(result.rejected).toBeUndefined();
+  });
+
   it('returns error when reporting_period is missing', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result, isError } = await simulateCallTool(server, 'report_usage', {
