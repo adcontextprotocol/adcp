@@ -44,3 +44,9 @@ function getSafePerspectiveNavigationUrl(value) {
     return null;
   }
 }
+
+// Explicitly export the helper consumed by latest/section.html. This file is a
+// classic script, so the browser global is the cross-file API.
+if (typeof window !== 'undefined') {
+  window.getSafePerspectiveNavigationUrl = getSafePerspectiveNavigationUrl;
+}

@@ -158,6 +158,16 @@ describe('industry-feed perspective URL persistence', () => {
 });
 
 describe('Latest perspective navigation', () => {
+  it('exports the section navigation validator for classic-script consumers', () => {
+    const browserGlobal: Record<string, unknown> = {};
+    const source = readPublicFile('perspective-url.js');
+
+    new Function('window', source)(browserGlobal);
+
+    const validator = browserGlobal.getSafePerspectiveNavigationUrl as (value: unknown) => string | null;
+    expect(validator('/perspectives/local-article')).toBe('/perspectives/local-article');
+  });
+
   it.each(UNSAFE_URLS)('renders an unsafe section source URL as inert title text: %s', async (sourceUrl) => {
     const source = readPublicFile('latest/section.html');
     const loadArticlesSource = section(source, 'async function loadArticles()', 'async function loadMoreArticles()');
