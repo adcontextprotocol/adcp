@@ -46,6 +46,7 @@ import { getOrgAdminEmails } from "../utils/org-admins.js";
 import { emailPrefsDb } from "../db/email-preferences-db.js";
 import { performCreateOrganization } from "../services/organization-bootstrap.js";
 import { collectWorkOSPages } from "../services/workos-pagination.js";
+import { canManageOrganizationBilling } from "../billing/billing-authorization.js";
 
 const logger = createLogger("organization-routes");
 
@@ -1674,12 +1675,14 @@ export function createOrganizationsRouter(): Router {
       const user = req.user!;
       const { orgId } = req.params;
 
-      // Verify user is member of this organization
+      // The Stripe Customer Portal can change payment methods, tiers, and
+      // cancellation. Bind that authority to an active owner/admin role in
+      // this exact organization before any database or Stripe work.
       const membership = await resolveUserOrgMembership(workos, user.id, orgId);
-      if (!membership) {
+      if (!canManageOrganizationBilling(membership, orgId)) {
         return res.status(403).json({
           error: 'Access denied',
-          message: 'You are not a member of this organization',
+          message: 'Only organization owners and admins can manage billing',
         });
       }
 
@@ -1708,6 +1711,17 @@ export function createOrganizationsRouter(): Router {
           error: 'No subscription on file',
           message: 'The billing portal manages an existing subscription. Start one from the membership page first.',
           membership_url: '/dashboard/membership',
+        });
+      }
+
+      // Re-resolve immediately before the first operation that can call
+      // Stripe. A cached/earlier owner role must not survive a concurrent
+      // demotion or membership revocation.
+      const currentMembership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!canManageOrganizationBilling(currentMembership, orgId)) {
+        return res.status(403).json({
+          error: 'Access denied',
+          message: 'Only organization owners and admins can manage billing',
         });
       }
 
