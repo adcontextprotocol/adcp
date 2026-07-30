@@ -51,6 +51,32 @@ function generateKey(req: Request): string {
   return ip;
 }
 
+export const nativeAuthStartRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('native-auth-start:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (_req: Request, res: Response) => {
+    res.status(429).json({ error: 'slow_down' });
+  },
+});
+
+export const nativeAuthTokenRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('native-auth-token:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (_req: Request, res: Response) => {
+    res.status(429).json({ error: 'slow_down' });
+  },
+});
+
 /**
  * Skip rate limiting for AAO platform admins. Falls back to the ADMIN_EMAILS
  * env var for emergency access, matching requireAdmin semantics.
