@@ -51,12 +51,12 @@ phases:
   - id: reject_media_buy_anchored_event_type
     title: "Reject media-buy-anchored event type on account config"
     narrative: |
-      The buyer submits a schema-valid notification config that asks an
+      The buyer submits a schema-invalid notification config that asks an
       account-level subscriber to receive `scheduled` delivery reports.
-      `scheduled` is a valid `notification-type.json` value, but it is
-      media-buy anchored and belongs on `push_notification_config`, not on
-      `sync_accounts.accounts[].notification_configs[]`. The seller must reject the
-      per-account entry rather than silently persisting or dropping the
+      `scheduled` is media-buy anchored and belongs on
+      `push_notification_config`, not on
+      `sync_accounts.accounts[].notification_configs[]`. The seller must
+      reject the entry rather than silently persisting or dropping the
       subscriber.
 
     steps:
@@ -66,13 +66,14 @@ phases:
         schema_ref: "account/sync-accounts-request.json"
         response_schema_ref: "account/sync-accounts-response.json"
         doc_ref: "/accounts/tasks/sync_accounts"
-        expect_error: true
-        negative_path: schema_invalid
+        sample_request_skip_schema: true
         stateful: false
         expected: |
-          Reject the request with:
-          - errors[0].code: INVALID_REQUEST or VALIDATION_ERROR
-          - errors[0].field pointing at the invalid event_types entry
+          Reject the per-account entry with:
+          - accounts[0].action: "failed"
+          - accounts[0].status: "rejected"
+          - accounts[0].errors[0].code: INVALID_REQUEST or VALIDATION_ERROR
+          - accounts[0].errors[0].field pointing at the invalid event_types entry
 
         sample_request:
           accounts:
@@ -92,13 +93,23 @@ phases:
             correlation_id: "notification_config_event_scope--reject_scheduled"
 
         validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema even on per-account failure"
           - check: field_value
-            path: "errors[0].code"
+            path: "accounts[0].action"
+            value: "failed"
+            description: "Per-account action is failed"
+          - check: field_value
+            path: "accounts[0].status"
+            value: "rejected"
+            description: "Per-account status is rejected"
+          - check: field_value
+            path: "accounts[0].errors[0].code"
             allowed_values: ["INVALID_REQUEST", "VALIDATION_ERROR"]
             description: "Media-buy-anchored event type is rejected as a correctable request validation error"
           - check: field_value
-            path: "errors[0].field"
-            value: "accounts[0].notification_configs[0].event_types[0]"
+            path: "accounts[0].errors[0].field"
+            value: "notification_configs[0].event_types[0]"
             description: "Error identifies the invalid event_types field so SDKs can correct the registration"
           - check: field_value
             path: "context.correlation_id"
