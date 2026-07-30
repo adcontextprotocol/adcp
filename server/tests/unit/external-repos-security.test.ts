@@ -312,12 +312,13 @@ describe('external repository filesystem boundary', () => {
 
   it('rejects and closes a different regular inode swapped in before open', () => {
     const readmePath = writeRepoFile('README.md');
+    const replacementPath = path.join(repoDir, 'replacement.md');
     writeRepoFile('valid.md');
+    fs.copyFileSync(secretPath, replacementPath);
     const originalOpenSync = fs.openSync.bind(fs);
     const originalCloseSync = fs.closeSync.bind(fs);
     vi.spyOn(fs, 'openSync').mockImplementationOnce((filePath, flags, mode) => {
-      fs.unlinkSync(readmePath);
-      fs.copyFileSync(secretPath, readmePath);
+      fs.renameSync(replacementPath, readmePath);
       return originalOpenSync(filePath, flags, mode);
     });
     const closeSpy = vi.spyOn(fs, 'closeSync').mockImplementation(originalCloseSync);
