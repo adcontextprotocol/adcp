@@ -142,6 +142,7 @@ describe('training agent idempotency middleware', () => {
 
     it('rejects get_products with no idempotency_key before any polymorphic arm runs', async () => {
       const { parsed, isError } = await call(server, 'get_products', {
+        adcp_version: '3.1-rc.15',
         buying_mode: 'wholesale',
         account: ACCOUNT,
         brand: BRAND,
@@ -149,6 +150,68 @@ describe('training agent idempotency middleware', () => {
       expect(isError).toBe(true);
       expect((parsed as any).adcp_error?.code).toBe('INVALID_REQUEST');
       expect((parsed as any).adcp_error?.field).toBe('idempotency_key');
+    });
+
+    it('adapts only served-3.0 missing-key get_products requests to safe deterministic replay', async () => {
+      const legacyPayload = {
+        adcp_version: '3.0',
+        buying_mode: 'wholesale',
+        account: ACCOUNT,
+        brand: BRAND,
+      };
+      const first = await call(server, 'get_products', {
+        ...legacyPayload,
+        context: { correlation_id: 'legacy-first' },
+      });
+      const replay = await call(server, 'get_products', {
+        ...legacyPayload,
+        adcp_major_version: 3,
+        context: { correlation_id: 'legacy-retry' },
+      });
+      expect(first.isError).toBeFalsy();
+      expect(replay.isError).toBeFalsy();
+      expect(replay.parsed.replayed).toBe(true);
+      expect((replay.parsed.context as { correlation_id?: string })?.correlation_id).toBe('legacy-retry');
+      expect(replay.parsed.products).toEqual(first.parsed.products);
+
+      // A materially changed legacy request gets a different derived key; it
+      // executes independently instead of aliasing or conflicting.
+      const changed = await call(server, 'get_products', {
+        ...legacyPayload,
+        buying_mode: 'brief',
+        brief: 'A distinct legacy discovery request',
+      });
+      expect(changed.isError).toBeFalsy();
+      expect(changed.parsed.replayed).toBeUndefined();
+      expect(changed.parsed.products).toBeDefined();
+    });
+
+    it('routes served-3.0 compatibility requests through task replay and finalize validation', async () => {
+      const legacyTask = {
+        adcp_version: '3.0',
+        buying_mode: 'wholesale',
+        account: ACCOUNT,
+      };
+      const first = await callAsTask(server, 'get_products', legacyTask);
+      const replay = await callAsTask(server, 'get_products', legacyTask);
+      expect((replay.parsed.task as { taskId?: string })?.taskId)
+        .toBe((first.parsed.task as { taskId?: string })?.taskId);
+      expect(replay.parsed.replayed).toBe(true);
+
+      const mixed = await call(server, 'get_products', {
+        adcp_version: '3.0',
+        buying_mode: 'refine',
+        account: ACCOUNT,
+        refine: [
+          { scope: 'proposal', action: 'finalize', proposal_id: 'pinnacle_cross_channel' },
+          { scope: 'proposal', action: 'include', proposal_id: 'pinnacle_cross_channel' },
+        ],
+      });
+      expect(mixed.isError).toBe(true);
+      expect((mixed.parsed as any).adcp_error).toMatchObject({
+        code: 'INVALID_REQUEST',
+        field: 'refine[1]',
+      });
     });
   });
 
