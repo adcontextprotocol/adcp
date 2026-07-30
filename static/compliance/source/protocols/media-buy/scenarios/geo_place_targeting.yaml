@@ -99,6 +99,10 @@ phases:
         context_outputs:
           - key: "place_system_version"
             path: "media_buy.execution.targeting.geo_places.geonames.catalog.current_version"
+          - key: "place_supported_version_0"
+            path: "media_buy.execution.targeting.geo_places.geonames.catalog.supported_versions[0]"
+          - key: "place_supported_version_1"
+            path: "media_buy.execution.targeting.geo_places.geonames.catalog.supported_versions[1]"
         validations:
           - check: response_schema
             description: "Response matches get-adcp-capabilities-response.json"
@@ -571,3 +575,65 @@ phases:
           - check: error_code
             expected: "INVALID_REQUEST"
             description: "Same-value include/exclude overlap is rejected"
+
+  - id: reject_cross_version_place_overlap
+    title: "Reject cross-version include/exclude overlap"
+    optional: true
+    depends_on: [discover_capability_and_product]
+    requires_capability:
+      path: "media_buy.execution.targeting.geo_places.geonames.catalog.supported_versions[1]"
+      present: true
+    narrative: |
+      When the seller accepts at least two GeoNames catalog versions, the same
+      stable place identifier cannot be included under one version and excluded
+      under another. Catalog version is not part of place identity.
+    steps:
+      - id: create_with_cross_version_include_exclude_overlap
+        title: "Submit the same place across two supported versions"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        expected: |
+          Reject with INVALID_REQUEST because version does not distinguish an
+          included place from the same excluded stable place identity.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.product_id"
+              pricing_option_id: "$context.pricing_option_id"
+              bid_price: 4.25
+              budget: 5000
+              targeting_overlay:
+                geo_places:
+                  - country: "NL"
+                    system: "geonames"
+                    system_version: "$context.place_supported_version_0"
+                    place_type: "city"
+                    values: ["2759794"]
+                geo_places_exclude:
+                  - country: "NL"
+                    system: "geonames"
+                    system_version: "$context.place_supported_version_1"
+                    place_type: "city"
+                    values: ["2759794"]
+          idempotency_key: "$generate:uuid_v4#geo_place_targeting_cross_version_overlap"
+          context:
+            correlation_id: "geo_place_targeting--create_with_cross_version_include_exclude_overlap"
+        validations:
+          - check: response_schema
+            description: "Error response matches create-media-buy-response.json"
+          - check: error_code
+            expected: "INVALID_REQUEST"
+            description: "Cross-version same-value include/exclude overlap is rejected"
