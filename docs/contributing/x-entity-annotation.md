@@ -107,7 +107,7 @@ High-level groupings (see the registry for full descriptions). *Categories below
 | Account & party | `account`, `operator` |
 | Media buy | `media_buy`, `package`, `product`, `product_pricing_option` |
 | Creative | `creative`, `creative_format` |
-| Data & targeting | `audience`, `signal`, `signal_activation_id`, `event_source` |
+| Data & targeting | `audience`, `signal`, `signal_activation_id`, `demographic_interval_id`, `event_source` |
 | Lists & catalogs | `collection_list`, `property_list`, `catalog`, `property` |
 | Plans & governance | `media_plan`, `governance_plan`, `governance_registry_policy`, `governance_inline_policy`, `governance_check`, `content_standards`, `task` |
 | Vendor services | `vendor_pricing_option`, `vendor_metric` |

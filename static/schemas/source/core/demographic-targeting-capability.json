@@ -1,0 +1,91 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/demographic-targeting-capability.json",
+  "title": "Demographic Targeting Capability",
+  "description": "Product-scoped demographic execution capability. This declaration is product-scoped because one seller may route products through different ad servers. Buyers compare a requested canonical predicate with these capabilities before purchase; sellers MUST reject or return explicit alternatives when they cannot compile the predicate exactly.",
+  "type": "object",
+  "properties": {
+    "age": {
+      "type": "object",
+      "description": "Age-targeting execution available for this product.",
+      "properties": {
+        "execution_modes": {
+          "type": "array",
+          "description": "Ways this product can execute canonical age intent. continuous_bounds accepts any integer bounds inside the declared domain; enumerated_intervals accepts exact unions of the declared intervals; signals resolves through signals carrying authoritative demographic_predicate metadata.",
+          "items": {
+            "type": "string",
+            "enum": ["continuous_bounds", "enumerated_intervals", "signals"]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "min_supported_age": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 150,
+          "description": "Lowest inclusive bound accepted by continuous_bounds. Required when that execution mode is declared."
+        },
+        "max_supported_age": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 150,
+          "description": "Highest inclusive bound accepted by continuous_bounds. Required when that execution mode is declared."
+        },
+        "unknown_handling": {
+          "type": "string",
+          "description": "How this product handles people whose age is unavailable. selectable honors either include_unknown value; always_excluded supports only false; always_included supports only true. A seller MUST reject a request incompatible with this declaration rather than silently changing it.",
+          "enum": ["selectable", "always_excluded", "always_included"]
+        },
+        "intervals": {
+          "type": "array",
+          "description": "Seller-owned age intervals available to enumerated_intervals execution. Bounds are authoritative capability data, not a protocol-wide bucket taxonomy. Exact compilation may union adjacent intervals but MUST NOT introduce gaps or extra ages.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "interval_id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Seller-scoped interval identifier echoed in demographic targeting readback.",
+                "x-entity": "demographic_interval_id"
+              },
+              "age": {
+                "$ref": "/schemas/core/demographic-age-range.json"
+              }
+            },
+            "required": ["interval_id", "age"],
+            "additionalProperties": true
+          },
+          "minItems": 1
+        }
+      },
+      "required": ["execution_modes", "unknown_handling"],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "execution_modes": { "contains": { "const": "continuous_bounds" } }
+            },
+            "required": ["execution_modes"]
+          },
+          "then": {
+            "required": ["min_supported_age", "max_supported_age"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "execution_modes": { "contains": { "const": "enumerated_intervals" } }
+            },
+            "required": ["execution_modes"]
+          },
+          "then": {
+            "required": ["intervals"]
+          }
+        }
+      ],
+      "additionalProperties": true
+    }
+  },
+  "required": ["age"],
+  "additionalProperties": true
+}

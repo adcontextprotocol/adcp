@@ -83,6 +83,8 @@ Every signal request involves two roles:
 
 Signal definitions MAY include `restricted_attributes` and `policy_categories` fields to enable structural governance matching. Data providers SHOULD declare these so governance agents can deterministically evaluate compliance rather than inferring sensitivity from signal names.
 
+Age-defined signals MAY include `demographic_predicate` with canonical inclusive age bounds and explicit unknown-age membership. This field is authoritative for demographic compilation; names, descriptions, and taxonomy labels are not. Any signal carrying an age predicate MUST also declare `restricted_attributes` containing `age`.
+
 - **`restricted_attributes`**: Array of GDPR Article 9 special category values this signal touches. Governance agents SHOULD prefer declared attributes over semantic inference.
 - **`policy_categories`**: Array of policy category IDs this signal is sensitive for. Governance agents match these against a plan's `policy_categories` to flag sensitive data usage.
 

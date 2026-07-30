@@ -1,6 +1,6 @@
 ---
 title: Targeting
-description: "AdCP targeting — how natural language briefs replace taxonomy-based audience selection, with geographic overlays and real-time decisioning at impression time."
+description: "AdCP targeting — natural-language briefs, exact geographic and demographic overlays, seller-offered signals, and real-time decisioning."
 "og:title": "AdCP — Targeting"
 testable: true
 ---
@@ -24,11 +24,128 @@ When the buyer wants package-level control over specific selectable signals that
 
 Products can also expose `included_signals` for signals already bundled into or planned into the product. Those signals are descriptive product metadata, not package-level targeting controls, and buyers do not echo them in `signal_targeting_groups`.
 
+## Portable demographic targeting
+
+Use `targeting_overlay.demographics` when the buyer needs a demographic predicate to survive product discovery, purchase, seller compilation, and readback without being reinterpreted from prose. AdCP 3.2 standardizes age first:
+
+```json
+{
+  "targeting_overlay": {
+    "demographics": {
+      "age": {
+        "min": 21,
+        "max": 35,
+        "include_unknown": false
+      }
+    }
+  }
+}
+```
+
+`min` and `max` are inclusive integer ages in completed years. Either may be omitted for an open bound, but at least one is required. `include_unknown` is always required and has no default: people whose age is unavailable are not silently included in a numeric interval. Sellers also reject a range whose `min` is greater than its `max`.
+
+This field is audience selection, not eligibility policy. Continue to use `age_restriction` for a legal minimum age and verification requirements such as alcohol or gambling controls.
+
+When both fields are present, they compose as an intersection; neither overrides the other. `demographics` selects the intended audience, then `age_restriction` applies the eligibility and verification floor. Unknown-age delivery cannot satisfy a minimum-age restriction, so the combined shape requires `include_unknown: false`. Sellers also reject an empty intersection, such as demographic ages 18–20 with `age_restriction.min: 21`. Package readback preserves both controls independently rather than folding the legal restriction into the applied demographic predicate.
+
+### Product-scoped execution
+
+The seller-wide `get_adcp_capabilities.media_buy.execution.targeting.demographics.supported` flag is only a discovery rollup. Exact support lives on each product because one seller can route products through different ad servers.
+
+A product that accepts arbitrary bounds declares `continuous_bounds`:
+
+```json
+{
+  "demographic_targeting": {
+    "age": {
+      "execution_modes": ["continuous_bounds"],
+      "min_supported_age": 18,
+      "max_supported_age": 65,
+      "unknown_handling": "selectable"
+    }
+  }
+}
+```
+
+A bucket-backed product publishes its actual intervals rather than pretending they are a protocol-wide taxonomy:
+
+```json
+{
+  "demographic_targeting": {
+    "age": {
+      "execution_modes": ["enumerated_intervals"],
+      "unknown_handling": "always_excluded",
+      "intervals": [
+        { "interval_id": "age_18_24", "age": { "min": 18, "max": 24, "include_unknown": false } },
+        { "interval_id": "age_25_34", "age": { "min": 25, "max": 34, "include_unknown": false } },
+        { "interval_id": "age_35_44", "age": { "min": 35, "max": 44, "include_unknown": false } }
+      ]
+    }
+  }
+}
+```
+
+That product cannot execute ages 21–35 exactly: `18–24 ∪ 25–34 ∪ 35–44` broadens the request, while `25–34` narrows it. The seller rejects the request or returns explicit alternatives for buyer approval. It never books a widened range silently.
+
+`unknown_handling` is one of:
+
+- `selectable`: both `include_unknown: true` and `false` are supported.
+- `always_excluded`: only `include_unknown: false` is supported.
+- `always_included`: only `include_unknown: true` is supported.
+
+### Signal-backed execution
+
+A product can declare the `signals` execution mode when it resolves canonical age intent through catalogued signals. The signal's authoritative definition must carry `demographic_predicate`; its name is never evidence of its bounds. Age-annotated signals also declare `restricted_attributes: ["age"]` so governance checks remain structural.
+
+```json
+{
+  "id": "adults_25_34",
+  "name": "Adults 25–34",
+  "value_type": "binary",
+  "restricted_attributes": ["age"],
+  "demographic_predicate": {
+    "age": { "min": 25, "max": 34, "include_unknown": false }
+  }
+}
+```
+
+Multiple intervals or signals may be unioned only when their canonical predicates cover the request with no gap and no extra age. Implementations compare the represented predicate sets deterministically; an AI agent may propose a mapping, but names, inferred provider IDs, and approximate bucket choices never prove equivalence. For inferred or modeled signals, exactness means equality of the declared demographic predicate—not a claim that the provider knows every person's age perfectly. Methodology, modeling, and coverage metadata continue to describe population-level accuracy.
+
+### Governance interaction
+
+Age is a registered restricted-attribute category because some campaign plans prohibit its use in regulated contexts. A direct `targeting_overlay.demographics.age` predicate and a signal carrying `demographic_predicate.age` are both age-based targeting for governance evaluation. They are blocked only when the applicable campaign plan lists `age` in `restricted_attributes`; the registry entry does not create a global prohibition on otherwise lawful demographic targeting.
+
+### Exact readback
+
+Whenever demographic targeting was requested or applied, package state includes `demographic_targeting_resolution`. It preserves both predicates and the execution mechanism:
+
+```json
+{
+  "targeting_overlay": {
+    "demographics": {
+      "age": { "min": 21, "max": 35, "include_unknown": false }
+    }
+  },
+  "demographic_targeting_resolution": {
+    "requested": {
+      "age": { "min": 21, "max": 35, "include_unknown": false }
+    },
+    "applied": {
+      "age": { "min": 21, "max": 35, "include_unknown": false }
+    },
+    "equivalent": true,
+    "execution": { "type": "continuous_bounds" }
+  }
+}
+```
+
+`targeting_overlay.demographics` is applied state and matches the resolution's `applied` predicate. Buyers should recompute `equivalent` from `requested` and `applied`. A non-equivalent readback includes `difference_reason` and `buyer_approved: true`; the schema does not permit a stored non-equivalent package to claim that approval was absent. The same core `Package` schema carries this readback in synchronous `CreateMediaBuySuccess` responses and terminal async completion artifacts; `get_media_buys` exposes the corresponding `PackageStatus` field. Updates use the normal full-overlay replacement semantics and refresh the resolution atomically.
+
 ## Why Brief-Based Targeting?
 
 ### Eliminates Targeting Conflicts
-- **Single source**: All targeting comes from the publisher's product definition
-- **No layering conflicts**: Avoids multiple targeting systems competing
+- **Declared capability**: The publisher's product defines what can be executed; explicit overlays carry only the buyer controls that need exact wire semantics
+- **Defined composition**: Supported overlays intersect with the product instead of competing through hidden precedence rules
 - **Pricing consistency**: Targeting costs are transparent and included in media prices
 
 ### Simplifies Implementation

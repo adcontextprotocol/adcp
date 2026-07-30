@@ -1,0 +1,116 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/demographic-targeting-resolution.json",
+  "title": "Demographic Targeting Resolution",
+  "description": "Lossless package readback for demographic targeting. requested preserves canonical buyer intent; applied states the canonical predicate actually booked; execution identifies the seller mechanism. equivalent is true only when requested and applied denote exactly the same set. Buyers SHOULD recompute equivalence from the two predicates. Sellers MUST NOT confirm a non-equivalent package without explicit buyer approval of the applied alternative, and MUST never silently broaden targeting.",
+  "type": "object",
+  "properties": {
+    "requested": {
+      "$ref": "/schemas/core/demographic-predicate.json",
+      "description": "Canonical demographic predicate requested by the buyer."
+    },
+    "applied": {
+      "$ref": "/schemas/core/demographic-predicate.json",
+      "description": "Canonical demographic predicate actually applied by the seller."
+    },
+    "equivalent": {
+      "type": "boolean",
+      "description": "Whether requested and applied are exactly equal, including unknown-age membership. This is derived readback, not permission to omit either predicate."
+    },
+    "difference_reason": {
+      "type": "string",
+      "description": "Human-readable explanation when equivalent is false. Omission is allowed only when equivalent is true."
+    },
+    "buyer_approved": {
+      "type": "boolean",
+      "description": "Whether the buyer explicitly approved a non-equivalent applied alternative before booking. Required and true when equivalent is false; omitted for exact resolutions."
+    },
+    "execution": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "continuous_bounds"
+            },
+            "ext": {
+              "$ref": "/schemas/core/ext.json"
+            }
+          },
+          "required": ["type"],
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "enumerated_intervals"
+            },
+            "interval_ids": {
+              "type": "array",
+              "description": "Seller-scoped interval identifiers whose union produced applied.",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "x-entity": "demographic_interval_id"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "ext": {
+              "$ref": "/schemas/core/ext.json"
+            }
+          },
+          "required": ["type", "interval_ids"],
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "signals"
+            },
+            "signal_refs": {
+              "type": "array",
+              "description": "Authoritative signal references whose demographic predicates were unioned to produce applied. Signal names alone never establish equivalence.",
+              "items": {
+                "$ref": "/schemas/core/signal-ref.json"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "ext": {
+              "$ref": "/schemas/core/ext.json"
+            }
+          },
+          "required": ["type", "signal_refs"],
+          "additionalProperties": true
+        }
+      ]
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["requested", "applied", "equivalent", "execution"],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "equivalent": { "const": false }
+        },
+        "required": ["equivalent"]
+      },
+      "then": {
+        "properties": {
+          "buyer_approved": { "const": true }
+        },
+        "required": ["difference_reason", "buyer_approved"]
+      }
+    }
+  ],
+  "additionalProperties": true
+}

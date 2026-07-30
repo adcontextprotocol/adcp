@@ -288,6 +288,7 @@ Buyers discover AXE support via `get_adcp_capabilities` and filter products to A
 | `geo_metros` | object | Metro area targeting with system-specific support |
 | `geo_postal_areas` | object | Postal area targeting with country and precision support |
 | `age_restriction` | object | Age restriction capabilities with `supported` flag and `verification_methods` |
+| `demographics` | object | Seller-wide discovery rollup for canonical demographic targeting. `supported: true` means at least one product supports the surface; inspect each product's `demographic_targeting` declaration for exact execution. |
 | `language` | boolean | Language targeting (ISO 639-1 codes) |
 | `keyword_targets` | object | Keyword targeting with `supported_match_types` array (`broad`, `phrase`, `exact`). Presence indicates support. |
 | `negative_keywords` | object | Negative keyword targeting with `supported_match_types` array. Presence indicates support. |
@@ -677,6 +678,7 @@ Agents that declare `supported: true` MUST apply the same account/caller authori
 - `media_buy.execution.targeting.geo_postal_areas.us_zip: true` → Buyer can send the deprecated `{ system: "us_zip", values: [...] }` form, and SDKs can backfill the native `{ country: "US", system: "zip", values: [...] }` form
 - `media_buy.execution.targeting.geo_postal_areas.ZA` contains `postal_code` → Buyer can send normal South African postal codes, seller MUST honor them
 - `media_buy.execution.targeting.geo_metros.nielsen_dma: true` → Buyer can send DMA codes, seller MUST honor them
+- `media_buy.execution.targeting.demographics.supported: true` → At least one product supports canonical demographic targeting; this rollup does not authorize the field on every product, so buyers MUST inspect `Product.demographic_targeting`
 - `media_buy.execution.targeting.collection_list: true` → Buyer can send `targeting_overlay.collection_list`, seller MUST honor it
 - `media_buy.execution.targeting.collection_list_exclude: true` → Buyer can send `targeting_overlay.collection_list_exclude`, seller MUST honor it
 - `media_buy.execution.targeting.property_list: true` → Buyer can send `targeting_overlay.property_list`, seller MUST honor it
