@@ -159,6 +159,26 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
       expect(res.body.agent_context_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
     });
 
+    it('canonicalizes the requested URL before ownership and auth-context save', async () => {
+      const requestedUrl = 'HTTPS://AGENT.EXAMPLE.COM/';
+      const res = await request(app)
+        .put(`/api/registry/agents/${encodeURIComponent(requestedUrl)}/connect`)
+        .send({ auth_token: 'test-bearer-123', auth_type: 'bearer' });
+      expect(res.status).toBe(200);
+
+      const stored = await pool.query(
+        `SELECT agent_url, auth_token_hint
+         FROM agent_contexts
+         WHERE organization_id = $1`,
+        [TEST_ORG_ID],
+      );
+      expect(stored.rows).toHaveLength(1);
+      expect(stored.rows[0]).toMatchObject({
+        agent_url: TEST_AGENT_URL,
+        auth_token_hint: '****-123',
+      });
+    });
+
     it('normalizes raw Basic credentials before storing', async () => {
       const res = await request(app).put(url).send({ auth_token: 'test-user:test-password', auth_type: 'basic' });
       expect(res.status).toBe(200);
@@ -248,6 +268,26 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
       });
     });
 
+    it('canonicalizes the requested URL before client-credentials save', async () => {
+      const requestedUrl = 'HTTPS://AGENT.EXAMPLE.COM/';
+      const res = await request(app)
+        .put(`/api/registry/agents/${encodeURIComponent(requestedUrl)}/oauth-client-credentials`)
+        .send(validBody);
+      expect(res.status).toBe(200);
+
+      const stored = await pool.query(
+        `SELECT agent_url, oauth_cc_client_id
+         FROM agent_contexts
+         WHERE organization_id = $1`,
+        [TEST_ORG_ID],
+      );
+      expect(stored.rows).toHaveLength(1);
+      expect(stored.rows[0]).toMatchObject({
+        agent_url: TEST_AGENT_URL,
+        oauth_cc_client_id: validBody.client_id,
+      });
+    });
+
     it('persists the full config including optional fields', async () => {
       await request(app)
         .put(url)
@@ -323,6 +363,18 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
       expect(typeof res.body.latency_ms).toBe('number');
     });
 
+    it('canonicalizes the requested URL before testing saved client credentials', async () => {
+      await request(app).put(saveUrl).send(validBody).expect(200);
+      exchangeMock.mockResolvedValueOnce({ access_token: 'new-access', token_type: 'Bearer' });
+
+      const requestedUrl = 'HTTPS://AGENT.EXAMPLE.COM/';
+      const res = await request(app)
+        .post(`/api/registry/agents/${encodeURIComponent(requestedUrl)}/oauth-client-credentials/test`)
+        .send({});
+      expect(res.status).toBe(200);
+      expect(res.body.ok).toBe(true);
+    });
+
     it('returns { ok: false, error: { kind: "oauth", ... } } when the AS rejects the client', async () => {
       await request(app).put(saveUrl).send(validBody).expect(200);
 
@@ -375,6 +427,20 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
         .expect(200);
 
       const res = await request(app).get(statusUrl).expect(200);
+      expect(res.body).toMatchObject({ has_auth: true, auth_type: 'bearer' });
+    });
+
+    it('canonicalizes the requested URL before ownership and auth-context lookup', async () => {
+      await request(app)
+        .put(`/api/registry/agents/${encodeURIComponent(TEST_AGENT_URL)}/connect`)
+        .send({ auth_token: 'test-bearer', auth_type: 'bearer' })
+        .expect(200);
+
+      const requestedUrl = 'HTTPS://AGENT.EXAMPLE.COM/';
+      const res = await request(app)
+        .get(`/api/registry/agents/${encodeURIComponent(requestedUrl)}/auth-status`)
+        .expect(200);
+
       expect(res.body).toMatchObject({ has_auth: true, auth_type: 'bearer' });
     });
 

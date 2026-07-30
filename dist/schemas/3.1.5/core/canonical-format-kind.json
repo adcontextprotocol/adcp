@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.5/core/canonical-format-kind.json",
+  "title": "Canonical Format Kind",
+  "description": "Discriminator value naming one of the 12 canonical creative formats — plus `custom` for adopter-defined shapes that don't fit the canonicals (multi-placement takeover, roadblock, branded content, cross-screen sponsorship, AR lens, etc.). Used by `product-format-declaration.json` (the product's inline format declaration), `creative-manifest.json` (the buyer's v2 manifest path), and any other surface that needs to identify which canonical a payload targets.\n\nWhen `format_kind: \"custom\"`, the declaration MUST also carry `format_shape` (referencing the [format-shape vocabulary registry](/schemas/core/format-shape-vocabulary.json) — recognized global pattern this custom shape is an instance of) and `format_schema` (URI+digest reference to a fetchable schema describing the shape's actual `params` and `slots`). Buyer agents fetch the schema, validate manifests structurally, and reason about manifests without per-seller integration code — same mechanic as `platform_extensions`. See [adcp#3666](https://github.com/adcontextprotocol/adcp/issues/3666) for the canonical promotion queue.\n\nThe canonical enum mirrors the `oneOf` branches in `product-format-declaration.json`; keep them in sync.\n\n**Open-enum semantics (normative).** The enum list above is the AdCP 3.1 baseline. New canonical formats promoted from `format_shape` entries (see [#3666](https://github.com/adcontextprotocol/adcp/issues/3666)) extend this enum in subsequent minor releases — adding a value is non-breaking by design. Consumer SDKs MUST treat this enum as **open** at parse time: an unknown `format_kind` value MUST be retained as-is on the in-memory object (not silently dropped or rewritten to `\"custom\"`) and MUST NOT cause the surrounding payload to fail validation. Buyers reading a declaration with an unknown `format_kind` SHOULD treat the declaration as a local SDK-only declared/unsupported route for routing purposes (filter out of default product views; opt-in to surface) so adopters on older SDK versions don't crash on newer canonical values, and adopters on newer SDK versions get a graceful unknown-value handling story. The producer-side enum stays closed (sellers MUST NOT mint ad-hoc `format_kind` values — use `format_kind: \"custom\"` with `format_shape` + `format_schema` for non-registered shapes); the consumer-side enum stays open for forward compatibility.",
+  "type": "string",
+  "enum": [
+    "image",
+    "html5",
+    "display_tag",
+    "image_carousel",
+    "video_hosted",
+    "video_vast",
+    "audio_hosted",
+    "audio_daast",
+    "sponsored_placement",
+    "native_in_feed",
+    "responsive_creative",
+    "agent_placement",
+    "custom"
+  ]
+}

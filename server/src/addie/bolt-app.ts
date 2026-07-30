@@ -994,6 +994,11 @@ async function createUserScopedTools(
   threadContext?: ThreadContext | null
 ): Promise<UserScopedToolsResult> {
   const memberHandlers = createMemberToolHandlers(memberContext, slackUserId);
+  const trainingModuleContext: { moduleId?: string } = {
+    moduleId: memberContext?.certification?.status === 'in_progress'
+      ? memberContext.certification.module_id ?? undefined
+      : undefined,
+  };
   let allTools = [...MEMBER_TOOLS];
   const allHandlers = new Map(memberHandlers);
 
@@ -1051,7 +1056,7 @@ async function createUserScopedTools(
   logger.debug('Addie Bolt: Newsletter suggestion tools enabled');
 
   // Add AdCP protocol tools (standard MCP tools for interacting with agents)
-  const adcpHandlers = createAdcpToolHandlers(memberContext);
+  const adcpHandlers = createAdcpToolHandlers(memberContext, trainingModuleContext);
   allTools.push(...ADCP_TOOLS);
   for (const [name, handler] of adcpHandlers) {
     allHandlers.set(name, handler);
@@ -1197,7 +1202,10 @@ async function createUserScopedTools(
   }
 
   // Add certification tools (learning modules, exams, progress tracking)
-  const certificationHandlers = createCertificationToolHandlers(memberContext, { threadId });
+  const certificationHandlers = createCertificationToolHandlers(memberContext, {
+    threadId,
+    trainingModuleContext,
+  });
   allTools.push(...CERTIFICATION_TOOLS);
   for (const [name, handler] of certificationHandlers) {
     allHandlers.set(name, handler);

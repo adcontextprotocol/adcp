@@ -571,11 +571,16 @@ export async function prepareRequestWithMemberTools(
 
   // Create per-request tools (same tools as Slack, minus Slack-specific ones)
   // Re-register billing with memberContext so org-scoped operations work (overrides baseline)
+  const trainingModuleContext: { moduleId?: string } = {
+    moduleId: memberContext?.certification?.status === 'in_progress'
+      ? memberContext.certification.module_id ?? undefined
+      : undefined,
+  };
   const allTools = [...MEMBER_TOOLS, ...SI_HOST_TOOLS, ...ADCP_TOOLS, ...ESCALATION_TOOLS, ...BILLING_TOOLS, ...IMAGE_TOOLS];
   const combinedHandlers = new Map([
     ...createMemberToolHandlers(memberContext),
     ...createSiHostToolHandlers(() => memberContext, () => threadExternalId),
-    ...createAdcpToolHandlers(memberContext),
+    ...createAdcpToolHandlers(memberContext, trainingModuleContext),
     ...createEscalationToolHandlers(memberContext, linkedSlackUserId, threadId),
     ...createBillingToolHandlers(memberContext),
     ...createImageToolHandlers(linkedSlackUserId, threadExternalId),
@@ -584,7 +589,10 @@ export async function prepareRequestWithMemberTools(
   // Certification tools (for authenticated users)
   if (userId) {
     allTools.push(...CERTIFICATION_TOOLS);
-    for (const [name, handler] of createCertificationToolHandlers(memberContext, { threadId: threadExternalId })) {
+    for (const [name, handler] of createCertificationToolHandlers(memberContext, {
+      threadId: threadExternalId,
+      trainingModuleContext,
+    })) {
       combinedHandlers.set(name, handler);
     }
   }

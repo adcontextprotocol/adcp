@@ -33,6 +33,7 @@ import {
 } from '../../services/hosted-compliance-version.js';
 import { getStoryboard } from '../../services/storyboards.js';
 import { createLogger } from '../../logger.js';
+import { withSdkSafeTransport } from '../../utils/sdk-safe-fetch.js';
 
 import type {
   TrackSummaryEntry,
@@ -121,10 +122,13 @@ export async function comply(
   options: ComplyOptions,
   target: HostedComplianceTarget,
 ): Promise<ComplianceResult> {
-  const authDefaults = await hostedAuthDefaultsForRun(agentUrl, options);
+  const safeOptions = withSdkSafeTransport(options);
+  const authDefaults = await hostedAuthDefaultsForRun(agentUrl, safeOptions);
   const result = await sdkComply(
     agentUrl,
-    withHostedComplianceRunOptions(options, target, authDefaults.probeTask, authDefaults.apiKey),
+    withSdkSafeTransport(
+      withHostedComplianceRunOptions(safeOptions, target, authDefaults.probeTask, authDefaults.apiKey),
+    ),
   );
   result.adcp_version ??= target.version;
   (result as ComplianceResult & { requested_compliance_target?: string }).requested_compliance_target = target.requested;
@@ -132,7 +136,9 @@ export async function comply(
 }
 
 export function loadComplianceIndex(target: HostedComplianceTarget, options: ComplyOptions = {}) {
-  return sdkLoadComplianceIndex(withHostedComplianceRunOptions(options, target));
+  return sdkLoadComplianceIndex(
+    withSdkSafeTransport(withHostedComplianceRunOptions(options, target)),
+  );
 }
 
 export function defaultComplianceTarget(): HostedComplianceTarget {
@@ -146,9 +152,10 @@ export async function selectComplianceTargetForAgentSelection(
   mode: 'preferred' | 'canonical' = 'preferred',
 ): Promise<ComplianceTargetSelection> {
   try {
+    const safeOptions = withSdkSafeTransport(options);
     const discovery = await withTimeout(
-      testCapabilityDiscovery(agentUrl, options),
-      complianceTargetDiscoveryTimeoutMs(options),
+      testCapabilityDiscovery(agentUrl, safeOptions),
+      complianceTargetDiscoveryTimeoutMs(safeOptions),
       'Hosted compliance target pre-discovery',
     );
     const target = mode === 'canonical'

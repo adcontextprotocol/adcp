@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import { HTTPServer } from '../../src/http.js';
+import { TRAINING_AGENT_URL } from '../../src/training-agent/config.js';
 
 const ORIGINAL_WORKOS_ENV = vi.hoisted(() => ({
   apiKey: process.env.WORKOS_API_KEY,
@@ -83,6 +84,23 @@ describe('GET /brands/:domain/brand.json real route', () => {
       colors: { primary: '#123456' },
     });
     expect(res.body.brand_context).toBeUndefined();
+  });
+
+  it('publishes the training agent operator record on its canonical hostname', async () => {
+    server = new HTTPServer();
+    const app = (server as unknown as { app: unknown }).app;
+
+    const res = await request(app)
+      .get('/.well-known/brand.json')
+      .set('Host', new URL(TRAINING_AGENT_URL).host);
+
+    expect(res.status).toBe(200);
+    expect(res.body.authoritative_location).toBeUndefined();
+    expect(res.body.agents).toContainEqual(expect.objectContaining({
+      id: 'training_agent',
+      url: `${TRAINING_AGENT_URL}/api/training-agent/mcp`,
+      jwks_uri: 'https://adcontextprotocol.org/.well-known/jwks.json',
+    }));
   });
 
   it('strips legacy Brand Context API data from discovered brand edit-status responses', async () => {

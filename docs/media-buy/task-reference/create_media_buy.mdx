@@ -157,7 +157,7 @@ npx @adcp/sdk@latest \
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `account` | [account-ref](/docs/building/integration/accounts-and-agents#account-references) | Yes | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. Required for billing and policy evaluation. |
+| `account` | [account-ref](/docs/building/by-layer/L2/accounts-and-agents#account-references) | Yes | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. Required for billing and policy evaluation. |
 | `proposal_id` | string | No* | ID of a committed proposal from `get_products` to execute. Alternative to providing packages. Draft proposals must be finalized first; sellers reject draft proposal execution with `PROPOSAL_NOT_COMMITTED`. |
 | `total_budget` | TotalBudget | No* | Total budget when executing a proposal. Publisher applies allocation percentages. |
 | `packages` | Package[] | No* | Array of package configurations (see below). Required when not using proposal_id. |
@@ -165,7 +165,7 @@ npx @adcp/sdk@latest \
 | `start_time` | string | Yes | `"asap"` or ISO 8601 date-time. For new media buys, concrete date-times must not be in the past. |
 | `end_time` | string | Yes | ISO 8601 date-time (UTC unless timezone specified) |
 | `paused` | boolean | No | Create the media buy with delivery held. When true and the buy would otherwise be active, `media_buy_status` is `paused`. Setup blockers still take precedence: missing creatives yield `pending_creatives`, and future flights yield `pending_start`; the hold becomes visible as `paused` after those blockers clear. |
-| `invoice_recipient` | [BusinessEntity](/docs/building/integration/accounts-and-agents#billing-entity-and-invoice-recipient) | No | Override the account's default billing entity for this buy. The seller MUST validate the recipient is authorized and include it in `check_governance` when governance agents are configured. |
+| `invoice_recipient` | [BusinessEntity](/docs/building/by-layer/L2/accounts-and-agents#billing-entity-and-invoice-recipient) | No | Override the account's default billing entity for this buy. The seller MUST validate the recipient is authorized and include it in `check_governance` when governance agents are configured. |
 | `po_number` | string | No | Purchase order number |
 | `idempotency_key` | string | No | Unique key for safe retries. If a request with the same key and account has already been processed, the seller returns the existing media buy. MUST be unique per (seller, request) pair. Min 16 chars. |
 | `context` | object | No | Opaque correlation data echoed unchanged in the response. Use for internal tracking, trace IDs, or other caller-specific identifiers. |
@@ -215,7 +215,7 @@ When executing a proposal, `proposal_status` on the returned proposal determines
 | Field | Description |
 |-------|-------------|
 | `media_buy_id` | Seller's unique identifier |
-| `account` | Resolved account billed for this media buy, echoed as a full [Account](/docs/building/integration/accounts-and-agents#account-references) object (includes `account_id`, `name`, `status`, and the resolved `brand`/`operator`). When the request used implicit resolution (`brand` + `operator`), this confirms the account the seller resolved. Optional. |
+| `account` | Resolved account billed for this media buy, echoed as a full [Account](/docs/building/by-layer/L2/accounts-and-agents#account-references) object (includes `account_id`, `name`, `status`, and the resolved `brand`/`operator`). When the request used implicit resolution (`brand` + `operator`), this confirms the account the seller resolved. Optional. |
 | `confirmed_at` | ISO 8601 timestamp when the seller committed to the media buy. Stable after it is set. May be `null` in deferred/manual approval flows until seller commitment occurs. |
 | `creative_deadline` | ISO 8601 timestamp for creative upload deadline |
 | `revision` | Initial media-buy revision. Use this value as the `revision` token on the next `update_media_buy` call intended to change state. |
@@ -1098,6 +1098,51 @@ Each package specifies its `pricing_option_id`, which determines:
 
 Packages can use different currencies when sellers support it. See [Pricing Models](/docs/media-buy/advanced-topics/pricing-models).
 
+### Budget & Pacing Controls
+
+Budget constraints are set **per package**, not at the media-buy level. The one exception is `total_budget`, which applies only when [executing a proposal](#executing-a-proposal) — the seller then derives per-package budgets from the proposal's allocation percentages.
+
+| Field | Level | Type | Controls |
+|-------|-------|------|----------|
+| `total_budget.amount` + `total_budget.currency` | Media buy | TotalBudget | Total spend when executing a proposal. Not used when supplying explicit `packages`. |
+| `budget` | Package | number | Total spend cap for the package, in the currency the package's `pricing_option_id` specifies. Delivery stops when the package budget is exhausted. |
+| `impressions` | Package | number | Impression goal for the package. An alternative volume target to `budget`; a seller may pace to whichever binds first. |
+| `pacing` | Package | enum | How the seller spreads the package budget across the flight: `even` (default), `asap`, or `front_loaded`. |
+| `bid_price` | Package | number | For auction pricing options — the exact bid, or the ceiling when the pricing option has `max_bid: true`. |
+| `start_time` / `end_time` | Package | string | The flight window the budget is spread across. When omitted, the package inherits the media buy's flight dates. |
+
+**Pacing modes** (from [`/schemas/v3/enums/pacing.json`](https://adcontextprotocol.org/schemas/v3/enums/pacing.json)):
+
+| Mode | Behavior |
+|------|----------|
+| `even` | Allocate remaining budget evenly over the remaining flight (default). |
+| `asap` | Spend remaining budget as quickly as possible. |
+| `front_loaded` | Allocate more of the remaining budget earlier in the remaining flight. |
+
+Example package with an even-paced budget over a fixed flight:
+
+```json
+{
+  "product_id": "prod_ctv_sports",
+  "pricing_option_id": "po_cpm_fixed",
+  "budget": 50000,
+  "pacing": "even",
+  "start_time": "2026-08-01T00:00:00Z",
+  "end_time": "2026-08-31T23:59:59Z"
+}
+```
+
+With `even` pacing over the 31-day flight above, the seller spreads the $50,000 budget across the month — roughly $1,613/day — subject to the seller's own pacing engine and available inventory.
+
+#### Known gap: no explicit daily cap
+
+AdCP 3.1 has **no per-day (or per-hour) budget cap field.** Delivery rate is governed by the combination of `budget`, `pacing`, and the flight window (`start_time` / `end_time`) — not a hard daily ceiling the buyer can pin. To constrain daily spend today:
+
+- **Approximate a daily rate** by setting `pacing: "even"` and choosing `budget` and flight length so `budget ÷ flight_days` lands near the target daily spend. Enforcement is seller-side and best-effort, not a guaranteed hard cap.
+- **Tighten the window** by splitting a long flight into shorter packages (e.g. weekly packages), each with its own `budget`, when finer control is needed.
+
+A first-class daily-cap field is not yet specified. Tracking: [#5983](https://github.com/adcontextprotocol/adcp/issues/5983).
+
 ### Targeting Overlays
 
 **Use sparingly** - most targeting should be in your brief and handled through product selection.
@@ -1210,7 +1255,7 @@ This task can complete instantly or take days depending on complexity and approv
 | `input-required` | Needs your input | Read message, respond with info |
 | `failed` | Error occurred | Handle the error |
 
-**Note:** For the complete status list see [Task Lifecycle](/docs/building/implementation/task-lifecycle).
+**Note:** For the complete status list see [Task Lifecycle](/docs/building/by-layer/L3/task-lifecycle).
 
 <Tabs>
   <Tab title="MCP">
@@ -1561,7 +1606,7 @@ await a2a.send({
   </Tab>
 </Tabs>
 
-For complete async handling patterns, see [Async Operations](/docs/building/implementation/async-operations).
+For complete async handling patterns, see [Async Operations](/docs/building/by-layer/L3/async-operations).
 
 ## Usage Notes
 

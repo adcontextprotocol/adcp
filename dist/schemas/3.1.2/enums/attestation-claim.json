@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.2/enums/attestation-claim.json",
+  "title": "Attestation Claim",
+  "description": "A claim a verified identity attestation can establish about a user. Personhood and age-threshold claims are deliberately a small, closed, issuer-agnostic set: a buyer must share semantics to act on a claim, and ZK proofs are practical only for a handful of standard thresholds. Age claims are threshold-only (\"over N\") — never a date of birth or exact age — and resolve to eligibility, never crossing the wire as an attribute. The set is additive: new thresholds may be added when a real legal threshold requires one.",
+  "type": "string",
+  "enum": [
+    "unique_human",
+    "age_over_13",
+    "age_over_16",
+    "age_over_18",
+    "age_over_21"
+  ],
+  "enumDescriptions": {
+    "unique_human": "The subject is a verified unique human (proof of personhood).",
+    "age_over_13": "The subject is at least 13 years old.",
+    "age_over_16": "The subject is at least 16 years old.",
+    "age_over_18": "The subject is at least 18 years old.",
+    "age_over_21": "The subject is at least 21 years old."
+  }
+}

@@ -285,7 +285,9 @@ export async function assembleOrgHealth(orgId: string): Promise<OrgHealth> {
          (SELECT string_agg(DISTINCT wg.name, ', ')
           FROM working_group_memberships wgm
           JOIN working_groups wg ON wg.id = wgm.working_group_id
-          WHERE wgm.workos_user_id = om.workos_user_id AND wgm.status = 'active') as working_groups,
+          WHERE wgm.workos_user_id = om.workos_user_id
+            AND wgm.status = 'active'
+            AND wg.status = 'active') as working_groups,
          (SELECT MAX(cp.created_at)
           FROM community_points cp
           WHERE cp.workos_user_id = om.workos_user_id) as last_active,
@@ -325,9 +327,10 @@ export async function assembleOrgHealth(orgId: string): Promise<OrgHealth> {
     query<{ count: string }>(
       `SELECT COUNT(DISTINCT wgl.working_group_id) as count
        FROM working_group_leaders wgl
+       JOIN working_groups wg ON wg.id = wgl.working_group_id
        LEFT JOIN slack_user_mappings sm ON sm.slack_user_id = wgl.user_id
        JOIN organization_memberships om ON om.workos_user_id = COALESCE(sm.workos_user_id, wgl.user_id)
-       WHERE om.workos_organization_id = $1`,
+       WHERE om.workos_organization_id = $1 AND wg.status = 'active'`,
       [orgId]
     ).then(r => r).catch(err => {
       logger.error({ err, orgId }, 'Failed to fetch leadership count');

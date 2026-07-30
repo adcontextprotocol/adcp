@@ -1,6 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { createServer } from 'node:http';
-import { buildCatalog } from '../../src/training-agent/product-factory.js';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { buildCatalog, buildProposals } from '../../src/training-agent/product-factory.js';
 import { buildFormats, FORMAT_CHANNEL_MAP } from '../../src/training-agent/formats.js';
 import { PUBLISHERS } from '../../src/training-agent/publishers.js';
 import { SIGNAL_PROVIDERS, getAllSignals } from '../../src/training-agent/signal-providers.js';
@@ -14,6 +13,10 @@ import {
   flushDirtySessions,
   MAX_MEDIA_BUYS_PER_SESSION,
   MAX_CREATIVES_PER_SESSION,
+  SESSION_RETENTION_MS,
+  SESSION_STORE_UNAVAILABLE_MESSAGE,
+  sessionRetentionCutoff,
+  setStateStore,
 } from '../../src/training-agent/state.js';
 import {
   createTrainingAgentServer,
@@ -25,6 +28,8 @@ import {
 } from '../../src/training-agent/task-handlers.js';
 import {
   MUTATING_TOOLS,
+  clearIdempotencyCache,
+  REPLAY_TTL_SECONDS,
 } from '../../src/training-agent/idempotency.js';
 import { randomUUID } from 'node:crypto';
 import { getAgentUrl } from '../../src/training-agent/config.js';
@@ -738,6 +743,22 @@ describe('session state', () => {
   });
 
   describe('getSession', () => {
+    it('retains resources beyond the complete idempotency replay window', () => {
+      const replayTtlMs = REPLAY_TTL_SECONDS * 1000;
+      const cleanupAndSkewMarginMs = 60 * 60 * 1000;
+
+      expect(SESSION_RETENTION_MS).toBe(25 * 60 * 60 * 1000);
+      expect(SESSION_RETENTION_MS).toBeGreaterThanOrEqual(
+        replayTtlMs + cleanupAndSkewMarginMs,
+      );
+
+      // A row last mutated at t=0 is not eligible at the replay boundary or
+      // even at the exact retention boundary because cleanup uses strict `<`.
+      expect(sessionRetentionCutoff(replayTtlMs).getTime()).toBeLessThan(0);
+      expect(sessionRetentionCutoff(SESSION_RETENTION_MS).getTime()).toBe(0);
+      expect(sessionRetentionCutoff(SESSION_RETENTION_MS + 1).getTime()).toBe(1);
+    });
+
     it('creates a new session with empty maps', async () => {
       await runWithSessionContext(async () => {
         const session = await getSession('test-key');
@@ -788,7 +809,6 @@ describe('session state', () => {
     });
 
     it('read-only access does not flush (lastAccessedAt touch is excluded from diff)', async () => {
-      const { setStateStore } = await import('../../src/training-agent/state.js');
       const { InMemoryStateStore } = await import('@adcp/sdk/server');
       const store = new InMemoryStateStore();
       setStateStore(store);
@@ -814,6 +834,30 @@ describe('session state', () => {
           await flushDirtySessions();
         });
         expect(writes).toBe(0);
+      } finally {
+        setStateStore(null);
+      }
+    });
+
+    it('fails closed on a store read error without persisting replacement state', async () => {
+      const get = vi.fn().mockRejectedValue(new Error('postgres connection reset'));
+      const put = vi.fn();
+      setStateStore({ get, put } as any);
+      try {
+        const server = createTrainingAgentServer(DEFAULT_CTX);
+        const response = await simulateCallTool(server, 'get_media_buys', {
+          account: { brand: { domain: 'durability.example' } },
+        });
+
+        expect(response.isError).toBe(true);
+        expect(response.result).toMatchObject({
+          code: 'SERVICE_UNAVAILABLE',
+          message: SESSION_STORE_UNAVAILABLE_MESSAGE,
+          recovery: 'transient',
+        });
+        expect(JSON.stringify(response.result)).not.toContain('postgres connection reset');
+        expect(get).toHaveBeenCalledTimes(1);
+        expect(put).not.toHaveBeenCalled();
       } finally {
         setStateStore(null);
       }
@@ -1820,6 +1864,64 @@ describe('validate_input handler', () => {
         field: 'assets.tag_url.url',
       }),
     ]));
+  });
+
+  it.each([
+    'https://cdn..example/mrec.png',
+    'https://。cdn.example/mrec.png',
+    'https://cdn。。example/mrec.png',
+    'https://cdn.example。。/mrec.png',
+  ])('returns validated_fail for malformed asset hostname %s', async (url) => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      manifest: {
+        format_kind: 'image',
+        assets: {
+          image_main: {
+            asset_type: 'image',
+            url,
+            width: 300,
+            height: 250,
+          },
+        },
+      },
+      targets: [{ kind: 'canonical', id: 'image' }],
+    });
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_fail');
+    expect(results[0].violations).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        rule: 'url_host_public',
+        field: 'assets.image_main.url',
+      }),
+    ]));
+  });
+
+  it.each([
+    'https://cdn.example.com./mrec.png',
+    'https://cdn.example.com。/mrec.png',
+    'https://cdn．example｡com/mrec.png',
+  ])('accepts a valid FQDN asset hostname %s', async (url) => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      manifest: {
+        format_kind: 'image',
+        assets: {
+          image_main: {
+            asset_type: 'image',
+            url,
+            width: 300,
+            height: 250,
+          },
+        },
+      },
+      targets: [{ kind: 'canonical', id: 'image' }],
+    });
+
+    expect(result.results).toEqual([
+      { target: { kind: 'canonical', id: 'image' }, result_kind: 'validated_pass' },
+    ]);
   });
 
   it('returns validated_fail for unsafe nested URL-bearing assets', async () => {
@@ -6304,6 +6406,199 @@ describe('get_products refine mode', () => {
     expect(refinedIds).not.toContain(firstProductId);
   });
 
+  it('rejects an unknown product reference with PRODUCT_NOT_FOUND', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'unknown-refine.example' }, operator: 'unknown-refine.example' };
+
+    const { result, isError } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{ scope: 'product', action: 'include', product_id: 'unknown_product' }],
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('PRODUCT_NOT_FOUND');
+    expect(result.field).toBe('refine[0].product_id');
+    expect(result.recovery).toBe('correctable');
+  });
+
+  it('recognizes the legacy sports preroll refinement fixture as a catalog product', async () => {
+    const server = createTrainingAgentServer({ ...DEFAULT_CTX, storyboardCompat: { version: '3.0' } });
+    const { result, isError } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'refine',
+      account: { brand: { domain: 'legacy-refine.example' }, operator: 'legacy-refine.example' },
+      refine: [
+        { scope: 'request', ask: 'Only guaranteed packages.' },
+        { scope: 'product', product_id: 'sports_preroll_q2', ask: 'Increase budget allocation to $30K' },
+      ],
+    });
+
+    expect(isError).toBeFalsy();
+    expect((result.products as Array<Record<string, unknown>>).some(
+      product => product.product_id === 'sports_preroll_q2',
+    )).toBe(true);
+  });
+
+  it('applies and persists concrete CPM pricing for a product-scoped ask', async () => {
+    const account = { brand: { domain: 'product-cpm.example' }, operator: 'product-cpm.example' };
+    const product = buildCatalog().map(entry => entry.product).find(candidate =>
+      candidate.pricing_options.some(option => option.pricing_model === 'cpm' && option.currency === 'USD'),
+    )!;
+
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: refined } = await simulateCallTool(server1, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{
+        scope: 'product',
+        product_id: product.product_id,
+        ask: 'Provide concrete fixed CPM pricing in USD.',
+      }],
+    });
+
+    expect(refined.refinement_applied).toEqual([
+      expect.objectContaining({ scope: 'product', product_id: product.product_id, status: 'applied' }),
+    ]);
+    const returnedProduct = (refined.products as Array<Record<string, unknown>>).find(
+      candidate => candidate.product_id === product.product_id,
+    )!;
+    const negotiatedOption = (returnedProduct.pricing_options as Array<Record<string, unknown>>).find(
+      option => String(option.pricing_option_id).includes('_concrete_'),
+    );
+    expect(negotiatedOption).toMatchObject({ pricing_model: 'cpm', currency: 'USD' });
+    expect(negotiatedOption!.fixed_price).toBeGreaterThan(0);
+    expect(returnedProduct.pricing_options).not.toEqual(product.pricing_options);
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: reread } = await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{ scope: 'product', product_id: product.product_id }],
+    });
+    const persistedProduct = (reread.products as Array<Record<string, unknown>>).find(
+      candidate => candidate.product_id === product.product_id,
+    )!;
+    expect(persistedProduct.pricing_options).toContainEqual(negotiatedOption);
+  });
+
+  it('applies a guaranteed-only request ask by changing the returned selection', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'refine',
+      account: { brand: { domain: 'guaranteed-only.example' }, operator: 'guaranteed-only.example' },
+      refine: [{ scope: 'request', ask: 'Only guaranteed products.' }],
+    });
+
+    expect(result.refinement_applied).toEqual([
+      expect.objectContaining({ scope: 'request', status: 'applied' }),
+    ]);
+    const products = result.products as Array<Record<string, unknown>>;
+    expect(products.length).toBeGreaterThan(0);
+    expect(products.length).toBeLessThan(buildCatalog().length);
+    expect(products.every(product => product.delivery_type === 'guaranteed')).toBe(true);
+  });
+
+  it('returns unable without changing product pricing when concrete CPM cannot be fulfilled', async () => {
+    const product = buildCatalog().map(entry => entry.product).find(candidate =>
+      candidate.pricing_options.some(option => option.pricing_model === 'cpm')
+      && candidate.pricing_options.every(option => option.currency !== 'JPY'),
+    )!;
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'refine',
+      account: { brand: { domain: 'unable-cpm.example' }, operator: 'unable-cpm.example' },
+      refine: [{
+        scope: 'product',
+        product_id: product.product_id,
+        ask: 'Provide concrete fixed CPM pricing in JPY.',
+      }],
+    });
+
+    expect(result.refinement_applied).toEqual([
+      expect.objectContaining({ scope: 'product', product_id: product.product_id, status: 'unable' }),
+    ]);
+    const unchangedProduct = (result.products as Array<Record<string, unknown>>).find(
+      candidate => candidate.product_id === product.product_id,
+    )!;
+    expect(unchangedProduct.pricing_options).toEqual(product.pricing_options);
+  });
+
+  it('keeps mixed ask outcomes position-aligned and leaves unsupported asks partial', async () => {
+    const products = buildCatalog().map(entry => entry.product).filter(candidate =>
+      candidate.pricing_options.some(option => option.pricing_model === 'cpm' && option.currency === 'USD')
+      && candidate.pricing_options.every(option => option.currency !== 'JPY'),
+    );
+    expect(products.length).toBeGreaterThanOrEqual(3);
+    const [appliedProduct, partialProduct, unableProduct] = products;
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'refine',
+      account: { brand: { domain: 'aligned-refine.example' }, operator: 'aligned-refine.example' },
+      refine: [
+        { scope: 'request', ask: 'Prioritize premium inventory with strong completion rates.' },
+        { scope: 'product', product_id: appliedProduct.product_id, ask: 'Provide concrete fixed CPM pricing in USD.' },
+        { scope: 'product', product_id: partialProduct.product_id, ask: 'Increase budget allocation to $30K.' },
+        { scope: 'product', product_id: unableProduct.product_id, ask: 'Provide concrete fixed CPM pricing in JPY.' },
+        { scope: 'request', ask: 'Only guaranteed products.' },
+      ],
+    });
+
+    expect(result.refinement_applied).toEqual([
+      expect.objectContaining({ scope: 'request', status: 'partial' }),
+      expect.objectContaining({ scope: 'product', product_id: appliedProduct.product_id, status: 'applied' }),
+      expect.objectContaining({ scope: 'product', product_id: partialProduct.product_id, status: 'partial' }),
+      expect.objectContaining({ scope: 'product', product_id: unableProduct.product_id, status: 'unable' }),
+      expect.objectContaining({ scope: 'request', status: 'applied' }),
+    ]);
+  });
+
+  it('rejects mixed refinements before applying an earlier proposal pricing change', async () => {
+    const account = { brand: { domain: 'atomic-product-refine.example' }, operator: 'atomic-product-refine.example' };
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: initial } = await simulateCallTool(server1, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'cross-channel news video and display',
+      account,
+    });
+    const initialProposal = (initial.proposals as Array<Record<string, unknown>>).find(
+      proposal => proposal.proposal_id === 'pinnacle_cross_channel',
+    )!;
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: rejected, isError } = await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [
+        {
+          scope: 'proposal',
+          proposal_id: 'pinnacle_cross_channel',
+          ask: 'Provide concrete per-unit CPM pricing and set the recommended total to 5000 USD',
+        },
+        { scope: 'product', action: 'include', product_id: 'unknown_product' },
+      ],
+    });
+
+    expect(isError).toBe(true);
+    expect(rejected.code).toBe('PRODUCT_NOT_FOUND');
+    expect(rejected.field).toBe('refine[1].product_id');
+
+    const server3 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: afterRejected } = await simulateCallTool(server3, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{
+        scope: 'proposal',
+        proposal_id: 'pinnacle_cross_channel',
+        ask: 'Confirm the current recommendation without changing it',
+      }],
+    });
+    const proposalAfterRejected = (afterRejected.proposals as Array<Record<string, unknown>>).find(
+      proposal => proposal.proposal_id === 'pinnacle_cross_channel',
+    )!;
+    expect(proposalAfterRejected.total_budget_guidance).toEqual(initialProposal.total_budget_guidance);
+    expect(proposalAfterRejected.allocations).toEqual(initialProposal.allocations);
+  });
+
   it('finds similar products with more_like_this', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const account = { brand: { domain: 'morelike.example' }, operator: 'morelike.example' };
@@ -6341,6 +6636,45 @@ describe('get_products refine mode', () => {
 
     // Should have more than just the source product
     expect(refinedProducts.length).toBeGreaterThan(1);
+  });
+
+  it('resolves more_like_this from the seller registry without prior response state', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'self-contained-refine.example' }, operator: 'self-contained-refine.example' };
+    const source = buildCatalog()[0].product;
+
+    const { result: refined } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{ scope: 'product', action: 'more_like_this', product_id: source.product_id }],
+    });
+
+    expect((refined.refinement_applied as Array<Record<string, unknown>>)[0].status).toBe('applied');
+    const products = refined.products as Array<Record<string, unknown>>;
+    expect(products.some(product => product.product_id === source.product_id)).toBe(true);
+    expect(products.length).toBeGreaterThan(1);
+  });
+
+  it('reports partial when absolute filters exclude a referenced product', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'filtered-refine.example' }, operator: 'filtered-refine.example' };
+    const source = buildCatalog().find(entry => !entry.product.channels?.includes('gaming'))!.product;
+
+    const { result: refined } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      filters: { channels: ['gaming'] },
+      refine: [{ scope: 'product', action: 'include', product_id: source.product_id }],
+    });
+
+    const applied = refined.refinement_applied as Array<Record<string, unknown>>;
+    expect(applied[0]).toMatchObject({
+      scope: 'product',
+      product_id: source.product_id,
+      status: 'partial',
+    });
+    expect((refined.products as Array<Record<string, unknown>>)
+      .some(product => product.product_id === source.product_id)).toBe(false);
   });
 
   it('defaults missing action to include on product scope', async () => {
@@ -6479,6 +6813,409 @@ describe('get_products refine mode', () => {
     expect(refinementApplied[0].status).toBe('applied');
     expect(refinementApplied[0].scope).toBe('proposal');
     expect(refinementApplied[0].proposal_id).toBe(targetProposalId);
+  });
+
+  it('applies a concrete proposal CPM and recommended-budget refinement', async () => {
+    const account = { brand: { domain: 'firm-cpm.example' }, operator: 'firm-cpm.example' };
+
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: initial } = await simulateCallTool(server1, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'cross-channel news video and display',
+      account,
+    });
+    const initialProposal = (initial.proposals as Array<Record<string, unknown>>).find(
+      proposal => proposal.proposal_id === 'pinnacle_cross_channel',
+    );
+    expect(initialProposal).toBeDefined();
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: refined } = await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{
+        scope: 'proposal',
+        proposal_id: 'pinnacle_cross_channel',
+        action: 'include',
+        ask: 'Provide a concrete per-unit CPM for each allocation and a firm recommended total for a 5000 USD September flight',
+      }],
+    });
+
+    const applied = refined.refinement_applied as Array<Record<string, unknown>>;
+    expect(applied).toHaveLength(1);
+    expect(applied[0].status).toBe('applied');
+    expect(applied[0].notes).toContain('Concrete fixed CPM pricing applied');
+
+    const refinedProposal = (refined.proposals as Array<Record<string, unknown>>).find(
+      proposal => proposal.proposal_id === 'pinnacle_cross_channel',
+    );
+    expect(refinedProposal).toBeDefined();
+    expect(refinedProposal).not.toEqual(initialProposal);
+    expect(refinedProposal!.total_budget_guidance).toMatchObject({
+      min: 5000,
+      recommended: 5000,
+      currency: 'USD',
+    });
+    const ext = refinedProposal!.ext as Record<string, {
+      manifest: { assets: Record<string, { content?: string } | undefined> };
+    }>;
+    for (const cardKey of ['proposal_card', 'proposal_card_detailed']) {
+      expect(ext[cardKey].manifest.assets.budget_min.content).toBe('5000');
+      expect(ext[cardKey].manifest.assets.budget_recommended.content).toBe('5000');
+      expect(ext[cardKey].manifest.assets.budget_currency.content).toBe('USD');
+      expect(ext[cardKey].manifest.assets.estimated_delivery).toBeUndefined();
+    }
+
+    const products = refined.products as Array<Record<string, unknown>>;
+    for (const allocation of refinedProposal!.allocations as Array<Record<string, unknown>>) {
+      expect(allocation.pricing_option_id).toMatch(/_concrete_[a-f0-9]{32}$/);
+      const product = products.find(candidate => candidate.product_id === allocation.product_id)!;
+      const pricingOption = (product.pricing_options as Array<Record<string, unknown>>).find(
+        option => option.pricing_option_id === allocation.pricing_option_id,
+      );
+      expect(pricingOption).toMatchObject({ pricing_model: 'cpm', currency: 'USD' });
+      expect(pricingOption!.fixed_price).toBeGreaterThan(0);
+      expect(pricingOption!.floor_price).toBeUndefined();
+      expect(pricingOption!.price_guidance).toBeUndefined();
+      expect(pricingOption!.max_bid).toBeUndefined();
+      expect(pricingOption!.min_spend_per_package).toBeUndefined();
+    }
+  });
+
+  it('returns a legacy 3.0 proposal alias even when the preceding brief selected other proposals', async () => {
+    const compatCtx = { ...DEFAULT_CTX, storyboardCompat: { version: '3.0' as const } };
+    const account = { brand: { domain: 'legacy-proposal.example' }, operator: 'legacy-proposal.example' };
+    const server1 = createTrainingAgentServer(compatCtx);
+    await simulateCallTool(server1, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'Premium video and display across outdoor lifestyle and sports.',
+      account,
+    });
+
+    const server2 = createTrainingAgentServer(compatCtx);
+    const { result, isError } = await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [
+        { scope: 'proposal', proposal_id: 'balanced_reach_q2', ask: 'Shift budget to CTV.' },
+        { scope: 'request', ask: 'All products must support frequency capping.' },
+      ],
+    });
+
+    expect(isError).toBeFalsy();
+    expect(result.proposals).toEqual(expect.arrayContaining([
+      expect.objectContaining({ proposal_id: 'sparq_social_amplification' }),
+    ]));
+  });
+
+  it('resolves a canonical proposal from the seller registry when it was absent from the preceding brief', async () => {
+    const account = { brand: { domain: 'registry-proposal.example' }, operator: 'registry-proposal.example' };
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: initial } = await simulateCallTool(server1, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'Premium video and display across outdoor lifestyle and sports.',
+      account,
+    });
+    const returnedProposalIds = new Set(
+      ((initial.proposals ?? []) as Array<Record<string, unknown>>).map(proposal => proposal.proposal_id),
+    );
+    const registryProposal = buildProposals(buildCatalog()).find(
+      proposal => !returnedProposalIds.has(proposal.proposal_id),
+    );
+    expect(registryProposal).toBeDefined();
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{ scope: 'proposal', proposal_id: registryProposal!.proposal_id }],
+    });
+
+    expect(isError).toBeFalsy();
+    expect(result.proposals).toEqual(expect.arrayContaining([
+      expect.objectContaining({ proposal_id: registryProposal!.proposal_id }),
+    ]));
+  });
+
+  it('persists concrete proposal pricing across subsequent get_products requests', async () => {
+    const account = { brand: { domain: 'persisted-cpm.example' }, operator: 'persisted-cpm.example' };
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server1, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'cross-channel news video and display',
+      account,
+    });
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{
+        scope: 'proposal',
+        proposal_id: 'pinnacle_cross_channel',
+        ask: 'Provide concrete per-unit CPM pricing and set the recommended total to 5000 USD',
+      }],
+    });
+
+    const server3 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: reread } = await simulateCallTool(server3, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{ scope: 'proposal', proposal_id: 'pinnacle_cross_channel' }],
+    });
+    const proposal = (reread.proposals as Array<Record<string, unknown>>).find(
+      candidate => candidate.proposal_id === 'pinnacle_cross_channel',
+    )!;
+    expect(proposal.total_budget_guidance).toMatchObject({ recommended: 5000, currency: 'USD' });
+    const products = reread.products as Array<Record<string, unknown>>;
+    for (const allocation of proposal.allocations as Array<Record<string, unknown>>) {
+      expect(allocation.pricing_option_id).toMatch(/_concrete_[a-f0-9]{32}$/);
+      const product = products.find(candidate => candidate.product_id === allocation.product_id)!;
+      const option = (product.pricing_options as Array<Record<string, unknown>>).find(
+        candidate => candidate.pricing_option_id === allocation.pricing_option_id,
+      );
+      expect(option).toMatchObject({ pricing_model: 'cpm', currency: 'USD' });
+      expect(option!.fixed_price).toBeGreaterThan(0);
+    }
+  });
+
+  it('keeps account-scoped negotiated options out of the public wholesale feed', async () => {
+    const account = { brand: { domain: 'wholesale-scope.example' }, operator: 'wholesale-scope.example' };
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server1, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'cross-channel news video and display',
+      account,
+    });
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{
+        scope: 'proposal',
+        proposal_id: 'pinnacle_cross_channel',
+        ask: 'Provide concrete fixed CPM pricing in USD',
+      }],
+    });
+
+    const server3 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: wholesale } = await simulateCallTool(server3, 'get_products', {
+      buying_mode: 'wholesale',
+      account,
+    });
+    expect(wholesale.cache_scope).toBe('public');
+    for (const product of wholesale.products as Array<Record<string, unknown>>) {
+      expect((product.pricing_options as Array<Record<string, unknown>>).some(
+        option => String(option.pricing_option_id).includes('_concrete_'),
+      )).toBe(false);
+    }
+  });
+
+  it('honors supported currencies and keeps unsupported currencies partial', async () => {
+    const account = { brand: { domain: 'cpm-currency.example' }, operator: 'cpm-currency.example' };
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: initial } = await simulateCallTool(server1, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'premium live sports video',
+      account,
+    });
+    const initialProposal = (initial.proposals as Array<Record<string, unknown>>).find(
+      proposal => proposal.proposal_id === 'viewpoint_multi_screen',
+    )!;
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: refined } = await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{
+        scope: 'proposal',
+        proposal_id: 'viewpoint_multi_screen',
+        ask: 'Provide concrete fixed CPM pricing in EUR for a 30 day flight',
+      }],
+    });
+    expect((refined.refinement_applied as Array<Record<string, unknown>>)[0].status).toBe('applied');
+    const proposal = (refined.proposals as Array<Record<string, unknown>>).find(
+      candidate => candidate.proposal_id === 'viewpoint_multi_screen',
+    )!;
+    expect(proposal.total_budget_guidance).toEqual(initialProposal.total_budget_guidance);
+    const products = refined.products as Array<Record<string, unknown>>;
+    for (const allocation of proposal.allocations as Array<Record<string, unknown>>) {
+      const product = products.find(candidate => candidate.product_id === allocation.product_id)!;
+      const option = (product.pricing_options as Array<Record<string, unknown>>).find(
+        candidate => candidate.pricing_option_id === allocation.pricing_option_id,
+      )!;
+      expect(option.currency).toBe('EUR');
+      expect(option.fixed_price).toBeGreaterThan(0);
+    }
+
+    const server3 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: unsupported } = await simulateCallTool(server3, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{
+        scope: 'proposal',
+        proposal_id: 'viewpoint_multi_screen',
+        ask: 'Provide concrete fixed CPM pricing in JPY',
+      }],
+    });
+    expect((unsupported.refinement_applied as Array<Record<string, unknown>>)[0].status).toBe('partial');
+    const unchangedProposal = (unsupported.proposals as Array<Record<string, unknown>>).find(
+      candidate => candidate.proposal_id === 'viewpoint_multi_screen',
+    )!;
+    expect(unchangedProposal.allocations).toEqual(proposal.allocations);
+  });
+
+  it('does not reinterpret an explicit CPM amount or flight duration as total budget', async () => {
+    const account = { brand: { domain: 'cpm-parser.example' }, operator: 'cpm-parser.example' };
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: initial } = await simulateCallTool(server1, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'cross-channel news video and display',
+      account,
+    });
+    const initialProposal = (initial.proposals as Array<Record<string, unknown>>).find(
+      proposal => proposal.proposal_id === 'pinnacle_cross_channel',
+    )!;
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: refined } = await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{
+        scope: 'proposal',
+        proposal_id: 'pinnacle_cross_channel',
+        ask: 'Set the total budget to 5000 USD with no more than $12 CPM for a 30 day flight',
+      }],
+    });
+    expect((refined.refinement_applied as Array<Record<string, unknown>>)[0].status).toBe('partial');
+    const proposal = (refined.proposals as Array<Record<string, unknown>>).find(
+      candidate => candidate.proposal_id === 'pinnacle_cross_channel',
+    )!;
+    expect(proposal.total_budget_guidance).toEqual(initialProposal.total_budget_guidance);
+    expect(proposal.allocations).toEqual(initialProposal.allocations);
+  });
+
+  it('preserves concrete pricing when the same call includes a product selection', async () => {
+    const account = { brand: { domain: 'mixed-cpm.example' }, operator: 'mixed-cpm.example' };
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: initial } = await simulateCallTool(server1, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'cross-channel news video and display',
+      account,
+    });
+    const initialProposal = (initial.proposals as Array<Record<string, unknown>>).find(
+      proposal => proposal.proposal_id === 'pinnacle_cross_channel',
+    )!;
+    const productId = (initialProposal.allocations as Array<Record<string, unknown>>)[0].product_id as string;
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: refined } = await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [
+        {
+          scope: 'proposal',
+          proposal_id: 'pinnacle_cross_channel',
+          ask: 'Provide concrete fixed CPM pricing in USD',
+        },
+        { scope: 'product', product_id: productId },
+      ],
+    });
+    expect((refined.refinement_applied as Array<Record<string, unknown>>).map(entry => entry.status))
+      .toEqual(['applied', 'applied']);
+    const proposal = (refined.proposals as Array<Record<string, unknown>>).find(
+      candidate => candidate.proposal_id === 'pinnacle_cross_channel',
+    )!;
+    const products = refined.products as Array<Record<string, unknown>>;
+    for (const allocation of proposal.allocations as Array<Record<string, unknown>>) {
+      const product = products.find(candidate => candidate.product_id === allocation.product_id)!;
+      expect((product.pricing_options as Array<Record<string, unknown>>).some(
+        option => option.pricing_option_id === allocation.pricing_option_id,
+      )).toBe(true);
+    }
+  });
+
+  it('uses persisted concrete pricing when a refined proposal is finalized and purchased', async () => {
+    const account = { brand: { domain: 'buy-refined.example' }, operator: 'buy-refined.example' };
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server1, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'cross-channel news video and display',
+      account,
+    });
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{
+        scope: 'proposal',
+        proposal_id: 'pinnacle_cross_channel',
+        ask: 'Provide concrete per-unit CPM pricing and set the recommended total to 5000 USD',
+      }],
+    });
+
+    const server3 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: finalized } = await simulateCallTool(server3, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{ scope: 'proposal', action: 'finalize', proposal_id: 'pinnacle_cross_channel' }],
+    });
+    const committed = (finalized.proposals as Array<Record<string, unknown>>).find(
+      proposal => proposal.proposal_id === 'pinnacle_cross_channel',
+    )!;
+    expect(committed.proposal_status).toBe('committed');
+    const insertionOrder = committed.insertion_order as Record<string, unknown>;
+
+    const server4 = createTrainingAgentServer(DEFAULT_CTX);
+    const startTime = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    const endTime = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString();
+    const { result: created, isError } = await simulateCallTool(server4, 'create_media_buy', {
+      account,
+      brand: { domain: 'buy-refined.example' },
+      proposal_id: 'pinnacle_cross_channel',
+      total_budget: { amount: 5000, currency: 'USD' },
+      start_time: startTime,
+      end_time: endTime,
+      io_acceptance: {
+        io_id: insertionOrder.io_id,
+        accepted_at: new Date().toISOString(),
+        signatory: 'training-buyer',
+      },
+    });
+    expect(isError).toBeFalsy();
+    expect(created.media_buy_id).toBeDefined();
+    for (const pkg of created.packages as Array<Record<string, unknown>>) {
+      expect(pkg.pricing_option_id).toMatch(/_concrete_[a-f0-9]{32}$/);
+      expect(pkg.bid_price).toBeUndefined();
+    }
+  });
+
+  it('keeps unsupported proposal asks partial', async () => {
+    const account = { brand: { domain: 'partial-refine.example' }, operator: 'partial-refine.example' };
+
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server1, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'cross-channel news video and display',
+      account,
+    });
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: refined } = await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{
+        scope: 'proposal',
+        proposal_id: 'pinnacle_cross_channel',
+        ask: 'Guarantee exclusive inventory on Mars',
+      }],
+    });
+
+    const applied = refined.refinement_applied as Array<Record<string, unknown>>;
+    expect(applied).toHaveLength(1);
+    expect(applied[0].status).toBe('partial');
+    expect(applied[0].notes).toContain('Ask acknowledged but not applied');
   });
 });
 
@@ -8267,74 +9004,29 @@ describe('get_adcp_capabilities handler', () => {
     expect(configs[0].active).toBe(false);
   });
 
-  it('emits wholesale feed webhook payloads to active account subscribers', async () => {
-    const received: Record<string, unknown>[] = [];
-    const receiver = createServer((req, res) => {
-      const chunks: Buffer[] = [];
-      req.on('data', chunk => chunks.push(Buffer.from(chunk)));
-      req.on('end', () => {
-        received.push(JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>);
-        res.statusCode = 204;
-        res.end();
-      });
-    });
-    await new Promise<void>(resolve => receiver.listen(0, '127.0.0.1', resolve));
-
-    try {
-      const address = receiver.address() as { port: number };
-      const server = createTrainingAgentServer(DEFAULT_CTX);
-      const account = { brand: { domain: 'wholesale-webhook.example' }, operator: 'pinnacle-agency.example' };
-      await simulateCallTool(server, 'sync_accounts', {
-        accounts: [{
-          ...account,
-          billing: 'operator',
-          sandbox: true,
-          notification_configs: [{
-            subscriber_id: 'wholesale-feed-sync',
-            url: `http://127.0.0.1:${address.port}/webhooks/adcp/wholesale-feed`,
-            event_types: ['product.priced', 'product.created'],
-            active: true,
-          }],
+  it('rejects active wholesale feed subscribers until proof of control exists', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'sync_accounts', {
+      accounts: [{
+        brand: { domain: 'wholesale-webhook.example' },
+        operator: 'pinnacle-agency.example',
+        billing: 'operator',
+        sandbox: true,
+        notification_configs: [{
+          subscriber_id: 'wholesale-feed-sync',
+          url: 'https://webhook.example.com/webhooks/adcp/wholesale-feed',
+          event_types: ['product.priced', 'product.created'],
+          active: true,
         }],
-      });
+      }],
+    });
 
-      const forced = await simulateCallTool(server, 'comply_test_controller', {
-        account,
-        brand: account.brand,
-        scenario: 'force_wholesale_feed_webhook',
-        params: {
-          event_type: 'product.priced',
-          entity_id: 'prod_training_wholesale',
-        },
-      });
-
-      expect(forced.result.success).toBe(true);
-      expect(forced.result.delivered).toBe(1);
-      expect(received).toHaveLength(1);
-      expect(received[0].notification_type).toBe('product.priced');
-      expect(received[0].subscriber_id).toBe('wholesale-feed-sync');
-      expect((received[0].event as Record<string, unknown>).event_type).toBe('product.priced');
-      expect(((received[0].event as Record<string, unknown>).payload as Record<string, unknown>).product_id).toBe('prod_training_wholesale');
-
-      const created = await simulateCallTool(server, 'comply_test_controller', {
-        account,
-        brand: account.brand,
-        scenario: 'force_wholesale_feed_webhook',
-        params: {
-          event_type: 'product.created',
-          entity_id: 'prod_training_wholesale_created',
-        },
-      });
-
-      expect(created.result.success).toBe(true);
-      expect(created.result.delivered).toBe(1);
-      expect(received).toHaveLength(2);
-      expect(received[1].notification_type).toBe('product.created');
-      const createdPayload = (received[1].event as Record<string, unknown>).payload as Record<string, unknown>;
-      expect((createdPayload.product as Record<string, unknown>).product_id).toBe('prod_training_wholesale_created');
-    } finally {
-      await new Promise<void>(resolve => receiver.close(() => resolve()));
-    }
+    const account = (result.accounts as Array<Record<string, unknown>>)[0];
+    expect(account.action).toBe('failed');
+    expect(account.errors).toEqual([expect.objectContaining({
+      code: 'VALIDATION_ERROR',
+      field: 'notification_configs[0].active',
+    })]);
   });
 
   it('lists protocol tasks without get_adcp_capabilities itself', async () => {
@@ -8934,12 +9626,11 @@ describe('check_governance delegation enforcement', () => {
     // Second check — pass governance_context back for lifecycle continuity
     const { result: check2 } = await simulateCallTool(server, 'check_governance', {
       plan_id: 'plan-deleg',
-      binding: 'committed',
       caller: 'https://delegated.example',
-      media_buy_id: 'mb_test_123',
       governance_context: check1.governance_context,
       phase: 'purchase',
       planned_delivery: {
+        media_buy_id: 'mb_test_123',
         geo: { countries: ['US'] },
         total_budget: 10000,
         currency: 'USD',
@@ -11431,6 +12122,109 @@ describe('property-list uniform not-found response (issue #2739)', () => {
     expect(probeA.result.code).toBe('REFERENCE_NOT_FOUND');
     expect(probeA.result.message).toBe('Property list not found');
     expect(probeA.result.field).toBe('list_id');
+  });
+});
+
+describe('collection and property list webhook URL handling', () => {
+  beforeEach(async () => {
+    await clearSessions();
+    clearIdempotencyCache();
+  });
+
+  afterEach(async () => {
+    await clearSessions();
+    stopSessionCleanup();
+  });
+
+  it('advertises the schema-defined webhook_url field on both update tools', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { tools } = await simulateListTools(server);
+
+    for (const toolName of ['update_collection_list', 'update_property_list']) {
+      const tool = tools.find(candidate => candidate.name === toolName);
+      expect(tool?.inputSchema?.properties).toHaveProperty('webhook_url');
+    }
+  });
+
+  it.each([
+    {
+      kind: 'collection',
+      targetKind: 'private',
+      webhookUrl: 'https://169.254.169.254/latest/meta-data',
+      createTool: 'create_collection_list',
+      updateTool: 'update_collection_list',
+      getTool: 'get_collection_list',
+    },
+    {
+      kind: 'property',
+      targetKind: 'private',
+      webhookUrl: 'https://169.254.169.254/latest/meta-data',
+      createTool: 'create_property_list',
+      updateTool: 'update_property_list',
+      getTool: 'get_property_list',
+    },
+    {
+      kind: 'collection',
+      targetKind: 'numeric-encoded',
+      webhookUrl: 'https://2852039166/latest/meta-data',
+      createTool: 'create_collection_list',
+      updateTool: 'update_collection_list',
+      getTool: 'get_collection_list',
+    },
+    {
+      kind: 'property',
+      targetKind: 'numeric-encoded',
+      webhookUrl: 'https://2852039166/latest/meta-data',
+      createTool: 'create_property_list',
+      updateTool: 'update_property_list',
+      getTool: 'get_property_list',
+    },
+  ])('rejects a $targetKind $kind list webhook without partially applying the update', async ({ webhookUrl, createTool, updateTool, getTool }) => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const created = await simulateCallTool(server, createTool, { name: 'Original name' });
+    const listId = (created.result.list as { list_id: string }).list_id;
+
+    const rejected = await simulateCallTool(server, updateTool, {
+      list_id: listId,
+      name: 'Must not persist',
+      webhook_url: webhookUrl,
+    });
+    expect(rejected.result).toMatchObject({ code: 'VALIDATION_ERROR', field: 'webhook_url' });
+
+    const fetched = await simulateCallTool(server, getTool, { list_id: listId });
+    expect(fetched.result.list).toMatchObject({ name: 'Original name' });
+    expect((fetched.result.list as Record<string, unknown>).webhook_url).toBeUndefined();
+  });
+
+  it.each([
+    { createTool: 'create_collection_list', updateTool: 'update_collection_list' },
+    { createTool: 'create_property_list', updateTool: 'update_property_list' },
+  ])('rejects webhook URLs containing userinfo credentials', async ({ createTool, updateTool }) => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const created = await simulateCallTool(server, createTool, { name: 'Credential test' });
+    const listId = (created.result.list as { list_id: string }).list_id;
+
+    const rejected = await simulateCallTool(server, updateTool, {
+      list_id: listId,
+      webhook_url: 'https://username:password@8.8.8.8/list-changes',
+    });
+    expect(rejected.result).toMatchObject({ code: 'VALIDATION_ERROR', field: 'webhook_url' });
+  });
+
+  it.each([
+    { kind: 'collection', createTool: 'create_collection_list', updateTool: 'update_collection_list' },
+    { kind: 'property', createTool: 'create_property_list', updateTool: 'update_property_list' },
+  ])('stores and removes a public $kind list webhook', async ({ createTool, updateTool }) => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const created = await simulateCallTool(server, createTool, { name: 'Webhook list' });
+    const listId = (created.result.list as { list_id: string }).list_id;
+    const webhookUrl = 'https://8.8.8.8/list-changes';
+
+    const updated = await simulateCallTool(server, updateTool, { list_id: listId, webhook_url: webhookUrl });
+    expect(updated.result.list).toMatchObject({ webhook_url: webhookUrl });
+
+    const cleared = await simulateCallTool(server, updateTool, { list_id: listId, webhook_url: '' });
+    expect((cleared.result.list as Record<string, unknown>).webhook_url).toBeUndefined();
   });
 });
 

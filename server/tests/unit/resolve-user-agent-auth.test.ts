@@ -43,6 +43,26 @@ describe('resolveUserAgentAuth', () => {
   const call = () =>
     resolveUserAgentAuth(db as unknown as AgentContextDatabase, ORG, URL, logger);
 
+  it('canonicalizes LoopMe-style path and trailing-slash variants before every lookup', async () => {
+    const variant = 'HTTPS://PLATFORM.LOOPME.AI/MCP/SELLER/';
+    const canonical = 'https://platform.loopme.ai/mcp/seller';
+    db.getAuthInfoByOrgAndUrl.mockResolvedValueOnce(null);
+    db.getByOrgAndUrl.mockResolvedValueOnce({ id: 'ctx_loopme', has_oauth_token: true });
+    db.getOAuthTokensByOrgAndUrl.mockResolvedValueOnce({ access_token: 'loopme-access' });
+
+    const auth = await resolveUserAgentAuth(
+      db as unknown as AgentContextDatabase,
+      ORG,
+      variant,
+      logger,
+    );
+
+    expect(auth).toEqual({ type: 'bearer', token: 'loopme-access' });
+    expect(db.getAuthInfoByOrgAndUrl).toHaveBeenCalledWith(ORG, canonical);
+    expect(db.getByOrgAndUrl).toHaveBeenCalledWith(ORG, canonical);
+    expect(db.getOAuthTokensByOrgAndUrl).toHaveBeenCalledWith(ORG, canonical);
+  });
+
   it('returns static bearer when the connect form saved one', async () => {
     db.getAuthInfoByOrgAndUrl.mockResolvedValueOnce({ token: 'static_bearer', authType: 'bearer' });
 

@@ -1,0 +1,200 @@
+---
+title: "S7: Brand identity and verification"
+sidebarTitle: "S7: Brand identity"
+description: "AdCP specialist module S7: Brand Protocol mastery. brand.json identity resolution, distributed publishing and mutual-assertion reciprocity, bilateral adagents.json confirmation, verify_brand_claim signed-response verification, trademark disambiguation, and the experimental rights lifecycle."
+"og:title": "AdCP — S7: Brand identity and verification"
+---
+
+# S7: Brand identity and verification
+
+<Info>
+**Members only** — Requires Practitioner credential. ~60 minutes with Addie. Combines hands-on lab and adaptive exam.
+</Info>
+
+This specialist module tests your mastery of the Brand Protocol's identity and verification layer. You'll work with sandbox agents to resolve a brand's `brand.json`, walk the bilateral trust chain across `brand.json` and `adagents.json`, call `verify_brand_claim` and interpret its signed response for trust, and disambiguate a trademark across jurisdictions. Addie evaluates both your hands-on work and your ability to reason about the protocol's trust model.
+
+Passing earns the **AdCP specialist — Brand** credential.
+
+<Note>
+**This is a brand credential, not a cryptography one.** It certifies brand-domain *judgment* — resolving identity, reading organizational hierarchy, knowing who may act for a brand, applying the trust model, and deciding what a verification outcome *means*. It is **not hyper-technical**: where signed responses appear, the gate is "what does a valid / expired / forged signature tell you, and what do you do about it" — not implementing the cryptography. The signature mechanics (key resolution, canonicalization, signature checking) are a Security-specialist skill in **[S6: Security](/dist/docs/3.1.4/learning/specialist/security)**, cross-referenced where relevant.
+</Note>
+
+<Note>
+**This domain is two-speed, and so is this module.** The identity and verification surface — `brand.json` resolution, distributed self-publishing, `verify_brand_claim` signed responses, and `adagents.json` confirmation — is mature and is what this credential **gates**. The **rights lifecycle** (`get_rights` / `acquire_rights` / `update_rights`) belongs to the `brand.rights_lifecycle` feature cluster, which is marked **experimental** in [Experimental status](/dist/docs/3.1.4/reference/experimental-status). You'll learn to walk it, but mastery of it is **taught, not assessed** — no gated criterion depends on it.
+</Note>
+
+## Specialisms this track prepares you to validate
+
+The following `specialisms` fall under the `brand` domain. Each has its own compliance storyboard — see the [Compliance Catalog](/dist/docs/3.1.4/building/verification/compliance-catalog) for the full taxonomy.
+
+| Specialism | Status | What it covers |
+|---|---|---|
+| `brand-rights` | stable | Brand identity resolution (`get_brand_identity`) and rights licensing (talent, music, stock media) |
+
+The `brand-rights` specialism storyboard is stable, but it exercises the `brand.rights_lifecycle` feature cluster (`get_rights`, `acquire_rights`, `update_rights`), which is marked **experimental** — partial rights, sublicensing, revocation, and dispute resolution are expected to evolve. This module gates the identity and verification half of the domain; it teaches the rights lifecycle as experimental.
+
+## Organizational hierarchy: it's not just the attributes
+
+Brand identity encodes **who an organization is and who may act for it**, along two distinct axes — and this module gates both, not just the attributes (colors, tone, logos):
+
+- **Axis 1 — brand-to-brand (the house hierarchy).** Which brands belong to a house: `house_of_brands` vs `branded_house` architecture, `keller_type` (`master` / `endorsed` / `independent`), and the `brand_refs[]` ↔ `house_domain` reciprocity.
+- **Axis 2 — brand-to-operator (who acts *for* the brand).** A house declares `authorized_operators[]` in its `brand.json` — the agencies, platforms, and in-house teams permitted to represent its brands, each scoped by `domain`, `brands[]` (or the `*` wildcard), `countries`, and `scopes[]` (`media_buying`, `creative_generation`, `rights_clearance`, `governance`, `measurement`, `agent_operations`).
+
+Keep three relationship types distinct — they are easy to conflate:
+
+| Relationship | Where it's declared | Direction | Question it answers |
+|---|---|---|---|
+| House membership | `brand_refs[]` ↔ `house_domain` | brand ↔ brand | Which brands belong to this house? |
+| Operator authorization | `authorized_operators[]` in `brand.json` | brand → operator (**buy-side**) | Who may buy / act *for* this brand? |
+| Agent delegation | `authorized_agents[]` in `adagents.json` | publisher → agent (**sell-side**) | Who may *sell* this publisher's inventory? |
+
+At runtime the operator axis surfaces in the **Accounts Protocol**: every action carries an `account` whose natural key is `{brand, operator}` (the `operator` is the domain of the entity operating the account; it equals the brand's own domain when the brand operates directly). The seller's `require_operator_auth` capability selects the reference shape — `true` ⇒ seller-assigned `account_id` namespaces with independent operator auth; `false` ⇒ buyer-declared `{brand, operator}` pairs via `sync_accounts`. `get_brand_identity`'s **authorized** tier is exactly an operator (linked-account) view of the identity.
+
+## What you can — and can't — know
+
+The intellectual core of this credential is the **trust framework**: the epistemics of brand identity. Cryptography here proves *who said something*, not *whether it's true*. Trust resolves at two layers that separate cleanly:
+
+- **Identity attributes** (logos, colors, tone, tagline) — trusted from a single TLS-served `brand.json`. A brand that controls its own domain is authoritative for its own attributes, full stop — even if a parent relationship is unreciprocated. ("Claimed-but-unverified ⇒ ignore the leaf entirely" is **wrong**: the leaf's identity is still real.)
+- **Relationships** (who owns a brand, who may speak for it) — trusted only when **both** sides reciprocate.
+
+Then climb the ladder of *what each signal actually proves*:
+
+| Signal | What it proves | What it does **not** prove |
+|---|---|---|
+| TLS + domain control | This party controls this domain | That it's the real-world entity you expect |
+| `signed_response` (JWS) | This party **authored** this answer under its published key, within `iat`/`exp` | That the answer is **true** (and it's not a non-repudiation receipt) |
+| Mutual assertion (both sides `owned`) | The two parties **agree** (consistency) | Real-world **standing** — two attacker-controlled domains can both sign matching `owned` |
+| Rejection (`not_ours` / `disputed`) | Authoritative on a single signed response | — (a brand may always refuse association) |
+
+**What the protocol cannot establish for you** — and where you must go instead:
+
+- **Real-world legal standing** → consumer-side domain-control + TLS against the legal entity you expect; out-of-band identity for high-trust decisions. (This is where *verified-identity attestation* lives — a **separate, experimental** feature, out of scope for this credential.)
+- **A trademark's real registration** → cross-check the public **registry** record (the agent only asserts a `matched_registration`).
+- **A property claim** → cross-check **DNS/TLS**.
+- **`licensed_in`** → unverified until the named licensor reciprocates **`licensed_out`**.
+- **Withheld internal state** (queue position, ticket state, team routing) → never exposed; don't infer it.
+- **Freshness past `exp`** → an expired envelope is audit evidence, not a fresh authorization signal.
+
+Two traps to avoid: `managed_by` is a **directory** field, never a trust/authorization signal; and a standalone leaf's silence **trumps** any third-party house claiming it.
+
+## How brand identity drives creative generation
+
+Brand identity isn't decoration — it's the **input** to on-brand generation, which is *why* the authorized tier exists. A creative agent fetches `brand.json` (or calls `get_brand_identity` authorized), then pulls the wordmark, applies the exact palette and type scale, adopts the tone of voice, and obeys the restrictions — generating a food-forward composition with the headline *below* the image because `visual_guidelines` forbids text over food imagery. No guessing, no corrections. Separate two roles:
+
+- **Inputs** the generator consumes: `logos`, `colors`, `fonts`, `tone.voice`, `voice_synthesis` (provider / voice_id / settings).
+- **Constraints** that bound what it may produce: `tone.dos` / `tone.donts`, `visual_guidelines.restrictions` (e.g. "Never place text over the athlete"), `content_restrictions`.
+
+Input quality drives output quality — a richer `brand.json` yields better generation with fewer corrections. These are exactly the fields `get_brand_identity` gates behind authorization, because a brand protects its generation inputs.
+
+A **second, experimental** path applies when generating with licensed-talent likeness or voice (`brand.rights_lifecycle`): `acquire_rights` issues **scoped `generation_credentials`** that specific providers (Midjourney for likeness, ElevenLabs for voice) verify *at generation time* — the rights agent sets the permission, the provider enforces it — alongside a `rights_constraint` (uses / countries / impression cap), required disclosure text, and a **`creative_approval`** loop that submits the generated asset back to the brand agent for review. Generation stops when the impression cap is hit.
+
+<Note>
+**Scope boundary.** This module covers the brand *side* of the handoff — identity as input/constraint, and the rights/approval interface. Producing the creative itself (`build_creative` manifest/code modes, format selection, preview, sync) belongs to **[S2: Creative](/dist/docs/3.1.4/learning/specialist/creative)** and **[S5: Sponsored Intelligence / Generative Advertising](/dist/docs/3.1.4/learning/specialist/sponsored-intelligence)** — cross-referenced, not re-taught here. The rights-gated half is taught, not gated (it rides the experimental rights lifecycle).
+</Note>
+
+## Stable vs experimental in this module
+
+| Surface | Maturity | In this credential |
+|---|---|---|
+| `brand.json` identity resolution + public/authorized field tiers | stable | **Gated** |
+| Distributed publishing + mutual-assertion reciprocity (`brand_refs[]` ↔ `house_domain`) | stable | **Gated** |
+| Operator authorization (`authorized_operators[]`: domain / brands / countries / scopes) + account `{brand, operator}` model | stable | **Gated** |
+| Bilateral `adagents.json` confirmation (delegated authority, signing-key `kid`) | stable | **Gated** |
+| `verify_brand_claim` / `verify_brand_claims` — interpreting a signed response for trust | stable (3.1) | **Gated** (the signature *mechanics* are S6 Security) |
+| Direction-asymmetric trust + trademark disambiguation | stable | **Gated** |
+| Trust framework / knowability (authorship≠truth, consistency≠standing, the two layers, required cross-checks) | stable | **Gated** |
+| Brand identity as creative-generation input/constraint (the authorized-tier fields) | stable | **Gated** |
+| Rights-gated generation (`generation_credentials`, disclosure, impression cap, `creative_approval` loop) | experimental | Taught, not gated |
+| Creative production (`build_creative`, formats, manifests) | — | Out of scope → S2 / S5 |
+| Rights lifecycle (`get_rights` / `acquire_rights` / `update_rights`, `brand.rights_lifecycle`) | experimental | Taught, not gated |
+
+## What you'll demonstrate
+
+- Resolve a brand's identity from both its static `brand.json` and the `get_brand_identity` agent task; read `available_fields` to detect what an unauthorized caller is missing, then re-request `authorized=true` to obtain the gated `colors` / `fonts` / `tone` / `voice` / `rights` sections
+- Establish that a brand-hierarchy relationship is real by checking **both** directions — the parent house's `brand_refs[]` and the sub-brand's `house_domain` back-pointer — and explain why a single-sided assertion does not extend trust
+- Resolve a house's `authorized_operators[]` and determine whether a given operator (agency, platform, in-house team) may act for a specific brand — checking `domain`, `brands[]` (incl. the `*` wildcard), `countries`, and `scopes[]` — and distinguish this buy-side operator axis from house membership and from sell-side agent delegation; reason about how `require_operator_auth` selects the `{brand, operator}` vs `account_id` reference shape
+- Bilaterally confirm a delegated sales agent: the publisher's `adagents.json` authorizes it *and* the agent declares itself in its own `brand.json` (neither alone suffices); understand why a publisher that pins the agent's signing keys becomes the trust authority for the agent's signed responses (so a compromised agent can't swap in its own key), and reject an agent the publisher does not list *(the signature-checking mechanics are S6 Security)*
+- **Interpret** a signed `verify_brand_claim` response for trust — a valid signature proves the brand *authored* the answer (not that it's true, not non-repudiation), an expired one is audit-only, a response that fails verification or whose signed content doesn't match must be rejected, and an unsigned/unverified answer or the `verification_status` field alone is never trust-extending *(how the signature is verified is an S6 Security skill — here you reason about what each outcome means)*
+- Apply the **direction-asymmetric trust rule**: treat a single `owned` / `pending_review` / `licensed_in` assertion as informative but not trust-extending until the other side reciprocates, while treating `not_ours` / `disputed` as authoritative on a single signed response
+- Disambiguate a trademark claim across registries and Nice classes: resolve a mark that is `owned` in one registry but `disputed` or `licensed_in` in another, narrow an `AMBIGUOUS_MATCH`, and avoid clearing a creative against the wrong registration
+- Map a brand's resolved identity to **creative generation**: which fields (`logos`, `colors`, `fonts`, `tone.voice`, `voice_synthesis`) are *inputs* the generator consumes vs which (`tone.donts`, `visual_guidelines.restrictions`, `content_restrictions`) are hard *constraints*; explain why these are the authorization-gated fields, and locate the brand/production boundary (where `build_creative` and the experimental rights-gated `generation_credentials` + `creative_approval` loop take over)
+- Reason about the **trust framework's knowability boundary**: separate the identity layer (TLS-verifiable) from the relationship layer (mutual-assertion-gated); explain why a signature proves *authorship not truth* and mutual assertion proves *consistency not standing*; and for any fact about a brand, name what the protocol can establish, what it cannot, and the external cross-check (registry, DNS/TLS, licensor reciprocation, consumer-side standing) that closes the gap
+- Walk the experimental rights lifecycle (`get_rights` → `acquire_rights` → `update_rights`) and reason about rights-spend governance — while correctly flagging the surface as not-yet-stable
+
+## Prerequisite reading
+
+<CardGroup cols={2}>
+  <Card title="Brand Protocol overview" icon="fingerprint" href="/dist/docs/3.1.4/brand-protocol">
+    The brand domain: identity, distributed publishing, hierarchy, verification, and rights.
+  </Card>
+  <Card title="brand.json" icon="file-code" href="/dist/docs/3.1.4/brand-protocol/brand-json">
+    The self-published identity document — house architecture, `brand_refs[]`, agents, and the mutual-assertion trust model.
+  </Card>
+  <Card title="verify_brand_claim" icon="circle-check" href="/dist/docs/3.1.4/brand-protocol/tasks/verify_brand_claim">
+    The four claim types, the signed-response envelope, and the direction-asymmetric trust rule.
+  </Card>
+  <Card title="Mutual-assertion trust model" icon="scale-balanced" href="/dist/docs/3.1.4/brand-protocol/brand-json#mutual-assertion-trust-model">
+    The two trust layers, the reciprocation table, and why consistency is not standing — the knowability framework.
+  </Card>
+  <Card title="Seller verification" icon="shield-check" href="/dist/docs/3.1.4/verification/overview">
+    The bilateral `adagents.json` + `brand.json` trust chain — Northwind / StreamHaus / Sportshaus Holdings.
+  </Card>
+  <Card title="Accounts Protocol" icon="building" href="/dist/docs/3.1.4/accounts/overview">
+    The operator axis at runtime: `authorized_operators`, the `{brand, operator}` account model, `require_operator_auth`, and billing.
+  </Card>
+  <Card title="Brand identity → creative" icon="palette" href="/dist/docs/3.1.4/brand-protocol/key-concepts#creative-generation">
+    How creative agents pull `brand.json` assets, tone, and restrictions to generate on-brand — and the rights-gated `generation_credentials` path.
+  </Card>
+  <Card title="Building a brand agent" icon="server" href="/dist/docs/3.1.4/brand-protocol/building-a-brand-agent">
+    Implementing `get_brand_identity`, `verify_brand_claim`, and the response-signing key.
+  </Card>
+  <Card title="Experimental status" icon="flask" href="/dist/docs/3.1.4/reference/experimental-status">
+    Why `brand.rights_lifecycle` is experimental and what that means for adopters.
+  </Card>
+</CardGroup>
+
+## Connecting to the test agent
+
+Lab exercises run against the public test agent's brand tenant. Use the shared token — no signup required:
+
+```bash
+export ADCP_AUTH_TOKEN="1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ"
+export AGENT_URL="https://test-agent.adcontextprotocol.org/brand/mcp"
+```
+
+The discovery and walkthrough documents are served at the host root:
+
+- `https://test-agent.adcontextprotocol.org/.well-known/brand.json` — the agent's own identity document
+- `https://test-agent.adcontextprotocol.org/.well-known/adagents.json` — selling authorization
+- `https://test-agent.adcontextprotocol.org/.well-known/jwks.json` — signing keys (including the `response-signing` key)
+- `…/fixtures/walkthrough/northwind/.well-known/brand.json` — the delegated agency's identity
+- `…/fixtures/walkthrough/streamhaus/.well-known/brand.json` and `…/fixtures/walkthrough/streamhaus/.well-known/adagents.json` — the sub-brand publisher's identity and selling authorization (the only role serving an `adagents.json` fixture)
+- `…/fixtures/walkthrough/sportshaus-holdings/.well-known/brand.json` — the parent house's identity, with `brand_refs[]` **and** `authorized_operators[]` (a portfolio-wide agency plus a brand-scoped, US-only in-house operator)
+
+  These are the multi-tier trust-chain fixtures from the [seller-verification walkthrough](/dist/docs/3.1.4/verification/overview).
+
+See the [Quickstart](/dist/docs/3.1.4/quickstart) for a walkthrough of your first call.
+
+## Lab exercises
+
+1. **Resolve brand identity** — Call `get_brand_identity` for a sandbox brand without authorization and read `available_fields` to see which sections are gated. Call again with `authorized=true` and confirm the `colors`, `fonts`, `tone`, and `rights` sections appear. Explain why a brand gates these fields behind a linked account.
+2. **Identity → creative generation** — On a talent brand (e.g. `daan_janssen`), call `get_brand_identity` with `authorized=true` and read `colors`, `fonts`, `tone` (`dos` / `donts`), `voice_synthesis`, and `visual_guidelines.restrictions`. Classify each field as a generation **input** the creative agent consumes or a hard **constraint** that bounds output, and write the on-brand brief a generator would follow. Explain why these are exactly the authorization-gated fields, and point to where `build_creative` (S2/S5) and the experimental rights-gated `generation_credentials` + `creative_approval` loop take over.
+3. **Distributed publishing reciprocity** — Fetch the Sportshaus Holdings `brand.json` and read its `brand_refs[]`. Fetch the StreamHaus `brand.json` and read its `house_domain`. Confirm the relationship is asserted in **both** directions. Explain what a malicious house could claim if only one direction were checked.
+4. **Operator authorization** — In the Sportshaus Holdings `brand.json`, read `authorized_operators[]`. Confirm `meridian-agency.example` may buy for `streamhaus` (it has `brands: ["*"]`), and that `courtside-inhouse.example` may **not** (it is scoped to `brands: ["courtsidehq"]`, `countries: ["US"]`). Explain how this buy-side operator axis differs from house membership (`brand_refs[]`) and from sell-side agent delegation (`adagents.json`), and how `require_operator_auth` decides whether you pass a `{brand, operator}` natural key or a seller-assigned `account_id`.
+5. **Bilateral adagents.json confirmation** — Fetch StreamHaus's `adagents.json` and find the entry authorizing Northwind Media; confirm `delegation_type: "delegated"`. Fetch Northwind's `brand.json` and confirm it declares the same sales agent — the publisher authorizes it *and* the agent declares itself, neither alone is enough. Explain why a publisher that pins the agent's signing keys becomes the trust authority for that agent's signed responses (so a compromised agent can't swap in its own key), and why an agent the publisher doesn't list fails. *(The signature-checking mechanics are S6 Security.)*
+6. **verify_brand_claim — interpret the signed answer** — Call `verify_brand_claim` with `claim_type: "subsidiary"` for `streamhaus.example` and **interpret** the answer: it's signed by the brand, so a valid signature proves the brand *authored* it — not that it's true; an expired signature is audit-only; a response that fails verification or whose signed content doesn't match must be rejected; never trust the `verification_status` field alone. *(Performing the cryptographic verification is an S6 Security skill — here, reason about what each outcome means for trust.)* Then verify the leaf-side mirror with `claim_type: "parent"` and confirm mutual assertion completes at the agent layer.
+7. **Direction-asymmetric trust** — Call `verify_brand_claim` for an unaffiliated property and observe `not_ours`. Explain why this rejection is authoritative on a single signed response, while an `owned` or `licensed_in` answer is not — and what reciprocation step `licensed_in` requires.
+8. **Trademark disambiguation** — Call `verify_brand_claim` with `claim_type: "trademark"` for the same mark under two different registries and observe different statuses (`owned` vs `licensed_in`). Call it once with no registry and observe `AMBIGUOUS_MATCH`. Explain how `registry`, `countries`, and `nice_classes` resolve the ambiguity and why this matters for creative clearance.
+9. **Trust boundary — what you can't know** — The agent signs `owned` for the `courtsidehq` subsidiary claim, and Sportshaus Holdings lists `courtsidehq` in `brand_refs[]` — yet no `courtsidehq` document reciprocates. Explain why the signed `owned` proves *authorship, not truth*, and why this house-only edge is **unverified** at the relationship layer even though `courtsidehq`'s identity (if it published one) would still be real. Then state what you would still need to trust that `sportshaus-holdings.example` is the *real* organization you think it is — and why neither the signature nor mutual assertion can give you that.
+10. **Rights lifecycle (experimental)** — Use `get_rights` to discover a talent offering and reason about the `acquire_rights` → `update_rights` lifecycle, the scoped `generation_credentials` and `creative_approval` loop, and rights-spend governance. Identify this surface as experimental (`brand.rights_lifecycle`) and explain what that means for production adoption. *Not assessed as a credential gate.*
+
+## Assessment
+
+| Dimension | Weight | What Addie evaluates |
+|-----------|--------|---------------------|
+| Identity resolution & generation inputs | 20% | Can you resolve the public/authorized field split *and* map the fields to their role as creative-generation inputs and constraints? |
+| Trust-chain verification | 25% | Can you walk all three axes — `brand_refs[]`/`house_domain` reciprocity, `authorized_operators[]`, and `adagents.json` delegation? |
+| Claim verification | 25% | Can you *interpret* a signed response for trust (authorship≠truth, expired=audit-only, reject on mismatch, never trust the status field alone) and disambiguate trademarks? The signature mechanics are S6 Security, not gated here. |
+| Trust-model reasoning | 30% | Can you separate the two trust layers, explain authorship≠truth and consistency≠standing, and name what the protocol cannot establish + the cross-check that closes each gap? |
+
+Passing threshold: 70%.

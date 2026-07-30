@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.4/core/requirements/text-asset-requirements.json",
+  "title": "Text Asset Requirements",
+  "description": "Requirements for text creative assets such as headlines, body copy, and CTAs.",
+  "type": "object",
+  "properties": {
+    "min_length": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Minimum character length"
+    },
+    "max_length": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum character length"
+    },
+    "min_lines": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum number of lines"
+    },
+    "max_lines": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum number of lines"
+    },
+    "character_pattern": {
+      "type": "string",
+      "description": "Regex pattern defining allowed characters (e.g., '^[a-zA-Z0-9 .,!?-]+$')"
+    },
+    "prohibited_terms": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of prohibited words or phrases"
+    },
+    "allowed_values": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Closed set of permitted string values for this text slot. When present, a conformant implementation MUST reject any submitted content not in this list with `CREATIVE_VALUE_NOT_ALLOWED` (echoing the offending field path in `error.field` and the allowed list in `error.details.allowed_values`). Matching is case-sensitive; producers MUST supply exact casing. If the submitted value contains unresolved template tokens (e.g., {{product_name}}), validation against allowed_values MUST be deferred until interpolation is complete. All declared constraints (allowed_values, character_pattern, max_length, etc.) are conjunctive — submitted content must satisfy every applicable constraint simultaneously."
+    }
+  },
+  "additionalProperties": true
+}

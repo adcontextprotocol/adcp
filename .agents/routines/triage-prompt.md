@@ -69,10 +69,24 @@ triage lands at exactly one of these:
    the experts from forming an opinion. Post a comment asking 1–3
    concrete questions that, if answered, would unlock a decision.
 2. **Flag for human review** — experts formed an opinion, but the
-   change is **breaking** (see definition below), architectural,
-   roadmap-shaped, security-sensitive, or experts disagreed. Post a
-   comment with synthesis + an explicit "@bokelley, your call: X
-   or Y" ask.
+   change needs a human decision. Before posting, Grep
+   `governance/decisions/` for a controlling decision record: if a
+   record (`DR-NNNN`) settles the question, the outcome is **not
+   Flag** — cite the record and route to Ready to implement, Defer,
+   or a close-recommendation as appropriate. Otherwise classify per
+   the WG constitution (`.agents/wg/constitution.md`) and split:
+
+   - **Normative** (non-breaking additions — new optional fields,
+     tasks, enum values, capabilities) where experts agree: post a
+     **decision memo** in decision-record format (see
+     `governance/decisions/README.md` — one-line ruling, class,
+     synthesis, recommendation, dissent) and apply `needs-wg-review`
+     + the domain label. Do **not** ping a maintainer by name;
+     ratification is a human act on the memo, and the ratified memo
+     is committed to `governance/decisions/`.
+   - **Breaking** (see definition below), security-sensitive,
+     governance-document changes, or experts disagreed: post
+     synthesis + an explicit "@bokelley, your call: X or Y" ask.
 3. **Ready to implement** — experts agree, the change is
    **non-breaking**, outcome is clear, and the issue is worth doing,
    but PR creation is not explicitly authorized and the change is not

@@ -2,6 +2,7 @@ import { AdCPClient } from "@adcp/sdk";
 import type { Agent, FormatInfo } from "./types.js";
 import { AAO_UA_DISCOVERY } from "./config/user-agents.js";
 import { agentConfigAuthFields, type SdkAuth } from "./services/sdk-auth-adapter.js";
+import { withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
 
 type AdCPClientInstance = InstanceType<typeof AdCPClient>;
 
@@ -19,8 +20,8 @@ export class FormatsService {
   private authedClients: WeakMap<SdkAuth, Map<string, AdCPClientInstance>> = new WeakMap();
   private readonly CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
-  async getFormatsForAgent(agent: Agent, auth?: SdkAuth): Promise<AgentFormatsProfile> {
-    if (!auth) {
+  async getFormatsForAgent(agent: Agent, auth?: SdkAuth, forceRefresh = false): Promise<AgentFormatsProfile> {
+    if (!auth && !forceRefresh) {
       const cached = this.cache.get(agent.url);
       if (cached && Date.now() - new Date(cached.last_fetched).getTime() < this.CACHE_TTL_MS) {
         return cached;
@@ -86,7 +87,10 @@ export class FormatsService {
       protocol: (agent.protocol || "mcp") as "mcp" | "a2a",
       ...agentConfigAuthFields(auth),
     };
-    const client = new AdCPClient([agentConfig], { userAgent: AAO_UA_DISCOVERY });
+    const client = new AdCPClient(
+      [agentConfig],
+      withSdkSafeTransport({ userAgent: AAO_UA_DISCOVERY }),
+    );
     clientPool.set(key, client);
     return client;
   }

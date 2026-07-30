@@ -12,6 +12,7 @@
  */
 
 import type { AgentContextDatabase } from '../../db/agent-context-db.js';
+import { canonicalizeAgentUrl } from '../../db/publisher-db.js';
 import {
   decodeBasicCredentials,
   type ResolvedOwnerAuth,
@@ -27,10 +28,16 @@ export async function resolveUserAgentAuth(
   agentUrl: string,
   logger: WarnLogger,
 ): Promise<ResolvedOwnerAuth | undefined> {
+  const canonicalUrl = canonicalizeAgentUrl(agentUrl);
+  if (!canonicalUrl) {
+    logger.warn({ agentUrl, orgId }, 'resolveUserAgentAuth: invalid agent URL');
+    return undefined;
+  }
+
   // Static token lookup throwing falls through to the OAuth branch below —
   // the connect-form token and the OAuth token are independent paths.
   try {
-    const staticAuth = await agentContextDb.getAuthInfoByOrgAndUrl(orgId, agentUrl);
+    const staticAuth = await agentContextDb.getAuthInfoByOrgAndUrl(orgId, canonicalUrl);
     if (staticAuth) {
       if (staticAuth.authType === 'basic') {
         const basic = decodeBasicCredentials(staticAuth.token);
@@ -48,11 +55,11 @@ export async function resolveUserAgentAuth(
   }
 
   try {
-    const context = await agentContextDb.getByOrgAndUrl(orgId, agentUrl);
+    const context = await agentContextDb.getByOrgAndUrl(orgId, canonicalUrl);
     if (!context) return undefined;
 
     if (context.has_oauth_token) {
-      const tokens = await agentContextDb.getOAuthTokensByOrgAndUrl(orgId, agentUrl);
+      const tokens = await agentContextDb.getOAuthTokensByOrgAndUrl(orgId, canonicalUrl);
       if (tokens?.access_token) {
         if (!tokens.refresh_token) {
           return { type: 'bearer', token: tokens.access_token };
@@ -79,7 +86,7 @@ export async function resolveUserAgentAuth(
     }
 
     if (context.has_oauth_client_credentials) {
-      const creds = await agentContextDb.getOAuthClientCredentialsByOrgAndUrl(orgId, agentUrl);
+      const creds = await agentContextDb.getOAuthClientCredentialsByOrgAndUrl(orgId, canonicalUrl);
       if (creds) return { type: 'oauth_client_credentials', credentials: creds };
     }
 

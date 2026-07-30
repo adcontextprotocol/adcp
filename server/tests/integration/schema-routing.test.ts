@@ -5,7 +5,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import semver from "semver";
-import { mountSchemasRoutes } from "../../src/schemas-middleware.js";
+import { mountProtocolRoutes, mountSchemasRoutes } from "../../src/schemas-middleware.js";
 
 /**
  * End-to-end tests for /schemas routing: version alias rewriting, bare-directory
@@ -40,7 +40,7 @@ describe("/schemas HTTP routing", () => {
       .filter((v) => v.startsWith("2.") && !v.includes("-"))
       .sort(semverDesc)[0];
     latestStableMajor3 = versions
-      .filter((v) => v.startsWith("3.") && !v.includes("-"))
+      .filter((v) => v.startsWith("3.") && !v.includes("-") && !["3.1.3", "3.2.0"].includes(v))
       .sort(semverDesc)[0];
     latestPrereleaseMajor3 = versions
       .filter((v) => v.startsWith("3.") && v.includes("-"))
@@ -82,6 +82,58 @@ describe("/schemas HTTP routing", () => {
   });
 
   describe("version aliases (the bug we just fixed)", () => {
+    it("skips withdrawn releases while preserving their exact immutable paths", async () => {
+      const tempSchemasPath = fs.mkdtempSync(path.join(os.tmpdir(), "schema-routing-withdrawn-"));
+
+      try {
+        for (const version of ["3.1.2", "3.1.3", "3.2.0"]) {
+          fs.mkdirSync(path.join(tempSchemasPath, version), { recursive: true });
+          fs.writeFileSync(
+            path.join(tempSchemasPath, version, "index.json"),
+            JSON.stringify({ version }),
+          );
+          fs.writeFileSync(
+            path.join(tempSchemasPath, version, "product.json"),
+            JSON.stringify({ version }),
+          );
+        }
+
+        const tempApp = express();
+        mountSchemasRoutes(tempApp, tempSchemasPath);
+
+        const alias = await request(tempApp).get("/schemas/v3.1/product.json");
+        expect(alias.status).toBe(200);
+        expect(alias.body.version).toBe("3.1.2");
+
+        const exact = await request(tempApp).get("/schemas/3.1.3/product.json");
+        expect(exact.status).toBe(200);
+        expect(exact.body.version).toBe("3.1.3");
+        expect(exact.headers["cache-control"]).toContain("immutable");
+
+        const discovery = await request(tempApp).get("/schemas/");
+        expect(discovery.body.latest_stable).toBe("3.1.2");
+        expect(discovery.body.aliases).toContainEqual({
+          alias: "v3.1",
+          resolves_to: "3.1.2",
+          path: "/schemas/v3.1/",
+        });
+        expect(discovery.body.versions).toContainEqual(expect.objectContaining({
+          version: "3.1.3",
+          stability: "withdrawn",
+          deprecated: true,
+          withdrawn: true,
+        }));
+        expect(discovery.body.versions).toContainEqual(expect.objectContaining({
+          version: "3.2.0",
+          stability: "unpublished",
+          deprecated: false,
+          published: false,
+        }));
+      } finally {
+        fs.rmSync(tempSchemasPath, { recursive: true, force: true });
+      }
+    });
+
     it("serves /schemas/v2/adagents.json via alias rewrite", async () => {
       if (!latestStableMajor2) return;
       const res = await request(app).get("/schemas/v2/adagents.json");
@@ -336,5 +388,46 @@ describe("/schemas HTTP routing", () => {
         resolves_to: latestStableMajor3,
       });
     });
+  });
+});
+
+describe("/protocol discovery release overrides", () => {
+  it("selects the supported release while retaining withdrawn and unpublished artifacts", async () => {
+    const protocolPath = fs.mkdtempSync(path.join(os.tmpdir(), "protocol-routing-overrides-"));
+
+    try {
+      for (const version of ["3.1.2", "3.1.3", "3.2.0"]) {
+        fs.writeFileSync(path.join(protocolPath, `${version}.tgz`), version);
+        fs.writeFileSync(path.join(protocolPath, `${version}.tgz.sha256`), `${version}-checksum`);
+      }
+      fs.writeFileSync(path.join(protocolPath, "latest.tgz"), "latest");
+      fs.writeFileSync(path.join(protocolPath, "latest.tgz.sha256"), "latest-checksum");
+
+      const app = express();
+      mountProtocolRoutes(app, protocolPath);
+
+      const discovery = await request(app).get("/protocol/");
+      expect(discovery.status).toBe(200);
+      expect(discovery.body.latest.published_version).toBe("3.1.2");
+      expect(discovery.body.versions).toContainEqual(expect.objectContaining({
+        version: "3.1.3",
+        stability: "withdrawn",
+        deprecated: true,
+        withdrawn: true,
+      }));
+      expect(discovery.body.versions).toContainEqual(expect.objectContaining({
+        version: "3.2.0",
+        stability: "unpublished",
+        deprecated: false,
+        published: false,
+      }));
+
+      const exact = await request(app).get("/protocol/3.1.3.tgz");
+      expect(exact.status).toBe(200);
+      expect(exact.body.toString()).toBe("3.1.3");
+      expect(exact.headers["cache-control"]).toContain("immutable");
+    } finally {
+      fs.rmSync(protocolPath, { recursive: true, force: true });
+    }
   });
 });

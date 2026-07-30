@@ -23,7 +23,7 @@ import {
 import type { SignerKey, SigningProvider } from '@adcp/sdk/signing';
 import type { AdcpJsonWebKey } from '@adcp/sdk/signing';
 import { createLogger } from '../logger.js';
-import { createWebhookFetch } from './webhook-fetch.js';
+import { createTrainingWebhookFetch } from './webhook-fetch.js';
 import { getWebhookSigningProvider } from '../security/gcp-kms-signer.js';
 import {
   WEBHOOK_SIGNING_KID,
@@ -36,7 +36,8 @@ const logger = createLogger('training-agent-webhooks');
  *  completion webhook when the caller supplies `push_notification_config.url`.
  *  Keep in sync with `static/schemas/source/core/mcp-webhook-payload.json`. */
 export type WebhookTaskType =
-  | 'create_media_buy' | 'update_media_buy' | 'sync_creatives' | 'activate_signal'
+  | 'create_media_buy' | 'update_media_buy' | 'sync_creatives' | 'build_creative'
+  | 'get_products' | 'activate_signal'
   | 'get_signals' | 'create_property_list' | 'update_property_list' | 'get_property_list'
   | 'list_property_lists' | 'delete_property_list' | 'sync_accounts'
   | 'get_account_financials' | 'get_creative_delivery' | 'sync_event_sources'
@@ -44,9 +45,11 @@ export type WebhookTaskType =
   | 'get_rights' | 'acquire_rights';
 
 export const TOOL_TO_TASK_TYPE = {
+  get_products: 'get_products',
   create_media_buy: 'create_media_buy',
   update_media_buy: 'update_media_buy',
   sync_creatives: 'sync_creatives',
+  build_creative: 'build_creative',
   activate_signal: 'activate_signal',
   get_signals: 'get_signals',
   create_property_list: 'create_property_list',
@@ -66,6 +69,11 @@ export const TOOL_TO_TASK_TYPE = {
   acquire_rights: 'acquire_rights',
 } as const satisfies Record<string, WebhookTaskType>;
 
+// update_rights accepts push_notification_config in the experimental request
+// schema, but task-type.json does not yet contain update_rights. The sandbox
+// rejects that combination in brand-handlers.ts rather than emitting an
+// unrouteable webhook task_type or silently dropping the requested callback.
+
 type WebhookEmittingTool = keyof typeof TOOL_TO_TASK_TYPE;
 
 /** AdCP protocol domain for each webhook-emitting tool. Values are the kebab-case
@@ -77,10 +85,12 @@ type WebhookEmittingTool = keyof typeof TOOL_TO_TASK_TYPE;
  *  `TOOL_TO_TASK_TYPE` — adding a tool there without a protocol here fails tsc. */
 type WebhookProtocol = 'media-buy' | 'signals' | 'governance' | 'creative' | 'brand' | 'sponsored-intelligence';
 
-const TOOL_TO_PROTOCOL: Readonly<Record<WebhookEmittingTool, WebhookProtocol>> = {
+export const TOOL_TO_PROTOCOL: Readonly<Record<WebhookEmittingTool, WebhookProtocol>> = {
+  get_products: 'media-buy',
   create_media_buy: 'media-buy',
   update_media_buy: 'media-buy',
   sync_creatives: 'media-buy',
+  build_creative: 'creative',
   get_creative_delivery: 'media-buy',
   sync_event_sources: 'media-buy',
   sync_audiences: 'media-buy',
@@ -370,18 +380,20 @@ export function getWebhookSigningMaterial():
     : { signerKey: m.signerKey };
 }
 
+/** Return the only training-agent webhook emitter.
+ *
+ * Future collection/property list-change notifications must route through
+ * this emitter (or use `createTrainingWebhookFetch` directly). Storage-time
+ * URL validation is not sufficient: this fetch policy repeats validation at
+ * delivery time and pins the public address at connect time. */
 export function getWebhookEmitter(): WebhookEmitter {
   if (emitter) return emitter;
   const m = ensureMaterial();
-  // Production (`NODE_ENV=production`, i.e. fly.io) refuses webhook delivery
-  // to private/loopback/metadata addresses. Dev and CI need loopback for
-  // conformance storyboards using `http://127.0.0.1:<port>` receivers.
-  const allowPrivateIp = process.env.NODE_ENV !== 'production';
   emitter = createWebhookEmitter({
     ...(m.kind === 'kms' ? { signerProvider: m.signerProvider } : { signerKey: m.signerKey }),
     idempotencyKeyStore: memoryWebhookKeyStore(),
     userAgent: 'adcp-training-agent/1.0',
-    fetch: createWebhookFetch({ allowPrivateIp }),
+    fetch: createTrainingWebhookFetch(),
   });
   return emitter;
 }

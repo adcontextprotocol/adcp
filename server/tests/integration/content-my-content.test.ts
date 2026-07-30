@@ -116,6 +116,7 @@ describe('My Content — body, admin scope, status, delete', () => {
   let pool: Pool;
   let wgId: string;
   const WG_SLUG = 'mc-test-wg';
+  const ARCHIVED_WG_SLUG = 'mc-test-archived-wg';
   const USER_ID = 'user_my_content';
   const OTHER_USER_ID = 'user_my_content_other';
   const ELIGIBLE_ORG_ID = 'org_my_content_professional';
@@ -191,6 +192,12 @@ describe('My Content — body, admin scope, status, delete', () => {
   afterAll(async () => {
     await pool.query(`DELETE FROM content_authors WHERE perspective_id IN (SELECT id FROM perspectives WHERE slug LIKE 'mc-test-%')`);
     await pool.query(`DELETE FROM perspectives WHERE slug LIKE 'mc-test-%'`);
+    await pool.query(
+      `DELETE FROM working_group_memberships
+       WHERE working_group_id IN (SELECT id FROM working_groups WHERE slug = $1)`,
+      [ARCHIVED_WG_SLUG]
+    );
+    await pool.query(`DELETE FROM working_groups WHERE slug = $1`, [ARCHIVED_WG_SLUG]);
     await pool.query(`DELETE FROM working_group_leaders WHERE working_group_id = $1`, [wgId]);
     await pool.query(`DELETE FROM working_groups WHERE slug = $1`, [WG_SLUG]);
     // Side tables the propose flow writes into. Clear everything referencing
@@ -295,6 +302,59 @@ describe('My Content — body, admin scope, status, delete', () => {
   // ---------------------------------------------------------------------------
 
   describe('POST /api/content/propose', () => {
+    it('excludes archived working groups from collections and content proposals', async () => {
+      const archivedWg = await pool.query<{ id: string }>(
+        `INSERT INTO working_groups
+           (name, slug, description, accepts_public_submissions, status)
+         VALUES ('Archived Content Test WG', $1, 'lifecycle test', false, 'active')
+         ON CONFLICT (slug) DO UPDATE SET
+           accepts_public_submissions = false,
+           status = 'active'
+         RETURNING id`,
+        [ARCHIVED_WG_SLUG]
+      );
+      const archivedWgId = archivedWg.rows[0].id;
+      await pool.query(
+        `INSERT INTO working_group_memberships
+           (working_group_id, workos_user_id, status)
+         VALUES ($1, $2, 'active')
+         ON CONFLICT (working_group_id, workos_user_id)
+         DO UPDATE SET status = 'active'`,
+        [archivedWgId, USER_ID]
+      );
+
+      const activeCollections = await request(app).get('/api/content/collections').expect(200);
+      expect(activeCollections.body.collections.map((collection: { slug: string }) => collection.slug))
+        .toContain(ARCHIVED_WG_SLUG);
+
+      await request(app)
+        .post('/api/content/propose')
+        .send({
+          title: 'mc-test-active-wg-proposal',
+          content: 'body',
+          content_type: 'article',
+          collection: { slug: ARCHIVED_WG_SLUG },
+        })
+        .expect(201);
+
+      await pool.query(`UPDATE working_groups SET status = 'archived' WHERE id = $1`, [archivedWgId]);
+
+      const archivedCollections = await request(app).get('/api/content/collections').expect(200);
+      expect(archivedCollections.body.collections.map((collection: { slug: string }) => collection.slug))
+        .not.toContain(ARCHIVED_WG_SLUG);
+
+      const archivedProposal = await request(app)
+        .post('/api/content/propose')
+        .send({
+          title: 'mc-test-archived-wg-proposal',
+          content: 'body',
+          content_type: 'article',
+          collection: { slug: ARCHIVED_WG_SLUG },
+        })
+        .expect(400);
+      expect(archivedProposal.body.message).toContain('No collection found');
+    });
+
     it('respects pending_review requested by a committee lead', async () => {
       const response = await request(app)
         .post('/api/content/propose')
@@ -522,6 +582,108 @@ describe('My Content — body, admin scope, status, delete', () => {
   // ---------------------------------------------------------------------------
 
   describe('PUT /api/me/content/:id status transitions', () => {
+    it('returns a proposer substantive edit of published content to review when status is omitted', async () => {
+      authState.userId = OTHER_USER_ID;
+      authState.email = 'mc-other@example.com';
+      const id = await insertPerspective({
+        slug: 'mc-test-published-proposer-edit',
+        title: 'Published proposer article',
+        proposerUserId: OTHER_USER_ID,
+      });
+      await pool.query(
+        `UPDATE perspectives
+         SET reviewed_by_user_id = 'prior-reviewer', reviewed_at = NOW(),
+             revision_notes = 'stale notes', revision_requested_at = NOW(),
+             rejection_reason = 'stale rejection reason'
+         WHERE id = $1`,
+        [id]
+      );
+
+      const response = await request(app)
+        .put(`/api/me/content/${id}`)
+        .send({ title: 'Revised proposer article' })
+        .expect(200);
+
+      expect(response.body.status).toBe('pending_review');
+      expect(response.body.published_at).toBeNull();
+      expect(response.body.proposed_at).not.toBeNull();
+      expect(response.body.reviewed_by_user_id).toBeNull();
+      expect(response.body.reviewed_at).toBeNull();
+      expect(response.body.revision_notes).toBeNull();
+      expect(response.body.revision_requested_at).toBeNull();
+      expect(response.body.rejection_reason).toBeNull();
+    });
+
+    it('returns a committee lead substantive edit to review even when published is requested', async () => {
+      const id = await insertPerspective({
+        slug: 'mc-test-published-lead-edit',
+        title: 'Published committee article',
+        proposerUserId: OTHER_USER_ID,
+        workingGroupId: wgId,
+      });
+
+      const response = await request(app)
+        .put(`/api/me/content/${id}`)
+        .send({ title: 'Revised by committee lead', status: 'published' })
+        .expect(200);
+
+      expect(response.body.status).toBe('pending_review');
+    });
+
+    it('returns a co-author substantive edit to review even when published is requested', async () => {
+      const id = await insertPerspective({
+        slug: 'mc-test-published-coauthor-edit',
+        title: 'Published co-authored article',
+        proposerUserId: USER_ID,
+      });
+      await pool.query(
+        `INSERT INTO content_authors (perspective_id, user_id, display_name)
+         VALUES ($1, $2, 'Co-author')`,
+        [id, OTHER_USER_ID]
+      );
+      authState.userId = OTHER_USER_ID;
+      authState.email = 'mc-other@example.com';
+
+      const response = await request(app)
+        .put(`/api/me/content/${id}`)
+        .send({ excerpt: 'A co-author revision', status: 'published' })
+        .expect(200);
+
+      expect(response.body.status).toBe('pending_review');
+    });
+
+    it('still forbids a stranger from editing published content', async () => {
+      const id = await insertPerspective({
+        slug: 'mc-test-published-stranger-edit',
+        title: 'Someone else\'s published article',
+        proposerUserId: USER_ID,
+      });
+      authState.userId = OTHER_USER_ID;
+      authState.email = 'mc-other@example.com';
+
+      await request(app)
+        .put(`/api/me/content/${id}`)
+        .send({ title: 'Unauthorized revision' })
+        .expect(403);
+    });
+
+    it('preserves an admin override when editing published content', async () => {
+      const id = await insertPerspective({
+        slug: 'mc-test-published-admin-edit',
+        title: 'Published admin article',
+        proposerUserId: OTHER_USER_ID,
+      });
+      adminState.isAdmin = true;
+
+      const response = await request(app)
+        .put(`/api/me/content/${id}`)
+        .send({ title: 'Admin revision stays live', status: 'published' })
+        .expect(200);
+
+      expect(response.body.status).toBe('published');
+      expect(response.body.published_at).not.toBeNull();
+    });
+
     it('prevents non-admin co-author from resurrecting a rejected item', async () => {
       const id = await insertPerspective({
         slug: 'mc-test-resurrect',
@@ -632,6 +794,58 @@ describe('My Content — body, admin scope, status, delete', () => {
       });
 
       await request(app).delete(`/api/me/content/${id}`).expect(403);
+    });
+  });
+
+  describe('DELETE /api/admin/content/:id', () => {
+    it('deletes linked content while preserving publication history', async () => {
+      const id = await insertPerspective({
+        slug: 'mc-test-admin-delete-linked',
+        title: 'linked publication',
+        status: 'published',
+        proposerUserId: OTHER_USER_ID,
+      });
+
+      const weeklyDigest = await pool.query(
+        `INSERT INTO weekly_digests (edition_date, status, content, perspective_id)
+         VALUES ('2999-01-01', 'sent', '{}'::jsonb, $1)
+         RETURNING id`,
+        [id]
+      );
+      const buildEdition = await pool.query(
+        `INSERT INTO build_editions (edition_date, status, content, perspective_id)
+         VALUES ('2999-01-02', 'sent', '{}'::jsonb, $1)
+         RETURNING id`,
+        [id]
+      );
+      const moltbookPost = await pool.query(
+        `INSERT INTO moltbook_posts (moltbook_post_id, perspective_id, title)
+         VALUES ('mc-test-admin-delete-linked', $1, 'Linked publication')
+         RETURNING id`,
+        [id]
+      );
+
+      try {
+        await request(app).delete(`/api/admin/content/${id}`).expect(200);
+
+        const perspective = await pool.query(`SELECT id FROM perspectives WHERE id = $1`, [id]);
+        expect(perspective.rows).toHaveLength(0);
+
+        const links = await pool.query(
+          `SELECT perspective_id FROM weekly_digests WHERE id = $1
+           UNION ALL
+           SELECT perspective_id FROM build_editions WHERE id = $2
+           UNION ALL
+           SELECT perspective_id FROM moltbook_posts WHERE id = $3`,
+          [weeklyDigest.rows[0].id, buildEdition.rows[0].id, moltbookPost.rows[0].id]
+        );
+        expect(links.rows).toHaveLength(3);
+        expect(links.rows.every(row => row.perspective_id === null)).toBe(true);
+      } finally {
+        await pool.query(`DELETE FROM weekly_digests WHERE id = $1`, [weeklyDigest.rows[0].id]);
+        await pool.query(`DELETE FROM build_editions WHERE id = $1`, [buildEdition.rows[0].id]);
+        await pool.query(`DELETE FROM moltbook_posts WHERE id = $1`, [moltbookPost.rows[0].id]);
+      }
     });
   });
 

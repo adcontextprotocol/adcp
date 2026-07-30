@@ -351,6 +351,13 @@
   <div class="page-content">
     <div id="loading" class="loading">Loading API keys...</div>
 
+    <div id="accessDenied" class="settings-section" style="display: none;">
+      <div class="settings-section-body">
+        <h2>API key access</h2>
+        <p>Only active organization owners and admins can create, view, or revoke API keys.</p>
+      </div>
+    </div>
+
     <div id="content" style="display: none;">
       <div class="settings-section">
         <div class="settings-section-header">
@@ -577,6 +584,9 @@
 
         currentOrg = org;
 
+        const canManageApiKeys = currentOrg.status === 'active'
+          && (currentOrg.role === 'owner' || currentOrg.role === 'admin');
+
         // Initialize sidebar
         const hasPersonalWorkspace = data.organizations?.some(o => o.is_personal);
         const showSwitcher = (data.organizations?.length > 1) || !hasPersonalWorkspace;
@@ -595,6 +605,12 @@
         }
 
         document.getElementById('loading').style.display = 'none';
+
+        if (!canManageApiKeys) {
+          document.getElementById('accessDenied').style.display = 'block';
+          return;
+        }
+
         document.getElementById('content').style.display = 'block';
 
         await loadKeys();

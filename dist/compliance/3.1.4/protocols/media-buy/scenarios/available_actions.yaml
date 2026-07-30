@@ -1,0 +1,632 @@
+id: media_buy_seller/available_actions
+version: "1.0.0"
+title: "Seller carries product allowed actions into per-buy available actions"
+category: media_buy_seller
+summary: "Validates the AdCP 3.1 media-buy action-discovery flow: product allowed_actions[], buy available_actions[], SLAWindow duration fields, self-serve mutation, and ACTION_NOT_ALLOWED enforcement."
+track: media_buy
+default_agent: sales
+
+# This scenario drives a synced creative straight into an active media buy so
+# pause-shaped negative probes test available_actions, not pending creative
+# review. Sellers with manual creative review grade not_applicable instead of
+# false-failing on the lifecycle prerequisite.
+requires_capability:
+  path: media_buy.creative_approval_mode
+  equals: auto_approve
+
+required_tools:
+  - get_products
+  - sync_creatives
+  - create_media_buy
+  - get_media_buys
+  - update_media_buy
+
+narrative: |
+  Buyers should not hard-code a seller's media-buy state machine. Sellers
+  declare the product-level action template in get_products.allowed_actions[],
+  resolve it into the authoritative buy-level available_actions[] when the
+  buy is created, return that surface from get_media_buys, and enforce the
+  same surface when update_media_buy is called.
+
+  This scenario creates a media buy from a product whose allowed_actions[]
+  advertise one self-serve budget action, one approval-routed flight action,
+  and one approval-routed cancellation action. The runner then verifies that
+  the created buy and subsequent get/update responses carry the resolved
+  available_actions[] surface, that the self-serve update succeeds, and that
+  direct updates for non-self-serve or unadvertised product actions reject
+  with ACTION_NOT_ALLOWED.
+
+agent:
+  interaction_model: stateful_preloaded
+  capabilities:
+    - sells_media
+    - accepts_creatives
+  examples:
+    - "Any auto-approval media buy seller exposing the 3.1 action-discovery surface"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The runner seeds a product with allowed_actions[]. The seller must carry
+    that product template into buy-level available_actions[] on create_media_buy,
+    persist it for get_media_buys, and enforce the advertised modes when
+    update_media_buy is called.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "available_actions_display"
+      name: "Available Actions Display Package"
+      description: "Display inventory fixture used to verify product allowed actions become buy available actions."
+      delivery_type: "guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+      allowed_actions:
+        - action: "increase_budget"
+          modes: ["self_serve"]
+          sla:
+            response_max: "PT5M"
+            completion_max: "PT1H"
+        - action: "extend_flight"
+          modes: ["requires_approval"]
+          sla:
+            response_max: "PT4H"
+            completion_max: "P2D"
+          terms_ref: "terms://available-actions/extension"
+        - action: "cancel"
+          modes: ["requires_approval"]
+          sla:
+            response_max: "PT1H"
+            completion_max: "P1D"
+        - action: "decrease_budget"
+          modes: ["self_serve"]
+          allowed_statuses: ["paused"]
+  pricing_options:
+    - product_id: "available_actions_display"
+      pricing_option_id: "available_actions_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 8.0
+
+phases:
+  - id: discover_product_action_template
+    title: "Discover product allowed actions"
+    narrative: |
+      The buyer discovers the product-level allowed_actions[] template before
+      creating a media buy. This is the product promise the later buy-level
+      surface must resolve and enforce.
+    steps:
+      - id: get_product_allowed_actions
+        title: "Read allowed_actions from get_products"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: media_buy_action_discovery
+        stateful: true
+        expected: |
+          Return the seeded product with allowed_actions[] entries for
+          increase_budget, extend_flight, and cancel.
+        sample_request:
+          buying_mode: brief
+          brief: "available actions display package"
+          filters:
+            channels: ["display"]
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          context:
+            correlation_id: "available_actions--get_products"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_value
+            path: "products[0].product_id"
+            value: "available_actions_display"
+            description: "The seeded product is discoverable through get_products"
+          # Correlation-preserving subset checks keep allowed_actions[] order
+          # independent without splitting fields across different actions.
+          - check: field_contains
+            path: "products[0].allowed_actions[*]"
+            value:
+              action: "increase_budget"
+              modes: ["self_serve"]
+              sla:
+                response_max: "PT5M"
+                completion_max: "PT1H"
+            description: "Product advertises the self-serve budget action"
+          - check: field_contains
+            path: "products[0].allowed_actions[*]"
+            value:
+              action: "extend_flight"
+              modes: ["requires_approval"]
+              sla:
+                response_max: "PT4H"
+                completion_max: "P2D"
+              terms_ref: "terms://available-actions/extension"
+            description: "Product advertises the approval-routed flight extension action"
+          - check: field_contains
+            path: "products[0].allowed_actions[*]"
+            value:
+              action: "cancel"
+              modes: ["requires_approval"]
+              sla:
+                response_max: "PT1H"
+                completion_max: "P1D"
+            description: "Product advertises the approval-routed cancellation action"
+          - check: field_contains
+            path: "products[0].allowed_actions[*]"
+            value:
+              action: "decrease_budget"
+              modes: ["self_serve"]
+              allowed_statuses: ["paused"]
+            description: "Product advertises a status-scoped budget decrease action"
+        context_outputs:
+          - path: "products[0].format_ids[0]"
+            key: "available_actions_format_id"
+
+  - id: create_buy_from_product
+    title: "Resolve product actions onto the buy"
+    narrative: |
+      The buyer syncs a creative, then creates a media buy from the discovered
+      product with that creative assigned and start_time: asap. The seller must
+      materialize the product-level template into buy-level available_actions[]
+      on the create response while the buy is active.
+    steps:
+      - id: sync_available_actions_creative
+        title: "Sync a creative for the action-enabled buy"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_sync
+        stateful: true
+        expected: |
+          Accept the creative into the account library so the create_media_buy
+          request can assign it immediately and reach active state.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          creatives:
+            - creative_id: "available_actions_display_creative"
+              name: "Acme Outdoor Available Actions Display Creative"
+              format_id: "$context.available_actions_format_id"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://cdn.pinnacle-agency.example/available-actions-display.png"
+                  width: 300
+                  height: 250
+                  mime_type: "image/png"
+          idempotency_key: "$generate:uuid_v4#available_actions_sync_creative"
+          context:
+            correlation_id: "available_actions--sync_creative"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "available_actions--sync_creative"
+            description: "Context correlation_id returned unchanged"
+
+      - id: create_media_buy_with_available_actions
+        title: "Create a buy from the action-enabled product"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: media_buy_action_discovery
+        stateful: true
+        expected: |
+          Create an active buy and return available_actions[] resolved from the
+          product's allowed_actions[] template.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          media_buy_id: "available_actions_product_mb"
+          start_time: "asap"
+          end_time: "2099-07-31T23:59:59Z"
+          packages:
+            - product_id: "available_actions_display"
+              pricing_option_id: "available_actions_cpm"
+              budget: 10000
+              creative_assignments:
+                - creative_id: "available_actions_display_creative"
+          idempotency_key: "$generate:uuid_v4#available_actions_create_buy"
+          context:
+            correlation_id: "available_actions--create_buy"
+        context_outputs:
+          - path: "media_buy_id"
+            key: "available_actions_media_buy_id"
+          - path: "packages[0].package_id"
+            key: "available_actions_package_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller returns the created media buy ID"
+          - check: field_present
+            path: "packages[0].package_id"
+            description: "Seller returns the created package ID for later updates"
+          - check: field_value
+            path: "media_buy_status"
+            value: "active"
+            description: "Created buy is active before available_actions mutation probes"
+          - check: field_value
+            path: "status"
+            value: "completed"
+            description: "Envelope task-status is completed on synchronous success (protocol-envelope.json required: [status])"
+          - check: field_contains
+            path: "available_actions[*]"
+            value:
+              action: "increase_budget"
+              mode: "self_serve"
+              sla:
+                response_max: "PT5M"
+                completion_max: "PT1H"
+            description: "Created buy carries the self-serve budget action from product allowed_actions"
+          - check: field_contains
+            path: "available_actions[*]"
+            value:
+              action: "extend_flight"
+              mode: "requires_approval"
+              terms_ref: "terms://available-actions/extension"
+            description: "Created buy carries the approval-routed flight extension action"
+          - check: field_contains
+            path: "available_actions[*]"
+            value:
+              action: "cancel"
+              mode: "requires_approval"
+            description: "Created buy carries the approval-routed cancellation action"
+          - check: field_present
+            path: "valid_actions"
+            description: "Legacy valid_actions may still be present during the 3.x deprecation window"
+
+  - id: read_persisted_buy_actions
+    title: "Read persisted buy actions"
+    narrative: |
+      The buyer reads the created buy. The same available_actions[] surface
+      must persist through get_media_buys; it is the authoritative contract
+      for update_media_buy.
+    steps:
+      - id: get_created_buy_available_actions
+        title: "Read available_actions from get_media_buys"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_action_discovery
+        stateful: true
+        expected: |
+          Return the created buy with the same available_actions[] resolved
+          during create_media_buy.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          media_buy_ids: ["$context.available_actions_media_buy_id"]
+          context:
+            correlation_id: "available_actions--get_buy"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_value
+            path: "media_buys[0].media_buy_id"
+            value: "$context.available_actions_media_buy_id"
+            description: "Seller returns the created media buy"
+          - check: field_value
+            path: "media_buys[0].status"
+            value: "active"
+            description: "Persisted buy is active before available_actions mutation probes"
+          - check: field_contains
+            path: "media_buys[0].available_actions[*]"
+            value:
+              action: "increase_budget"
+              mode: "self_serve"
+            description: "Persisted buy carries the self-serve budget action"
+          - check: field_contains
+            path: "media_buys[0].available_actions[*]"
+            value:
+              action: "extend_flight"
+              mode: "requires_approval"
+            description: "Persisted buy carries the approval-routed flight extension action"
+          - check: field_contains
+            path: "media_buys[0].available_actions[*]"
+            value:
+              action: "cancel"
+              mode: "requires_approval"
+            description: "Persisted buy carries the approval-routed cancellation action"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "available_actions--get_buy"
+            description: "Context correlation_id returned unchanged"
+
+  - id: enforce_available_actions
+    title: "Enforce advertised actions"
+    narrative: |
+      The buyer attempts updates against the created buy. The self-serve action
+      succeeds, approval modes reject direct mutation with
+      mode_mismatch, and an action never advertised by the product rejects as
+      not_supported_on_product.
+    steps:
+      - id: increase_budget
+        title: "Apply the advertised self-serve budget action"
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        comply_scenario: media_buy_action_discovery
+        stateful: true
+        expected: |
+          Accept the budget increase and return the post-update
+          available_actions[] surface.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          media_buy_id: "$context.available_actions_media_buy_id"
+          packages:
+            - package_id: "$context.available_actions_package_id"
+              budget: 12000
+          idempotency_key: "$generate:uuid_v4#available_actions_increase_budget"
+          context:
+            correlation_id: "available_actions--increase_budget"
+        validations:
+          - check: response_schema
+            description: "Response matches update-media-buy-response.json schema"
+          - check: field_value
+            path: "media_buy_id"
+            value: "$context.available_actions_media_buy_id"
+            description: "Seller updates the requested media buy"
+          - check: field_present
+            path: "affected_packages"
+            description: "Package-mutating update returns affected_packages"
+          - check: field_contains
+            path: "affected_packages[*]"
+            value:
+              package_id: "$context.available_actions_package_id"
+              product_id: "available_actions_display"
+              pricing_option_id: "available_actions_cpm"
+              budget: 12000
+            description: "Update response returns the affected package with complete post-update budget state"
+          - check: field_contains
+            path: "available_actions[*]"
+            value:
+              action: "increase_budget"
+            description: "Update response carries the post-update action surface"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "available_actions--increase_budget"
+            description: "Context correlation_id returned unchanged"
+
+      - id: direct_extend_requires_approval
+        title: "Reject direct update for approval-routed extension"
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        comply_scenario: media_buy_action_discovery
+        expect_error: true
+        negative_path: mode_mismatch
+        stateful: true
+        expected: |
+          Reject with ACTION_NOT_ALLOWED because extend_flight is advertised,
+          but its resolved mode is requires_approval rather than self_serve.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          media_buy_id: "$context.available_actions_media_buy_id"
+          end_time: "2099-08-31T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#available_actions_extend_direct"
+          context:
+            correlation_id: "available_actions--extend_direct"
+        validations:
+          - check: error_code
+            value: ACTION_NOT_ALLOWED
+            description: "Seller rejects direct mutation for approval-routed action"
+          - check: field_value
+            path: "errors[0].details.attempted_action"
+            value: "extend_flight"
+            description: "Error identifies the attempted fine-grained action"
+          - check: field_value
+            path: "errors[0].details.reason"
+            value: "mode_mismatch"
+            description: "Error distinguishes mode mismatch from unsupported action"
+          - check: field_value
+            path: "errors[0].recovery"
+            value: "correctable"
+            description: "Mode mismatch is a correctable flow-switch recovery"
+          - check: field_contains
+            path: "errors[0].details.currently_available_actions[*]"
+            value:
+              action: "extend_flight"
+              mode: "requires_approval"
+            description: "Recovery details echo the current approval-routed action surface"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "available_actions--extend_direct"
+            description: "Context correlation_id returned unchanged"
+
+      - id: direct_cancel_requires_approval
+        title: "Reject direct update for approval-routed cancellation"
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        comply_scenario: media_buy_action_discovery
+        expect_error: true
+        negative_path: mode_mismatch
+        stateful: true
+        expected: |
+          Reject with ACTION_NOT_ALLOWED because cancel is advertised, but its
+          resolved mode is requires_approval rather than self_serve.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          media_buy_id: "$context.available_actions_media_buy_id"
+          canceled: true
+          cancellation_reason: "Buyer wants a direct cancellation despite approval routing"
+          idempotency_key: "$generate:uuid_v4#available_actions_cancel_direct"
+          context:
+            correlation_id: "available_actions--cancel_direct"
+        validations:
+          - check: error_code
+            value: ACTION_NOT_ALLOWED
+            description: "Seller rejects direct mutation for approval-routed action"
+          - check: field_value
+            path: "errors[0].details.attempted_action"
+            value: "cancel"
+            description: "Error identifies the attempted fine-grained action"
+          - check: field_value
+            path: "errors[0].details.reason"
+            value: "mode_mismatch"
+            description: "Error distinguishes approval routing from unsupported action"
+          - check: field_value
+            path: "errors[0].recovery"
+            value: "correctable"
+            description: "Approval mode mismatch is a correctable flow-switch recovery"
+          - check: field_contains
+            path: "errors[0].details.currently_available_actions[*]"
+            value:
+              action: "cancel"
+              mode: "requires_approval"
+            description: "Recovery details echo the current approval-routed action surface"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "available_actions--cancel_direct"
+            description: "Context correlation_id returned unchanged"
+
+      - id: direct_decrease_wrong_status
+        title: "Reject an action whose product status scope does not match"
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        comply_scenario: media_buy_action_discovery
+        expect_error: true
+        negative_path: wrong_status
+        stateful: true
+        expected: |
+          Reject with ACTION_NOT_ALLOWED because decrease_budget is supported
+          by the product, but only for paused buys. The created buy is active,
+          so the action is not currently available.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          media_buy_id: "$context.available_actions_media_buy_id"
+          packages:
+            - package_id: "$context.available_actions_package_id"
+              budget: 11000
+          idempotency_key: "$generate:uuid_v4#available_actions_decrease_wrong_status"
+          context:
+            correlation_id: "available_actions--decrease_wrong_status"
+        validations:
+          - check: error_code
+            value: ACTION_NOT_ALLOWED
+            description: "Seller rejects a product-supported action in the wrong buy status"
+          - check: field_value
+            path: "errors[0].details.attempted_action"
+            value: "decrease_budget"
+            description: "Error identifies the attempted fine-grained action"
+          - check: field_value
+            path: "errors[0].details.reason"
+            value: "wrong_status"
+            description: "Error distinguishes status scoping from unsupported action"
+          - check: field_value
+            path: "errors[0].recovery"
+            value: "correctable"
+            description: "Wrong-status action rejection is correctable by waiting for or transitioning status"
+          - check: field_contains
+            path: "errors[0].details.currently_available_actions[*]"
+            value:
+              action: "increase_budget"
+            description: "Recovery details echo the currently available buy actions"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "available_actions--decrease_wrong_status"
+            description: "Context correlation_id returned unchanged"
+
+      - id: direct_pause_not_supported_on_product
+        title: "Reject an action the product never advertised"
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        comply_scenario: media_buy_action_discovery
+        expect_error: true
+        negative_path: unsupported_action
+        stateful: true
+        expected: |
+          Reject with ACTION_NOT_ALLOWED because pause is not present in the
+          product's allowed_actions[] template and therefore is not available
+          on the buy.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          media_buy_id: "$context.available_actions_media_buy_id"
+          paused: true
+          idempotency_key: "$generate:uuid_v4#available_actions_pause_direct"
+          context:
+            correlation_id: "available_actions--pause_direct"
+        validations:
+          - check: error_code
+            value: ACTION_NOT_ALLOWED
+            description: "Seller rejects direct mutation for an action not supported by the product"
+          - check: field_value
+            path: "errors[0].details.attempted_action"
+            value: "pause"
+            description: "Error identifies the attempted fine-grained action"
+          - check: field_value
+            path: "errors[0].details.reason"
+            value: "not_supported_on_product"
+            description: "Error distinguishes product capability from transient buy state"
+          - check: field_value
+            path: "errors[0].recovery"
+            value: "terminal"
+            description: "Unsupported product action is terminal for this buy"
+          - check: field_contains
+            path: "errors[0].details.currently_available_actions[*]"
+            value:
+              action: "increase_budget"
+            description: "Recovery details echo the currently available buy actions"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "available_actions--pause_direct"
+            description: "Context correlation_id returned unchanged"

@@ -391,21 +391,23 @@ export class CrawlerService {
         // Invalid URL in authoritative_location — skip
       }
     } else if (result.variant === 'house_portfolio' ||
+               result.variant === 'brand_canonical' ||
                result.variant === 'brand_agent' ||
                result.variant === 'house_redirect') {
       const brandName = this.extractBrandName(result.raw_data, domain);
+      const manifest = result.variant === 'house_portfolio' || result.variant === 'brand_canonical'
+        ? this.stripLegacyCompatibilityMetadata(result.raw_data as Record<string, unknown>)
+        : undefined;
       await this.brandDb.upsertDiscoveredBrand({
         domain,
         brand_name: brandName,
-        has_brand_manifest: result.variant === 'house_portfolio',
-        brand_manifest: result.variant === 'house_portfolio'
-          ? result.raw_data as Record<string, unknown>
-          : undefined,
+        has_brand_manifest: Boolean(manifest),
+        brand_manifest: manifest,
         source_type: 'brand_json',
       });
 
       // Extract properties from brand.json and upsert into catalog
-      if (result.variant === 'house_portfolio') {
+      if (result.variant === 'house_portfolio' || result.variant === 'brand_canonical') {
         await this.upsertBrandProperties(domain, result.raw_data as Record<string, unknown>);
       }
     }
@@ -507,11 +509,26 @@ export class CrawlerService {
 
   private extractBrandName(data: unknown, fallback: string): string {
     const obj = data as Record<string, unknown>;
+    if (Array.isArray(obj?.names)) {
+      for (const localized of obj.names) {
+        if (!localized || typeof localized !== 'object' || Array.isArray(localized)) continue;
+        const value = Object.values(localized as Record<string, unknown>)
+          .find((entry): entry is string => typeof entry === 'string');
+        if (value) return value;
+      }
+    }
     if (typeof obj?.house === 'object' && obj.house !== null) {
       const house = obj.house as Record<string, unknown>;
       if (typeof house.name === 'string') return house.name;
     }
     return fallback;
+  }
+
+  private stripLegacyCompatibilityMetadata(
+    data: Record<string, unknown>
+  ): Record<string, unknown> {
+    const { legacy_metadata: _metadata, legacy_properties: _properties, ...publicData } = data;
+    return publicData;
   }
 
   /**
@@ -1073,8 +1090,13 @@ export class CrawlerService {
       ...(known?.health_check_url ? { health_check_url: known.health_check_url } : {}),
     };
 
+    // `forceRefresh: true` — this method backs the manual "Recheck Status"
+    // action, which must always hit the live endpoint. Without it, an agent
+    // with no saved owner auth would still read the shared 15-minute
+    // capability/health cache and keep reporting a fixed-then-redeployed
+    // issue as unresolved (#5777).
     const profile = await Promise.race([
-      this.capabilityDiscovery.discoverCapabilities(agent, auth),
+      this.capabilityDiscovery.discoverCapabilities(agent, auth, true),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('Probe timeout')), PROBE_TIMEOUT_MS)
       ),
@@ -1086,7 +1108,7 @@ export class CrawlerService {
 
     const [health, stats] = await Promise.all([
       Promise.race([
-        this.healthChecker.checkHealth(agentForHealth, auth),
+        this.healthChecker.checkHealth(agentForHealth, auth, true),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('Health timeout')), PROBE_TIMEOUT_MS)
         ),
@@ -1096,7 +1118,7 @@ export class CrawlerService {
         error: err instanceof Error ? err.message : 'health check failed',
       })),
       Promise.race([
-        this.healthChecker.getStats(agentForHealth, auth),
+        this.healthChecker.getStats(agentForHealth, auth, true),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('Stats timeout')), PROBE_TIMEOUT_MS)
         ),

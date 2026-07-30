@@ -2889,6 +2889,68 @@
 
   <script src="/nav.js"></script>
   <script>
+    window.siBranding = (() => {
+      'use strict';
+
+      const BRAND_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
+      const BRAND_LOGO_URL_MAX_LENGTH = 2048;
+
+      function nonEmptyText(value) {
+        return typeof value === 'string' && value.trim() ? value : '';
+      }
+
+      function safeLogoUrl(value) {
+        if (typeof value !== 'string' || value.length === 0 || value.length > BRAND_LOGO_URL_MAX_LENGTH) {
+          return null;
+        }
+        if (['"', "'", '<', '>', '`', '\\'].some(char => value.includes(char))) {
+          return null;
+        }
+
+        try {
+          const parsed = new URL(value);
+          if (parsed.protocol !== 'https:' || parsed.username || parsed.password || !parsed.hostname) {
+            return null;
+          }
+          return parsed.toString();
+        } catch {
+          return null;
+        }
+      }
+
+      function safeBrandColor(value) {
+        return typeof value === 'string' && BRAND_COLOR_PATTERN.test(value) ? value : null;
+      }
+
+      function renderHeader(elements, brand, fallbackName) {
+        const name = nonEmptyText(brand?.name) || nonEmptyText(fallbackName) || 'Brand agent';
+        const tagline = nonEmptyText(brand?.tagline);
+        const color = safeBrandColor(brand?.brand_color);
+        const logoUrl = safeLogoUrl(brand?.logo_url);
+
+        elements.title.textContent = name;
+        elements.tagline.textContent = tagline;
+        if (color) {
+          elements.header.style.setProperty('--si-brand-color', color);
+        } else {
+          elements.header.style.removeProperty('--si-brand-color');
+        }
+
+        elements.icon.replaceChildren();
+        if (logoUrl) {
+          const image = document.createElement('img');
+          image.src = logoUrl;
+          image.alt = name;
+          elements.icon.appendChild(image);
+        } else {
+          elements.icon.textContent = name.trim().charAt(0).toUpperCase() || 'B';
+        }
+      }
+
+      return Object.freeze({ renderHeader, safeLogoUrl, safeBrandColor });
+    })();
+  </script>
+  <script>
     (function() {
       'use strict';
 
@@ -2932,6 +2994,12 @@
       const siModalMessages = document.getElementById('siModalMessages');
       const siModalInput = document.getElementById('siModalInput');
       const siModalSend = document.getElementById('siModalSend');
+      const siBrandHeaderElements = {
+        header: siModalHeader,
+        icon: siModalIconEmoji,
+        title: siModalTitle,
+        tagline: siModalTagline,
+      };
 
       // Dark mode toggle
       const darkModeToggle = document.getElementById('darkModeToggle');
@@ -3392,8 +3460,8 @@
         historyList.innerHTML = allItems.map(item => {
           if (item.type === 'si_session') {
             // Branded SI session item
-            const brandColor = item.brand_color || '#667eea';
-            const logoUrl = item.brand_logo_url;
+            const brandColor = window.siBranding.safeBrandColor(item.brand_color) || 'var(--color-brand)';
+            const logoUrl = window.siBranding.safeLogoUrl(item.brand_logo_url);
             const initial = (item.brand_name || 'B').charAt(0).toUpperCase();
             return `
               <div class="history-item si-branded"
@@ -3401,7 +3469,7 @@
                    data-brand-name="${escapeHtml(item.brand_name)}"
                    style="--si-item-color: ${brandColor}">
                 <div class="si-brand-avatar">
-                  ${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(item.brand_name)}">` : initial}
+                  ${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(item.brand_name)}">` : escapeHtml(initial)}
                 </div>
                 <div class="history-item-content">
                   <div class="history-item-title">
@@ -5155,21 +5223,7 @@
           siBrandName = brandName;
           siBrandInfo = data.brand || null;
 
-          // Update modal header
-          siModalTitle.textContent = data.brand?.name || brandName;
-          siModalTagline.textContent = data.brand?.tagline || '';
-
-          // Apply brand color if available
-          if (data.brand?.brand_color) {
-            siModalHeader.style.setProperty('--si-brand-color', data.brand.brand_color);
-          }
-
-          // Update icon
-          if (data.brand?.logo_url) {
-            siModalIconEmoji.innerHTML = `<img src="${data.brand.logo_url}" alt="${data.brand.name}" style="width:100%;height:100%;object-fit:contain;border-radius:inherit;">`;
-          } else {
-            siModalIconEmoji.textContent = (brandName || 'B').charAt(0).toUpperCase();
-          }
+          window.siBranding.renderHeader(siBrandHeaderElements, data.brand, brandName);
 
           // Clear and populate messages
           siModalMessages.innerHTML = '';
@@ -5237,9 +5291,8 @@
         siSessionId = sessionData.session_id;
         siBrandName = sessionData.brand_name;
 
-        // Update modal header
-        siModalTitle.textContent = siBrandName || 'Brand Agent';
-        siModalTagline.textContent = '';
+        // Update modal header and clear any styling left by the previous brand.
+        window.siBranding.renderHeader(siBrandHeaderElements, null, siBrandName);
 
         // Clear previous messages
         siModalMessages.innerHTML = '';
@@ -5254,20 +5307,7 @@
             // Apply brand styling
             if (data.brand) {
               siBrandInfo = data.brand;
-              siModalTitle.textContent = data.brand.name || siBrandName;
-              if (data.brand.tagline) {
-                siModalTagline.textContent = data.brand.tagline;
-              }
-              // Apply brand color if available
-              if (data.brand.brand_color) {
-                siModalHeader.style.setProperty('--si-brand-color', data.brand.brand_color);
-              }
-              // Update icon with logo or first letter
-              if (data.brand.logo_url) {
-                siModalIconEmoji.innerHTML = `<img src="${data.brand.logo_url}" alt="${data.brand.name}" style="width:100%;height:100%;object-fit:contain;border-radius:inherit;">`;
-              } else {
-                siModalIconEmoji.textContent = (data.brand.name || siBrandName || 'B').charAt(0).toUpperCase();
-              }
+              window.siBranding.renderHeader(siBrandHeaderElements, data.brand, siBrandName);
             }
 
             // Load messages from API (includes UI elements and surfaces)
@@ -6280,6 +6320,10 @@
 
       videoCallBtn.addEventListener('click', startVideoCall);
       videoEndBtn.addEventListener('click', endVideoCall);
+
+      if (window.__ENABLE_SI_CHAT_TEST_HOOKS__) {
+        window.__siChatTestHooks = Object.freeze({ openSession: siOpenModal });
+      }
 
       // Initialize
       extractNativeToken(); // Check for native app auth token in URL hash

@@ -18,28 +18,33 @@
 
 set -euo pipefail
 
-DIR="dist/protocol"
-CURRENT_VERSION="$(node -p "require('./package.json').version" 2>/dev/null || true)"
-
-if [ ! -d "$DIR" ]; then
-  echo "sign-protocol-tarball: $DIR not found, nothing to sign"
-  exit 0
-fi
-
-shopt -s nullglob
-tarballs=("$DIR"/*.tgz)
-if [ ${#tarballs[@]} -eq 0 ]; then
-  echo "sign-protocol-tarball: no .tgz files in $DIR"
-  exit 0
-fi
-
 if [ "${GITHUB_ACTIONS:-}" != "true" ] && [ "${SIGN_PROTOCOL_TARBALL:-}" != "true" ]; then
   echo "ℹ sign-protocol-tarball: skipping (set SIGN_PROTOCOL_TARBALL=true to sign locally)"
   exit 0
 fi
 
+DIR="dist/protocol"
+CURRENT_VERSION="$(node -p "require('./package.json').version || ''" 2>/dev/null || true)"
+
 if [ -z "$CURRENT_VERSION" ] && [ "${SIGN_ALL_PROTOCOL_TARBALLS:-}" != "true" ]; then
   echo "❌ Could not resolve package.json version for protocol tarball signing" >&2
+  exit 1
+fi
+
+if [ ! -d "$DIR" ]; then
+  echo "❌ sign-protocol-tarball: $DIR not found while signing was requested" >&2
+  exit 1
+fi
+
+shopt -s nullglob
+tarballs=("$DIR"/*.tgz)
+if [ ${#tarballs[@]} -eq 0 ]; then
+  echo "❌ sign-protocol-tarball: no .tgz files in $DIR while signing was requested" >&2
+  exit 1
+fi
+
+if [ "${SIGN_ALL_PROTOCOL_TARBALLS:-}" != "true" ] && [ ! -f "$DIR/${CURRENT_VERSION}.tgz" ]; then
+  echo "❌ Expected current protocol tarball $DIR/${CURRENT_VERSION}.tgz was not found" >&2
   exit 1
 fi
 

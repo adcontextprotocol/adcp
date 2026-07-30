@@ -1,0 +1,91 @@
+---
+title: "L2: Your data, brand, and governance as the control surface"
+sidebarTitle: "L2: Data, brand, governance"
+description: "AdCP Decision-Makers module L2: the brand-side data you control, generation-time brand safety, and why your IAS / DV / Nielsen measurement stack persists. Reasoning only — no code."
+"og:title": "AdCP — L2: Your data, brand, and governance as the control surface"
+---
+
+# L2: Your data, brand, and governance as the control surface
+
+**~15 min** | Prerequisite: L1 | Free
+
+If the platform generates the ad (L1), where is your control? It is in **what you put in**. This module is about the inputs a decision-maker's organization provides, and how those inputs — not a campaign UI — are your levers. They're a **dial, not a checklist**: the protocol needs very little to *run* (an account, a budget, what you're buying), and the more — and better — you put in, the more the result reflects your intent.
+
+Three ideas do most of the work:
+
+- **Your inputs are the dial.** The platform generates the ad from what you push in, so your inputs *are* your control. **Brand identity** (voice, guidelines, positioning) shapes how it sounds. A **catalog** drives product recommendations when you're advertising products — there, input quality drives ad quality: a thin catalog (titles and prices, nothing more) produces thin, generic recommendations. A brand-awareness campaign needs no catalog at all — brand identity and a brief carry it. Turn the dial up as you want more control and better results.
+- **Brand safety happens at generation time.** You push suitability rules the platform enforces *while the ad is generated*, before anything is shown. That gives you control over how the AI represents your brand that no post-hoc check provides — and where content is generated on the fly and never leaves the platform, it is the only workable mechanism. It is a different problem from adjacency: controlling how the AI talks about your brand, not just avoiding bad placements. Legal and regulatory compliance (COPPA, GDPR, HFSS) is separate and automatic — governance agents enforce shared [Policy Registry](/dist/docs/3.1.2/governance/policy-registry) rules regardless of what you push. **Content standards are the *brand-specific* control you add on top, and they're optional** — reach for them when you want a tighter say over how the AI represents you.
+- **Your measurement stack carries over.** You keep your IAS, DV, Nielsen, and Comscore contracts and accreditations and evaluate this channel with the same frameworks — MMM, multi-touch attribution, incrementality. Sponsored Intelligence is a new channel in your plan, not a new measurement paradigm. Two adaptations: pushing conversion events lets platforms optimize toward real outcomes, and on ephemeral AI-generated surfaces the classic *send the page to IAS/DV* adjacency check shifts to the content-standards calibration model — the contract persists, the mechanism adapts.
+
+<Note>
+**Agency?** Your ownership answer is orchestration: you maintain your clients' catalogs and `brand.json` on their behalf and make sure those inputs are rich before a campaign runs.
+
+**Solo or SMB?** Your existing Shopify or commerce feed already *is* the catalog, and a partner handles the plumbing. "Measurement carries over" means your ROAS / CPA dashboards and conversion tracking still work — you don't need IAS / DV / Nielsen contracts to start.
+</Note>
+
+## Reading list
+
+<CardGroup cols={2}>
+  <Card title="Catalogs" icon="boxes-stacked" href="/dist/docs/3.1.2/creative/catalogs">
+    Why your product feed is the main ingredient — titles, descriptions, prices, images become the creative input.
+  </Card>
+  <Card title="brand.json" icon="fingerprint" href="/dist/docs/3.1.2/brand-protocol/brand-json">
+    The machine-readable brand identity — voice, visual guidelines, positioning — AI platforms read so they sound like you.
+  </Card>
+  <Card title="Content standards" icon="scale-balanced" href="/dist/docs/3.1.2/governance/content-standards/index">
+    How suitability rules are enforced at generation time rather than verified after the fact.
+  </Card>
+  <Card title="Governance overview" icon="shield-halved" href="/dist/docs/3.1.2/governance/overview">
+    The model for pushing content standards into platforms and getting an audit trail back.
+  </Card>
+  <Card title="FAQ: do I need to change my measurement stack?" icon="circle-question" href="/dist/docs/3.1.2/faq#buying-ai-media">
+    The short answer: no — you keep your IAS / DV / Nielsen contracts and accreditations.
+  </Card>
+  <Card title="What AdCP does not standardize" icon="list-check" href="/dist/docs/3.1.2/reference/known-limitations">
+    AdCP is not an MRC-accredited measurement standard; it carries the data your existing tools consume.
+  </Card>
+</CardGroup>
+
+## Key concepts
+
+- **The levers you own** — brand identity (`brand.json`) always shapes the output; a catalog and conversion events come in for product and outcome-optimized campaigns; content standards are an optional control on top
+- **Input quality drives ad quality** — rich, accurate inputs (a detailed catalog, a clear brand voice) produce strong ads; thin inputs produce generic ones
+- **Generation-time enforcement** — content standards applied during generation, not as a blocklist or a third-party bolt-on
+- **Compliance is handled for you** — governance agents enforce shared Policy Registry rules (COPPA, GDPR, HFSS) automatically; content standards are your brand-specific control, not your legal backstop
+- **Measurement continuity** — you keep your measurement contracts, accreditations, and evaluation frameworks; conversion-event optimization and (on AI-generated surfaces) calibration-based suitability are what adapt
+
+## How good do your inputs need to be?
+
+Better inputs mean more control and better results — this is the cheapest lever you have. Nothing here is a hard prerequisite; it's a **quality dial**, and what matters most depends on what you're advertising.
+
+| Input | Thin | Ready | Strong |
+|---|---|---|---|
+| **Brand identity (`brand.json`)** | logo + name | + voice and tone guidance | + positioning, do/don't language, visual guidelines |
+| **Product catalog** *(product campaigns)* | titles + prices only | + descriptions, images, availability | + structured attributes (size, color, category), kept current |
+| **Content standards** *(optional brand control)* | none | topics to avoid | + approved claims and suitability rules enforced at generation time |
+| **Conversion events** *(optimizing to outcomes)* | none | one core event (purchase / lead) | + the events that define real outcomes, mapped to your success metric |
+
+**Where to spend your prep:** quality compounds in **brand identity** — and a **catalog** if you sell products — so strengthen those before you spend; a sparse feed or a missing brand voice is the thing to **enrich** first. **Content standards** and **conversion events** are controls you turn up when you want tighter brand suitability or outcome optimization — useful, not required. And set **a goal** — what you optimize toward (a target CPA, ROAS, cost-per-engagement, or reach for awareness) — so the platform knows what success means.
+
+## What you'll demonstrate
+
+Sage verifies three demonstrations through conversation — the same for every learner:
+
+1. **Identify the inputs you own as control levers** — brand identity always, a catalog and conversion events for product campaigns — and explain that input quality drives ad quality. `l2_ex1_sc_data_ownership`
+2. **Explain generation-time brand safety as control** — control over how the AI represents your brand, distinct from a blocklist and from post-hoc adjacency verification. `l2_ex1_sc_generation_time_brand_safety`
+3. **State how your measurement stack carries over** — you keep your IAS / DV / Nielsen contracts and the same MMM / attribution frameworks — and name what adapts (conversion-event optimization; calibration-based suitability on AI-generated surfaces). `l2_ex1_sc_measurement_persists`
+
+## Assessment rubric
+
+| Dimension | Weight | What Sage evaluates |
+|-----------|--------|---------------------|
+| Data ownership clarity | 35% | Identifies the inputs the org owns as control levers |
+| Governance model | 30% | Understands generation-time brand safety as control |
+| Measurement continuity | 25% | Knows measurement contracts persist and what adapts |
+| Org application | 10% | Connects the control surface to their own organization |
+
+Passing threshold: 70%. Scores are internal — you experience the module as a conversation that continues until you have demonstrated mastery.
+
+<Card title="Start L2 with Addie" icon="play" href="https://agenticadvertising.org/chat">
+  "I'd like to start certification module L2."
+</Card>

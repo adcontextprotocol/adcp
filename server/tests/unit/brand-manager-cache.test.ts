@@ -15,9 +15,31 @@ const mockedSafeFetch = vi.mocked(safeFetchAxiosLike);
 
 describe('BrandManager caching', () => {
   let manager: BrandManager;
+  let relationshipDeclarations: Map<string, number>;
+
+  const createManager = () => new BrandManager({
+    observeRelationshipDeclaration: async (declaration) => {
+      const key = [
+        declaration.houseDomain.toLowerCase(),
+        declaration.leafDomain.toLowerCase(),
+        declaration.brandId,
+      ].join('|');
+      if (declaration.effectiveAt) {
+        const declaredAt = Date.parse(declaration.effectiveAt);
+        relationshipDeclarations.set(key, declaredAt);
+        return declaredAt;
+      }
+      const firstObserved = relationshipDeclarations.get(key);
+      if (firstObserved !== undefined) return firstObserved;
+      const observedAt = Date.now();
+      relationshipDeclarations.set(key, observedAt);
+      return observedAt;
+    },
+  });
 
   beforeEach(() => {
-    manager = new BrandManager();
+    relationshipDeclarations = new Map();
+    manager = createManager();
     vi.clearAllMocks();
   });
 
@@ -52,6 +74,10 @@ describe('BrandManager caching', () => {
       const result1 = await manager.validateDomain('acme.com');
       expect(result1.valid).toBe(true);
       expect(mockedSafeFetch).toHaveBeenCalledTimes(1);
+      expect(mockedSafeFetch).toHaveBeenCalledWith(
+        'https://acme.com/.well-known/brand.json',
+        expect.objectContaining({ maxResponseBytes: 256 * 1024 }),
+      );
 
       // Second call - should use cache
       const result2 = await manager.validateDomain('acme.com');
@@ -71,6 +97,7 @@ describe('BrandManager caching', () => {
       // First call - should fetch and fail
       const result1 = await manager.validateDomain('missing.com');
       expect(result1.valid).toBe(false);
+      expect(result1.raw_data).toBeUndefined();
       expect(mockedSafeFetch).toHaveBeenCalledTimes(1);
 
       // Second call - should use failed lookup cache
@@ -108,6 +135,319 @@ describe('BrandManager caching', () => {
       // Second call with skipCache - should fetch again
       await manager.validateDomain('fresh.com', { skipCache: true });
       expect(mockedSafeFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('retains a prior positive cache while exposing the latest fresh failure', async () => {
+      const validDocument = {
+        id: 'stable',
+        names: [{ en: 'Stable' }],
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(validDocument)) })
+        .mockResolvedValueOnce({ status: 503, data: Buffer.from('unavailable') });
+
+      expect((await manager.validateDomain('stable.example')).valid).toBe(true);
+      expect((await manager.validateDomain('stable.example', { skipCache: true })).valid).toBe(false);
+      expect((await manager.validateDomain('stable.example')).valid).toBe(true);
+      expect(mockedSafeFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('rejects non-hostname lookup inputs without issuing a request', async () => {
+      const result = await manager.validateDomain('public.example:8443/admin?probe=true');
+
+      expect(result.valid).toBe(false);
+      expect(result.errors).toEqual(expect.arrayContaining([
+        expect.objectContaining({ field: 'domain' }),
+      ]));
+      expect(mockedSafeFetch).not.toHaveBeenCalled();
+    });
+
+    // Agents pass through whatever identifier a human gave them.
+    it.each(['https://acme.example', 'https://acme.example/', 'ACME.example'])(
+      'accepts %s as the acme.example lookup',
+      async (input) => {
+        const canonical = { id: 'acme', names: [{ en: 'Acme' }] };
+        mockedSafeFetch.mockResolvedValueOnce({
+          status: 200,
+          data: Buffer.from(JSON.stringify(canonical)),
+        });
+
+        expect((await manager.resolveBrand(input))?.canonical_domain).toBe('acme.example');
+        expect(mockedSafeFetch).toHaveBeenCalledWith(
+          'https://acme.example/.well-known/brand.json',
+          expect.anything(),
+        );
+      },
+    );
+
+    it('reports body-free diagnostics scoped to each resolution', async () => {
+      const oversized = {
+        id: 'oversized',
+        names: [{ en: 'Oversized' }],
+        description: 'x'.repeat(1024),
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(oversized)) })
+        .mockResolvedValueOnce({ status: 503, data: Buffer.from('unavailable') });
+
+      const resolved = await manager.resolveBrandWithDiagnostics('body.example');
+      expect(resolved.brand?.canonical_id).toBe('oversized');
+      expect(resolved.last_attempt).not.toHaveProperty('raw_data');
+
+      const failed = await manager.resolveBrandWithDiagnostics('other.example');
+      expect(failed.brand).toBeNull();
+      expect(failed.last_attempt).toMatchObject({
+        domain: 'other.example',
+        status_code: 503,
+      });
+    });
+
+    it('promotes the narrow legacy portfolio shape without inventing trust relationships', async () => {
+      const legacyBrandJson = {
+        $schema: 'https://schemas.adcontextprotocol.org/brand/v1/brand.json',
+        name: 'Example House',
+        domain: 'example.com',
+        legal_operator: {
+          name: 'Example LLC',
+          domain: 'example.com',
+          relationship: 'registered_account_operator',
+        },
+        brands: [
+          {
+            id: 'example',
+            name: 'Example',
+            properties: [
+              { type: 'website', identifier: 'example.com', relationship: 'owned' },
+              { type: 'website', identifier: 'alias.example' },
+              { type: 'website', identifier: 'distribution.example', relationship: 'direct' },
+            ],
+          },
+          {
+            id: 'partner',
+            name: 'Partner',
+            properties: [
+              {
+                type: 'website',
+                identifier: 'partner.com',
+                relationship: 'operated_publisher_brand',
+              },
+            ],
+          },
+        ],
+      };
+      mockedSafeFetch.mockResolvedValueOnce({
+        status: 200,
+        data: Buffer.from(JSON.stringify(legacyBrandJson)),
+      });
+
+      const result = await manager.validateDomain('example.com');
+
+      expect(result.valid).toBe(true);
+      expect(result.variant).toBe('brand_canonical');
+      expect(result.promoted_from_schema).toBe(legacyBrandJson.$schema);
+      expect(result.warnings).toEqual(expect.arrayContaining([
+        expect.objectContaining({ field: 'brands' }),
+        expect.objectContaining({ field: 'legal_operator' }),
+      ]));
+      const promoted = result.raw_data as Record<string, any>;
+      expect(promoted.$schema).toBe('https://adcontextprotocol.org/schemas/v3/brand.json');
+      expect(promoted.names).toEqual([{ und: 'Example' }, { und: 'Example House' }]);
+      expect(promoted.properties).toEqual([
+        { type: 'website', identifier: 'example.com', relationship: 'owned' },
+      ]);
+      expect(promoted.legacy_properties).toEqual([
+        { type: 'website', identifier: 'alias.example' },
+        { type: 'website', identifier: 'distribution.example', relationship: 'direct' },
+      ]);
+      expect(promoted.legacy_metadata.unpromoted_brands[0].id).toBe('partner');
+      expect(promoted.legacy_metadata.legal_operator).toEqual(legacyBrandJson.legal_operator);
+
+      const resolved = await manager.resolveBrand('example.com');
+      expect(resolved).toMatchObject({
+        source: 'brand_json',
+        relationship_trust: 'standalone',
+        promoted_from_schema: legacyBrandJson.$schema,
+      });
+      expect(resolved?.migration_warnings?.length).toBeGreaterThan(0);
+    });
+
+    it('promotes a leaf-hosted legacy shape to a canonical v3 document', async () => {
+      const legacyBrandJson = {
+        $schema: 'https://schemas.adcontextprotocol.org/brand/v1/brand.json',
+        name: 'Leaf Brand',
+        domain: 'leaf.example',
+        house: { domain: 'house.example', name: 'Example House' },
+        brands: [{
+          id: 'leaf',
+          name: 'Leaf Brand',
+          properties: [
+            { type: 'website', identifier: 'leaf.example', relationship: 'owned' },
+            {
+              type: 'website',
+              identifier: 'house.example',
+              relationship: 'registered_account_operator',
+            },
+          ],
+        }],
+      };
+      mockedSafeFetch.mockResolvedValueOnce({
+        status: 200,
+        data: Buffer.from(JSON.stringify(legacyBrandJson)),
+      });
+
+      const result = await manager.validateDomain('leaf.example');
+
+      expect(result.valid).toBe(true);
+      expect(result.variant).toBe('brand_canonical');
+      expect(result.raw_data).toMatchObject({
+        id: 'leaf',
+        names: [{ und: 'Leaf Brand' }],
+        properties: [{ type: 'website', identifier: 'leaf.example', relationship: 'owned' }],
+        legacy_metadata: {
+          legacy_house: { domain: 'house.example', name: 'Example House' },
+        },
+      });
+      expect(result.raw_data).not.toHaveProperty('house_domain');
+      expect((result.raw_data as Record<string, any>).legacy_properties[0].relationship)
+        .toBe('registered_account_operator');
+      expect(result.warnings).toContainEqual(expect.objectContaining({
+        field: 'house',
+        suggestion: expect.stringContaining('brand_refs[]'),
+      }));
+
+      const resolved = await manager.resolveBrand('leaf.example');
+      expect(resolved?.migration_warnings).toContainEqual(expect.objectContaining({
+        field: 'house',
+        suggestion: expect.stringContaining('house_domain'),
+      }));
+    });
+
+    it('rejects ambiguous legacy identity when the origin property is duplicated', async () => {
+      const legacyBrandJson = {
+        $schema: 'https://schemas.adcontextprotocol.org/brand/v1/brand.json',
+        brands: [{
+          id: 'ambiguous',
+          name: 'Ambiguous',
+          properties: [
+            { type: 'website', identifier: 'ambiguous.example', relationship: 'owned' },
+            { type: 'website', identifier: 'ambiguous.example', relationship: 'owned' },
+          ],
+        }],
+      };
+      mockedSafeFetch.mockResolvedValueOnce({
+        status: 200,
+        data: Buffer.from(JSON.stringify(legacyBrandJson)),
+      });
+
+      const result = await manager.validateDomain('ambiguous.example');
+
+      expect(result.valid).toBe(false);
+      expect(result.warnings).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          field: 'brands',
+          message: expect.stringContaining('found 2'),
+        }),
+      ]));
+      // The document was returned untouched, so nothing was promoted.
+      expect(result.promoted_from_schema).toBeUndefined();
+    });
+
+    // `relationship` defaults to owned in the schema and postdates these
+    // documents, so a v1 property that omits it is an ownership claim.
+    it('promotes a legacy origin property that omits relationship', async () => {
+      const legacyBrandJson = {
+        $schema: 'https://schemas.adcontextprotocol.org/brand/v1/brand.json',
+        brands: [{
+          id: 'implicit',
+          name: 'Implicit Owner',
+          properties: [{ type: 'website', identifier: 'implicit.example' }],
+        }],
+      };
+      mockedSafeFetch.mockResolvedValueOnce({
+        status: 200,
+        data: Buffer.from(JSON.stringify(legacyBrandJson)),
+      });
+
+      const result = await manager.validateDomain('implicit.example');
+
+      expect(result.valid).toBe(true);
+      expect(result.variant).toBe('brand_canonical');
+      expect(result.promoted_from_schema).toBe('https://schemas.adcontextprotocol.org/brand/v1/brand.json');
+      expect(result.raw_data).toMatchObject({
+        id: 'implicit',
+        names: [{ und: 'Implicit Owner' }],
+      });
+    });
+
+    it.each([
+      {
+        label: 'a forbidden canonical brand_refs field',
+        document: {
+          id: 'leaf',
+          names: [{ en: 'Leaf' }],
+          brand_refs: [{ domain: 'child.example', brand_id: 'child' }],
+        },
+      },
+      {
+        label: 'an unsupported property relationship',
+        document: {
+          id: 'leaf',
+          names: [{ en: 'Leaf' }],
+          properties: [{ type: 'website', identifier: 'leaf.example', relationship: 'bogus' }],
+        },
+      },
+    ])('rejects v3 documents containing $label', async ({ document }) => {
+      mockedSafeFetch.mockResolvedValueOnce({
+        status: 200,
+        data: Buffer.from(JSON.stringify(document)),
+      });
+
+      const result = await manager.validateDomain('leaf.example');
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.raw_data).toBeUndefined();
+    });
+
+    it('does not retain an invalid parsed document in the failed cache', async () => {
+      const invalidDocument = {
+        id: 'invalid',
+        names: [{ en: 'Invalid' }],
+        properties: [{ type: 'website', identifier: 'invalid.example', relationship: 'bogus' }],
+        attacker_padding: 'x'.repeat(64 * 1024),
+      };
+      mockedSafeFetch.mockResolvedValueOnce({
+        status: 200,
+        data: Buffer.from(JSON.stringify(invalidDocument)),
+      });
+
+      const first = await manager.validateDomain('invalid.example');
+      const cached = await manager.validateDomain('invalid.example');
+
+      expect(first.valid).toBe(false);
+      expect(first.raw_data).toBeUndefined();
+      expect(cached.raw_data).toBeUndefined();
+      expect(mockedSafeFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects a House Portfolio whose house.domain is not bound to the TLS origin', async () => {
+      const forgedPortfolio = {
+        house: { domain: 'trusted.example', name: 'Trusted House' },
+        brands: [{
+          id: 'evil',
+          names: [{ en: 'Evil' }],
+          properties: [{ type: 'website', identifier: 'evil.example', relationship: 'owned' }],
+        }],
+      };
+      mockedSafeFetch.mockResolvedValueOnce({
+        status: 200,
+        data: Buffer.from(JSON.stringify(forgedPortfolio)),
+      });
+
+      const result = await manager.validateDomain('evil.example');
+
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContainEqual(expect.objectContaining({ field: 'house.domain' }));
     });
   });
 
@@ -233,6 +573,811 @@ describe('BrandManager caching', () => {
       await manager.resolveBrand('bypass.com', { skipCache: true });
       expect(mockedSafeFetch).toHaveBeenCalled();
     });
+
+    it('does not replace a positive resolution cache on a transient fresh failure', async () => {
+      const canonical = { id: 'stable', names: [{ en: 'Stable' }] };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({ status: 503, data: Buffer.from('unavailable') });
+
+      expect((await manager.resolveBrand('stable.example'))?.brand_name).toBe('Stable');
+      expect(await manager.resolveBrand('stable.example', { skipCache: true })).toBeNull();
+      expect((await manager.resolveBrand('stable.example'))?.brand_name).toBe('Stable');
+      expect(mockedSafeFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('reports the terminal redirect attempt that ended the resolution', async () => {
+      const redirect = { house: 'house.example' };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(redirect)) })
+        .mockResolvedValueOnce({ status: 503, data: Buffer.from('unavailable') });
+
+      const resolution = await manager.resolveBrandWithDiagnostics('leaf.example', { skipCache: true });
+
+      expect(resolution.brand).toBeNull();
+      expect(resolution.last_attempt).toMatchObject({
+        valid: false,
+        domain: 'house.example',
+        status_code: 503,
+      });
+    });
+
+    it('resolves a v3 Brand Canonical Document', async () => {
+      const canonical = {
+        $schema: 'https://adcontextprotocol.org/schemas/v3/brand.json',
+        id: 'leaf',
+        names: [{ en: 'Leaf Brand' }],
+        house_domain: 'house.example',
+        description: 'Leaf-owned identity',
+        properties: [{ type: 'website', identifier: 'leaf.example', relationship: 'owned' }],
+      };
+      mockedSafeFetch.mockResolvedValueOnce({
+        status: 200,
+        data: Buffer.from(JSON.stringify(canonical)),
+      });
+
+      const result = await manager.resolveBrand('leaf.example');
+
+      expect(result).toMatchObject({
+        canonical_id: 'leaf',
+        canonical_domain: 'leaf.example',
+        brand_name: 'Leaf Brand',
+        claimed_house_domain: 'house.example',
+        relationship_trust: 'unverifiable',
+        source: 'brand_json',
+        brand_manifest: { description: 'Leaf-owned identity' },
+      });
+      expect(result?.house_domain).toBeUndefined();
+      expect(result?.brand_manifest).not.toHaveProperty('house_domain');
+      expect(result?.brand_manifest).not.toHaveProperty('$schema');
+    });
+
+    it('marks a valid house portfolio without reciprocity as leaf_only', async () => {
+      const canonical = {
+        id: 'leaf',
+        names: [{ en: 'Leaf Brand' }],
+        house_domain: 'house.example',
+      };
+      const silentPortfolio = {
+        house: { domain: 'house.example', name: 'Example House' },
+        brand_refs: [{ domain: 'different.example', brand_id: 'different' }],
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(silentPortfolio)) });
+
+      const result = await manager.resolveBrand('leaf.example');
+
+      expect(result).toMatchObject({
+        claimed_house_domain: 'house.example',
+        relationship_trust: 'leaf_only',
+      });
+      expect(result?.house_domain).toBeUndefined();
+    });
+
+    it('marks a failed house fetch as unverifiable', async () => {
+      const canonical = {
+        id: 'leaf',
+        names: [{ en: 'Leaf Brand' }],
+        house_domain: 'house.example',
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({ status: 503, data: Buffer.from('unavailable') });
+
+      const result = await manager.resolveBrand('leaf.example');
+
+      expect(result).toMatchObject({
+        claimed_house_domain: 'house.example',
+        relationship_trust: 'unverifiable',
+      });
+    });
+
+    it('marks a house redirect loop as unverifiable', async () => {
+      const canonical = {
+        id: 'leaf',
+        names: [{ en: 'Leaf Brand' }],
+        house_domain: 'house.example',
+      };
+      const loop = { house: 'house.example' };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(loop)) });
+
+      const result = await manager.resolveBrand('leaf.example');
+
+      expect(result).toMatchObject({
+        claimed_house_domain: 'house.example',
+        relationship_trust: 'unverifiable',
+      });
+      expect(mockedSafeFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('follows a house brand_refs pointer only to the matching canonical brand', async () => {
+      const portfolio = {
+        $schema: 'https://adcontextprotocol.org/schemas/v3/brand.json',
+        house: { domain: 'house.example', name: 'Example House' },
+        brand_refs: [{ domain: 'leaf.example', brand_id: 'leaf' }],
+      };
+      const canonical = {
+        $schema: 'https://adcontextprotocol.org/schemas/v3/brand.json',
+        id: 'leaf',
+        names: [{ en: 'Leaf Brand' }],
+        house_domain: 'house.example',
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(portfolio)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) });
+
+      const result = await manager.resolveBrandRef({
+        domain: 'house.example',
+        brand_id: 'leaf',
+      });
+
+      expect(result).toMatchObject({
+        canonical_id: 'leaf',
+        canonical_domain: 'leaf.example',
+        brand_name: 'Leaf Brand',
+        house_domain: 'house.example',
+        claimed_house_domain: 'house.example',
+        relationship_trust: 'mutual',
+        source: 'brand_json',
+      });
+      expect(mockedSafeFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('marks a one-sided house pointer as house_only without trusting parentage', async () => {
+      const portfolio = {
+        house: { domain: 'house.example', name: 'Example House' },
+        brand_refs: [{ domain: 'leaf.example', brand_id: 'leaf' }],
+      };
+      const standaloneLeaf = {
+        id: 'leaf',
+        names: [{ en: 'Leaf Brand' }],
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(portfolio)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(standaloneLeaf)) });
+
+      const result = await manager.resolveBrandRef({
+        domain: 'house.example',
+        brand_id: 'leaf',
+      });
+
+      expect(result).toMatchObject({
+        relationship_trust: 'house_only',
+        canonical_domain: 'leaf.example',
+      });
+      expect(result?.house_domain).toBeUndefined();
+      expect(result?.claimed_house_domain).toBeUndefined();
+    });
+
+    it('verifies a direct canonical house claim through reciprocal brand_refs', async () => {
+      const canonical = {
+        id: 'leaf',
+        names: [{ en: 'Leaf Brand' }],
+        house_domain: 'house.example',
+      };
+      const portfolio = {
+        house: { domain: 'house.example', name: 'Example House' },
+        brand_refs: [{ domain: 'leaf.example', brand_id: 'leaf' }],
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(portfolio)) });
+
+      const result = await manager.resolveBrand('leaf.example');
+
+      expect(result).toMatchObject({
+        house_domain: 'house.example',
+        claimed_house_domain: 'house.example',
+        house_name: 'Example House',
+        relationship_trust: 'mutual',
+      });
+    });
+
+    it('retains cached mutual trust when a fresh reciprocal check is temporarily unavailable', async () => {
+      const canonical = {
+        id: 'leaf',
+        names: [{ en: 'Leaf Brand' }],
+        house_domain: 'house.example',
+      };
+      const portfolio = {
+        house: { domain: 'house.example', name: 'Example House' },
+        brand_refs: [{ domain: 'leaf.example', brand_id: 'leaf' }],
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(portfolio)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({ status: 503, data: Buffer.from('temporarily unavailable') });
+
+      expect(await manager.resolveBrand('leaf.example')).toMatchObject({
+        relationship_trust: 'mutual',
+        house_domain: 'house.example',
+      });
+      expect(await manager.resolveBrand('leaf.example', { skipCache: true })).toMatchObject({
+        relationship_trust: 'mutual',
+        house_domain: 'house.example',
+      });
+
+      vi.clearAllMocks();
+      expect(await manager.resolveBrand('leaf.example')).toMatchObject({
+        relationship_trust: 'mutual',
+        house_domain: 'house.example',
+      });
+      expect(mockedSafeFetch).not.toHaveBeenCalled();
+    });
+
+    it('replaces cached mutual trust when the house returns a definitive non-portfolio document', async () => {
+      const canonical = {
+        id: 'leaf',
+        names: [{ en: 'Leaf Brand' }],
+        house_domain: 'house.example',
+      };
+      const portfolio = {
+        house: { domain: 'house.example', name: 'Example House' },
+        brand_refs: [{ domain: 'leaf.example', brand_id: 'leaf' }],
+      };
+      const replacement = { id: 'house', names: [{ en: 'House' }] };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(portfolio)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(replacement)) });
+
+      expect(await manager.resolveBrand('leaf.example')).toMatchObject({
+        relationship_trust: 'mutual',
+      });
+      expect(await manager.resolveBrand('leaf.example', { skipCache: true })).toMatchObject({
+        relationship_trust: 'unverifiable',
+      });
+
+      vi.clearAllMocks();
+      expect(await manager.resolveBrand('leaf.example')).toMatchObject({
+        relationship_trust: 'unverifiable',
+      });
+      expect(mockedSafeFetch).not.toHaveBeenCalled();
+    });
+
+    it('verifies a canonical house claim through an authoritative_location portfolio', async () => {
+      const canonical = {
+        id: 'leaf',
+        names: [{ en: 'Leaf Brand' }],
+        house_domain: 'house.example',
+      };
+      const pointer = {
+        authoritative_location: 'https://cdn.house.example/portfolio/brand.json',
+      };
+      const portfolio = {
+        house: { domain: 'house.example', name: 'Example House' },
+        brand_refs: [{ domain: 'leaf.example', brand_id: 'leaf' }],
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(pointer)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(portfolio)) });
+
+      const result = await manager.resolveBrand('leaf.example');
+
+      expect(result).toMatchObject({
+        house_domain: 'house.example',
+        claimed_house_domain: 'house.example',
+        house_name: 'Example House',
+        relationship_trust: 'mutual',
+      });
+      expect(mockedSafeFetch).toHaveBeenNthCalledWith(
+        3,
+        pointer.authoritative_location,
+        expect.objectContaining({
+          maxResponseBytes: 256 * 1024,
+          sameSiteRedirectsOnly: true,
+        }),
+      );
+    });
+
+    it('fetches authoritative_location at the exact published URL', async () => {
+      const pointer = {
+        authoritative_location: 'https://cdn.example/custom/brand.json',
+      };
+      const canonical = {
+        id: 'cdn_brand',
+        names: [{ en: 'CDN Brand' }],
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(pointer)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) });
+
+      const result = await manager.resolveBrand('origin.example');
+
+      expect(result).toMatchObject({
+        canonical_id: 'cdn_brand',
+        canonical_domain: 'origin.example',
+        relationship_trust: 'standalone',
+      });
+      expect(mockedSafeFetch).toHaveBeenNthCalledWith(
+        2,
+        'https://cdn.example/custom/brand.json',
+        expect.objectContaining({
+          maxResponseBytes: 256 * 1024,
+          sameSiteRedirectsOnly: true,
+        })
+      );
+    });
+
+    // The schema documents central hosting as the use for authoritative_location
+    // ("hosted at the brand's own /.well-known/brand.json or via
+    // authoritative_location indirection"), so an off-site target resolves —
+    // but it has to be consistent with the domain it answers for.
+    it('does not adopt an off-site document that names other domains as its own', async () => {
+      const pointer = { authoritative_location: 'https://victim.example/.well-known/brand.json' };
+      const victimCanonical = {
+        id: 'victim',
+        names: [{ en: 'Victim Brand' }],
+        properties: [{ type: 'website', identifier: 'victim.example', relationship: 'owned' }],
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(pointer)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(victimCanonical)) });
+
+      expect(await manager.resolveBrand('evil.example')).toBeNull();
+    });
+
+    it('resolves an off-site document that names the requested domain', async () => {
+      const pointer = { authoritative_location: 'https://cdn.provider.example/brands/acme.json' };
+      const canonical = {
+        id: 'acme',
+        names: [{ en: 'Acme' }],
+        properties: [
+          { type: 'website', identifier: 'acme.example', relationship: 'owned' },
+          { type: 'website', identifier: 'acme.co.uk', relationship: 'owned' },
+        ],
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(pointer)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) });
+
+      expect(await manager.resolveBrand('acme.example')).toMatchObject({
+        canonical_id: 'acme',
+        canonical_domain: 'acme.example',
+        brand_name: 'Acme',
+      });
+    });
+
+    it('resolves a centrally hosted document that declares no websites', async () => {
+      const pointer = { authoritative_location: 'https://cdn.provider.example/brands/minimal.json' };
+      const canonical = { id: 'minimal', names: [{ en: 'Minimal' }] };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(pointer)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) });
+
+      expect(await manager.resolveBrand('minimal.example')).toMatchObject({
+        canonical_id: 'minimal',
+        canonical_domain: 'minimal.example',
+      });
+    });
+
+    it('accepts a same-site authoritative_location that names other domains', async () => {
+      const pointer = { authoritative_location: 'https://cdn.acme.example/brand.json' };
+      const canonical = {
+        id: 'acme',
+        names: [{ en: 'Acme' }],
+        properties: [{ type: 'website', identifier: 'acme-shop.example', relationship: 'owned' }],
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(pointer)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) });
+
+      expect(await manager.resolveBrand('acme.example')).toMatchObject({ canonical_id: 'acme' });
+    });
+
+    it('does not follow brand_refs from a portfolio forged for another house origin', async () => {
+      const forgedPortfolio = {
+        house: { domain: 'trusted.example', name: 'Trusted House' },
+        brand_refs: [{ domain: 'leaf.example', brand_id: 'leaf' }],
+      };
+      mockedSafeFetch.mockResolvedValueOnce({
+        status: 200,
+        data: Buffer.from(JSON.stringify(forgedPortfolio)),
+      });
+
+      const result = await manager.resolveBrandRef({
+        domain: 'evil.example',
+        brand_id: 'leaf',
+      });
+
+      expect(result).toBeNull();
+      expect(mockedSafeFetch).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // brand.json trust invariant: relationship trust requires reciprocation.
+  // A House Redirect is the leaf's one-sided claim, so the named house's
+  // document must name the leaf before its identity can answer for the leaf.
+  describe('house redirect reciprocation', () => {
+    const redirect = { house: 'house.example' };
+
+    it('does not hand a house master brand to a domain the house never names', async () => {
+      const portfolio = {
+        house: { domain: 'house.example', name: 'Example House' },
+        brands: [{
+          id: 'house_master',
+          names: [{ en: 'Example House' }],
+          keller_type: 'master',
+          properties: [{ type: 'website', identifier: 'house.example', relationship: 'owned' }],
+        }],
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(redirect)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(portfolio)) });
+
+      const result = await manager.resolveBrand('squatter.example');
+
+      expect(result).toMatchObject({
+        canonical_id: 'squatter.example',
+        canonical_domain: 'squatter.example',
+        claimed_house_domain: 'house.example',
+        relationship_trust: 'leaf_only',
+      });
+      expect(result?.house_domain).toBeUndefined();
+      expect(result?.names).toBeUndefined();
+    });
+
+    it('resolves a redirect the house reciprocates with an owned property', async () => {
+      const portfolio = {
+        house: { domain: 'house.example', name: 'Example House' },
+        brands: [{
+          id: 'regional',
+          names: [{ en: 'Regional Brand' }],
+          properties: [{ type: 'website', identifier: 'regional.example', relationship: 'owned' }],
+        }],
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(redirect)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(portfolio)) });
+
+      expect(await manager.resolveBrand('regional.example')).toMatchObject({
+        canonical_id: 'regional',
+        brand_name: 'Regional Brand',
+        house_domain: 'house.example',
+        relationship_trust: 'inline',
+      });
+    });
+
+    it('treats a monetization property as a path to inventory, not an identity', async () => {
+      const portfolio = {
+        house: { domain: 'house.example', name: 'Example House' },
+        brands: [{
+          id: 'network',
+          names: [{ en: 'Ad Network' }],
+          properties: [{ type: 'website', identifier: 'publisher.example', relationship: 'delegated' }],
+        }],
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(redirect)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(portfolio)) });
+
+      const result = await manager.resolveBrand('publisher.example');
+
+      expect(result).toMatchObject({
+        canonical_id: 'publisher.example',
+        relationship_trust: 'leaf_only',
+      });
+      expect(result?.brand_name).not.toBe('Ad Network');
+    });
+
+    it('does not hand a house canonical document to an unnamed domain', async () => {
+      const houseCanonical = {
+        id: 'house_brand',
+        names: [{ en: 'House Brand' }],
+        properties: [{ type: 'website', identifier: 'house.example', relationship: 'owned' }],
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(redirect)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(houseCanonical)) });
+
+      const result = await manager.resolveBrand('squatter.example');
+
+      expect(result).toMatchObject({
+        canonical_id: 'squatter.example',
+        claimed_house_domain: 'house.example',
+        relationship_trust: 'leaf_only',
+      });
+      expect(result?.brand_name).not.toBe('House Brand');
+    });
+
+    it('resolves a redirect to a house canonical document that names the leaf', async () => {
+      const houseCanonical = {
+        id: 'house_brand',
+        names: [{ en: 'House Brand' }],
+        properties: [
+          { type: 'website', identifier: 'house.example', relationship: 'owned' },
+          { type: 'website', identifier: 'legacy.example', relationship: 'owned' },
+        ],
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(redirect)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(houseCanonical)) });
+
+      expect(await manager.resolveBrand('legacy.example')).toMatchObject({
+        canonical_id: 'house_brand',
+        brand_name: 'House Brand',
+      });
+    });
+
+    it('keeps a redirected brand agent pointer without adopting the house identity', async () => {
+      const agentDocument = {
+        brand_agent: { id: 'house_agent', url: 'https://agent.house.example/mcp' },
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(redirect)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(agentDocument)) });
+
+      expect(await manager.resolveBrand('squatter.example')).toMatchObject({
+        canonical_id: 'squatter.example',
+        canonical_domain: 'squatter.example',
+        brand_agent_url: 'https://agent.house.example/mcp',
+        claimed_house_domain: 'house.example',
+        relationship_trust: 'leaf_only',
+      });
+    });
+  });
+
+  describe('mutual trust aging', () => {
+    const canonical = {
+      id: 'leaf',
+      names: [{ en: 'Leaf Brand' }],
+      house_domain: 'house.example',
+    };
+    const portfolio = {
+      house: { domain: 'house.example', name: 'Example House' },
+      brand_refs: [{ domain: 'leaf.example', brand_id: 'leaf' }],
+    };
+
+    it('stamps a mutual edge with the time both sides were seen', async () => {
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(portfolio)) });
+
+      const result = await manager.resolveBrand('leaf.example');
+
+      expect(result?.relationship_trust).toBe('mutual');
+      expect(Date.parse(result?.relationship_verified_at ?? '')).toBeGreaterThan(0);
+      expect(Date.parse(result?.relationship_declared_at ?? '')).toBeGreaterThan(0);
+    });
+
+    it('exposes effective_at as the declaration clock', async () => {
+      const effectiveAt = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({
+          status: 200,
+          data: Buffer.from(JSON.stringify({
+            ...portfolio,
+            brand_refs: [{ ...portfolio.brand_refs[0], effective_at: effectiveAt }],
+          })),
+        });
+
+      const result = await manager.resolveBrand('leaf.example');
+
+      expect(result?.relationship_trust).toBe('mutual');
+      expect(result?.relationship_declared_at).toBe(effectiveAt);
+    });
+
+    it('degrades a reciprocal declaration older than 180 days to leaf_only', async () => {
+      const effectiveAt = new Date(Date.now() - 181 * 24 * 60 * 60 * 1000).toISOString();
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({
+          status: 200,
+          data: Buffer.from(JSON.stringify({
+            ...portfolio,
+            brand_refs: [{ ...portfolio.brand_refs[0], effective_at: effectiveAt }],
+          })),
+        });
+
+      const result = await manager.resolveBrand('leaf.example');
+
+      expect(result).toMatchObject({
+        relationship_trust: 'leaf_only',
+        claimed_house_domain: 'house.example',
+        relationship_declared_at: effectiveAt,
+      });
+      expect(result?.house_domain).toBeUndefined();
+      expect(result?.relationship_verified_at).toBeUndefined();
+    });
+
+    it('keeps first observation stable across manager instances when effective_at is absent', async () => {
+      const hour = 60 * 60 * 1000;
+      vi.useFakeTimers();
+      try {
+        mockedSafeFetch
+          .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+          .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(portfolio)) });
+        const first = await manager.resolveBrand('leaf.example');
+
+        vi.advanceTimersByTime(30 * 24 * hour);
+        manager = createManager();
+        mockedSafeFetch
+          .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+          .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(portfolio)) });
+        const refreshed = await manager.resolveBrand('leaf.example', { skipCache: true });
+
+        expect(refreshed?.relationship_trust).toBe('mutual');
+        expect(refreshed?.relationship_declared_at).toBe(first?.relationship_declared_at);
+        expect(refreshed?.relationship_verified_at).not.toBe(first?.relationship_verified_at);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('does not activate a future declaration before its effective time', async () => {
+      const effectiveAt = new Date(Date.now() + 4 * 60 * 1000).toISOString();
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({
+          status: 200,
+          data: Buffer.from(JSON.stringify({
+            ...portfolio,
+            brand_refs: [{ ...portfolio.brand_refs[0], effective_at: effectiveAt }],
+          })),
+        });
+
+      const result = await manager.resolveBrand('leaf.example');
+
+      expect(result).toMatchObject({
+        relationship_trust: 'leaf_only',
+        relationship_declared_at: effectiveAt,
+      });
+      expect(result?.house_domain).toBeUndefined();
+      expect(result?.relationship_verified_at).toBeUndefined();
+    });
+
+    it('fails closed when a missing effective_at cannot be durably observed', async () => {
+      manager = new BrandManager({
+        observeRelationshipDeclaration: async () => {
+          throw new Error('database unavailable');
+        },
+      });
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(portfolio)) });
+
+      const result = await manager.resolveBrand('leaf.example');
+
+      expect(result?.relationship_trust).toBe('unverifiable');
+      expect(result?.house_domain).toBeUndefined();
+      expect(result?.relationship_declared_at).toBeUndefined();
+    });
+
+    it('can evaluate explicit effective_at while durable storage is unavailable', async () => {
+      const effectiveAt = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      manager = new BrandManager({
+        observeRelationshipDeclaration: async () => {
+          throw new Error('database unavailable');
+        },
+      });
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({
+          status: 200,
+          data: Buffer.from(JSON.stringify({
+            ...portfolio,
+            brand_refs: [{ ...portfolio.brand_refs[0], effective_at: effectiveAt }],
+          })),
+        });
+
+      const result = await manager.resolveBrand('leaf.example');
+
+      expect(result?.relationship_trust).toBe('mutual');
+      expect(result?.relationship_declared_at).toBe(effectiveAt);
+    });
+
+    it('does not reset the declaration clock when effective_at is later omitted', async () => {
+      const hour = 60 * 60 * 1000;
+      vi.useFakeTimers();
+      try {
+        const effectiveAt = new Date(Date.now() - 30 * 24 * hour).toISOString();
+        mockedSafeFetch
+          .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+          .mockResolvedValueOnce({
+            status: 200,
+            data: Buffer.from(JSON.stringify({
+              ...portfolio,
+              brand_refs: [{ ...portfolio.brand_refs[0], effective_at: effectiveAt }],
+            })),
+          });
+        await manager.resolveBrand('leaf.example');
+
+        vi.advanceTimersByTime(30 * 24 * hour);
+        manager = createManager();
+        mockedSafeFetch
+          .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+          .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(portfolio)) });
+        const refreshed = await manager.resolveBrand('leaf.example', { skipCache: true });
+
+        expect(refreshed?.relationship_declared_at).toBe(effectiveAt);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('applies the declaration ceiling to a cached mutual edge', async () => {
+      const hour = 60 * 60 * 1000;
+      vi.useFakeTimers();
+      try {
+        const effectiveAt = new Date(Date.now() - (179 * 24 + 18) * hour).toISOString();
+        mockedSafeFetch
+          .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+          .mockResolvedValueOnce({
+            status: 200,
+            data: Buffer.from(JSON.stringify({
+              ...portfolio,
+              brand_refs: [{ ...portfolio.brand_refs[0], effective_at: effectiveAt }],
+            })),
+          });
+        expect((await manager.resolveBrand('leaf.example'))?.relationship_trust).toBe('mutual');
+
+        vi.advanceTimersByTime(7 * hour);
+        const aged = await manager.resolveBrand('leaf.example');
+
+        expect(aged?.relationship_trust).toBe('leaf_only');
+        expect(aged?.relationship_declared_at).toBe(effectiveAt);
+        expect(aged?.house_domain).toBeUndefined();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('does not advance the verification time while reusing a retained edge', async () => {
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(portfolio)) })
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+        .mockResolvedValueOnce({ status: 503, data: Buffer.from('unavailable') });
+
+      const verified = await manager.resolveBrand('leaf.example');
+      const retained = await manager.resolveBrand('leaf.example', { skipCache: true });
+
+      expect(retained?.relationship_trust).toBe('mutual');
+      expect(retained?.relationship_verified_at).toBe(verified?.relationship_verified_at);
+    });
+
+    it('ages a retained edge out even while refreshes keep the cache entry alive', async () => {
+      const hour = 60 * 60 * 1000;
+      vi.useFakeTimers();
+      try {
+        mockedSafeFetch
+          .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+          .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(portfolio)) });
+        expect((await manager.resolveBrand('leaf.example'))?.relationship_trust).toBe('mutual');
+
+        // A refresh inside the window rewrites the cache entry with a fresh TTL,
+        // so the entry outlives the verification it was built from.
+        vi.advanceTimersByTime(12 * hour);
+        mockedSafeFetch
+          .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+          .mockResolvedValueOnce({ status: 503, data: Buffer.from('unavailable') });
+        expect(
+          (await manager.resolveBrand('leaf.example', { skipCache: true }))?.relationship_trust,
+        ).toBe('mutual');
+
+        vi.advanceTimersByTime(13 * hour);
+        mockedSafeFetch
+          .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(canonical)) })
+          .mockResolvedValueOnce({ status: 503, data: Buffer.from('unavailable') });
+        const aged = await manager.resolveBrand('leaf.example', { skipCache: true });
+
+        expect(aged).toMatchObject({
+          relationship_trust: 'unverifiable',
+          claimed_house_domain: 'house.example',
+        });
+        expect(aged?.house_domain).toBeUndefined();
+        expect(aged?.relationship_verified_at).toBeUndefined();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   describe('brand_manifest construction', () => {
@@ -331,10 +1476,15 @@ describe('BrandManager caching', () => {
         ],
       };
 
-      mockedSafeFetch.mockResolvedValue({
-        status: 200,
-        data: Buffer.from(JSON.stringify(mockBrandJson)),
-      });
+      mockedSafeFetch
+        .mockResolvedValueOnce({
+          status: 200,
+          data: Buffer.from(JSON.stringify({ house: 'house.com' })),
+        })
+        .mockResolvedValueOnce({
+          status: 200,
+          data: Buffer.from(JSON.stringify(mockBrandJson)),
+        });
 
       const result = await manager.resolveBrand('subbrand.com');
       expect(result).not.toBeNull();
@@ -417,13 +1567,13 @@ describe('BrandManager caching', () => {
         },
         brands: [
           {
-            id: 'brand-a',
+            id: 'brand_a',
             names: [{ en: 'Brand A' }],
             keller_type: 'master',
             description: 'Brand A description',
           },
           {
-            id: 'brand-b',
+            id: 'brand_b',
             names: [{ en: 'Brand B' }],
             keller_type: 'sub_brand',
             description: 'Brand B description',
@@ -438,7 +1588,7 @@ describe('BrandManager caching', () => {
 
       const result = await manager.resolveBrandRef({
         domain: 'multi.com',
-        brand_id: 'brand-b',
+        brand_id: 'brand_b',
       });
       expect(result).not.toBeNull();
       expect(result?.brand_manifest?.description).toBe('Brand B description');

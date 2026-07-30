@@ -1,0 +1,212 @@
+id: creative/canonical_supported_formats
+version: "1.0.0"
+title: "Creative canonical supported formats"
+category: creative
+summary: "Verifies the 3.1 creative-agent canonical path: targetable supported_formats capability IDs, build_creative routing, and unsupported target rejection."
+track: creative
+introduced_in: "3.1"
+required_tools:
+  - get_adcp_capabilities
+  - build_creative
+
+narrative: |
+  Creative agents in 3.1 declare what they can produce via
+  `creative.supported_formats` on `get_adcp_capabilities`. Targetable
+  supported-format entries carry an agent-local stable `capability_id` that
+  selects the build path on that creative agent. This is separate from media-buy
+  `format_option_id`, which selects a product or publisher-catalog format
+  option.
+
+  The buyer reads the canonical capability catalog, invokes one advertised
+  capability through `build_creative`, and verifies that an unsupported target
+  fails with `FORMAT_NOT_SUPPORTED` instead of silently producing an arbitrary
+  manifest.
+
+agent:
+  interaction_model: creative_agent
+  capabilities:
+    - supports_generation
+    - supports_transformation
+  examples:
+    - "Creative generation platforms"
+    - "Creative transformation services"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The caller needs a brand identity and a creative brief. The test kit
+    provides fictional brand context for Acme Outdoor.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: capability_discovery
+    title: "Discover canonical build capabilities"
+    narrative: |
+      The buyer calls `get_adcp_capabilities` and reads
+      `creative.supported_formats` as the creative agent's 3.1 canonical build
+      catalog. The first advertised image capability is used in the next phase.
+
+    steps:
+      - id: get_capabilities
+        title: "Read supported canonical formats"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return a creative capability block with implemented `supported_formats[]`.
+          The targetable entry used for build routing has:
+          - `capability_id` at the supported-format entry level
+          - `format.format_kind` and `format.params.slots[]`
+          - no product-level `format_option_id` on the creative-agent
+            capability entry used for build routing
+        sample_request:
+          context:
+            correlation_id: "creative_canonical_supported_formats--get_capabilities"
+        context_outputs:
+          - key: "image_build_capability_id"
+            path: "creative.supported_formats[0].capability_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "creative.supported_formats"
+            description: "Creative canonical supported formats are advertised"
+          - check: field_value
+            path: "creative.supported_formats[0].capability_id"
+            value: "training_image_generation"
+            description: "The image build path has a stable local capability_id"
+          - check: field_value
+            path: "creative.supported_formats[0].format.format_kind"
+            value: "image"
+            description: "The first supported capability declares the image canonical"
+          - check: field_present
+            path: "creative.supported_formats[0].format.params.slots[0].asset_group_id"
+            description: "Canonical format declaration includes slot metadata"
+          - check: field_absent
+            path: "creative.supported_formats[0].format.format_option_id"
+            description: "Creative-agent build routing uses capability_id, not product format_option_id"
+          - check: field_absent
+            path: "creative.supported_formats[1].capability_id"
+            description: "Storyboard fixture only advertises implemented canonical build paths"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_canonical_supported_formats--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+
+  - id: build_from_capability
+    title: "Build using the advertised capability"
+    narrative: |
+      The buyer invokes `build_creative` using the advertised image build
+      capability. The produced manifest uses the 3.1 canonical manifest path
+      (`format_kind`) and does not fall back to a legacy named format.
+
+    steps:
+      - id: build_image_capability
+        title: "Build with the advertised image capability"
+        task: build_creative
+        schema_ref: "media-buy/build-creative-request.json"
+        response_schema_ref: "media-buy/build-creative-response.json"
+        doc_ref: "/creative/task-reference/build_creative"
+        comply_scenario: creative_flow
+        stateful: false
+        expected: |
+          Return a completed build with a canonical image manifest:
+          - `creative_manifest.format_kind: image`
+          - generated assets keyed by canonical slot names
+        sample_request:
+          message: "Create a clean image creative for Acme Outdoor's summer trail sale. Use a direct headline and a clear landing page."
+          target_format_id:
+            agent_url: "https://your-agent.example.com"
+            id: "$context.image_build_capability_id"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          quality: "draft"
+          idempotency_key: "$generate:uuid_v4#creative_canonical_supported_formats_build_image"
+          context:
+            correlation_id: "creative_canonical_supported_formats--build_image"
+        validations:
+          - check: response_schema
+            description: "Response matches build-creative-response.json schema"
+          - check: field_value
+            path: "creative_manifest.format_kind"
+            value: "image"
+            description: "Generated manifest uses the 3.1 canonical manifest path"
+          - check: field_absent
+            path: "creative_manifest.format_id"
+            description: "Canonical build does not invent a legacy named-format id"
+          - check: field_present
+            path: "creative_manifest.assets.image_main"
+            description: "Output manifest includes an image asset under the canonical slot"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_canonical_supported_formats--build_image"
+            description: "Context correlation_id returned unchanged"
+
+  - id: reject_unsupported_capability
+    title: "Reject unsupported target capability"
+    narrative: |
+      A buyer may cache or mistype a build target. The creative agent must fail
+      closed with `FORMAT_NOT_SUPPORTED` instead of producing a manifest under a
+      target it does not recognize. Legacy named-format IDs may still be
+      accepted during the 3.x migration window; this phase probes an unknown
+      selector that is neither a legacy format nor an advertised capability.
+
+    steps:
+      - id: reject_unknown_capability
+        title: "Reject an unknown build target"
+        task: build_creative
+        schema_ref: "media-buy/build-creative-request.json"
+        response_schema_ref: "media-buy/build-creative-response.json"
+        doc_ref: "/creative/task-reference/build_creative"
+        comply_scenario: creative_flow
+        stateful: false
+        expect_error: true
+        negative_path: payload_well_formed
+        expected: |
+          Return a build_creative error response with:
+          - errors[0].code: FORMAT_NOT_SUPPORTED
+          - errors[0].field: target_format_id
+          - errors[0].recovery: correctable
+        sample_request:
+          message: "Create an unsupported canonical creative."
+          target_format_id:
+            agent_url: "https://your-agent.example.com"
+            id: "unknown_takeover_generation"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          quality: "draft"
+          idempotency_key: "$generate:uuid_v4#creative_canonical_supported_formats_reject_unknown"
+          context:
+            correlation_id: "creative_canonical_supported_formats--reject_unknown"
+        validations:
+          - check: response_schema
+            description: "Response matches build-creative-response.json schema"
+          - check: error_code
+            value: "FORMAT_NOT_SUPPORTED"
+            description: "Unsupported build target is rejected with the canonical error code"
+          - check: field_value
+            path: "errors[0].field"
+            value: "target_format_id"
+            description: "Error points at the unsupported target selector"
+          - check: field_value
+            path: "errors[0].recovery"
+            value: "correctable"
+            description: "Buyer can correct the target by choosing an advertised capability_id"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_canonical_supported_formats--reject_unknown"
+            description: "Context correlation_id returned unchanged"

@@ -1,4 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+const oauthFetchMocks = vi.hoisted(() => ({
+  oauthSafeFetch: vi.fn(),
+}));
+
+vi.mock('../../src/utils/oauth-safe-fetch.js', () => ({
+  oauthSafeFetch: oauthFetchMocks.oauthSafeFetch,
+}));
+
 import {
   exchangeClientCredentials,
   resolveEnvReference,
@@ -7,9 +16,9 @@ import { adaptAuthForSdk } from '../../src/services/sdk-auth-adapter.js';
 
 /**
  * Tests for the server-side OAuth 2.0 client-credentials exchange
- * (#2800 follow-up). `@adcp/sdk`'s ComplyOptions/TestOptions don't
- * accept the `oauth_client_credentials` auth variant, so we exchange
- * for a bearer token server-side before handing it to the SDK.
+ * (#2800 follow-up). The low-level helper remains covered for direct
+ * callers, while the SDK adapter now passes client credentials through
+ * so `@adcp/sdk` owns token acquisition and refresh.
  */
 
 function mockFetch(response: { status: number; body: string | object }) {
@@ -34,6 +43,10 @@ function mockFetch(response: { status: number; body: string | object }) {
     } as unknown as Response;
   });
 }
+
+beforeEach(() => {
+  oauthFetchMocks.oauthSafeFetch.mockReset();
+});
 
 describe('resolveEnvReference', () => {
   beforeEach(() => {
@@ -77,6 +90,30 @@ describe('exchangeClientCredentials', () => {
     client_id: 'client-abc',
     client_secret: 'secret-xyz',
   };
+
+  it('uses the SSRF-safe OAuth fetcher by default and preserves the token request', async () => {
+    oauthFetchMocks.oauthSafeFetch.mockImplementation(mockFetch({
+      status: 200,
+      body: { access_token: 'safe-token', expires_in: 900 },
+    }));
+
+    const result = await exchangeClientCredentials(baseCreds);
+
+    expect(result).toEqual({ ok: true, access_token: 'safe-token', expires_in: 900 });
+    expect(oauthFetchMocks.oauthSafeFetch).toHaveBeenCalledWith(
+      baseCreds.token_endpoint,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Accept: 'application/json',
+          Authorization: expect.stringMatching(/^Basic /),
+        },
+        body: 'grant_type=client_credentials',
+        signal: expect.any(AbortSignal),
+      },
+    );
+  });
 
   it('returns a bearer token from a successful exchange', async () => {
     const fetchImpl = mockFetch({
@@ -201,45 +238,39 @@ describe('adaptAuthForSdk', () => {
     expect(await adaptAuthForSdk(oauth)).toBe(oauth);
   });
 
-  it('exchanges oauth_client_credentials and narrows to bearer', async () => {
-    process.env.ADCP_OAUTH_BRIDGE_TEST = 'sec';
-    // Swap global fetch for this test only
-    const original = globalThis.fetch;
-    globalThis.fetch = mockFetch({
-      status: 200,
-      body: { access_token: 'exchanged-tok', expires_in: 600 },
-    }) as unknown as typeof fetch;
-    try {
-      const result = await adaptAuthForSdk({
-        type: 'oauth_client_credentials',
-        credentials: {
-          token_endpoint: 'https://idp.example/token',
-          client_id: 'client-x',
-          client_secret: '$ENV:ADCP_OAUTH_BRIDGE_TEST',
-        },
-      });
-      expect(result).toEqual({ type: 'bearer', token: 'exchanged-tok' });
-    } finally {
-      globalThis.fetch = original;
-      delete process.env.ADCP_OAUTH_BRIDGE_TEST;
-    }
+  it('passes oauth_client_credentials through for SDK-managed token refresh', async () => {
+    const auth = {
+      type: 'oauth_client_credentials',
+      credentials: {
+        token_endpoint: 'https://idp.example/token',
+        client_id: 'client-x',
+        client_secret: '$ENV:ADCP_OAUTH_BRIDGE_TEST',
+      },
+    } as const;
+
+    const result = await adaptAuthForSdk(auth);
+
+    expect(result).toBe(auth);
+    expect(oauthFetchMocks.oauthSafeFetch).not.toHaveBeenCalled();
   });
 
-  it('returns undefined (falls back to unauthenticated) when the exchange fails', async () => {
-    const original = globalThis.fetch;
-    globalThis.fetch = mockFetch({ status: 500, body: 'internal' }) as unknown as typeof fetch;
-    try {
-      const result = await adaptAuthForSdk({
-        type: 'oauth_client_credentials',
-        credentials: {
-          token_endpoint: 'https://idp.example/token',
-          client_id: 'c',
-          client_secret: 's',
-        },
-      });
-      expect(result).toBeUndefined();
-    } finally {
-      globalThis.fetch = original;
-    }
+  it('does not preflight the token endpoint before handing auth to the SDK', async () => {
+    oauthFetchMocks.oauthSafeFetch.mockImplementation(
+      mockFetch({ status: 500, body: 'internal' }),
+    );
+
+    const auth = {
+      type: 'oauth_client_credentials',
+      credentials: {
+        token_endpoint: 'https://idp.example/token',
+        client_id: 'c',
+        client_secret: 's',
+      },
+    } as const;
+
+    const result = await adaptAuthForSdk(auth);
+
+    expect(result).toBe(auth);
+    expect(oauthFetchMocks.oauthSafeFetch).not.toHaveBeenCalled();
   });
 });

@@ -7,6 +7,7 @@
 
 import { createLogger } from '../../logger.js';
 import { redactSupportSecrets } from '../../services/support-redaction.js';
+import { resolveGitHubToken } from './github-app-token.js';
 
 const logger = createLogger('github-filer');
 
@@ -25,14 +26,15 @@ export interface FiledIssue {
 }
 
 /**
- * Create a GitHub issue using the GITHUB_TOKEN env var. Returns null on
- * any failure (missing token, HTTP error, network error) so callers can
- * keep the escalation open without swallowing the exception.
+ * Create a GitHub issue via resolveGitHubToken() (Secretariat App token
+ * when configured, legacy PAT otherwise). Returns null on any failure
+ * (missing credential, HTTP error, network error) so callers can keep
+ * the escalation open without swallowing the exception.
  */
 export async function fileGitHubIssue(input: FileIssueInput): Promise<FiledIssue | null> {
-  const token = process.env.GITHUB_TOKEN;
+  const token = await resolveGitHubToken();
   if (!token) {
-    logger.warn('GITHUB_TOKEN not set; cannot file issue');
+    logger.warn('No GitHub credential available; cannot file issue');
     return null;
   }
 

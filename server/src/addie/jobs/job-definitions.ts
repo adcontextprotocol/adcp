@@ -40,6 +40,7 @@ import { runCredentialDigestJob } from './credential-digest.js';
 import { runCertificationRecoveryJob } from './certification-recovery.js';
 import { runBrandLogoDigestJob } from './brand-logo-digest.js';
 import { runWgDigestJob, runWgDigestPrepJob } from './wg-digest.js';
+import { runWgSlackContextJob } from './wg-slack-context.js';
 import { runComplianceHeartbeatJob } from './compliance-heartbeat.js';
 import { runShadowEvaluatorJob } from './shadow-evaluator.js';
 import { runAddieCorrectedCaptureJob } from './shadow-corrected-capture.js';
@@ -380,6 +381,24 @@ export function registerAllJobs(): void {
     runner: runWgDigestPrepJob,
     failureThreshold: 1,
     shouldLogResult: (r) => r.emailsSent > 0,
+  });
+
+  // WG slack-context - distill public WG channel discussion into
+  // .agents/wg/slack-context.md via PR (the Secretariat's Slack input).
+  // No business-hours gate: the community is global and the output is a
+  // PR that waits for review, not a human notification. Hourly interval,
+  // not 24h, because setInterval anchors tick time to boot time; the job
+  // dedups itself to one refresh per UTC day via the Generated date in
+  // the file, so the daily digest lands on the first tick after 00:00
+  // UTC.
+  jobScheduler.register({
+    name: 'wg-slack-context',
+    description: 'Distill WG Slack discussion into .agents/wg/slack-context.md via PR',
+    interval: { value: 1, unit: 'hours' },
+    initialDelay: { value: 14, unit: 'minutes' },
+    runner: runWgSlackContextJob,
+    failureThreshold: 1,
+    shouldLogResult: (r) => !!r.prUrl || r.skipped === 'pr-failed',
   });
 
   // Credential digest - weekly summary of certification awards to Slack
@@ -925,6 +944,7 @@ export const JOB_NAMES = {
   WEEKLY_DIGEST: 'weekly-digest',
   WG_DIGEST: 'wg-digest',
   WG_DIGEST_PREP: 'wg-digest-prep',
+  WG_SLACK_CONTEXT: 'wg-slack-context',
   CREDENTIAL_DIGEST: 'credential-digest',
   CERTIFICATION_RECOVERY: 'certification-recovery',
   BRAND_LOGO_DIGEST: 'brand-logo-digest',

@@ -161,7 +161,7 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
   {
     name: 'search_docs',
     description:
-      'Search the official AdCP documentation and working group documents. Includes protocol docs, website content, and documents published by working groups (brand guidelines, positioning, governance docs, etc.). Returns excerpts with source URLs. IMPORTANT: Use ONE well-crafted search with specific keywords rather than multiple searches. For detailed content, use get_doc with the doc ID from results.',
+      'Search the official AdCP documentation, extracted JSON schema facts, and working group documents. Includes protocol docs, website content, and documents published by working groups (brand guidelines, positioning, governance docs, etc.). Returns excerpts with source URLs. IMPORTANT: Use ONE well-crafted search with specific keywords rather than multiple searches. For complete request/response fields or enum values, verify with get_schema. To determine whether a schema or protocol feature exists, use list_schemas. For detailed prose or an extracted schema result, use get_doc with the doc ID from results.',
     usage_hints: 'use for learning, understanding concepts, "how does X work?", "what is X?", "explain X", brand guidelines, working group documents',
     input_schema: {
       type: 'object',

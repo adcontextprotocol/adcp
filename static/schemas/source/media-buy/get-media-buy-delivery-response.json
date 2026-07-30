@@ -129,8 +129,8 @@
           "minimum": 0
         },
         "completion_rate": {
-          "type": "number",
-          "description": "Aggregate completion rate across all media buys (weighted by impressions, not a simple average of per-buy rates)",
+          "type": ["number", "null"],
+          "description": "Aggregate completion rate across all media buys (weighted by impressions, not a simple average of per-buy rates). Null indicates the metric is not applicable to the aggregated buys (e.g. all non-video inventory).",
           "minimum": 0,
           "maximum": 1
         },

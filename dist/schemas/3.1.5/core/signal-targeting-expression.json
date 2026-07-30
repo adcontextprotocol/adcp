@@ -1,0 +1,87 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.5/core/signal-targeting-expression.json",
+  "title": "Signal Targeting Expression",
+  "description": "Predicate over a named signal definition. Signals are typed dimensions, similar to feature values: binary signals match true, categorical signals match one of a set of values, and numeric signals match a range. In package signal targeting groups, include/exclude semantics are controlled by the parent group operator, not by negating the expression.",
+  "discriminator": {
+    "propertyName": "value_type"
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "description": "Binary signal expression. In grouped package targeting, value is always true; use a parent group with operator 'none' for exclusion.",
+      "properties": {
+        "signal_ref": {
+          "$ref": "/schemas/3.1.5/core/signal-ref.json",
+          "description": "Named signal being targeted."
+        },
+        "value_type": {
+          "type": "string",
+          "const": "binary",
+          "description": "Discriminator for binary signals."
+        },
+        "value": {
+          "type": "boolean",
+          "const": true,
+          "description": "Binary package signal entries match users for whom the signal is true. Use the parent group operator for include/exclude."
+        }
+      },
+      "required": ["signal_ref", "value_type", "value"],
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "description": "Categorical signal expression - target users with one of the listed values.",
+      "properties": {
+        "signal_ref": {
+          "$ref": "/schemas/3.1.5/core/signal-ref.json",
+          "description": "Named signal being targeted."
+        },
+        "value_type": {
+          "type": "string",
+          "const": "categorical",
+          "description": "Discriminator for categorical signals."
+        },
+        "values": {
+          "type": "array",
+          "description": "Values to target. Users with any of these values match the expression.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        }
+      },
+      "required": ["signal_ref", "value_type", "values"],
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "description": "Numeric signal expression - target users within a value range. At least one of min_value or max_value is required. If both min_value and max_value are provided, min_value MUST be <= max_value.",
+      "properties": {
+        "signal_ref": {
+          "$ref": "/schemas/3.1.5/core/signal-ref.json",
+          "description": "Named signal being targeted."
+        },
+        "value_type": {
+          "type": "string",
+          "const": "numeric",
+          "description": "Discriminator for numeric signals."
+        },
+        "min_value": {
+          "type": "number",
+          "description": "Minimum value, inclusive. Omit for no minimum. Should be within the signal definition's range when declared."
+        },
+        "max_value": {
+          "type": "number",
+          "description": "Maximum value, inclusive. Omit for no maximum. Should be within the signal definition's range when declared."
+        }
+      },
+      "required": ["signal_ref", "value_type"],
+      "anyOf": [
+        { "required": ["min_value"] },
+        { "required": ["max_value"] }
+      ],
+      "additionalProperties": true
+    }
+  ]
+}

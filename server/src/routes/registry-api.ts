@@ -20,7 +20,8 @@ import { query } from "../db/client.js";
 import { resolvePrimaryOrganization } from "../db/users-db.js";
 import * as manifestRefsDb from "../db/manifest-refs-db.js";
 import { isUuid } from "../utils/uuid.js";
-import { bulkResolveRateLimiter, brandCreationRateLimiter, storyboardEvalRateLimiter, storyboardStepRateLimiter, agentReadRateLimiter, registryPublisherRateLimiter, registryReadRateLimiter } from "../middleware/rate-limit.js";
+import { AsyncSemaphore, SemaphoreOverloadedError } from "../utils/async-semaphore.js";
+import { bulkResolveRateLimiter, brandBulkDomainRateLimiter, brandCreationRateLimiter, storyboardEvalRateLimiter, storyboardStepRateLimiter, agentReadRateLimiter, registryPublisherRateLimiter, registryReadRateLimiter } from "../middleware/rate-limit.js";
 import { listStoryboards, getStoryboard, getTestKitForStoryboard } from "../services/storyboards.js";
 import {
   hostedComplianceTarget,
@@ -97,7 +98,7 @@ import {
 } from "../schemas/registry.js";
 
 import type { BrandManager } from "../brand-manager.js";
-import type { BrandDatabase } from "../db/brand-db.js";
+import { resolveBrandFromJson, type BrandDatabase } from "../db/brand-db.js";
 import type { PropertyDatabase } from "../db/property-db.js";
 import { CatalogDatabase } from "../db/catalog-db.js";
 import type { AdAgentsManager } from "../adagents-manager.js";
@@ -117,11 +118,16 @@ import { ComplianceDatabase, type LifecycleStage } from "../db/compliance-db.js"
 import { VERIFICATION_MODES, isVerificationMode } from "../services/adcp-taxonomy.js";
 import { AgentSnapshotDatabase } from "../db/agent-snapshot-db.js";
 import { resolveUserAgentAuth } from "./helpers/resolve-user-agent-auth.js";
-import { adaptAuthForSdk, type SdkAuth } from "../services/sdk-auth-adapter.js";
+import {
+  adaptAuthForSdk,
+  authForSdkDiscoveryProbe,
+  type SdkAuth,
+} from "../services/sdk-auth-adapter.js";
 import { parseOAuthClientCredentialsInput } from "./helpers/oauth-client-credentials-input.js";
 import { isOAuthRequiredErrorMessage } from "./helpers/oauth-error-detection.js";
 import { AgentContextDatabase, validateAuthTokenChars } from "../db/agent-context-db.js";
 import { normalizeBasicAuthForStorage } from "../utils/basic-auth-credentials.js";
+import { sdkSafeFetch, withSdkSafeTransport } from "../utils/sdk-safe-fetch.js";
 import { getRequestLog, getRequestCount, logOutboundRequest } from "../db/outbound-log-db.js";
 import { enrichUserWithMembership } from "../utils/html-config.js";
 import { classifyProbeError } from "../utils/probe-error.js";
@@ -147,6 +153,56 @@ type PublisherBrandSummary = {
   colors?: string[];
   industries?: string[];
 };
+
+const BRAND_LOGO_URL_MAX_LENGTH = 2048;
+const BRAND_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
+
+function normalizeBrandLogoUrl(value: unknown): string | null {
+  if (typeof value !== "string" || value.length === 0 || value.length > BRAND_LOGO_URL_MAX_LENGTH) {
+    return null;
+  }
+
+  // Reject markup-significant characters instead of relying on URL parsing to
+  // percent-encode them. Branding is rendered on multiple public surfaces, so
+  // keeping the stored value attribute-safe is useful defense in depth.
+  if (["\"", "'", "<", ">", "`", "\\"].some(char => value.includes(char))) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "https:" || parsed.username || parsed.password || !parsed.hostname) {
+      return null;
+    }
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+function isValidBrandColor(value: unknown): value is string {
+  return typeof value === "string" && BRAND_COLOR_PATTERN.test(value);
+}
+
+type BrandManifestBrandingError = "invalid_brand_data" | "unsafe_logo" | "unsafe_color";
+
+function validateBrandManifestBranding(
+  domain: string,
+  brandJson: Record<string, unknown>,
+): BrandManifestBrandingError | null {
+  try {
+    const resolvedBrand = resolveBrandFromJson(domain, brandJson, false);
+    if (resolvedBrand.logos?.some(logo => normalizeBrandLogoUrl(logo.url) === null)) {
+      return "unsafe_logo";
+    }
+    if (resolvedBrand.brand_color !== undefined && !isValidBrandColor(resolvedBrand.brand_color)) {
+      return "unsafe_color";
+    }
+    return null;
+  } catch {
+    return "invalid_brand_data";
+  }
+}
 
 type PublisherFormatSummary = {
   format_option_id?: string;
@@ -468,6 +524,18 @@ function extractDomain(raw: string): string {
 }
 
 const VALID_DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
+const BRAND_BULK_RESOLVE_MAX_DOMAINS = 25;
+const BRAND_BULK_PROCESS_CONCURRENCY = 10;
+// Four full requests may wait behind the in-flight batch. Past that the work
+// is queued longer than a caller will wait for it, so shed instead of growing.
+const BRAND_BULK_QUEUE_LIMIT = BRAND_BULK_RESOLVE_MAX_DOMAINS * 4;
+
+// Shared by every router instance in this process so simultaneous bulk
+// requests cannot multiply their per-request fan-out into unbounded work.
+const brandBulkResolveSemaphore = new AsyncSemaphore(
+  BRAND_BULK_PROCESS_CONCURRENCY,
+  BRAND_BULK_QUEUE_LIMIT,
+);
 
 function isValidDomain(domain: string): boolean {
   return domain.length <= 253 && VALID_DOMAIN_RE.test(domain);
@@ -495,6 +563,27 @@ export interface RegistryApiConfig {
   };
   requireAuth?: RequestHandler;
   optionalAuth?: RequestHandler;
+}
+
+function serializeBrandValidation(
+  validation: Awaited<ReturnType<RegistryApiConfig['brandManager']['validateDomain']>>
+) {
+  const truncate = (value: string) => value.length > 500 ? `${value.slice(0, 497)}...` : value;
+  return {
+    valid: validation.valid,
+    url: validation.url,
+    status_code: validation.status_code,
+    errors: validation.errors.slice(0, 20).map((issue) => ({
+      field: truncate(issue.field),
+      message: truncate(issue.message),
+      severity: issue.severity,
+    })),
+    warnings: validation.warnings.slice(0, 20).map((warning) => ({
+      field: truncate(warning.field),
+      message: truncate(warning.message),
+      ...(warning.suggestion ? { suggestion: truncate(warning.suggestion) } : {}),
+    })),
+  };
 }
 
 // ── Helpers ─────────────────────────────────────────────────────
@@ -539,18 +628,29 @@ registry.registerPath({
   path: "/api/brands/resolve",
   operationId: "resolveBrand",
   summary: "Resolve brand",
-  description:
-    "Resolve a domain to its canonical brand identity. Follows brand.json redirects and returns the resolved brand with its house, architecture type, and optional manifest.",
+  description: [
+    "Resolve a domain to its canonical brand identity. Follows brand.json redirects and returns the resolved brand with its house, architecture type, and optional manifest. The domain must be a bare DNS hostname.",
+    "",
+    "A domain is authoritative for its own identity, so `source` tells you who published the record and `relationship_trust` tells you whether a brand-to-house relationship was confirmed by both sides. Only `mutual` and `inline` are reciprocated; treat everything else as a claim.",
+    "Record selection is deterministic: `hosted` > `brand_json` > `community` > `enriched`. `source` reports provenance only and must not be used as a substitute for `relationship_trust`.",
+    "The v3 hierarchy is one level deep. There is no ordered-chain endpoint: third-party verifiers use the reciprocated `house_domain` edge returned here. `claimed_house_domain` is unilateral and never extends trust.",
+    "",
+    "**Rate limit:** 60 requests per minute per IP address.",
+  ].join("\n"),
   tags: ["Brand Resolution"],
   request: {
     query: z.object({
       domain: z.string().openapi({ example: "acmecorp.com" }),
-      fresh: z.enum(["true", "false"]).optional(),
+      fresh: z.enum(["true", "false"]).optional().openapi({
+        description: "Bypass the resolution cache and refetch from the origin. When a fresh fetch fails and a stored record is returned instead, `live_brand_json` carries that fetch's diagnostics.",
+      }),
     }),
   },
   responses: {
     200: { description: "Brand resolved successfully", content: { "application/json": { schema: ResolvedBrandSchema } } },
+    400: { description: "Invalid or missing domain", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "Brand not found", content: { "application/json": { schema: z.object({ error: z.string(), domain: z.string(), file_status: z.number().optional().openapi({ description: "HTTP status code from brand.json fetch (e.g. 404 vs 200 with invalid data)" }) }) } } },
+    429: { description: "Rate limit exceeded", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -559,15 +659,21 @@ registry.registerPath({
   path: "/api/brands/resolve/bulk",
   operationId: "resolveBrandsBulk",
   summary: "Bulk resolve brands",
-  description:
-    "Resolve up to 100 domains to their canonical brand identities in a single request.\n\n**Rate limit:** 20 requests per minute per IP address.",
+  description: [
+    `Resolve up to ${BRAND_BULK_RESOLVE_MAX_DOMAINS} domains to their canonical brand identities in a single request. Unresolvable domains map to \`null\`.`,
+    "",
+    "**Rate limits:** 20 requests and 100 unique domain resolutions per minute per IP address. Request bodies are capped at 16 KB.",
+  ].join("\n"),
   tags: ["Brand Resolution"],
   request: {
-    body: { content: { "application/json": { schema: z.object({ domains: z.array(z.string()).max(100) }) } } },
+    body: { content: { "application/json": { schema: z.object({ domains: z.array(z.string()).max(BRAND_BULK_RESOLVE_MAX_DOMAINS) }) } } },
   },
   responses: {
     200: { description: "Bulk resolution results", content: { "application/json": { schema: z.object({ results: z.record(z.string(), ResolvedBrandSchema.nullable()) }) } } },
+    400: { description: "Invalid domain list", content: { "application/json": { schema: ErrorSchema } } },
+    413: { description: "Request body over 16 KB", content: { "application/json": { schema: ErrorSchema } } },
     429: { description: "Rate limit exceeded", content: { "application/json": { schema: ErrorSchema } } },
+    503: { description: "Too much resolution work is already queued", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -576,7 +682,7 @@ registry.registerPath({
   path: "/api/brands/brand-json",
   operationId: "getBrandJson",
   summary: "Get brand.json",
-  description: "Fetch the raw brand.json file for a domain.",
+  description: "Fetch the raw brand.json file for a bare DNS hostname.\n\n**Rate limit:** 60 requests per minute per IP address.",
   tags: ["Brand Resolution"],
   request: {
     query: z.object({
@@ -585,8 +691,43 @@ registry.registerPath({
     }),
   },
   responses: {
-    200: { description: "Raw brand.json data", content: { "application/json": { schema: z.object({ domain: z.string(), url: z.string(), variant: z.string().optional(), data: z.record(z.string(), z.unknown()), warnings: z.array(z.string()).optional() }) } } },
+    200: {
+      description: "Raw brand.json data",
+      content: {
+        "application/json": {
+          schema: z.object({
+            domain: z.string(),
+            url: z.string(),
+            variant: z.string().optional(),
+            data: z.record(z.string(), z.unknown()),
+            warnings: z.array(z.object({
+              field: z.string(),
+              message: z.string(),
+              suggestion: z.string().optional(),
+            })).optional(),
+            promoted_from_schema: z.string().optional(),
+            live_brand_json: z.object({
+              valid: z.boolean(),
+              url: z.string(),
+              status_code: z.number().int().optional(),
+              errors: z.array(z.object({
+                field: z.string(),
+                message: z.string(),
+                severity: z.literal("error"),
+              })),
+              warnings: z.array(z.object({
+                field: z.string(),
+                message: z.string(),
+                suggestion: z.string().optional(),
+              })),
+            }).optional(),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid or missing domain", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "Brand not found", content: { "application/json": { schema: ErrorSchema } } },
+    429: { description: "Rate limit exceeded", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -744,6 +885,98 @@ function stripLegacyBrandContext(manifest: unknown): Record<string, unknown> | u
   if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) return undefined;
   const { brand_context: _brandContext, ...publicManifest } = manifest as Record<string, unknown>;
   return publicManifest;
+}
+
+function storedBrandJsonVariant(
+  manifest: Record<string, unknown> | undefined,
+): 'house_portfolio' | 'brand_canonical' | undefined {
+  if (!manifest) return undefined;
+  if (
+    manifest.house &&
+    typeof manifest.house === 'object' &&
+    !Array.isArray(manifest.house) &&
+    (Array.isArray(manifest.brands) || Array.isArray(manifest.brand_refs))
+  ) {
+    return 'house_portfolio';
+  }
+  if (typeof manifest.id === 'string' && Array.isArray(manifest.names)) {
+    return 'brand_canonical';
+  }
+  return undefined;
+}
+
+/**
+ * `hosted` means a verified owner registered the row. Same definition as the
+ * registry listing's `OWNER_HOSTED_SQL` — keep the two in step.
+ */
+function resolvedStoredBrandSource(brand: {
+  workos_organization_id?: string;
+  domain_verified?: boolean;
+  source_type: 'brand_json' | 'community' | 'enriched';
+}): 'hosted' | 'brand_json' | 'community' | 'enriched' {
+  return brand.workos_organization_id && brand.domain_verified === true
+    ? 'hosted'
+    : brand.source_type;
+}
+
+type ResolvedBrandResponse = z.infer<typeof ResolvedBrandSchema>;
+type StoredBrandResolutionRecord = NonNullable<
+  Awaited<ReturnType<BrandDatabase["getDiscoveredBrandByDomain"]>>
+>;
+
+const RESOLVED_BRAND_SOURCE_PRIORITY: Record<ResolvedBrandResponse["source"], number> = {
+  hosted: 1,
+  brand_json: 2,
+  community: 3,
+  enriched: 4,
+};
+
+function storedBrandResolutionResponse(
+  brand: StoredBrandResolutionRecord,
+  liveValidation?: ReturnType<typeof serializeBrandValidation>,
+): ResolvedBrandResponse {
+  return {
+    canonical_id: brand.canonical_domain || brand.domain,
+    canonical_domain: brand.canonical_domain || brand.domain,
+    brand_name: brand.brand_name || brand.domain,
+    ...(brand.brand_names?.length ? { names: brand.brand_names } : {}),
+    ...(brand.keller_type ? { keller_type: brand.keller_type } : {}),
+    ...(brand.parent_brand ? { parent_brand: brand.parent_brand } : {}),
+    ...(brand.brand_agent_url ? { brand_agent_url: brand.brand_agent_url } : {}),
+    source: resolvedStoredBrandSource(brand),
+    brand_manifest: stripLegacyBrandContext(brand.brand_manifest),
+    ...(liveValidation ? { live_brand_json: liveValidation } : {}),
+  };
+}
+
+/**
+ * Select the actual response candidate, not just its label. Default reads use
+ * the durable stored candidate on a source-priority tie so every pod returns
+ * the same document. `fresh=true` lets a successful live read win a tie, while
+ * a strictly higher-provenance stored record (for example `hosted`) still wins.
+ */
+function selectResolvedBrandResponse(
+  live: ResolvedBrandResponse,
+  stored: StoredBrandResolutionRecord | null,
+  fresh: boolean,
+): ResolvedBrandResponse {
+  // A private or orphaned row is not a public resolution candidate. In
+  // particular, it must never replace a valid live-origin response merely
+  // because its provenance would otherwise rank higher.
+  if (!stored || stored.manifest_orphaned || stored.is_public === false) return live;
+  const storedCandidate = storedBrandResolutionResponse(stored);
+  const storedPriority = RESOLVED_BRAND_SOURCE_PRIORITY[storedCandidate.source];
+  const livePriority = RESOLVED_BRAND_SOURCE_PRIORITY[live.source];
+  if (storedPriority > livePriority || (storedPriority === livePriority && fresh)) {
+    return live;
+  }
+
+  // Identity provenance and persisted identity fields come from the selected
+  // stored winner. Relationship trust, verification timestamps, and promotion
+  // diagnostics are computed by the live resolver for the requested domain;
+  // retain them instead of collapsing a verified edge to "unknown" merely
+  // because a higher-provenance stored identity exists.
+  return { ...live, ...storedCandidate };
 }
 
 registry.registerPath({
@@ -1967,16 +2200,213 @@ const RegistryFeedFreshnessSchema = z.object({
   }),
 });
 
-const RegistryFeedPageSchema = z.object({
-  events: z.array(z.object({
+// --- Feed event payloads, typed per event family ---------------------------
+// The change feed carries one `payload` shape per event family. Typing them
+// (rather than an opaque object) lets consumers route on `publisher_domain` /
+// `agent_url` without hand-casting. Fields that appear on only some members of
+// a family (e.g. `*.merged` carries `alias_rid`/`canonical_rid` in place of
+// `identifiers`) are optional on the family schema.
+
+const ComplianceTrackStatusSchema = z.enum(["pass", "fail", "partial", "skip", "silent", "warning", "unknown", "skipped"]);
+
+const ComplianceStoryboardStatusSchema = z
+  .object({
+    storyboard_id: z.string(),
+    status: z.string(),
+    steps_passed: z.number().int().nonnegative().optional(),
+    steps_total: z.number().int().nonnegative().optional(),
+  })
+  .passthrough();
+
+const ChangedFieldsSchema = z.array(z.string()).min(1);
+
+const AgentEventPayloadSchema = z
+  .object({
+    agent_url: z.string().openapi({ description: "Canonical agent URL; the routing key for agent.* events (agents span many publishers)." }),
+    name: z.string().optional(),
+    type: z.string().optional(),
+    channels: z.array(z.string()).optional(),
+    property_types: z.array(z.string()).optional(),
+    markets: z.array(z.string()).optional(),
+    categories: z.array(z.string()).optional(),
+    category_taxonomy: z.string().nullable().optional(),
+    tags: z.array(z.string()).optional(),
+    delivery_types: z.array(z.string()).optional(),
+    format_ids: z.array(z.string()).optional(),
+    property_count: z.number().int().optional(),
+    publisher_count: z.number().int().optional(),
+    has_tmp: z.boolean().optional(),
+    updated_at: z.string().optional(),
+    changed_fields: ChangedFieldsSchema.optional(),
+    inventory_profile: z.record(z.string(), z.unknown()).optional().openapi({ description: "On agent.profile_updated: the agent's refreshed inventory profile." }),
+    compliance_summary: z.record(z.string(), z.unknown()).optional(),
+    previous_status: z.string().optional().openapi({ description: "On agent.compliance_changed: prior compliance/verification status." }),
+    current_status: z.string().optional().openapi({ description: "On agent.compliance_changed: new compliance/verification status." }),
+    headline: z.string().nullable().optional().openapi({ description: "On agent.compliance_changed: human-readable summary of the compliance transition." }),
+    tracks: z.record(z.string(), ComplianceTrackStatusSchema).optional().openapi({ description: "On agent.compliance_changed: map of compliance track id to track status." }),
+    storyboards_passing: z.number().int().nonnegative().optional(),
+    storyboards_total: z.number().int().nonnegative().optional(),
+    storyboards: z.array(ComplianceStoryboardStatusSchema).optional(),
+    role: z.string().optional().openapi({ description: "On agent.verification_earned/lost: verified role affected by the badge transition." }),
+    verified_specialisms: z.array(z.string()).optional().openapi({ description: "On agent.verification_earned: specialisms covered by the earned badge." }),
+    reason: z.string().optional().openapi({ description: "On agent.verification_lost: reason the badge was revoked." }),
+    adcp_version: z.string().optional().openapi({ description: "On agent.verification_earned/lost: AdCP version the badge applies to, when known." }),
+  })
+  .passthrough()
+  .openapi("AgentEventPayload");
+
+const PropertyEventPayloadSchema = z
+  .object({
+    property_rid: z.string().optional(),
+    publisher_domain: z.string().optional().openapi({ description: "Publisher domain that owns the property; the routing key for property.* events." }),
+    identifiers: z.array(PropertyIdentifierSchema).optional(),
+    classification: z.string().optional(),
+    source: z.enum(["authoritative", "enriched", "contributed"]).optional(),
+    property: z.record(z.string(), z.unknown()).optional().openapi({ description: "Optional full post-change property object when available." }),
+    changed_fields: ChangedFieldsSchema.optional(),
+    last_resolved_at: z.string().optional().openapi({ description: "On property.stale: last successful resolution timestamp." }),
+    reactivated_at: z.string().optional().openapi({ description: "On property.reactivated: reactivation timestamp when available." }),
+    reason: z.string().optional().openapi({ description: "On property.stale: reason the property aged out of active resolution." }),
+    alias_rid: z.string().optional().openapi({ description: "On property.merged: the RID merged away." }),
+    canonical_rid: z.string().optional().openapi({ description: "On property.merged: the surviving RID." }),
+    evidence: z.string().optional(),
+  })
+  .passthrough()
+  .openapi("PropertyEventPayload");
+
+const CollectionEventPayloadSchema = z
+  .object({
+    collection_rid: z.string().optional(),
+    publisher_domain: z.string().optional().openapi({ description: "Publisher domain that owns the collection; the routing key for collection.* events." }),
+    collection_id: z.string().nullable().optional(),
+    name: z.string().nullable().optional(),
+    kind: z.string().nullable().optional(),
+    source: z.string().optional(),
+    status: z.string().optional(),
+    identifiers: z
+      .array(z.object({ publisher_domain: z.string(), type: z.string(), value: z.string() }))
+      .optional()
+      .openapi({ description: "Distribution identifiers; the per-identifier publisher_domain (e.g. youtube.com) is the distribution surface, distinct from the owning publisher_domain above." }),
+    collection: z.record(z.string(), z.unknown()).optional(),
+    changed_fields: ChangedFieldsSchema.optional(),
+    alias_rid: z.string().optional().openapi({ description: "On collection.merged: the RID merged away." }),
+    canonical_rid: z.string().optional().openapi({ description: "On collection.merged: the surviving RID." }),
+    evidence: z.string().optional(),
+  })
+  .passthrough()
+  .openapi("CollectionEventPayload");
+
+const AuthorizationEventPayloadSchema = z
+  .object({
+    id: z.string().uuid().optional().openapi({ description: "Registry authorization row id when the event is backed by a materialized effective authorization row." }),
+    agent_url: z.string(),
+    agent_url_canonical: z.string().optional().openapi({ description: "Registry-canonicalized form of agent_url for equality checks." }),
+    publisher_domain: z.string().openapi({ description: "Publisher domain the authorization applies to; the routing key for authorization.* events." }),
+    authorization_type: z.string().optional().openapi({ description: "Present on authorization.granted; authorization.revoked carries only agent_url + publisher_domain." }),
+    authorized_for: z.string().nullable().optional(),
+    property_ids: z.array(z.string()).optional(),
+    property_tags: z.array(z.string()).optional(),
+    properties: z.array(z.record(z.string(), z.unknown())).optional(),
+    publisher_properties: z.array(z.record(z.string(), z.unknown())).optional(),
+    property_rid: z.string().nullable().optional().openapi({ description: "Catalog property_rid for materialized per-property authorization rows. Null for publisher-wide rows." }),
+    property_id_slug: z.string().nullable().optional().openapi({ description: "Publisher-local property id for materialized per-property authorization rows." }),
+    placement_ids: z.array(z.string()).optional(),
+    placement_tags: z.array(z.string()).optional(),
+    collections: z
+      .array(z.object({ publisher_domain: z.string(), collection_ids: z.array(z.string()).min(1) }).passthrough())
+      .optional(),
+    countries: z.array(z.string()).optional(),
+    delegation_type: z.string().optional(),
+    exclusive: z.boolean().optional(),
+    effective_from: z.string().optional(),
+    effective_until: z.string().optional(),
+    signing_keys: z.array(z.record(z.string(), z.unknown())).optional(),
+    evidence: z.string().optional(),
+    disputed: z.boolean().optional(),
+    created_by: z.string().nullable().optional(),
+    expires_at: z.string().nullable().optional(),
+    created_at: z.string().nullable().optional(),
+    updated_at: z.string().nullable().optional(),
+    override_applied: z.boolean().optional(),
+    override_reason: z.string().nullable().optional(),
+  })
+  .passthrough()
+  .openapi("AuthorizationEventPayload");
+
+const PublisherEventPayloadSchema = z
+  .object({
+    publisher_domain: z.string().optional().openapi({ description: "Publisher domain whose adagents.json was discovered/changed; the routing key for publisher.* events." }),
+    domain: z.string().optional().openapi({ description: "Legacy alias for publisher_domain retained for early feed examples." }),
+    properties_added: z.number().int().nonnegative().optional(),
+    properties_removed: z.number().int().nonnegative().optional(),
+    agents_added: z.array(z.string()).optional(),
+    agents_removed: z.array(z.string()).optional(),
+    agent_count: z.number().int().optional(),
+    property_count: z.number().int().optional(),
+    collection_count: z.number().int().optional(),
+    discovery_method: z.string().optional(),
+    manager_domain: z.string().nullable().optional(),
+    source: z.string().optional(),
+  })
+  .passthrough()
+  .openapi("PublisherEventPayload");
+
+registry.register(
+  "BrandEventPayload",
+  z.object({
+    domain: z.string().optional().openapi({
+      description: "Brand domain; brand.* events are identified by entity_id (the brand) and carry hierarchy context here.",
+    }),
+    chain: z
+      .array(z.record(z.string(), z.unknown()))
+      .optional()
+      .openapi({ description: "On brand.resolved/hierarchy_updated: the resolved brand chain (root → leaf)." }),
+    ancestor_domains: z.array(z.string()).optional(),
+    domains: z.array(z.string()).optional(),
+  }),
+);
+
+// One arm per event_type, discriminated on `event_type`. Each arm ties the
+// literal type to its family payload so consumers narrow `payload` by switching
+// on `event_type`.
+const feedEventArm = <T extends string>(eventType: T, payload: z.ZodTypeAny) =>
+  z.object({
     event_id: z.string().uuid(),
-    event_type: z.string().openapi({ example: "property.created" }),
-    entity_type: z.string().openapi({ example: "property" }),
+    event_type: z.literal(eventType),
+    entity_type: z.string(),
     entity_id: z.string(),
-    payload: z.record(z.string(), z.unknown()),
+    payload,
     actor: z.string(),
     created_at: z.string().datetime(),
-  })),
+  });
+
+const RegistryFeedEventSchema = z
+  .discriminatedUnion("event_type", [
+    feedEventArm("agent.discovered", AgentEventPayloadSchema),
+    feedEventArm("agent.removed", AgentEventPayloadSchema),
+    feedEventArm("agent.profile_updated", AgentEventPayloadSchema),
+    feedEventArm("agent.compliance_changed", AgentEventPayloadSchema),
+    feedEventArm("agent.verification_earned", AgentEventPayloadSchema),
+    feedEventArm("agent.verification_lost", AgentEventPayloadSchema),
+    feedEventArm("property.created", PropertyEventPayloadSchema),
+    feedEventArm("property.updated", PropertyEventPayloadSchema),
+    feedEventArm("property.merged", PropertyEventPayloadSchema),
+    feedEventArm("property.stale", PropertyEventPayloadSchema),
+    feedEventArm("property.reactivated", PropertyEventPayloadSchema),
+    feedEventArm("collection.created", CollectionEventPayloadSchema),
+    feedEventArm("collection.updated", CollectionEventPayloadSchema),
+    feedEventArm("collection.merged", CollectionEventPayloadSchema),
+    feedEventArm("collection.removed", CollectionEventPayloadSchema),
+    feedEventArm("authorization.granted", AuthorizationEventPayloadSchema),
+    feedEventArm("authorization.revoked", AuthorizationEventPayloadSchema),
+    feedEventArm("authorization.modified", AuthorizationEventPayloadSchema),
+    feedEventArm("publisher.adagents_changed", PublisherEventPayloadSchema),
+    feedEventArm("publisher.adagents_discovered", PublisherEventPayloadSchema),
+  ])
+  .openapi("RegistryFeedEvent");
+
+const RegistryFeedPageSchema = z.object({
+  events: z.array(RegistryFeedEventSchema),
   cursor: z.string().uuid().nullable().openapi({ description: "Pass as cursor in the next request to continue polling" }),
   has_more: z.boolean(),
   freshness: RegistryFeedFreshnessSchema,
@@ -3368,9 +3798,21 @@ registry.registerPath({
           schema: z.object({
             domain: z.string().openapi({ example: "acmecorp.com" }),
             brand_name: z.string(),
-            brand_json: z.record(z.string(), z.any()).optional().openapi({ description: "Optional full brand.json draft to host in the registry" }),
-            logo_url: z.string().optional(),
-            brand_color: z.string().optional(),
+            brand_json: z.record(z.string(), z.any()).optional().openapi({
+              description: "Optional full brand.json draft to host in the registry. Every recognized logo URL must be an absolute HTTPS URL of at most 2048 characters without userinfo credentials, backslashes, or markup-significant characters. The primary brand color must use #RRGGBB format.",
+            }),
+            logo_url: z.string()
+              .url()
+              .max(BRAND_LOGO_URL_MAX_LENGTH)
+              .refine(value => normalizeBrandLogoUrl(value) !== null, "Logo URL must be an absolute HTTPS URL without credentials")
+              .optional()
+              .openapi({
+                description: "Absolute HTTPS URL for the brand logo. Userinfo credentials, backslashes, and markup-significant characters are not allowed.",
+                example: "https://cdn.example.com/brand/logo.svg",
+              }),
+            brand_color: z.string()
+              .regex(BRAND_COLOR_PATTERN, "Brand color must use #RRGGBB format")
+              .optional(),
           }),
         },
       },
@@ -3840,17 +4282,22 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     }
   });
 
-  router.get("/brands/resolve", async (req, res) => {
+  router.get("/brands/resolve", registryReadRateLimiter, async (req, res) => {
     try {
-      const domain = req.query.domain as string;
+      const domain = typeof req.query.domain === 'string'
+        ? req.query.domain.trim().toLowerCase()
+        : '';
       const fresh = req.query.fresh === "true";
-      if (!domain) {
-        return res.status(400).json({ error: "domain parameter required" });
+      if (!isValidDomain(domain)) {
+        return res.status(400).json({ error: "Invalid domain format" });
       }
 
-      const resolved = await brandManager.resolveBrand(domain, { skipCache: fresh });
+      const resolution = await brandManager.resolveBrandWithDiagnostics(domain, { skipCache: fresh });
+      const resolved = resolution.brand;
+      const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
+      // Report why this request fell back, from this request's own attempt.
+      const liveValidation = fresh && !resolved ? resolution.last_attempt : undefined;
       if (!resolved) {
-        const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
         // Hide orphaned manifests and explicitly non-public rows. The manifest
         // is preserved server-side for adoption-at-claim-time but must not
         // surface on public read paths until the next claim is applied.
@@ -3858,19 +4305,16 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           registryRequestsDb
             .markResolved("brand", domain, discovered.canonical_domain || discovered.domain)
             .catch((err) => logger.debug({ err }, "Registry request tracking failed"));
-          return res.json({
-            canonical_id: discovered.canonical_domain || discovered.domain,
-            canonical_domain: discovered.canonical_domain || discovered.domain,
-            brand_name: discovered.brand_name,
-            source: discovered.source_type,
-            brand_manifest: stripLegacyBrandContext(discovered.brand_manifest),
-          });
+          return res.json(storedBrandResolutionResponse(
+            discovered,
+            liveValidation ? serializeBrandValidation(liveValidation) : undefined,
+          ));
         }
         registryRequestsDb
           .trackRequest("brand", domain)
           .catch((err) => logger.debug({ err }, "Registry request tracking failed"));
 
-        const validation = await brandManager.validateDomain(domain);
+        const validation = liveValidation ?? await brandManager.validateDomain(domain);
         return res.status(404).json({
           error: "Brand not found",
           domain,
@@ -3878,10 +4322,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         });
       }
 
+      const selected = selectResolvedBrandResponse(resolved, discovered, fresh);
       registryRequestsDb
-        .markResolved("brand", domain, resolved.canonical_domain)
+        .markResolved("brand", domain, selected.canonical_domain)
         .catch((err) => logger.debug({ err }, "Registry request tracking failed"));
-      return res.json(resolved);
+      return res.json(selected);
     } catch (error) {
       logger.error({ error }, "Failed to resolve brand");
       return res.status(500).json({ error: "Failed to resolve brand" });
@@ -3949,18 +4394,20 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     return enriched;
   }
 
-  router.get("/brands/brand-json", async (req, res) => {
+  router.get("/brands/brand-json", registryReadRateLimiter, async (req, res) => {
     try {
       const domain = ((req.query.domain as string) || "").toLowerCase();
       const fresh = req.query.fresh === "true";
-      const domainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
-      if (!domain || !domainPattern.test(domain)) {
+      if (!isValidDomain(domain)) {
         return res.status(400).json({ error: "Invalid domain format" });
       }
+
+      let liveValidation: Awaited<ReturnType<typeof brandManager.validateDomain>> | undefined;
 
       // If fresh=true, fetch live from external domain and update DB cache
       if (fresh) {
         const result = await brandManager.validateDomain(domain, { skipCache: true });
+        liveValidation = result;
         if (result.valid && result.raw_data) {
           const enrichedData = await enrichBrandDataWithVerification(result.raw_data);
           return res.json({
@@ -3969,6 +4416,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             variant: result.variant,
             data: enrichedData,
             warnings: result.warnings,
+            promoted_from_schema: result.promoted_from_schema,
           });
         }
         // Live fetch failed — fall through to DB cache
@@ -3981,12 +4429,22 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         const data = { name: brand.brand_name || domain, ...manifest };
         const enrichedData = await enrichBrandDataWithVerification(data);
 
-        const variant = brand.source_type === "brand_json" ? "house_portfolio" : undefined;
+        const variant = brand.source_type === "brand_json"
+          ? storedBrandJsonVariant(manifest)
+          : undefined;
         const url = brand.source_type === "brand_json"
           ? `https://${domain}/.well-known/brand.json`
           : `https://agenticadvertising.org/brands/${domain}/brand.json`;
 
-        return res.json({ domain, url, variant, data: enrichedData });
+        return res.json({
+          domain,
+          url,
+          variant,
+          data: enrichedData,
+          ...(liveValidation ? {
+            live_brand_json: serializeBrandValidation(liveValidation),
+          } : {}),
+        });
       }
 
       // Nothing in DB — try live fetch as last resort
@@ -3999,6 +4457,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           variant: result.variant,
           data: enrichedData,
           warnings: result.warnings,
+          promoted_from_schema: result.promoted_from_schema,
         });
       }
 
@@ -4099,48 +4558,49 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     }
   });
 
-  router.post("/brands/resolve/bulk", bulkResolveRateLimiter, async (req, res) => {
+  router.post("/brands/resolve/bulk", bulkResolveRateLimiter, brandBulkDomainRateLimiter, async (req, res) => {
     try {
       const { domains } = req.body;
 
       if (!Array.isArray(domains) || domains.length === 0) {
         return res.status(400).json({ error: "domains array required" });
       }
-      if (domains.length > 100) {
-        return res.status(400).json({ error: "Maximum 100 domains per request" });
+      if (domains.length > BRAND_BULK_RESOLVE_MAX_DOMAINS) {
+        return res.status(400).json({ error: `Maximum ${BRAND_BULK_RESOLVE_MAX_DOMAINS} domains per request` });
       }
-      if (!domains.every((d: unknown) => typeof d === "string" && d.length > 0)) {
-        return res.status(400).json({ error: "All domains must be non-empty strings" });
+      if (!domains.every((d: unknown) =>
+        typeof d === "string" && isValidDomain(d.trim().toLowerCase())
+      )) {
+        return res.status(400).json({ error: "All domains must be bare multi-label DNS hostnames" });
       }
 
-      const CONCURRENCY = 10;
       const results: Record<string, unknown> = {};
-      const uniqueDomains = [...new Set(domains.map((d: string) => d.toLowerCase()))];
+      const uniqueDomains = [...new Set(domains.map((d: string) => d.trim().toLowerCase()))];
 
-      for (let i = 0; i < uniqueDomains.length; i += CONCURRENCY) {
-        const batch = uniqueDomains.slice(i, i + CONCURRENCY);
+      for (let i = 0; i < uniqueDomains.length; i += BRAND_BULK_PROCESS_CONCURRENCY) {
+        const batch = uniqueDomains.slice(i, i + BRAND_BULK_PROCESS_CONCURRENCY);
         const settled = await Promise.allSettled(
           batch.map(async (domain) => {
-            const resolved = await brandManager.resolveBrand(domain);
+            const resolved = await brandBulkResolveSemaphore.run(
+              () => brandManager.resolveBrand(domain),
+            );
+            const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
             if (resolved) {
-              registryRequestsDb.markResolved("brand", domain, resolved.canonical_domain).catch((err) => logger.debug({ err }, "Registry request tracking failed"));
-              return { domain, result: resolved };
+              const selected = selectResolvedBrandResponse(resolved, discovered, false);
+              registryRequestsDb.markResolved("brand", domain, selected.canonical_domain).catch((err) => logger.debug({ err }, "Registry request tracking failed"));
+              return {
+                domain,
+                result: selected,
+              };
             }
 
-            const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
             // Hide orphaned manifests and explicitly non-public rows; same
             // rationale as the single-resolve route above.
             if (discovered && !discovered.manifest_orphaned && discovered.is_public !== false) {
               registryRequestsDb.markResolved("brand", domain, discovered.canonical_domain || discovered.domain).catch((err) => logger.debug({ err }, "Registry request tracking failed"));
               return {
                 domain,
-                result: {
-                  canonical_id: discovered.canonical_domain || discovered.domain,
-                  canonical_domain: discovered.canonical_domain || discovered.domain,
-                  brand_name: discovered.brand_name,
-                  source: discovered.source_type,
-                  brand_manifest: stripLegacyBrandContext(discovered.brand_manifest),
-                },
+                result: storedBrandResolutionResponse(discovered),
               };
             }
 
@@ -4152,12 +4612,24 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         for (const outcome of settled) {
           if (outcome.status === "fulfilled") {
             results[outcome.value.domain] = outcome.value.result;
+          } else if (outcome.reason instanceof SemaphoreOverloadedError) {
+            // Shedding one domain means the process is saturated; say so rather
+            // than returning a partial map that reads as unresolvable domains.
+            throw outcome.reason;
           }
         }
       }
 
       return res.json({ results });
     } catch (error) {
+      if (error instanceof SemaphoreOverloadedError) {
+        logger.warn({ ip: req.ip }, "Brand bulk resolve shed load");
+        res.setHeader("Retry-After", "5");
+        return res.status(503).json({
+          error: "Brand resolution is busy",
+          message: "Too much resolution work is already queued. Retry shortly.",
+        });
+      }
       logger.error({ error }, "Failed to bulk resolve brands");
       return res.status(500).json({ error: "Failed to bulk resolve brands" });
     }
@@ -5986,11 +6458,13 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
    */
   async function ensureAgentContextId(orgId: string, agentUrl: string, userId: string): Promise<string | null> {
     try {
-      let context = await agentContextDb.getByOrgAndUrl(orgId, agentUrl);
+      const canonicalUrl = canonicalizeAgentUrl(agentUrl);
+      if (!canonicalUrl) return null;
+      let context = await agentContextDb.getByOrgAndUrl(orgId, canonicalUrl);
       if (!context) {
         context = await agentContextDb.create({
           organization_id: orgId,
-          agent_url: agentUrl,
+          agent_url: canonicalUrl,
           created_by: userId,
         });
       }
@@ -6217,10 +6691,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
   router.post("/registry/agents/:encodedUrl/refresh", ...complianceWriteMiddleware, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
-      if (!validateAgentUrlParam(agentUrl)) {
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
       if (!req.user) {
         return res.status(401).json({ error: "Authentication required" });
       }
@@ -6515,10 +6990,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
   router.get("/registry/agents/:encodedUrl/auth-status", ...complianceWriteMiddleware, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
-      if (!validateAgentUrlParam(agentUrl)) {
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
 
       if (!req.user) {
         return res.status(401).json({ error: "Authentication required" });
@@ -6583,10 +7059,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
   router.put("/registry/agents/:encodedUrl/connect", brandCreationRateLimiter, ...complianceWriteMiddleware, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
-      if (!validateAgentUrlParam(agentUrl)) {
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
 
       if (!req.user) {
         return res.status(401).json({ error: "Authentication required" });
@@ -6703,10 +7180,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     ...complianceWriteMiddleware,
     async (req, res) => {
       try {
-        const agentUrl = decodeURIComponent(req.params.encodedUrl);
-        if (!validateAgentUrlParam(agentUrl)) {
+        const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateAgentUrlParam(rawAgentUrl)) {
           return res.status(400).json({ error: "Invalid agent URL" });
         }
+        const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
         if (!req.user) {
           return res.status(401).json({ error: "Authentication required" });
         }
@@ -6788,10 +7266,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     ...complianceWriteMiddleware,
     async (req, res) => {
       try {
-        const agentUrl = decodeURIComponent(req.params.encodedUrl);
-        if (!validateAgentUrlParam(agentUrl)) {
+        const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateAgentUrlParam(rawAgentUrl)) {
           return res.status(400).json({ error: "Invalid agent URL" });
         }
+        const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
         if (!req.user) {
           return res.status(401).json({ error: "Authentication required" });
         }
@@ -6808,7 +7287,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
         const start = Date.now();
         try {
-          await exchangeClientCredentials(creds);
+          await exchangeClientCredentials(creds, { fetch: sdkSafeFetch });
           return res.json({ ok: true, latency_ms: Date.now() - start });
         } catch (err) {
           if (err instanceof ClientCredentialsExchangeError) {
@@ -6886,10 +7365,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
   });
 
   router.get("/registry/agents/:encodedUrl/applicable-storyboards", storyboardEvalRateLimiter, ...complianceWriteMiddleware, async (req, res) => {
-    const agentUrl = decodeURIComponent(req.params.encodedUrl);
-    if (!validateAgentUrlParam(agentUrl)) {
+    const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+    if (!validateAgentUrlParam(rawAgentUrl)) {
       return res.status(400).json({ error: "Invalid agent URL" });
     }
+    const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
 
     if (!req.user) {
       return res.status(401).json({ error: "Authentication required" });
@@ -6903,12 +7383,13 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     try {
       const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
       const sdkAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `test-agent:${agentUrl}` });
+      const probeAuth = authForSdkDiscoveryProbe(sdkAuth);
 
       let profile;
       try {
         const caps = await testCapabilityDiscovery(
           agentUrl,
-          { ...(sdkAuth && { auth: sdkAuth }) },
+          withSdkSafeTransport({ ...(probeAuth && { auth: probeAuth }) }),
         );
         profile = caps.profile;
 
@@ -7079,9 +7560,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         }
 
         let authProbeTask: string | undefined;
-        if (sdkAuth?.type === 'bearer' || sdkAuth?.type === 'basic') {
+        if (sdkAuth) {
           try {
-            const caps = await testCapabilityDiscovery(agentUrl, withHostedTestOptions({ auth: sdkAuth }, runTarget));
+            const caps = await testCapabilityDiscovery(
+              agentUrl,
+              withSdkSafeTransport(withHostedTestOptions({ auth: sdkAuth }, runTarget)),
+            );
             authProbeTask = hostedAuthProbeTaskForProfile(caps.profile);
           } catch (err) {
             logger.warn({ err, agentUrl }, "Could not infer hosted auth probe task for storyboard step; using default");
@@ -7096,10 +7580,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           return res.status(400).json({ error: "context too large" });
         }
 
-        const result = await runStoryboardStep(agentUrl, storyboard, req.params.stepId, withHostedStoryboardRunOptions({
-          ...(sdkAuth && { auth: sdkAuth }),
-          ...(context && { context }),
-        }, runTarget, authProbeTask));
+        const result = await runStoryboardStep(
+          agentUrl,
+          storyboard,
+          req.params.stepId,
+          withSdkSafeTransport(withHostedStoryboardRunOptions({
+            ...(sdkAuth && { auth: sdkAuth }),
+            ...(context && { context }),
+          }, runTarget, authProbeTask)),
+        );
 
         if (!result.passed && isOAuthRequiredErrorMessage(result.error)) {
           const agentContextId = await ensureAgentContextId(orgId, agentUrl, req.user.id);
@@ -8687,7 +9176,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         name: "discovery-client",
         agent_uri: url,
         protocol: "mcp",
-      });
+      }, withSdkSafeTransport({}));
 
       const agentInfo = await client.getAgentInfo();
       const tools = agentInfo.tools || [];
@@ -8707,7 +9196,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       try {
         if (agentInfo.protocol === "mcp") {
           const a2aUrl = new URL("/.well-known/agent.json", url).toString();
-          const a2aResponse = await fetch(a2aUrl, {
+          const a2aResponse = await sdkSafeFetch(a2aUrl, {
             headers: { Accept: "application/json" },
             signal: AbortSignal.timeout(3000),
           });
@@ -8723,7 +9212,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
       if (agentType === "creative") {
         try {
-          const creativeClient = new CreativeAgentClient({ agentUrl: url });
+          const creativeClient = new CreativeAgentClient(withSdkSafeTransport({ agentUrl: url }));
           const formats = await creativeClient.listFormats();
           stats.format_count = formats.length;
         } catch (statsError) {
@@ -8764,7 +9253,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     }
 
     try {
-      const creativeClient = new CreativeAgentClient({ agentUrl: url });
+      const creativeClient = new CreativeAgentClient(withSdkSafeTransport({ agentUrl: url }));
       const formats = await creativeClient.listFormats();
 
       return res.json({
@@ -8806,7 +9295,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         name: "products-discovery-client",
         agent_uri: url,
         protocol: "mcp",
-      });
+      }, withSdkSafeTransport({}));
 
       const result = await client.getProducts({ buying_mode: 'wholesale' });
       const products = result.data?.products || [];
@@ -8901,11 +9390,32 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       return res.status(400).json({ error: "brand_json exceeds maximum size (100KB)" });
     }
 
+    const normalizedLogoUrl = logo_url === undefined ? undefined : normalizeBrandLogoUrl(logo_url);
+    if (logo_url !== undefined && normalizedLogoUrl === null) {
+      return res.status(400).json({ error: "logo_url must be an absolute HTTPS URL without credentials" });
+    }
+    if (brand_color !== undefined && !isValidBrandColor(brand_color)) {
+      return res.status(400).json({ error: "brand_color must use #RRGGBB format" });
+    }
+
     const domain = extractDomain(rawDomain).replace(/^www\./, "");
 
     const domainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
     if (!domainPattern.test(domain)) {
       return res.status(400).json({ error: "Invalid domain format" });
+    }
+
+    if (brand_json !== undefined) {
+      const brandingError = validateBrandManifestBranding(domain, brand_json as Record<string, unknown>);
+      if (brandingError === "unsafe_logo") {
+        return res.status(400).json({ error: "brand_json logo URLs must be absolute HTTPS URLs without credentials" });
+      }
+      if (brandingError === "unsafe_color") {
+        return res.status(400).json({ error: "brand_json primary brand color must use #RRGGBB format" });
+      }
+      if (brandingError === "invalid_brand_data") {
+        return res.status(400).json({ error: "brand_json contains invalid brand data" });
+      }
     }
 
     try {
@@ -8953,9 +9463,16 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         // Otherwise build a minimal entry from the request params.
         let brandJson: Record<string, unknown>;
         const manifest = discovered?.brand_manifest as Record<string, unknown> | undefined;
+        const canAdoptDiscoveredManifest = !!(
+          manifest
+          && discovered!.review_status !== 'pending'
+          && typeof manifest.house === 'object'
+          && manifest.house !== null
+          && validateBrandManifestBranding(domain, manifest) === null
+        );
         if (brand_json) {
           brandJson = brand_json as Record<string, unknown>;
-        } else if (manifest && discovered!.review_status !== 'pending' && typeof manifest.house === 'object' && manifest.house !== null) {
+        } else if (canAdoptDiscoveredManifest) {
           brandJson = manifest;
         } else {
           const brandId = brand_name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
@@ -8964,7 +9481,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             keller_type: 'master',
             names: [{ en: brand_name }],
           };
-          if (logo_url) brandEntry.logos = [{ url: logo_url }];
+          if (normalizedLogoUrl) brandEntry.logos = [{ url: normalizedLogoUrl }];
           if (brand_color) brandEntry.colors = { primary: brand_color };
           brandJson = {
             house: { domain, name: brand_name },

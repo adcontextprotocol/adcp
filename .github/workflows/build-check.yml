@@ -2,9 +2,9 @@ name: Build Check
 
 on:
   pull_request:
-    branches: [main, develop, '3.0.x', '2.6.x']
+    branches: [main, develop, '3.1.x', '3.0.x', '2.6.x']
   push:
-    branches: [main, develop, '3.0.x', '2.6.x']
+    branches: [main, develop, '3.1.x', '3.0.x', '2.6.x']
 
 concurrency:
   group: build-check-${{ github.ref }}
@@ -24,7 +24,7 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -150,7 +150,7 @@ jobs:
       - uses: actions/checkout@v7.0.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'

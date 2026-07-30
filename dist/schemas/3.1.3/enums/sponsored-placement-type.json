@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.3/enums/sponsored-placement-type.json",
+  "title": "Sponsored Placement Type",
+  "description": "Declared sponsored-placement classification for catalog-driven retail-media inventory, distinguishing where the sponsored placement renders on the retailer surface. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.",
+  "type": "string",
+  "enum": [
+    "sponsored_search",
+    "sponsored_display",
+    "sponsored_native"
+  ],
+  "enumDescriptions": {
+    "sponsored_search": "Sponsored placements rendered against retailer on-site search results, keyed to the shopper's query (e.g., Amazon Sponsored Products on search, Walmart Connect Sponsored Search).",
+    "sponsored_display": "Sponsored placements rendered in display slots across retailer browse, category, and product-detail pages outside the search results stream (e.g., Criteo Sponsored Display, Amazon Sponsored Display on-site).",
+    "sponsored_native": "Sponsored placements rendered using the retailer's native in-grid product template, blending into the organic product listing (e.g., CitrusAd native product cards, Pinterest catalog-driven collections)."
+  }
+}

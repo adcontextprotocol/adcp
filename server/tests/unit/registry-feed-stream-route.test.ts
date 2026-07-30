@@ -14,6 +14,7 @@ vi.mock('../../src/middleware/rate-limit.js', () => {
   const pass: import('express').RequestHandler = (_req, _res, next) => next();
   return {
     bulkResolveRateLimiter: pass,
+    brandBulkDomainRateLimiter: pass,
     brandCreationRateLimiter: pass,
     storyboardEvalRateLimiter: pass,
     storyboardStepRateLimiter: pass,

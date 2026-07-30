@@ -84,16 +84,24 @@ export async function getMemberCapabilities(
       `SELECT
         (SELECT COUNT(DISTINCT wg.id) FROM working_groups wg
          WHERE wg.committee_type = 'working_group'
+         AND wg.status = 'active'
          AND (
-           EXISTS(SELECT 1 FROM working_group_memberships wgm WHERE wgm.working_group_id = wg.id AND wgm.workos_user_id = $1)
+           EXISTS(SELECT 1 FROM working_group_memberships wgm
+                  WHERE wgm.working_group_id = wg.id
+                    AND wgm.workos_user_id = $1
+                    AND wgm.status = 'active')
            OR EXISTS(SELECT 1 FROM working_group_leaders wgl
                      LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id AND sm.workos_user_id IS NOT NULL
                      WHERE wgl.working_group_id = wg.id AND (wgl.user_id = $1 OR sm.workos_user_id = $1))
          )) as wg_count,
         (SELECT COUNT(DISTINCT wg.id) FROM working_groups wg
          WHERE wg.committee_type = 'council'
+         AND wg.status = 'active'
          AND (
-           EXISTS(SELECT 1 FROM working_group_memberships wgm WHERE wgm.working_group_id = wg.id AND wgm.workos_user_id = $1)
+           EXISTS(SELECT 1 FROM working_group_memberships wgm
+                  WHERE wgm.working_group_id = wg.id
+                    AND wgm.workos_user_id = $1
+                    AND wgm.status = 'active')
            OR EXISTS(SELECT 1 FROM working_group_leaders wgl
                      LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id AND sm.workos_user_id IS NOT NULL
                      WHERE wgl.working_group_id = wg.id AND (wgl.user_id = $1 OR sm.workos_user_id = $1))
@@ -136,7 +144,11 @@ export async function getMemberCapabilities(
 
     // Leadership
     query<{ is_leader: boolean }>(
-      `SELECT EXISTS(SELECT 1 FROM working_group_leaders WHERE user_id = $1) as is_leader`,
+      `SELECT EXISTS(
+         SELECT 1 FROM working_group_leaders wgl
+         JOIN working_groups wg ON wg.id = wgl.working_group_id
+         WHERE wgl.user_id = $1 AND wg.status = 'active'
+       ) as is_leader`,
       [workosUserId]
     ),
 

@@ -1,6 +1,7 @@
 import { PropertyDefinition, PlacementDefinition } from './types.js';
 import { AAO_UA_VALIDATOR } from './config/user-agents.js';
 import { safeFetchAxiosLike, classifySafeFetchError } from './utils/url-security.js';
+import { withSdkSafeTransport } from './utils/sdk-safe-fetch.js';
 import { canonicalizePublisherDomain } from './services/publisher-domain.js';
 
 const MCP_ACCEPT_HEADER = 'application/json, text/event-stream';
@@ -1741,7 +1742,7 @@ export class AdAgentsManager {
         name: 'Health Checker',
         agent_uri: agentUrl,
         protocol: 'mcp',
-      }]);
+      }], withSdkSafeTransport({ userAgent: AAO_UA_VALIDATOR }));
       const client = multiClient.agent('health-check');
 
       // Add timeout to prevent hanging on slow/unresponsive agents

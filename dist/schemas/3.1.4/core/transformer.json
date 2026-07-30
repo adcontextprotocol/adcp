@@ -1,0 +1,137 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.4/core/transformer.json",
+  "title": "Transformer",
+  "description": "An agent-offered, account-scoped, selectable unit of creative build capability — the creative analog of a media-buy product. A transformer maps input formats to output formats and exposes typed configuration `params[]`. Discovered via list_transformers and selected by `transformer_id` in build_creative. The agent chooses granularity: a distinct voice or model may be its own transformer, or a single transformer may expose `voice`/`model` as an enumerable param. Whether something is a distinct transformer vs. a param is the agent's call — surface separately-priced or capability-distinct alternatives as transformers; keep scalar dials as params.",
+  "type": "object",
+  "properties": {
+    "transformer_id": {
+      "type": "string",
+      "x-entity": "transformer",
+      "description": "Stable identifier for this transformer within the agent. Pass to build_creative `transformer_id` to select it."
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable transformer name (e.g. 'Voiceover — Isaac', 'Veo 3 text-to-video')."
+    },
+    "description": {
+      "type": "string",
+      "description": "Plain-text explanation of what this transformer produces and how."
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Transformer-specific attributes a buyer can filter or display (e.g. provider, modality, language).",
+      "additionalProperties": true
+    },
+    "voice_synthesis_ref": {
+      "type": "array",
+      "description": "Optional discovery/audit anchors for voice transformers provisioned from brand-agent voice_synthesis entries. Informational only: these references help buyers match a discovered transformer to brand/rights-agent provenance, but they do not assert build-time authorization or require the creative agent to perform rights-token validation.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "brand_agent": {
+            "type": "object",
+            "description": "Brand agent that exposed the referenced voice_synthesis entry.",
+            "properties": {
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "description": "MCP endpoint URL of the brand agent."
+              },
+              "id": {
+                "type": "string",
+                "description": "Agent identifier."
+              }
+            },
+            "required": ["url", "id"],
+            "additionalProperties": true
+          },
+          "voice_id": {
+            "type": "string",
+            "description": "voice_synthesis.voice_id from the brand agent."
+          },
+          "rights_id": {
+            "type": "string",
+            "x-entity": "rights_grant",
+            "description": "Optional rights offering or grant identifier associated with this provisioned voice. This is provenance metadata only, not a build_creative rights token."
+          }
+        },
+        "required": ["brand_agent", "voice_id"],
+        "additionalProperties": true
+      },
+      "minItems": 1
+    },
+    "input_format_ids": {
+      "type": "array",
+      "description": "Formats this transformer accepts as input. Empty or omitted means it builds from a brief / raw assets (pure generation) rather than transforming an existing creative.",
+      "items": { "$ref": "/schemas/3.1.4/core/format-id.json" }
+    },
+    "output_format_ids": {
+      "type": "array",
+      "description": "Formats this transformer can produce. A build_creative request's target format(s) MUST be a subset of these.",
+      "items": { "$ref": "/schemas/3.1.4/core/format-id.json" },
+      "minItems": 1
+    },
+    "params": {
+      "type": "array",
+      "description": "Configuration knobs this transformer exposes. The buyer supplies values in build_creative `config`, keyed by each param's `field`. Enumerable param values (e.g. account-specific voices) are returned only when requested via list_transformers `expand_params`.",
+      "items": { "$ref": "/schemas/3.1.4/core/transformer-param.json" }
+    },
+    "pricing_options": {
+      "type": "array",
+      "description": "Per-account rate-card options for using this transformer. Present when the list_transformers request set include_pricing=true with an account. The applied option is echoed back per-leaf on the build_creative response and reconciled via report_usage.",
+      "items": { "$ref": "/schemas/3.1.4/core/vendor-pricing-option.json" },
+      "minItems": 1
+    },
+    "multiplicity": {
+      "type": "object",
+      "description": "Optional per-transformer fan-out limits that NARROW the agent-level get_adcp_capabilities `creative.multiplicity`. Same shape as the agent-level object. When present, this transformer's authoritative; its ceilings (max_creatives_limit / max_variants_limit) MUST NOT exceed the agent ceilings, and its variant_dimensions MUST be a subset of the agent's. Omit to inherit the agent-level capability unchanged.",
+      "properties": {
+        "supports_catalog_fanout": { "type": "boolean", "default": false, "description": "Whether this transformer accepts max_creatives." },
+        "max_creatives_limit": { "type": "integer", "minimum": 1, "description": "Per-transformer ceiling on max_creatives (≤ the agent ceiling)." },
+        "supports_variants": { "type": "boolean", "default": false, "description": "Whether this transformer accepts max_variants > 1 / variant_axis." },
+        "max_variants_limit": { "type": "integer", "minimum": 1, "description": "Per-transformer ceiling on max_variants (≤ the agent ceiling)." },
+        "variant_dimensions": {
+          "type": "array",
+          "description": "Variant axis dimensions this transformer supports (⊆ the agent's).",
+          "items": { "type": "string", "enum": ["voice", "theme", "best_of_n", "transformer_config", "custom"] },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "required": ["transformer_id", "name", "output_format_ids"],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "transformer_id": "audiostack_voiceover",
+      "name": "Voiceover",
+      "description": "Script-to-audio voiceover with account-configured voices.",
+      "metadata": { "provider": "audiostack", "modality": "audio" },
+      "voice_synthesis_ref": [
+        {
+          "brand_agent": { "url": "https://brand.novabrands.example/mcp", "id": "nova_brand_agent" },
+          "voice_id": "sara",
+          "rights_id": "rgt_sara_voice_2026"
+        }
+      ],
+      "input_format_ids": [{ "agent_url": "https://creative.audiostack.example", "id": "script" }],
+      "output_format_ids": [{ "agent_url": "https://creative.audiostack.example", "id": "audio_vo" }],
+      "params": [
+        { "field": "voice", "type": "string", "value_source": "enumerable", "default": "sara", "description": "Narration voice, incl. custom voices." },
+        { "field": "mastering_preset", "type": "string", "value_source": "inline", "allowed_values": ["broadcast", "podcast", "music"], "default": "broadcast" },
+        { "field": "speaking_rate", "type": "number", "value_source": "range", "minimum": 0.5, "maximum": 2.0, "default": 1.0 }
+      ],
+      "pricing_options": [
+        {
+          "pricing_option_id": "vo_per_second_standard",
+          "model": "per_unit",
+          "unit": "second",
+          "unit_price": 0.05,
+          "currency": "USD"
+        }
+      ]
+    }
+  ]
+}

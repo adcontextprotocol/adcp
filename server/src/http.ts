@@ -25,6 +25,7 @@ import { AdAgentsManager } from "./adagents-manager.js";
 import { mountSchemasRoutes, mountComplianceRoutes, mountProtocolRoutes } from "./schemas-middleware.js";
 import { closeDatabase, getPool, healthCheck } from "./db/client.js";
 import { AuthenticationRequiredError, CreativeAgentClient, SingleAgentClient } from "@adcp/sdk";
+import { sdkSafeFetch, withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
 import type { Agent, AgentType, AgentWithStats, Company } from "./types.js";
 import { isValidAgentType, VALID_MEMBER_OFFERINGS, VALID_LEGAL_DOCUMENT_TYPES } from "./types.js";
 import type { Server } from "http";
@@ -54,6 +55,7 @@ import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain, getGoogleEmailAliases } from "./utils/email-domain.js";
 import { isUuid } from "./utils/uuid.js";
 import { resolveUserNameWithFallbacks, sanitizeName } from "./utils/resolve-user-name.js";
+import { scrubCommunityAuthorizedAgents } from "./utils/community-adagents.js";
 import { requireAuth, requireAdmin, requireGlobalAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, encodeDevSessionCookie, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter, newsletterSubscribeRateLimiter, newsletterConfirmRateLimiter } from "./middleware/rate-limit.js";
 import { findOrCreateUserByEmail } from "./auth/workos-client.js";
@@ -157,6 +159,15 @@ const __dirname = path.dirname(__filename);
 const logger = createLogger('http-server');
 const PUBLIC_SITE_URL = 'https://agenticadvertising.org';
 const PERSPECTIVES_CRAWLER_LIMIT = 200;
+
+/**
+ * Unauthenticated endpoints whose entire request body is a short list. Parsing
+ * more than that is wasted work no legitimate caller needs.
+ */
+const SMALL_BODY_JSON_ROUTES = new Set([
+  // 25 domains at the 253-byte DNS maximum is under 7 KB.
+  '/api/brands/resolve/bulk',
+]);
 
 interface PublicPerspectiveCrawlerItem {
   slug: string;
@@ -928,7 +939,10 @@ export class HTTPServer {
         // `/mcp` endpoint, which rehashes the exact bytes the signer signed.
         // Cheap (one utf-8 decode per request) and unused elsewhere.
         express.json({
-          limit: '10mb',
+          // The 10MB default carries base64-encoded logo uploads in member
+          // profiles. Unauthenticated endpoints that only take a short list get
+          // a tight cap so a caller cannot make the parser the expensive part.
+          limit: SMALL_BODY_JSON_ROUTES.has(req.path) ? '16kb' : '10mb',
           verify: (req, _res, buf) => {
             (req as unknown as { rawBody?: string }).rawBody = buf.toString('utf8');
           },
@@ -949,7 +963,11 @@ export class HTTPServer {
     // AAO domain redirects to the DB-managed hosted brand.
     this.app.get('/.well-known/brand.json', (req, res) => {
       res.setHeader('Cache-Control', 'public, max-age=3600');
-      if (this.isAdcpDomain(req)) {
+      // The training-agent hostname publishes the same operator record as the
+      // AdCP site. Its capabilities point at this exact origin, so returning
+      // the AAO authoritative-location stub here would break the required
+      // capabilities -> brand.json -> agents[] -> JWKS discovery chain.
+      if (this.isAdcpDomain(req) || TRAINING_AGENT_HOSTNAMES.has(req.hostname)) {
         return res.json({
           "$schema": "https://adcontextprotocol.org/schemas/latest/brand.json",
           "agents": [
@@ -3366,18 +3384,46 @@ export class HTTPServer {
       }
     });
 
-    // POST /api/brands/discovered/:domain/rollback - Rollback to a previous revision (admin only)
+    // POST /api/brands/discovered/:domain/rollback - Rollback to a previous revision.
+    // AAO members can roll back editable community/enriched brands. Admins retain
+    // access for moderation and support.
     this.app.post('/api/brands/discovered/:domain/rollback', requireAuth, async (req, res) => {
       try {
         const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
-        if (!isAdmin) {
-          return res.status(403).json({ error: 'Admin access required' });
+        await enrichUserWithMembership(req.user as any);
+        if (!isAdmin && !(req.user as any)?.isMember) {
+          return res.status(403).json({ error: 'Membership required to roll back brands' });
+        }
+        if ((req as any).apiKey || req.user?.id === 'admin_api_key' || req.user?.id?.startsWith('api_key_')) {
+          return res.status(403).json({ error: 'Human user session required to roll back brands' });
         }
 
         const domain = decodeURIComponent(req.params.domain).toLowerCase();
+        if (!domainPattern.test(domain)) {
+          return res.status(400).json({ error: 'Invalid domain format' });
+        }
+
         const { to_revision } = req.body;
-        if (!to_revision || typeof to_revision !== 'number') {
-          return res.status(400).json({ error: 'to_revision (number) required' });
+        if (!Number.isInteger(to_revision) || to_revision < 1) {
+          return res.status(400).json({ error: 'to_revision (positive integer) required' });
+        }
+
+        const currentBrand = await this.brandDb.getDiscoveredBrandByDomain(domain);
+        if (!currentBrand) {
+          return res.status(404).json({ error: 'Resource not found' });
+        }
+        if (currentBrand.source_type === 'brand_json') {
+          return res.status(403).json({ error: 'Managed by brand owner via brand.json' });
+        }
+        if (currentBrand.review_status === 'pending') {
+          return res.status(403).json({ error: 'Cannot roll back brand pending review' });
+        }
+
+        if (!isAdmin) {
+          const banCheck = await this.bansDb.isUserBannedFromRegistry('registry_brand', req.user!.id, domain);
+          if (banCheck.banned) {
+            return res.status(403).json({ error: 'You are banned from editing this brand', reason: banCheck.ban?.reason });
+          }
         }
 
         const { brand, revision_number } = await this.brandDb.rollbackBrand(domain, to_revision, {
@@ -3399,6 +3445,10 @@ export class HTTPServer {
         if (error.message?.includes('not found')) {
           logger.warn({ err: error, path: req.path }, 'Brand not found during rollback');
           return res.status(404).json({ error: 'Resource not found' });
+        }
+        if (error.message?.includes('Cannot roll back')) {
+          logger.warn({ err: error, path: req.path }, 'Access denied rolling back brand');
+          return res.status(403).json({ error: 'Access denied' });
         }
         logger.error({ error }, 'Failed to rollback brand');
         return res.status(500).json({ error: 'Failed to rollback brand' });
@@ -3589,14 +3639,19 @@ export class HTTPServer {
     // POST /api/properties/hosted - Create a hosted property (authenticated)
     this.app.post('/api/properties/hosted', requireAuth, async (req, res) => {
       try {
-        const { publisher_domain, adagents_json, source_type } = req.body;
-        if (!publisher_domain || !adagents_json) {
+        // Establish the identity-only write invariant before any validation
+        // branch derived from caller input. Only this scrubbed value may reach
+        // the database boundary below.
+        const requestedAdagentsJson = req.body?.adagents_json;
+        const adagentsJsonForStorage = scrubCommunityAuthorizedAgents(requestedAdagentsJson);
+        const { publisher_domain, source_type } = req.body;
+        if (!publisher_domain || !requestedAdagentsJson) {
           return res.status(400).json({ error: 'publisher_domain and adagents_json required' });
         }
 
         const property = await this.propertyDb.createHostedProperty({
           publisher_domain: publisher_domain.toLowerCase(),
-          adagents_json,
+          adagents_json: adagentsJsonForStorage,
           source_type: source_type || 'community',
           created_by_user_id: req.user?.id,
           created_by_email: req.user?.email,
@@ -3612,13 +3667,18 @@ export class HTTPServer {
     // POST /api/properties/hosted/community - Create a new community property (member-authenticated, pending review)
     this.app.post('/api/properties/hosted/community', requireAuth, async (req, res) => {
       try {
+        // Scrub unconditionally, before membership and payload validation can
+        // branch on request-derived values.
+        const requestedAdagentsJson = req.body?.adagents_json;
+        const adagentsJsonForStorage = scrubCommunityAuthorizedAgents(requestedAdagentsJson);
+
         await enrichUserWithMembership(req.user as any);
         if (!(req.user as any)?.isMember) {
           return res.status(403).json({ error: 'Membership required to create properties' });
         }
 
-        const { publisher_domain, adagents_json } = req.body;
-        if (!publisher_domain || !adagents_json) {
+        const { publisher_domain } = req.body;
+        if (!publisher_domain || !requestedAdagentsJson) {
           return res.status(400).json({ error: 'publisher_domain and adagents_json required' });
         }
 
@@ -3630,7 +3690,7 @@ export class HTTPServer {
 
         const property = await this.propertyDb.createCommunityProperty({
           publisher_domain: publisher_domain.toLowerCase(),
-          adagents_json,
+          adagents_json: adagentsJsonForStorage,
           source_type: 'community',
           created_by_user_id: req.user!.id,
           created_by_email: req.user!.email,
@@ -3696,6 +3756,15 @@ export class HTTPServer {
     // PUT /api/properties/hosted/:domain - Edit a community property with revision tracking
     this.app.put('/api/properties/hosted/:domain', requireAuth, async (req, res) => {
       try {
+        // Always scrub before request-dependent branching. Preserve the
+        // existing optional-update behavior by selecting undefined only after
+        // the scrub has established the safe storage value.
+        const requestedAdagentsJson = req.body?.adagents_json;
+        const adagentsJsonForStorage = scrubCommunityAuthorizedAgents(requestedAdagentsJson);
+        const adagentsJsonUpdate = requestedAdagentsJson === undefined
+          ? undefined
+          : adagentsJsonForStorage;
+
         await enrichUserWithMembership(req.user as any);
         if (!(req.user as any)?.isMember) {
           return res.status(403).json({ error: 'Membership required to edit properties' });
@@ -3703,7 +3772,7 @@ export class HTTPServer {
 
         const domain = decodeURIComponent(req.params.domain).toLowerCase();
 
-        const { edit_summary, adagents_json } = req.body;
+        const { edit_summary } = req.body;
         if (!edit_summary || typeof edit_summary !== 'string') {
           return res.status(400).json({ error: 'edit_summary required' });
         }
@@ -3715,7 +3784,7 @@ export class HTTPServer {
         }
 
         const { property, revision_number } = await this.propertyDb.editCommunityProperty(domain, {
-          adagents_json,
+          adagents_json: adagentsJsonUpdate,
           edit_summary,
           editor_user_id: req.user!.id,
           editor_email: req.user!.email,
@@ -9219,7 +9288,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           name: 'discovery-client',
           agent_uri: url,
           protocol: 'mcp', // Library handles protocol detection internally
-        });
+        }, withSdkSafeTransport({}));
 
         // getAgentInfo() handles all the protocol detection and tool discovery
         const agentInfo = await client.getAgentInfo();
@@ -9245,7 +9314,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           // Check for A2A agent card if we detected MCP
           if (agentInfo.protocol === 'mcp') {
             const a2aUrl = new URL('/.well-known/agent.json', url).toString();
-            const a2aResponse = await fetch(a2aUrl, {
+            const a2aResponse = await sdkSafeFetch(a2aUrl, {
               headers: { 'Accept': 'application/json' },
               signal: AbortSignal.timeout(3000),
             });
@@ -9266,7 +9335,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
         if (agentType === 'creative') {
           try {
-            const creativeClient = new CreativeAgentClient({ agentUrl: url });
+            const creativeClient = new CreativeAgentClient(withSdkSafeTransport({ agentUrl: url }));
             const formats = await creativeClient.listFormats();
             stats.format_count = formats.length;
           } catch (statsError) {

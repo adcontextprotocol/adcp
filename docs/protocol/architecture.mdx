@@ -111,7 +111,7 @@ AdCP is a multi-instance protocol. A single buyer's workflow with an agent may b
 
 ### Normative requirements
 
-State keyed by a `(brand, account)` tuple MUST survive across agent process instances. This includes but is not limited to accounts, catalogs, creatives, audiences, event sources, governance configuration, active campaigns, proposals, insertion-order approval records, signal activations, sponsored-intelligence sessions, async task records, and idempotency-key cache entries. Implementations MUST NOT use in-process memory as the primary store for any `(brand, account)`-scoped state that a subsequent call can read back. In-process storage does not satisfy this requirement. For the canonical (non-exhaustive) catalog of state domains, see [Account state](/docs/building/integration/account-state).
+State keyed by a `(brand, account)` tuple MUST survive across agent process instances. This includes but is not limited to accounts, catalogs, creatives, audiences, event sources, governance configuration, active campaigns, proposals, insertion-order approval records, signal activations, sponsored-intelligence sessions, async task records, and idempotency-key cache entries. Implementations MUST NOT use in-process memory as the primary store for any `(brand, account)`-scoped state that a subsequent call can read back. In-process storage does not satisfy this requirement. For the canonical (non-exhaustive) catalog of state domains, see [Account state](/docs/building/by-layer/L2/account-state).
 
 **Acceptable storage:** Postgres, Redis, DynamoDB, or any shared store that persists across process restarts and is reachable from every replica. **Not acceptable:** module-level variables, per-process Maps or dicts, single-node file storage, or sticky-session routing that masks the absence of shared state.
 
@@ -119,4 +119,4 @@ Within a single `(brand, account)` context, implementations MUST support read-yo
 
 **Sandbox exemption.** Sandbox accounts are allowed to carry ephemeral state that does not persist across process restarts (see [Sandbox mode](/docs/media-buy/advanced-topics/sandbox)). Within a single sandbox session, read-your-writes across replicas still applies.
 
-Implementations may prove this invariant by architecture (managed serverless + shared datastore), by multi-instance compliance testing, or by their own verification; the protocol cares about the invariant, not the methodology. See [Validate your agent — Verifying cross-instance state](/docs/building/validate-your-agent#verifying-cross-instance-state).
+Implementations may prove this invariant by architecture (managed serverless + shared datastore), by multi-instance compliance testing, or by their own verification; the protocol cares about the invariant, not the methodology. See [Validate your agent — Verifying cross-instance state](/docs/building/verification/validate-your-agent#verifying-cross-instance-state).

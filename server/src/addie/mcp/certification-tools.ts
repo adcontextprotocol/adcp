@@ -32,6 +32,14 @@ import { stripe } from '../../billing/stripe-client.js';
 import { attemptStripeReconciliation } from '../../billing/lazy-reconcile.js';
 import { coerceStringArray } from './input-coercion.js';
 import { wrapUntrustedInput } from './untrusted-input.js';
+import {
+  CertifierNotConfiguredError,
+  CredentialNameRequiredError,
+  NAME_REQUIRED_MARKER,
+  ensureCertifierCredential,
+} from '../../services/certification-credential-issuance.js';
+
+export { NAME_REQUIRED_MARKER };
 
 const logger = createLogger('certification-tools');
 
@@ -103,6 +111,13 @@ const MIN_CAPSTONE_TURNS = 6;
 const MIN_PLACEMENT_TURNS = 3;
 const MIN_MODULE_TIME_MS = 5 * 60 * 1000; // 5 minutes
 const MIN_CAPSTONE_TIME_MS = 10 * 60 * 1000; // 10 minutes
+
+const UNAVAILABLE_SPECIALIST_MODULES = new Set(['S5']);
+
+function unavailableSpecialistMessage(moduleId: string): string | null {
+  if (!UNAVAILABLE_SPECIALIST_MODULES.has(moduleId)) return null;
+  return `Module ${moduleId} (Sponsored Intelligence) is not currently available for assessment because the sandbox does not yet expose the required si_* lab tools. No module progress or capstone attempt was changed.`;
+}
 
 export const PRIOR_TURN_RESTATEMENT_NO_RAW_JSON_RULE = 'for prior-turn re-statements, no raw JSON';
 export const LIVE_DEMO_RESULT_FORMATTING_RULE = 'When pasting the tool result, preserve the exact formatting returned by the tool -- including any code fence wrappers. Do NOT flatten to prose or strip the fence.';
@@ -506,7 +521,6 @@ function validateDemonstrationIds(
  * Certifier-side issuance is deferred. `checkAndFormatCredentials` retries
  * deferred issuances on its next call.
  */
-export const NAME_REQUIRED_MARKER = 'NAME_REQUIRED';
 type IssueResult = string | null | 'NAME_REQUIRED';
 
 /**
@@ -523,59 +537,22 @@ async function issueCertifierBadge(
   credId: string,
   cred: { name: string; tier: number; certifier_group_id: string | null },
   memberContext: MemberContext | null,
-  extraAttributes?: Record<string, string>,
 ): Promise<IssueResult> {
   if (!cred.certifier_group_id || !memberContext?.workos_user) return null;
 
-  // Resolve the name from the freshest source available: the helper falls
-  // back to the DB when memberContext is stale (the closure-bound context
-  // doesn't see the row `set_my_name` just wrote), and to the Slack mapping
-  // when neither has a value.
-  const { resolveUserNameWithFallbacks } = await import('../../utils/resolve-user-name.js');
-  const wu = memberContext.workos_user;
-  const resolved = await resolveUserNameWithFallbacks(
-    getPool(), userId, wu.first_name, wu.last_name,
-  );
-  if (!(resolved.firstName ?? '').trim()) {
-    logger.info({ userId, credId, email: wu.email }, 'Credential issuance gated: no first_name on file');
-    return NAME_REQUIRED_MARKER;
-  }
-
   try {
-    const { issueCredential, isCertifierConfigured, getCredentialBadgeUrl, buildRecipientName } = await import('../../services/certifier-client.js');
-    if (!isCertifierConfigured()) return null;
-
-    const expiryDate = cred.tier === 1 ? undefined : (() => {
-      const d = new Date();
-      d.setFullYear(d.getFullYear() + 2);
-      return d.toISOString().split('T')[0];
-    })();
-
-    const credential = await issueCredential({
-      groupId: cred.certifier_group_id,
-      recipient: {
-        name: buildRecipientName({
-          first_name: resolved.firstName,
-          last_name: resolved.lastName,
-          email: wu.email,
-        }),
-        email: wu.email,
-      },
-      ...(expiryDate ? { expiryDate } : {}),
-      ...(extraAttributes ? { customAttributes: extraAttributes } : {}),
-    });
-
-    let badgeUrl: string | null = null;
-    try {
-      badgeUrl = await getCredentialBadgeUrl(credential.id);
-    } catch (badgeErr) {
-      logger.warn({ error: badgeErr, credentialId: credential.id }, 'Failed to fetch badge URL');
-    }
-
-    await certDb.awardCredential(userId, credId, credential.id, credential.publicId, badgeUrl || undefined);
-    logger.info({ credentialId: credential.id, userId, credId, badgeUrl }, 'Credential issued via Certifier');
-    return credential.publicId || credential.id;
+    const result = await ensureCertifierCredential({ userId, credentialId: credId });
+    logger.info(
+      { credentialId: result.credentialId, userId, credId, badgeUrl: result.badgeUrl, outcome: result.outcome },
+      'Credential ensured via Certifier',
+    );
+    return result.publicId || result.credentialId;
   } catch (certError) {
+    if (certError instanceof CredentialNameRequiredError) {
+      logger.info({ userId, credId, email: memberContext.workos_user.email }, 'Credential issuance gated: no first_name on file');
+      return NAME_REQUIRED_MARKER;
+    }
+    if (certError instanceof CertifierNotConfiguredError) return null;
     logger.error({ error: certError, credId }, 'Failed to issue Certifier credential (continuing)');
     return null;
   }
@@ -1003,15 +980,15 @@ export const CERTIFICATION_TOOLS: AddieTool[] = [
   },
   {
     name: 'start_certification_exam',
-    description: 'Begin a specialist deep dive module (S1: Media Buy, S2: Creative, S3: Signals, S4: Governance, S5: Sponsored Intelligence). The learner must hold the Practitioner credential. Returns the capstone format, lab exercises, and assessment criteria. You (Sage) will conduct the combined hands-on lab and adaptive exam — technically assess the learner against the spec.',
-    usage_hints: 'use for "take the exam", "start capstone", "specialist exam", "ready for certification", "start S1", "media buy specialist", "sponsored intelligence"',
+    description: 'Begin an available specialist deep dive module (S1: Media Buy, S2: Creative, S3: Signals, S4: Governance, S6: Security). S5 Sponsored Intelligence is listed in the curriculum but is not assessable until its sandbox labs exist. The learner must hold the Practitioner credential. Returns the capstone format, lab exercises, and assessment criteria. You (Sage) will conduct the combined hands-on lab and adaptive exam — technically assess the learner against the spec.',
+    usage_hints: 'use for "take the exam", "start capstone", "specialist exam", "ready for certification", "start S1", "media buy specialist", "security specialist"',
     input_schema: {
       type: 'object',
       properties: {
         module_id: {
           type: 'string',
-          enum: ['S1', 'S2', 'S3', 'S4', 'S5'],
-          description: 'Specialist module ID: S1 (Media Buy), S2 (Creative), S3 (Signals), S4 (Governance), S5 (Sponsored Intelligence)',
+          enum: ['S1', 'S2', 'S3', 'S4', 'S5', 'S6'],
+          description: 'Specialist module ID: S1 (Media Buy), S2 (Creative), S3 (Signals), S4 (Governance), S5 (Sponsored Intelligence — currently unavailable), S6 (Security)',
         },
       },
       required: ['module_id'],
@@ -1564,7 +1541,7 @@ function isCredentialIssued(
  */
 export function createCertificationToolHandlers(
   initialMemberContext: MemberContext | null,
-  options?: { threadId?: string },
+  options?: { threadId?: string; trainingModuleContext?: { moduleId?: string } },
 ): Map<string, ToolHandler> {
   const handlers = new Map<string, ToolHandler>();
 
@@ -1694,7 +1671,10 @@ export function createCertificationToolHandlers(
 
         for (const mod of trackModules) {
           const freeLabel = mod.is_free ? ' (free)' : '';
-          lines.push(`- ${mod.id}: ${mod.title} — ${mod.duration_minutes} min, ${mod.format}${freeLabel}`);
+          const availabilityLabel = UNAVAILABLE_SPECIALIST_MODULES.has(mod.id)
+            ? ' — unavailable (sandbox labs pending)'
+            : '';
+          lines.push(`- ${mod.id}: ${mod.title} — ${mod.duration_minutes} min, ${mod.format}${freeLabel}${availabilityLabel}`);
         }
         lines.push('');
       }
@@ -1702,7 +1682,7 @@ export function createCertificationToolHandlers(
       lines.push('---');
       lines.push('Modules A1, A2, A2B, and A3 are free for everyone. Other modules require AgenticAdvertising.org membership.');
       lines.push('To start a module, say "start module [ID]" (e.g., "start module A1").');
-      lines.push('To start a specialist deep dive, say "start capstone S1" (or S2–S5, or S7 Brand).');
+      lines.push('To start a specialist deep dive, say "start capstone S1" (S1–S4, S6 Security, or S7 Brand are available; S5 is pending sandbox labs).');
       lines.push('Already familiar with AdCP? Say "assess my level" to take a placement assessment and skip modules you already know.');
 
       return lines.join('\n');
@@ -1818,6 +1798,8 @@ export function createCertificationToolHandlers(
 
     try {
       const moduleId = (input.module_id as string).toUpperCase();
+      const unavailable = unavailableSpecialistMessage(moduleId);
+      if (unavailable) return unavailable;
       const mod = await certDb.getModule(moduleId);
       if (!mod) return `Module "${moduleId}" not found.`;
 
@@ -1866,6 +1848,9 @@ export function createCertificationToolHandlers(
       }
 
       await certDb.startModule(userId, moduleId);
+      if (options?.trainingModuleContext) {
+        options.trainingModuleContext.moduleId = moduleId;
+      }
 
       // Return the lesson plan so Sage can teach it
       const lines: string[] = [
@@ -1980,6 +1965,8 @@ export function createCertificationToolHandlers(
 
     try {
       const moduleId = (input.module_id as string).toUpperCase();
+      const unavailable = unavailableSpecialistMessage(moduleId);
+      if (unavailable) return notCompleted(moduleId, 'state', unavailable);
 
       // Verify module is in-progress before allowing completion
       const progress = await certDb.getProgress(userId);
@@ -2112,7 +2099,7 @@ export function createCertificationToolHandlers(
     if (!userId) return 'You need to be logged in to see your certification progress.';
 
     try {
-      const [progress, trackProgress, credentials, userCredentials, tracks, deltaStatuses] = await Promise.all([
+      const [progress, trackProgress, credentials, userCredentials, tracks, deltaStatuses, attempts] = await Promise.all([
         certDb.getProgress(userId),
         certDb.getTrackProgress(userId),
         certDb.getCredentials(),
@@ -2121,6 +2108,7 @@ export function createCertificationToolHandlers(
         Promise.all(
           DELTA_DEFINITIONS.map(async def => ({ def, status: await certDb.getDeltaStatus(def, userId) })),
         ),
+        certDb.getUserAttempts(userId),
       ]);
 
       const lines: string[] = ['# Your certification progress\n'];
@@ -2186,10 +2174,27 @@ export function createCertificationToolHandlers(
 
       const moduleProgress = progress.filter(p => p.status !== 'not_started');
       if (moduleProgress.length > 0) {
+        const activeSpecialistAttempts = new Map<string, certDb.CertificationAttempt>();
+        for (const attempt of attempts) {
+          if (
+            attempt.status === 'in_progress'
+            && attempt.module_id?.startsWith('S')
+            && !activeSpecialistAttempts.has(attempt.module_id)
+          ) {
+            activeSpecialistAttempts.set(attempt.module_id, attempt);
+          }
+        }
+
         lines.push('## Module details');
         for (const p of moduleProgress) {
           const status = p.status === 'completed' ? 'completed' : p.status === 'tested_out' ? 'tested out' : 'in progress';
           lines.push(`- ${p.module_id}: ${status}`);
+          const activeAttempt = p.status === 'in_progress'
+            ? activeSpecialistAttempts.get(p.module_id)
+            : undefined;
+          if (activeAttempt) {
+            lines.push(`  Active attempt: ${activeAttempt.id} (started ${formatUtcDate(activeAttempt.started_at)})`);
+          }
         }
       }
 
@@ -2290,6 +2295,8 @@ export function createCertificationToolHandlers(
 
     try {
       const moduleId = (input.module_id as string).toUpperCase();
+      const unavailable = unavailableSpecialistMessage(moduleId);
+      if (unavailable) return unavailable;
 
       // Validate it's a capstone module
       const mod = await certDb.getModule(moduleId);
@@ -2421,12 +2428,18 @@ export function createCertificationToolHandlers(
       // Check for existing active attempt (module-scoped so S1 doesn't block S4)
       const active = await certDb.getActiveAttemptForModule(userId, moduleId);
       if (active) {
+        if (options?.trainingModuleContext) {
+          options.trainingModuleContext.moduleId = moduleId;
+        }
         return `You already have an active capstone attempt (started ${new Date(active.started_at).toLocaleDateString()}). Continue the capstone.\n\nAttempt ID: ${active.id}`;
       }
 
       // Start the module and create an attempt
       await certDb.startModule(userId, moduleId);
       const attempt = await certDb.createAttempt(userId, mod.track_id, options?.threadId, moduleId);
+      if (options?.trainingModuleContext) {
+        options.trainingModuleContext.moduleId = moduleId;
+      }
 
       const criteria = mod.assessment_criteria as certDb.AssessmentCriteria | null;
       const lessonPlan = mod.lesson_plan as certDb.LessonPlan | null;
@@ -2439,6 +2452,7 @@ export function createCertificationToolHandlers(
         'S3': 'AdCP Specialist — Signals',
         'S4': 'AdCP Specialist — Governance',
         'S5': 'AdCP Specialist — Sponsored Intelligence',
+        'S6': 'AdCP Specialist — Security',
       };
 
       const lines = [
@@ -2545,8 +2559,9 @@ export function createCertificationToolHandlers(
 
       // Look up the active attempt: accept the UUID directly, or resolve from module ID
       let attempt: certDb.CertificationAttempt | null;
+      let resolvedFromModuleId = false;
       if (isUuid(attemptId)) {
-        attempt = await certDb.getAttempt(attemptId);
+        attempt = await certDb.getAttemptForUser(attemptId, userId);
       } else {
         // Claude sometimes sends the module ID instead of the attempt UUID
         logger.warn({ attemptId, userId }, 'complete_certification_exam received module ID instead of UUID, resolving');
@@ -2554,10 +2569,10 @@ export function createCertificationToolHandlers(
         if (!/^[A-Z]{1,2}[0-9]+$/.test(normalized)) {
           return `Invalid attempt_id "${attemptId}". Provide the UUID returned by start_certification_exam.`;
         }
+        resolvedFromModuleId = true;
         attempt = await certDb.getActiveAttemptForModule(userId, normalized);
       }
-      if (!attempt) return 'Exam attempt not found.';
-      if (attempt.workos_user_id !== userId) return 'This exam attempt belongs to a different user.';
+      if (!attempt || attempt.workos_user_id !== userId) return 'Exam attempt not found.';
 
       if (attempt.status !== 'in_progress') {
         if (attempt.status === 'passed' && attempt.passing === true) {
@@ -2610,6 +2625,8 @@ export function createCertificationToolHandlers(
       const examAc = capstoneMod.assessment_criteria as certDb.AssessmentCriteria | undefined;
 
       const capstoneId = capstoneMod.id;
+      const unavailable = unavailableSpecialistMessage(capstoneId);
+      if (unavailable) return notCompleted(capstoneId, 'state', unavailable);
       const deltaDef = getDeltaForModule(capstoneId) ?? null;
       const deltaStatus = deltaDef
         ? await certDb.getDeltaStatus(deltaDef, userId)
@@ -2683,18 +2700,21 @@ export function createCertificationToolHandlers(
       const overallScore = Math.round(scoreResult.weightedAvg);
       const allAboveThreshold = Object.values(scores).every(s => s >= 70);
       const passing = allAboveThreshold && overallScore >= 70;
+      const recordedScores: Record<string, number | boolean> = resolvedFromModuleId
+        ? { ...scores, _resolved_from_module_id: true }
+        : scores;
 
       if (isProtocolDelta && deltaDef && passing) {
         await certDb.completeDeltaAttempt(
           deltaDef,
           attempt.id,
           userId,
-          scores,
+          recordedScores,
           overallScore,
           deltaEvidence!.evidenceByCriterionId,
         );
       } else {
-        await certDb.completeAttempt(attempt.id, scores, overallScore, passing);
+        await certDb.completeAttempt(attempt.id, recordedScores, overallScore, passing);
       }
 
       // --- From this point the attempt is recorded. Failures below must not ---

@@ -39,8 +39,10 @@ const ALL_OWNED_URLS = [
   ownedAgentUrl('paused'),
   ownedAgentUrl('rate-limit'),
   ownedAgentUrl('saved-bearer'),
+  ownedAgentUrl('canonical-saved-bearer'),
   ownedAgentUrl('badge-fanout'),
   ownedAgentUrl('static-admin'),
+  ownedAgentUrl('applicable-oauth'),
 ];
 
 // Toggle which user the auth middleware stamps onto the request. Tests
@@ -118,6 +120,18 @@ vi.mock('../../src/addie/services/compliance-testing.js', async () => {
   return {
     ...actual,
     comply: (agentUrl: string, options?: unknown) => complyMock(agentUrl, options),
+  };
+});
+
+const { testCapabilityDiscoveryMock } = vi.hoisted(() => ({
+  testCapabilityDiscoveryMock: vi.fn(),
+}));
+vi.mock('@adcp/sdk/testing', async () => {
+  const actual = await vi.importActual<typeof import('@adcp/sdk/testing')>('@adcp/sdk/testing');
+  return {
+    ...actual,
+    testCapabilityDiscovery: (agentUrl: string, options?: unknown) =>
+      testCapabilityDiscoveryMock(agentUrl, options),
   };
 });
 
@@ -237,6 +251,16 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     });
     complyMock.mockReset();
     complyMock.mockResolvedValue(makeComplianceResult());
+    testCapabilityDiscoveryMock.mockReset();
+    testCapabilityDiscoveryMock.mockResolvedValue({
+      profile: {
+        name: 'OAuth test agent',
+        tools: [],
+        supported_protocols: ['media_buy'],
+        specialisms: [],
+      },
+      steps: [{ step: 'Discover agent profile', passed: true, duration_ms: 1 }],
+    });
   });
 
   const url = (agentUrl: string) => `/api/registry/agents/${encodeURIComponent(agentUrl)}/refresh`;
@@ -396,17 +420,84 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     const FAKE_BEARER = 'fake-test-bearer-do-not-use-in-prod';
     await db.saveAuthToken(context.id, FAKE_BEARER, 'bearer');
 
-    const res = await request(app).post(url(agentUrl)).send();
-    expect(res.status).toBe(200);
-    expect(refreshSingleAgentMock).toHaveBeenCalledWith(
-      agentUrl,
-      expect.objectContaining({
-        auth: { type: 'bearer', token: FAKE_BEARER },
-        ownerOrgId: TEST_ORG_ID,
-      }),
-    );
+    try {
+      const res = await request(app).post(url(agentUrl)).send();
+      expect(res.status).toBe(200);
+      expect(refreshSingleAgentMock).toHaveBeenCalledWith(
+        agentUrl,
+        expect.objectContaining({
+          auth: { type: 'bearer', token: FAKE_BEARER },
+          ownerOrgId: TEST_ORG_ID,
+        }),
+      );
+    } finally {
+      await pool.query('DELETE FROM agent_contexts WHERE id = $1', [context.id]);
+    }
+  });
 
-    await pool.query('DELETE FROM agent_contexts WHERE id = $1', [context.id]);
+  it('canonicalizes the requested URL before owner auth lookup and probe', async () => {
+    const agentUrl = ownedAgentUrl('canonical-saved-bearer');
+    const requestedUrl = agentUrl
+      .replace('https://', 'HTTPS://')
+      .replace('.example.com', '.EXAMPLE.COM') + '/';
+    const { AgentContextDatabase } = await import('../../src/db/agent-context-db.js');
+    const db = new AgentContextDatabase();
+    const context = await db.create({
+      organization_id: TEST_ORG_ID,
+      agent_url: agentUrl,
+      created_by: OWNER_USER_ID,
+    });
+    const FAKE_BEARER = 'fake-canonical-bearer-do-not-use-in-prod';
+    await db.saveAuthToken(context.id, FAKE_BEARER, 'bearer');
+
+    try {
+      const res = await request(app).post(url(requestedUrl)).send();
+      expect(res.status).toBe(200);
+      expect(refreshSingleAgentMock).toHaveBeenCalledWith(
+        agentUrl,
+        expect.objectContaining({
+          auth: { type: 'bearer', token: FAKE_BEARER },
+          ownerOrgId: TEST_ORG_ID,
+        }),
+      );
+    } finally {
+      await pool.query('DELETE FROM agent_contexts WHERE id = $1', [context.id]);
+    }
+  });
+
+  it('sends the saved OAuth access token as bearer auth for applicable-storyboards discovery', async () => {
+    const agentUrl = ownedAgentUrl('applicable-oauth');
+    const { AgentContextDatabase } = await import('../../src/db/agent-context-db.js');
+    const db = new AgentContextDatabase();
+    const context = await db.create({
+      organization_id: TEST_ORG_ID,
+      agent_url: agentUrl,
+      created_by: OWNER_USER_ID,
+    });
+    const accessToken = 'fresh-oauth-access-token-do-not-use-in-prod';
+    await db.saveOAuthTokens(context.id, {
+      access_token: accessToken,
+      refresh_token: 'refresh-token-do-not-use-in-prod',
+    });
+
+    try {
+      const res = await request(app)
+        .get(`/api/registry/agents/${encodeURIComponent(agentUrl)}/applicable-storyboards`)
+        .send();
+
+      expect(res.status).toBe(200);
+      expect(testCapabilityDiscoveryMock).toHaveBeenCalledWith(
+        agentUrl,
+        expect.objectContaining({
+          auth: { type: 'bearer', token: accessToken },
+          transport: expect.objectContaining({
+            fetchFn: expect.any(Function),
+          }),
+        }),
+      );
+    } finally {
+      await pool.query('DELETE FROM agent_contexts WHERE id = $1', [context.id]);
+    }
   });
 
   it('fans out badge issuance for an owner refresh with a passing specialism', async () => {

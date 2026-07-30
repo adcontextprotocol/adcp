@@ -7,6 +7,8 @@ const markSent = vi.fn();
 const getDigestEmailRecipients = vi.fn();
 const getUserWorkingGroupMap = vi.fn();
 const sendTrackedBatchMarketingEmails = vi.fn();
+const buildPromptMarkdown = vi.fn(() => 'Rendered Prompt markdown');
+const publishDigestAsPerspective = vi.fn(async () => undefined);
 
 vi.mock('../../src/db/digest-db.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/db/digest-db.js')>();
@@ -33,6 +35,7 @@ vi.mock('../../src/newsletters/the-prompt/index.js', () => ({
       sendHourET: 10,
       shouldRunToday: vi.fn(() => false),
     },
+    buildMarkdown: buildPromptMarkdown,
   },
 }));
 
@@ -63,7 +66,7 @@ vi.mock('../../src/addie/services/digest-builder.js', () => ({
 }));
 
 vi.mock('../../src/addie/services/digest-publisher.js', () => ({
-  publishDigestAsPerspective: vi.fn(async () => undefined),
+  publishDigestAsPerspective,
 }));
 
 vi.mock('../../src/newsletters/cover.js', () => ({
@@ -134,6 +137,16 @@ describe('runWeeklyDigestJob', () => {
     expect(result.sent).toBe(1);
     expect(sendTrackedBatchMarketingEmails).toHaveBeenCalledTimes(1);
     expect(markSent).toHaveBeenCalledWith(123, expect.objectContaining({ email_count: 1 }));
+    await vi.waitFor(() => {
+      expect(buildPromptMarkdown).toHaveBeenCalledWith(expect.objectContaining({ openingTake: 'Opening take' }));
+      expect(publishDigestAsPerspective).toHaveBeenCalledWith(
+        123,
+        expect.objectContaining({ openingTake: 'Opening take' }),
+        '2026-06-05',
+        'The Prompt test subject',
+        'Rendered Prompt markdown',
+      );
+    });
     expect(getDigestByDate).not.toHaveBeenCalled();
   });
 });

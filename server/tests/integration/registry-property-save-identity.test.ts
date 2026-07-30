@@ -17,12 +17,13 @@ import type { Pool } from 'pg';
 vi.hoisted(() => {
   process.env.WORKOS_API_KEY = process.env.WORKOS_API_KEY ?? 'test';
   process.env.WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID ?? 'client_test';
+  process.env.DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://adcp:localdev@localhost:5432/adcp_test';
 });
 
 vi.mock('../../src/middleware/auth.js', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('../../src/middleware/auth.js');
   const pass = (req: { user: unknown }, _res: unknown, next: () => void) => {
-    req.user = { id: 'user_save_test', email: 'save@test.com', isAdmin: false };
+    req.user = { id: 'user_save_test', email: 'save@test.com', isAdmin: false, isMember: true };
     next();
   };
   return { ...actual, requireAuth: pass, requireAdmin: (_r: unknown, _s: unknown, n: () => void) => n() };
@@ -41,16 +42,42 @@ vi.mock('../../src/billing/stripe-client.js', () => ({
   createBillingPortalSession: vi.fn().mockResolvedValue(null),
 }));
 
+vi.mock('../../src/notifications/registry.js', () => ({
+  notifyRegistryCreate: vi.fn().mockResolvedValue(null),
+  notifyRegistryEdit: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock('../../src/addie/mcp/registry-review.js', () => ({
+  reviewNewRecord: vi.fn().mockResolvedValue(undefined),
+  reviewRegistryEdit: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { PropertyDatabase } from '../../src/db/property-db.js';
 import { HTTPServer } from '../../src/http.js';
+import { createPropertyToolHandlers, PROPERTY_TOOLS } from '../../src/addie/mcp/property-tools.js';
+import { MCPToolHandler, TOOL_DEFINITIONS } from '../../src/mcp-tools.js';
+import type { MCPAuthContext } from '../../src/mcp/auth.js';
 
 const DOMAIN_PREFIX = 'save-identity';
 const DOMAIN_LIKE = `${DOMAIN_PREFIX}-%`;
 const WITH_AGENTS = `${DOMAIN_PREFIX}-with-agents.registry-baseline.example`;
 const NO_AGENTS = `${DOMAIN_PREFIX}-no-agents.registry-baseline.example`;
 const EDIT_DOMAIN = `${DOMAIN_PREFIX}-edit.registry-baseline.example`;
+const HTTP_HOSTED_DOMAIN = `${DOMAIN_PREFIX}-http-hosted.registry-baseline.example`;
+const HTTP_COMMUNITY_DOMAIN = `${DOMAIN_PREFIX}-http-community.registry-baseline.example`;
+const HTTP_EDIT_DOMAIN = `${DOMAIN_PREFIX}-http-edit.registry-baseline.example`;
+const ADDIE_DOMAIN = `${DOMAIN_PREFIX}-addie.registry-baseline.example`;
+const MCP_DOMAIN = `${DOMAIN_PREFIX}-mcp.registry-baseline.example`;
+const ATTACKER_AGENT = 'https://agent.attacker.example';
+
+const mcpAuth: MCPAuthContext = {
+  sub: 'user_save_test',
+  isM2M: false,
+  email: 'save@test.com',
+  payload: {},
+};
 
 describe('POST /api/properties/save — identity, not authorization', () => {
   let server: HTTPServer;
@@ -59,6 +86,10 @@ describe('POST /api/properties/save — identity, not authorization', () => {
   let propertyDb: PropertyDatabase;
 
   async function clearFixtures() {
+    // Community creates write revision #1. Revisions are intentionally not
+    // cascade-deleted with hosted properties, so clear them explicitly to
+    // keep this suite repeatable against a persistent local test database.
+    await pool.query('DELETE FROM property_revisions WHERE publisher_domain LIKE $1', [DOMAIN_LIKE]);
     await pool.query('DELETE FROM hosted_properties WHERE publisher_domain LIKE $1', [DOMAIN_LIKE]);
     // The edit-path success case calls syncHostedPropertyToFederatedIndex, which
     // derives a discovered_properties row; clear it too so re-runs against a
@@ -158,5 +189,102 @@ describe('POST /api/properties/save — identity, not authorization', () => {
     expect(stored).not.toBeNull();
     const adagents = stored!.adagents_json as { authorized_agents: unknown[] };
     expect(adagents.authorized_agents).toEqual([]);
+  });
+
+  it('scrubs caller authorization on the authenticated hosted-property create route', async () => {
+    const res = await request(app)
+      .post('/api/properties/hosted')
+      .send({
+        publisher_domain: HTTP_HOSTED_DOMAIN,
+        adagents_json: {
+          authorized_agents: [{ url: ATTACKER_AGENT }],
+          properties: [{ type: 'website', name: 'Hosted route' }],
+        },
+      });
+
+    expect(res.status).toBe(200);
+    const stored = await propertyDb.getHostedPropertyByDomain(HTTP_HOSTED_DOMAIN);
+    expect((stored!.adagents_json as { authorized_agents: unknown[] }).authorized_agents).toEqual([]);
+  });
+
+  it('scrubs caller authorization on the member community-property create route', async () => {
+    const res = await request(app)
+      .post('/api/properties/hosted/community')
+      .send({
+        publisher_domain: HTTP_COMMUNITY_DOMAIN,
+        adagents_json: {
+          authorized_agents: [{ url: ATTACKER_AGENT }],
+          properties: [{ type: 'website', name: 'Community route' }],
+        },
+      });
+
+    expect(res.status).toBe(200);
+    const stored = await propertyDb.getHostedPropertyByDomain(HTTP_COMMUNITY_DOMAIN);
+    expect((stored!.adagents_json as { authorized_agents: unknown[] }).authorized_agents).toEqual([]);
+  });
+
+  it('scrubs caller authorization on the member community-property edit route', async () => {
+    await propertyDb.createHostedProperty({
+      publisher_domain: HTTP_EDIT_DOMAIN,
+      adagents_json: { authorized_agents: [{ url: ATTACKER_AGENT }], properties: [] },
+      source_type: 'community',
+      review_status: 'approved',
+      is_public: true,
+    });
+
+    const res = await request(app)
+      .put(`/api/properties/hosted/${encodeURIComponent(HTTP_EDIT_DOMAIN)}`)
+      .send({
+        edit_summary: 'Identity-only edit',
+        adagents_json: {
+          authorized_agents: [{ url: 'https://replacement.attacker.example' }],
+          properties: [{ type: 'website', name: 'Edited route' }],
+        },
+      });
+
+    expect(res.status).toBe(200);
+    const stored = await propertyDb.getHostedPropertyByDomain(HTTP_EDIT_DOMAIN);
+    expect((stored!.adagents_json as { authorized_agents: unknown[] }).authorized_agents).toEqual([]);
+  });
+
+  it('scrubs supplied and previously-preserved authorization on Addie approval', async () => {
+    await propertyDb.createHostedProperty({
+      publisher_domain: ADDIE_DOMAIN,
+      adagents_json: { authorized_agents: [{ url: ATTACKER_AGENT }], properties: [] },
+      source_type: 'community',
+      review_status: 'pending',
+      is_public: false,
+    });
+
+    const saveProperty = createPropertyToolHandlers().get('save_property');
+    const result = JSON.parse(await saveProperty!({
+      publisher_domain: ADDIE_DOMAIN,
+      authorized_agents: [{ url: 'https://replacement.attacker.example' }],
+      properties: [],
+    }));
+
+    expect(result.success).toBe(true);
+    const stored = await propertyDb.getHostedPropertyByDomain(ADDIE_DOMAIN);
+    expect((stored!.adagents_json as { authorized_agents: unknown[] }).authorized_agents).toEqual([]);
+  });
+
+  it('scrubs caller authorization on the authenticated directory MCP tool', async () => {
+    const result = await new MCPToolHandler().handleToolCall('save_property', {
+      publisher_domain: MCP_DOMAIN,
+      authorized_agents: [{ url: ATTACKER_AGENT }],
+      properties: [{ type: 'website', name: 'MCP route' }],
+    }, mcpAuth);
+
+    expect(result.isError).not.toBe(true);
+    const stored = await propertyDb.getHostedPropertyByDomain(MCP_DOMAIN);
+    expect((stored!.adagents_json as { authorized_agents: unknown[] }).authorized_agents).toEqual([]);
+  });
+
+  it('does not advertise authorized_agents on Addie or directory MCP save tools', () => {
+    const addieTool = PROPERTY_TOOLS.find(tool => tool.name === 'save_property');
+    const directoryTool = TOOL_DEFINITIONS.find(tool => tool.name === 'save_property');
+
+    expect(addieTool?.input_schema.properties).not.toHaveProperty('authorized_agents');
+    expect(directoryTool?.inputSchema.properties).not.toHaveProperty('authorized_agents');
   });
 });

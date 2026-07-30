@@ -349,7 +349,9 @@ export async function assembleUserJourney(userId: string): Promise<UserJourney> 
               ) as is_leader
        FROM working_groups wg
        JOIN working_group_memberships wgm ON wgm.working_group_id = wg.id
-       WHERE wgm.workos_user_id = $1 AND wgm.status = 'active'
+       WHERE wgm.workos_user_id = $1
+         AND wgm.status = 'active'
+         AND wg.status = 'active'
        ORDER BY wg.name`,
       [userId]
     ).then(r => r.rows).catch(err => {

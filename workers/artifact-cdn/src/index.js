@@ -20,6 +20,14 @@ const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
 const REVALIDATE_CACHE_CONTROL = "public, no-cache, must-revalidate";
 const VERSION_CACHE_TTL_MS = 60 * 1000;
 const versionCache = new Map();
+const RELEASE_STATUS_OVERRIDES = new Map([
+  ["3.1.3", "withdrawn"],
+  ["3.2.0", "unpublished"],
+]);
+
+function isSelectableRelease(version) {
+  return !RELEASE_STATUS_OVERRIDES.has(version);
+}
 
 export default {
   async fetch(request, env, ctx) {
@@ -174,6 +182,9 @@ async function protocolDiscoveryResponse(bucket) {
     const versioned = names
       .filter((name) => name !== "latest.tgz")
       .sort((a, b) => compareVersions(b.replace(/\.tgz$/, ""), a.replace(/\.tgz$/, "")));
+    const selectableVersioned = versioned.filter((name) =>
+      isSelectableRelease(name.replace(/\.tgz$/, "")),
+    );
 
     const sidecarsFor = (tarballName) => ({
       ...(files.has(`${tarballName}.sig`) && { signature: `/protocol/${tarballName}.sig` }),
@@ -185,8 +196,8 @@ async function protocolDiscoveryResponse(bucket) {
           tarball: "/protocol/latest.tgz",
           checksum: "/protocol/latest.tgz.sha256",
           ...sidecarsFor("latest.tgz"),
-          published_version: versioned[0]?.replace(/\.tgz$/, ""),
-          adcp_version: versioned[0]?.replace(/\.tgz$/, ""),
+          published_version: selectableVersioned[0]?.replace(/\.tgz$/, ""),
+          adcp_version: selectableVersioned[0]?.replace(/\.tgz$/, ""),
           note: "Development bundle — changes with every merge. Pin a version for production.",
         }
       : null;
@@ -200,12 +211,16 @@ async function protocolDiscoveryResponse(bucket) {
         certificate_oidc_issuer: "https://token.actions.githubusercontent.com",
         docs: "/docs/building/by-layer/L0/schemas#verifying-protocol-bundle-signatures",
       },
-      versions: versioned.map((name) => ({
-        version: name.replace(/\.tgz$/, ""),
-        tarball: `/protocol/${name}`,
-        checksum: `/protocol/${name}.sha256`,
-        ...sidecarsFor(name),
-      })),
+      versions: versioned.map((name) => {
+        const version = name.replace(/\.tgz$/, "");
+        return {
+          version,
+          ...releaseStatusMetadata(version),
+          tarball: `/protocol/${name}`,
+          checksum: `/protocol/${name}.sha256`,
+          ...sidecarsFor(name),
+        };
+      }),
       latest,
     });
   } catch (error) {
@@ -328,6 +343,7 @@ async function listObjects(bucket, prefix) {
 
 export function findMatchingVersion(versions, requestedMajor, requestedMinor) {
   return versions.find((version) => {
+    if (!isSelectableRelease(version)) return false;
     const parsed = parseSemver(version);
     if (!parsed || parsed.major !== requestedMajor) return false;
     if (parsed.prerelease.length > 0) return false;
@@ -353,6 +369,7 @@ export function resolvePinnedFallback(versions, requested) {
 
   const wantStable = parsed.prerelease.length === 0;
   const eligible = (candidate) => {
+    if (!isSelectableRelease(candidate)) return false;
     const p = parseSemver(candidate);
     if (!p || p.major !== parsed.major) return false;
     if (wantStable && p.prerelease.length > 0) return false;
@@ -377,6 +394,7 @@ function buildAliases(versions, mount) {
   const latestPerMinor = {};
 
   for (const version of versions) {
+    if (!isSelectableRelease(version)) continue;
     const parsed = parseSemver(version);
     if (!parsed) continue;
     if (parsed.prerelease.length > 0) continue;
@@ -407,6 +425,7 @@ function buildAliases(versions, mount) {
 }
 
 function versionEntry(version, mountPath, knownVersions = []) {
+  const statusMetadata = releaseStatusMetadata(version);
   const parsed = parseSemver(version);
   const prerelease = !!parsed && parsed.prerelease.length > 0;
   const label = prerelease ? String(parsed.prerelease[0]).toLowerCase() : "";
@@ -414,9 +433,13 @@ function versionEntry(version, mountPath, knownVersions = []) {
   const supersededBy = stableVersion && knownVersions.includes(stableVersion) ? stableVersion : undefined;
   return {
     version,
-    stability: prerelease ? (label === "rc" || label === "beta" ? label : "prerelease") : "stable",
+    stability: statusMetadata.stability
+      ?? (prerelease
+        ? (label === "rc" || label === "beta" ? label : "prerelease")
+        : "stable"),
     prerelease,
-    deprecated: Boolean(supersededBy),
+    deprecated: statusMetadata.deprecated ?? Boolean(supersededBy),
+    ...statusMetadata,
     ...(supersededBy ? { superseded_by: supersededBy } : {}),
     path: `${mountPath}/${version}/`,
   };
@@ -424,9 +447,21 @@ function versionEntry(version, mountPath, knownVersions = []) {
 
 function latestStableVersion(versions) {
   return versions.find((version) => {
+    if (!isSelectableRelease(version)) return false;
     const parsed = parseSemver(version);
     return parsed && parsed.prerelease.length === 0;
   }) || null;
+}
+
+function releaseStatusMetadata(version) {
+  const status = RELEASE_STATUS_OVERRIDES.get(version);
+  if (status === "withdrawn") {
+    return { stability: "withdrawn", deprecated: true, withdrawn: true };
+  }
+  if (status === "unpublished") {
+    return { stability: "unpublished", deprecated: false, published: false };
+  }
+  return {};
 }
 
 function parseSemver(version) {

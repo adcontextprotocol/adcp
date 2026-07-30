@@ -1,0 +1,133 @@
+{
+  "version": 1,
+  "registry": "/schemas/registries/v1-canonical-mapping.json",
+  "registry_version": "1.2.0",
+  "description": "Reference vectors for literal v1 format-id projection. Resolution uses the first exact format_id_glob match; these vectors do not provide a format definition for structural fallback.",
+  "vectors": [
+    {
+      "id": "static-display-with-no-size-constraint",
+      "format_id": "display_static",
+      "expected_v2": { "canonical": "image" },
+      "notes": "The missing width and height are intentional; the id declares no size constraint."
+    },
+    {
+      "id": "display-300-by-250",
+      "format_id": "display_300x250",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 300, "height": 250 } }
+    },
+    {
+      "id": "display-728-by-90",
+      "format_id": "display_728x90",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 728, "height": 90 } }
+    },
+    {
+      "id": "display-320-by-50",
+      "format_id": "display_320x50",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 320, "height": 50 } }
+    },
+    {
+      "id": "display-300-by-600",
+      "format_id": "display_300x600",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 300, "height": 600 } }
+    },
+    {
+      "id": "display-970-by-250",
+      "format_id": "display_970x250",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 970, "height": 250 } }
+    },
+    {
+      "id": "display-250-by-250",
+      "format_id": "display_250x250",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 250, "height": 250 } }
+    },
+    {
+      "id": "display-200-by-200",
+      "format_id": "display_200x200",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 200, "height": 200 } }
+    },
+    {
+      "id": "display-300-by-50",
+      "format_id": "display_300x50",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 300, "height": 50 } }
+    },
+    {
+      "id": "display-320-by-480",
+      "format_id": "display_320x480",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 320, "height": 480 } }
+    },
+    {
+      "id": "display-320-by-400",
+      "format_id": "display_320x400",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 320, "height": 400 } }
+    },
+    {
+      "id": "display-320-by-320",
+      "format_id": "display_320x320",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 320, "height": 320 } }
+    },
+    {
+      "id": "display-320-by-250",
+      "format_id": "display_320x250",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 320, "height": 250 } }
+    },
+    {
+      "id": "hosted-video-30-seconds",
+      "format_id": "video_30s",
+      "expected_v2": { "canonical": "video_hosted", "parameters": { "duration_ms_exact": 30000 } }
+    },
+    {
+      "id": "hosted-video-15-seconds",
+      "format_id": "video_15s",
+      "expected_v2": { "canonical": "video_hosted", "parameters": { "duration_ms_exact": 15000 } }
+    },
+    {
+      "id": "pre-roll-video-30-seconds",
+      "format_id": "video_pre_roll_30s",
+      "expected_v2": { "canonical": "video_hosted", "parameters": { "duration_ms_exact": 30000 } }
+    },
+    {
+      "id": "pre-roll-video-15-seconds",
+      "format_id": "video_pre_roll_15s",
+      "expected_v2": { "canonical": "video_hosted", "parameters": { "duration_ms_exact": 15000 } }
+    },
+    {
+      "id": "hosted-video-640-by-480",
+      "format_id": "video_640x480",
+      "expected_v2": { "canonical": "video_hosted", "parameters": { "width": 640, "height": 480 } }
+    },
+    {
+      "id": "hosted-video-300-by-250",
+      "format_id": "video_300x250",
+      "expected_v2": { "canonical": "video_hosted", "parameters": { "width": 300, "height": 250 } }
+    },
+    {
+      "id": "hosted-video-16-to-9-30-seconds",
+      "format_id": "video_16x9_30s",
+      "expected_v2": { "canonical": "video_hosted", "parameters": { "aspect_ratio": "16:9", "duration_ms_exact": 30000 } }
+    },
+    {
+      "id": "vast-token-suffix-640-by-360",
+      "format_id": "video_640x360_vast",
+      "expected_v2": { "canonical": "video_vast", "parameters": { "width": 640, "height": 360 } }
+    },
+    {
+      "id": "hosted-audio-15-seconds",
+      "format_id": "audio_15s",
+      "expected_v2": { "canonical": "audio_hosted", "parameters": { "duration_ms_exact": 15000 } }
+    },
+    {
+      "id": "durationless-pre-roll-fails-closed",
+      "format_id": "video_pre_roll",
+      "expected_v2": null,
+      "expected_outcome": "no_literal_match",
+      "notes": "Deliberately omitted because video_hosted without duration_ms_exact is untraffickable."
+    },
+    {
+      "id": "durationless-mid-roll-fails-closed",
+      "format_id": "video_mid_roll",
+      "expected_v2": null,
+      "expected_outcome": "no_literal_match",
+      "notes": "Deliberately omitted because video_hosted without duration_ms_exact is untraffickable."
+    }
+  ]
+}

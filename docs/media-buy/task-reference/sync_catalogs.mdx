@@ -28,7 +28,7 @@ sequenceDiagram
     Note over B,S: Buyer can now reference synced catalogs in creatives
 ```
 
-This task sits between format discovery and creative submission in the [account state setup sequence](/docs/building/integration/account-state):
+This task sits between format discovery and creative submission in the [account state setup sequence](/docs/building/by-layer/L2/account-state):
 
 1. `list_creative_formats` — check `catalog` asset types in each format's `assets` array to know what feeds to sync
 2. **`sync_catalogs`** — push the required feeds to the account
@@ -59,7 +59,7 @@ Sync a product feed:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `account` | [account-ref](/docs/building/integration/accounts-and-agents#account-references) | Conditional | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. Required when the agent has multiple accounts. |
+| `account` | [account-ref](/docs/building/by-layer/L2/accounts-and-agents#account-references) | Conditional | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. Required when the agent has multiple accounts. |
 | `catalogs` | Catalog[] | No | Catalog feeds to sync (max 50). Omit for discovery mode. |
 | `catalog_ids` | string[] | No | Limit sync scope to specific catalog IDs. Others on the account are unaffected. |
 | `delete_missing` | boolean | No | When true, buyer-managed catalogs not in this sync are removed. Does not affect seller-managed catalogs. Requires `catalogs` to be present. Default: false. |
@@ -263,6 +263,6 @@ Configure `push_notification_config` on the request to receive webhook notificat
 ## Next steps
 
 - [Catalogs](/docs/creative/catalogs) — Complete documentation on catalog types, sourcing, and format requirements
-- [Account state](/docs/building/integration/account-state) — How catalogs fit into the account setup sequence
+- [Account state](/docs/building/by-layer/L2/account-state) — How catalogs fit into the account setup sequence
 - [sync_creatives](/docs/creative/task-reference/sync_creatives) — Submit creatives that reference synced catalogs
 - [list_creative_formats](/docs/creative/task-reference/list_creative_formats) — Discover format catalog requirements

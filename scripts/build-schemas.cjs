@@ -37,6 +37,18 @@ const DIST_DIR = path.join(__dirname, '../dist/schemas');
 const PACKAGE_JSON = path.join(__dirname, '../package.json');
 const SKILLS_DIR = path.join(__dirname, '../skills');
 
+// Keep generated file-based discovery aligned with the CDN and server
+// middleware. Exact artifacts remain available, but non-selectable releases
+// must never win latest/major/minor aliases.
+const RELEASE_STATUS_OVERRIDES = new Map([
+  ['3.1.3', 'withdrawn'],
+  ['3.2.0', 'unpublished'],
+]);
+
+function isSelectableRelease(version) {
+  return !RELEASE_STATUS_OVERRIDES.has(version);
+}
+
 // Parse command line arguments
 const args = process.argv.slice(2);
 const isRelease = args.includes('--release');
@@ -57,7 +69,10 @@ function getAllReleasedVersions() {
 
   const entries = fs.readdirSync(DIST_DIR, { withFileTypes: true });
   return entries
-    .filter(e => e.isDirectory() && semver.valid(e.name) !== null && semver.prerelease(e.name) === null)
+    .filter(e => e.isDirectory()
+      && semver.valid(e.name) !== null
+      && semver.prerelease(e.name) === null
+      && isSelectableRelease(e.name))
     .map(e => e.name)
     .sort(semver.rcompare);
 }
@@ -120,6 +135,24 @@ function getReleaseMetadata(version, knownVersions = []) {
       stability: 'development',
       prerelease: false,
       deprecated: false,
+    };
+  }
+
+  const statusOverride = RELEASE_STATUS_OVERRIDES.get(version);
+  if (statusOverride === 'withdrawn') {
+    return {
+      stability: 'withdrawn',
+      prerelease: false,
+      deprecated: true,
+      withdrawn: true,
+    };
+  }
+  if (statusOverride === 'unpublished') {
+    return {
+      stability: 'unpublished',
+      prerelease: false,
+      deprecated: false,
+      published: false,
     };
   }
 
@@ -2184,7 +2217,18 @@ async function main() {
   console.log('📖 See docs/reference/versioning.mdx for guidance on which to use.');
 }
 
-module.exports = { hoistDuplicateInlineEnums, hoistMarkedSchemas, resolveRefs, versionInlineSchemaIds, dedupBundledSchemaIds, stripIdsFromSubtreesWithLocalRefs, copyAsyncResponseRefsToCore };
+module.exports = {
+  hoistDuplicateInlineEnums,
+  hoistMarkedSchemas,
+  resolveRefs,
+  versionInlineSchemaIds,
+  dedupBundledSchemaIds,
+  stripIdsFromSubtreesWithLocalRefs,
+  copyAsyncResponseRefsToCore,
+  getReleaseMetadata,
+  buildRootSchemaDiscovery,
+  isSelectableRelease,
+};
 
 if (require.main === module) {
   main().catch(err => {

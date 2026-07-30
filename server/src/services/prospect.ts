@@ -15,7 +15,13 @@ import { enrichOrganization } from './enrichment.js';
 import { isLushaConfigured } from './lusha.js';
 import { COMPANY_TYPE_VALUES } from '../config/company-types.js';
 import { VALID_REVENUE_TIERS } from '../db/organization-db.js';
-import { getCompanyDomain, isFreeEmailDomain } from '../utils/email-domain.js';
+import {
+  getCompanyDomain,
+  getGoogleEmailAliases,
+  isFreeEmailDomain,
+  normalizeEmail,
+} from '../utils/email-domain.js';
+import { validateEmail } from '../middleware/validation.js';
 import {
   assertClaimableBrandDomain,
   canonicalizeBrandDomain,
@@ -60,6 +66,7 @@ function inferBusinessDomainFromContactEmail(email: string | undefined): string 
 }
 
 function normalizeProspectDomain(input: CreateProspectInput): string | null {
+  if (input.is_personal) return null;
   const explicit = input.domain?.trim();
   if (explicit) return normalizeExplicitDomain(explicit);
   return inferBusinessDomainFromContactEmail(input.prospect_contact_email);
@@ -83,6 +90,7 @@ function prospectDomainTrust(input: CreateProspectInput): {
 export interface CreateProspectInput {
   name: string;
   domain?: string;
+  is_personal?: boolean;
   company_type?: string;
   prospect_status?: string;
   prospect_source?: string;
@@ -102,6 +110,7 @@ export interface CreateProspectResult {
     name: string;
     company_type?: string;
     email_domain?: string;
+    is_personal?: boolean;
     prospect_status: string;
   };
   error?: string;
@@ -127,6 +136,17 @@ export async function createProspect(
   }
 
   const name = input.name.trim();
+  const isPersonal = input.is_personal === true;
+  const contactEmail = input.prospect_contact_email
+    ? normalizeEmail(input.prospect_contact_email)
+    : null;
+
+  if (isPersonal && !validateEmail(contactEmail).valid) {
+    return {
+      success: false,
+      error: 'A valid contact email is required to create an individual prospect',
+    };
+  }
 
   // Validate prospect_status if provided
   if (input.prospect_status && !VALID_PROSPECT_STATUSES.includes(input.prospect_status as typeof VALID_PROSPECT_STATUSES[number])) {
@@ -146,11 +166,63 @@ export async function createProspect(
     };
   }
 
-  if (!normalizedDomain) {
+  if (!isPersonal && !normalizedDomain) {
     return {
       success: false,
       error: 'A valid business domain or business contact email is required to create a prospect',
     };
+  }
+
+  if (isPersonal && contactEmail) {
+    const emailAliases = [contactEmail, ...getGoogleEmailAliases(contactEmail)];
+    const existingPersonal = await pool.query<{
+      workos_organization_id: string;
+      name: string;
+      company_type: string | null;
+      prospect_status: string | null;
+      is_personal: boolean;
+    }>(
+      `SELECT DISTINCT o.workos_organization_id, o.name, o.company_type,
+              o.prospect_status, o.is_personal
+       FROM organizations o
+       LEFT JOIN organization_memberships om
+         ON om.workos_organization_id = o.workos_organization_id
+       LEFT JOIN users u ON u.workos_user_id = om.workos_user_id
+       LEFT JOIN membership_invites mi
+         ON mi.workos_organization_id = o.workos_organization_id
+       WHERE o.is_personal = true
+         AND (
+           LOWER(TRIM(o.prospect_contact_email)) = ANY($1::text[])
+           OR LOWER(TRIM(om.email)) = ANY($1::text[])
+           OR LOWER(TRIM(u.email)) = ANY($1::text[])
+           OR LOWER(TRIM(mi.contact_email)) = ANY($1::text[])
+         )
+       ORDER BY o.workos_organization_id
+       LIMIT 2`,
+      [emailAliases],
+    );
+
+    if (existingPersonal.rows.length > 1) {
+      return {
+        success: false,
+        alreadyExists: true,
+        error: `Multiple individual workspaces are associated with ${contactEmail}; resolve the duplicate before sending an invite`,
+      };
+    }
+
+    if (existingPersonal.rows.length === 1) {
+      const existing = existingPersonal.rows[0];
+      return {
+        success: false,
+        alreadyExists: true,
+        organization: {
+          ...existing,
+          company_type: existing.company_type ?? undefined,
+          prospect_status: existing.prospect_status ?? '',
+        },
+        error: `An individual workspace for ${contactEmail} already exists`,
+      };
+    }
   }
 
   // Check if domain resolves to an existing organization (exact, alias, sub-brand, or redirect)
@@ -181,11 +253,13 @@ export async function createProspect(
   }
 
   // Check for existing organization with same name
-  const existing = await pool.query(
-    `SELECT workos_organization_id, name FROM organizations
-     WHERE LOWER(name) = LOWER($1) AND is_personal = false`,
-    [name]
-  );
+  const existing = isPersonal
+    ? { rows: [] }
+    : await pool.query(
+        `SELECT workos_organization_id, name FROM organizations
+         WHERE LOWER(name) = LOWER($1) AND is_personal = false`,
+        [name]
+      );
 
   if (existing.rows.length > 0) {
     return {
@@ -197,12 +271,13 @@ export async function createProspect(
   }
 
   try {
-    const domainTrust = prospectDomainTrust(input);
+    const domainTrust = normalizedDomain ? prospectDomainTrust(input) : null;
     // Create organization in WorkOS
-    const workosOrg = await workos.organizations.createOrganization({
-      name,
-      domainData: [{ domain: normalizedDomain, state: domainTrust.workosState }],
-    });
+    const workosOrg = await workos.organizations.createOrganization(
+      normalizedDomain && domainTrust
+        ? { name, domainData: [{ domain: normalizedDomain, state: domainTrust.workosState }] }
+        : { name },
+    );
 
     logger.info(
       { orgId: workosOrg.id, name, domain: normalizedDomain },
@@ -228,8 +303,8 @@ export async function createProspect(
         is_personal,
         created_at,
         updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, false, NOW(), NOW())
-      RETURNING workos_organization_id, name, company_type, email_domain, prospect_status`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), NOW())
+      RETURNING workos_organization_id, name, company_type, email_domain, prospect_status, is_personal`,
       [
         workosOrg.id,
         name,
@@ -239,43 +314,46 @@ export async function createProspect(
         input.prospect_source || 'manual',
         input.prospect_notes || null,
         input.prospect_contact_name || null,
-        input.prospect_contact_email || null,
+        contactEmail,
         input.prospect_contact_title || null,
         input.prospect_next_action || null,
         input.prospect_next_action_date || null,
         input.prospect_owner || null,
+        isPersonal,
       ]
     );
 
     const org = result.rows[0];
 
-    const linkResult = await linkDomain({
-      orgId: workosOrg.id,
-      domain: normalizedDomain,
-      source: domainTrust.source,
-      verified: domainTrust.verified,
-      isPrimary: true,
-    });
-    if (linkResult.conflictOrgId) {
-      await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [workosOrg.id]);
-      return {
-        success: false,
-        alreadyExists: true,
-        error: `Domain ${normalizedDomain} is already linked to another organization (${linkResult.conflictOrgId})`,
-      };
-    }
+    if (normalizedDomain && domainTrust) {
+      const linkResult = await linkDomain({
+        orgId: workosOrg.id,
+        domain: normalizedDomain,
+        source: domainTrust.source,
+        verified: domainTrust.verified,
+        isPrimary: true,
+      });
+      if (linkResult.conflictOrgId) {
+        await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [workosOrg.id]);
+        return {
+          success: false,
+          alreadyExists: true,
+          error: `Domain ${normalizedDomain} is already linked to another organization (${linkResult.conflictOrgId})`,
+        };
+      }
 
-    const bgPromise = researchDomain(normalizedDomain, { org_id: workosOrg.id }).catch((err) => {
-      logger.warn(
-        { err, domain: normalizedDomain, orgId: workosOrg.id },
-        'Background research failed for new prospect'
-      );
-    });
-    trackBackground(bgPromise);
+      const bgPromise = researchDomain(normalizedDomain, { org_id: workosOrg.id }).catch((err) => {
+        logger.warn(
+          { err, domain: normalizedDomain, orgId: workosOrg.id },
+          'Background research failed for new prospect'
+        );
+      });
+      trackBackground(bgPromise);
+    }
 
     return {
       success: true,
-      organization: { ...org, email_domain: normalizedDomain },
+      organization: { ...org, email_domain: normalizedDomain || undefined },
     };
   } catch (error) {
     logger.error({ err: error, name }, 'Error creating prospect');

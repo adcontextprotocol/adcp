@@ -21,7 +21,7 @@ import { getSession, sessionKeyFromArgs, findGovernancePlanAcrossSessions } from
 import { signGovernanceContext, type GovernancePhase, type PolicyDecision } from './governance-context.js';
 import { getCanonicalBase } from './tenants/registry.js';
 
-const GOVERNANCE_PHASES = new Set<GovernancePhase>(['intent', 'purchase', 'modification', 'delivery']);
+const EXECUTION_GOVERNANCE_PHASES = new Set<GovernancePhase>(['purchase', 'modification', 'delivery']);
 
 /**
  * Map plan-level policy_ids + current check status to per-policy outcomes
@@ -188,7 +188,6 @@ interface SyncPlanInput {
 
 interface CheckGovernanceInput extends ToolArgs {
   plan_id: string;
-  binding?: 'proposed' | 'committed';
   caller: string;
   purchase_type?: string;
   tool?: string;
@@ -216,8 +215,8 @@ interface CheckPayload {
   flight?: { start?: string; end?: string; start_time?: string; end_time?: string };
   // Brand rights payload fields
   campaign?: { countries?: string[]; start_date?: string; end_date?: string };
-  // Echoed on modification / delivery phase checks so the JWS audience binding
-  // matches the seller-side media buy.
+  // An update proposal may name an existing buy. Intent tokens still omit it;
+  // execution checks bind their ID from the seller's planned_delivery instead.
   media_buy_id?: string;
   // Target seller URL for `aud` binding. Buyers MUST supply this so the GA
   // can bind the JWS to a specific seller — without it, intent-phase tokens
@@ -227,6 +226,8 @@ interface CheckPayload {
 }
 
 interface PlannedDeliveryInput {
+  // Seller-assigned ID bound into purchase/modification/delivery JWS claims.
+  media_buy_id?: string;
   geo?: { countries?: string[] };
   channels?: string[];
   total_budget?: number;
@@ -680,7 +681,6 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     : undefined;
   const humanApproval = req.human_approval ?? extHumanApproval;
   const hasHumanApproval = typeof humanApproval === 'object' && humanApproval !== null;
-  const phase = req.phase || req.governance_phase || 'purchase';
   const plannedDelivery = req.planned_delivery;
   const deliveryMetrics = req.delivery_metrics;
 
@@ -688,10 +688,30 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     return { errors: [{ code: 'VALIDATION_ERROR', message: `Invalid purchase_type: ${req.purchase_type}. Must be one of: ${[...VALID_PURCHASE_TYPES].join(', ')}` }] };
   }
 
-  // Infer binding from field presence per the schema spec:
-  // tool+payload = intent check (proposed), governance_context+planned_delivery = execution check (committed)
-  const binding: 'proposed' | 'committed' = req.binding
-    || (req.governance_context && req.planned_delivery ? 'committed' : 'proposed');
+  // Request shape is authoritative. A caller-supplied phase cannot turn an
+  // orchestrator proposal into a seller execution check.
+  const hasIntentShape = tool !== undefined && payload !== undefined;
+  const hasExecutionShape = plannedDelivery !== undefined;
+  const binding: 'proposed' | 'committed' = hasIntentShape
+    ? 'proposed'
+    : hasExecutionShape
+      ? 'committed'
+      : 'proposed';
+  const requestedExecutionPhase: GovernancePhase = EXECUTION_GOVERNANCE_PHASES.has(req.phase as GovernancePhase)
+    ? (req.phase as GovernancePhase)
+    : EXECUTION_GOVERNANCE_PHASES.has(req.governance_phase as GovernancePhase)
+      ? (req.governance_phase as GovernancePhase)
+      : 'purchase';
+  const phase: GovernancePhase = binding === 'proposed' ? 'intent' : requestedExecutionPhase;
+
+  if (binding === 'committed' && !plannedDelivery?.media_buy_id) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: 'planned_delivery.media_buy_id is required for execution governance checks',
+      }],
+    };
+  }
 
   const plan = session.governancePlans.get(planId);
   if (!plan) {
@@ -1157,12 +1177,6 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
   // string across plan revisions. Denied checks carry no token; downstream
   // sellers reject a request that has no signed authorization.
   //
-  // Emit a compact JWS `governance_context` per the AdCP JWS profile on
-  // approved/conditions outcomes; the spec requires a fresh signature on
-  // every check (new jti, iat, exp, plan_hash) — never re-emit a cached
-  // string across plan revisions. Denied checks carry no token; downstream
-  // sellers reject a request that has no signed authorization.
-  //
   // `aud` resolution: spec requires the seller URL from `adagents.json`,
   // byte-exact. We accept `payload.target_seller` for buyers that name
   // their seller explicitly. The sandbox default is the training agent's
@@ -1172,31 +1186,27 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
   // and refuse to issue without one; copying this fallback is the bug the
   // training reference exists to surface.
   //
-  // `phase` downgrade: non-intent phases require `media_buy_id` per spec
-  // §"AdCP JWS profile". When the buyer omits it, downgrade phase to
-  // `intent` rather than emit a structurally-valid-but-step-12-rejected
-  // token.
+  // Token phase follows the already-inferred request binding. Intent checks
+  // never carry a media_buy_id, even if the proposed payload happens to name
+  // an existing buy. Execution checks preserve the seller's lifecycle phase
+  // and bind the seller-assigned media_buy_id when supplied.
   let effectiveContext: string | undefined;
   // Human-review denials also need a context so the buyer can bind the
   // off-protocol approval to the re-check that carries human_approval.
   if (status === 'approved' || status === 'conditions' || humanReviewRequired) {
-    const requestedPhase: GovernancePhase = GOVERNANCE_PHASES.has(phase as GovernancePhase)
-      ? (phase as GovernancePhase)
-      : 'purchase';
-    const requestMediaBuyId = req.payload?.media_buy_id ? String(req.payload.media_buy_id) : undefined;
-    const jwsPhase: GovernancePhase = requestedPhase !== 'intent' && !requestMediaBuyId
-      ? 'intent'
-      : requestedPhase;
+    const requestMediaBuyId = binding === 'committed'
+      ? plannedDelivery?.media_buy_id
+      : undefined;
 
     const targetSeller = req.payload?.target_seller ?? `${getCanonicalBase()}/sales`;
     effectiveContext = await signGovernanceContext({
       issuer: `${getCanonicalBase()}/governance`,
       audience: targetSeller,
       planId,
-      phase: jwsPhase,
+      phase,
       caller,
       checkId,
-      ...(jwsPhase !== 'intent' && requestMediaBuyId ? { mediaBuyId: requestMediaBuyId } : {}),
+      ...(phase !== 'intent' && requestMediaBuyId ? { mediaBuyId: requestMediaBuyId } : {}),
       plan: plan.planAsSupplied,
       ...(plan.policyIds?.length
         ? { policyDecisions: buildPolicyDecisions(plan.policyIds, status, conditions) }
