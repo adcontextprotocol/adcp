@@ -1386,6 +1386,69 @@ async function runTests() {
     [/uniqueItems|duplicate/i]
   );
 
+  // Legacy-carrier negative fixtures — both hop schemas reject `tmpx_values` and `tmpx_macros`.
+  // These are the fields that appear in the `not` clauses but were missing from the fixture set.
+
+  // Provider→router MUST NOT carry legacy `tmpx_values`.
+  await expectInvalid(
+    {
+      "status": "completed",
+      "type": "identity_match_response",
+      "request_id": "id-leg-1",
+      "eligible_package_ids": ["pkg-1"],
+      "serve_window_sec": 60,
+      "tmpx_values": ["k1.legacy"]
+    },
+    '/schemas/trusted-match/provider-identity-match-response.json',
+    'TMP provider→router response rejects legacy `tmpx_values`',
+    [/not|must NOT|anyOf/i]
+  );
+
+  // Provider→router MUST NOT carry legacy `tmpx_macros`.
+  await expectInvalid(
+    {
+      "status": "completed",
+      "type": "identity_match_response",
+      "request_id": "id-leg-2",
+      "eligible_package_ids": ["pkg-1"],
+      "serve_window_sec": 60,
+      "tmpx_macros": [{ "name": "PIN_TMPX_1", "value": "k1.legacy" }]
+    },
+    '/schemas/trusted-match/provider-identity-match-response.json',
+    'TMP provider→router response rejects legacy `tmpx_macros`',
+    [/not|must NOT|anyOf/i]
+  );
+
+  // Router→publisher MUST NOT carry legacy `tmpx_values`.
+  await expectInvalid(
+    {
+      "status": "completed",
+      "type": "identity_match_response",
+      "request_id": "id-leg-3",
+      "eligible_package_ids": ["pkg-1"],
+      "serve_window_sec": 60,
+      "tmpx_values": ["k1.legacy"]
+    },
+    '/schemas/trusted-match/identity-match-response.json',
+    'TMP router→publisher response rejects legacy `tmpx_values`',
+    [/not|must NOT|anyOf/i]
+  );
+
+  // Router→publisher MUST NOT carry legacy `tmpx_macros`.
+  await expectInvalid(
+    {
+      "status": "completed",
+      "type": "identity_match_response",
+      "request_id": "id-leg-4",
+      "eligible_package_ids": ["pkg-1"],
+      "serve_window_sec": 60,
+      "tmpx_macros": [{ "name": "PIN_TMPX_1", "value": "k1.legacy" }]
+    },
+    '/schemas/trusted-match/identity-match-response.json',
+    'TMP router→publisher response rejects legacy `tmpx_macros`',
+    [/not|must NOT|anyOf/i]
+  );
+
   // get_products refine[] — migration regressions for the `id` → `product_id`/`proposal_id` rename (adcp#2775).
   // These fixtures exercise exactly the payload shape a pre-rename orchestrator would send today, so the test
   // proves the schema rejects it with a migration-diagnosable error.
