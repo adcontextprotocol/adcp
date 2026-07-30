@@ -394,7 +394,11 @@ export const GOVERNANCE_TOOLS = [
         account: { type: 'object', description: 'Account reference identifying the tenant.' },
         brand: { type: 'object', description: 'Top-level brand reference identifying the tenant.' },
         plan_id: { type: 'string' },
-        caller: { type: 'string', format: 'uri' },
+        caller: {
+          type: 'string',
+          format: 'uri',
+          description: 'Claimed URL of the requesting agent. When the transport credential resolves to an agent URL, the governance agent must require an exact match and use the resolved identity for authorization. Unresolved assertions cannot authorize restricted plans.',
+        },
         purchase_type: { type: 'string', enum: ['media_buy', 'rights_license', 'signal_activation', 'creative_services'], description: 'Type of financial commitment. Defaults to media_buy.' },
         tool: { type: 'string', description: 'The AdCP tool being checked. Present on intent checks (orchestrator).' },
         payload: { type: 'object', description: 'The full tool arguments. Present on intent checks.' },
@@ -670,7 +674,11 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     const fallback = await findGovernancePlanAcrossSessions(planId);
     if (fallback) session = fallback;
   }
-  const caller = req.caller;
+  const claimedCaller = req.caller;
+  const authenticatedCaller = ctx.authenticatedAgentUrl;
+  // Use the server-resolved identity for all persisted and signed state when
+  // one exists. The body field is never an alternate authentication source.
+  const caller = authenticatedCaller ?? claimedCaller;
   const purchaseType = req.purchase_type || 'media_buy';
   const tool = req.tool;
   const payload = req.payload;
@@ -686,6 +694,15 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
 
   if (req.purchase_type && !VALID_PURCHASE_TYPES.has(req.purchase_type)) {
     return { errors: [{ code: 'VALIDATION_ERROR', message: `Invalid purchase_type: ${req.purchase_type}. Must be one of: ${[...VALID_PURCHASE_TYPES].join(', ')}` }] };
+  }
+
+  if (authenticatedCaller !== undefined && claimedCaller !== authenticatedCaller) {
+    return {
+      errors: [{
+        code: 'PERMISSION_DENIED',
+        message: 'Authenticated agent identity is required and must match caller for this governance check.',
+      }],
+    };
   }
 
   // Request shape is authoritative. A caller-supplied phase cannot turn an
@@ -737,6 +754,19 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     return buildCheckResponse(check);
   }
 
+  const hasCallerRestrictions = Boolean(
+    plan.delegations?.length
+    || (plan.approvedSellers !== undefined && plan.approvedSellers !== null),
+  );
+  if (hasCallerRestrictions && authenticatedCaller === undefined) {
+    return {
+      errors: [{
+        code: 'PERMISSION_DENIED',
+        message: 'Authenticated agent identity is required and must match caller for this governance check.',
+      }],
+    };
+  }
+
   const findings: GovernanceFinding[] = [];
   const conditions: GovernanceCondition[] = [];
   const categoriesEvaluated: string[] = [];
@@ -784,7 +814,9 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
   categoriesEvaluated.push('delegation_authority');
   let callerDelegation: GovernanceDelegation | undefined;
   if (plan.delegations?.length) {
-    callerDelegation = plan.delegations.find(d => d.agentUrl === caller);
+    // Restricted-plan authorization only consumes the server-resolved URL.
+    // The missing-identity gate above guarantees this value is present.
+    callerDelegation = plan.delegations.find(d => d.agentUrl === authenticatedCaller);
     if (!callerDelegation) {
       findings.push({
         categoryId: 'delegation_authority',
@@ -803,7 +835,7 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
   // Approved sellers check
   if (plan.approvedSellers !== undefined && plan.approvedSellers !== null) {
     categoriesEvaluated.push('seller_compliance');
-    if (!plan.approvedSellers.includes(caller)) {
+    if (!plan.approvedSellers.includes(authenticatedCaller!)) {
       findings.push({
         categoryId: 'seller_compliance',
         severity: 'critical',

@@ -9305,7 +9305,10 @@ describe('check_governance seller compliance', () => {
   };
 
   it('approves caller in approved_sellers list', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const server = createTrainingAgentServer({
+      ...DEFAULT_CTX,
+      authenticatedAgentUrl: 'https://seller-a.example',
+    });
     await simulateCallTool(server, 'sync_plans', {
       plans: [{ ...PLAN_BASE, approved_sellers: ['https://seller-a.example'] }],
     });
@@ -9320,7 +9323,10 @@ describe('check_governance seller compliance', () => {
   });
 
   it('denies caller not in approved_sellers list', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const server = createTrainingAgentServer({
+      ...DEFAULT_CTX,
+      authenticatedAgentUrl: 'https://unauthorized.example',
+    });
     await simulateCallTool(server, 'sync_plans', {
       plans: [{ ...PLAN_BASE, approved_sellers: ['https://seller-a.example'] }],
     });
@@ -9337,7 +9343,10 @@ describe('check_governance seller compliance', () => {
   });
 
   it('denies all callers when approved_sellers is empty array', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const server = createTrainingAgentServer({
+      ...DEFAULT_CTX,
+      authenticatedAgentUrl: 'https://any-seller.example',
+    });
     await simulateCallTool(server, 'sync_plans', {
       plans: [{ ...PLAN_BASE, approved_sellers: [] }],
     });
@@ -9519,9 +9528,34 @@ describe('check_governance delegation enforcement', () => {
       markets: ['US', 'GB'],
     }],
   };
+  const DELEGATED_CTX: TrainingContext = {
+    ...DEFAULT_CTX,
+    authenticatedAgentUrl: 'https://delegated.example',
+  };
+
+  it('fails closed on the legacy handler when no authenticated agent URL is available', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'sync_plans', { plans: [DELEGATED_PLAN] });
+
+    const { result } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-deleg',
+      binding: 'proposed',
+      caller: 'https://delegated.example',
+      tool: 'create_media_buy',
+      payload: {
+        total_budget: { amount: 20_000, currency: 'USD' },
+        geo: { countries: ['US'] },
+      },
+    });
+
+    expect(result).toMatchObject({
+      code: 'PERMISSION_DENIED',
+      message: 'Authenticated agent identity is required and must match caller for this governance check.',
+    });
+  });
 
   it('approves delegation within budget limit', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const server = createTrainingAgentServer(DELEGATED_CTX);
     await simulateCallTool(server, 'sync_plans', { plans: [DELEGATED_PLAN] });
 
     const { result } = await simulateCallTool(server, 'check_governance', {
@@ -9540,7 +9574,7 @@ describe('check_governance delegation enforcement', () => {
   });
 
   it('denies delegation exceeding budget limit', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const server = createTrainingAgentServer(DELEGATED_CTX);
     await simulateCallTool(server, 'sync_plans', { plans: [DELEGATED_PLAN] });
 
     const { result } = await simulateCallTool(server, 'check_governance', {
@@ -9563,7 +9597,7 @@ describe('check_governance delegation enforcement', () => {
   });
 
   it('denies delegation targeting unauthorized markets', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const server = createTrainingAgentServer(DELEGATED_CTX);
     await simulateCallTool(server, 'sync_plans', { plans: [DELEGATED_PLAN] });
 
     const { result } = await simulateCallTool(server, 'check_governance', {
@@ -9586,7 +9620,7 @@ describe('check_governance delegation enforcement', () => {
   });
 
   it('approves delegation within allowed markets', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const server = createTrainingAgentServer(DELEGATED_CTX);
     await simulateCallTool(server, 'sync_plans', { plans: [DELEGATED_PLAN] });
 
     const { result } = await simulateCallTool(server, 'check_governance', {
@@ -9604,7 +9638,7 @@ describe('check_governance delegation enforcement', () => {
   });
 
   it('issues governance_context and accepts it on subsequent calls', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const server = createTrainingAgentServer(DELEGATED_CTX);
     await simulateCallTool(server, 'sync_plans', { plans: [DELEGATED_PLAN] });
 
     // First check — governance agent issues governance_context

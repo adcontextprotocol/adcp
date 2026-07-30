@@ -89,13 +89,13 @@ function stageLatestThreeZeroSchemaBundle(): void {
   });
 }
 
-async function initializeTenant(url: string): Promise<void> {
+async function initializeTenant(url: string, bearerToken = 'test-token'): Promise<void> {
   await fetch(url, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       accept: 'application/json',
-      authorization: 'Bearer test-token',
+      authorization: `Bearer ${bearerToken}`,
     },
     body: JSON.stringify({
       jsonrpc: '2.0',
@@ -106,13 +106,19 @@ async function initializeTenant(url: string): Promise<void> {
   });
 }
 
-async function callTenantTool(url: string, id: number, name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+async function callTenantTool(
+  url: string,
+  id: number,
+  name: string,
+  args: Record<string, unknown>,
+  bearerToken = 'test-token',
+): Promise<Record<string, unknown>> {
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       accept: 'application/json',
-      authorization: 'Bearer test-token',
+      authorization: `Bearer ${bearerToken}`,
     },
     body: JSON.stringify({
       jsonrpc: '2.0',
@@ -270,6 +276,67 @@ describe('tenant routing smoke', () => {
       const error = activation.result?.structuredContent?.errors?.[0];
       expect(error?.code).toBe('PERMISSION_DENIED');
       expect(error?.details?.findings?.[0]?.category_id).toBe('governance_context');
+    } finally {
+      await close();
+    }
+  }, 15000);
+
+  it('binds governance caller authorization to the v6 registry-resolved agent URL', async () => {
+    const { baseUrl, close } = await bootServer();
+    const victimToken = 'demo-billing-agent-billable-v1';
+    const attackerToken = 'demo-billing-passthrough-v1';
+    const victimAgentUrl = `https://training-agent.adcontextprotocol.org/demo/${victimToken}`;
+    try {
+      const url = `${baseUrl}/governance/mcp`;
+      await initializeTenant(url, victimToken);
+
+      const sync = await callTenantTool(url, 2, 'sync_plans', {
+        plans: [{
+          plan_id: 'tenant-v6-caller-binding',
+          brand: { domain: 'tenant-v6-caller-binding.example' },
+          objectives: 'Verify v6 authenticated agent caller binding.',
+          budget: { total: 10_000, currency: 'USD', reallocation_threshold: 10_000 },
+          flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+          delegations: [{ agent_url: victimAgentUrl, authority: 'full' }],
+        }],
+        idempotency_key: 'tenant-v6-caller-binding-sync',
+      }, victimToken) as {
+        result?: { structuredContent?: { plans?: Array<{ status?: string }> } };
+      };
+      expect(sync.result?.structuredContent?.plans?.[0]?.status).toBe('active');
+
+      const allowed = await callTenantTool(url, 3, 'check_governance', {
+        plan_id: 'tenant-v6-caller-binding',
+        caller: victimAgentUrl,
+        tool: 'create_media_buy',
+        payload: {
+          target_seller: 'https://seller.example',
+          total_budget: { amount: 1_000, currency: 'USD' },
+        },
+      }, victimToken) as {
+        result?: { structuredContent?: { status?: string; governance_context?: string } };
+      };
+      expect(allowed.result?.structuredContent).toMatchObject({
+        status: 'approved',
+        governance_context: expect.any(String),
+      });
+
+      const spoofed = await callTenantTool(url, 4, 'check_governance', {
+        plan_id: 'tenant-v6-caller-binding',
+        caller: victimAgentUrl,
+        tool: 'create_media_buy',
+        payload: {
+          target_seller: 'https://seller.example',
+          total_budget: { amount: 1_000, currency: 'USD' },
+        },
+      }, attackerToken) as {
+        result?: {
+          isError?: boolean;
+          structuredContent?: { adcp_error?: { code?: string } };
+        };
+      };
+      expect(spoofed.result?.isError).toBe(true);
+      expect(spoofed.result?.structuredContent?.adcp_error?.code).toBe('PERMISSION_DENIED');
     } finally {
       await close();
     }

@@ -1324,7 +1324,8 @@
                   "docs/reference/migration/signals",
                   "docs/reference/migration/audiences",
                   "docs/reference/migration/attribution",
-                  "docs/reference/migration/media-buy-status"
+                  "docs/reference/migration/media-buy-status",
+                  "docs/reference/migration/governance-caller-identity"
                 ]
               },
               "docs/protocol/architecture",
