@@ -1,6 +1,6 @@
 ---
 title: Pricing Models
-description: "AdCP pricing models — CPM, CPCV, CPP, CPC, CPA, time-based, and DOOH pricing. Publisher-declared, buyer-selected model with rate card support."
+description: "AdCP pricing models — CPM, CPCV, CPP, CPC, CPA, revenue share, time-based, and DOOH pricing. Publisher-declared, buyer-selected model with rate card support."
 "og:title": "AdCP — Pricing Models"
 ---
 
@@ -381,6 +381,51 @@ Buyers should verify the measurement provider meets their campaign requirements 
 **Refunds and adjustments**: Refund handling and conversion adjustment policies are commercial terms between buyer and seller. The protocol does not govern clawbacks or billing credits for refunded conversions.
 
 **Note**: CPA replaces the need for separate "CPO" (Cost Per Order) or "CPL" (Cost Per Lead) pricing models. A seller can offer multiple CPA options with different event types, event sources, and prices on the same product.
+
+---
+
+### Revenue Share
+**Percentage of settled attributed value** - Advertiser pays a fixed commission rate on the portion of attributed conversion value eligible under the parties' agreement.
+
+**Use Cases**: Affiliate networks, content commerce, performance partnerships, and other outcome-priced media
+
+<!-- Using latest because revenue-share-option.json has not yet shipped in a released schema version. Update to /schemas/v3/ after release. -->
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/pricing-options/revenue-share-option.json",
+  "pricing_option_id": "affiliate_purchase_4pct",
+  "pricing_model": "revenue_share",
+  "event_type": "purchase",
+  "event_source_id": "affiliate_attribution",
+  "commission_rate": 0.04,
+  "currency": "USD",
+  "commission_basis_description": "Net merchandise value after discounts, excluding tax and shipping; returns removed before commission lock."
+}
+```
+
+`commission_rate` is a decimal proportion: `0.04` means 4%. Revenue share uses contingent pricing, not fixed-unit or auction pricing, so the option does not carry `fixed_price`, `floor_price`, `price_guidance`, or `max_bid`, and the package request does not carry `bid_price`.
+
+**Billing formula**:
+
+```text
+spend = round_currency(commissionable_value * commission_rate)
+```
+
+`commissionable_value` is the settled value eligible for commission. It is distinct from `conversion_value`, which remains the total attributed value for analytics. The difference may reflect excluded tax or shipping, discounts, ineligible items, returns, or cancellations. `commission_basis_description` tells operators how the authoritative party calculates the eligible amount.
+
+**Settlement flow**:
+
+1. The buyer registers the declared `event_source_id` through `sync_event_sources`.
+2. The package's `measurement_terms.billing_measurement` names the authoritative party and commission-lock `measurement_window`.
+3. Provisional delivery may report conversion and commissionable values while the return window is open.
+4. `adjusted` or `window_update` reports replace earlier values as returns and cancellations settle.
+5. A final row reports `commissionable_value`, calculated `spend`, `is_final: true`, and `finalized_at`.
+
+For revenue share, package `budget` is the maximum commission payable—not attributed sales. Sellers must not invoice above that budget without an accepted budget update.
+
+When billing is buyer- or vendor-attested, `report_usage` carries `media_buy_id`, `pricing_option_id`, `commissionable_value`, and `vendor_cost`; the seller verifies the formula against the selected pricing option.
+
+Revenue share is channel-independent. Affiliate is the immediate use case, but sellers may offer this pricing model on other channels where the same commercial contract applies.
 
 ---
 

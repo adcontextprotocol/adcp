@@ -107,6 +107,7 @@ Publishers declare which pricing models they support for each product. Buyers se
 - **CPCV** (Cost Per Completed View) - Cost per 100% video/audio completion
 - **CPV** (Cost Per View) - Cost per view at publisher-defined threshold
 - **CPA** (Cost Per Acquisition) - Cost per conversion event (purchase, lead, signup, etc.)
+- **Revenue Share** - Commission rate applied to settled attributed conversion value
 - **CPP** (Cost Per Point) - Cost per Gross Rating Point (TV/audio)
 - **Flat Rate** - Fixed cost regardless of delivery volume
 - **Time** - Cost per time unit (day, week, month) that scales with campaign duration
@@ -125,7 +126,7 @@ Each pricing option includes:
 }
 ```
 
-For auction-based pricing (no `fixed_price`), use `floor_price` for minimum bid constraints and optional `price_guidance` for percentile hints. Bid-based auction models (`cpm`, `vcpm`, `cpc`, `cpcv`, `cpv`) may also include `max_bid` as a boolean signal that `bid_price` switches from exact honored price to buyer ceiling mode:
+For auction-based unit pricing (no `fixed_price`), use `floor_price` for minimum bid constraints and optional `price_guidance` for percentile hints. Bid-based auction models (`cpm`, `vcpm`, `cpc`, `cpcv`, `cpv`) may also include `max_bid` as a boolean signal that `bid_price` switches from exact honored price to buyer ceiling mode. `revenue_share` is the exception to the old "no fixed price means auction" shortcut: it is contingent pricing, uses `commission_rate`, and never uses `bid_price`.
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/cpm-option.json",

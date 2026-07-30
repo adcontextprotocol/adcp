@@ -14,7 +14,17 @@
     },
     "is_fixed_price": {
       "type": "boolean",
-      "description": "Filter by pricing availability and returned pricing options: true = products offering fixed pricing (at least one option with fixed_price), false = products offering auction pricing (at least one option without fixed_price). Products with both fixed and auction options match both true and false, but sellers MUST return only the pricing_options entries matching the requested pricing type so buyers can deterministically select from the returned options."
+      "description": "Legacy filter for fixed versus auction pricing availability. true returns options with fixed_price; false returns auction options whose price is established through bid_price. Contingent options such as revenue_share match neither value and MUST be omitted whenever this filter is present. Use pricing_structures to discover contingent pricing. Products with both fixed and auction options match both true and false, but sellers MUST return only entries matching the requested structure."
+    },
+    "pricing_structures": {
+      "type": "array",
+      "description": "Filter by how the payable price is determined. fixed selects options with fixed_price, auction selects options established through bid_price, and contingent selects options calculated from a measured business outcome after delivery (currently revenue_share). Products match when at least one pricing option has a requested structure. Sellers MUST return only matching pricing_options entries. When combined with is_fixed_price, both filters apply and the returned entries must satisfy both.",
+      "items": {
+        "$ref": "/schemas/enums/pricing-structure.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "x-canonicalization": "set"
     },
     "pricing_currencies": {
       "type": "array",

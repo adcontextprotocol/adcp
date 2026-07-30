@@ -7,7 +7,7 @@
   "properties": {
     "billing_measurement": {
       "type": "object",
-      "description": "Which vendor's count of the billing metric governs invoicing. The billing metric is determined by the pricing_model on the selected pricing_option (e.g., impressions for CPM, completed views for CPCV).",
+      "description": "Which vendor's value for the billing metric governs invoicing. The billing metric is determined by the pricing_model on the selected pricing_option (e.g., impressions for CPM, completed views for CPCV, commissionable_value for revenue_share).",
       "properties": {
         "vendor": {
           "$ref": "/schemas/core/brand-ref.json",

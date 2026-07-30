@@ -690,6 +690,16 @@
           "minimum": 0,
           "description": "Conversions to simulate. Used by simulate_delivery."
         },
+        "conversion_value": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Total attributed conversion value to simulate in the delivery reporting currency. Used by simulate_delivery."
+        },
+        "commissionable_value": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Settled attributed value eligible for revenue-share commission to simulate in the delivery reporting currency. Used by simulate_delivery."
+        },
         "reported_spend": {
           "type": "object",
           "description": "Spend as reported in delivery data. Does not affect budget. Used by simulate_delivery.",

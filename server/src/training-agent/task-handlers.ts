@@ -89,7 +89,18 @@ type PackageUpdateExt = PackageUpdate & {
 type Destination = NonNullable<ActivateSignalRequest['destinations']>[number];
 type SignalFilters = NonNullable<GetSignalsRequest['filters']>;
 type PricingOption = Product['pricing_options'][number];
-type AuctionPricingOption = Exclude<PricingOption, { pricing_model: 'cpa' }>;
+type PricingStructure = 'fixed' | 'auction' | 'contingent';
+type PricingOptionView = {
+  pricing_option_id?: string;
+  pricing_model?: string;
+  currency?: string;
+  fixed_price?: number;
+  floor_price?: number;
+  price_guidance?: { p50?: number };
+  commission_rate?: number;
+  event_source_id?: string;
+  min_spend_per_package?: number;
+};
 type WholesaleFeedRequest = {
   account?: AccountRef;
   if_wholesale_feed_version?: string;
@@ -524,19 +535,36 @@ function productMeasurementCatalogForGoal(product: Product | undefined, goal: Ve
   });
 }
 
-function hasFixedPrice(option: PricingOption): boolean {
-  return (option as { fixed_price?: unknown }).fixed_price !== undefined;
+export function pricingStructureForOption(option: unknown): PricingStructure {
+  if (!option || typeof option !== 'object' || Array.isArray(option)) return 'auction';
+  const view = option as PricingOptionView;
+  if (view.pricing_model === 'revenue_share') return 'contingent';
+  return view.fixed_price !== undefined ? 'fixed' : 'auction';
 }
 
 function applyFixedPriceFilter(product: Product, fixedPrice: boolean): Product | null {
-  const pricing_options = product.pricing_options.filter(po => hasFixedPrice(po) === fixedPrice);
+  const requested: PricingStructure = fixedPrice ? 'fixed' : 'auction';
+  const pricing_options = product.pricing_options.filter(po => pricingStructureForOption(po) === requested);
   if (pricing_options.length === 0) return null;
   return { ...product, pricing_options };
 }
 
-function applyFixedPriceFilterToProducts(products: Product[], fixedPrice: boolean): Product[] {
+export function applyFixedPriceFilterToProducts(products: Product[], fixedPrice: boolean): Product[] {
   return products
     .map(product => applyFixedPriceFilter(product, fixedPrice))
+    .filter((product): product is Product => product !== null);
+}
+
+function applyPricingStructuresFilter(product: Product, structures: Set<PricingStructure>): Product | null {
+  const pricing_options = product.pricing_options.filter(option => structures.has(pricingStructureForOption(option)));
+  if (pricing_options.length === 0) return null;
+  return { ...product, pricing_options };
+}
+
+export function applyPricingStructuresFilterToProducts(products: Product[], structures: PricingStructure[]): Product[] {
+  const requested = new Set(structures);
+  return products
+    .map(product => applyPricingStructuresFilter(product, requested))
     .filter((product): product is Product => product !== null);
 }
 
@@ -3131,6 +3159,10 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
     if (typeof fixedPriceFilter === 'boolean') {
       products = applyFixedPriceFilterToProducts(products, fixedPriceFilter);
     }
+    const pricingStructures = (req.filters as { pricing_structures?: PricingStructure[] }).pricing_structures;
+    if (pricingStructures?.length) {
+      products = applyPricingStructuresFilterToProducts(products, pricingStructures);
+    }
     const requiredVendorMetrics = (req.filters as { required_vendor_metrics?: Array<{ vendor?: { domain?: string }; metric_id?: string }> }).required_vendor_metrics;
     if (requiredVendorMetrics?.length) {
       products = products.filter(p => {
@@ -4890,12 +4922,9 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
 
       // Auction pricing needs a bid_price — use price_guidance p50 or floor_price
       let bidPrice: number | undefined;
-      if (pricing && pricing.pricing_model !== 'cpa') {
-        const po = pricing as AuctionPricingOption;
-        const hasFixed = po.fixed_price !== undefined;
-        if (!hasFixed) {
-          bidPrice = po.price_guidance?.p50 ?? po.floor_price;
-        }
+      if (pricing && pricingStructureForOption(pricing) === 'auction') {
+        const po = pricing as unknown as PricingOptionView;
+        bidPrice = po.price_guidance?.p50 ?? po.floor_price;
       }
 
       return {
@@ -5012,10 +5041,10 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       }
     }
 
-    // Check bid vs floor price (floor_price exists on all pricing models except CPA)
-    const floorPrice = pricing.pricing_model !== 'cpa' ? pricing.floor_price : undefined;
-    const isAuction = pricing.pricing_model !== 'cpa'
-      && !('fixed_price' in pricing && (pricing as AuctionPricingOption).fixed_price !== undefined);
+    const pricingView = pricing as unknown as PricingOptionView;
+    const pricingStructure = pricingStructureForOption(pricing);
+    const floorPrice = pricingStructure === 'auction' ? pricingView.floor_price : undefined;
+    const isAuction = pricingStructure === 'auction';
     const seededPricingKey = `${pkg.product_id}:${pkg.pricing_option_id}`;
     const allowSeededMetricFloorCoercion = Boolean(
       floorPrice !== undefined
@@ -5034,6 +5063,26 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       } as TaskError);
     }
 
+    if (pricingStructure === 'contingent' && pkg.bid_price !== undefined) {
+      errors.push({
+        code: 'INVALID_REQUEST',
+        message: `${pkgLabel}: bid_price is not valid for contingent pricing (pricing option ${pkg.pricing_option_id})`,
+        field: `packages[${i}].bid_price`,
+      } as TaskError);
+    }
+
+    if (
+      pricingView.pricing_model === 'revenue_share'
+      && pricingView.event_source_id
+      && !findEventSourceInSession(sessionKeyForEventSources, pricingView.event_source_id)
+    ) {
+      errors.push({
+        code: 'INVALID_REQUEST',
+        message: `event_source_id "${pricingView.event_source_id}" from revenue-share pricing option "${pkg.pricing_option_id}" was not registered via sync_event_sources`,
+        field: `packages[${i}].pricing_option_id`,
+      } as TaskError);
+    }
+
     if (floorPrice !== undefined && pkg.bid_price !== undefined && pkg.bid_price < floorPrice && !allowSeededMetricFloorCoercion) {
       errors.push({
         code: 'INVALID_REQUEST',
@@ -5042,7 +5091,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     }
 
     // Check min spend
-    const minSpend = pricing.min_spend_per_package;
+    const minSpend = pricingView.min_spend_per_package;
     if (minSpend && pkg.budget < minSpend) {
       errors.push({
         code: 'INVALID_REQUEST',
@@ -5376,7 +5425,9 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   const req = args as unknown as GetMediaBuyDeliveryRequest & ToolArgs & { media_buy_id?: string };
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const catalog = getCatalog();
-  const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
+  const productMap = new Map(catalog.map(cp => [cp.product.product_id, { ...cp.product }]));
+  overlaySeededProducts(session, productMap);
+  overlayNegotiatedPricingOptions(session, productMap);
   const mediaBuyId = req.media_buy_id || req.media_buy_ids?.[0] || '';
   const mb = session.mediaBuys.get(mediaBuyId) ?? getComplianceMediaBuy(mediaBuyId);
 
@@ -5429,10 +5480,12 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       };
     }
 
-    const budget = pkg.budget;
-    const spend = Math.round(budget * elapsed * 100) / 100;
-
     const { model: pricingModel, rate } = derivePricing(pkg, productMap);
+    const isRevenueShare = pricingModel === 'revenue_share';
+    const budget = pkg.budget;
+    const spend = isRevenueShare
+      ? (simDelivery?.reportedSpend.amount ?? 0)
+      : Math.round(budget * elapsed * 100) / 100;
 
     // Channel-appropriate CTR
     const product = productMap.get(pkg.productId);
@@ -5446,12 +5499,16 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     else if (channels?.some(c => ['print'].includes(c))) ctr = 0;
     else ctr = 0.001;
 
-    const impressions = rate > 0 ? Math.round((spend / rate) * 1000) : 0;
-    const clicks = Math.round(impressions * ctr);
+    const impressions = isRevenueShare
+      ? (simDelivery?.impressions ?? 0)
+      : rate > 0 ? Math.round((spend / rate) * 1000) : 0;
+    const clicks = isRevenueShare ? (simDelivery?.clicks ?? 0) : Math.round(impressions * ctr);
 
-    totalImpressions += impressions;
-    totalSpend += spend;
-    totalClicks += clicks;
+    if (!isRevenueShare) {
+      totalImpressions += impressions;
+      totalSpend += spend;
+      totalClicks += clicks;
+    }
 
     // Audio/video metrics — completion rates vary by channel
     // Accumulators for totals rollup are updated after audioMetrics is built
@@ -5514,6 +5571,11 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       clicks,
       ...audioMetrics,
       ...byCreative,
+      ...(isRevenueShare && simDelivery ? {
+        conversions: simDelivery.conversions,
+        ...(simDelivery.conversionValue !== undefined ? { conversion_value: simDelivery.conversionValue } : {}),
+        ...(simDelivery.commissionableValue !== undefined ? { commissionable_value: simDelivery.commissionableValue } : {}),
+      } : {}),
       pricing_model: pricingModel,
       model: pricingModel, // #1525: alias for @adcp/sdk < 4.11.0
       rate,
@@ -5553,6 +5615,12 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     : totalConversions > 0
       ? { conversions: totalConversions }
       : {};
+  const conversionValueTotals = simDelivery
+    ? {
+      ...(simDelivery.conversionValue !== undefined ? { conversion_value: simDelivery.conversionValue } : {}),
+      ...(simDelivery.commissionableValue !== undefined ? { commissionable_value: simDelivery.commissionableValue } : {}),
+    }
+    : {};
 
   // Click-attributed total. cost_per_click is defined as spend / clicks in
   // delivery-metrics.json. Always surface when both are positive — this
@@ -5664,6 +5732,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
         ...goalDerivedReach,
         ...simulatedReachMetrics,
         ...conversionTotals,
+        ...conversionValueTotals,
         ...simulatedViewability,
       },
       by_package: byPackage,
@@ -5674,10 +5743,12 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
 function derivePricing(pkg: PackageState, productMap: Map<string, import('@adcp/sdk').Product>): { model: string; rate: number } {
   const product = productMap.get(pkg.productId);
   const pricing = product?.pricing_options.find(po => po.pricing_option_id === pkg.pricingOptionId);
+  const view = pricing as unknown as PricingOptionView | undefined;
   return {
-    model: pricing?.pricing_model || 'cpm',
-    rate: pricing?.fixed_price
-      ?? (pricing && pricing.pricing_model !== 'cpa' ? pricing.floor_price : undefined)
+    model: view?.pricing_model || 'cpm',
+    rate: view?.commission_rate
+      ?? view?.fixed_price
+      ?? (pricingStructureForOption(view) === 'auction' ? view?.floor_price : undefined)
       ?? 10,
   };
 }
@@ -7568,17 +7639,75 @@ interface ReportUsageArgs extends ToolArgs {
   reporting_period: { start: string; end: string };
   usage: Array<{
     account: { account_id?: string; brand?: { domain: string }; operator?: string };
+    media_buy_id?: string;
     creative_id?: string;
     signal_agent_segment_id?: string;
     pricing_option_id?: string;
     impressions?: number;
     media_spend?: number;
+    conversions?: number;
+    conversion_value?: number;
+    commissionable_value?: number;
     vendor_cost: number;
     currency: string;
     final?: boolean;
     finalized_at?: string;
     measurement_window?: string;
   }>;
+}
+
+function roundCurrency(value: number, currency: string): number {
+  let fractionDigits = 2;
+  try {
+    fractionDigits = new Intl.NumberFormat('en', { style: 'currency', currency })
+      .resolvedOptions().maximumFractionDigits ?? 2;
+  } catch {
+    // The schema constrains shape but not membership in the ISO registry. The
+    // handler's existing behavior accepts unknown three-letter codes, so keep
+    // the conventional two-decimal fallback rather than adding a new rejection.
+  }
+  const factor = 10 ** fractionDigits;
+  return Math.round((value + Number.EPSILON) * factor) / factor;
+}
+
+function effectiveProductMapForSession(session: SessionState): Map<string, Product> {
+  const productMap = new Map(getCatalog().map(cp => [cp.product.product_id, { ...cp.product }]));
+  overlaySeededProducts(session, productMap);
+  overlayNegotiatedPricingOptions(session, productMap);
+  return productMap;
+}
+
+type RevenueShareUsageContext = {
+  rate: number;
+  currency: string;
+  budget: number;
+  pricingOptionId: string;
+};
+
+function pricingContextsForUsage(
+  session: SessionState,
+  record: ReportUsageArgs['usage'][number],
+): { packagePricingOptionIds: Set<string>; revenueShares: RevenueShareUsageContext[] } | undefined {
+  if (!record.media_buy_id) return undefined;
+  const mediaBuy = session.mediaBuys.get(record.media_buy_id);
+  if (!mediaBuy) return undefined;
+  const products = effectiveProductMapForSession(session);
+  const revenueShares: RevenueShareUsageContext[] = [];
+  for (const pkg of mediaBuy.packages) {
+    const product = products.get(pkg.productId);
+    const option = product?.pricing_options.find(candidate => candidate.pricing_option_id === pkg.pricingOptionId) as unknown as PricingOptionView | undefined;
+    if (option?.pricing_model !== 'revenue_share' || option.commission_rate === undefined || !option.currency) continue;
+    revenueShares.push({
+      rate: option.commission_rate,
+      currency: option.currency,
+      budget: pkg.budget,
+      pricingOptionId: pkg.pricingOptionId,
+    });
+  }
+  return {
+    packagePricingOptionIds: new Set(mediaBuy.packages.map(pkg => pkg.pricingOptionId)),
+    revenueShares,
+  };
 }
 
 // ── get_creative_features (truth-of-claim verifier; closes #3802) ──
@@ -7868,6 +7997,78 @@ export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
       errors.push({ code: 'INVALID_USAGE_DATA', message: 'impressions must be non-negative.', field: `usage[${i}].impressions` });
       continue;
     }
+    if (record.conversions !== undefined && record.conversions < 0) {
+      errors.push({ code: 'INVALID_USAGE_DATA', message: 'conversions must be non-negative.', field: `usage[${i}].conversions` });
+      continue;
+    }
+    if (record.conversion_value !== undefined && record.conversion_value < 0) {
+      errors.push({ code: 'INVALID_USAGE_DATA', message: 'conversion_value must be non-negative.', field: `usage[${i}].conversion_value` });
+      continue;
+    }
+    if (record.commissionable_value !== undefined && record.commissionable_value < 0) {
+      errors.push({ code: 'INVALID_USAGE_DATA', message: 'commissionable_value must be non-negative.', field: `usage[${i}].commissionable_value` });
+      continue;
+    }
+
+    const pricingContexts = pricingContextsForUsage(session, record);
+    if (record.pricing_option_id && pricingContexts && !pricingContexts.packagePricingOptionIds.has(record.pricing_option_id)) {
+      errors.push({
+        code: 'INVALID_PRICING_OPTION',
+        message: `pricing_option_id "${record.pricing_option_id}" is not part of media buy "${record.media_buy_id}".`,
+        field: `usage[${i}].pricing_option_id`,
+      });
+      continue;
+    }
+    const revenueShare = record.pricing_option_id
+      ? pricingContexts?.revenueShares.find(context => context.pricingOptionId === record.pricing_option_id)
+      : pricingContexts?.revenueShares[0];
+    if (revenueShare) {
+      if (!record.pricing_option_id) {
+        errors.push({
+          code: 'INVALID_USAGE_DATA',
+          message: `pricing_option_id is required for revenue-share reconciliation; expected ${revenueShare.pricingOptionId}.`,
+          field: `usage[${i}].pricing_option_id`,
+        });
+        continue;
+      }
+      if (record.commissionable_value === undefined) {
+        errors.push({
+          code: 'INVALID_USAGE_DATA',
+          message: 'commissionable_value is required for revenue-share reconciliation.',
+          field: `usage[${i}].commissionable_value`,
+        });
+        continue;
+      }
+      if (record.currency !== revenueShare.currency) {
+        errors.push({
+          code: 'INVALID_USAGE_DATA',
+          message: `currency must match the selected revenue-share pricing option (${revenueShare.currency}).`,
+          field: `usage[${i}].currency`,
+        });
+        continue;
+      }
+      const expectedCost = roundCurrency(record.commissionable_value * revenueShare.rate, record.currency);
+      if (Math.abs(roundCurrency(record.vendor_cost, record.currency) - expectedCost) > Number.EPSILON) {
+        errors.push({
+          code: 'INVALID_USAGE_DATA',
+          message: `vendor_cost must equal round_currency(commissionable_value × commission_rate); expected ${expectedCost}.`,
+          field: `usage[${i}].vendor_cost`,
+        });
+        continue;
+      }
+      const previouslyAcceptedCost = session.usageRecords
+        .filter(existing => existing.mediaBuyId === record.media_buy_id && existing.pricingOptionId === revenueShare.pricingOptionId)
+        .reduce((sum, existing) => sum + existing.vendorCost, 0);
+      const cumulativeCost = roundCurrency(previouslyAcceptedCost + record.vendor_cost, record.currency);
+      if (cumulativeCost > revenueShare.budget) {
+        errors.push({
+          code: 'INVALID_USAGE_DATA',
+          message: `cumulative vendor_cost ${cumulativeCost} exceeds the package commission budget ${revenueShare.budget}.`,
+          field: `usage[${i}].vendor_cost`,
+        });
+        continue;
+      }
+    }
 
     // Validate creative_id exists if provided
     if (record.creative_id) {
@@ -7910,11 +8111,15 @@ export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
     // Store the usage record
     session.usageRecords.push({
       account: record.account as import('./types.js').AccountRef,
+      mediaBuyId: record.media_buy_id,
       creativeId: record.creative_id,
       signalAgentSegmentId: record.signal_agent_segment_id,
       pricingOptionId: record.pricing_option_id,
       impressions: record.impressions,
       mediaSpend: record.media_spend,
+      conversions: record.conversions,
+      conversionValue: record.conversion_value,
+      commissionableValue: record.commissionable_value,
       vendorCost: record.vendor_cost,
       currency: record.currency,
       final: record.final,

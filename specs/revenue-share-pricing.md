@@ -1,6 +1,6 @@
 # Revenue-Share Media Pricing
 
-**Status**: Draft for discussion
+**Status**: Proposed — implementation included for review
 
 ## Summary
 
@@ -298,7 +298,7 @@ analytics fields.
 
 ## Schema and documentation impact
 
-An implementation PR following an accepted decision would update:
+This implementation updates:
 
 - `static/schemas/source/enums/pricing-model.json`
 - `static/schemas/source/pricing-options/revenue-share-option.json` (new)
@@ -307,7 +307,9 @@ An implementation PR following an accepted decision would update:
 - `static/schemas/source/enums/available-metric.json`
 - `static/schemas/source/account/report-usage-request.json`
 - `static/schemas/source/core/product-filters.json`
-- generated schema registries and released artifacts as required
+- the training-agent discovery, commitment, delivery, and reconciliation paths
+- a media-buy compliance storyboard covering the end-to-end settlement flow
+- generated latest schemas and compliance artifacts
 - media pricing, product discovery, delivery reporting, billing-authority, and
   channel-taxonomy documentation
 
@@ -379,7 +381,7 @@ outside both values of `is_fixed_price` adds behavior for a class that does not
 exist today, but may expose implementations that mechanically equate the
 absence of `fixed_price` with auctions. Those implementations must branch on
 the pricing model or structure before requiring `bid_price`. This compatibility
-point should receive explicit WG review before implementation.
+point should receive explicit WG review before adoption.
 
 Target the next protocol minor after WG acceptance. Released schema versions
 remain unchanged.
