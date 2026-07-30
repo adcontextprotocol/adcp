@@ -131,6 +131,7 @@ components:
             required:
               - field
               - message
+          description: Loss or ambiguity encountered while promoting a pre-v3 document. A `house` warning means the legacy house object was preserved only as opaque metadata and did not establish a trusted relationship.
         brand_agent_url:
           type: string
         brand_manifest:
@@ -143,7 +144,7 @@ components:
             - brand_json
             - community
             - enriched
-          description: "Where the record came from. `brand_json`: the domain's own /.well-known/brand.json. `hosted`: registered by an owner whose control of the domain was verified. `community`: contributed by a member. `enriched`: third-party enrichment."
+          description: "Provenance of the selected record, not relationship authorization. Deterministic precedence is `hosted` > `brand_json` > `community` > `enriched`; normal reads prefer the durable stored winner on a source tie, while `fresh=true` lets a successful live origin read win a tie. `brand_json`: the domain's own /.well-known/brand.json. `hosted`: registered by an owner whose control of the domain was verified. `community`: contributed by a member. `enriched`: third-party enrichment."
         live_brand_json:
           type: object
           properties:
@@ -189,7 +190,7 @@ components:
             - url
             - errors
             - warnings
-          description: Live origin-validation diagnostics when fresh=true falls back to a stored registry record.
+          description: This request's origin-validation diagnostics when `fresh=true` falls back to a stored registry record. Presence means the response is stored evidence, not a successful live-origin read.
       required:
         - canonical_id
         - canonical_domain
@@ -4683,6 +4684,8 @@ paths:
         Resolve a domain to its canonical brand identity. Follows brand.json redirects and returns the resolved brand with its house, architecture type, and optional manifest. The domain must be a bare DNS hostname.
 
         A domain is authoritative for its own identity, so `source` tells you who published the record and `relationship_trust` tells you whether a brand-to-house relationship was confirmed by both sides. Only `mutual` and `inline` are reciprocated; treat everything else as a claim.
+        Record selection is deterministic: `hosted` > `brand_json` > `community` > `enriched`. `source` reports provenance only and must not be used as a substitute for `relationship_trust`.
+        The v3 hierarchy is one level deep. There is no ordered-chain endpoint: third-party verifiers use the reciprocated `house_domain` edge returned here. `claimed_house_domain` is unilateral and never extends trust.
 
         **Rate limit:** 60 requests per minute per IP address.
       tags:
@@ -10751,11 +10754,16 @@ paths:
                 brand_json:
                   type: object
                   additionalProperties: {}
-                  description: Optional full brand.json draft to host in the registry
+                  description: "Optional full brand.json draft to host in the registry. Every recognized logo URL must be an absolute HTTPS URL of at most 2048 characters without userinfo credentials, backslashes, or markup-significant characters. The primary brand color must use #RRGGBB format."
                 logo_url:
                   type: string
+                  maxLength: 2048
+                  format: uri
+                  description: Absolute HTTPS URL for the brand logo. Userinfo credentials, backslashes, and markup-significant characters are not allowed.
+                  example: https://cdn.example.com/brand/logo.svg
                 brand_color:
                   type: string
+                  pattern: ^#[0-9a-fA-F]{6}$
               required:
                 - domain
                 - brand_name

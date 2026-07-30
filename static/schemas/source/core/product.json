@@ -214,6 +214,10 @@
       "default": false,
       "description": "Whether this product has a package-level signal_targeting_groups surface. When false (default), signals are bundled into the product terms and cannot be selected or explicitly echoed as package signal groups. When true, eligible signals from inline signal_targeting_options or from get_signals may be buyer-selected or seller-applied according to signal_targeting_rules and are represented through packages[].targeting_overlay.signal_targeting_groups. Editability is controlled by signal_targeting_rules; fixed/default-only products still set this to true when applied signal groups are echoed."
     },
+    "demographic_targeting": {
+      "$ref": "/schemas/core/demographic-targeting-capability.json",
+      "description": "Exact demographic execution available for this product. Buyers MUST use this product-scoped declaration, not the seller-wide get_adcp_capabilities rollup, to preflight a demographic predicate."
+    },
     "catalog_types": {
       "type": "array",
       "description": "Catalog types this product supports for catalog-driven campaigns. A sponsored product listing declares [\"product\"], a job board declares [\"job\", \"offering\"]. Buyers match synced catalogs to products via this field.",

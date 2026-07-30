@@ -91,6 +91,8 @@ Returns an array of media buys with current status, creative approval state, and
 | `format_option_refs` | Structured 3.1+ format option references supplied on `create_media_buy`, echoed whenever the original request included them. |
 | `format_kind` | Direct canonical selector supplied on `create_media_buy`, echoed whenever the original request included it, including informational-echo cases where another selector won precedence. |
 | `params` | Parameters for the direct canonical selector in `format_kind`, echoed whenever the original request included them; requires `format_kind`. |
+| `targeting_overlay` | Targeting currently applied to the package. When demographic targeting is present, `targeting_overlay.demographics` equals the applied predicate in `demographic_targeting_resolution`. |
+| `demographic_targeting_resolution` | Lossless demographic readback containing `requested`, `applied`, exact-only `equivalent: true`, and a discriminated `execution` object for continuous bounds, interval IDs, or signal refs. Required whenever demographics were requested or applied. Sellers reject non-equivalent compilations; a buyer choosing another supported predicate submits it as a new request. |
 | `start_time` | Flight start time (ISO 8601). Check this before interpreting delivery status. |
 | `end_time` | Flight end time (ISO 8601) |
 | `paused` | Whether buyer has paused this package |

@@ -124,6 +124,216 @@ describe('POST /api/brands/setup-my-brand', () => {
     expect(res.body.error).toBe('brand_json must be a JSON object');
   });
 
+  it.each([
+    'javascript:alert(1)',
+    'data:image/svg+xml,<svg onload=alert(1)>',
+    'http://cdn.example.test/logo.png',
+    'https://cdn.example.test/logo.png\" onerror=\"alert(1)',
+    'https://cdn.example.test/logo\\evil.png',
+    'https://user:password@cdn.example.test/logo.png',
+  ])('rejects unsafe logo URL %s', async (logoUrl) => {
+    const brandDb = {
+      getDiscoveredBrandByDomain: vi.fn(),
+      getHostedBrandByDomain: vi.fn(),
+      createHostedBrand: vi.fn(),
+    };
+
+    const res = await request(buildApp(brandDb))
+      .post('/api/brands/setup-my-brand')
+      .send({
+        domain: 'nova.example',
+        brand_name: 'Nova',
+        logo_url: logoUrl,
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('logo_url must be an absolute HTTPS URL without credentials');
+    expect(brandDb.createHostedBrand).not.toHaveBeenCalled();
+  });
+
+  it('rejects logo URLs longer than 2048 characters', async () => {
+    const brandDb = { createHostedBrand: vi.fn() };
+    const logoUrl = `https://cdn.example.test/${'a'.repeat(2025)}`;
+    expect(logoUrl.length).toBeGreaterThan(2048);
+
+    const res = await request(buildApp(brandDb))
+      .post('/api/brands/setup-my-brand')
+      .send({ domain: 'nova.example', brand_name: 'Nova', logo_url: logoUrl });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('logo_url must be an absolute HTTPS URL without credentials');
+    expect(brandDb.createHostedBrand).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['logo_url', 42, 'logo_url must be an absolute HTTPS URL without credentials'],
+    ['brand_color', ['#123456'], 'brand_color must use #RRGGBB format'],
+  ])('rejects non-string %s values', async (field, value, expectedError) => {
+    const brandDb = { createHostedBrand: vi.fn() };
+
+    const res = await request(buildApp(brandDb))
+      .post('/api/brands/setup-my-brand')
+      .send({ domain: 'nova.example', brand_name: 'Nova', [field]: value });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe(expectedError);
+    expect(brandDb.createHostedBrand).not.toHaveBeenCalled();
+  });
+
+  it.each(['red', '#123', '#12345g', '#123456; background: red'])('rejects unsafe brand color %s', async (brandColor) => {
+    const brandDb = {
+      getDiscoveredBrandByDomain: vi.fn(),
+      getHostedBrandByDomain: vi.fn(),
+      createHostedBrand: vi.fn(),
+    };
+
+    const res = await request(buildApp(brandDb))
+      .post('/api/brands/setup-my-brand')
+      .send({
+        domain: 'nova.example',
+        brand_name: 'Nova',
+        brand_color: brandColor,
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('brand_color must use #RRGGBB format');
+    expect(brandDb.createHostedBrand).not.toHaveBeenCalled();
+  });
+
+  it('rejects unsafe branding nested in a full brand.json draft', async () => {
+    const brandDb = {
+      getDiscoveredBrandByDomain: vi.fn(),
+      getHostedBrandByDomain: vi.fn(),
+      createHostedBrand: vi.fn(),
+    };
+
+    const res = await request(buildApp(brandDb))
+      .post('/api/brands/setup-my-brand')
+      .send({
+        domain: 'nova.example',
+        brand_name: 'Nova',
+        brand_json: {
+          brands: [{
+            names: [{ en: 'Nova' }],
+            logos: [{ url: 'data:image/svg+xml,<svg onload=alert(1)>' }],
+            colors: { primary: '#123456; color: red' },
+          }],
+        },
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('brand_json logo URLs must be absolute HTTPS URLs without credentials');
+    expect(brandDb.createHostedBrand).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unsafe primary color nested in a full brand.json draft', async () => {
+    const brandDb = {
+      getDiscoveredBrandByDomain: vi.fn(),
+      getHostedBrandByDomain: vi.fn(),
+      createHostedBrand: vi.fn(),
+    };
+
+    const res = await request(buildApp(brandDb))
+      .post('/api/brands/setup-my-brand')
+      .send({
+        domain: 'nova.example',
+        brand_name: 'Nova',
+        brand_json: {
+          brands: [{
+            names: [{ en: 'Nova' }],
+            colors: { primary: '#123456; color: red' },
+          }],
+        },
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('brand_json primary brand color must use #RRGGBB format');
+    expect(brandDb.createHostedBrand).not.toHaveBeenCalled();
+  });
+
+  it('rejects a full draft containing both valid and unsafe nested logos', async () => {
+    const brandDb = { createHostedBrand: vi.fn() };
+
+    const res = await request(buildApp(brandDb))
+      .post('/api/brands/setup-my-brand')
+      .send({
+        domain: 'nova.example',
+        brand_name: 'Nova',
+        brand_json: {
+          house: { domain: 'nova.example', name: 'Nova' },
+          brands: [{
+            names: [{ en: 'Nova' }],
+            logos: [
+              { url: 'https://cdn.example.test/logo.png' },
+              { url: 'javascript:alert(1)' },
+            ],
+          }],
+        },
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('brand_json logo URLs must be absolute HTTPS URLs without credentials');
+    expect(brandDb.createHostedBrand).not.toHaveBeenCalled();
+  });
+
+  it('does not adopt unsafe branding from an approved legacy manifest', async () => {
+    const brandDb = {
+      getDiscoveredBrandByDomain: vi.fn().mockResolvedValue({
+        review_status: 'approved',
+        brand_manifest: {
+          house: { domain: 'nova.example', name: 'Legacy Nova' },
+          brands: [{
+            names: [{ en: 'Legacy Nova' }],
+            logos: [{ url: 'data:image/svg+xml,<svg onload=alert(1)>' }],
+            colors: { primary: '#123456; background: red' },
+          }],
+        },
+      }),
+      getHostedBrandByDomain: vi.fn().mockResolvedValue(null),
+      createHostedBrand: vi.fn().mockResolvedValue({ id: 'brand_1' }),
+    };
+
+    const res = await request(buildApp(brandDb))
+      .post('/api/brands/setup-my-brand')
+      .send({ domain: 'nova.example', brand_name: 'Nova' });
+
+    expect(res.status).toBe(200);
+    const savedBrandJson = brandDb.createHostedBrand.mock.calls[0][0].brand_json;
+    expect(savedBrandJson.house).toEqual({ domain: 'nova.example', name: 'Nova' });
+    expect(savedBrandJson.brands[0]).not.toHaveProperty('logos');
+    expect(savedBrandJson.brands[0]).not.toHaveProperty('colors');
+  });
+
+  it('preserves valid HTTPS branding and treats hostile names as text data', async () => {
+    const brandDb = {
+      getDiscoveredBrandByDomain: vi.fn().mockResolvedValue(null),
+      getHostedBrandByDomain: vi.fn().mockResolvedValue(null),
+      createHostedBrand: vi.fn().mockResolvedValue({ id: 'brand_1' }),
+    };
+    const hostileName = 'Nova\"><img src=x onerror="alert(1)">';
+
+    const res = await request(buildApp(brandDb))
+      .post('/api/brands/setup-my-brand')
+      .send({
+        domain: 'nova.example',
+        brand_name: hostileName,
+        logo_url: 'https://cdn.example.test/brand/logo.svg?theme=dark',
+        brand_color: '#12Ab9F',
+      });
+
+    expect(res.status).toBe(200);
+    expect(brandDb.createHostedBrand).toHaveBeenCalledWith(expect.objectContaining({
+      brand_json: expect.objectContaining({
+        house: { domain: 'nova.example', name: hostileName },
+        brands: [expect.objectContaining({
+          names: [{ en: hostileName }],
+          logos: [{ url: 'https://cdn.example.test/brand/logo.svg?theme=dark' }],
+          colors: { primary: '#12Ab9F' },
+        })],
+      }),
+    }));
+  });
+
   it('denies non-dev callers without a resolvable organization', async () => {
     delete process.env.DEV_USER_EMAIL;
     delete process.env.DEV_USER_ID;

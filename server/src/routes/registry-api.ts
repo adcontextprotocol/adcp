@@ -98,7 +98,7 @@ import {
 } from "../schemas/registry.js";
 
 import type { BrandManager } from "../brand-manager.js";
-import type { BrandDatabase } from "../db/brand-db.js";
+import { resolveBrandFromJson, type BrandDatabase } from "../db/brand-db.js";
 import type { PropertyDatabase } from "../db/property-db.js";
 import { CatalogDatabase } from "../db/catalog-db.js";
 import type { AdAgentsManager } from "../adagents-manager.js";
@@ -153,6 +153,56 @@ type PublisherBrandSummary = {
   colors?: string[];
   industries?: string[];
 };
+
+const BRAND_LOGO_URL_MAX_LENGTH = 2048;
+const BRAND_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
+
+function normalizeBrandLogoUrl(value: unknown): string | null {
+  if (typeof value !== "string" || value.length === 0 || value.length > BRAND_LOGO_URL_MAX_LENGTH) {
+    return null;
+  }
+
+  // Reject markup-significant characters instead of relying on URL parsing to
+  // percent-encode them. Branding is rendered on multiple public surfaces, so
+  // keeping the stored value attribute-safe is useful defense in depth.
+  if (["\"", "'", "<", ">", "`", "\\"].some(char => value.includes(char))) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "https:" || parsed.username || parsed.password || !parsed.hostname) {
+      return null;
+    }
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+function isValidBrandColor(value: unknown): value is string {
+  return typeof value === "string" && BRAND_COLOR_PATTERN.test(value);
+}
+
+type BrandManifestBrandingError = "invalid_brand_data" | "unsafe_logo" | "unsafe_color";
+
+function validateBrandManifestBranding(
+  domain: string,
+  brandJson: Record<string, unknown>,
+): BrandManifestBrandingError | null {
+  try {
+    const resolvedBrand = resolveBrandFromJson(domain, brandJson, false);
+    if (resolvedBrand.logos?.some(logo => normalizeBrandLogoUrl(logo.url) === null)) {
+      return "unsafe_logo";
+    }
+    if (resolvedBrand.brand_color !== undefined && !isValidBrandColor(resolvedBrand.brand_color)) {
+      return "unsafe_color";
+    }
+    return null;
+  } catch {
+    return "invalid_brand_data";
+  }
+}
 
 type PublisherFormatSummary = {
   format_option_id?: string;
@@ -582,6 +632,8 @@ registry.registerPath({
     "Resolve a domain to its canonical brand identity. Follows brand.json redirects and returns the resolved brand with its house, architecture type, and optional manifest. The domain must be a bare DNS hostname.",
     "",
     "A domain is authoritative for its own identity, so `source` tells you who published the record and `relationship_trust` tells you whether a brand-to-house relationship was confirmed by both sides. Only `mutual` and `inline` are reciprocated; treat everything else as a claim.",
+    "Record selection is deterministic: `hosted` > `brand_json` > `community` > `enriched`. `source` reports provenance only and must not be used as a substitute for `relationship_trust`.",
+    "The v3 hierarchy is one level deep. There is no ordered-chain endpoint: third-party verifiers use the reciprocated `house_domain` edge returned here. `claimed_house_domain` is unilateral and never extends trust.",
     "",
     "**Rate limit:** 60 requests per minute per IP address.",
   ].join("\n"),
@@ -865,6 +917,66 @@ function resolvedStoredBrandSource(brand: {
   return brand.workos_organization_id && brand.domain_verified === true
     ? 'hosted'
     : brand.source_type;
+}
+
+type ResolvedBrandResponse = z.infer<typeof ResolvedBrandSchema>;
+type StoredBrandResolutionRecord = NonNullable<
+  Awaited<ReturnType<BrandDatabase["getDiscoveredBrandByDomain"]>>
+>;
+
+const RESOLVED_BRAND_SOURCE_PRIORITY: Record<ResolvedBrandResponse["source"], number> = {
+  hosted: 1,
+  brand_json: 2,
+  community: 3,
+  enriched: 4,
+};
+
+function storedBrandResolutionResponse(
+  brand: StoredBrandResolutionRecord,
+  liveValidation?: ReturnType<typeof serializeBrandValidation>,
+): ResolvedBrandResponse {
+  return {
+    canonical_id: brand.canonical_domain || brand.domain,
+    canonical_domain: brand.canonical_domain || brand.domain,
+    brand_name: brand.brand_name || brand.domain,
+    ...(brand.brand_names?.length ? { names: brand.brand_names } : {}),
+    ...(brand.keller_type ? { keller_type: brand.keller_type } : {}),
+    ...(brand.parent_brand ? { parent_brand: brand.parent_brand } : {}),
+    ...(brand.brand_agent_url ? { brand_agent_url: brand.brand_agent_url } : {}),
+    source: resolvedStoredBrandSource(brand),
+    brand_manifest: stripLegacyBrandContext(brand.brand_manifest),
+    ...(liveValidation ? { live_brand_json: liveValidation } : {}),
+  };
+}
+
+/**
+ * Select the actual response candidate, not just its label. Default reads use
+ * the durable stored candidate on a source-priority tie so every pod returns
+ * the same document. `fresh=true` lets a successful live read win a tie, while
+ * a strictly higher-provenance stored record (for example `hosted`) still wins.
+ */
+function selectResolvedBrandResponse(
+  live: ResolvedBrandResponse,
+  stored: StoredBrandResolutionRecord | null,
+  fresh: boolean,
+): ResolvedBrandResponse {
+  // A private or orphaned row is not a public resolution candidate. In
+  // particular, it must never replace a valid live-origin response merely
+  // because its provenance would otherwise rank higher.
+  if (!stored || stored.manifest_orphaned || stored.is_public === false) return live;
+  const storedCandidate = storedBrandResolutionResponse(stored);
+  const storedPriority = RESOLVED_BRAND_SOURCE_PRIORITY[storedCandidate.source];
+  const livePriority = RESOLVED_BRAND_SOURCE_PRIORITY[live.source];
+  if (storedPriority > livePriority || (storedPriority === livePriority && fresh)) {
+    return live;
+  }
+
+  // Identity provenance and persisted identity fields come from the selected
+  // stored winner. Relationship trust, verification timestamps, and promotion
+  // diagnostics are computed by the live resolver for the requested domain;
+  // retain them instead of collapsing a verified edge to "unknown" merely
+  // because a higher-provenance stored identity exists.
+  return { ...live, ...storedCandidate };
 }
 
 registry.registerPath({
@@ -3686,9 +3798,21 @@ registry.registerPath({
           schema: z.object({
             domain: z.string().openapi({ example: "acmecorp.com" }),
             brand_name: z.string(),
-            brand_json: z.record(z.string(), z.any()).optional().openapi({ description: "Optional full brand.json draft to host in the registry" }),
-            logo_url: z.string().optional(),
-            brand_color: z.string().optional(),
+            brand_json: z.record(z.string(), z.any()).optional().openapi({
+              description: "Optional full brand.json draft to host in the registry. Every recognized logo URL must be an absolute HTTPS URL of at most 2048 characters without userinfo credentials, backslashes, or markup-significant characters. The primary brand color must use #RRGGBB format.",
+            }),
+            logo_url: z.string()
+              .url()
+              .max(BRAND_LOGO_URL_MAX_LENGTH)
+              .refine(value => normalizeBrandLogoUrl(value) !== null, "Logo URL must be an absolute HTTPS URL without credentials")
+              .optional()
+              .openapi({
+                description: "Absolute HTTPS URL for the brand logo. Userinfo credentials, backslashes, and markup-significant characters are not allowed.",
+                example: "https://cdn.example.com/brand/logo.svg",
+              }),
+            brand_color: z.string()
+              .regex(BRAND_COLOR_PATTERN, "Brand color must use #RRGGBB format")
+              .optional(),
           }),
         },
       },
@@ -4170,10 +4294,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
       const resolution = await brandManager.resolveBrandWithDiagnostics(domain, { skipCache: fresh });
       const resolved = resolution.brand;
+      const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
       // Report why this request fell back, from this request's own attempt.
       const liveValidation = fresh && !resolved ? resolution.last_attempt : undefined;
       if (!resolved) {
-        const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
         // Hide orphaned manifests and explicitly non-public rows. The manifest
         // is preserved server-side for adoption-at-claim-time but must not
         // surface on public read paths until the next claim is applied.
@@ -4181,16 +4305,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           registryRequestsDb
             .markResolved("brand", domain, discovered.canonical_domain || discovered.domain)
             .catch((err) => logger.debug({ err }, "Registry request tracking failed"));
-          return res.json({
-            canonical_id: discovered.canonical_domain || discovered.domain,
-            canonical_domain: discovered.canonical_domain || discovered.domain,
-            brand_name: discovered.brand_name,
-            source: resolvedStoredBrandSource(discovered),
-            brand_manifest: stripLegacyBrandContext(discovered.brand_manifest),
-            ...(liveValidation ? {
-              live_brand_json: serializeBrandValidation(liveValidation),
-            } : {}),
-          });
+          return res.json(storedBrandResolutionResponse(
+            discovered,
+            liveValidation ? serializeBrandValidation(liveValidation) : undefined,
+          ));
         }
         registryRequestsDb
           .trackRequest("brand", domain)
@@ -4204,10 +4322,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         });
       }
 
+      const selected = selectResolvedBrandResponse(resolved, discovered, fresh);
       registryRequestsDb
-        .markResolved("brand", domain, resolved.canonical_domain)
+        .markResolved("brand", domain, selected.canonical_domain)
         .catch((err) => logger.debug({ err }, "Registry request tracking failed"));
-      return res.json(resolved);
+      return res.json(selected);
     } catch (error) {
       logger.error({ error }, "Failed to resolve brand");
       return res.status(500).json({ error: "Failed to resolve brand" });
@@ -4465,25 +4584,23 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             const resolved = await brandBulkResolveSemaphore.run(
               () => brandManager.resolveBrand(domain),
             );
+            const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
             if (resolved) {
-              registryRequestsDb.markResolved("brand", domain, resolved.canonical_domain).catch((err) => logger.debug({ err }, "Registry request tracking failed"));
-              return { domain, result: resolved };
+              const selected = selectResolvedBrandResponse(resolved, discovered, false);
+              registryRequestsDb.markResolved("brand", domain, selected.canonical_domain).catch((err) => logger.debug({ err }, "Registry request tracking failed"));
+              return {
+                domain,
+                result: selected,
+              };
             }
 
-            const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
             // Hide orphaned manifests and explicitly non-public rows; same
             // rationale as the single-resolve route above.
             if (discovered && !discovered.manifest_orphaned && discovered.is_public !== false) {
               registryRequestsDb.markResolved("brand", domain, discovered.canonical_domain || discovered.domain).catch((err) => logger.debug({ err }, "Registry request tracking failed"));
               return {
                 domain,
-                result: {
-                  canonical_id: discovered.canonical_domain || discovered.domain,
-                  canonical_domain: discovered.canonical_domain || discovered.domain,
-                  brand_name: discovered.brand_name,
-                  source: resolvedStoredBrandSource(discovered),
-                  brand_manifest: stripLegacyBrandContext(discovered.brand_manifest),
-                },
+                result: storedBrandResolutionResponse(discovered),
               };
             }
 
@@ -9273,11 +9390,32 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       return res.status(400).json({ error: "brand_json exceeds maximum size (100KB)" });
     }
 
+    const normalizedLogoUrl = logo_url === undefined ? undefined : normalizeBrandLogoUrl(logo_url);
+    if (logo_url !== undefined && normalizedLogoUrl === null) {
+      return res.status(400).json({ error: "logo_url must be an absolute HTTPS URL without credentials" });
+    }
+    if (brand_color !== undefined && !isValidBrandColor(brand_color)) {
+      return res.status(400).json({ error: "brand_color must use #RRGGBB format" });
+    }
+
     const domain = extractDomain(rawDomain).replace(/^www\./, "");
 
     const domainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
     if (!domainPattern.test(domain)) {
       return res.status(400).json({ error: "Invalid domain format" });
+    }
+
+    if (brand_json !== undefined) {
+      const brandingError = validateBrandManifestBranding(domain, brand_json as Record<string, unknown>);
+      if (brandingError === "unsafe_logo") {
+        return res.status(400).json({ error: "brand_json logo URLs must be absolute HTTPS URLs without credentials" });
+      }
+      if (brandingError === "unsafe_color") {
+        return res.status(400).json({ error: "brand_json primary brand color must use #RRGGBB format" });
+      }
+      if (brandingError === "invalid_brand_data") {
+        return res.status(400).json({ error: "brand_json contains invalid brand data" });
+      }
     }
 
     try {
@@ -9325,9 +9463,16 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         // Otherwise build a minimal entry from the request params.
         let brandJson: Record<string, unknown>;
         const manifest = discovered?.brand_manifest as Record<string, unknown> | undefined;
+        const canAdoptDiscoveredManifest = !!(
+          manifest
+          && discovered!.review_status !== 'pending'
+          && typeof manifest.house === 'object'
+          && manifest.house !== null
+          && validateBrandManifestBranding(domain, manifest) === null
+        );
         if (brand_json) {
           brandJson = brand_json as Record<string, unknown>;
-        } else if (manifest && discovered!.review_status !== 'pending' && typeof manifest.house === 'object' && manifest.house !== null) {
+        } else if (canAdoptDiscoveredManifest) {
           brandJson = manifest;
         } else {
           const brandId = brand_name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
@@ -9336,7 +9481,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             keller_type: 'master',
             names: [{ en: brand_name }],
           };
-          if (logo_url) brandEntry.logos = [{ url: logo_url }];
+          if (normalizedLogoUrl) brandEntry.logos = [{ url: normalizedLogoUrl }];
           if (brand_color) brandEntry.colors = { primary: brand_color };
           brandJson = {
             house: { domain, name: brand_name },

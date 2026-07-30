@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/targeting.json",
   "title": "Targeting Overlay",
-  "description": "Optional restriction overlays for media buys. Most targeting should be expressed in the brief and handled by the publisher. These fields are for functional restrictions: geographic (RCT testing, regulatory compliance, proximity targeting), age verification (alcohol, gambling), device platform (app compatibility), language (localization), and keyword targeting (search/retail media).",
+  "description": "Optional targeting overlays for media buys. Most audience strategy remains in the brief and product, while overlays carry buyer intent that must remain exact through execution and readback: geographic restrictions, canonical demographic age selection, age eligibility/verification, device compatibility, language, keyword targeting, and other explicit controls. Sellers apply supported overlays as intersections with the selected product and MUST reject incompatible controls rather than silently dropping or broadening them.",
   "type": "object",
   "properties": {
     "geo_countries": {
@@ -151,6 +151,10 @@
         "$ref": "/schemas/core/signal-targeting.json"
       },
       "minItems": 1
+    },
+    "demographics": {
+      "$ref": "/schemas/core/demographic-predicate.json",
+      "description": "Canonical demographic audience targeting intent. AdCP 3.2 standardizes age first. This is distinct from age_restriction: demographics selects an audience, while age_restriction expresses a legal eligibility or verification floor. Sellers MUST compile this predicate exactly using the selected product's demographic_targeting capability or reject it; they MUST NOT silently broaden, narrow, default, or drop it. A buyer choosing a suggested supported predicate submits that predicate as a new request."
     },
     "frequency_cap": {
       "$ref": "/schemas/core/frequency-cap.json"
@@ -422,5 +426,26 @@
       "minItems": 1
     }
   },
+  "allOf": [
+    {
+      "description": "Unknown-age delivery cannot satisfy a minimum-age eligibility policy. When demographic audience targeting and age_restriction are both present, include_unknown must be false.",
+      "if": {
+        "required": ["demographics", "age_restriction"]
+      },
+      "then": {
+        "properties": {
+          "demographics": {
+            "properties": {
+              "age": {
+                "properties": {
+                  "include_unknown": { "const": false }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
   "additionalProperties": true
 }

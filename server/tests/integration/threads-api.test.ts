@@ -6,9 +6,8 @@ import { runMigrations } from '../../src/db/migrate.js';
 import type { Pool } from 'pg';
 
 // Mock auth middleware to bypass authentication in tests
-vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../src/middleware/auth.js')>()),
-  requireAuth: (req: any, _res: any, next: any) => {
+vi.mock('../../src/middleware/auth.js', async (importOriginal) => {
+  const mockedRequireAuth = (req: any, _res: any, next: any) => {
     req.user = {
       id: 'user_test_threads',
       email: 'test@example.com',
@@ -16,17 +15,24 @@ vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
       firstName: 'Test',
     };
     next();
-  },
-  requireAdmin: (_req: any, _res: any, next: any) => next(),
-  optionalAuth: (req: any, _res: any, next: any) => {
+  };
+  const passThrough = (_req: any, _res: any, next: any) => next();
+  const optionalAuth = (req: any, _res: any, next: any) => {
     req.user = {
       id: 'user_test_threads',
       email: 'test@example.com',
       firstName: 'Test',
     };
     next();
-  },
-}));
+  };
+  return {
+    ...(await importOriginal<typeof import('../../src/middleware/auth.js')>()),
+    requireAuth: mockedRequireAuth,
+    requireAdmin: passThrough,
+    optionalAuth,
+    requireGlobalAdmin: [mockedRequireAuth, passThrough, passThrough],
+  };
+});
 
 vi.mock('../../src/middleware/csrf.js', () => ({
   csrfProtection: (_req: any, _res: any, next: any) => next(),
