@@ -260,6 +260,89 @@ export const CommunityMirrorPublishResponseSchema = z
   })
   .openapi("CommunityMirrorPublishResponse");
 
+const CommunityMirrorProposalIdSchema = z.string().uuid().openapi({
+  description: "Opaque identifier for the proposal.",
+  example: "4ec8bc86-6180-4d0e-aa72-9cbf402d3638",
+});
+
+const CommunityMirrorProposalDigestSchema = z.string().regex(/^[a-f0-9]{64}$/).openapi({
+  description: "SHA-256 digest that reviewers must echo when approving or rejecting this exact revision.",
+});
+
+export const CommunityMirrorProposalSchema = z
+  .object({
+    id: CommunityMirrorProposalIdSchema,
+    platform: CommunityMirrorPlatformSchema,
+    adagents_json: CommunityMirrorAdagentsJsonSchema,
+    catalog_etag: z.string().nullable(),
+    superseded_by: HttpsUrlSchema.nullable(),
+    proposal_digest: CommunityMirrorProposalDigestSchema,
+    base_mirror_digest: CommunityMirrorProposalDigestSchema.nullable().openapi({
+      description: "Digest of the public mirror state this proposal was reviewed against, or null when none existed.",
+    }),
+    status: z.enum(["pending", "approved", "rejected"]),
+    proposed_by_organization_id: z.string().nullable(),
+    proposed_at: z.string().datetime(),
+    reviewed_at: z.string().datetime().nullable(),
+    review_notes: z.string().nullable(),
+    published_at: z.string().datetime().nullable(),
+    created_at: z.string().datetime(),
+    updated_at: z.string().datetime(),
+  })
+  .openapi("CommunityMirrorProposal");
+
+export const CommunityMirrorProposalSummarySchema = CommunityMirrorProposalSchema.omit({
+  adagents_json: true,
+  proposed_by_organization_id: true,
+  review_notes: true,
+  created_at: true,
+}).openapi("CommunityMirrorProposalSummary");
+
+export const CommunityMirrorProposalSubmissionResponseSchema = z
+  .object({
+    success: z.literal(true),
+    status: z.literal("pending"),
+    proposal_id: CommunityMirrorProposalIdSchema,
+    proposal_digest: CommunityMirrorProposalDigestSchema,
+    platform: CommunityMirrorPlatformSchema,
+    status_url: z.string().openapi({ description: "Authenticated API path for fetching proposal status and content." }),
+    submitted_at: z.string().datetime(),
+  })
+  .openapi("CommunityMirrorProposalSubmissionResponse");
+
+export const CommunityMirrorProposalListResponseSchema = z
+  .object({
+    proposals: z.array(CommunityMirrorProposalSummarySchema),
+    total: z.number().int().nonnegative(),
+  })
+  .openapi("CommunityMirrorProposalListResponse");
+
+export const CommunityMirrorProposalGetResponseSchema = z
+  .object({ proposal: CommunityMirrorProposalSchema })
+  .openapi("CommunityMirrorProposalGetResponse");
+
+export const CommunityMirrorProposalReviewRequestSchema = z
+  .object({
+    proposal_digest: CommunityMirrorProposalDigestSchema,
+    review_notes: z.string().max(2000).optional(),
+  })
+  .openapi("CommunityMirrorProposalReviewRequest");
+
+export const CommunityMirrorProposalRejectRequestSchema = z
+  .object({
+    proposal_digest: CommunityMirrorProposalDigestSchema,
+    review_notes: z.string().min(1).max(2000),
+  })
+  .openapi("CommunityMirrorProposalRejectRequest");
+
+export const CommunityMirrorProposalApprovalResponseSchema = CommunityMirrorPublishResponseSchema.extend({
+  proposal_id: CommunityMirrorProposalIdSchema,
+}).openapi("CommunityMirrorProposalApprovalResponse");
+
+export const CommunityMirrorProposalDecisionResponseSchema = z
+  .object({ success: z.literal(true), proposal: CommunityMirrorProposalSchema })
+  .openapi("CommunityMirrorProposalDecisionResponse");
+
 export const CommunityMirrorPublishErrorSchema = z
   .object({
     error: z.string(),
