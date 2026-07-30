@@ -339,8 +339,9 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
           normalizedContactWebsite = normalizeOptionalExternalHttpUrl(req.body.contact_website);
         }
       } catch (error) {
+        logger.warn({ err: error, userId: req.user?.id }, 'Rejected invalid community profile URL');
         return res.status(400).json({
-          error: error instanceof Error ? error.message : 'Profile URLs must be valid HTTP or HTTPS URLs',
+          error: 'Profile URLs must be valid HTTP or HTTPS URLs',
         });
       }
 

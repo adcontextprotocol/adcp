@@ -1433,7 +1433,11 @@ export function createCommitteeRouters(): {
           });
         }
         if (error.is('invalid_external_url')) {
-          return res.status(400).json({ error: 'Invalid external URL', message: error.message });
+          logger.warn({ err: error, slug: req.params.slug }, 'Rejected invalid working group post URL');
+          return res.status(400).json({
+            error: 'Invalid external URL',
+            message: 'External URL must be a valid HTTP or HTTPS URL',
+          });
         }
         if (error.is('duplicate_post_slug')) {
           return res.status(409).json({

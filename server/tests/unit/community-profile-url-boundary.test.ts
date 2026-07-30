@@ -38,7 +38,8 @@ describe('community profile URL write boundary', () => {
       })
       .expect(400);
 
-    expect(response.body.error).toContain('without embedded credentials');
+    expect(response.body.error).toBe('Profile URLs must be valid HTTP or HTTPS URLs');
+    expect(response.body.error).not.toContain('credentials');
     expect(communityDb.updateProfile).not.toHaveBeenCalled();
     expect(memberDb.updateProfileByOrgId).not.toHaveBeenCalled();
     expect(memberDb.createProfile).not.toHaveBeenCalled();
