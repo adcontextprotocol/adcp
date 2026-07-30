@@ -59,6 +59,18 @@
       },
       "required": ["min", "max"],
       "additionalProperties": false
+    },
+    "restricted_attributes": {
+      "type": "array",
+      "description": "Restricted attribute categories this listing touches. Required with demographic_predicate and must include age. For referenced provider/source signals, any projected values must match the authoritative definition.",
+      "items": {
+        "$ref": "/schemas/enums/restricted-attribute.json"
+      },
+      "minItems": 1
+    },
+    "demographic_predicate": {
+      "$ref": "/schemas/core/demographic-predicate.json",
+      "description": "Machine-readable demographic meaning. For product-local signals this listing is authoritative; for data-provider and signal-source refs, any projected value MUST match the referenced authoritative definition. Signal names alone never establish demographic semantics."
     }
   },
   "anyOf": [
@@ -84,6 +96,18 @@
       },
       "then": {
         "required": ["name", "value_type"]
+      }
+    },
+    {
+      "if": { "required": ["demographic_predicate"] },
+      "then": {
+        "properties": {
+          "restricted_attributes": {
+            "type": "array",
+            "contains": { "const": "age" }
+          }
+        },
+        "required": ["restricted_attributes"]
       }
     }
   ],

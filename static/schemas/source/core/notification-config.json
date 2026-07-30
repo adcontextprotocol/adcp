@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/notification-config.json",
   "title": "Notification Config",
-  "description": "Account-level webhook subscription for notifications whose lifecycle outlives any single media buy — creative state changes, library purges, wholesale feed change webhooks, and future account-anchored resource events after those event types are added to notification-type.json. This surface does not currently carry lifecycle events for the account object itself (for example, there is no `account.status_changed` event type); account status changes are observed through `list_accounts` polling or the one-shot `sync_accounts.push_notification_config` async result channel. Distinct from `push-notification-config.json`, which anchors at a per-resource operation (a single task or media buy). An account MAY register multiple notification configs to fan a single seller's events out to multiple buyer-side endpoints; each entry filters by `event_types`. As with push-notification-config, the default signing scheme is the AdCP RFC 9421 webhook profile against the seller's brand.json `agents[]` JWKS; the optional `authentication` block opts into the deprecated Bearer / HMAC-SHA256 fallback for compatibility. Credentials and shared secrets in `authentication.credentials` are write-only — sellers MUST NOT echo them back in `list_accounts` responses. Sellers MUST verify endpoint control before activating a new or changed active account-level notification config; delivery-time SSRF validation still applies to every fire.",
+  "description": "Account-level webhook subscription for notifications whose lifecycle outlives any single media buy — creative state changes, library purges, account status changes, wholesale feed change webhooks, and future account-anchored resource events after those event types are added to this schema. This is distinct from `push-notification-config.json`, which anchors at a per-resource operation (a single task or media buy). The one-shot `sync_accounts.push_notification_config` channel may report the first async result of a provisioning request, while durable account lifecycle events such as later `payment_required` or `suspended` transitions use `account.status_changed` here. An account MAY register multiple notification configs to fan a single seller's events out to multiple buyer-side endpoints; each entry filters by `event_types`. As with push-notification-config, the default signing scheme is the AdCP RFC 9421 webhook profile against the seller's brand.json `agents[]` JWKS; the optional `authentication` block opts into the deprecated Bearer / HMAC-SHA256 fallback for compatibility. Credentials and shared secrets in `authentication.credentials` are write-only — sellers MUST NOT echo them back in `list_accounts` responses. Sellers MUST verify endpoint control before activating a new or changed active account-level notification config; delivery-time SSRF validation still applies to every fire.",
   "type": "object",
   "properties": {
     "subscriber_id": {
@@ -19,9 +19,23 @@
     },
     "event_types": {
       "type": "array",
-      "description": "Notification types this subscriber wishes to receive on the registered `url`. The seller MUST NOT fire other types against this endpoint, and MUST NOT silently widen the filter when new types are added to `notification-type.json`. When omitted, the seller MUST default to a no-fire policy and surface an `errors[]` entry on `sync_accounts` so the buyer notices the missing filter. Values are drawn from `notification-type.json`, but only types whose contract anchors at the account scope are valid here — creative lifecycle events and wholesale feed change payloads are valid; media-buy-anchored types (`scheduled`, `final`, `delayed`, `adjusted`, `impairment`) and account-lifecycle names not present in the enum (for example, `account.status_changed`) are invalid on this surface; sellers MUST reject those entries as per-account validation failures with `INVALID_REQUEST` or `VALIDATION_ERROR` and `error.field` pointing at the invalid `event_types` entry rather than silently dropping them.",
+      "description": "Account-anchored notification types this subscriber wishes to receive on the registered `url`. The seller MUST NOT fire other types against this endpoint, and MUST NOT silently widen the filter when new account-anchored types are added. Creative lifecycle events, account status changes, and wholesale feed change payloads are valid here; media-buy-anchored types (`scheduled`, `final`, `delayed`, `adjusted`, `impairment`) and agent-anchored types (`capabilities.changed`) are schema-invalid on this surface and sellers MUST reject those entries as per-account validation failures with `INVALID_REQUEST` or `VALIDATION_ERROR` and `error.field` pointing at the invalid `event_types` entry rather than silently dropping them.",
       "items": {
-        "$ref": "/schemas/enums/notification-type.json"
+        "type": "string",
+        "enum": [
+          "creative.status_changed",
+          "creative.purged",
+          "account.status_changed",
+          "product.created",
+          "product.updated",
+          "product.priced",
+          "product.removed",
+          "signal.created",
+          "signal.updated",
+          "signal.priced",
+          "signal.removed",
+          "wholesale_feed.bulk_change"
+        ]
       },
       "minItems": 1,
       "uniqueItems": true
@@ -85,6 +99,17 @@
         "event_types": [
           "creative.status_changed",
           "creative.purged"
+        ],
+        "active": true
+      }
+    },
+    {
+      "description": "Account lifecycle subscriber",
+      "data": {
+        "subscriber_id": "account-lifecycle",
+        "url": "https://buyer.example/webhooks/adcp/accounts",
+        "event_types": [
+          "account.status_changed"
         ],
         "active": true
       }

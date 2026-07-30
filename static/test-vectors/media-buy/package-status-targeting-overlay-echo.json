@@ -1,7 +1,7 @@
 {
   "version": 1,
   "schema": "/schemas/media-buy/get-media-buys-response.json",
-  "description": "Positive wire-level vectors for PackageStatus.targeting_overlay echo in get_media_buys responses. Vectors are dedicated JSON payloads that MUST validate against the bundled schema and whose shape is asserted by SDK code generators. Each vector contains a stable `id` (kebab-case; the stable reference for cross-SDK conformance), a human-readable `description`, the `payload` returned by the seller, and `assertions` — dotted JSON paths that MUST be present with the given value. Downstream tests SHOULD look up vectors by `id`; `description` prose may be revised without notice. Covers the `SHOULD` echo path for plain overlay fields (all sellers) and the `MUST` echo path for sellers claiming the property-lists / collection-lists specialisms. See get-media-buys-response.json → packages.items.targeting_overlay.",
+  "description": "Positive wire-level vectors for PackageStatus targeting readback in get_media_buys responses, including targeting_overlay and AdCP 3.2 demographic_targeting_resolution. Vectors are dedicated JSON payloads that MUST validate against the bundled schema and whose shape is asserted by SDK code generators. Each vector contains a stable `id` (kebab-case; the stable reference for cross-SDK conformance), a human-readable `description`, the `payload` returned by the seller, and `assertions` — dotted JSON paths that MUST be present with the given value. Downstream tests SHOULD look up vectors by `id`; `description` prose may be revised without notice. Covers the `SHOULD` echo path for plain overlay fields, the `MUST` echo path for sellers claiming the property-lists / collection-lists specialisms, and lossless requested/applied demographic readback.",
   "vectors": [
     {
       "id": "property-and-collection-list-echo",
@@ -227,6 +227,84 @@
         {
           "path": "media_buys[0].packages[0].targeting_overlay.signal_targeting_groups.groups[1].signals[0].signal_agent_segment_id",
           "value": "sig_recent_purchasers"
+        }
+      ]
+    },
+    {
+      "id": "demographic-targeting-exact-readback",
+      "description": "AdCP 3.2 — seller echoes the applied canonical demographic predicate and lossless requested/applied continuous-bounds resolution.",
+      "payload": {
+        "status": "completed",
+        "media_buys": [
+          {
+            "media_buy_id": "mb_acme_demographic_001",
+            "status": "pending_start",
+            "currency": "USD",
+            "total_budget": 15000,
+            "confirmed_at": "2026-09-01T10:00:00Z",
+            "revision": 1,
+            "start_time": "2026-10-01T00:00:00Z",
+            "end_time": "2026-10-31T23:59:59Z",
+            "created_at": "2026-09-01T10:00:00Z",
+            "updated_at": "2026-09-01T10:00:00Z",
+            "packages": [
+              {
+                "package_id": "pkg_acme_demographic_display",
+                "product_id": "prod_demographic_continuous_display",
+                "budget": 15000,
+                "currency": "USD",
+                "start_time": "2026-10-01T00:00:00Z",
+                "end_time": "2026-10-31T23:59:59Z",
+                "targeting_overlay": {
+                  "demographics": {
+                    "age": {
+                      "min": 21,
+                      "max": 35,
+                      "include_unknown": false
+                    }
+                  }
+                },
+                "demographic_targeting_resolution": {
+                  "requested": {
+                    "age": {
+                      "min": 21,
+                      "max": 35,
+                      "include_unknown": false
+                    }
+                  },
+                  "applied": {
+                    "age": {
+                      "min": 21,
+                      "max": 35,
+                      "include_unknown": false
+                    }
+                  },
+                  "equivalent": true,
+                  "execution": {
+                    "type": "continuous_bounds"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "path": "media_buys[0].packages[0].targeting_overlay.demographics.age.min",
+          "value": 21
+        },
+        {
+          "path": "media_buys[0].packages[0].targeting_overlay.demographics.age.include_unknown",
+          "value": false
+        },
+        {
+          "path": "media_buys[0].packages[0].demographic_targeting_resolution.equivalent",
+          "value": true
+        },
+        {
+          "path": "media_buys[0].packages[0].demographic_targeting_resolution.execution.type",
+          "value": "continuous_bounds"
         }
       ]
     }

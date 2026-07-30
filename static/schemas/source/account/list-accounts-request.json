@@ -33,6 +33,18 @@
       "type": "boolean",
       "description": "Filter by sandbox status. true returns only sandbox accounts, false returns only production accounts. Omit to return all accounts. Primarily used with account-id namespaces where sandbox accounts are pre-existing test accounts on the platform."
     },
+    "include_webhook_activity": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, request recent webhook delivery attempts for each returned account in account.webhook_activity[]. Sellers MAY omit webhook_activity if they do not expose this debug log; when present, three-state semantics match the shared webhook_activity[] contract."
+    },
+    "webhook_activity_limit": {
+      "type": "integer",
+      "description": "Maximum number of webhook_activity[] records to return per account when include_webhook_activity is true.",
+      "minimum": 1,
+      "maximum": 200,
+      "default": 50
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

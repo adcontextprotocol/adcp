@@ -1,0 +1,99 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/demographic-targeting-resolution.json",
+  "title": "Demographic Targeting Resolution",
+  "description": "Lossless package readback for exact demographic targeting. requested preserves canonical buyer intent; applied states the canonical predicate actually booked; execution identifies the seller mechanism. Sellers MUST book only when requested and applied denote exactly the same set, including unknown-age membership. Unsupported predicates are rejected; a buyer that chooses another supported predicate submits it as a new request. Buyers SHOULD recompute equality from the two predicates.",
+  "type": "object",
+  "properties": {
+    "requested": {
+      "$ref": "/schemas/core/demographic-predicate.json",
+      "description": "Canonical demographic predicate requested by the buyer."
+    },
+    "applied": {
+      "$ref": "/schemas/core/demographic-predicate.json",
+      "description": "Canonical demographic predicate actually applied by the seller."
+    },
+    "equivalent": {
+      "type": "boolean",
+      "const": true,
+      "description": "Always true for a stored package. requested and applied MUST denote exactly the same set, including unknown-age membership; sellers reject non-equivalent requests instead of storing an alternative."
+    },
+    "execution": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "continuous_bounds"
+            },
+            "ext": {
+              "$ref": "/schemas/core/ext.json"
+            }
+          },
+          "required": ["type"],
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "enumerated_intervals"
+            },
+            "interval_ids": {
+              "type": "array",
+              "description": "Seller-scoped interval identifiers whose union produced applied.",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "x-entity": "demographic_interval_id"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "ext": {
+              "$ref": "/schemas/core/ext.json"
+            }
+          },
+          "required": ["type", "interval_ids"],
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "signals"
+            },
+            "signal_refs": {
+              "type": "array",
+              "description": "Authoritative signal references whose demographic predicates were unioned to produce applied. Signal names alone never establish equivalence.",
+              "items": {
+                "$ref": "/schemas/core/signal-ref.json"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "ext": {
+              "$ref": "/schemas/core/ext.json"
+            }
+          },
+          "required": ["type", "signal_refs"],
+          "additionalProperties": true
+        }
+      ]
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["requested", "applied", "equivalent", "execution"],
+  "not": {
+    "anyOf": [
+      { "required": ["difference_reason"] },
+      { "required": ["buyer_approved"] }
+    ]
+  },
+  "additionalProperties": true
+}
