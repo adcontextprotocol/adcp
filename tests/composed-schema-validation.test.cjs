@@ -483,6 +483,58 @@ async function runTests() {
     'Package update accepts clearing an authored bidding override to restore inheritance'
   );
 
+  await testSchemaValidation(
+    '/schemas/media-buy/package-update.json',
+    {
+      package_id: 'pkg_search_001',
+      bidding: null,
+      bid_price: 2.25
+    },
+    'Package update accepts atomically clearing canonical bidding and setting legacy bid_price'
+  );
+
+  await testSchemaValidation(
+    '/schemas/media-buy/package-update.json',
+    {
+      package_id: 'pkg_conversion_001',
+      bidding: null,
+      optimization_goals: [
+        {
+          kind: 'event',
+          event_sources: [{ event_source_id: 'purchases', event_type: 'purchase' }],
+          target: { kind: 'cost_per', value: 25 }
+        }
+      ]
+    },
+    'Package update accepts clearing canonical bidding with a legacy monetary goal target'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/package-update.json',
+    {
+      package_id: 'pkg_search_001',
+      bidding: { max_bid: 3 },
+      bid_price: 2.25
+    },
+    'Package update rejects non-null canonical bidding combined with legacy bid_price'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/package-update.json',
+    {
+      package_id: 'pkg_conversion_001',
+      bidding: { cost_per: { amount: 25, strength: 'target' } },
+      optimization_goals: [
+        {
+          kind: 'event',
+          event_sources: [{ event_source_id: 'purchases', event_type: 'purchase' }],
+          target: { kind: 'cost_per', value: 25 }
+        }
+      ]
+    },
+    'Package update rejects non-null canonical bidding with a legacy monetary goal target'
+  );
+
   await testSchemaRejection(
     '/schemas/core/bidding-policy.json',
     {
