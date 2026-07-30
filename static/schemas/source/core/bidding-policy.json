@@ -22,7 +22,7 @@
     },
     "cost_per": {
       "type": "object",
-      "description": "Average cost control per result of the scope-bound primary optimization goal. At seller-optimized media-buy scope it binds to budget_allocation.optimization_goals; at package scope it binds to that package's optimization_goals; at fixed media-buy scope it binds independently to each inheriting package and is valid only when their primary-goal result units are compatible. Metric goals are compatible only when metric and every result-defining qualifier match; vendor_metric goals only when vendor and metric_id match; event goals only when the event_type/custom_type set matches. Primary means priority 1, otherwise lowest numeric priority, otherwise first array entry.",
+      "description": "Average cost control per result of the scope-bound primary optimization goal. At seller-optimized media-buy scope it binds to budget_allocation.optimization_goals; at package scope it binds to that package's optimization_goals; at fixed media-buy scope it binds independently to each inheriting package and is valid only when their primary-goal result units are compatible. Metric goals are compatible only when metric and every result-defining qualifier match; vendor_metric goals only when vendor and metric_id match; event goals only when the event_type/custom_event_name set matches. Primary means priority 1, otherwise lowest numeric priority, otherwise first array entry.",
       "properties": {
         "amount": {
           "type": "number",
