@@ -152,6 +152,13 @@ function patchFile(file) {
     `${zod}.literal("format_id"), ${zod}.literal("status")`,
     `${zod}.literal("format_id"), ${zod}.literal("assets"), ${zod}.literal("status")`,
   );
+  // AssetContentType gains zip in current source. Patch the generated SDK
+  // snapshot so current-source request and fixture validation accepts HTML5
+  // bundle assets before the matching SDK release is published.
+  text = text.replaceAll(
+    `${zod}.literal("javascript"), ${zod}.literal("vast")`,
+    `${zod}.literal("javascript"), ${zod}.literal("zip"), ${zod}.literal("vast")`,
+  );
   fs.writeFileSync(file, text);
 }
 

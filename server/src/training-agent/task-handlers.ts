@@ -2854,7 +2854,7 @@ const TOOLS = [
               description: 'Filter creatives by exact asset_type values on direct object values in the top-level assets map (OR within this field; no array or nested traversal).',
               items: {
                 type: 'string',
-                enum: ['image', 'video', 'audio', 'text', 'markdown', 'html', 'css', 'javascript', 'vast', 'daast', 'url', 'webhook', 'brief', 'catalog', 'published_post'],
+                enum: ['image', 'video', 'audio', 'text', 'markdown', 'html', 'css', 'javascript', 'zip', 'vast', 'daast', 'url', 'webhook', 'brief', 'catalog', 'published_post'],
               },
               minItems: 1,
               uniqueItems: true,

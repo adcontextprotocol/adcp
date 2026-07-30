@@ -4861,6 +4861,14 @@ describe('list_creatives handler', () => {
           },
         },
         {
+          creative_id: 'cr_zip_bundle',
+          format_id: { agent_url: TEST_AGENT_URL, id: 'html5_bundle' },
+          name: 'HTML5 bundle creative',
+          assets: {
+            bundle: { asset_type: 'zip', url: 'https://cdn.example/html5-bundle.zip', mime_type: 'application/zip' },
+          },
+        },
+        {
           creative_id: 'cr_nested_card_image',
           format_kind: 'image_carousel',
           name: 'Nested card image',
@@ -4875,7 +4883,7 @@ describe('list_creatives handler', () => {
     });
 
     const server2 = createTrainingAgentServer(DEFAULT_CTX);
-    const ids = ['cr_post_mixed', 'cr_post_canonical', 'cr_image', 'cr_nested_card_image'];
+    const ids = ['cr_post_mixed', 'cr_post_canonical', 'cr_image', 'cr_zip_bundle', 'cr_nested_card_image'];
 
     const { result: byAsset } = await simulateCallTool(server2, 'list_creatives', {
       account,
@@ -4934,6 +4942,12 @@ describe('list_creatives handler', () => {
       },
     });
     expect(exactParameterizedFormat.creatives).toEqual([]);
+
+    const { result: zipBundle } = await simulateCallTool(server2, 'list_creatives', {
+      account,
+      filters: { creative_ids: ids, asset_types: ['zip'] },
+    });
+    expect((zipBundle.creatives as Array<{ creative_id: string }>).map(c => c.creative_id)).toEqual(['cr_zip_bundle']);
 
     const { result: nested } = await simulateCallTool(server2, 'list_creatives', {
       account,
