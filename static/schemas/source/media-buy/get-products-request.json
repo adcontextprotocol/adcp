@@ -36,7 +36,15 @@
       }
     }
   ],
+  "x-mutates-state": true,
   "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for this request. get_products is polymorphic: a call may complete as a read, create an asynchronous task, or finalize a proposal and commit an inventory hold. Reusing the same key with the same canonical payload returns the original response without repeating those effects. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each new request and reuse it only for retries.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
     "buying_mode": {
       "type": "string",
       "enum": [
@@ -267,6 +275,7 @@
     }
   },
   "required": [
+    "idempotency_key",
     "buying_mode"
   ],
   "dependencies": {

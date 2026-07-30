@@ -177,6 +177,7 @@ phases:
           - targeting: available audiences and contexts
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#sales_non_guaranteed_product_discovery_get_products_brief"
           buying_mode: "brief"
           brief: "Display and video inventory across sports and outdoor lifestyle sites. Q2 flight, $25K budget. Adults 25-54, US. Auction-based, looking for competitive CPMs."
           filters:

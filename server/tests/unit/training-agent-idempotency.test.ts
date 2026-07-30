@@ -11,15 +11,21 @@
  * on retry.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import {
   createTrainingAgentServer,
+  executeTrainingAgentTool,
   invalidateCache,
   clearTaskStore,
 } from '../../src/training-agent/task-handlers.js';
-import { clearSessions } from '../../src/training-agent/state.js';
-import { MUTATING_TOOLS, clearIdempotencyCache } from '../../src/training-agent/idempotency.js';
+import { clearSessions, getSession } from '../../src/training-agent/state.js';
+import {
+  MUTATING_TOOLS,
+  REPLAY_TTL_SECONDS,
+  clearIdempotencyCache,
+  getIdempotencyStore,
+} from '../../src/training-agent/idempotency.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
 
 const CTX: TrainingContext = { mode: 'open', principal: 'test-principal' };
@@ -46,6 +52,35 @@ async function call(
   return { parsed, isError: response.isError };
 }
 
+async function callAsTask(
+  server: ReturnType<typeof createTrainingAgentServer>,
+  toolName: string,
+  args: Record<string, unknown>,
+  ttl = 60_000,
+): Promise<{ parsed: Record<string, unknown>; isError?: boolean }> {
+  const requestHandlers = (server as any)._requestHandlers as Map<string, Function>;
+  const handler = requestHandlers.get('tools/call');
+  if (!handler) throw new Error('CallTool handler not found');
+  const response = await handler(
+    { method: 'tools/call', params: { name: toolName, arguments: args, task: { ttl } } },
+    {},
+  );
+  return {
+    parsed: (response.structuredContent ?? response) as Record<string, unknown>,
+    isError: response.isError,
+  };
+}
+
+async function taskResult(
+  server: ReturnType<typeof createTrainingAgentServer>,
+  taskId: string,
+): Promise<Record<string, unknown>> {
+  const requestHandlers = (server as any)._requestHandlers as Map<string, Function>;
+  const handler = requestHandlers.get('tasks/result');
+  if (!handler) throw new Error('tasks/result handler not found');
+  return handler({ method: 'tasks/result', params: { taskId } }, {});
+}
+
 const basePayload = () => ({
   account: ACCOUNT,
   brand: BRAND,
@@ -58,6 +93,7 @@ async function getValidProductAndPricing(
   server: ReturnType<typeof createTrainingAgentServer>,
 ): Promise<{ productId: string; pricingOptionId: string }> {
   const { parsed } = await call(server, 'get_products', {
+    idempotency_key: `catalog-${randomUUID()}`,
     buying_mode: 'wholesale',
     account: ACCOUNT,
     brand: BRAND,
@@ -104,13 +140,15 @@ describe('training agent idempotency middleware', () => {
       expect((parsed as any).adcp_error?.code).toBe('INVALID_REQUEST');
     });
 
-    it('does not require idempotency_key on read-only tools', async () => {
-      const { isError } = await call(server, 'get_products', {
+    it('rejects get_products with no idempotency_key before any polymorphic arm runs', async () => {
+      const { parsed, isError } = await call(server, 'get_products', {
         buying_mode: 'wholesale',
         account: ACCOUNT,
         brand: BRAND,
       });
-      expect(isError).toBeFalsy();
+      expect(isError).toBe(true);
+      expect((parsed as any).adcp_error?.code).toBe('INVALID_REQUEST');
+      expect((parsed as any).adcp_error?.field).toBe('idempotency_key');
     });
   });
 
@@ -174,6 +212,467 @@ describe('training agent idempotency middleware', () => {
       await call(server, 'create_media_buy', payload);
       const replay = await call(server, 'create_media_buy', { ...payload, governance_context: 'gov-token-b' });
       expect((replay.parsed as any).replayed).toBe(true);
+    });
+
+    it('replays a task-augmented get_products response without allocating another task', async () => {
+      const key = `products-task-${randomUUID()}`;
+      const payload = {
+        idempotency_key: key,
+        buying_mode: 'wholesale',
+        account: ACCOUNT,
+        brand: BRAND,
+      };
+
+      const first = await callAsTask(server, 'get_products', payload);
+      const firstTaskId = (first.parsed.task as { taskId?: string })?.taskId;
+      expect(firstTaskId).toBeTruthy();
+
+      const replay = await callAsTask(server, 'get_products', { ...payload });
+      expect((replay.parsed.task as { taskId?: string })?.taskId).toBe(firstTaskId);
+      expect(replay.parsed.replayed).toBe(true);
+
+      const conflict = await call(server, 'get_products', {
+        ...payload,
+        buying_mode: 'brief',
+        brief: 'different logical request',
+      });
+      expect(conflict.isError).toBe(true);
+      expect((conflict.parsed as any).adcp_error?.code).toBe('IDEMPOTENCY_CONFLICT');
+    });
+
+    it('validates the complete get_products payload before consulting the cache', async () => {
+      const key = `products-schema-first-${randomUUID()}`;
+      await call(server, 'get_products', {
+        idempotency_key: key,
+        buying_mode: 'wholesale',
+        account: ACCOUNT,
+      });
+      const invalid = await call(server, 'get_products', {
+        idempotency_key: key,
+        buying_mode: 'not-a-mode',
+        account: ACCOUNT,
+      });
+      expect(invalid.isError).toBe(true);
+      expect((invalid.parsed as any).adcp_error?.code).toBe('INVALID_REQUEST');
+      expect((invalid.parsed as any).adcp_error?.code).not.toBe('IDEMPOTENCY_CONFLICT');
+    });
+
+    it('rejects mixed proposal finalization before reserving the idempotency key', async () => {
+      const account = { brand: { domain: 'idem-finalize-exclusive.example' }, operator: 'idem-op' };
+      await call(server, 'get_products', {
+        idempotency_key: `products-brief-${randomUUID()}`,
+        buying_mode: 'brief',
+        brief: 'cross-channel news video and display',
+        account,
+      });
+      const key = `products-finalize-exclusive-${randomUUID()}`;
+      const invalid = await call(server, 'get_products', {
+        idempotency_key: key,
+        buying_mode: 'refine',
+        account,
+        refine: [
+          { scope: 'proposal', action: 'finalize', proposal_id: 'pinnacle_cross_channel' },
+          { scope: 'proposal', action: 'include', proposal_id: 'pinnacle_cross_channel' },
+        ],
+      });
+      expect(invalid.isError).toBe(true);
+      expect((invalid.parsed as any).adcp_error).toMatchObject({
+        code: 'INVALID_REQUEST',
+        field: 'refine[1]',
+      });
+
+      // The invalid request never reserved the key, so the corrected finalize
+      // can use that same key without IDEMPOTENCY_CONFLICT.
+      const corrected = await call(server, 'get_products', {
+        idempotency_key: key,
+        buying_mode: 'refine',
+        account,
+        refine: [{ scope: 'proposal', action: 'finalize', proposal_id: 'pinnacle_cross_channel' }],
+      });
+      expect(corrected.isError).toBeFalsy();
+      expect((corrected.parsed.proposals as Array<Record<string, unknown>>)
+        .find(proposal => proposal.proposal_id === 'pinnacle_cross_channel'))
+        .toMatchObject({ proposal_status: 'committed' });
+    });
+
+    it('allocates a fresh task when a released error key is retried with corrected input', async () => {
+      const key = `products-task-correction-${randomUUID()}`;
+      const failed = await callAsTask(server, 'get_products', {
+        idempotency_key: key,
+        buying_mode: 'refine',
+        account: ACCOUNT,
+        refine: [{ scope: 'proposal', action: 'finalize', proposal_id: 'proposal-does-not-exist' }],
+      });
+      const failedTaskId = (failed.parsed.task as { taskId?: string })?.taskId;
+      expect(failedTaskId).toBeTruthy();
+
+      const correctedPayload = {
+        idempotency_key: key,
+        buying_mode: 'wholesale',
+        account: ACCOUNT,
+      };
+      const corrected = await callAsTask(server, 'get_products', correctedPayload);
+      const correctedTaskId = (corrected.parsed.task as { taskId?: string })?.taskId;
+      expect(correctedTaskId).toBeTruthy();
+      expect(correctedTaskId).not.toBe(failedTaskId);
+
+      const replay = await callAsTask(server, 'get_products', correctedPayload);
+      expect((replay.parsed.task as { taskId?: string })?.taskId).toBe(correctedTaskId);
+      expect(replay.parsed.replayed).toBe(true);
+    });
+
+    it('allocates a fresh task when the exact failed payload later succeeds', async () => {
+      const account = { brand: { domain: 'idem-task-recovery.example' }, operator: 'idem-op' };
+      await call(server, 'get_products', {
+        idempotency_key: `products-brief-${randomUUID()}`,
+        buying_mode: 'brief',
+        brief: 'cross-channel news video and display',
+        account,
+      });
+      const payloads = [
+        {
+          idempotency_key: `products-task-finalize-left-${randomUUID()}`,
+          buying_mode: 'refine',
+          account,
+          refine: [{ scope: 'proposal', action: 'finalize', proposal_id: 'pinnacle_cross_channel' }],
+        },
+        {
+          idempotency_key: `products-task-finalize-right-${randomUUID()}`,
+          buying_mode: 'refine',
+          account,
+          refine: [{ scope: 'proposal', action: 'finalize', proposal_id: 'pinnacle_cross_channel' }],
+        },
+      ];
+      const firstAttempts = await Promise.all(payloads.map(payload => callAsTask(server, 'get_products', payload)));
+      const firstResults = await Promise.all(firstAttempts.map(async attempt => {
+        const taskId = (attempt.parsed.task as { taskId: string }).taskId;
+        return { taskId, result: await taskResult(server, taskId) };
+      }));
+      const failedIndex = firstResults.findIndex(({ result }) => result.isError === true);
+      expect(failedIndex).toBeGreaterThanOrEqual(0);
+      expect((firstResults[failedIndex]!.result.structuredContent as any)?.adcp_error?.code).toBe('RATE_LIMITED');
+
+      const recovered = await callAsTask(server, 'get_products', payloads[failedIndex]!);
+      const recoveredTaskId = (recovered.parsed.task as { taskId: string }).taskId;
+      expect(recoveredTaskId).not.toBe(firstResults[failedIndex]!.taskId);
+      const recoveredResult = await taskResult(server, recoveredTaskId);
+      expect(recoveredResult.isError).not.toBe(true);
+      expect((recoveredResult.structuredContent as { proposals?: unknown[] } | undefined)?.proposals?.length)
+        .toBeGreaterThan(0);
+
+      const replay = await callAsTask(server, 'get_products', payloads[failedIndex]!);
+      expect((replay.parsed.task as { taskId: string }).taskId).toBe(recoveredTaskId);
+      expect(replay.parsed.replayed).toBe(true);
+    });
+
+    it('does not collapse identical non-idempotency-protected task calls', async () => {
+      const first = await callAsTask(server, 'get_signals', {});
+      const second = await callAsTask(server, 'get_signals', {});
+      expect((first.parsed.task as { taskId: string }).taskId).not.toBe(
+        (second.parsed.task as { taskId: string }).taskId,
+      );
+    });
+
+    it('recovers a persisted successful task before rerunning the handler after cache-save failure', async () => {
+      const { productId, pricingOptionId } = await getValidProductAndPricing(server);
+      const key = `products-task-cache-failure-${randomUUID()}`;
+      const payload = {
+        ...basePayload(),
+        packages: [{ product_id: productId, budget: 5000, pricing_option_id: pricingOptionId }],
+        idempotency_key: key,
+      };
+      const store = getIdempotencyStore();
+      const saveFailure = vi.spyOn(store, 'save').mockRejectedValueOnce(new Error('injected cache save failure'));
+      vi.useFakeTimers();
+      try {
+        const requestedTtl = 25;
+        await expect(callAsTask(server, 'create_media_buy', payload, requestedTtl))
+          .rejects.toThrow('injected cache save failure');
+
+        // The public task request suggested a 25ms lifetime, but MCP permits
+        // servers to override that suggestion. Successful idempotency receipts
+        // report and retain the actual replay-window TTL; ordinary tasks still
+        // honor their short requested lifetime.
+        const ordinary = await callAsTask(server, 'get_signals', {}, requestedTtl);
+        expect((ordinary.parsed.task as { ttl?: number }).ttl).toBe(requestedTtl);
+        await vi.advanceTimersByTimeAsync(1_000);
+
+        const recovered = await callAsTask(server, 'create_media_buy', {
+          ...payload,
+          context: { correlation_id: 'cache-recovery-retry' },
+        }, requestedTtl);
+        expect((recovered.parsed.task as { ttl?: number }).ttl)
+          .toBeGreaterThanOrEqual((REPLAY_TTL_SECONDS + 60) * 1000);
+        expect(recovered.parsed.replayed).toBe(true);
+        expect((recovered.parsed.context as { correlation_id?: string })?.correlation_id)
+          .toBe('cache-recovery-retry');
+        const recoveredTaskId = (recovered.parsed.task as { taskId: string }).taskId;
+        const recoveredResult = await taskResult(server, recoveredTaskId);
+        const originalMediaBuyId = (recoveredResult.structuredContent as { media_buy_id?: string })?.media_buy_id;
+        expect(originalMediaBuyId).toBeTruthy();
+
+        const persistedSession = await getSession('open:idem-test.example');
+        expect(persistedSession.mediaBuys.size).toBe(1);
+        expect([...persistedSession.mediaBuys.keys()]).toEqual([originalMediaBuyId]);
+        expect(saveFailure).toHaveBeenCalledTimes(2);
+      } finally {
+        saveFailure.mockRestore();
+        vi.useRealTimers();
+      }
+    });
+
+    it('replays proposal finalization with the original hold and insertion order', async () => {
+      const account = { brand: { domain: 'idem-finalize.example' }, operator: 'idem-op' };
+      await call(server, 'get_products', {
+        idempotency_key: `products-brief-${randomUUID()}`,
+        buying_mode: 'brief',
+        brief: 'cross-channel news video and display',
+        account,
+      });
+
+      const missing = await call(server, 'get_products', {
+        buying_mode: 'refine',
+        account,
+        refine: [{ scope: 'proposal', action: 'finalize', proposal_id: 'pinnacle_cross_channel' }],
+      });
+      expect(missing.isError).toBe(true);
+      expect((missing.parsed as any).adcp_error?.field).toBe('idempotency_key');
+
+      const key = `products-finalize-${randomUUID()}`;
+      const payload = {
+        idempotency_key: key,
+        buying_mode: 'refine',
+        account,
+        refine: [{ scope: 'proposal', action: 'finalize', proposal_id: 'pinnacle_cross_channel' }],
+      };
+      const first = await call(server, 'get_products', payload);
+      const firstProposal = (first.parsed.proposals as Array<Record<string, unknown>>)
+        .find((proposal) => proposal.proposal_id === 'pinnacle_cross_channel');
+      expect(firstProposal?.proposal_status).toBe('committed');
+      expect(firstProposal?.expires_at).toBeTruthy();
+      expect((firstProposal?.insertion_order as Record<string, unknown>)?.io_id).toBeTruthy();
+
+      const replay = await call(server, 'get_products', { ...payload });
+      const replayProposal = (replay.parsed.proposals as Array<Record<string, unknown>>)
+        .find((proposal) => proposal.proposal_id === 'pinnacle_cross_channel');
+      expect(replay.parsed.replayed).toBe(true);
+      expect(replayProposal).toEqual(firstProposal);
+
+      const conflict = await call(server, 'get_products', {
+        ...payload,
+        refine: [{
+          scope: 'proposal',
+          action: 'finalize',
+          proposal_id: 'pinnacle_cross_channel',
+          ask: 'changed payload',
+        }],
+      });
+      expect(conflict.isError).toBe(true);
+      expect((conflict.parsed as any).adcp_error?.code).toBe('IDEMPOTENCY_CONFLICT');
+    });
+
+    it('serializes parallel proposal-finalize retries into one execution and one replay', async () => {
+      const account = { brand: { domain: 'idem-concurrent-finalize.example' }, operator: 'idem-op' };
+      await call(server, 'get_products', {
+        idempotency_key: `products-brief-${randomUUID()}`,
+        buying_mode: 'brief',
+        brief: 'cross-channel news video and display',
+        account,
+      });
+      const payload = {
+        idempotency_key: `products-finalize-${randomUUID()}`,
+        buying_mode: 'refine',
+        account,
+        refine: [{ scope: 'proposal', action: 'finalize', proposal_id: 'pinnacle_cross_channel' }],
+      };
+
+      const [left, right] = await Promise.all([
+        call(server, 'get_products', payload),
+        call(server, 'get_products', payload),
+      ]);
+      const outcomes = [left, right];
+      expect(outcomes.filter((outcome) => outcome.isError !== true)).toHaveLength(1);
+      const successful = outcomes.find((outcome) => outcome.isError !== true)!;
+      const limited = outcomes.find((outcome) => outcome.isError === true)!;
+      expect((limited.parsed as any).adcp_error?.code).toBe('RATE_LIMITED');
+
+      const replay = await call(server, 'get_products', payload);
+      expect(replay.parsed.replayed).toBe(true);
+      const successfulProposal = (successful.parsed.proposals as Array<Record<string, unknown>>)
+        .find((proposal) => proposal.proposal_id === 'pinnacle_cross_channel');
+      const replayProposal = (replay.parsed.proposals as Array<Record<string, unknown>>)
+        .find((proposal) => proposal.proposal_id === 'pinnacle_cross_channel');
+      expect(replayProposal).toEqual(successfulProposal);
+    });
+
+    it('serializes proposal finalization across distinct request keys', async () => {
+      const account = { brand: { domain: 'idem-distinct-finalize.example' }, operator: 'idem-op' };
+      await call(server, 'get_products', {
+        idempotency_key: `products-brief-${randomUUID()}`,
+        buying_mode: 'brief',
+        brief: 'cross-channel news video and display',
+        account,
+      });
+      const base = {
+        buying_mode: 'refine',
+        account,
+        refine: [{ scope: 'proposal', action: 'finalize', proposal_id: 'pinnacle_cross_channel' }],
+      };
+      const payloads = [
+        { ...base, idempotency_key: `products-finalize-left-${randomUUID()}` },
+        { ...base, idempotency_key: `products-finalize-right-${randomUUID()}` },
+      ];
+      const outcomes = await Promise.all(payloads.map(payload => call(server, 'get_products', payload)));
+      const successful = outcomes.find(outcome => outcome.isError !== true)!;
+      const limitedIndex = outcomes.findIndex(outcome => outcome.isError === true);
+      expect(successful).toBeTruthy();
+      expect(limitedIndex).toBeGreaterThanOrEqual(0);
+      expect((outcomes[limitedIndex]!.parsed as any).adcp_error?.code).toBe('RATE_LIMITED');
+
+      const retry = await call(server, 'get_products', payloads[limitedIndex]!);
+      expect(retry.isError).toBeFalsy();
+      const successfulProposal = (successful.parsed.proposals as Array<Record<string, unknown>>)
+        .find(proposal => proposal.proposal_id === 'pinnacle_cross_channel');
+      const retryProposal = (retry.parsed.proposals as Array<Record<string, unknown>>)
+        .find(proposal => proposal.proposal_id === 'pinnacle_cross_channel');
+      expect(retryProposal?.insertion_order).toEqual(successfulProposal?.insertion_order);
+      expect(retryProposal?.expires_at).toBe(successfulProposal?.expires_at);
+    });
+
+    it('serializes overlapping proposal-finalize sets without double-committing either proposal', async () => {
+      const account = { brand: { domain: 'idem-overlap-finalize.example' }, operator: 'idem-op' };
+      const singlePayload = {
+        idempotency_key: `products-finalize-single-${randomUUID()}`,
+        buying_mode: 'refine',
+        account,
+        refine: [
+          { scope: 'proposal', action: 'finalize', proposal_id: 'pinnacle_cross_channel' },
+        ],
+      };
+      const overlappingPayload = {
+        idempotency_key: `products-finalize-overlap-${randomUUID()}`,
+        buying_mode: 'refine',
+        account,
+        refine: [
+          { scope: 'proposal', action: 'finalize', proposal_id: 'pinnacle_cross_channel' },
+          { scope: 'proposal', action: 'finalize', proposal_id: 'viewpoint_multi_screen' },
+        ],
+      };
+      const payloads = [singlePayload, overlappingPayload];
+      const outcomes = await Promise.all(payloads.map(payload => call(server, 'get_products', payload)));
+      const limitedIndex = outcomes.findIndex(outcome => outcome.isError === true);
+      expect(limitedIndex).toBeGreaterThanOrEqual(0);
+      expect((outcomes[limitedIndex]!.parsed as any).adcp_error?.code).toBe('RATE_LIMITED');
+
+      outcomes[limitedIndex] = await call(server, 'get_products', payloads[limitedIndex]!);
+      expect(outcomes.every(outcome => outcome.isError !== true)).toBe(true);
+
+      const singleReplay = await call(server, 'get_products', singlePayload);
+      const overlappingReplay = await call(server, 'get_products', overlappingPayload);
+      expect(singleReplay.parsed.replayed).toBe(true);
+      expect(overlappingReplay.parsed.replayed).toBe(true);
+
+      const proposal = (result: { parsed: Record<string, unknown> }, proposalId: string) => (
+        result.parsed.proposals as Array<Record<string, unknown>>
+      ).find(candidate => candidate.proposal_id === proposalId);
+      const firstPinnacle = proposal(outcomes[0]!, 'pinnacle_cross_channel');
+      const overlappingPinnacle = proposal(outcomes[1]!, 'pinnacle_cross_channel');
+      const overlappingViewpoint = proposal(outcomes[1]!, 'viewpoint_multi_screen');
+      expect(firstPinnacle?.proposal_status).toBe('committed');
+      expect(overlappingPinnacle?.proposal_status).toBe('committed');
+      expect(overlappingViewpoint?.proposal_status).toBe('committed');
+      expect(proposal(singleReplay, 'pinnacle_cross_channel')).toEqual(firstPinnacle);
+      expect(proposal(overlappingReplay, 'pinnacle_cross_channel')).toEqual(overlappingPinnacle);
+      expect(proposal(overlappingReplay, 'viewpoint_multi_screen')).toEqual(overlappingViewpoint);
+      expect(overlappingPinnacle?.insertion_order).toEqual(firstPinnacle?.insertion_order);
+      expect(overlappingPinnacle?.expires_at).toBe(firstPinnacle?.expires_at);
+    });
+  });
+
+  describe('in-process Addie dispatch', () => {
+    it('enforces and replays get_products idempotency instead of bypassing the middleware', async () => {
+      const ctx: TrainingContext = { mode: 'training', principal: 'addie-test' };
+      const missing = await executeTrainingAgentTool('get_products', {
+        buying_mode: 'wholesale',
+        account: ACCOUNT,
+      }, ctx);
+      expect(missing.success).toBe(false);
+      expect(missing.error).toContain('idempotency_key');
+
+      const payload = {
+        idempotency_key: `addie-products-${randomUUID()}`,
+        buying_mode: 'wholesale',
+        account: ACCOUNT,
+      };
+      const first = await executeTrainingAgentTool('get_products', payload, ctx);
+      const replay = await executeTrainingAgentTool('get_products', payload, ctx);
+      expect(first.success).toBe(true);
+      expect(replay.success).toBe(true);
+      expect((replay.data as Record<string, unknown>).replayed).toBe(true);
+      expect((replay.data as Record<string, unknown>).products)
+        .toEqual((first.data as Record<string, unknown>).products);
+    });
+
+    it('caches advisory-success results and echoes the current replay context', async () => {
+      const ctx: TrainingContext = { mode: 'open', principal: 'test-principal' };
+      const directive = await call(server, 'comply_test_controller', {
+        account: ACCOUNT,
+        scenario: 'force_upstream_unavailable',
+        params: { tool: 'get_products', upstream_name: 'catalog-test' },
+      });
+      expect((directive.parsed as { success?: boolean }).success).toBe(true);
+
+      const key = `addie-advisory-${randomUUID()}`;
+      const first = await executeTrainingAgentTool('get_products', {
+        idempotency_key: key,
+        buying_mode: 'wholesale',
+        account: ACCOUNT,
+        context: { correlation_id: 'advisory-first' },
+      }, ctx);
+      const replay = await executeTrainingAgentTool('get_products', {
+        idempotency_key: key,
+        buying_mode: 'wholesale',
+        account: ACCOUNT,
+        context: { correlation_id: 'advisory-retry' },
+      }, ctx);
+      expect(first.success).toBe(true);
+      expect((first.data as any).errors?.[0]?.code).toBe('STALE_RESPONSE');
+      expect((first.data as any).context?.correlation_id).toBe('advisory-first');
+      expect(replay.success).toBe(true);
+      expect((replay.data as any).replayed).toBe(true);
+      expect((replay.data as any).errors).toEqual((first.data as any).errors);
+      expect((replay.data as any).products).toEqual((first.data as any).products);
+      expect((replay.data as any).context?.correlation_id).toBe('advisory-retry');
+    });
+
+    it('persists direct Addie finalization before publishing its replay', async () => {
+      const ctx: TrainingContext = { mode: 'training', principal: 'addie-finalize-test' };
+      const account = { brand: { domain: 'addie-finalize.example' }, operator: 'addie-op' };
+      await executeTrainingAgentTool('get_products', {
+        idempotency_key: `addie-brief-${randomUUID()}`,
+        buying_mode: 'brief',
+        brief: 'cross-channel news video and display',
+        account,
+      }, ctx);
+      const finalize = (idempotencyKey: string) => executeTrainingAgentTool('get_products', {
+        idempotency_key: idempotencyKey,
+        buying_mode: 'refine',
+        account,
+        refine: [{ scope: 'proposal', action: 'finalize', proposal_id: 'pinnacle_cross_channel' }],
+      }, ctx);
+      const key = `addie-finalize-${randomUUID()}`;
+      const first = await finalize(key);
+      const replay = await finalize(key);
+      const reloaded = await finalize(`addie-finalize-reload-${randomUUID()}`);
+      expect(first.success).toBe(true);
+      expect(replay.success).toBe(true);
+      expect(reloaded.success).toBe(true);
+      const proposal = (result: typeof first) => (
+        (result.data as { proposals?: Array<Record<string, unknown>> }).proposals ?? []
+      ).find(item => item.proposal_id === 'pinnacle_cross_channel');
+      expect((replay.data as Record<string, unknown>).replayed).toBe(true);
+      expect(proposal(reloaded)?.insertion_order).toEqual(proposal(first)?.insertion_order);
+      expect(proposal(reloaded)?.expires_at).toBe(proposal(first)?.expires_at);
     });
   });
 

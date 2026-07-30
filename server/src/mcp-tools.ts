@@ -196,10 +196,19 @@ export const TOOL_DEFINITIONS = [
         },
         params: {
           type: "object",
-          description: "Parameters to pass to get_products (leave empty for public products)",
+          description: "Parameters to pass to get_products. Preserve idempotency_key when retrying an ambiguous failure.",
+          properties: {
+            idempotency_key: {
+              type: "string",
+              minLength: 16,
+              maxLength: 255,
+              pattern: "^[A-Za-z0-9_.:-]{16,255}$",
+            },
+          },
+          required: ["idempotency_key"],
         },
       },
-      required: ["agent_url"],
+      required: ["agent_url", "params"],
     },
   },
   {

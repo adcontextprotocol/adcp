@@ -112,6 +112,7 @@ phases:
           - context echoed unchanged
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_proposal_not_found_errors_unknown_proposal_refine_get_products_refine_unknown_proposal"
           buying_mode: "refine"
           refine:
             - scope: "proposal"

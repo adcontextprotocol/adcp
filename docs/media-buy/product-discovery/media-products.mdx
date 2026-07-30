@@ -978,6 +978,7 @@ Proposals can be refined using `buying_mode: "refine"` with the `refine` array. 
 ```
 // Initial discovery
 get_products({
+  idempotency_key: "550e8400-e29b-41d4-a716-446655442039",
   buying_mode: "brief",
   brief: "Swiss campaign, $50k, 50% desktop/20% mobile/30% in-app, 40% German/60% French"
 })
@@ -986,6 +987,7 @@ get_products({
 
 // Refine the proposal
 get_products({
+  idempotency_key: "550e8400-e29b-41d4-a716-446655442040",
   buying_mode: "refine",
   refine: [
     { scope: "product",  product_id:  "ch_desktop_de" },

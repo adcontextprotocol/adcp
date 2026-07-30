@@ -300,6 +300,7 @@ phases:
           If the brief is unclear, return input-required with clarifying questions.
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_product_discovery_get_products_brief"
           buying_mode: "brief"
           brief: "Premium video inventory on sports and outdoor lifestyle publishers. Q2 flight, $50K budget. Adults 25-54, US and Canada."
           pagination:

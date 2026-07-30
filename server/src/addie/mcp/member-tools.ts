@@ -1856,13 +1856,14 @@ export const MEMBER_TOOLS: AddieTool[] = [
       type: 'object',
       properties: {
         agent_url: { type: 'string', description: 'Agent URL to test against' },
+        idempotency_key_prefix: { type: 'string', minLength: 16, maxLength: 220, pattern: '^[A-Za-z0-9_.:-]{16,220}$', description: 'Stable prefix for generated per-brief get_products keys; reuse it when retrying this comparison.' },
         media_kit_summary: { type: 'string', description: 'Structured description of what the publisher sells (channels, formats, verticals, pricing tiers, audience capabilities)' },
         verticals: { type: 'array', items: { type: 'string' }, description: 'Verticals the publisher serves (e.g., automotive, healthcare, tech)' },
         channels: { type: 'array', items: { type: 'string' }, description: 'Channels from the media kit (e.g., display, video, podcast, audio, newsletter, dooh, ctv)' },
         formats: { type: 'array', items: { type: 'string' }, description: 'Specific format types offered' },
         sample_io: { type: 'string', description: 'Text of a sample IO or RFP response for additional comparison' },
       },
-      required: ['agent_url', 'media_kit_summary'],
+      required: ['agent_url', 'idempotency_key_prefix', 'media_kit_summary'],
     },
   },
   {
@@ -1874,6 +1875,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       type: 'object',
       properties: {
         agent_url: { type: 'string', description: 'Agent URL to test against' },
+        idempotency_key: { type: 'string', minLength: 16, maxLength: 255, pattern: '^[A-Za-z0-9_.:-]{16,255}$', description: 'Stable key for this get_products request; reuse it after an ambiguous timeout.' },
         rfp: {
           type: 'object',
           description: 'Structured RFP data extracted by Addie from the publisher\'s document',
@@ -1899,7 +1901,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
           required: ['brief'],
         },
       },
-      required: ['agent_url', 'rfp'],
+      required: ['agent_url', 'idempotency_key', 'rfp'],
     },
   },
   {
@@ -1911,6 +1913,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
       type: 'object',
       properties: {
         agent_url: { type: 'string', description: 'Agent URL to test against' },
+        idempotency_key: { type: 'string', minLength: 16, maxLength: 255, pattern: '^[A-Za-z0-9_.:-]{16,255}$', description: 'Stable key for the catalog get_products request; reuse it after an ambiguous timeout.' },
+        create_media_buy_idempotency_key: { type: 'string', minLength: 16, maxLength: 255, pattern: '^[A-Za-z0-9_.:-]{16,255}$', description: 'Stable key for the optional create_media_buy execution; reuse it after an ambiguous timeout.' },
         line_items: {
           type: 'array',
           description: 'Line items extracted from the IO or proposal by Addie',
@@ -1934,7 +1938,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
         currency: { type: 'string', description: 'Currency for all line items (default: USD)' },
         execute: { type: 'boolean', description: 'If true, actually call create_media_buy on the agent. If false (default), only construct the JSON.', default: false },
       },
-      required: ['agent_url', 'line_items'],
+      required: ['agent_url', 'idempotency_key', 'create_media_buy_idempotency_key', 'line_items'],
     },
   },
   // ============================================
@@ -5563,6 +5567,7 @@ export function createMemberToolHandlers(
 
   handlers.set('compare_media_kit', async (input) => {
     const agentUrl = input.agent_url as string;
+    const idempotencyKeyPrefix = input.idempotency_key_prefix as string;
     const mediaKitSummary = (input.media_kit_summary as string).slice(0, 5000);
     const verticals = input.verticals as string[] | undefined;
     const channels = (input.channels as string[] | undefined)?.slice(0, 20);
@@ -5638,9 +5643,10 @@ export function createMemberToolHandlers(
         has_audience_targeting: boolean;
         error?: string;
       }
-      const briefResults: BriefResult[] = await Promise.all(briefsToRun.map(async (brief): Promise<BriefResult> => {
+      const briefResults: BriefResult[] = await Promise.all(briefsToRun.map(async (brief, briefIndex): Promise<BriefResult> => {
         try {
           const result = await client.executeTask('get_products', {
+            idempotency_key: `${idempotencyKeyPrefix}:${briefIndex}`,
             buying_mode: 'brief',
             brief: brief.brief,
             brand: { name: 'Test Brand', url: 'https://example.com' },
@@ -5834,6 +5840,7 @@ export function createMemberToolHandlers(
 
   handlers.set('test_rfp_response', async (input) => {
     const agentUrl = input.agent_url as string;
+    const idempotencyKey = input.idempotency_key as string;
     const rfp = input.rfp as Record<string, unknown>;
     const brief = ((rfp.brief as string) || '').slice(0, 5000);
     const advertiser = rfp.advertiser as string | undefined;
@@ -5866,6 +5873,7 @@ export function createMemberToolHandlers(
 
       const result = await Promise.race([
         client.executeTask('get_products', {
+          idempotency_key: idempotencyKey,
           buying_mode: 'brief',
           brief,
           brand: { name: advertiser || 'Test Brand', url: 'https://example.com' },
@@ -6076,6 +6084,8 @@ export function createMemberToolHandlers(
 
   handlers.set('test_io_execution', async (input) => {
     const agentUrl = input.agent_url as string;
+    const idempotencyKey = input.idempotency_key as string;
+    const createMediaBuyIdempotencyKey = input.create_media_buy_idempotency_key as string;
     const lineItems = ((input.line_items as Array<Record<string, unknown>>) || []).slice(0, 20);
     const advertiser = input.advertiser as string | undefined;
     const currency = (input.currency as string) || 'USD';
@@ -6103,6 +6113,7 @@ export function createMemberToolHandlers(
       // Get full catalog via wholesale mode
       const result = await Promise.race([
         client.executeTask('get_products', {
+          idempotency_key: idempotencyKey,
           buying_mode: 'wholesale',
           brand: { name: advertiser || 'Test Brand', url: 'https://example.com' },
         }),
@@ -6319,7 +6330,7 @@ export function createMemberToolHandlers(
       const latestEnd = allEndDates.length > 0 ? allEndDates.sort().reverse()[0] : new Date(Date.now() + 30 * 86400000).toISOString();
 
       const proposedRequest = mappedPackages.length > 0 ? {
-        idempotency_key: randomUUID(),
+        idempotency_key: createMediaBuyIdempotencyKey,
         brand: { name: advertiser || 'Test Brand', url: 'https://example.com' },
         account: { account_id: advertiser || 'test-account' },
         start_time: earliestStart,

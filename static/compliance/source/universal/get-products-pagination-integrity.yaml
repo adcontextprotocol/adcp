@@ -159,6 +159,7 @@ phases:
           - pagination.cursor present
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#get_products_pagination_integrity_wholesale_pagination_walk_wholesale_first_page"
           buying_mode: "wholesale"
           account:
             brand:
@@ -232,6 +233,7 @@ phases:
           - pagination.cursor absent or null
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#get_products_pagination_integrity_wholesale_pagination_walk_wholesale_terminal_page"
           buying_mode: "wholesale"
           account:
             brand:

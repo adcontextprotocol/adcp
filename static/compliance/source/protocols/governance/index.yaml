@@ -317,6 +317,7 @@ phases:
           - forecast: estimated delivery
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_governance_escalation_discover_products_get_products_brief"
           buying_mode: "brief"
           brief: "Premium CTV and video on sports publishers. Q2 flight, $50K budget. Adults 25-54, US."
           brand:

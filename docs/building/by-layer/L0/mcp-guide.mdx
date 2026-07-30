@@ -18,6 +18,8 @@ You can test AdCP tasks using the [CLI tools](/docs/building/by-layer/L4/choose-
 ```javascript
 // Standard MCP tool call
 const response = await mcp.call('get_products', {
+  idempotency_key: "550e8400-e29b-41d4-a716-446655442072",
+  buying_mode: "brief",
   brand: {
     domain: "premiumpetfoods.com"
   },
@@ -34,6 +36,8 @@ console.log(response.message);  // Human-readable summary
 ```javascript
 // Structured parameters
 const response = await mcp.call('get_products', {
+  idempotency_key: "550e8400-e29b-41d4-a716-446655442073",
+  buying_mode: "brief",
   brand: {
     domain: "betnow.com"
   },
@@ -248,6 +252,7 @@ Include the `task` field in your `tools/call` request:
   "params": {
     "name": "get_products",
     "arguments": {
+      "idempotency_key": "550e8400-e29b-41d4-a716-446655442005",
       "buying_mode": "brief",
       "brief": "Premium CTV inventory for luxury auto"
     },
@@ -386,11 +391,15 @@ const session = new McpAdcpSession(mcp);
 
 // First call - no context needed
 const products = await session.call('get_products', {
+  idempotency_key: "550e8400-e29b-41d4-a716-446655442074",
+  buying_mode: "brief",
   brief: "Sports campaign"
 });
 
 // Follow-up - context automatically included
 const refined = await session.call('get_products', {
+  idempotency_key: "550e8400-e29b-41d4-a716-446655442075",
+  buying_mode: "brief",
   brief: "Focus on premium CTV"
 });
 // Session remembers previous interaction
@@ -405,6 +414,7 @@ const session = new McpAdcpSession(mcp);
 
 // Synchronous call (no task augmentation)
 const products = await session.call('get_products', {
+  idempotency_key: '550e8400-e29b-41d4-a716-446655442006',
   buying_mode: 'brief',
   brief: "Sports campaign"
 });

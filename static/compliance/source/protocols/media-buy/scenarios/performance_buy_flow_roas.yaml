@@ -159,6 +159,7 @@ phases:
           Return at least one product whose conversion_tracking capabilities
           accept per_ad_spend event-kind targets.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_performance_buy_flow_roas_setup_get_products_for_roas"
           buying_mode: "brief"
           brief: "Performance native + display, US, adults 25-54. Target ROAS 4.0 on purchase events with order_total from acmeoutdoor.example."
           required_capabilities:

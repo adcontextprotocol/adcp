@@ -52,7 +52,7 @@
           },
           "mutating": {
             "type": "boolean",
-            "description": "True if invoking this tool with identical inputs more than once is unsafe — i.e., the tool changes server-side state. Mutating tools MUST declare an idempotency_key on the request schema (or carry an explicit `naturally idempotent` exemption marker in the schema's description). Read-only tools (verbs `get-`, `list-`, `check-`, `validate-`, `preview-`, `search-`) are safe to retry without an idempotency key."
+            "description": "True if invoking this tool can change server-side state. Mutating tools MUST declare an idempotency_key on the request schema (or carry an explicit `naturally idempotent` exemption marker in the schema's description). Verb prefixes are not authoritative: polymorphic tools such as get_products are mutating because some valid request arms create asynchronous tasks or commit state, even though other arms complete as reads."
           },
           "request_schema": {
             "type": "string",

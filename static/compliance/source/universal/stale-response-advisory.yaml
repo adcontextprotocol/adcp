@@ -178,6 +178,7 @@ phases:
           - Response payload non-empty (products[] with at least one entry)
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#stale_response_advisory_stale_response_forcing_stale_response_wire_placement"
           buying_mode: "brief"
           brief: "Display advertising"
           account:
@@ -275,6 +276,7 @@ phases:
           actively serving from a stale cache entry past its freshness target.
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#stale_response_advisory_non_emission_guard_no_stale_on_healthy_upstream"
           buying_mode: "brief"
           brief: "Display advertising for outdoor lifestyle campaign"
           account:

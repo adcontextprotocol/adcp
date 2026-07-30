@@ -158,6 +158,7 @@ phases:
           Return at least one product whose conversion_tracking capabilities
           include per-creative attribution.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_per_creative_conversion_attribution_setup_get_products_for_per_creative"
           buying_mode: "brief"
           brief: "Performance display, US, adults 25-54. Target CPA $35 on purchase events from acmeoutdoor.example. Two creative variants — need per-creative conversion breakdown in delivery reporting."
           required_capabilities:

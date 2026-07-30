@@ -21,7 +21,7 @@ import {
   type AudienceStatus,
 } from '@adcp/sdk/server';
 import {
-  handleGetProducts,
+  executeTrainingAgentTool,
   handleCreateMediaBuy,
   handleUpdateMediaBuy,
   handleGetMediaBuys,
@@ -178,6 +178,30 @@ function translateV5Result<T extends object>(result: unknown, options: { allowAd
   return result as T;
 }
 
+function throwGetProductsExecutionError(message: string): never {
+  const validationMatch = message.match(/^Invalid get_products request(?: at ([^:]+))?:/);
+  const invalidRequest = validationMatch !== null
+    || message.includes('idempotency_key')
+    || message.startsWith('brief must be a string');
+  const code = message.includes('IDEMPOTENCY_CONFLICT')
+    ? 'IDEMPOTENCY_CONFLICT'
+    : message.includes('IDEMPOTENCY_EXPIRED')
+      ? 'IDEMPOTENCY_EXPIRED'
+      : message.includes('RATE_LIMITED')
+        ? 'RATE_LIMITED'
+        : invalidRequest
+          ? 'INVALID_REQUEST'
+          : 'SERVICE_UNAVAILABLE';
+  const field = validationMatch?.[1]
+    ?? (message.startsWith('brief must be a string') ? 'brief' : undefined)
+    ?? (message.includes('idempotency_key') ? 'idempotency_key' : undefined);
+  throw new AdcpError(code, {
+    recovery: code === 'RATE_LIMITED' || code === 'SERVICE_UNAVAILABLE' ? 'transient' : 'correctable',
+    message,
+    ...(code === 'INVALID_REQUEST' && field && { field }),
+  });
+}
+
 /**
  * Synthetic-account constructor — same posture as the signals tenant.
  * v6 mandates `accounts.resolve()` on every request; we synthesize an
@@ -243,8 +267,18 @@ export class TrainingSalesPlatform
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sales: SalesPlatform<TrainingSalesMeta> = {
     getProducts: async (req, ctx) => {
-      const result = await handleGetProducts(req as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
-      return translateV5Result(result, { allowAdvisories: true });
+      // The installed SDK predates polymorphic get_products idempotency. Route
+      // this one method through the shared schema-first dispatcher rather than
+      // mutating the SDK's global task classification: validation, session
+      // durability, and replay publication then share the same ordering as v5
+      // and direct Addie dispatch.
+      const executed = await executeTrainingAgentTool(
+        'get_products',
+        req as ToolArgs,
+        buildTrainingCtx(ctx, this.storyboardCompat),
+      );
+      if (!executed.success) throwGetProductsExecutionError(executed.error ?? 'get_products failed');
+      return translateV5Result(executed.data, { allowAdvisories: true });
     },
 
     createMediaBuy: async (req, ctx) => {

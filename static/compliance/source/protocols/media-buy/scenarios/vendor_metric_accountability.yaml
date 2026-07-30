@@ -128,6 +128,7 @@ phases:
           that don't declare this vendor are silently excluded — the seller does
           NOT return an error for unmet vendor metric requirements.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_vendor_metric_accountability_discover_with_required_vendor_metrics_get_products_required_vendor_metrics"
           buying_mode: "brief"
           brief: "Display inventory with attention measurement from attentionvendor."
           filters:
