@@ -45,6 +45,8 @@ Before producing assets, determine both the inventory contract and the creative 
 
 ```javascript
 const products = await get_products({
+  idempotency_key: "550e8400-e29b-41d4-a716-446655442049",
+  buying_mode: "brief",
   brand: { domain: "acmeoutdoor.example" },
   brief: "Acme Outdoor product launch campaign"
 });

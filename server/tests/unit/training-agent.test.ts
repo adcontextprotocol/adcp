@@ -11243,18 +11243,20 @@ describe('MCP Tasks protocol', () => {
     expect(task.status).toBe('completed');
     expect(task.createdAt).toBeDefined();
     expect(task.lastUpdatedAt).toBeDefined();
-    // Defaults to 15 minutes when no TTL requested (clamped by server)
-    expect(task.ttl).toBe(900_000);
+    // Successful idempotency-protected tasks are crash-recovery receipts.
+    // MCP permits the server to override the requested TTL, so their reported
+    // lifetime covers the full replay window plus clock-skew allowance.
+    expect(task.ttl).toBe((REPLAY_TTL_SECONDS + 60) * 1000);
   });
 
-  it('respects requested TTL', async () => {
+  it('overrides requested TTL for successful idempotency recovery receipts', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const response = await simulateCallToolAsTask(server, 'get_products', {
       buying_mode: 'wholesale',
     }, { ttl: 120000 });
 
     const task = response.task as Record<string, unknown>;
-    expect(task.ttl).toBe(120000);
+    expect(task.ttl).toBe((REPLAY_TTL_SECONDS + 60) * 1000);
   });
 
   it('retrieves task status via tasks/get', async () => {
@@ -11413,21 +11415,27 @@ describe('MCP Tasks protocol', () => {
     ).rejects.toThrow(/terminal status/);
   });
 
-  it('expires tasks after TTL', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
-    const response = await simulateCallToolAsTask(server, 'get_products', {
-      buying_mode: 'wholesale',
-    }, { ttl: 1 }); // 1ms TTL
+  it('retains successful idempotency receipts beyond the requested TTL', async () => {
+    vi.useFakeTimers();
+    try {
+      const server = createTrainingAgentServer(DEFAULT_CTX);
+      const response = await simulateCallToolAsTask(server, 'get_products', {
+        buying_mode: 'wholesale',
+      }, { ttl: 1 }); // caller suggests a 1ms TTL
 
-    const taskId = (response.task as Record<string, unknown>).taskId as string;
+      const task = response.task as Record<string, unknown>;
+      const taskId = task.taskId as string;
+      expect(task.ttl).toBe((REPLAY_TTL_SECONDS + 60) * 1000);
 
-    // Wait just enough for TTL to expire
-    await new Promise(r => setTimeout(r, 10));
-
-    // tasks/get triggers cleanup — expired task should be gone
-    await expect(
-      simulateGetTask(server, taskId),
-    ).rejects.toThrow('Task not found');
+      // Advance well past the caller's suggestion but remain inside the
+      // idempotency replay window. The recovery receipt must still be visible.
+      await vi.advanceTimersByTimeAsync(10);
+      const retained = await simulateGetTask(server, taskId);
+      expect(retained.taskId).toBe(taskId);
+      expect(retained.status).toBe('completed');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('non-task-augmented calls still return direct results', async () => {
@@ -13014,7 +13022,9 @@ describe('context echo', () => {
     // except as the echoed context field
     const { parsed } = await simulateCallToolRaw(server, 'get_products', {
       context: TEST_CONTEXT,
-      account: { brand: { domain: 'acmeoutdoor.com' } },
+      idempotency_key: 'context-echo-products-0001',
+      buying_mode: 'wholesale',
+      account: { brand: { domain: 'acmeoutdoor.com' }, operator: 'test-operator.example' },
     });
     expect(parsed.context).toEqual(TEST_CONTEXT);
     // The products field should exist (handler ran successfully)

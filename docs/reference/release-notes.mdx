@@ -186,7 +186,7 @@ A bundle of normative clarifications that codify deployed behavior and close amb
 
 **`idempotency_key` is required on every AdCP task request — read and mutating alike (#4399b).** The 3.0 contract framed it as mutating-only, but `get_products` is polymorphic (`brief`/`wholesale` may return `Submitted`; `refine`+`finalize` is a commit) and buyers can't classify at call time. Enforcement is **staged**:
 
-- **3.1.0** — sellers MUST accept reads that carry `idempotency_key`; SHOULD reject reads that omit it (MAY accept the omission during the 3.1.x maintenance window).
+- **3.1.0** — sellers MUST accept reads that carry `idempotency_key`; SHOULD reject reads that omit it (MAY accept the omission during the 3.1.x maintenance window only for guaranteed side-effect-free synchronous reads). Calls that return `Submitted` or commit/finalize state are never covered by the omission grace.
 - **3.2.0** — sellers MUST reject reads that omit it.
 
 The cache holds read responses too from 3.1 onward — sellers MUST encrypt the cache tier at rest with the same controls applied to the underlying resource store. Operators with read-heavy buyer mixes SHOULD raise the rule-8 insert ceiling (sized originally against write-heavy traffic). See [security.mdx § Idempotency](/docs/building/by-layer/L1/security#idempotency) for the full contract.
@@ -212,7 +212,7 @@ The cache holds read responses too from 3.1 onward — sellers MUST encrypt the 
 | If you are… | What you need to do |
 |---|---|
 | A buyer using `@adcp/client` or `adcp-py` | Nothing. Both SDKs already send `idempotency_key` uniformly on every call. |
-| A buyer with hand-rolled MCP clients (curl, thin clients, raw OpenAPI codegen) | Add `idempotency_key` to read tools (`get_products`, `list_creative_formats`, `list_accounts`, etc.) before the 3.2 cut. 3.1.0 sellers MAY accept omission during the grace window; 3.2.0 sellers MUST reject. |
+| A buyer with hand-rolled MCP clients (curl, thin clients, raw OpenAPI codegen) | Add `idempotency_key` to polymorphic tools such as `get_products` now: calls that allocate tasks or commit/finalize state have no omission grace, and buyers cannot predict the execution arm. Add it to guaranteed side-effect-free synchronous reads (`list_creative_formats`, `list_accounts`, etc.) before the 3.2 cut; 3.1.x sellers MAY accept omission only on that narrower read path. |
 | A seller on FastMCP/Pydantic, Zod `.strict()`, or OpenAPI codegen | Audit input models — they MUST accept envelope fields (`idempotency_key`, `context_id`, `context`, `governance_context`, `push_notification_config`) on every tool. Use `extra='allow'` (Pydantic), drop `.strict()` (Zod), or fix codegen config (OpenAPI). |
 | A seller emitting `create_media_buy` synchronous-success responses with embedded `status` | Nothing changes. Existing byte-stable replay already conforms; the rule was silent on this case before, now it's explicit. |
 | A buyer agent reading `status` from a mutation response | Add a `replayed: true` guard: if set, call the resource's read endpoint (`get_media_buys`, `list_accounts`, etc.) before any state-dependent action. Without the guard, you'll hit `NOT_CANCELLABLE` and similar state-machine bugs against replayed responses. |

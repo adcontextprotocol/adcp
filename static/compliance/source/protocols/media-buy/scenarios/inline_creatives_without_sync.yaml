@@ -116,6 +116,7 @@ phases:
           Return at least one fixed-price product with a pricing option and a
           format_options[] declaration that can be used by the inline CreativeAsset.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_inline_creatives_without_sync_canonical_format_inline_path_get_products_canonical_format"
           buying_mode: "brief"
           brief: "Display inventory on outdoor lifestyle content. Q3 flight with buyer-supplied inline creative."
           filters:
@@ -304,6 +305,7 @@ phases:
           Return at least one fixed-price product with a pricing option and a
           concrete format_id that can be used by the inline CreativeAsset.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_inline_creatives_without_sync_legacy_format_inline_path_get_products_legacy_format"
           buying_mode: "brief"
           brief: "Display inventory on outdoor lifestyle content. Q3 flight with buyer-supplied inline creative."
           filters:

@@ -1101,6 +1101,8 @@ const postalSupport = mediaBuy.execution?.targeting?.geo_postal_areas;
 
 // Filter products to sellers with specific geo targeting capabilities
 const products = await client.getProducts({
+  idempotency_key: '550e8400-e29b-41d4-a716-446655442047',
+  buying_mode: 'brief',
   brief: "Premium video inventory in US for ZIP-targeted campaign",
   filters: {
     channels: ['olv', 'ctv'],
@@ -1158,6 +1160,8 @@ For locally-bound inventory, products ARE geographically specific. A radio stati
 ```javascript
 // Find radio products in specific DMAs
 const radioProducts = await client.getProducts({
+  idempotency_key: '550e8400-e29b-41d4-a716-446655442048',
+  buying_mode: 'brief',
   brief: "Radio inventory in NYC and LA markets",
   filters: {
     channels: ['radio'],

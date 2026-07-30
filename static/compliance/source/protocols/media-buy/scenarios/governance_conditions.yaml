@@ -201,6 +201,7 @@ phases:
         expected: |
           Return the seeded CTV product and its USD pricing option.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_governance_conditions_buy_with_conditions_get_products_brief"
           buying_mode: "brief"
           brief: "CTV inventory on outdoor lifestyle content. $25K budget, adults 25-54, US."
           account:

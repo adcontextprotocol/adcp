@@ -105,6 +105,7 @@ phases:
           Return at least one proposal with a proposal_id. proposal_id_1 is captured
           here for the mandatory mixed-finalize and non-proposal-finalize error probes.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_refine_finalize_exclusivity_setup_get_products_brief"
           buying_mode: "brief"
           brief: "Premium video and display across outdoor lifestyle and sports. Q2 flight, $50K budget. Adults 25-54, US and Canada."
           account:
@@ -147,6 +148,7 @@ phases:
           (tolerated — phase is optional), proposal_id_2 stays unset, and the
           multi-finalize phases skip gracefully.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_refine_finalize_exclusivity_setup_second_proposal_get_products_brief_second"
           buying_mode: "brief"
           brief: "Premium video and display across outdoor lifestyle and sports. Q2 flight, $50K budget. Adults 25-54, US and Canada."
           account:
@@ -190,6 +192,7 @@ phases:
             the violation is conformant)
           No proposal state is changed; the finalize entry does not commit.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_refine_finalize_exclusivity_mixed_finalize_rejected_get_products_mixed_finalize"
           buying_mode: "refine"
           refine:
             - scope: "proposal"
@@ -240,6 +243,7 @@ phases:
           product-scoped entries; the seller must not silently ignore the field or
           treat it as action: "include".
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_refine_finalize_exclusivity_non_proposal_finalize_rejected_get_products_product_finalize"
           buying_mode: "refine"
           refine:
             - scope: "product"
@@ -284,6 +288,7 @@ phases:
           refinements as applied. Neither proposal is partially committed — the seller has
           run pre-commit validation across all named proposals before returning success.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_refine_finalize_exclusivity_multi_finalize_atomic_path_get_products_multi_finalize_atomic"
           buying_mode: "refine"
           refine:
             - scope: "proposal"
@@ -375,6 +380,7 @@ phases:
           (acceptable fallback). No proposal is committed. Buyers receiving
           MULTI_FINALIZE_UNSUPPORTED should sequence individual finalize calls.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_refine_finalize_exclusivity_multi_finalize_unsupported_path_get_products_multi_finalize_unsupported"
           buying_mode: "refine"
           refine:
             - scope: "proposal"

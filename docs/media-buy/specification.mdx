@@ -548,12 +548,13 @@ Sales agents SHOULD target the following response times:
 
 ### Idempotency
 
-Sales agents SHOULD support idempotent operations using `idempotency_key`:
+Every AdCP task request MUST carry an `idempotency_key`, including `get_products`. Sales agents MUST apply the universal replay contract:
 
-- If an `idempotency_key` has been seen before for the same account, sales agents SHOULD return the existing resource
-- This enables safe retries without duplicate creation
+- The same key and equivalent canonical payload within the replay window MUST return the original response without re-executing the request.
+- The same key with a different canonical payload MUST return `IDEMPOTENCY_CONFLICT`.
+- Keys are scoped to the authenticated caller and account so retries cannot cross tenant boundaries.
 
-For mutation tasks (`update_media_buy`, `sync_creatives`), orchestrators MAY include an `idempotency_key` (16-255 characters) for safe retries. If a request fails without a response, resending with the same `idempotency_key` guarantees at-most-once execution.
+The 3.1.x migration grace applies only when a seller can guarantee that an omitted-key request will complete as a side-effect-free synchronous read. It never permits a `Submitted` response, task allocation, proposal finalization, or another state transition. `get_products` is polymorphic, so buyers MUST include the key on every call rather than attempting to predict which execution arm the seller will choose. See [Request safety — idempotency](/docs/building/by-layer/L1/security#idempotency) for the normative cache, replay, concurrency, and 3.2 enforcement rules.
 
 ### Human-in-the-Loop
 

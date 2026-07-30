@@ -39,7 +39,11 @@ const client = ADCPMultiAgentClient.simple(
 );
 
 const agent = client.agent('default-agent');
-const result = await agent.getProducts({ brief: 'CTV inventory' });
+const result = await agent.getProducts({
+  idempotency_key: '550e8400-e29b-41d4-a716-446655442052',
+  buying_mode: 'brief',
+  brief: 'CTV inventory',
+});
 ```
 
 Python and Go SDKs expose the same mechanism under their idiomatic call sites — see each SDK's repo. The shape is consistent: per-agent or per-call version pin, validated at construction time, with adapter modules translating to/from the canonical shape transparently.
@@ -136,7 +140,11 @@ There are two places version mismatch can surface on the client, and they fire i
 import { VersionUnsupportedError } from '@adcp/sdk';
 
 try {
-  const result = await agent.getProducts({ brief: '…' });
+  const result = await agent.getProducts({
+    idempotency_key: '550e8400-e29b-41d4-a716-446655442053',
+    buying_mode: 'brief',
+    brief: '…',
+  });
 } catch (err) {
   if (err instanceof VersionUnsupportedError) {
     // peer doesn't support this call at the pinned version —
@@ -149,7 +157,11 @@ try {
 **2. `VERSION_UNSUPPORTED` envelope from the wire.** When the mismatch is only detected on the server side (e.g., the buyer's `adcp_major_version` parses different than the buyer's `adcp_version` string), the response carries a typed `VERSION_UNSUPPORTED` error envelope that echoes the seller's `supported_versions`:
 
 ```ts
-const result = await agent.getProducts({ brief: '…' });
+const result = await agent.getProducts({
+  idempotency_key: '550e8400-e29b-41d4-a716-446655442054',
+  buying_mode: 'brief',
+  brief: '…',
+});
 
 if (!result.success && result.adcpError?.code === 'VERSION_UNSUPPORTED') {
   const supported = result.adcpError.details?.supported_versions ?? [];

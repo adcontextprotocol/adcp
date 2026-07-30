@@ -52,6 +52,7 @@ Product-scoped entries may declare an action. When omitted, the seller treats th
 
 ```json
 {
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655442013",
   "buying_mode": "refine",
   "refine": [
     { "scope": "product", "product_id": "prod_video_premium", "ask": "add 16:9 format option" },
@@ -67,6 +68,7 @@ Use `scope: "request"` to describe what you want from the selection as a whole:
 
 ```json
 {
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655442014",
   "buying_mode": "refine",
   "refine": [
     { "scope": "request", "ask": "good selection but I want more video options and less display" },
@@ -87,6 +89,7 @@ Reference proposals by `proposal_id` to request adjustments or remove them. Like
 
 ```json
 {
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655442015",
   "buying_mode": "refine",
   "refine": [
     { "scope": "product",  "product_id":  "prod_video_premium" },
@@ -102,6 +105,7 @@ All scopes work together. A single refinement call can set direction for the sel
 
 ```json
 {
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655442016",
   "buying_mode": "refine",
   "refine": [
     { "scope": "request",                                         "ask": "increase emphasis on video across the plan" },
@@ -156,6 +160,7 @@ Use `more_like_this` to discover products similar to ones you like. The seller r
 
 ```json
 {
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655442017",
   "buying_mode": "refine",
   "refine": [
     { "scope": "product", "product_id": "prod_video_premium", "action": "more_like_this", "ask": "same premium audience but different formats" }
@@ -169,6 +174,7 @@ Filters on a refine request represent the complete target state, not a delta. Al
 
 ```json
 {
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655442018",
   "buying_mode": "refine",
   "refine": [
     { "scope": "product", "product_id": "prod_video_premium" },
@@ -188,6 +194,7 @@ The product entries define which products the seller should consider for the pro
 
 ```json
 {
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655442019",
   "buying_mode": "refine",
   "refine": [
     { "scope": "product",  "product_id":  "prod_video_premium" },

@@ -9394,7 +9394,10 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           stats.product_count = 0;
           stats.publisher_count = 0;
           try {
-            const result = await client.getProducts({ buying_mode: 'wholesale' });
+            const result = await client.getProducts({
+              idempotency_key: crypto.randomUUID(),
+              buying_mode: 'wholesale',
+            });
             if (result.data?.products) {
               stats.product_count = result.data.products.length;
             }

@@ -95,6 +95,7 @@ phases:
           - proposals: curated media plans with proposal_id, budget_allocations, rationale
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_proposal_finalize_brief_with_proposals_get_products_brief"
           buying_mode: "brief"
           brief: "Premium video and display across outdoor lifestyle and sports. Q2 flight, $50K budget. Adults 25-54, US and Canada."
           account:
@@ -142,6 +143,7 @@ phases:
           - Updated budget allocations, product selections, and forecasts
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_proposal_finalize_refine_proposal_get_products_refine"
           buying_mode: "refine"
           refine:
             - scope: "proposal"
@@ -153,6 +155,10 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+
+        context_outputs:
+          - name: finalize_idempotency_key
+            generate: uuid_v4
 
         validations:
           - check: response_schema
@@ -185,6 +191,7 @@ phases:
           - field: refine[0].proposal_id
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_proposal_finalize_unknown_proposal_finalize_get_products_finalize_unknown_proposal"
           buying_mode: "refine"
           refine:
             - scope: "proposal"
@@ -236,6 +243,7 @@ phases:
           - The proposal is ready to execute via create_media_buy
 
         sample_request:
+          idempotency_key: "$context.finalize_idempotency_key"
           buying_mode: "refine"
           refine:
             - scope: "proposal"
@@ -249,6 +257,8 @@ phases:
         context_outputs:
           - path: "proposals[0].insertion_order.io_id"
             key: "io_id"
+          - path: "proposals[0].expires_at"
+            key: "finalized_proposal_expires_at"
 
         validations:
           - check: response_schema
@@ -256,6 +266,45 @@ phases:
           - check: field_present
             path: "proposals"
             description: "Response contains the finalized proposal"
+
+      - id: get_products_finalize_replay
+        title: "Replay proposal finalization without creating another hold"
+        narrative: |
+          Repeat the exact finalize request with the same idempotency key. The
+          cached proposal must preserve both the original inventory-hold expiry
+          and insertion order rather than committing the proposal again.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: true
+        sample_request:
+          idempotency_key: "$context.finalize_idempotency_key"
+          buying_mode: "refine"
+          refine:
+            - scope: "proposal"
+              proposal_id: "$context.proposal_id"
+              action: "finalize"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+        validations:
+          - check: response_schema
+            description: "Replay matches get-products-response.json schema"
+          - check: field_value
+            path: "replayed"
+            value: true
+            description: "Finalize retry is served from the idempotency cache"
+          - check: field_value
+            path: "proposals[0].insertion_order.io_id"
+            value: "$context.io_id"
+            description: "Replay preserves the original insertion order"
+          - check: field_value
+            path: "proposals[0].expires_at"
+            value: "$context.finalized_proposal_expires_at"
+            description: "Replay preserves the original inventory-hold expiry"
 
   - id: accept_proposal
     title: "Execute the committed proposal"
@@ -330,6 +379,7 @@ phases:
           - field: refine[0].proposal_id
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_proposal_finalize_unknown_proposal_references_get_products_refine_unknown_proposal"
           buying_mode: "refine"
           refine:
             - scope: "proposal"

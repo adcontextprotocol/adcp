@@ -46,7 +46,7 @@ import type {
   BuildCreativeResponse,
   CreativeManifest as AdcpCreativeManifest,
 } from '@adcp/sdk';
-import { CreativeManifestSchema } from '@adcp/sdk/schemas';
+import { CreativeManifestSchema, GetProductsRequestSchema } from '@adcp/sdk/schemas';
 import { verifyGovernedServiceAuthorization } from './governance-verify.js';
 import { getCanonicalBase } from './canonical-base.js';
 /** Escape HTML special characters to prevent injection in generated HTML responses. */
@@ -1418,6 +1418,7 @@ import {
   validateKeyFormat,
   scopedPrincipal,
   getIdempotencyStore,
+  REPLAY_TTL_SECONDS,
 } from './idempotency.js';
 import { maybeEmitCompletionWebhook } from './webhooks.js';
 import { selectSigningCapability } from './request-signing.js';
@@ -1695,6 +1696,16 @@ function installTaskProtocolVersionNegotiation(server: Server): void {
  * are sandboxed. Production servers should scope tasks by sessionId.
  */
 let sdkTaskStore: InMemoryTaskStore | PostgresTaskStore | null = null;
+const inMemoryTaskIdsByNaturalKey = new Map<string, string>();
+
+function idempotentTaskNaturalKey(
+  principal: string,
+  toolName: string,
+  idempotencyKey: string,
+  payloadHash: string,
+): string {
+  return [principal, toolName, `success:${idempotencyKey}:${payloadHash}`].join('\0');
+}
 
 function getTaskStore(): InMemoryTaskStore | PostgresTaskStore {
   if (!sdkTaskStore) {
@@ -1703,6 +1714,54 @@ function getTaskStore(): InMemoryTaskStore | PostgresTaskStore {
       : new InMemoryTaskStore();
   }
   return sdkTaskStore;
+}
+
+async function createOrReuseIdempotentTask(
+  taskStore: InMemoryTaskStore | PostgresTaskStore,
+  naturalKey: string,
+  ttl: number,
+  request: { method: string; params?: { _meta?: Record<string, unknown> } },
+) {
+  const deterministicTaskId = createHash('sha256').update(naturalKey).digest('hex');
+  if (taskStore instanceof PostgresTaskStore) {
+    const existing = await taskStore.getTask(deterministicTaskId);
+    if (existing) return existing;
+    try {
+      return await taskStore.createTask({ ttl, taskId: deterministicTaskId }, 0, request);
+    } catch (error) {
+      // A sibling process may have inserted the same naturally keyed task
+      // between getTask() and createTask(). Re-read instead of allocating a
+      // second task or surfacing a false failure.
+      const raced = await taskStore.getTask(deterministicTaskId);
+      if (raced) return raced;
+      throw error;
+    }
+  }
+
+  const priorId = inMemoryTaskIdsByNaturalKey.get(naturalKey);
+  if (priorId) {
+    const existing = await taskStore.getTask(priorId);
+    if (existing) return existing;
+    inMemoryTaskIdsByNaturalKey.delete(naturalKey);
+  }
+  const created = await taskStore.createTask({ ttl }, 0, request);
+  inMemoryTaskIdsByNaturalKey.set(naturalKey, created.taskId);
+  return created;
+}
+
+async function getIdempotentTask(
+  taskStore: InMemoryTaskStore | PostgresTaskStore,
+  naturalKey: string,
+) {
+  if (taskStore instanceof PostgresTaskStore) {
+    const deterministicTaskId = createHash('sha256').update(naturalKey).digest('hex');
+    return taskStore.getTask(deterministicTaskId);
+  }
+  const taskId = inMemoryTaskIdsByNaturalKey.get(naturalKey);
+  if (!taskId) return null;
+  const task = await taskStore.getTask(taskId);
+  if (!task) inMemoryTaskIdsByNaturalKey.delete(naturalKey);
+  return task;
 }
 
 /** Look up which tools allow task augmentation. */
@@ -1752,6 +1811,7 @@ function withUsageAccountScope<T extends Record<string, unknown>>(req: T): T {
 export function clearTaskStore(): void {
   sdkTaskStore?.cleanup();
   sdkTaskStore = null;
+  inMemoryTaskIdsByNaturalKey.clear();
 }
 
 /** Translate the agent's internal governance check shape into the wire-format
@@ -3255,11 +3315,19 @@ const TOOLS = [
   {
     name: 'get_products',
     description: 'Discover available advertising products. Supports brief (curated discovery), wholesale (raw catalog), and refine (iterate on previous results) buying modes. Use this before create_media_buy to find valid product_id and pricing_option_id values. Not for checking delivery or managing existing buys. Returns sandbox catalog data.',
-    annotations: { readOnlyHint: true, idempotentHint: true },
+    // Polymorphic: brief/wholesale can be reads, but Submitted responses
+    // allocate a task and refine+finalize commits an inventory hold.
+    annotations: { readOnlyHint: false, idempotentHint: true },
     execution: { taskSupport: 'optional' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
+        idempotency_key: {
+          type: 'string',
+          minLength: 16,
+          maxLength: 255,
+          pattern: '^[A-Za-z0-9_.:-]{16,255}$',
+        },
         buying_mode: { type: 'string', enum: ['brief', 'wholesale', 'refine'] },
         brief: { type: 'string' },
         refine: { type: 'array' },
@@ -3277,7 +3345,7 @@ const TOOLS = [
           },
         },
       },
-      required: ['buying_mode'],
+      required: ['idempotency_key', 'buying_mode'],
     },
   },
   {
@@ -3730,7 +3798,70 @@ function toolAvailableForServedAdcpVersion(toolName: string, servedAdcpVersion: 
 
 // ── Task handler implementations ──────────────────────────────────
 
+function finalizedProposalIds(args: ToolArgs): string[] {
+  const refine = (args as unknown as { refine?: unknown }).refine;
+  if (!Array.isArray(refine)) return [];
+  return [...new Set(refine
+    .filter((entry): entry is { scope: 'proposal'; proposal_id: string; action: 'finalize' } => (
+      typeof entry === 'object'
+      && entry !== null
+      && (entry as { scope?: unknown }).scope === 'proposal'
+      && (entry as { action?: unknown }).action === 'finalize'
+      && typeof (entry as { proposal_id?: unknown }).proposal_id === 'string'
+    ))
+    .map(entry => entry.proposal_id))]
+    .sort();
+}
+
 export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): Promise<GetProductsResponse | GetProductsRejectedResponse | { errors: TaskError[] }> {
+  const proposalIds = finalizedProposalIds(args);
+  if (proposalIds.length === 0) return handleGetProductsUnlocked(args, ctx);
+
+  // Serialize proposal commits independently of the buyer's request key.
+  // Distinct idempotency keys must not be able to create competing holds for
+  // the same proposal. The normal idempotency store gives us a distributed,
+  // expiring put-if-absent claim across Fly machines; the claim is always
+  // released after the commit so a later retry can observe the committed
+  // proposal and return its original IO/expiry.
+  const sessionScope = sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId);
+  const principal = `proposal-finalize-lock:${createHash('sha256').update(sessionScope).digest('hex')}`;
+  const store = getIdempotencyStore();
+  const acquiredKeys: string[] = [];
+  for (const proposalId of proposalIds) {
+    const key = `proposal-finalize:${createHash('sha256').update(proposalId).digest('hex')}`;
+    const claim = await store.check({ principal, key, payload: { proposal_id: proposalId } });
+    if (claim.kind !== 'miss') {
+      await Promise.all(acquiredKeys.map(acquiredKey => store.release({ principal, key: acquiredKey })));
+      return {
+        errors: [{
+          code: 'RATE_LIMITED',
+          message: 'A proposal finalization is already in progress. Retry after a short delay.',
+          recovery: 'transient',
+        }],
+      };
+    }
+    acquiredKeys.push(key);
+  }
+  try {
+    const result = await handleGetProductsUnlocked(args, ctx);
+    const hasErrors = Array.isArray((result as { errors?: unknown }).errors)
+      && (result as { errors: unknown[] }).errors.length > 0;
+    const hasSuccessPayload = Array.isArray((result as { products?: unknown }).products)
+      || Array.isArray((result as { proposals?: unknown }).proposals);
+    if (!hasErrors || hasSuccessPayload) {
+      // Keep the proposal-level claim until the committed proposal is durable.
+      // Releasing immediately after the in-memory mutation would let a second
+      // process acquire the lock, reload the still-draft row, and mint a
+      // competing IO before the outer dispatcher reached its flush step.
+      await flushDirtySessions();
+    }
+    return result;
+  } finally {
+    await Promise.all(acquiredKeys.map(key => store.release({ principal, key })));
+  }
+}
+
+async function handleGetProductsUnlocked(args: ToolArgs, ctx: TrainingContext): Promise<GetProductsResponse | GetProductsRejectedResponse | { errors: TaskError[] }> {
   const req = args as unknown as GetProductsRequest & ToolArgs;
   const buyingMode = req.buying_mode || 'brief';
   const brief = (req as Record<string, unknown>).brief;
@@ -9536,6 +9667,50 @@ const HANDLER_MAP: Record<string, ToolHandler> = {
   comply_test_controller: handleComplyTestController,
 };
 
+function validateIdempotencyProtectedInput(
+  toolName: string,
+  args: Record<string, unknown>,
+): { message: string; field?: string } | undefined {
+  if (toolName !== 'get_products') return undefined;
+  if (args.brief !== undefined && typeof args.brief !== 'string') {
+    return { message: 'brief must be a string when provided', field: 'brief' };
+  }
+  const parsed = GetProductsRequestSchema.safeParse(args);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    const field = issue?.path.map(segment => String(segment)).join('.');
+    return {
+      message: `Invalid get_products request${field ? ` at ${field}` : ''}: ${issue?.message ?? 'schema validation failed'}`,
+      ...(field && { field }),
+    };
+  }
+
+  // Finalization is a commit boundary, not another refinement. Reject mixed
+  // arrays before the idempotency store is consulted so an invalid request
+  // cannot reserve a key or partially mutate an earlier proposal entry.
+  if (Array.isArray(args.refine)) {
+    const hasFinalize = args.refine.some(entry => (
+      isRecord(entry)
+      && entry.scope === 'proposal'
+      && entry.action === 'finalize'
+    ));
+    if (hasFinalize) {
+      const mixedIndex = args.refine.findIndex(entry => !(
+        isRecord(entry)
+        && entry.scope === 'proposal'
+        && entry.action === 'finalize'
+      ));
+      if (mixedIndex >= 0) {
+        return {
+          message: `Invalid get_products request at refine[${mixedIndex}]: proposal finalization cannot be mixed with request, product, include, or omit refinements. Send finalization as a separate request.`,
+          field: `refine[${mixedIndex}]`,
+        };
+      }
+    }
+  }
+  return undefined;
+}
+
 /**
  * Execute a training agent tool in-process (no HTTP round-trip).
  * Used by Addie's adcp-tools during certification demos.
@@ -9545,7 +9720,21 @@ export async function executeTrainingAgentTool(
   args: ToolArgs,
   ctx: TrainingContext,
 ): Promise<{ success: boolean; data?: object; error?: string }> {
-  const versionResolution = resolveServedAdcpVersionForTool(toolName, args as unknown as Record<string, unknown>);
+  return runWithSessionContext(() => executeTrainingAgentToolInContext(toolName, args, ctx));
+}
+
+async function executeTrainingAgentToolInContext(
+  toolName: string,
+  args: ToolArgs,
+  ctx: TrainingContext,
+): Promise<{ success: boolean; data?: object; error?: string }> {
+  // Context is an envelope field: it is excluded from request equivalence,
+  // never passed into domain handlers, and echoed from the current attempt.
+  // Keeping it out of the cached inner response prevents a replay from
+  // returning the original caller's correlation data.
+  const rawArgs = args as unknown as Record<string, unknown>;
+  const { context: callerContext, ...handlerArgs } = rawArgs;
+  const versionResolution = resolveServedAdcpVersionForTool(toolName, handlerArgs);
   if (!versionResolution.ok) {
     return { success: false, error: versionResolution.message };
   }
@@ -9559,10 +9748,76 @@ export async function executeTrainingAgentTool(
   if (!handler) {
     return { success: false, error: `Unknown tool: ${toolName}` };
   }
+  const authPrincipal = ctx.principal ?? ctx.userId ?? 'anonymous';
+  const accountScope = deriveAccountScope(handlerArgs);
+  const principal = scopedPrincipal(authPrincipal, accountScope);
+  const idempotencyKey = handlerArgs.idempotency_key;
+  let claim: { payloadHash: string } | undefined;
+
+  if (isMutatingTool(toolName)) {
+    if (idempotencyKey === undefined || idempotencyKey === null) {
+      return { success: false, error: `idempotency_key is required for ${toolName}` };
+    }
+    if (!validateKeyFormat(idempotencyKey)) {
+      return { success: false, error: 'idempotency_key has an invalid format' };
+    }
+    const validationError = validateIdempotencyProtectedInput(toolName, handlerArgs);
+    if (validationError) {
+      return { success: false, error: validationError.message };
+    }
+    const outcome = await getIdempotencyStore().check({
+      principal,
+      key: idempotencyKey,
+      payload: handlerArgs,
+    });
+    if (outcome.kind === 'replay') {
+      return {
+        success: true,
+        data: {
+          ...(outcome.response as object),
+          replayed: true,
+          ...(callerContext !== undefined && { context: callerContext }),
+        },
+      };
+    }
+    if (outcome.kind === 'expired') {
+      return { success: false, error: 'IDEMPOTENCY_EXPIRED' };
+    }
+    if (outcome.kind === 'conflict') {
+      return { success: false, error: 'IDEMPOTENCY_CONFLICT' };
+    }
+    if (outcome.kind === 'in-flight') {
+      return { success: false, error: 'RATE_LIMITED: matching request is already in progress' };
+    }
+    claim = { payloadHash: outcome.payloadHash };
+  }
   try {
-    const result = await Promise.resolve(handler(args, { ...ctx, servedAdcpVersion: versionResolution.servedVersion }));
-    return { success: true, data: addServedAdcpVersion(result, versionResolution.servedVersion) as object };
+    const result = await Promise.resolve(handler(
+      handlerArgs as ToolArgs,
+      { ...ctx, servedAdcpVersion: versionResolution.servedVersion },
+    ));
+    const cacheResponse = addServedAdcpVersion(result, versionResolution.servedVersion) as Record<string, unknown>;
+    const response = addServedAdcpVersion(cacheResponse, versionResolution.servedVersion, callerContext) as Record<string, unknown>;
+    if (claim && typeof idempotencyKey === 'string') {
+      const hasErrors = Array.isArray(cacheResponse.errors) && cacheResponse.errors.length > 0;
+      const hasAdvisorySuccessPayload = permitsAdvisoryErrors(toolName, cacheResponse);
+      if (hasErrors && !hasAdvisorySuccessPayload) {
+        await getIdempotencyStore().release({ principal, key: idempotencyKey });
+      } else {
+        await flushDirtySessions();
+        await getIdempotencyStore().save({
+          principal,
+          key: idempotencyKey,
+          payloadHash: claim.payloadHash,
+          response: cacheResponse,
+        });
+      }
+    }
+    return { success: true, data: response };
   } catch (error) {
+    if (claim && typeof idempotencyKey === 'string') {
+      await getIdempotencyStore().release({ principal, key: idempotencyKey });
+    }
     logger.error({ error, tool: toolName }, 'Training agent in-process tool error');
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
   }
@@ -9677,6 +9932,8 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     let skipHandler = false;
     let idempotencyPayloadHash: string | undefined;
     let idempotencyClaimed = false;
+    let idempotencyReplayed = false;
+    let idempotencyReplayResponse: Record<string, unknown> | undefined;
 
     if (isMutatingTool(name)) {
       if (idempotencyKey === undefined || idempotencyKey === null) {
@@ -9694,6 +9951,17 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
           result: adcpError('INVALID_REQUEST', {
             message: 'idempotency_key must match ^[A-Za-z0-9_.:-]{16,255}$ (UUID v4 recommended).',
             field: 'idempotency_key',
+            recovery: 'correctable',
+          }, callerContext, servedAdcpVersion),
+          flushable: true,
+        };
+      }
+      const validationError = validateIdempotencyProtectedInput(name, handlerArgs);
+      if (validationError) {
+        return {
+          result: adcpError('INVALID_REQUEST', {
+            message: validationError.message,
+            ...(validationError.field && { field: validationError.field }),
             recovery: 'correctable',
           }, callerContext, servedAdcpVersion),
           flushable: true,
@@ -9750,7 +10018,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         // without status). Per #4878, every per-task response schema now
         // requires envelope `status`.
         const body: Record<string, unknown> = { ...(outcome.response as Record<string, unknown>), replayed: true };
-        if (body.status === undefined) body.status = 'completed';
+        if (!isTaskRequest && body.status === undefined) body.status = 'completed';
         body.adcp_version = servedAdcpVersion;
         if (callerContext !== undefined) body.context = callerContext;
         toolResult = {
@@ -9758,12 +10026,74 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
           structuredContent: body,
         };
         skipHandler = true;
+        idempotencyReplayed = true;
+        idempotencyReplayResponse = body;
       } else {
         // 'miss' → the store reserved the claim via putIfAbsent. We must
         // call save() on success or release() on any other path so the
         // placeholder doesn't leak.
         idempotencyPayloadHash = outcome.payloadHash;
         idempotencyClaimed = true;
+
+        // A previous task execution may have durably stored both its domain
+        // state and terminal task result, then failed while publishing the
+        // idempotency-cache entry. Recover that successful task before the
+        // domain handler runs: looking it up afterward can hide a duplicated
+        // media buy (or other side effect) behind the original task envelope.
+        if (isTaskRequest) {
+          const naturalKey = idempotentTaskNaturalKey(
+            idempotencyPrincipal,
+            name,
+            idempotencyKey,
+            idempotencyPayloadHash,
+          );
+          try {
+            const recoveredTask = await getIdempotentTask(taskStore, naturalKey);
+            if (recoveredTask) {
+              if (recoveredTask.status !== 'completed') {
+                throw new Error(`Prior idempotent task ${recoveredTask.taskId} is not recoverable in status ${recoveredTask.status}`);
+              }
+              const recoveredResult = await taskStore.getTaskResult(recoveredTask.taskId) as CallToolResult;
+              const recoveredBody = isRecord(recoveredResult.structuredContent)
+                ? recoveredResult.structuredContent
+                : undefined;
+              if (recoveredResult.isError || !recoveredBody) {
+                throw new Error(`Prior idempotent task ${recoveredTask.taskId} has no successful structured result`);
+              }
+
+              const taskResponse = { task: recoveredTask, adcp_version: servedAdcpVersion };
+              await store.save({
+                principal: idempotencyPrincipal,
+                key: idempotencyKey,
+                payloadHash: idempotencyPayloadHash,
+                response: taskResponse,
+              });
+              const {
+                context: _cachedContext,
+                replayed: _cachedReplayMarker,
+                ...notificationResponse
+              } = recoveredBody;
+              maybeEmitCompletionWebhook({
+                toolName: name,
+                args: handlerArgs,
+                response: notificationResponse,
+                requestIdempotencyKey: idempotencyKey,
+                principal: idempotencyPrincipal,
+              });
+              return {
+                result: {
+                  ...taskResponse,
+                  replayed: true,
+                  ...(callerContext !== undefined && { context: callerContext }),
+                },
+                flushable: false,
+              };
+            }
+          } catch (error) {
+            await store.release({ principal: idempotencyPrincipal, key: idempotencyKey });
+            throw error;
+          }
+        }
       }
     }
 
@@ -9862,38 +10192,39 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       throw new Error('Internal error: toolResult missing after dispatch');
     }
 
-    // Resolve the in-flight claim from check(). Cache only successful inner
-    // responses (security.mdx rule 2+3); errors, structured error-only
-    // bodies, and exceptions all release the claim so a retry re-executes.
-    if (idempotencyClaimed && typeof idempotencyKey === 'string') {
+    // Resolve an in-flight idempotency claim only after the complete outward
+    // response is known. Task-augmented requests must cache their task
+    // envelope, not the handler's inner body, or a replay would allocate a
+    // second task. Successful state is flushed before the immutable replay is
+    // published so the cache cannot claim a finalize committed when its
+    // session mutation was not durable.
+    const resolveIdempotencyClaim = async (
+      responseToCache: Record<string, unknown> | null,
+    ): Promise<boolean> => {
+      if (!idempotencyClaimed || typeof idempotencyKey !== 'string') return false;
       const store = getIdempotencyStore();
-      const shouldSave =
-        cachableResponse !== null
-        && !toolResult.isError
-        && !handlerThrew;
-      if (shouldSave && idempotencyPayloadHash) {
+      const shouldSave = responseToCache !== null && !toolResult!.isError && !handlerThrew;
+      if (!shouldSave || !idempotencyPayloadHash) {
+        await store.release({ principal: idempotencyPrincipal, key: idempotencyKey });
+        return false;
+      }
+      try {
+        await flushDirtySessions();
         await store.save({
           principal: idempotencyPrincipal,
           key: idempotencyKey,
           payloadHash: idempotencyPayloadHash,
-          response: cachableResponse,
+          response: responseToCache,
         });
-      } else {
-        await store.release({
-          principal: idempotencyPrincipal,
-          key: idempotencyKey,
-        });
+        return true;
+      } catch (error) {
+        await store.release({ principal: idempotencyPrincipal, key: idempotencyKey });
+        throw error;
       }
-    }
+    };
 
-    // Fire completion webhook if the buyer supplied a push URL and the tool
-    // mapped to a TaskType. Emission is fire-and-forget so the sync response
-    // doesn't wait on the receiver; retries/backoff live inside the emitter.
-    if (
-      cachableResponse !== null
-      && !toolResult.isError
-      && !handlerThrew
-    ) {
+    const emitCompletionWebhook = (): void => {
+      if (cachableResponse === null || toolResult!.isError || handlerThrew) return;
       maybeEmitCompletionWebhook({
         toolName: name,
         args: handlerArgs,
@@ -9901,22 +10232,38 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         requestIdempotencyKey: typeof idempotencyKey === 'string' ? idempotencyKey : undefined,
         principal: idempotencyPrincipal,
       });
-    }
+    };
 
     // If not task-augmented, return result directly.
     // flushable=!handlerThrew: if the handler threw, discard in-progress session
     // state. Structured { errors: [...] } responses still flush — they are
     // well-formed outcomes that legitimately mutate state.
     if (!isTaskRequest) {
-      return { result: toolResult, flushable: !handlerThrew };
+      const flushed = await resolveIdempotencyClaim(cachableResponse);
+      // Success notifications must never outrun durable session state or the
+      // replay record. resolveIdempotencyClaim flushes then saves for every
+      // mutation-capable task; only after both succeed may delivery begin.
+      emitCompletionWebhook();
+      return { result: toolResult, flushable: !handlerThrew && !flushed };
     }
 
-    // Training agent tasks resolve immediately, so moderate TTLs suffice.
-    // 15 minutes gives developers time to inspect tasks while debugging.
-    // With the rate limiter (300 req/min) this caps live tasks at ~4,500.
+    // Exact task replay returns the originally cached task envelope and never
+    // reaches createTask(). This remains true after the task becomes terminal.
+    if (idempotencyReplayed) {
+      return { result: idempotencyReplayResponse ?? toolResult, flushable: false };
+    }
+
+    // Ordinary/error tasks honor the requested TTL up to the training-agent
+    // cap. A successful idempotency-protected task is different: its terminal
+    // record is the crash-recovery receipt if cache publication fails. MCP
+    // explicitly permits the server to override the requested TTL, so retain
+    // that receipt for the complete replay window plus the same one-minute
+    // clock-skew allowance used by the idempotency contract. The returned Task
+    // reports this actual TTL; callers must not assume their suggestion won.
     const MAX_TASK_TTL = 15 * 60 * 1000;      // 15 minutes
     const DEFAULT_TASK_TTL = 15 * 60 * 1000;  // 15 minutes
     const clampedTtl = Math.min(taskField?.ttl ?? DEFAULT_TASK_TTL, MAX_TASK_TTL);
+    const IDEMPOTENT_TASK_RECEIPT_TTL = (REPLAY_TTL_SECONDS + 60) * 1000;
 
     // Task-augmented: use the raw module-level task store directly.
     // The SDK's extra.taskStore wrapper sends notifications/tasks/status
@@ -9924,15 +10271,39 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     // request uses a fresh transport). Using the raw store avoids this
     // while keeping tasks visible to subsequent tasks/get requests.
     const terminalStatus: 'completed' | 'failed' = taskFailed ? 'failed' : 'completed';
-    const created = await taskStore.createTask(
-      { ttl: clampedTtl },
-      0,
-      request as unknown as { method: string; params?: { _meta?: Record<string, unknown> } },
-    );
-    await taskStore.storeTaskResult(created.taskId, terminalStatus, toolResult);
-    const task = await taskStore.getTask(created.taskId);
-    if (!task) {
-      throw new Error(`Task disappeared after creation for tool "${name}"`);
+    let task: Awaited<ReturnType<typeof taskStore.getTask>>;
+    try {
+      // Commit handler state before exposing a task that contains the result.
+      // If task/cache persistence fails afterward, a retry observes the
+      // committed proposal and converges on the same IO/expiry.
+      await flushDirtySessions();
+      const canReuseNaturalTask = (
+        idempotencyClaimed
+        && typeof idempotencyKey === 'string'
+        && typeof idempotencyPayloadHash === 'string'
+        && cachableResponse !== null
+        && !toolResult.isError
+        && !handlerThrew
+      );
+      const taskRequest = request as unknown as { method: string; params?: { _meta?: Record<string, unknown> } };
+      const created = canReuseNaturalTask
+        ? await createOrReuseIdempotentTask(
+            taskStore,
+            idempotentTaskNaturalKey(idempotencyPrincipal, name, idempotencyKey!, idempotencyPayloadHash!),
+            IDEMPOTENT_TASK_RECEIPT_TTL,
+            taskRequest,
+          )
+        : await taskStore.createTask({ ttl: clampedTtl }, 0, taskRequest);
+      if (!['completed', 'failed', 'cancelled'].includes(created.status)) {
+        await taskStore.storeTaskResult(created.taskId, terminalStatus, toolResult);
+      }
+      task = await taskStore.getTask(created.taskId);
+      if (!task) {
+        throw new Error(`Task disappeared after creation for tool "${name}"`);
+      }
+    } catch (error) {
+      await resolveIdempotencyClaim(null);
+      throw error;
     }
     const errorCode = toolResult.isError
       ? (toolResult.structuredContent as { adcp_error?: { code?: string } } | undefined)?.adcp_error?.code
@@ -9942,7 +10313,10 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       'Created MCP task',
     );
 
-    return { result: { task, adcp_version: servedAdcpVersion } as object, flushable: !handlerThrew };
+    const taskResponse = { task, adcp_version: servedAdcpVersion } as Record<string, unknown>;
+    const flushed = await resolveIdempotencyClaim(cachableResponse === null ? null : taskResponse);
+    emitCompletionWebhook();
+    return { result: taskResponse, flushable: !handlerThrew && !flushed };
   }
 
   // tasks/get, tasks/result, tasks/list, tasks/cancel are auto-registered

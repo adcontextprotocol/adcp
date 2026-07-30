@@ -332,6 +332,7 @@ phases:
           - minimum_spend or commitment terms if applicable
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#sales_guaranteed_product_discovery_get_products_brief"
           buying_mode: "brief"
           brief: "Guaranteed premium video on sports and outdoor lifestyle publishers. Q2 flight, $50K budget. Adults 25-54, US only. Need completion rate SLA."
           account:

@@ -57,6 +57,7 @@ phases:
           Return products with pricing_options. At least one product should advertise
           measurement support in the response.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_measurement_terms_rejected_discover_products_get_products_brief"
           buying_mode: "brief"
           brief: "Premium video inventory with measurement guarantees. Q3 flight, $50K."
           filters:

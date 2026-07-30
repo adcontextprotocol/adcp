@@ -95,6 +95,7 @@ phases:
           - proposals: curated media plans with proposal_id, budget_allocations, rationale
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_proposal_finalize_asap_timing_brief_with_proposals_get_products_brief"
           buying_mode: "brief"
           brief: "Premium video and display across outdoor lifestyle and sports. Q2 flight, $50K budget. Adults 25-54, US and Canada."
           account:
@@ -137,6 +138,7 @@ phases:
           Return the refined proposal reflecting the requested changes.
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_proposal_finalize_asap_timing_refine_proposal_get_products_refine"
           buying_mode: "refine"
           refine:
             - scope: "proposal"
@@ -179,6 +181,7 @@ phases:
           - The proposal is ready to execute via create_media_buy
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_proposal_finalize_asap_timing_finalize_proposal_get_products_finalize"
           buying_mode: "refine"
           refine:
             - scope: "proposal"

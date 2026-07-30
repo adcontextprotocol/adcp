@@ -183,6 +183,7 @@ phases:
           includes an entry for attentionvendor.example / attention_score. The
           supported_targets on that entry includes threshold_rate.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_vendor_metric_optimization_flow_discover_vendor_metric_optimization_get_products_vendor_metric_opt"
           buying_mode: "brief"
           brief: "Display inventory with attention-score optimization from attentionvendor."
           filters:

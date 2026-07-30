@@ -273,6 +273,7 @@ phases:
           - creative format_options: canonical formats this product accepts, including generative formats
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#creative_generative_seller_product_discovery_get_products_brief"
           buying_mode: "brief"
           brief: "Premium display and video inventory on outdoor lifestyle content. Q2 flight, $50K budget. Adults 25-54, US. We want your platform to generate the creatives from our brand brief."
           account:
