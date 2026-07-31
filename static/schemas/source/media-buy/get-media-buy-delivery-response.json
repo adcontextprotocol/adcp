@@ -313,7 +313,7 @@
                     },
                     "delivery_status": {
                       "$ref": "/schemas/enums/delivery-status.json",
-                      "description": "System-reported operational state of this package. Reflects actual delivery state independent of buyer pause control."
+                      "description": "System-reported operational state of this package. Reflects actual delivery state independent of buyer pause control. 'not_delivering' means zero impressions were recorded for the entire reporting_period while the package was in-flight. Sellers SHOULD only report 'not_delivering' once the package's data is_final for the period — a provisional (is_final: false) zero may still be measurement catching up, not genuine non-delivery."
                     },
                     "paused": {
                       "type": "boolean",
