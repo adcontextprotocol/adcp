@@ -5,7 +5,7 @@
  * Stores conversation history for training purposes.
  */
 
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import path from "path";
 import crypto from "crypto";
 import { fileURLToPath } from "url";
@@ -131,11 +131,20 @@ import {
   summarizeAttachmentsForMessage,
   validateChatAttachments,
 } from "../addie/chat-attachments.js";
+import {
+  issueAnonymousSessionCapability,
+  verifyAnonymousSessionCapability,
+} from "./helpers/anonymous-session-capability.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ATTACHMENT_VALIDATION_CLIENT_MESSAGE =
   "Attachment could not be processed. Use PNG, JPEG, GIF, WebP, or PDF files under the size limits.";
+const ADDIE_ANONYMOUS_OWNER_COOKIE = 'addie-anonymous-owner';
+const ADDIE_ANONYMOUS_OWNER_AUDIENCE = 'addie-web-thread-owner';
+const SI_ANONYMOUS_SESSION_AUDIENCE = 'si-session-owner';
+const ANONYMOUS_OWNER_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const MAX_CHAT_MESSAGE_CHARS = 4_000;
 export const EMPTY_ASSISTANT_RESPONSE_FALLBACK =
   "I hit a response delivery issue before I could finish. Please try again in a moment.";
 
@@ -144,17 +153,46 @@ const logger = createLogger("addie-chat-routes");
 let claudeClient: AddieClaudeClient | null = null;
 let initialized = false;
 
-/**
- * A web conversation is private to the identity that created it. Anonymous
- * conversation UUIDs remain bearer capabilities, but cannot cross into or out
- * of authenticated users' threads.
- */
-function canContinueWebThread(thread: Pick<Thread, 'user_type' | 'user_id'>, userId: string | null): boolean {
-  if (userId) {
-    return thread.user_type === 'workos' && thread.user_id === userId;
-  }
+function readAnonymousThreadOwner(req: Request): string | null {
+  const capability = verifyAnonymousSessionCapability(
+    req.cookies?.[ADDIE_ANONYMOUS_OWNER_COOKIE],
+    ADDIE_ANONYMOUS_OWNER_AUDIENCE,
+  );
+  return capability?.sub ?? null;
+}
 
-  return thread.user_type === 'anonymous' && thread.user_id === null;
+function ensureAnonymousThreadOwner(req: Request, res: Response): string {
+  const existing = readAnonymousThreadOwner(req);
+  if (existing) return existing;
+
+  const ownerId = crypto.randomUUID();
+  const capability = issueAnonymousSessionCapability(
+    ADDIE_ANONYMOUS_OWNER_AUDIENCE,
+    ownerId,
+    ANONYMOUS_OWNER_TTL_MS,
+  );
+  res.cookie(ADDIE_ANONYMOUS_OWNER_COOKIE, capability, {
+    httpOnly: true,
+    secure: req.secure,
+    sameSite: 'lax',
+    maxAge: ANONYMOUS_OWNER_TTL_MS,
+    path: '/api/addie/chat',
+  });
+  return ownerId;
+}
+
+export function canAccessWebThread(
+  req: Request,
+  thread: Pick<Thread, 'user_type' | 'user_id'>,
+): boolean {
+  if (thread.user_type === 'workos') {
+    return !!req.user?.id && thread.user_id === req.user.id;
+  }
+  if (thread.user_type === 'anonymous' && thread.user_id) {
+    return readAnonymousThreadOwner(req) === thread.user_id;
+  }
+  // Legacy anonymous rows without an owner capability fail closed.
+  return false;
 }
 
 const WEB_FEEDBACK_CATEGORIES = new Set([
@@ -491,6 +529,18 @@ interface SiSessionData {
   brand_response: unknown;
   identity_shared: boolean;
   relationship: unknown;
+  anonymous_access_token?: string;
+}
+
+function withSiAnonymousCapability(session: SiSessionData | null): SiSessionData | null {
+  if (!session) return null;
+  return {
+    ...session,
+    anonymous_access_token: issueAnonymousSessionCapability(
+      SI_ANONYMOUS_SESSION_AUDIENCE,
+      session.session_id,
+    ),
+  };
 }
 
 /**
@@ -769,19 +819,24 @@ const chatCorsOptions: cors.CorsOptions = {
   exposedHeaders: ['X-Conversation-Id', 'RateLimit-Limit', 'RateLimit-Remaining'],
 };
 
-export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router } {
+export function createAddieChatRouter(options?: {
+  chatClient?: Pick<AddieClaudeClient, 'processMessage' | 'processMessageStream'>;
+}): { pageRouter: Router; apiRouter: Router } {
   const pageRouter = Router();
   const apiRouter = Router();
+  const injectedChatClient = options?.chatClient;
 
   // Enable CORS for all API routes (for native app support)
   apiRouter.use(cors(chatCorsOptions));
 
   // Initialize client after server starts (deferred to avoid blocking startup with sync I/O)
-  setTimeout(() => {
-    initializeChatClient().catch((err) => {
-      logger.error({ err }, "Failed to initialize Addie chat client");
-    });
-  }, 5000);
+  if (!injectedChatClient) {
+    setTimeout(() => {
+      initializeChatClient().catch((err) => {
+        logger.error({ err }, "Failed to initialize Addie chat client");
+      });
+    }, 5000);
+  }
 
   // =========================================================================
   // PAGE ROUTES (mounted at /chat)
@@ -806,9 +861,10 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
   apiRouter.post("/", optionalAuth, chatRateLimiter, anonymousDailyLimiter, async (req, res) => {
     const startTime = Date.now();
     const threadService = getThreadService();
+    const activeChatClient = injectedChatClient ?? claudeClient;
 
     try {
-      if (!initialized || !claudeClient) {
+      if ((!initialized && !injectedChatClient) || !activeChatClient) {
         return res.status(503).json({
           error: "Service unavailable",
           message: "Addie is not configured. Please set ANTHROPIC_API_KEY.",
@@ -820,6 +876,9 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
 
       if (typeof message !== "string" || (!message.trim() && attachments.length === 0)) {
         return res.status(400).json({ error: "Message is required" });
+      }
+      if (message.length > MAX_CHAT_MESSAGE_CHARS) {
+        return res.status(413).json({ error: `Message exceeds ${MAX_CHAT_MESSAGE_CHARS} characters` });
       }
       const attachmentSummary = summarizeAttachmentsForMessage(attachments);
       const messageForStorage = message.trim()
@@ -874,11 +933,12 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       if (!externalId) {
         // Create new thread - generate a new UUID as external_id
         externalId = crypto.randomUUID();
+        const anonymousOwnerId = userId ? undefined : ensureAnonymousThreadOwner(req, res);
         thread = await threadService.getOrCreateThread({
           channel: 'web',
           external_id: externalId,
           user_type: userId ? 'workos' : 'anonymous',
-          user_id: userId || undefined,
+          user_id: userId || anonymousOwnerId,
           user_display_name: displayName || undefined,
           context: webContext,
           impersonator_user_id: impersonator?.email,
@@ -899,16 +959,13 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         }
         // Get existing thread
         thread = await threadService.getThreadByExternalId('web', externalId);
-        if (!thread) {
+        if (!thread || !canAccessWebThread(req, thread)) {
           return res.status(404).json({ error: "Conversation not found" });
-        }
-        if (!canContinueWebThread(thread, userId)) {
-          return res.status(403).json({ error: "Access denied" });
         }
       }
 
       // Get conversation history for context
-      const threadMessages = await threadService.getThreadMessages(thread.thread_id);
+      const threadMessages = await threadService.getThreadMessages(thread.thread_id, { limit: 100 });
 
       // Save user message
       await threadService.addMessage({
@@ -980,7 +1037,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       // Process with Claude
       let response;
       try {
-        response = await claudeClient.processMessage(messageToProcess, contextMessages, requestTools, undefined, {
+        response = await activeChatClient.processMessage(messageToProcess, contextMessages, requestTools, undefined, {
           ...processOptions,
           requestContext,
           threadId: thread.thread_id,
@@ -1064,7 +1121,9 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       });
 
       // Check for SI session started (from connect_to_si_agent tool)
-      const siSession = extractSiSessionFromToolExecutions(response.tool_executions);
+      const siSession = withSiAnonymousCapability(
+        extractSiSessionFromToolExecutions(response.tool_executions),
+      );
 
       res.json({
         response: outputValidation.sanitized,
@@ -1097,7 +1156,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
   // NOTE: This route must come BEFORE /:conversationId to avoid being matched as a conversation ID
   apiRouter.get("/status", (req, res) => {
     res.json({
-      ready: initialized && claudeClient !== null && isKnowledgeReady(),
+      ready: (!!injectedChatClient || (initialized && claudeClient !== null)) && isKnowledgeReady(),
       knowledge_ready: isKnowledgeReady(),
     });
   });
@@ -1107,13 +1166,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
   apiRouter.post("/stream", optionalAuth, chatRateLimiter, anonymousDailyLimiter, async (req, res) => {
     const startTime = Date.now();
     const threadService = getThreadService();
-
-    // Set up SSE headers
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-    res.setHeader("X-Accel-Buffering", "no"); // Disable nginx buffering
-    res.flushHeaders();
+    const activeChatClient = injectedChatClient ?? claudeClient;
 
     // Track connection state
     let connectionClosed = false;
@@ -1137,19 +1190,21 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
     };
 
     try {
-      if (!initialized || !claudeClient) {
-        sendEvent("error", { error: "Service unavailable", message: "Addie is not configured." });
-        res.end();
-        return;
+      if ((!initialized && !injectedChatClient) || !activeChatClient) {
+        return res.status(503).json({
+          error: "Service unavailable",
+          message: "Addie is not configured.",
+        });
       }
 
       const { message, conversation_id, user_name, message_source: rawMessageSourceStream, attachments: rawAttachmentsStream, organization_id } = req.body;
       const attachments = validateChatAttachments(rawAttachmentsStream);
 
       if (typeof message !== "string" || (!message.trim() && attachments.length === 0)) {
-        sendEvent("error", { error: "Message is required" });
-        res.end();
-        return;
+        return res.status(400).json({ error: "Message is required" });
+      }
+      if (message.length > MAX_CHAT_MESSAGE_CHARS) {
+        return res.status(413).json({ error: `Message exceeds ${MAX_CHAT_MESSAGE_CHARS} characters` });
       }
       const attachmentSummary = summarizeAttachmentsForMessage(attachments);
       const messageForStorage = message.trim()
@@ -1198,11 +1253,12 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
 
       if (!externalId) {
         externalId = crypto.randomUUID();
+        const anonymousOwnerId = userId ? undefined : ensureAnonymousThreadOwner(req, res);
         thread = await threadService.getOrCreateThread({
           channel: 'web',
           external_id: externalId,
           user_type: userId ? 'workos' : 'anonymous',
-          user_id: userId || undefined,
+          user_id: userId || anonymousOwnerId,
           user_display_name: displayName || undefined,
           context: webContext,
           impersonator_user_id: impersonator?.email,
@@ -1210,28 +1266,26 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         });
       } else {
         if (!isValidConversationId(externalId)) {
-          sendEvent("error", { error: "Invalid conversation ID format" });
-          res.end();
-          return;
+          return res.status(400).json({ error: "Invalid conversation ID format" });
         }
         thread = await threadService.getThreadByExternalId('web', externalId);
-        if (!thread) {
-          sendEvent("error", { error: "Conversation not found" });
-          res.end();
-          return;
-        }
-        if (!canContinueWebThread(thread, userId)) {
-          sendEvent("error", { error: "Access denied" });
-          res.end();
-          return;
+        if (!thread || !canAccessWebThread(req, thread)) {
+          return res.status(404).json({ error: "Conversation not found" });
         }
       }
+
+      // Do not commit the SSE response until ownership has been checked.
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.setHeader("X-Accel-Buffering", "no");
+      res.flushHeaders();
 
       // Send conversation_id immediately so client can track it
       sendEvent("meta", { conversation_id: externalId });
 
       // Get conversation history
-      const threadMessages = await threadService.getThreadMessages(thread.thread_id);
+      const threadMessages = await threadService.getThreadMessages(thread.thread_id, { limit: 100 });
 
       // Save user message
       await threadService.addMessage({
@@ -1299,7 +1353,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         ? { userId: req.user.id, tier: await resolveUserTierFromDb(req.user.id) }
         : null;
 
-      for await (const event of claudeClient.processMessageStream(messageToProcess, contextMessages, requestTools, {
+      for await (const event of activeChatClient.processMessageStream(messageToProcess, contextMessages, requestTools, {
         ...processOptions,
         requestContext,
         threadId: thread.thread_id,
@@ -1417,7 +1471,9 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       });
 
       // Check for SI session started (from connect_to_si_agent tool)
-      const siSession = extractSiSessionFromToolExecutions(response?.tool_executions);
+      const siSession = withSiAnonymousCapability(
+        extractSiSessionFromToolExecutions(response?.tool_executions),
+      );
 
       // Send done event with final metadata
       // Include available SI agents only if no session was started (for CTA buttons)
@@ -1439,6 +1495,12 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       res.end();
     } catch (error) {
       logger.error({ err: error }, "Addie Chat Stream: Error handling message");
+      if (!res.headersSent) {
+        if (error instanceof ChatAttachmentValidationError) {
+          return res.status(error.statusCode).json({ error: ATTACHMENT_VALIDATION_CLIENT_MESSAGE });
+        }
+        return res.status(500).json({ error: "Internal server error" });
+      }
       if (error instanceof ChatAttachmentValidationError) {
         logger.warn({ reason: error.message }, "Addie Chat Stream: Invalid attachment");
         sendEvent("error", { error: ATTACHMENT_VALIDATION_CLIENT_MESSAGE });
@@ -1504,9 +1566,8 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
 
       // A missing and an inaccessible conversation deliberately share a response
       // so the endpoint cannot be used to enumerate conversation capabilities.
-      const userId = req.user?.id || null;
       const thread = await threadService.getThreadByExternalId('web', conversationId);
-      if (!thread || !canContinueWebThread(thread, userId)) {
+      if (!thread || !canAccessWebThread(req, thread)) {
         return res.status(404).json({ error: "Feedback target not found" });
       }
 
@@ -1518,7 +1579,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         rating_notes: parsedFeedbackText.value,
         feedback_tags: validatedTags,
         improvement_suggestion: parsedSuggestion.value,
-        rated_by: userId || "anonymous",
+        rated_by: req.user?.id || "anonymous",
         rating_source: 'user',
       });
 
@@ -1629,8 +1690,12 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         return res.status(404).json({ error: "Conversation not found" });
       }
 
-      // Verify ownership - users can only view their own threads
-      if (req.user) {
+      // Web threads use the same owner check as message and feedback writes.
+      if (channel === 'web') {
+        if (!canAccessWebThread(req, thread)) {
+          return res.status(404).json({ error: "Conversation not found" });
+        }
+      } else if (req.user) {
         let authorized = false;
 
         if (thread.user_type === 'workos' && thread.user_id === req.user.id) {
@@ -1644,7 +1709,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         }
 
         if (!authorized) {
-          return res.status(403).json({ error: "Access denied" });
+          return res.status(404).json({ error: "Conversation not found" });
         }
       } else {
         // Anonymous users cannot view threads
@@ -1654,8 +1719,14 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         });
       }
 
-      // Get messages
-      const threadMessages = await threadService.getThreadMessages(thread.thread_id);
+      const limitText = typeof req.query.limit === 'string' ? req.query.limit : '';
+      const offsetText = typeof req.query.offset === 'string' ? req.query.offset : '';
+      const requestedLimit = /^\d+$/.test(limitText) ? Number(limitText) : NaN;
+      const requestedOffset = /^\d+$/.test(offsetText) ? Number(offsetText) : NaN;
+      const limit = Number.isSafeInteger(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 200) : 100;
+      const offset = Number.isSafeInteger(requestedOffset) ? Math.min(requestedOffset, 10_000) : 0;
+
+      const threadMessages = await threadService.getThreadMessages(thread.thread_id, { limit, offset });
       const messages: ConversationMessage[] = threadMessages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
         .map((m) => ({
@@ -1674,6 +1745,8 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         channel,
         user_name: thread.user_display_name,
         message_count: thread.message_count,
+        limit,
+        offset,
         messages,
         read_only: channel === 'slack' || channel === 'video',
       });

@@ -302,6 +302,22 @@ describe('My Content — body, admin scope, status, delete', () => {
   // ---------------------------------------------------------------------------
 
   describe('POST /api/content/propose', () => {
+    it('rejects a non-HTTP external URL before creating a link perspective', async () => {
+      const response = await request(app)
+        .post('/api/content/propose')
+        .send({
+          title: 'mc-test-unsafe-link',
+          content_type: 'link',
+          external_url: 'javascript:alert(document.domain)',
+          collection: { slug: WG_SLUG },
+        })
+        .expect(400);
+
+      expect(response.body.message).toMatch(/external_url.*HTTPS URL without credentials/i);
+      const stored = await pool.query(`SELECT id FROM perspectives WHERE title = $1`, ['mc-test-unsafe-link']);
+      expect(stored.rows).toHaveLength(0);
+    });
+
     it('excludes archived working groups from collections and content proposals', async () => {
       const archivedWg = await pool.query<{ id: string }>(
         `INSERT INTO working_groups

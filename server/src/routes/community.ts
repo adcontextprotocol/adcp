@@ -373,7 +373,7 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
       });
       if (invalidMemberProfileUrlField) {
         return res.status(400).json({
-          error: `${invalidMemberProfileUrlField} must be an HTTPS URL without credentials`,
+          error: 'Profile URLs must be valid HTTPS URLs',
         });
       }
 
@@ -445,7 +445,11 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
         const memberFields: MemberDirectoryFields = {
           offerings: Array.isArray(req.body.offerings) ? req.body.offerings as MemberOffering[] : undefined,
           contact_email: typeof req.body.contact_email === 'string' ? req.body.contact_email : undefined,
-          contact_website: typeof req.body.contact_website === 'string' ? req.body.contact_website : undefined,
+          contact_website: req.body.contact_website === null
+            ? null
+            : typeof req.body.contact_website === 'string'
+              ? req.body.contact_website
+              : undefined,
           contact_phone: typeof req.body.contact_phone === 'string' ? req.body.contact_phone : undefined,
         };
         try {
@@ -526,7 +530,7 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
 interface MemberDirectoryFields {
   offerings?: MemberOffering[];
   contact_email?: string;
-  contact_website?: string;
+  contact_website?: string | null;
   contact_phone?: string;
 }
 
@@ -629,7 +633,7 @@ async function syncIndividualMemberProfile(
       tagline: communityProfile.headline || undefined,
       description: communityProfile.bio || undefined,
       contact_email: memberFields.contact_email,
-      contact_website: memberFields.contact_website,
+      contact_website: memberFields.contact_website ?? undefined,
       contact_phone: memberFields.contact_phone,
       offerings: memberFields.offerings || [],
       is_public: memberIsPublic,

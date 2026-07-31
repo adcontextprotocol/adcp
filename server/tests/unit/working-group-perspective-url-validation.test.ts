@@ -176,6 +176,27 @@ describe('working-group perspective external URL validation', () => {
     expect(mocks.poolQuery.mock.calls.some(([sql]) => String(sql).includes('UPDATE perspectives'))).toBe(false);
   });
 
+  it.each([
+    ['switches a link post to an article', { ...existingPost(), content_type: 'link' }, { content_type: 'article', external_url: null }],
+    ['clears an article URL', { ...existingPost(), content_type: 'article' }, { external_url: null }],
+  ])('%s while persisting an explicit null URL', async (_label, post, body) => {
+    mocks.poolQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes('SELECT * FROM perspectives')) return { rows: [post] };
+      if (sql.includes('UPDATE perspectives')) {
+        return { rows: [{ ...post, ...body }] };
+      }
+      throw new Error(`Unexpected query: ${sql}`);
+    });
+
+    await request(mountRouter())
+      .put('/working-groups/security/posts/post_1')
+      .send(body)
+      .expect(200);
+
+    const update = mocks.poolQuery.mock.calls.find(([sql]) => String(sql).includes('UPDATE perspectives'));
+    expect(update?.[1]?.[6]).toBeNull();
+  });
+
   it.each(UNSAFE_URLS)('rejects unsafe URLs in leader create and update paths: %s', async (externalUrl) => {
     const createResponse = await request(mountRouter())
       .post('/working-groups/security/manage/posts')

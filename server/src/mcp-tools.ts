@@ -28,6 +28,7 @@ import type { MCPAuthContext } from "./mcp/auth.js";
 import { createLogger } from "./logger.js";
 import { scrubCommunityAuthorizedAgents } from "./utils/community-adagents.js";
 import { withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
+import { serializeInlineScriptJson } from './utils/inline-script-json.js';
 
 const logger = createLogger('mcp-tools');
 
@@ -2119,7 +2120,7 @@ export class MCPToolHandler {
     }
 
     // Inject the surface data into the shell
-    const surfaceScript = `window.__SI_SURFACE__ = ${JSON.stringify(surface)};`;
+    const surfaceScript = `window.__SI_SURFACE__ = ${serializeInlineScriptJson(surface)};`;
     const injectedHtml = shellHtml.replace(
       /\/\/ This will be replaced by server-side injection[\s\S]*?\/\/ window\.__SI_SURFACE__ = .*$/m,
       surfaceScript
