@@ -7,6 +7,7 @@
   <title>Admin - Industry Feeds - AdCP Registry</title>
   <script src="/nav.js"></script>
   <script src="/admin-sidebar.js"></script>
+  <script src="/perspective-url.js"></script>
   <link rel="stylesheet" href="/design-system.css">
   <style>
     body {
@@ -665,7 +666,6 @@
     </div>
   </div>
 
-  <script src="/external-url.js"></script>
   <script>
     let feeds = [];
     let filteredFeeds = [];
@@ -931,7 +931,6 @@
 
         let html = '';
         articles.forEach(article => {
-          const articleUrl = safeExternalHttpUrl(article.external_url);
           const quality = article.quality_score ? `Quality: ${article.quality_score}/5` : '';
           const date = article.published_at ? formatDate(article.published_at) : '';
           const isPending = !article.summary;
@@ -939,10 +938,14 @@
           const summary = article.summary
             ? `<div class="article-summary">${escapeHtml(article.summary)}</div>`
             : '';
+          const safeExternalUrl = getSafePerspectiveExternalUrl(article.external_url);
+          const titleHtml = safeExternalUrl
+            ? `<a href="${escapeHtml(safeExternalUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(article.title)}</a>`
+            : escapeHtml(article.title);
           html += `
             <div class="article-item">
               <div class="article-title-row">
-                ${pendingIcon}${articleUrl ? `<a href="${escapeHtml(articleUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(article.title)}</a>` : escapeHtml(article.title)}
+                ${pendingIcon}${titleHtml}
               </div>
               <div class="article-meta">${date} ${quality}</div>
               ${summary}

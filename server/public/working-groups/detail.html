@@ -26,6 +26,8 @@
   <link rel="stylesheet" href="/design-system.css">
   <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+  <script src="/perspective-url.js"></script>
+  <script src="/external-url.js"></script>
   <style>
     body {
       background: var(--color-bg-page);
@@ -1128,8 +1130,6 @@
     </div>
   </div>
 
-  <script src="/external-url.js"></script>
-
   <!-- Main Content -->
   <div id="mainContent" class="container" style="display: none;">
     <a id="backLink" href="/working-groups" class="back-link">
@@ -1719,12 +1719,10 @@
 
           // For link posts, link directly to external URL
           // For article posts, use onclick to open the article view
-          const externalUrl = post.content_type === 'link'
-            ? safeExternalHttpUrl(post.external_url)
-            : '';
-          if (externalUrl) {
+          const safeExternalUrl = getSafePerspectiveExternalUrl(post.external_url);
+          if (post.content_type === 'link' && safeExternalUrl) {
             return `
-              <a href="${escapeHtml(externalUrl)}" target="_blank" rel="noopener noreferrer" id="post-${escapeHtml(post.slug)}" class="post-card">
+              <a href="${escapeHtml(safeExternalUrl)}" target="_blank" rel="noopener noreferrer" id="post-${escapeHtml(post.slug)}" class="post-card">
                 <div class="post-title">
                   ${escapeHtml(post.title)}
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.5; margin-left: 4px;">
@@ -1821,6 +1819,7 @@
 
         // Show host event prompt for members
         if (isMember) {
+          const slackChannelUrl = safeExternalHttpUrl(currentGroup.slack_channel_url);
           hostEventPrompt.style.display = 'block';
           if (isLeader) {
             hostEventPrompt.innerHTML = `
@@ -1839,9 +1838,9 @@
           } else {
             hostEventPrompt.innerHTML = `
               <p><strong>Want to host an event?</strong></p>
-              <p>Reach out to your chapter leaders${safeExternalHttpUrl(currentGroup.slack_channel_url) ? ' in Slack' : ''} to propose a local meetup or event.</p>
-              ${safeExternalHttpUrl(currentGroup.slack_channel_url) ? `
-                <a href="${escapeHtml(safeExternalHttpUrl(currentGroup.slack_channel_url))}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">
+              <p>Reach out to your chapter leaders${slackChannelUrl ? ' in Slack' : ''} to propose a local meetup or event.</p>
+              ${slackChannelUrl ? `
+                <a href="${escapeHtml(slackChannelUrl)}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313z"/>
                   </svg>
@@ -1913,7 +1912,7 @@
           </div>
           ${zoomJoinUrl ? `
             <div class="meeting-actions">
-              <span class="btn btn-primary btn-small" data-zoom-url="${escapeHtml(zoomJoinUrl)}" onclick="event.preventDefault(); window.open(this.dataset.zoomUrl, '_blank', 'noopener,noreferrer')">Join</span>
+              <span class="btn btn-primary btn-small" data-meeting-join-url="${escapeHtml(zoomJoinUrl)}">Join</span>
             </div>
           ` : ''}
         </a>
@@ -2001,7 +2000,7 @@
                               doc.index_status === 'pending' ? 'pending' : 'error';
           const lastModified = doc.last_modified_at ? formatRelativeDate(doc.last_modified_at) : null;
           const documentUrl = doc.file_name
-            ? `/api/working-groups/${encodeURIComponent(currentSlug)}/documents/${encodeURIComponent(doc.id)}/file`
+            ? `/api/working-groups/${currentSlug}/documents/${doc.id}/file`
             : safeExternalHttpUrl(doc.document_url);
 
           return `
@@ -2466,12 +2465,10 @@
         const post = postsData.find(p => p.slug === decodedPostSlug);
         if (!post) return;
 
-        const externalUrl = post.content_type === 'link'
-          ? safeExternalHttpUrl(post.external_url)
-          : '';
-        if (externalUrl) {
+        const safeExternalUrl = getSafePerspectiveExternalUrl(post.external_url);
+        if (post.content_type === 'link' && safeExternalUrl) {
           // For link posts, redirect to external URL
-          window.open(externalUrl, '_blank', 'noopener,noreferrer');
+          window.open(safeExternalUrl, '_blank', 'noopener,noreferrer');
         } else {
           // For article posts, open the article view
           openArticle(decodedPostSlug);
@@ -2677,6 +2674,16 @@
 
     // Event delegation for article links (safer than inline onclick)
     document.addEventListener('click', (e) => {
+      const meetingJoin = e.target.closest('[data-meeting-join-url]');
+      if (meetingJoin) {
+        const zoomJoinUrl = safeExternalHttpUrl(meetingJoin.dataset.meetingJoinUrl);
+        if (!zoomJoinUrl) return;
+        e.preventDefault();
+        e.stopPropagation();
+        window.open(zoomJoinUrl, '_blank', 'noopener,noreferrer');
+        return;
+      }
+
       const articleLink = e.target.closest('.article-link');
       if (articleLink) {
         e.preventDefault();

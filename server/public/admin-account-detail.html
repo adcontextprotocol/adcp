@@ -1655,9 +1655,11 @@
           document.getElementById('pendingInvoiceDate').textContent = ` • due ${formatDate(pendingInvoice.due_date)}`;
         }
         const pendingInvoiceUrl = safeExternalHttpUrl(pendingInvoice.hosted_invoice_url);
+        const pendingInvoiceLink = document.getElementById('pendingInvoiceLink');
+        pendingInvoiceLink.style.display = pendingInvoiceUrl ? '' : 'none';
         if (pendingInvoiceUrl) {
-          document.getElementById('pendingInvoiceLink').href = pendingInvoiceUrl;
-          document.getElementById('pendingInvoiceLink').rel = 'noopener noreferrer';
+          pendingInvoiceLink.href = pendingInvoiceUrl;
+          pendingInvoiceLink.rel = 'noopener noreferrer';
         }
       }
 
@@ -1691,13 +1693,12 @@
         if (a.enrichment.employee_count_range || a.enrichment.employee_count) profileHtml += signalRow('Employees', a.enrichment.employee_count_range || a.enrichment.employee_count);
         if (a.enrichment.founded_year) profileHtml += signalRow('Founded', a.enrichment.founded_year);
         if (a.enrichment.city || a.enrichment.country) profileHtml += signalRow('Location', [a.enrichment.city, a.enrichment.country].filter(Boolean).join(', '));
-        const enrichmentLinkedInUrl = safeExternalHttpUrl(a.enrichment.linkedin_url);
-        if (enrichmentLinkedInUrl) profileHtml += signalRow('LinkedIn', `<a href="${escapeHtml(enrichmentLinkedInUrl)}" target="_blank" rel="noopener noreferrer">View Profile</a>`);
+        if (a.enrichment.linkedin_url) profileHtml += linkedInSignalRow(a.enrichment.linkedin_url);
         if (a.enrichment.description) {
           profileHtml += `<div style="margin-top: var(--space-3); font-size: var(--text-sm); color: var(--color-text-secondary);">${escapeHtml(a.enrichment.description)}</div>`;
         }
         if (a.enrichment.enriched_at) {
-          profileHtml += `<div style="margin-top: var(--space-2); font-size: var(--text-xs); color: var(--color-text-muted);">Updated ${formatDate(a.enrichment.enriched_at)} via ${a.enrichment.source || 'enrichment'}</div>`;
+          profileHtml += enrichmentAttribution(a.enrichment.enriched_at, a.enrichment.source);
         }
         document.getElementById('companyProfileContent').innerHTML = profileHtml;
 
@@ -2828,7 +2829,29 @@
 
     // Helper functions
     function signalRow(label, value) {
-      return `<div class="signal-item"><span class="signal-label">${label}</span><span class="signal-value">${value}</span></div>`;
+      return `<div class="signal-item"><span class="signal-label">${escapeHtml(label)}</span><span class="signal-value">${escapeHtml(value)}</span></div>`;
+    }
+
+    function getSafeLinkedInUrl(value) {
+      if (typeof value !== 'string' || value.length > 2048) return null;
+      try {
+        const parsed = new URL(value);
+        const isLinkedInHost = parsed.hostname === 'linkedin.com' || parsed.hostname.endsWith('.linkedin.com');
+        if (parsed.protocol !== 'https:' || parsed.username || parsed.password || !isLinkedInHost) return null;
+        return parsed.href;
+      } catch {
+        return null;
+      }
+    }
+
+    function linkedInSignalRow(value) {
+      const safeUrl = getSafeLinkedInUrl(value);
+      if (!safeUrl) return signalRow('LinkedIn', value);
+      return `<div class="signal-item"><span class="signal-label">LinkedIn</span><span class="signal-value"><a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer">View profile</a></span></div>`;
+    }
+
+    function enrichmentAttribution(enrichedAt, source) {
+      return `<div style="margin-top: var(--space-2); font-size: var(--text-xs); color: var(--color-text-muted);">Updated ${escapeHtml(formatDate(enrichedAt))} via ${escapeHtml(source || 'enrichment')}</div>`;
     }
 
     function formatCompanyType(type) {

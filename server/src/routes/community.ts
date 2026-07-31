@@ -13,7 +13,7 @@ import { query } from "../db/client.js";
 import { resolvePrimaryOrganization } from "../db/users-db.js";
 import { VALID_MEMBER_OFFERINGS, type MemberOffering } from "../types.js";
 import { notifyUser } from "../notifications/notification-service.js";
-import { normalizeOptionalExternalHttpUrl } from "../utils/external-http-url.js";
+import { validateMemberProfileUrlFields } from "../utils/member-profile-url.js";
 
 const logger = createLogger("community-routes");
 const AVATAR_MAX_FILE_SIZE = 5 * 1024 * 1024;
@@ -328,23 +328,6 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
         return res.status(400).json({ error: 'No valid fields to update' });
       }
 
-      let normalizedContactWebsite: string | null | undefined;
-      try {
-        for (const field of ['linkedin_url', 'twitter_url'] as const) {
-          if (updates[field] !== undefined) {
-            updates[field] = normalizeOptionalExternalHttpUrl(updates[field]);
-          }
-        }
-        if (req.body.contact_website !== undefined) {
-          normalizedContactWebsite = normalizeOptionalExternalHttpUrl(req.body.contact_website);
-        }
-      } catch (error) {
-        logger.warn({ err: error, userId: req.user?.id }, 'Rejected invalid community profile URL');
-        return res.status(400).json({
-          error: 'Profile URLs must be valid HTTP or HTTPS URLs',
-        });
-      }
-
       // Validate boolean fields
       for (const boolField of ['is_public', 'open_to_coffee_chat', 'open_to_intros'] as const) {
         if (updates[boolField] !== undefined && typeof updates[boolField] !== 'boolean') {
@@ -382,6 +365,16 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
           return res.status(400).json({ error: 'Slug must be 2-80 characters, lowercase alphanumeric and hyphens' });
         }
         updates.slug = slug;
+      }
+
+      const invalidMemberProfileUrlField = validateMemberProfileUrlFields({
+        ...updates,
+        contact_website: req.body.contact_website,
+      });
+      if (invalidMemberProfileUrlField) {
+        return res.status(400).json({
+          error: 'Profile URLs must be valid HTTPS URLs',
+        });
       }
 
       // Validate GitHub username format
@@ -452,7 +445,11 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
         const memberFields: MemberDirectoryFields = {
           offerings: Array.isArray(req.body.offerings) ? req.body.offerings as MemberOffering[] : undefined,
           contact_email: typeof req.body.contact_email === 'string' ? req.body.contact_email : undefined,
-          contact_website: normalizedContactWebsite,
+          contact_website: req.body.contact_website === null
+            ? null
+            : typeof req.body.contact_website === 'string'
+              ? req.body.contact_website
+              : undefined,
           contact_phone: typeof req.body.contact_phone === 'string' ? req.body.contact_phone : undefined,
         };
         try {
@@ -563,12 +560,27 @@ async function syncIndividualMemberProfile(
   // Build mapped fields for member_profiles
   const memberUpdates: Record<string, unknown> = {
     display_name: displayName,
-    linkedin_url: communityProfile.linkedin_url || null,
-    twitter_url: communityProfile.twitter_url || null,
   };
 
+  // Legacy community rows may contain URL values that predate the current
+  // HTTPS-only policy. An unrelated profile edit must still sync its safe
+  // fields, without copying those legacy values into a new member write.
+  for (const [field, value] of [
+    ['linkedin_url', communityProfile.linkedin_url || null],
+    ['twitter_url', communityProfile.twitter_url || null],
+  ] as const) {
+    if (!validateMemberProfileUrlFields({ [field]: value })) {
+      memberUpdates[field] = value;
+    }
+  }
+
   if (memberFields.contact_email !== undefined) memberUpdates.contact_email = memberFields.contact_email;
-  if (memberFields.contact_website !== undefined) memberUpdates.contact_website = memberFields.contact_website;
+  if (
+    memberFields.contact_website !== undefined
+    && !validateMemberProfileUrlFields({ contact_website: memberFields.contact_website })
+  ) {
+    memberUpdates.contact_website = memberFields.contact_website;
+  }
   if (memberFields.contact_phone !== undefined) memberUpdates.contact_phone = memberFields.contact_phone;
 
   const existingProfile = await memberDb.getProfileByOrgId(orgId);

@@ -20,7 +20,7 @@ describe('member profile tool URL write boundaries', () => {
       contact_website: 'https://user:password@example.com/',
     });
 
-    expect(result).toContain('without embedded credentials');
+    expect(result).toContain('must be an HTTPS URL without credentials');
     expect(update).not.toHaveBeenCalled();
   });
 
@@ -36,7 +36,7 @@ describe('member profile tool URL write boundaries', () => {
       linkedin_url: `https://example.com/${'a'.repeat(2048)}`,
     });
 
-    expect(result).toContain('2048 characters or fewer');
+    expect(result).toContain('must be an HTTPS URL without credentials');
   });
 
   it('rejects credential-bearing URLs in the personal community-profile tool', async () => {
@@ -51,7 +51,7 @@ describe('member profile tool URL write boundaries', () => {
       linkedin_url: 'https://user:password@example.com/profile',
     });
 
-    expect(result).toContain('without embedded credentials');
+    expect(result).toContain('must be an HTTPS URL without credentials');
   });
 
   it('preserves empty-string clearing as null in the admin profile tool', async () => {

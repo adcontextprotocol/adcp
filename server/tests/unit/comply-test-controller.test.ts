@@ -102,6 +102,7 @@ async function syncCreative(server: ReturnType<typeof createTrainingAgentServer>
     creatives: [{
       creative_id: creativeId,
       name: 'Test Creative',
+      format_kind: 'image',
     }],
   });
   if (isError || (result as any).errors) {
@@ -129,7 +130,7 @@ async function createMediaBuyWithCreatives(server: ReturnType<typeof createTrain
     idempotency_key: crypto.randomUUID(),
     account: ACCOUNT,
     brand: BRAND,
-    creatives: [{ creative_id: creativeId, name: 'Test Creative' }],
+    creatives: [{ creative_id: creativeId, name: 'Test Creative', format_kind: 'image' }],
     assignments: [{ creative_id: creativeId, package_id: packageId, media_buy_id: mediaBuyId }],
   });
 

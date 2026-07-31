@@ -625,6 +625,7 @@ export class ThreadService {
    * Add feedback to a message
    */
   async addMessageFeedback(
+    threadId: string,
     messageId: string,
     feedback: MessageFeedback
   ): Promise<boolean> {
@@ -639,7 +640,8 @@ export class ThreadService {
          rated_by = $7,
          rating_source = $8,
          rated_at = NOW()
-       WHERE message_id = $1`,
+       WHERE message_id = $1
+         AND thread_id = $9`,
       [
         messageId,
         feedback.rating,
@@ -649,40 +651,8 @@ export class ThreadService {
         feedback.improvement_suggestion || null,
         feedback.rated_by,
         feedback.rating_source,
-      ]
-    );
-    return result.rowCount !== null && result.rowCount > 0;
-  }
-
-  /** Add feedback only when the message belongs to the authorized thread. */
-  async addMessageFeedbackForThread(
-    messageId: string,
-    threadId: string,
-    feedback: MessageFeedback,
-  ): Promise<boolean> {
-    const result = await query(
-      `UPDATE addie_thread_messages
-       SET
-         rating = $3,
-         rating_category = $4,
-         rating_notes = $5,
-         feedback_tags = $6,
-         improvement_suggestion = $7,
-         rated_by = $8,
-         rating_source = $9,
-         rated_at = NOW()
-       WHERE message_id = $1 AND thread_id = $2`,
-      [
-        messageId,
         threadId,
-        feedback.rating,
-        feedback.rating_category || null,
-        feedback.rating_notes || null,
-        JSON.stringify(feedback.feedback_tags || []),
-        feedback.improvement_suggestion || null,
-        feedback.rated_by,
-        feedback.rating_source,
-      ],
+      ]
     );
     return result.rowCount !== null && result.rowCount > 0;
   }

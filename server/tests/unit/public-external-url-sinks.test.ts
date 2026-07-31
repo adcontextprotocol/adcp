@@ -27,27 +27,38 @@ describe('public external URL navigation guard', () => {
   });
 
   it.each([
-    ['members.html', 'safeExternalHttpUrl(p.external_url)'],
-    ['stories/index.html', 'safeExternalHttpUrl(item.external_url)'],
-    ['community/person-profile.html', 'safeExternalHttpUrl(p.external_url)'],
-    ['working-groups/detail.html', 'safeExternalHttpUrl(post.external_url)'],
+    ['members.html', 'getSafePerspectiveExternalUrl(p.external_url)'],
+    ['stories/index.html', 'getSafePerspectiveExternalUrl(item.external_url)'],
+    ['community/person-profile.html', 'getSafePerspectiveExternalUrl(p.external_url)'],
+    ['working-groups/detail.html', 'getSafePerspectiveExternalUrl(post.external_url)'],
   ])('guards legacy external URLs in %s', (relativePath, guardedCall) => {
     const source = readFileSync(join(publicRoot, relativePath), 'utf8');
 
-    expect(source).toContain('<script src="/external-url.js"></script>');
+    expect(source).toContain('<script src="/perspective-url.js"></script>');
     expect(source).toContain(guardedCall);
   });
 
   it.each([
-    ['community/person-profile.html', 'safeExternalHttpUrl(data.linkedin_url)'],
-    ['community/person-profile.html', 'safeExternalHttpUrl(data.twitter_url)'],
-    ['membership/hub.html', 'safeExternalHttpUrl(profile.linkedin_url)'],
-    ['membership/hub.html', 'safeExternalHttpUrl(profile.twitter_url)'],
-    ['admin-feeds.html', 'safeExternalHttpUrl(article.external_url)'],
+    ['community/person-profile.html', 'getSafeHttpsUrl(data.linkedin_url)'],
+    ['community/person-profile.html', 'getSafeHttpsUrl(data.twitter_url)'],
+    ['membership/hub.html', 'getSafeHttpsUrl(profile.linkedin_url)'],
+    ['membership/hub.html', 'getSafeHttpsUrl(profile.twitter_url)'],
+    ['admin-feeds.html', 'getSafePerspectiveExternalUrl(article.external_url)'],
+    ['stories/index.html', 'getSafePerspectiveExternalUrl(item.source_url)'],
+  ])('uses the specialized HTTPS guard in %s', (relativePath, guardedCall) => {
+    const source = readFileSync(join(publicRoot, relativePath), 'utf8');
+    expect(source).toContain(guardedCall);
+  });
+
+  it('guards account-enrichment LinkedIn links', () => {
+    const source = readFileSync(join(publicRoot, 'admin-account-detail.html'), 'utf8');
+    expect(source).toContain('linkedInSignalRow(a.enrichment.linkedin_url)');
+    expect(source).toContain('getSafeLinkedInUrl(value)');
+  });
+
+  it.each([
     ['admin-content.html', 'safeExternalHttpUrl(item.external_url)'],
-    ['admin-account-detail.html', 'safeExternalHttpUrl(a.enrichment.linkedin_url)'],
     ['admin-account-detail.html', 'safeExternalHttpUrl(invoice.hosted_invoice_url)'],
-    ['stories/index.html', 'safeExternalHttpUrl(item.source_url)'],
     ['members.html', 'safeExternalHttpUrl(format.example_url)'],
     ['working-groups/detail.html', 'safeExternalHttpUrl(currentGroup.slack_channel_url)'],
     ['working-groups/detail.html', 'safeExternalHttpUrl(meeting.zoom_join_url)'],

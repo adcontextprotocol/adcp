@@ -44,7 +44,6 @@ import {
 } from "../../services/founding-member-grant.js";
 import { BrandDatabase } from "../../db/brand-db.js";
 import { coerceStringArray } from "./input-coercion.js";
-import { normalizeOptionalExternalHttpUrl } from "../../utils/external-http-url.js";
 import {
   getPendingInvoices,
   getAllOpenInvoices,
@@ -77,6 +76,7 @@ import {
 } from "../../services/lusha.js";
 import { COMPANY_TYPE_VALUES } from "../../config/company-types.js";
 import { createProspect, updateProspect } from "../../services/prospect.js";
+import { validateMemberProfileUrlFields } from "../../utils/member-profile-url.js";
 import {
   getAllFeedsWithStats,
   addFeed,
@@ -10657,13 +10657,9 @@ Use add_committee_leader to assign a leader.`;
         }
       }
 
-      for (const field of ["contact_website", "linkedin_url", "twitter_url"] as const) {
-        if (updates[field] === undefined) continue;
-        try {
-          updates[field] = normalizeOptionalExternalHttpUrl(updates[field]);
-        } catch (error) {
-          return `❌ ${field} ${error instanceof Error ? error.message : "must be a valid HTTP or HTTPS URL"}`;
-        }
+      const invalidMemberProfileUrlField = validateMemberProfileUrlFields(updates);
+      if (invalidMemberProfileUrlField) {
+        return `❌ ${invalidMemberProfileUrlField} must be an HTTPS URL without credentials.`;
       }
 
       if (input.markets !== undefined) {

@@ -153,24 +153,6 @@ const logger = createLogger("addie-chat-routes");
 let claudeClient: AddieClaudeClient | null = null;
 let initialized = false;
 
-/**
- * Anonymous users get directory tools only (fast DB lookups, public data).
- * Knowledge/doc search tools require login — Haiku can't reliably synthesize
- * multi-step research within the anonymous iteration limit.
- */
-
-/**
- * Tools only available to authenticated users.
- * Built once at init and passed as per-request tools for authenticated sessions.
- */
-let authenticatedOnlyTools: RequestTools | null = null;
-
-const ANONYMOUS_MAX_ITERATIONS = 5;
-
-// Sources the web client is permitted to assert. Voice / email / unknown are
-// set server-side only (tavus.ts, email-conversation-handler.ts, bolt-app.ts).
-const VALID_WEB_SOURCES = new Set<'typed' | 'cta_chip'>(['typed', 'cta_chip']);
-
 function readAnonymousThreadOwner(req: Request): string | null {
   const capability = verifyAnonymousSessionCapability(
     req.cookies?.[ADDIE_ANONYMOUS_OWNER_COOKIE],
@@ -179,10 +161,7 @@ function readAnonymousThreadOwner(req: Request): string | null {
   return capability?.sub ?? null;
 }
 
-function ensureAnonymousThreadOwner(
-  req: Request,
-  res: Response,
-): string {
+function ensureAnonymousThreadOwner(req: Request, res: Response): string {
   const existing = readAnonymousThreadOwner(req);
   if (existing) return existing;
 
@@ -212,19 +191,61 @@ export function canAccessWebThread(
   if (thread.user_type === 'anonymous' && thread.user_id) {
     return readAnonymousThreadOwner(req) === thread.user_id;
   }
+  // Legacy anonymous rows without an owner capability fail closed.
   return false;
 }
 
-function withSiAnonymousCapability(session: SiSessionData | null): SiSessionData | null {
-  if (!session) return null;
-  return {
-    ...session,
-    anonymous_access_token: issueAnonymousSessionCapability(
-      SI_ANONYMOUS_SESSION_AUDIENCE,
-      session.session_id,
-    ),
-  };
+const WEB_FEEDBACK_CATEGORIES = new Set([
+  'accuracy',
+  'completeness',
+  'helpfulness',
+  'clarity',
+  'tone',
+  'session',
+]);
+const WEB_FEEDBACK_TAGS = new Set([
+  'wrong_answer',
+  'missing_info',
+  'too_long',
+  'too_short',
+  'outdated',
+  'off_topic',
+]);
+const MAX_FEEDBACK_TEXT_LENGTH = 2_000;
+
+function parseOptionalFeedbackText(
+  value: unknown,
+  fieldName: string,
+  maxLength = MAX_FEEDBACK_TEXT_LENGTH,
+): { value?: string; error?: string } {
+  if (value === undefined || value === null || value === '') return {};
+  if (typeof value !== 'string') return { error: `${fieldName} must be a string` };
+
+  const trimmed = value.trim();
+  if (!trimmed) return {};
+  if (trimmed.length > maxLength) {
+    return { error: `${fieldName} must be ${maxLength} characters or fewer` };
+  }
+  return { value: trimmed };
 }
+
+/**
+ * Anonymous users get directory tools only (fast DB lookups, public data).
+ * Knowledge/doc search tools require login — Haiku can't reliably synthesize
+ * multi-step research within the anonymous iteration limit.
+ */
+
+/**
+ * Tools only available to authenticated users.
+ * Built once at init and passed as per-request tools for authenticated sessions.
+ */
+let authenticatedOnlyTools: RequestTools | null = null;
+
+const ANONYMOUS_MAX_ITERATIONS = 5;
+
+// Sources the web client is permitted to assert. Voice / email / unknown are
+// set server-side only (tavus.ts, email-conversation-handler.ts, bolt-app.ts).
+const VALID_WEB_SOURCES = new Set<'typed' | 'cta_chip'>(['typed', 'cta_chip']);
 
 export function ensureNonEmptyAssistantResponse(
   text: string | null | undefined,
@@ -461,14 +482,19 @@ const anonymousDailyLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Feedback does not invoke the model, so it needs a write-specific ceiling
+// rather than sharing chat-message quota.
 const feedbackRateLimiter = rateLimit({
-  windowMs: 60 * 1000,
+  windowMs: 15 * 60 * 1000,
   max: 30,
   store: new CachedPostgresStore('chat-feedback:'),
-  keyGenerator: (req) => req.user?.id ? `workos:${req.user.id}` : ipKeyGenerator(req.ip || ''),
+  keyGenerator: (req) => (req as any).user?.id
+    ? `user:${(req as any).user.id}`
+    : `ip:${ipKeyGenerator(req.ip || '')}`,
   message: { error: 'Too many requests', message: 'Please try again later' },
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { keyGeneratorIpFallback: false },
 });
 
 /**
@@ -504,6 +530,17 @@ interface SiSessionData {
   identity_shared: boolean;
   relationship: unknown;
   anonymous_access_token?: string;
+}
+
+function withSiAnonymousCapability(session: SiSessionData | null): SiSessionData | null {
+  if (!session) return null;
+  return {
+    ...session,
+    anonymous_access_token: issueAnonymousSessionCapability(
+      SI_ANONYMOUS_SESSION_AUDIENCE,
+      session.session_id,
+    ),
+  };
 }
 
 /**
@@ -1237,9 +1274,7 @@ export function createAddieChatRouter(options?: {
         }
       }
 
-      // Do not commit the streaming response until after ownership has been
-      // checked. That preserves a real 404 for both missing and inaccessible
-      // conversations instead of leaking existence through different SSE data.
+      // Do not commit the SSE response until ownership has been checked.
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
@@ -1499,59 +1534,62 @@ export function createAddieChatRouter(options?: {
 
       // message_id is now a UUID string
       if (!message_id || typeof message_id !== "string" || !uuidValidate(message_id)) {
-        return res.status(400).json({ error: "message_id is required" });
+        return res.status(400).json({ error: "message_id must be a valid UUID" });
       }
 
       if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
-        return res.status(400).json({ error: "rating must be between 1 and 5" });
-      }
-      if (rating_category !== undefined && (typeof rating_category !== 'string' || rating_category.length > 64)) {
-        return res.status(400).json({ error: 'rating_category must be a string of 64 characters or fewer' });
-      }
-      if (feedback_text !== undefined && (typeof feedback_text !== 'string' || feedback_text.length > 2_000)) {
-        return res.status(400).json({ error: 'feedback_text must be a string of 2000 characters or fewer' });
-      }
-      if (
-        feedback_tags !== undefined
-        && (!Array.isArray(feedback_tags)
-          || feedback_tags.length > 20
-          || feedback_tags.some((tag) => typeof tag !== 'string' || tag.length > 64))
-      ) {
-        return res.status(400).json({ error: 'feedback_tags must contain at most 20 strings of 64 characters or fewer' });
-      }
-      if (
-        improvement_suggestion !== undefined
-        && (typeof improvement_suggestion !== 'string' || improvement_suggestion.length > 2_000)
-      ) {
-        return res.status(400).json({ error: 'improvement_suggestion must be a string of 2000 characters or fewer' });
+        return res.status(400).json({ error: "rating must be an integer between 1 and 5" });
       }
 
-      // Verify thread exists for this conversation
+      const parsedCategory = parseOptionalFeedbackText(rating_category, 'rating_category', 32);
+      if (parsedCategory.error) return res.status(400).json({ error: parsedCategory.error });
+      if (parsedCategory.value && !WEB_FEEDBACK_CATEGORIES.has(parsedCategory.value)) {
+        return res.status(400).json({ error: "rating_category is not supported" });
+      }
+
+      const parsedFeedbackText = parseOptionalFeedbackText(feedback_text, 'feedback_text');
+      if (parsedFeedbackText.error) return res.status(400).json({ error: parsedFeedbackText.error });
+
+      const parsedSuggestion = parseOptionalFeedbackText(improvement_suggestion, 'improvement_suggestion');
+      if (parsedSuggestion.error) return res.status(400).json({ error: parsedSuggestion.error });
+
+      let validatedTags: string[] | undefined;
+      if (feedback_tags !== undefined && feedback_tags !== null) {
+        if (!Array.isArray(feedback_tags) || feedback_tags.length > WEB_FEEDBACK_TAGS.size) {
+          return res.status(400).json({ error: "feedback_tags must be an array of supported tags" });
+        }
+        if (feedback_tags.some((tag) => typeof tag !== 'string' || !WEB_FEEDBACK_TAGS.has(tag))) {
+          return res.status(400).json({ error: "feedback_tags contains an unsupported tag" });
+        }
+        validatedTags = [...new Set(feedback_tags)];
+      }
+
+      // A missing and an inaccessible conversation deliberately share a response
+      // so the endpoint cannot be used to enumerate conversation capabilities.
       const thread = await threadService.getThreadByExternalId('web', conversationId);
       if (!thread || !canAccessWebThread(req, thread)) {
-        return res.status(404).json({ error: "Conversation not found" });
+        return res.status(404).json({ error: "Feedback target not found" });
       }
 
-      // Atomically scope the feedback write to the authorized thread. This
-      // supports old messages without loading unbounded history and avoids a
-      // check/update race.
-      const updated = await threadService.addMessageFeedbackForThread(message_id, thread.thread_id, {
+      // The service scopes the update to both IDs, preventing a message UUID
+      // from another thread from being substituted after this authorization.
+      const updated = await threadService.addMessageFeedback(thread.thread_id, message_id, {
         rating,
-        rating_category: rating_category || undefined,
-        rating_notes: feedback_text || undefined,
-        feedback_tags: feedback_tags || undefined,
-        improvement_suggestion: improvement_suggestion || undefined,
+        rating_category: parsedCategory.value,
+        rating_notes: parsedFeedbackText.value,
+        feedback_tags: validatedTags,
+        improvement_suggestion: parsedSuggestion.value,
         rated_by: req.user?.id || "anonymous",
         rating_source: 'user',
       });
 
       if (!updated) {
-        logger.warn({ conversationId, message_id }, "Addie Chat: Message not found for feedback");
-        return res.status(404).json({ error: "Message not found" });
+        logger.warn({ conversationId, message_id }, "Addie Chat: Feedback target not found");
+        return res.status(404).json({ error: "Feedback target not found" });
       }
 
       logger.info(
-        { conversationId, message_id, rating, rating_category },
+        { conversationId, message_id, rating, rating_category: parsedCategory.value },
         "Addie Chat: Feedback submitted"
       );
 
@@ -1652,8 +1690,7 @@ export function createAddieChatRouter(options?: {
         return res.status(404).json({ error: "Conversation not found" });
       }
 
-      // Verify ownership - users can only view their own threads. Anonymous web
-      // threads use the signed owner capability issued when the thread begins.
+      // Web threads use the same owner check as message and feedback writes.
       if (channel === 'web') {
         if (!canAccessWebThread(req, thread)) {
           return res.status(404).json({ error: "Conversation not found" });
@@ -1689,7 +1726,6 @@ export function createAddieChatRouter(options?: {
       const limit = Number.isSafeInteger(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 200) : 100;
       const offset = Number.isSafeInteger(requestedOffset) ? Math.min(requestedOffset, 10_000) : 0;
 
-      // Return a bounded page, ordered chronologically within the page.
       const threadMessages = await threadService.getThreadMessages(thread.thread_id, { limit, offset });
       const messages: ConversationMessage[] = threadMessages
         .filter((m) => m.role === 'user' || m.role === 'assistant')

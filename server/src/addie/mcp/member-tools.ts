@@ -14,7 +14,7 @@ import { createCipheriv, createDecipheriv, randomBytes, randomUUID, scryptSync }
 import { createLogger } from '../../logger.js';
 import { classifyProbeError, probeReasonLabel } from '../../utils/probe-error.js';
 import { validateExternalUrl } from '../../utils/url-security.js';
-import { normalizeOptionalExternalHttpUrl } from '../../utils/external-http-url.js';
+import { validateMemberProfileUrlFields } from '../../utils/member-profile-url.js';
 import { parseOAuthClientCredentialsInput } from '../../routes/helpers/oauth-client-credentials-input.js';
 import {
   verifyAgentHostname,
@@ -2827,16 +2827,9 @@ export function createMemberToolHandlers(
       }
     }
 
-    // Normalize URL fields using the same policy as REST and every other
-    // profile writer. This rejects credentials, executable schemes, relative
-    // URLs, and oversized values while preserving explicit clearing as null.
-    for (const urlField of ['linkedin_url', 'twitter_url'] as const) {
-      if (input[urlField] === undefined) continue;
-      try {
-        updates[urlField] = normalizeOptionalExternalHttpUrl(input[urlField]);
-      } catch (error) {
-        return `${urlField} ${error instanceof Error ? error.message : 'must be a valid HTTP or HTTPS URL'}.`;
-      }
+    const invalidMemberProfileUrlField = validateMemberProfileUrlFields(updates);
+    if (invalidMemberProfileUrlField) {
+      return `${invalidMemberProfileUrlField} must be an HTTPS URL without credentials.`;
     }
 
     if (Object.keys(updates).length === 0) {
@@ -2964,14 +2957,9 @@ export function createMemberToolHandlers(
       return 'Tagline must be 200 characters or fewer.';
     }
 
-    // Normalize URL fields at the write boundary.
-    for (const urlField of ['linkedin_url', 'twitter_url', 'contact_website'] as const) {
-      if (updates[urlField] === undefined) continue;
-      try {
-        updates[urlField] = normalizeOptionalExternalHttpUrl(updates[urlField]);
-      } catch (error) {
-        return `${urlField} ${error instanceof Error ? error.message : 'must be a valid HTTP or HTTPS URL'}.`;
-      }
+    const invalidMemberProfileUrlField = validateMemberProfileUrlFields(updates);
+    if (invalidMemberProfileUrlField) {
+      return `${invalidMemberProfileUrlField} must be an HTTPS URL without credentials.`;
     }
 
     // Validate contact email
@@ -3379,6 +3367,9 @@ export function createMemberToolHandlers(
         }
         if (error.is('invalid_post_slug')) {
           return `Generated post slug was invalid (must contain only lowercase letters, numbers, and hyphens). Try again with a different title.`;
+        }
+        if (error.is('invalid_external_url')) {
+          return `Link posts require an HTTPS URL without embedded credentials.`;
         }
         if (error.is('duplicate_post_slug')) {
           return `A post with this slug already exists in "${slug}". Try again with a different title.`;

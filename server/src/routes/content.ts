@@ -30,7 +30,7 @@ import { createIllustration, approveIllustration } from '../db/illustration-db.j
 import { resolveEscalationsForPerspective } from '../db/escalation-db.js';
 import { listMyContent as listMyContentService, MyContentError } from '../services/my-content-service.js';
 import { checkContentSubmissionTier } from '../services/membership-tiers.js';
-import { normalizeOptionalExternalHttpUrl } from '../utils/external-http-url.js';
+import { normalizePerspectiveExternalUrl } from '../utils/perspective-url.js';
 
 const logger = createLogger('content-routes');
 
@@ -446,19 +446,15 @@ export async function proposeContentForUser(
     return { success: false, error: 'collection.committee_slug or collection.slug is required' };
   }
 
-  let normalizedExternalUrl: string | null | undefined;
-  try {
-    normalizedExternalUrl = normalizeOptionalExternalHttpUrl(external_url);
-  } catch (error) {
-    return {
-      success: false,
-      error: `external_url ${error instanceof Error ? error.message : 'must be a valid HTTP or HTTPS URL'}`,
-    };
-  }
-
   // Validate content_type requirements
-  if (content_type === 'link' && !normalizedExternalUrl) {
+  if (content_type === 'link' && !external_url) {
     return { success: false, error: 'external_url is required for link type content' };
+  }
+  const normalizedExternalUrl = external_url == null
+    ? null
+    : normalizePerspectiveExternalUrl(external_url);
+  if (external_url != null && !normalizedExternalUrl) {
+    return { success: false, error: 'external_url must be an HTTPS URL without credentials' };
   }
 
   if (content_type === 'article' && !content) {
@@ -1696,13 +1692,23 @@ export function createMyContentRouter(): Router {
         });
       }
 
-      let normalizedExternalUrl: string | null | undefined;
-      try {
-        normalizedExternalUrl = normalizeOptionalExternalHttpUrl(external_url);
-      } catch (error) {
+      const normalizedExternalUrl = external_url == null
+        ? external_url
+        : normalizePerspectiveExternalUrl(external_url);
+      if (external_url != null && !normalizedExternalUrl) {
         return res.status(400).json({
           error: 'Invalid external URL',
-          message: `external_url ${error instanceof Error ? error.message : 'must be a valid HTTP or HTTPS URL'}`,
+          message: 'external_url must be an HTTPS URL without credentials',
+        });
+      }
+      const effectiveContentType = content_type ?? contentItem.content_type;
+      const effectiveExternalUrl = external_url === undefined
+        ? normalizePerspectiveExternalUrl(contentItem.external_url)
+        : normalizedExternalUrl;
+      if (effectiveContentType === 'link' && !effectiveExternalUrl) {
+        return res.status(400).json({
+          error: 'Invalid external URL',
+          message: 'Link content requires an HTTPS external_url without credentials',
         });
       }
 

@@ -24,19 +24,6 @@ const offeringLabels = {
   publisher: 'Publisher',
 };
 
-function safeMemberExternalUrl(value) {
-  if (typeof value !== 'string' || value.length === 0 || value.length > 2048) return '';
-  try {
-    const parsed = new URL(value);
-    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || !parsed.hostname) {
-      return '';
-    }
-    return parsed.toString();
-  } catch {
-    return '';
-  }
-}
-
 /**
  * Render a member card
  * @param {Object} member - Member profile data
@@ -48,6 +35,9 @@ function safeMemberExternalUrl(value) {
 function renderMemberCard(member, options = {}) {
   const { isPreview = false, showVisibilityBadge = false } = options;
   const brand = member.resolved_brand;
+  const linkedInUrl = getSafeHttpsUrl(member.linkedin_url);
+  const contactWebsiteUrl = getSafeHttpsUrl(member.contact_website)
+    || getSafeHttpsUrl(brand?.contact?.domain ? `https://${brand.contact.domain}` : null);
 
   // Name: prefer brand.json, fallback to profile
   const displayName = brand?.name || member.display_name;
@@ -154,16 +144,8 @@ function renderMemberCard(member, options = {}) {
       </div>
       <div class="member-card-footer">
         <div class="member-contact">
-          ${(() => {
-            const website = safeMemberExternalUrl(
-              member.contact_website || (brand?.contact?.domain ? `https://${brand.contact.domain}` : ''),
-            );
-            return website ? `<a href="${escapeHtmlSafe(website)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">Website</a>` : '';
-          })()}
-          ${(() => {
-            const linkedInUrl = safeMemberExternalUrl(member.linkedin_url);
-            return linkedInUrl ? `<a href="${escapeHtmlSafe(linkedInUrl)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">LinkedIn</a>` : '';
-          })()}
+          ${contactWebsiteUrl ? `<a href="${escapeHtmlSafe(contactWebsiteUrl)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">Website</a>` : ''}
+          ${linkedInUrl ? `<a href="${escapeHtmlSafe(linkedInUrl)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">LinkedIn</a>` : ''}
         </div>
         ${viewBtn}
       </div>
@@ -873,6 +855,17 @@ function escapeHtmlSafe(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+function getSafeHttpsUrl(value) {
+  if (typeof value !== 'string') return null;
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password) return null;
+    return parsed.href;
+  } catch {
+    return null;
+  }
 }
 
 // ============================================

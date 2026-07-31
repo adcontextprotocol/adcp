@@ -57,6 +57,7 @@ import { getCompanyDomain, getGoogleEmailAliases } from "./utils/email-domain.js
 import { isUuid } from "./utils/uuid.js";
 import { resolveUserNameWithFallbacks, sanitizeName } from "./utils/resolve-user-name.js";
 import { scrubCommunityAuthorizedAgents } from "./utils/community-adagents.js";
+import { formatPerspectiveUrlAsMarkdownDestination, normalizePerspectiveExternalUrl } from "./utils/perspective-url.js";
 import { requireAuth, requireAdmin, requireGlobalAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, encodeDevSessionCookie, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter, newsletterSubscribeRateLimiter, newsletterConfirmRateLimiter } from "./middleware/rate-limit.js";
 import { findOrCreateUserByEmail } from "./auth/workos-client.js";
@@ -76,6 +77,7 @@ import {
 import { createAdminRouter } from "./routes/admin.js";
 import { createAdminInsightsRouter } from "./routes/admin-insights.js";
 import { createAddieAdminRouter } from "./routes/addie-admin.js";
+import { createSecretariatAdminRouter } from "./routes/secretariat-admin.js";
 import { createAddieChatRouter } from "./routes/addie-chat.js";
 import { createTavusRouter } from "./routes/tavus.js";
 import { createSiChatRoutes } from "./routes/si-chat.js";
@@ -244,9 +246,10 @@ function buildPerspectiveUrl(slug: string): string {
 }
 
 function getPerspectiveCrawlerUrl(item: PublicPerspectiveCrawlerItem): string {
-  return item.content_type === 'link' && item.external_url
-    ? item.external_url
-    : buildPerspectiveUrl(item.slug);
+  const externalUrl = item.content_type === 'link'
+    ? normalizePerspectiveExternalUrl(item.external_url)
+    : null;
+  return externalUrl ?? buildPerspectiveUrl(item.slug);
 }
 
 async function getPublicPerspectiveCrawlerItems(limit = PERSPECTIVES_CRAWLER_LIMIT): Promise<PublicPerspectiveCrawlerItem[]> {
@@ -274,6 +277,10 @@ async function getPublicPerspectiveCrawlerItems(limit = PERSPECTIVES_CRAWLER_LIM
 }
 
 function buildLlmsTxt(items: PublicPerspectiveCrawlerItem[]): string {
+  const markdownDestination = (url: string): string => (
+    formatPerspectiveUrlAsMarkdownDestination(url)
+    ?? formatPerspectiveUrlAsMarkdownDestination(PUBLIC_SITE_URL)!
+  );
   const lines = [
     '# AgenticAdvertising.org',
     '',
@@ -281,20 +288,21 @@ function buildLlmsTxt(items: PublicPerspectiveCrawlerItem[]): string {
     '',
     '## Discoverability',
     '',
-    `- [Sitemap](${PUBLIC_SITE_URL}/sitemap.xml)`,
-    `- [Perspectives RSS feed](${PUBLIC_SITE_URL}/perspectives/feed.xml)`,
+    `- [Sitemap](${markdownDestination(`${PUBLIC_SITE_URL}/sitemap.xml`)})`,
+    `- [Perspectives RSS feed](${markdownDestination(`${PUBLIC_SITE_URL}/perspectives/feed.xml`)})`,
     '',
     '## Perspectives',
     '',
   ];
 
   if (items.length === 0) {
-    lines.push(`- [Latest perspectives](${PUBLIC_SITE_URL}/latest/perspectives)`);
+    lines.push(`- [Latest perspectives](${markdownDestination(`${PUBLIC_SITE_URL}/latest/perspectives`)})`);
   } else {
     for (const item of items) {
       const title = escapeMarkdownText(item.title);
       const excerpt = escapeMarkdownText(item.excerpt);
-      lines.push(`- [${title}](${getPerspectiveCrawlerUrl(item)})${excerpt ? `: ${excerpt}` : ''}`);
+      const destination = markdownDestination(getPerspectiveCrawlerUrl(item));
+      lines.push(`- [${title}](${destination})${excerpt ? `: ${excerpt}` : ''}`);
     }
   }
 
@@ -1315,6 +1323,11 @@ export class HTTPServer {
     const { pageRouter: addiePageRouter, apiRouter: addieApiRouter } = createAddieAdminRouter();
     this.app.use('/admin/addie', addiePageRouter);      // Page routes: /admin/addie
     this.app.use('/api/admin/addie', addieApiRouter);   // API routes: /api/admin/addie/*
+
+    // Mount Secretariat console routes (human-approved action queue)
+    const { pageRouter: secretariatPageRouter, apiRouter: secretariatApiRouter } = createSecretariatAdminRouter();
+    this.app.use('/admin/secretariat', secretariatPageRouter);      // Page routes: /admin/secretariat
+    this.app.use('/api/admin/secretariat', secretariatApiRouter);   // API routes: /api/admin/secretariat/*
 
 
     // Mount Addie chat routes (public chat interface)

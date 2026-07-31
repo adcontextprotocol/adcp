@@ -1121,6 +1121,7 @@
   <script src="/nav.js"></script>
   <script src="/registry-nav.js"></script>
   <script src="/member-card.js"></script>
+  <script src="/perspective-url.js"></script>
   <script src="/external-url.js"></script>
 
   <!-- List View -->
@@ -1468,23 +1469,22 @@
 
       // Build social links array
       const socialLinks = [];
-      const contactWebsite = safeMemberExternalUrl(member.contact_website);
-      if (contactWebsite) {
-        let websiteLabel;
-        try { websiteLabel = new URL(contactWebsite).hostname; } catch { websiteLabel = contactWebsite; }
-        socialLinks.push(`<a href="${escapeHtml(contactWebsite)}" target="_blank" rel="noopener noreferrer" class="detail-social-link">
+      const contactWebsiteUrl = getSafeHttpsUrl(member.contact_website);
+      const linkedInUrl = getSafeHttpsUrl(member.linkedin_url);
+      const twitterUrl = getSafeHttpsUrl(member.twitter_url);
+      if (contactWebsiteUrl) {
+        const websiteLabel = new URL(contactWebsiteUrl).hostname;
+        socialLinks.push(`<a href="${escapeHtml(contactWebsiteUrl)}" target="_blank" rel="noopener noreferrer" class="detail-social-link">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
           ${escapeHtml(websiteLabel)}
         </a>`);
       }
-      const linkedInUrl = safeMemberExternalUrl(member.linkedin_url);
       if (linkedInUrl) {
         socialLinks.push(`<a href="${escapeHtml(linkedInUrl)}" target="_blank" rel="noopener noreferrer" class="detail-social-link">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
           LinkedIn
         </a>`);
       }
-      const twitterUrl = safeMemberExternalUrl(member.twitter_url);
       if (twitterUrl) {
         socialLinks.push(`<a href="${escapeHtml(twitterUrl)}" target="_blank" rel="noopener noreferrer" class="detail-social-link">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
@@ -1590,11 +1590,9 @@
               <div style="display: flex; flex-direction: column; gap: 12px;">
                 ${perspectives.map(p => {
                   const isArticle = p.content_type === 'article';
-                  const externalHref = isArticle ? '' : safeExternalHttpUrl(p.external_url);
-                  const href = isArticle
-                    ? '/perspectives/' + encodeURIComponent(p.slug)
-                    : escapeHtml(externalHref || '#');
-                  const target = externalHref ? ' target="_blank" rel="noopener noreferrer"' : '';
+                  const safeExternalUrl = getSafePerspectiveExternalUrl(p.external_url);
+                  const href = isArticle ? '/perspectives/' + encodeURIComponent(p.slug) : escapeHtml(safeExternalUrl || '#');
+                  const target = !isArticle && safeExternalUrl ? ' target="_blank" rel="noopener noreferrer"' : '';
                   const date = new Date(p.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
                   const meta = [p.category, !isArticle && p.external_site_name].filter(Boolean).join(' · ');
                   return `
@@ -2264,7 +2262,8 @@
               ? format.format_id.id
               : String(format.format_id || 'N/A');
             const hasPreview = format.preview_image;
-            const hasExample = format.example_url;
+            const exampleUrl = safeExternalHttpUrl(format.example_url);
+            const hasExample = Boolean(exampleUrl);
             const isGenerative = format.output_format_ids && format.output_format_ids.length > 0;
             const dimensions = format.renders && format.renders[0]?.dimensions
               ? `${format.renders[0].dimensions.width}×${format.renders[0].dimensions.height}`
@@ -2296,8 +2295,7 @@
               </div>
             `;
 
-            const exampleUrl = safeExternalHttpUrl(format.example_url);
-            if (hasExample && exampleUrl) {
+            if (hasExample) {
               return `
                 <a href="${escapeHtml(exampleUrl)}" target="_blank" rel="noopener noreferrer" class="format-card-link">
                   <div class="format-card">${cardContent}</div>

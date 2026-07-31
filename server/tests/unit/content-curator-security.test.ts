@@ -49,7 +49,7 @@ describe('content curator security boundaries', () => {
     mocks.complete.mockResolvedValue({
       text: JSON.stringify({
         summary: 'summary',
-        key_insights: [],
+        key_insights: [{ insight: 'Standards matter.', importance: 'high' }],
         addie_take: 'take',
         relevance_tags: ['adcp'],
         quality_score: 4,

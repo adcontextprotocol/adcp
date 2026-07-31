@@ -435,7 +435,7 @@
 
   <div id="adcp-footer"></div>
   <script src="/nav.js"></script>
-  <script src="/external-url.js"></script>
+  <script src="/perspective-url.js"></script>
   <script>
     (function() {
       function esc(str) {
@@ -670,11 +670,11 @@
         registerTopics(topics);
 
         var card = document.createElement('a');
-        var externalUrl = safeExternalHttpUrl(item.external_url);
-        card.href = externalUrl || ('/perspectives/' + encodeURIComponent(item.slug));
+        var safeExternalUrl = getSafePerspectiveExternalUrl(item.external_url);
+        card.href = safeExternalUrl || ('/perspectives/' + encodeURIComponent(item.slug));
         card.className = className;
         card.setAttribute('data-topics', topics);
-        if (externalUrl) {
+        if (safeExternalUrl) {
           card.target = '_blank';
           card.rel = 'noopener noreferrer';
         }
@@ -803,7 +803,9 @@
             registerTopics(topics);
 
             var link = document.createElement('a');
-            link.href = safeExternalHttpUrl(item.source_url) || '#';
+            var safeSourceUrl = getSafePerspectiveExternalUrl(item.source_url);
+            if (!safeSourceUrl) return;
+            link.href = safeSourceUrl;
             link.className = 'news-item';
             link.target = '_blank';
             link.rel = 'noopener noreferrer';

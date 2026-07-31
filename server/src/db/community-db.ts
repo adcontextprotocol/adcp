@@ -1,5 +1,6 @@
 import { query } from './client.js';
 import { createLogger } from '../logger.js';
+import { validateMemberProfileUrlFields } from '../utils/member-profile-url.js';
 
 const logger = createLogger('community-db');
 
@@ -156,6 +157,13 @@ export class CommunityDatabase {
   // =====================================================
 
   async updateProfile(userId: string, updates: UpdateCommunityProfileInput): Promise<CommunityProfile | null> {
+    const invalidUrlField = validateMemberProfileUrlFields(
+      updates as unknown as Record<string, unknown>,
+    );
+    if (invalidUrlField) {
+      throw new TypeError(`${invalidUrlField} must be an HTTPS URL without credentials`);
+    }
+
     const COLUMN_MAP: Record<keyof UpdateCommunityProfileInput, string> = {
       slug: 'slug',
       headline: 'headline',

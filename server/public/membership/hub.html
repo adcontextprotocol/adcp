@@ -1335,7 +1335,6 @@
 <body>
   <div id="adcp-nav"></div>
   <script src="/nav.js"></script>
-  <script src="/external-url.js"></script>
 
   <div class="hub-container">
     <div id="hub-loading" class="hub-loading">
@@ -2178,8 +2177,9 @@
       const fillClass = pct === 100 ? 'profile-completeness-fill--full' : '';
 
       const initials = ((config?.user?.firstName || '').charAt(0) + (config?.user?.lastName || '').charAt(0)).trim() || 'U';
-      const avatarHtml = profile.avatar_url
-        ? `<img src="${escapeHtml(profile.avatar_url)}" alt="Profile photo">`
+      const avatarUrl = getSafeProfileImageUrl(profile.avatar_url);
+      const avatarHtml = avatarUrl
+        ? `<img src="${escapeHtml(avatarUrl)}" alt="Profile photo">`
         : escapeHtml(initials.toUpperCase());
 
       const desc = profile.bio
@@ -2192,12 +2192,12 @@
           }).join('')}${profile.expertise.length > 4 ? `<span class="profile-offering-tag">+${profile.expertise.length - 4}</span>` : ''}</div>`
         : `<span class="profile-field-value profile-field-value--empty">No expertise tags yet</span>`;
 
+      const linkedInUrl = getSafeHttpsUrl(profile.linkedin_url);
+      const twitterUrl = getSafeHttpsUrl(profile.twitter_url);
       const socials = [];
-      const linkedInUrl = safeExternalHttpUrl(profile.linkedin_url);
-      const twitterUrl = safeExternalHttpUrl(profile.twitter_url);
       if (linkedInUrl) socials.push(`<a class="profile-social-link" href="${escapeHtml(linkedInUrl)}" target="_blank" rel="noopener noreferrer">LinkedIn ↗</a>`);
       if (twitterUrl) socials.push(`<a class="profile-social-link" href="${escapeHtml(twitterUrl)}" target="_blank" rel="noopener noreferrer">X ↗</a>`);
-      if (profile.github_username) socials.push(`<a class="profile-social-link" href="https://github.com/${encodeURIComponent(profile.github_username)}" target="_blank" rel="noopener">GitHub ↗</a>`);
+      if (profile.github_username) socials.push(`<a class="profile-social-link" href="https://github.com/${encodeURIComponent(profile.github_username)}" target="_blank" rel="noopener noreferrer">GitHub ↗</a>`);
 
       return `
         ${hdr}
@@ -2499,6 +2499,40 @@
       const d = document.createElement('div');
       d.textContent = str;
       return d.innerHTML;
+    }
+
+    function getSafeHttpsUrl(value) {
+      if (typeof value !== 'string' || !value.trim()) return null;
+      try {
+        const parsed = new URL(value.trim());
+        if (parsed.protocol !== 'https:' || parsed.username || parsed.password) return null;
+        return parsed.href;
+      } catch {
+        return null;
+      }
+    }
+
+    function getSafeProfileImageUrl(value) {
+      if (typeof value !== 'string' || !value.trim() || value.length > 2048) return null;
+
+      const candidate = value.trim();
+      if (/[\u0000-\u001F\u007F<>\\]/.test(candidate) || candidate.startsWith('//')) return null;
+
+      try {
+        if (candidate.startsWith('/')) {
+          const base = new URL(document.baseURI);
+          const parsed = new URL(candidate, base);
+          const isAvatarPath = /^\/api\/(?:community\/avatars|portraits)\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.png$/i.test(parsed.pathname);
+          if (parsed.origin !== base.origin || !isAvatarPath) return null;
+          return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+        }
+
+        const parsed = new URL(candidate);
+        if (parsed.protocol !== 'https:' || parsed.username || parsed.password) return null;
+        return parsed.href;
+      } catch {
+        return null;
+      }
     }
 
     function fmtDate(s) {

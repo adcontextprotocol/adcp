@@ -95,18 +95,60 @@ describe('Perspectives crawlability routes', () => {
   it('serves dynamic llms.txt with published perspective URLs before static llms.txt', async () => {
     queryMock.mockResolvedValue({ rows: perspectiveRows });
 
-    const res = await request(app()).get('/llms.txt').set('Host', 'agenticadvertising.org');
+    const httpApp = app();
+    const res = await request(httpApp).get('/llms.txt').set('Host', 'agenticadvertising.org');
 
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toContain('text/plain');
     expect(res.headers['cache-control']).toBe('public, max-age=300');
     expect(res.text).toContain('# AgenticAdvertising.org');
     expect(res.text).toContain('## Perspectives');
-    expect(res.text).toContain('[Agentic crawlability & discovery](https://agenticadvertising.org/perspectives/agentic-crawlability)');
-    expect(res.text).toContain('[Partner \\[view\\] \\(field notes\\)](https://partner.example/field-notes): External \\(but curated\\) perspective with \\[brackets\\].');
-    expect(res.text).toContain('[Perspectives RSS feed](https://agenticadvertising.org/perspectives/feed.xml)');
+    expect(res.text).toContain('[Agentic crawlability & discovery](<https://agenticadvertising.org/perspectives/agentic-crawlability>)');
+    expect(res.text).toContain('[Partner \\[view\\] \\(field notes\\)](<https://partner.example/field-notes>): External \\(but curated\\) perspective with \\[brackets\\].');
+    expect(res.text).toContain('[Perspectives RSS feed](<https://agenticadvertising.org/perspectives/feed.xml>)');
     expect(res.text).not.toContain('# AdCP - Ad Context Protocol');
     expect(queryMock).toHaveBeenCalledWith(expect.stringContaining("p.status = 'published'"), [200]);
+  });
+
+  it('normalizes legacy URLs, fails closed on controls, and contains Markdown delimiters', async () => {
+    queryMock.mockResolvedValue({
+      rows: [
+        {
+          ...perspectiveRows[2],
+          slug: 'legacy-control',
+          title: 'Legacy control',
+          external_url: 'https://trusted.example/report\r\n- [Injected](https://attacker.example)',
+        },
+        {
+          ...perspectiveRows[2],
+          slug: 'valid-parentheses',
+          title: 'Valid parentheses',
+          external_url: 'https://Trusted.Example:443/reports/agentic_(roundup)',
+        },
+        {
+          ...perspectiveRows[2],
+          slug: 'legacy-angle',
+          title: 'Legacy angle',
+          external_url: 'https://trusted.example/report>injected',
+        },
+      ],
+    });
+
+    const httpApp = app();
+    const res = await request(httpApp).get('/llms.txt').set('Host', 'agenticadvertising.org');
+
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('[Legacy control](<https://agenticadvertising.org/perspectives/legacy-control>)');
+    expect(res.text).toContain('[Valid parentheses](<https://trusted.example/reports/agentic_(roundup)>)');
+    expect(res.text).toContain('[Legacy angle](<https://agenticadvertising.org/perspectives/legacy-angle>)');
+    expect(res.text).not.toContain('attacker.example');
+    expect(res.text).not.toContain('\n- [Injected]');
+
+    const rss = await request(httpApp).get('/perspectives/feed.xml').set('Host', 'agenticadvertising.org');
+    expect(rss.status).toBe(200);
+    expect(rss.text).toContain('<link>https://agenticadvertising.org/perspectives/legacy-control</link>');
+    expect(rss.text).toContain('<link>https://trusted.example/reports/agentic_(roundup)</link>');
+    expect(rss.text).not.toContain('attacker.example');
   });
 
   it('falls through to the static protocol llms.txt on the AdCP host', async () => {

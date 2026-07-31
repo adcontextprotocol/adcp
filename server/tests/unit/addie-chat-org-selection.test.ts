@@ -17,7 +17,7 @@ const threadMocks = vi.hoisted(() => ({
   getOrCreateThread: vi.fn(),
   getThreadMessages: vi.fn(),
   addMessage: vi.fn(),
-  addMessageFeedbackForThread: vi.fn(),
+  addMessageFeedback: vi.fn(),
 }));
 
 vi.mock('../../src/addie/member-context.js', () => ({
@@ -129,7 +129,7 @@ describe('mounted Addie web-thread ownership', () => {
     threadMocks.addMessage.mockReset().mockResolvedValue({
       message_id: '33333333-3333-4333-8333-333333333333',
     });
-    threadMocks.addMessageFeedbackForThread.mockReset().mockResolvedValue(true);
+    threadMocks.addMessageFeedback.mockReset().mockResolvedValue(true);
   });
 
   it('hides another user\'s thread on the mounted GET route', async () => {
@@ -224,15 +224,15 @@ describe('mounted Addie web-thread ownership', () => {
     const body = { message_id: '22222222-2222-4222-8222-222222222222', rating: 5 };
 
     await request(app()).post(path).set('x-test-user-id', 'attacker').send(body).expect(404);
-    expect(threadMocks.addMessageFeedbackForThread).not.toHaveBeenCalled();
+    expect(threadMocks.addMessageFeedback).not.toHaveBeenCalled();
 
-    threadMocks.addMessageFeedbackForThread.mockResolvedValueOnce(false);
+    threadMocks.addMessageFeedback.mockResolvedValueOnce(false);
     await request(app()).post(path).set('x-test-user-id', 'owner').send(body).expect(404);
 
     await request(app()).post(path).set('x-test-user-id', 'owner').send(body).expect(200);
-    expect(threadMocks.addMessageFeedbackForThread).toHaveBeenCalledWith(
-      body.message_id,
+    expect(threadMocks.addMessageFeedback).toHaveBeenCalledWith(
       'thread-1',
+      body.message_id,
       expect.objectContaining({ rating: 5 }),
     );
   });
@@ -247,7 +247,7 @@ describe('mounted Addie web-thread ownership', () => {
       })
       .expect(400);
     expect(threadMocks.getThreadByExternalId).not.toHaveBeenCalled();
-    expect(threadMocks.addMessageFeedbackForThread).not.toHaveBeenCalled();
+    expect(threadMocks.addMessageFeedback).not.toHaveBeenCalled();
   });
 
   it('allows only the signed anonymous owner cookie on the mounted GET route', async () => {

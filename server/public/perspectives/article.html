@@ -28,6 +28,7 @@
   <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
   <script src="/perspectives/utils.js"></script>
+  <script src="/perspective-url.js"></script>
   <style>
     /* Page-specific: nav offset */
     body { padding-top: 60px; }
@@ -984,17 +985,6 @@
       document.getElementById('articleJsonLd').textContent = JSON.stringify(jsonLd);
     }
 
-    function safeExternalArticleUrl(value) {
-      if (typeof value !== 'string' || value.length === 0 || value.length > 2048) return '';
-      try {
-        const parsed = new URL(value);
-        if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || !parsed.hostname) return '';
-        return parsed.toString();
-      } catch {
-        return '';
-      }
-    }
-
     async function loadArticle() {
       // Get slug from URL path
       const pathParts = window.location.pathname.split('/');
@@ -1018,7 +1008,7 @@
 
         // If it's a link type, redirect to external URL
         if (article.content_type === 'link' && article.external_url) {
-          const externalUrl = safeExternalArticleUrl(article.external_url);
+          const externalUrl = getSafePerspectiveExternalUrl(article.external_url);
           if (!externalUrl) {
             showError();
             return;

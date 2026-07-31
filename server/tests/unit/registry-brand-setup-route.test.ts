@@ -17,6 +17,7 @@ vi.mock('../../src/db/users-db.js', () => ({
 }));
 
 vi.mock('../../src/db/client.js', () => ({
+  isDatabaseInitialized: () => false,
   query: (...args: unknown[]) => queryMock(...args),
 }));
 

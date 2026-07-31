@@ -779,7 +779,7 @@
   <!-- Navigation -->
   <div id="adcp-nav"></div>
   <script src="/nav.js"></script>
-  <script src="/external-url.js"></script>
+  <script src="/perspective-url.js"></script>
 
   <div class="profile-container">
     <a href="/community/people" class="back-link" id="back-link">
@@ -903,8 +903,8 @@
         .map(n => n.charAt(0).toUpperCase())
         .join('');
       const hasOpenTo = data.open_to_coffee_chat || data.open_to_intros;
-      const linkedInUrl = safeExternalHttpUrl(data.linkedin_url);
-      const twitterUrl = safeExternalHttpUrl(data.twitter_url);
+      const linkedInUrl = getSafeHttpsUrl(data.linkedin_url);
+      const twitterUrl = getSafeHttpsUrl(data.twitter_url);
 
       let html = `<div class="profile-card">`;
 
@@ -1071,11 +1071,11 @@
               <div class="perspective-list">
                 ${data.perspectives.map(p => {
                   const isArticle = p.content_type === 'article';
-                  const externalHref = isArticle ? '' : safeExternalHttpUrl(p.external_url);
+                  const safeExternalUrl = getSafePerspectiveExternalUrl(p.external_url);
                   const href = isArticle
                     ? '/perspectives/' + encodeURIComponent(p.slug)
-                    : escapeHtml(externalHref || '#');
-                  const target = externalHref ? ' target="_blank" rel="noopener noreferrer"' : '';
+                    : escapeHtml(safeExternalUrl || '#');
+                  const target = !isArticle && safeExternalUrl ? ' target="_blank" rel="noopener noreferrer"' : '';
                   const date = new Date(p.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
                   const meta = [p.category, !isArticle && p.external_site_name].filter(Boolean).join(' · ');
                   const icon = isArticle
@@ -1433,6 +1433,17 @@
       const div = document.createElement('div');
       div.textContent = str;
       return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function getSafeHttpsUrl(value) {
+      if (typeof value !== 'string') return null;
+      try {
+        const parsed = new URL(value);
+        if (parsed.protocol !== 'https:' || parsed.username || parsed.password) return null;
+        return parsed.href;
+      } catch {
+        return null;
+      }
     }
 
     function formatTier(tier) {

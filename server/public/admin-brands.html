@@ -726,16 +726,23 @@
       }
     }
 
+    function getSafeResearchLogoUrl(value) {
+      if (typeof value !== 'string' || value.length > 2048) return null;
+      try {
+        const parsed = new URL(value);
+        if (parsed.protocol !== 'https:' || parsed.username || parsed.password) return null;
+        return parsed.href;
+      } catch {
+        return null;
+      }
+    }
+
     function displayResearchResults(data) {
       const container = document.getElementById('researchContent');
       const manifest = data.manifest || {};
+      const safeLogoUrl = getSafeResearchLogoUrl(manifest.logos?.[0]?.url);
 
       let html = '<div class="brand-preview">';
-
-      // Logo
-      if (manifest.logos && manifest.logos.length > 0) {
-        html += `<img src="${manifest.logos[0].url}" alt="Logo" onerror="this.style.display='none'">`;
-      }
 
       html += `
         <div>
@@ -768,6 +775,15 @@
       }
 
       container.innerHTML = html;
+      if (safeLogoUrl) {
+        const logo = document.createElement('img');
+        logo.src = safeLogoUrl;
+        logo.alt = 'Logo';
+        logo.addEventListener('error', () => {
+          logo.style.display = 'none';
+        });
+        container.querySelector('.brand-preview')?.prepend(logo);
+      }
       document.getElementById('researchResults').style.display = 'block';
       document.getElementById('researchError').style.display = 'none';
     }
@@ -886,19 +902,25 @@
     async function viewBrand(domain) {
       document.getElementById('viewModal').style.display = 'block';
       document.getElementById('viewModalTitle').textContent = domain;
-      document.getElementById('viewContent').innerHTML = '<div class="loading">Loading...</div>';
+      const viewContent = document.getElementById('viewContent');
+      viewContent.innerHTML = '<div class="loading">Loading...</div>';
 
       try {
         const response = await fetch(`/api/brands/resolve?domain=${encodeURIComponent(domain)}`);
         const data = await response.json();
 
-        let html = '<pre style="background: var(--color-bg-subtle); padding: var(--space-4); border-radius: var(--radius-md); overflow: auto;">';
-        html += JSON.stringify(data, null, 2);
-        html += '</pre>';
-
-        document.getElementById('viewContent').innerHTML = html;
+        const preview = document.createElement('pre');
+        preview.style.background = 'var(--color-bg-subtle)';
+        preview.style.padding = 'var(--space-4)';
+        preview.style.borderRadius = 'var(--radius-md)';
+        preview.style.overflow = 'auto';
+        preview.textContent = JSON.stringify(data, null, 2);
+        viewContent.replaceChildren(preview);
       } catch (error) {
-        document.getElementById('viewContent').innerHTML = `<div class="error-message">${escapeHtml(error.message)}</div>`;
+        const errorMessage = document.createElement('div');
+        errorMessage.className = 'error-message';
+        errorMessage.textContent = error.message;
+        viewContent.replaceChildren(errorMessage);
       }
     }
 

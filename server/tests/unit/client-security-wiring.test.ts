@@ -21,27 +21,28 @@ function extractFunction(source: string, name: string): (value: unknown) => stri
 describe('browser external URL defenses', () => {
   it('behaviorally rejects executable and credentialed member links', async () => {
     const source = await publicSource('member-card.js');
-    const safeUrl = extractFunction(source, 'safeMemberExternalUrl');
-    expect(safeUrl('javascript:alert(1)')).toBe('');
-    expect(safeUrl('https://user:pass@example.com')).toBe('');
+    const safeUrl = extractFunction(source, 'getSafeHttpsUrl');
+    expect(safeUrl('javascript:alert(1)')).toBeNull();
+    expect(safeUrl('https://user:pass@example.com')).toBeNull();
     expect(safeUrl(' https://example.com/path ')).toBe('https://example.com/path');
-    expect(source).toMatch(/linkedin_url[\s\S]{0,300}safeMemberExternalUrl|safeMemberExternalUrl\(member\.linkedin_url\)/);
+    expect(source).toContain('getSafeHttpsUrl(member.linkedin_url)');
     expect(source).toContain('rel="noopener noreferrer"');
   });
 
   it('behaviorally rejects executable article redirects', async () => {
+    const helperSource = await publicSource('perspective-url.js');
     const source = await publicSource('perspectives/article.html');
-    const safeUrl = extractFunction(source, 'safeExternalArticleUrl');
-    expect(safeUrl('data:text/html,<script>alert(1)</script>')).toBe('');
+    const safeUrl = extractFunction(helperSource, 'getSafePerspectiveExternalUrl');
+    expect(safeUrl('data:text/html,<script>alert(1)</script>')).toBeNull();
     expect(safeUrl('https://example.com/story')).toBe('https://example.com/story');
-    expect(source).toMatch(/safeExternalArticleUrl\(article\.external_url\)[\s\S]{0,200}window\.location\.href = externalUrl/);
+    expect(source).toMatch(/getSafePerspectiveExternalUrl\(article\.external_url\)[\s\S]{0,200}window\.location\.href = externalUrl/);
   });
 
   it('wires the shared member sanitizer into every detail link', async () => {
     const source = await publicSource('members.html');
-    expect(source).toContain('safeMemberExternalUrl(member.contact_website)');
-    expect(source).toContain('safeMemberExternalUrl(member.linkedin_url)');
-    expect(source).toContain('safeMemberExternalUrl(member.twitter_url)');
+    expect(source).toContain('getSafeHttpsUrl(member.contact_website)');
+    expect(source).toContain('getSafeHttpsUrl(member.linkedin_url)');
+    expect(source).toContain('getSafeHttpsUrl(member.twitter_url)');
   });
 
   it('attaches and clears the SI capability without logging the token', async () => {
@@ -56,9 +57,9 @@ describe('browser external URL defenses', () => {
 describe('server URL validation branch wiring', () => {
   it('covers profile create, self-update, and admin-update branches', async () => {
     const source = await readFile(new URL('../../src/routes/member-profiles.ts', import.meta.url), 'utf8');
-    expect(source.match(/validateMemberProfileUrls\(/g)?.length).toBeGreaterThanOrEqual(4);
-    expect(source).toMatch(/router\.post\('\/'[\s\S]*?validateMemberProfileUrls/);
-    expect(source).toMatch(/router\.put\('\/'[\s\S]*?validateMemberProfileUrls/);
+    expect(source.match(/validateMemberProfileUrlFields\(/g)?.length).toBeGreaterThanOrEqual(3);
+    expect(source).toMatch(/router\.post\('\/'[\s\S]*?validateMemberProfileUrlFields/);
+    expect(source).toMatch(/router\.put\('\/'[\s\S]*?validateMemberProfileUrlFields/);
     expect(source).toMatch(/adminRouter|createAdminMemberProfileRouter/);
   });
 
@@ -66,10 +67,9 @@ describe('server URL validation branch wiring', () => {
     const content = await readFile(new URL('../../src/routes/content.ts', import.meta.url), 'utf8');
     const committees = await readFile(new URL('../../src/routes/committees.ts', import.meta.url), 'utf8');
     const service = await readFile(new URL('../../src/services/working-group-content-service.ts', import.meta.url), 'utf8');
-    expect(content.match(/normalizeOptionalExternalHttpUrl\(/g)?.length).toBe(2);
-    expect(committees.match(/normalizeOptionalExternalHttpUrl\(/g)?.length).toBe(3);
-    expect(service).toContain('normalizeOptionalExternalHttpUrl(externalUrl)');
+    expect(content.match(/normalizePerspectiveExternalUrl\(/g)?.length).toBeGreaterThanOrEqual(3);
+    expect(committees.match(/normalizePerspectiveExternalUrl\(/g)?.length).toBeGreaterThanOrEqual(5);
+    expect(service).toContain('normalizePerspectiveExternalUrl(externalUrl)');
     expect(committees.match(/Invalid external URL/g)?.length).toBeGreaterThanOrEqual(3);
   });
 });
-
