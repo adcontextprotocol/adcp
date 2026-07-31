@@ -258,6 +258,28 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
       expect(messages[1].content).toBe('Second');
       expect(messages[2].content).toBe('Third');
     });
+
+    it('returns bounded newest pages in chronological order and clamps options', async () => {
+      const thread = await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: 'test-paginated-thread',
+        user_type: 'workos',
+      });
+      for (let index = 1; index <= 5; index += 1) {
+        await threadService.addMessage({
+          thread_id: thread.thread_id,
+          role: index % 2 ? 'user' : 'assistant',
+          content: `page-${index}`,
+        });
+      }
+
+      expect((await threadService.getThreadMessages(thread.thread_id, { limit: 2 })).map(m => m.content))
+        .toEqual(['page-4', 'page-5']);
+      expect((await threadService.getThreadMessages(thread.thread_id, { limit: 2, offset: 2 })).map(m => m.content))
+        .toEqual(['page-2', 'page-3']);
+      expect((await threadService.getThreadMessages(thread.thread_id, { limit: 0, offset: -1 })).map(m => m.content))
+        .toEqual(['page-5']);
+    });
   });
 
   describe('addMessageFeedback', () => {

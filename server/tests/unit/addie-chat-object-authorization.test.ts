@@ -207,6 +207,7 @@ import {
   createAddieChatRouter,
   getChatClaudeClient,
 } from '../../src/routes/addie-chat.js';
+import { issueAnonymousSessionCapability } from '../../src/routes/helpers/anonymous-session-capability.js';
 
 afterAll(() => {
   if (originalApiKey === undefined) {
@@ -237,6 +238,16 @@ function mountChatRouter() {
 
   const app = express();
   app.use(express.json());
+  app.use((req, _res, next) => {
+    const ownerCookie = req.get('cookie')
+      ?.split(';')
+      .map(value => value.trim())
+      .find(value => value.startsWith('addie-anonymous-owner='));
+    req.cookies = ownerCookie
+      ? { 'addie-anonymous-owner': ownerCookie.slice('addie-anonymous-owner='.length) }
+      : {};
+    next();
+  });
   // Supertest completes the incoming request body before consuming the SSE
   // response, which emits IncomingMessage's `close` event immediately. A real
   // browser keeps the stream open. Suppress only the route's disconnect hook
@@ -288,8 +299,8 @@ describe('Addie chat conversation object authorization', () => {
         conversation_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
       });
 
-    expect(response.status).toBe(403);
-    expect(response.body.error).toBe('Access denied');
+    expect(response.status).toBe(404);
+    expect(response.body.error).toBe('Conversation not found');
     expect(mocks.getThreadByExternalId).toHaveBeenCalledWith(
       'web',
       '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
@@ -299,18 +310,21 @@ describe('Addie chat conversation object authorization', () => {
     expect(mocks.processMessage).not.toHaveBeenCalled();
   });
 
-  it('allows an anonymous caller to continue an anonymous bearer-capability thread', async () => {
+  it('allows an anonymous caller to continue a thread with its signed owner capability', async () => {
     mocks.authenticated = false;
+    const ownerId = 'anonymous-owner';
     mocks.getThreadByExternalId.mockResolvedValue({
       thread_id: 'thread_anonymous',
       channel: 'web',
       external_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
       user_type: 'anonymous',
-      user_id: null,
+      user_id: ownerId,
     });
+    const capability = issueAnonymousSessionCapability('addie-web-thread-owner', ownerId);
 
     const response = await request(mountChatRouter())
       .post('/')
+      .set('Cookie', `addie-anonymous-owner=${capability}`)
       .send({
         message: 'Continue this anonymous conversation',
         conversation_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
@@ -318,7 +332,7 @@ describe('Addie chat conversation object authorization', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.response).toBe('Allowed response');
-    expect(mocks.getThreadMessages).toHaveBeenCalledWith('thread_anonymous');
+    expect(mocks.getThreadMessages).toHaveBeenCalledWith('thread_anonymous', { limit: 100 });
     expect(mocks.addMessage).toHaveBeenCalledTimes(2);
     expect(mocks.processMessage).toHaveBeenCalledOnce();
   });
@@ -339,8 +353,8 @@ describe('Addie chat conversation object authorization', () => {
         conversation_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
       });
 
-    expect(response.status).toBe(403);
-    expect(response.body.error).toBe('Access denied');
+    expect(response.status).toBe(404);
+    expect(response.body.error).toBe('Conversation not found');
     expect(mocks.getThreadMessages).not.toHaveBeenCalled();
     expect(mocks.addMessage).not.toHaveBeenCalled();
     expect(mocks.processMessage).not.toHaveBeenCalled();
@@ -364,7 +378,7 @@ describe('Addie chat conversation object authorization', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.response).toBe('Allowed response');
-    expect(mocks.getThreadMessages).toHaveBeenCalledWith('thread_attacker');
+    expect(mocks.getThreadMessages).toHaveBeenCalledWith('thread_attacker', { limit: 100 });
     expect(mocks.addMessage).toHaveBeenCalledTimes(2);
     expect(mocks.processMessage).toHaveBeenCalledOnce();
   });
@@ -377,9 +391,8 @@ describe('Addie chat conversation object authorization', () => {
         conversation_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
       });
 
-    expect(response.status).toBe(200);
-    expect(response.text).toContain('event: error');
-    expect(response.text).toContain('Access denied');
+    expect(response.status).toBe(404);
+    expect(response.body.error).toBe('Conversation not found');
     expect(mocks.getThreadByExternalId).toHaveBeenCalledWith(
       'web',
       '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
@@ -410,7 +423,7 @@ describe('Addie chat conversation object authorization', () => {
     expect(response.text).toContain('event: text');
     expect(response.text).toContain('Allowed response');
     expect(response.text).toContain('event: done');
-    expect(mocks.getThreadMessages).toHaveBeenCalledWith('thread_attacker');
+    expect(mocks.getThreadMessages).toHaveBeenCalledWith('thread_attacker', { limit: 100 });
     expect(mocks.addMessage).toHaveBeenCalledTimes(2);
     expect(mocks.processMessage).not.toHaveBeenCalled();
     expect(mocks.processMessageStream).toHaveBeenCalledOnce();

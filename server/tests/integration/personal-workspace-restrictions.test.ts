@@ -9,6 +9,7 @@ const {
   TEST_TEAM_ORG_ID,
   listOrganizationMemberships,
   sendInvitation,
+  generateAdminPortalLink,
 } = vi.hoisted(() => {
   process.env.WORKOS_API_KEY ||= 'sk_test_dummy_for_unit_tests';
   process.env.WORKOS_CLIENT_ID ||= 'client_test_dummy_for_unit_tests';
@@ -19,6 +20,7 @@ const {
     TEST_TEAM_ORG_ID: 'org_team_test',
     listOrganizationMemberships: vi.fn(),
     sendInvitation: vi.fn().mockResolvedValue({ id: 'inv_test' }),
+    generateAdminPortalLink: vi.fn().mockResolvedValue({ link: 'https://test-portal.workos.com' }),
   };
 });
 
@@ -37,7 +39,7 @@ vi.mock('@workos-inc/node', () => ({
       })),
     };
     adminPortal = {
-      generateLink: vi.fn().mockResolvedValue({ link: 'https://test-portal.workos.com' }),
+      generateLink: generateAdminPortalLink,
     };
   },
 }));
@@ -56,7 +58,7 @@ vi.mock('../../src/auth/workos-client.js', () => ({
       })),
     },
     adminPortal: {
-      generateLink: vi.fn().mockResolvedValue({ link: 'https://test-portal.workos.com' }),
+      generateLink: generateAdminPortalLink,
     },
   },
 }));
@@ -128,6 +130,7 @@ describe('Personal Workspace Restrictions', () => {
   });
 
   beforeEach(async () => {
+    generateAdminPortalLink.mockClear();
     // Reset per-test: handler calls workos!.userManagement.listOrganizationMemberships via the new
     // WorkOS() instance; return owner membership for test user in known org IDs.
     // Note: the invitation test (team org) relies on community_only seat limit = 1 from DEFAULT_SEAT_LIMITS.
@@ -202,6 +205,49 @@ describe('Personal Workspace Restrictions', () => {
         .expect(200);
 
       expect(response.body.link).toBeDefined();
+    });
+
+    it('should allow an organization admin to open domain verification', async () => {
+      listOrganizationMemberships.mockImplementationOnce(({ organizationId }: { organizationId: string }) => Promise.resolve({
+        data: [{
+          id: 'om_admin',
+          userId: TEST_USER_ID,
+          organizationId,
+          role: { slug: 'admin' },
+          status: 'active',
+        }],
+      }));
+
+      const response = await request(app)
+        .post(`/api/organizations/${TEST_TEAM_ORG_ID}/domain-verification-link`)
+        .send()
+        .expect(200);
+
+      expect(response.body.link).toBeDefined();
+      expect(generateAdminPortalLink).toHaveBeenCalledWith({
+        organization: TEST_TEAM_ORG_ID,
+        intent: 'domain_verification',
+      });
+    });
+
+    it('should reject a regular member without generating an admin portal link', async () => {
+      listOrganizationMemberships.mockImplementationOnce(({ organizationId }: { organizationId: string }) => Promise.resolve({
+        data: [{
+          id: 'om_member',
+          userId: TEST_USER_ID,
+          organizationId,
+          role: { slug: 'member' },
+          status: 'active',
+        }],
+      }));
+
+      const response = await request(app)
+        .post(`/api/organizations/${TEST_TEAM_ORG_ID}/domain-verification-link`)
+        .send()
+        .expect(403);
+
+      expect(response.body.error).toBe('Insufficient permissions');
+      expect(generateAdminPortalLink).not.toHaveBeenCalled();
     });
   });
 

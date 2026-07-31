@@ -53,6 +53,7 @@ import {
   autoLinkByVerifiedDomain,
   resolveRoleWithWorkosFirstPromote,
 } from '../db/membership-db.js';
+import { boundedRawJson, type RawJsonRequest } from '../middleware/bounded-raw-json.js';
 
 const orgDb = new OrganizationDatabase();
 
@@ -925,21 +926,7 @@ export function createWorkOSWebhooksRouter(): Router {
 
   router.post(
     '/workos',
-    // Parse JSON body manually since the global JSON parser is skipped for this route
-    (req: Request, res: Response, next) => {
-      let rawBody = '';
-      req.setEncoding('utf8');
-      req.on('data', (chunk: string) => { rawBody += chunk; });
-      req.on('end', () => {
-        try {
-          req.body = JSON.parse(rawBody);
-          next();
-        } catch {
-          logger.warn({ rawBodyLength: rawBody.length }, 'Invalid JSON in WorkOS webhook request');
-          res.status(400).json({ error: 'Invalid JSON' });
-        }
-      });
-    },
+    boundedRawJson,
     async (req: Request, res: Response) => {
       const startTime = Date.now();
 
@@ -965,7 +952,7 @@ export function createWorkOSWebhooksRouter(): Router {
 
         try {
           await getWorkos().webhooks.constructEvent({
-            payload: req.body,
+            payload: (req as RawJsonRequest).rawBody,
             sigHeader,
             secret: WORKOS_WEBHOOK_SECRET,
           });

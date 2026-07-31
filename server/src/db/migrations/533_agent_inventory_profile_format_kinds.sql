@@ -1,4 +1,4 @@
--- Canonical format kind projection for registry agent search.
+-- Canonical creative format kind projection for registry agent search.
 -- Keep the deprecated format_ids JSONB column during the 3.x compatibility
 -- window, but do not derive canonical API output from its legacy contents.
 

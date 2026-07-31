@@ -161,8 +161,70 @@ describe('member profile URL persistence boundaries', () => {
       .send({ twitter_url: 'http://social.example/acme' });
 
     expect(response.status).toBe(400);
-    expect(response.body.error).toBe('twitter_url must be an HTTPS URL without credentials');
+    expect(response.body.error).toBe('Profile URLs must be valid HTTPS URLs');
     expect(updateProfile).not.toHaveBeenCalled();
+  });
+
+  it('syncs an explicit null website when a personal profile clears it', async () => {
+    const communityProfile = {
+      workos_user_id: 'user-profile-url',
+      slug: 'person',
+      headline: 'Updated headline',
+      bio: null,
+      avatar_url: null,
+      expertise: [],
+      interests: [],
+      linkedin_url: null,
+      twitter_url: null,
+      github_username: null,
+      is_public: true,
+      open_to_coffee_chat: false,
+      open_to_intros: false,
+      city: null,
+    };
+    const communityDb = {
+      getProfile: vi.fn().mockResolvedValue(communityProfile),
+      updateProfile: vi.fn().mockResolvedValue(communityProfile),
+      checkAndAwardBadges: vi.fn().mockResolvedValue(undefined),
+    };
+    const updateProfileByOrgId = vi.fn().mockResolvedValue({});
+    const memberDb = {
+      getProfileByOrgId: vi.fn().mockResolvedValue({
+        id: 'member-profile-1',
+        workos_organization_id: 'org-personal',
+        is_public: true,
+        tagline: null,
+        description: null,
+        offerings: [],
+        contact_website: 'https://old.example/',
+      }),
+      updateProfileByOrgId,
+    };
+    const orgDb = {
+      getOrganization: vi.fn().mockResolvedValue({ is_personal: true }),
+      hasActiveSubscription: vi.fn(),
+    };
+    mocks.resolvePrimaryOrganization.mockResolvedValue('org-personal');
+    mocks.query.mockResolvedValue({ rows: [{ first_name: 'Test', last_name: 'Person' }] });
+
+    const app = express();
+    app.use(express.json());
+    const { userRouter } = createCommunityRouters({
+      communityDb: communityDb as any,
+      memberDb: memberDb as any,
+      orgDb: orgDb as any,
+    });
+    app.use('/api/me', userRouter);
+
+    await request(app)
+      .put('/api/me/community-profile')
+      .send({ headline: 'Updated headline', contact_website: null })
+      .expect(200);
+
+    expect(updateProfileByOrgId).toHaveBeenCalledWith(
+      'org-personal',
+      expect.objectContaining({ contact_website: null }),
+    );
   });
 
   it('syncs non-URL fields without rewriting unsafe legacy member URLs', async () => {

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   complete: vi.fn(),
+  safeFetchAxiosLike: vi.fn(),
   updateFetchedResource: vi.fn(),
 }));
 
@@ -14,6 +15,10 @@ vi.mock('../../src/db/addie-db.js', () => ({
   AddieDatabase: class {
     updateFetchedResource = (...args: unknown[]) => mocks.updateFetchedResource(...args);
   },
+}));
+
+vi.mock('../../src/utils/url-security.js', () => ({
+  safeFetchAxiosLike: (...args: unknown[]) => mocks.safeFetchAxiosLike(...args),
 }));
 
 import {
@@ -88,10 +93,10 @@ describe('content curator output validation', () => {
   });
 
   it('marks the resource failed when malformed model JSON reaches a caller', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
-      `<html><body><article><p>${'Substantive article content. '.repeat(10)}</p></article></body></html>`,
-      { status: 200, headers: { 'content-type': 'text/html' } }
-    )));
+    mocks.safeFetchAxiosLike.mockResolvedValue({
+      status: 200,
+      data: Buffer.from(`<html><body><article><p>${'Substantive article content. '.repeat(10)}</p></article></body></html>`),
+    });
     mocks.complete.mockResolvedValue({ text: '{"summary":' });
     mocks.updateFetchedResource.mockResolvedValue(undefined);
 
@@ -110,10 +115,10 @@ describe('content curator output validation', () => {
   });
 
   it('persists a valid normalized analysis as successful', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
-      `<html><body><article><p>${'Substantive article content. '.repeat(10)}</p></article></body></html>`,
-      { status: 200, headers: { 'content-type': 'text/html' } }
-    )));
+    mocks.safeFetchAxiosLike.mockResolvedValue({
+      status: 200,
+      data: Buffer.from(`<html><body><article><p>${'Substantive article content. '.repeat(10)}</p></article></body></html>`),
+    });
     mocks.complete.mockResolvedValue({
       text: JSON.stringify({
         summary: ' A useful summary. ',
