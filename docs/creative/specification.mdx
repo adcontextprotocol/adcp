@@ -54,7 +54,17 @@ Creative agents MUST declare Creative Protocol support via `get_adcp_capabilitie
     "has_creative_library": true,
     "supports_generation": false,
     "supports_transformation": true,
-    "supports_compliance": false
+    "supports_compliance": false,
+    "supported_formats": [
+      {
+        "capability_id": "display_image_transform",
+        "operations": ["build", "validate", "preview"],
+        "format": {
+          "format_kind": "image",
+          "params": { "width": 300, "height": 250 }
+        }
+      }
+    ]
   }
 }
 ```

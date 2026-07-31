@@ -1111,7 +1111,17 @@ An agent can implement multiple protocols from a single endpoint. This is common
     "supports_generation": true,
     "supports_transformation": false,
     "supports_compliance": false,
-    "bills_through_adcp": true
+    "bills_through_adcp": true,
+    "supported_formats": [
+      {
+        "capability_id": "display_image_generator",
+        "operations": ["build", "validate", "preview"],
+        "format": {
+          "format_kind": "image",
+          "params": { "width": 300, "height": 250 }
+        }
+      }
+    ]
   }
 }
 ```
