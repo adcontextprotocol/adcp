@@ -215,21 +215,27 @@ localized library creative here, then assign it by `creative_id`.
         },
         "target_variants": [
           {
-            "locale_variant_id": "loc_es_es",
-            "locale": "es-ES",
+            "locale_variant_id": "loc_es_mx",
+            "locale": "es-MX",
             "assets": {
               "image": {
                 "asset_type": "image",
-                "url": "https://cdn.nova.example/summer-es.jpg",
+                "url": "https://cdn.nova.example/summer-es-mx.jpg",
                 "width": 1080,
                 "height": 1080
               },
               "headline": {
                 "asset_type": "text",
                 "content": "El verano empieza aquí",
-                "language": "es-ES"
+                "language": "es-MX"
               }
             }
+          }
+        ],
+        "locale_fallbacks": [
+          {
+            "language_range": "es",
+            "locale_variant_id": "loc_es_mx"
           }
         ],
         "default_locale_variant_id": "loc_en_us",
@@ -249,15 +255,18 @@ translation/transformation agent first, then sync the resulting assets.
 At delivery, the seller applies RFC 4647 Lookup to ordered locale preferences.
 Each progressively truncated requested range matches only an equal available
 canonical tag; it does not prefix-match sibling regional tags.
-If lookup finds no available locale, it follows `unmatched_locale_action`:
-serve `default_locale_variant_id` or make the creative ineligible. It never
-silently assumes the source is the default.
+For each preference, a strict miss is followed by the most-specific matching
+`locale_fallbacks` rule before the next preference is tried. The example's `es`
+rule lets an `es-ES` preference use `loc_es_mx`; without that rule, no regional
+substitution is inferred. After every preference misses both paths, the seller
+follows `unmatched_locale_action`: serve `default_locale_variant_id` or make the
+creative ineligible. It never silently assumes the source is the default.
 
 Accepted localized results include a top-level `platform_id` as the single
 provider creative identity and `localization` as a complete source-plus-target
 variant list. The response preserves the request's exact source ID/locale,
-target ID/locale set, default ID, and unmatched action. Each variant returns
-complete resolved assets and `provider_variant_id`. The enclosing creative's
+target ID/locale set, fallback-rule set, default ID, and unmatched action. Each
+variant returns complete resolved assets and `provider_variant_id`. The enclosing creative's
 single `status` governs the complete set. If the provider cannot read back any
 one of those values exactly, the item fails rather than silently falling back
 to the source language.

@@ -14,7 +14,10 @@
       "default_locale_variant_id": "must_reference_exactly_one_variant",
       "source_assets": "must_equal_enclosing_creative.assets",
       "locale_matching": "rfc4647_lookup",
-      "locale_match_comparison": "canonical_tag_equality_after_requested_range_truncation"
+      "locale_match_comparison": "canonical_tag_equality_after_requested_range_truncation",
+      "unique_locale_fallback_properties": ["language_range"],
+      "locale_fallback_variant_ids": "must_reference_exactly_one_variant",
+      "selection_order": "for_each_preference_strict_lookup_then_most_specific_explicit_fallback_then_next_preference_then_unmatched_action"
     },
     "spec": "docs/creative/task-reference/list_creatives.mdx#localized-creative-readback"
   },
@@ -24,17 +27,41 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 255,
-      "description": "The source or target locale variant used for unmatched opportunities when unmatched_locale_action is serve_default.",
+      "description": "The source or target locale variant used after strict Lookup and explicit fallback rules both miss when unmatched_locale_action is serve_default.",
       "x-entity": "creative_locale_variant"
     },
     "unmatched_locale_action": {
       "type": "string",
-      "enum": ["serve_default", "do_not_serve"]
+      "enum": ["serve_default", "do_not_serve"],
+      "description": "Final action after strict Lookup and explicit locale_fallbacks both miss."
     },
     "locale_matching": {
       "type": "string",
       "const": "rfc4647_lookup",
       "description": "Strict RFC 4647 section 3.4 Lookup applied to ordered locale preferences. The seller progressively truncates the requested range and matches only an available canonical tag equal to that range; it does not prefix-match sibling regional tags."
+    },
+    "locale_fallbacks": {
+      "type": "array",
+      "description": "Exact buyer-declared language-family substitutions preserved from sync. For each requested preference, rules are checked from the most specific progressively truncated range to the least specific only after strict Lookup finds no equal available tag for that preference.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "language_range": {
+            "$ref": "/schemas/core/locale-tag.json"
+          },
+          "locale_variant_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "x-entity": "creative_locale_variant"
+          }
+        },
+        "required": ["language_range", "locale_variant_id"],
+        "additionalProperties": true
+      },
+      "minItems": 1,
+      "maxItems": 50,
+      "uniqueItems": true
     },
     "variants": {
       "type": "array",

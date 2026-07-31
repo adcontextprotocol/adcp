@@ -1282,7 +1282,7 @@
         },
         "localization": {
           "type": "object",
-          "description": "Materialized creative-localization support for sync_creatives/list_creatives. Presence opts the agent into exact locale-variant round-trip, RFC 4647 Lookup, explicit default/unmatched behavior, creative-wide review, transactional replacement, and delivery attribution. This is a coarse structural capability, not a promise that every locale/format/account combination is accepted; sellers validate each write before mutation. Omit this object when localization is unsupported.",
+          "description": "Materialized creative-localization support for sync_creatives/list_creatives. Presence opts the agent into exact locale-variant round-trip, strict RFC 4647 Lookup, optional buyer-declared language-family fallback rules, explicit final default/unmatched behavior, creative-wide review, transactional replacement, and delivery attribution. This is a coarse structural capability, not a promise that every locale/format/account combination is accepted; sellers validate each write before mutation. Omit this object when localization is unsupported.",
           "properties": {
             "max_target_variants": {
               "type": "integer",

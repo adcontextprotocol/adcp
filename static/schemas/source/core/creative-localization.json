@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/creative-localization.json",
   "title": "Creative Localization",
-  "description": "Materialized localization for one creative. The creative's top-level `assets` are the source variant and every target carries buyer-supplied asset overrides; this contract never asks the receiving seller to generate or translate creative. `default_locale_variant_id` explicitly selects the fallback variant and may identify either the source or a target. Locale and locale_variant_id values MUST be unique within the creative, and no target locale may equal the source locale. A replacement is atomic: failure leaves the prior source assets and complete localization topology unchanged.",
+  "description": "Materialized localization for one creative. The creative's top-level `assets` are the source variant and every target carries buyer-supplied asset overrides; this contract never asks the receiving seller to generate or translate creative. Optional locale_fallbacks declare buyer-approved language-family substitutions, while default_locale_variant_id selects the final fallback after matching misses. Locale and locale_variant_id values MUST be unique within the creative, and no target locale may equal the source locale. A replacement is atomic: failure leaves the prior source assets and complete localization topology unchanged.",
   "x-adcp-validation": {
     "verifier_constraints": {
       "unique_target_properties": ["locale_variant_id", "locale"],
@@ -10,6 +10,9 @@
       "default_locale_variant_id": "must_reference_exactly_one_source_or_target_variant",
       "locale_matching": "rfc4647_lookup",
       "locale_match_comparison": "canonical_tag_equality_after_requested_range_truncation",
+      "unique_locale_fallback_properties": ["language_range"],
+      "locale_fallback_variant_ids": "must_reference_exactly_one_source_or_target_variant",
+      "selection_order": "for_each_preference_strict_lookup_then_most_specific_explicit_fallback_then_next_preference_then_unmatched_action",
       "replacement_atomicity": "all_or_prior_state_unchanged",
       "request_sync_list_round_trip": {
         "source_match": { "role": "source" },
@@ -19,7 +22,8 @@
         "target_equal_properties": ["locale"],
         "localization_equal_properties": [
           "default_locale_variant_id",
-          "unmatched_locale_action"
+          "unmatched_locale_action",
+          "locale_fallbacks"
         ]
       }
     },
@@ -88,17 +92,42 @@
       "maxItems": 50,
       "uniqueItems": true
     },
+    "locale_fallbacks": {
+      "type": "array",
+      "description": "Optional explicit language-family substitutions evaluated only when strict RFC 4647 Lookup finds no equal available tag for the current requested preference. For each preference in order, the seller checks progressively truncated ranges from most to least specific and applies the first rule whose language_range equals that candidate. A rule may map a regional request to a different materialized regional variant, but no substitution is inferred when a rule is absent.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "language_range": {
+            "$ref": "/schemas/core/locale-tag.json",
+            "description": "Canonical concrete BCP 47 range matched against progressively truncated requested ranges. Wildcards are not supported."
+          },
+          "locale_variant_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "description": "Source or target locale variant to serve when this explicit fallback rule matches.",
+            "x-entity": "creative_locale_variant"
+          }
+        },
+        "required": ["language_range", "locale_variant_id"],
+        "additionalProperties": true
+      },
+      "minItems": 1,
+      "maxItems": 50,
+      "uniqueItems": true
+    },
     "default_locale_variant_id": {
       "type": "string",
       "minLength": 1,
       "maxLength": 255,
-      "description": "The source or target locale_variant_id used when RFC 4647 Lookup finds no match and unmatched_locale_action is serve_default.",
+      "description": "The source or target locale_variant_id used when neither strict RFC 4647 Lookup nor an explicit locale_fallbacks rule matches and unmatched_locale_action is serve_default.",
       "x-entity": "creative_locale_variant"
     },
     "unmatched_locale_action": {
       "type": "string",
       "enum": ["serve_default", "do_not_serve"],
-      "description": "Required seller behavior when RFC 4647 Lookup finds no locale match. serve_default serves default_locale_variant_id; do_not_serve makes this creative ineligible for that opportunity."
+      "description": "Required seller behavior when neither strict RFC 4647 Lookup nor an explicit locale_fallbacks rule matches. serve_default serves default_locale_variant_id; do_not_serve makes this creative ineligible for that opportunity."
     }
   },
   "required": [

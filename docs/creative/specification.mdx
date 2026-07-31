@@ -174,6 +174,9 @@ sync the localized library creative and then assign it to a package.
   missing slots inherit source assets.
 - `default_locale_variant_id` explicitly identifies the serving fallback. It
   may reference the source or a target; source does not imply default.
+- `locale_fallbacks[]` optionally maps a canonical requested language range to
+  a source or target variant. These are explicit buyer-approved substitutions,
+  not inferred equivalence between regional variants.
 - `unmatched_locale_action` is `serve_default` or `do_not_serve`.
 
 Locale tags MUST use the canonical representation from
@@ -188,18 +191,28 @@ At delivery, sellers apply RFC 4647 Lookup to the opportunity's ordered locale
 preferences and the creative's available locale tags. Lookup progressively
 truncates the requested range until it finds an available canonical tag equal
 to that range. Matching is equality, not prefix/subordination: `es-MX` does not
-match an available `es-ES` after truncation to `es`. When no equality match
-exists, the seller MUST apply `unmatched_locale_action`; it MUST NOT silently
-substitute the source.
+match an available `es-ES` after truncation to `es`.
+
+For each preference in order, if strict Lookup finds no equality match, the
+seller repeats the same most-specific-to-least-specific truncation against
+`locale_fallbacks[].language_range` and serves the referenced variant from the
+first matching rule. For example, `language_range: es` may explicitly map both
+`es-ES` and `es` preferences to an available `es-MX` variant. The seller tries
+the next preference only when neither strict Lookup nor an explicit rule
+matches the current preference. After every preference misses, the seller MUST
+apply `unmatched_locale_action`; it MUST NOT infer regional interchangeability
+or silently substitute the source.
 Every delivered execution of a localized creative includes the selected
-`locale_variant_id` in `get_creative_delivery`, including default fallback.
+`locale_variant_id` in `get_creative_delivery`, including explicit and default
+fallback.
 
 `locale_variant_id` is scoped to the parent creative. It is not a
 `build_variant_id` (a `build_creative` output leaf) and not the `variant_id`
 used for a provider's served execution in `get_creative_delivery`. A successful
 localized sync and every later `list_creatives` read MUST preserve the exact
 source ID/locale, target ID/locale set, default ID, and unmatched action from
-the request. Readback adds a `provider_variant_id` to each variant. The single
+the request, plus the exact optional fallback-rule set. Readback adds a
+`provider_variant_id` to each variant. The single
 provider creative identity is the enclosing creative's top-level `platform_id`;
 it is never duplicated inside `localization`.
 

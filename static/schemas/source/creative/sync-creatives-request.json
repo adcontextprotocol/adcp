@@ -27,7 +27,7 @@
             "type": "object",
             "properties": {
               "localization": {
-                "description": "Sync-only materialized-localization mutation. The top-level assets are the source variant; default_locale_variant_id independently selects the serving fallback. An object transactionally replaces the source assets and complete locale set, omission preserves existing localization only when the top-level source assets are unchanged, and null removes localization. This field never requests translation or generation. Receivers MUST advertise get_adcp_capabilities creative.localization before accepting it.",
+                "description": "Sync-only materialized-localization mutation. The top-level assets are the source variant; optional locale_fallbacks declare buyer-approved language-family substitutions, and default_locale_variant_id selects the final serving fallback. An object transactionally replaces the source assets and complete locale set, omission preserves existing localization only when the top-level source assets are unchanged, and null removes localization. This field never requests translation or generation. Receivers MUST advertise get_adcp_capabilities creative.localization before accepting it.",
                 "anyOf": [
                   { "$ref": "/schemas/core/creative-localization.json" },
                   { "type": "null" }

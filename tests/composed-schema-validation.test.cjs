@@ -134,12 +134,25 @@ function validateLocalizationRequestSemantics(localization) {
     }
   }
   const variants = [localization.source, ...targets].filter(Boolean);
+  const variantIds = new Set(variants.map((variant) => variant.locale_variant_id));
   if (!variants.some((variant) => variant.locale_variant_id === localization.default_locale_variant_id)) {
     errors.push('default_locale_variant_id must reference a source or target variant');
   }
   for (const variant of variants) {
     if (!isCanonicalLocaleTag(variant.locale)) {
       errors.push(`locale ${variant.locale} must be canonical BCP 47`);
+    }
+  }
+  const fallbacks = localization.locale_fallbacks || [];
+  if (duplicateValues(fallbacks, 'language_range').length > 0) {
+    errors.push('locale fallback language_range values must be unique');
+  }
+  for (const fallback of fallbacks) {
+    if (!isCanonicalLocaleTag(fallback.language_range)) {
+      errors.push(`fallback range ${fallback.language_range} must be canonical BCP 47`);
+    }
+    if (!variantIds.has(fallback.locale_variant_id)) {
+      errors.push('locale fallback must reference a source or target variant');
     }
   }
   return errors;
@@ -155,24 +168,44 @@ function isCanonicalLocaleTag(locale) {
   }
 }
 
+function rfc4647Candidates(preference) {
+  const candidates = [];
+  let candidate = preference.toLowerCase();
+  while (candidate) {
+    candidates.push(candidate);
+    const parts = candidate.split('-');
+    parts.pop();
+    if (parts.at(-1)?.length === 1) parts.pop();
+    candidate = parts.join('-');
+  }
+  return candidates;
+}
+
 function rfc4647Lookup(preferences, variants) {
   const byLocale = new Map(variants.map((variant) => [variant.locale.toLowerCase(), variant]));
   for (const preference of preferences) {
-    let candidate = preference.toLowerCase();
-    while (candidate) {
+    for (const candidate of rfc4647Candidates(preference)) {
       if (byLocale.has(candidate)) return byLocale.get(candidate);
-      const parts = candidate.split('-');
-      parts.pop();
-      if (parts.at(-1)?.length === 1) parts.pop();
-      candidate = parts.join('-');
     }
   }
   return undefined;
 }
 
 function selectLocalizedVariant(localization, preferences) {
-  const matched = rfc4647Lookup(preferences, localization.variants || []);
-  if (matched) return matched.locale_variant_id;
+  const variants = localization.variants || [];
+  const fallbackByRange = new Map(
+    (localization.locale_fallbacks || []).map((fallback) => [
+      fallback.language_range.toLowerCase(),
+      fallback.locale_variant_id
+    ])
+  );
+  for (const preference of preferences) {
+    const matched = rfc4647Lookup([preference], variants);
+    if (matched) return matched.locale_variant_id;
+    for (const candidate of rfc4647Candidates(preference)) {
+      if (fallbackByRange.has(candidate)) return fallbackByRange.get(candidate);
+    }
+  }
   return localization.unmatched_locale_action === 'serve_default'
     ? localization.default_locale_variant_id
     : undefined;
@@ -193,6 +226,17 @@ function validateLocalizationReadbackSemantics(localization, enclosingAssets) {
   }
   if (localization.locale_matching !== 'rfc4647_lookup') {
     errors.push('locale_matching must be rfc4647_lookup');
+  }
+  const variantIds = new Set(variants.map((variant) => variant.locale_variant_id));
+  const fallbacks = localization.locale_fallbacks || [];
+  if (duplicateValues(fallbacks, 'language_range').length > 0) {
+    errors.push('locale fallback language_range values must be unique');
+  }
+  if (fallbacks.some((fallback) => !isCanonicalLocaleTag(fallback.language_range))) {
+    errors.push('locale fallback language_range must be canonical BCP 47');
+  }
+  if (fallbacks.some((fallback) => !variantIds.has(fallback.locale_variant_id))) {
+    errors.push('locale fallback must reference exactly one variant');
   }
   const source = variants.find((variant) => variant.role === 'source');
   if (source && enclosingAssets && JSON.stringify(source.assets) !== JSON.stringify(enclosingAssets)) {
@@ -234,6 +278,24 @@ function validateLocalizationAgainstRequest(requestLocalization, readback, label
     if (readback[property] !== requestLocalization[property]) {
       errors.push(`${label} ${property} must equal request`);
     }
+  }
+  const requestedFallbacks = new Map(
+    (requestLocalization.locale_fallbacks || []).map((fallback) => [
+      fallback.language_range,
+      fallback.locale_variant_id
+    ])
+  );
+  const responseFallbacks = new Map(
+    (readback.locale_fallbacks || []).map((fallback) => [
+      fallback.language_range,
+      fallback.locale_variant_id
+    ])
+  );
+  if (
+    requestedFallbacks.size !== responseFallbacks.size ||
+    [...requestedFallbacks].some(([range, id]) => responseFallbacks.get(range) !== id)
+  ) {
+    errors.push(`${label} locale_fallbacks must exactly equal request`);
   }
   return errors;
 }
@@ -2891,6 +2953,9 @@ async function runTests() {
           }
         }
       ],
+      locale_fallbacks: [
+        { language_range: 'es', locale_variant_id: 'loc_es_es' }
+      ],
       default_locale_variant_id: 'loc_en_us',
       unmatched_locale_action: 'do_not_serve'
     }
@@ -2930,6 +2995,14 @@ async function runTests() {
     );
   }
 
+  const nonCanonicalFallbackRange = structuredClone(localizedCreative);
+  nonCanonicalFallbackRange.localization.locale_fallbacks[0].language_range = 'ES';
+  await testSchemaRejection(
+    '/schemas/creative/sync-creatives-request.json',
+    localizedSyncRequest(nonCanonicalFallbackRange),
+    'Localization fallback rejects a non-canonical language range'
+  );
+
   await testSchemaRejection(
     '/schemas/creative/sync-creatives-request.json',
     localizedSyncRequest({
@@ -2959,6 +3032,10 @@ async function runTests() {
       default_locale_variant_id: 'must_reference_exactly_one_source_or_target_variant',
       locale_matching: 'rfc4647_lookup',
       locale_match_comparison: 'canonical_tag_equality_after_requested_range_truncation',
+      unique_locale_fallback_properties: ['language_range'],
+      locale_fallback_variant_ids: 'must_reference_exactly_one_source_or_target_variant',
+      selection_order:
+        'for_each_preference_strict_lookup_then_most_specific_explicit_fallback_then_next_preference_then_unmatched_action',
       replacement_atomicity: 'all_or_prior_state_unchanged',
       request_sync_list_round_trip: {
         source_match: { role: 'source' },
@@ -2968,7 +3045,8 @@ async function runTests() {
         target_equal_properties: ['locale'],
         localization_equal_properties: [
           'default_locale_variant_id',
-          'unmatched_locale_action'
+          'unmatched_locale_action',
+          'locale_fallbacks'
         ]
       }
     },
@@ -3032,6 +3110,25 @@ async function runTests() {
       `Localization request semantic verifier rejects source/target ${property} reuse`
     );
   }
+
+  const duplicateFallbackRange = structuredClone(localizedCreative.localization);
+  duplicateFallbackRange.locale_fallbacks.push({
+    language_range: 'es',
+    locale_variant_id: 'loc_en_us'
+  });
+  testSemanticValidation(
+    validateLocalizationRequestSemantics(duplicateFallbackRange),
+    'locale fallback language_range values must be unique',
+    'Localization request verifier rejects duplicate fallback language ranges'
+  );
+
+  const danglingFallback = structuredClone(localizedCreative.localization);
+  danglingFallback.locale_fallbacks[0].locale_variant_id = 'loc_missing';
+  testSemanticValidation(
+    validateLocalizationRequestSemantics(danglingFallback),
+    'locale fallback must reference a source or target variant',
+    'Localization request verifier rejects a dangling fallback variant ID'
+  );
 
   await testSchemaRejection(
     '/schemas/creative/sync-creatives-request.json',
@@ -3102,6 +3199,9 @@ async function runTests() {
     default_locale_variant_id: 'loc_en_us',
     unmatched_locale_action: 'do_not_serve',
     locale_matching: 'rfc4647_lookup',
+    locale_fallbacks: [
+      { language_range: 'es', locale_variant_id: 'loc_es_es' }
+    ],
     variants: [
       {
         locale_variant_id: 'loc_en_us',
@@ -3145,7 +3245,11 @@ async function runTests() {
       default_locale_variant_id: 'must_reference_exactly_one_variant',
       source_assets: 'must_equal_enclosing_creative.assets',
       locale_matching: 'rfc4647_lookup',
-      locale_match_comparison: 'canonical_tag_equality_after_requested_range_truncation'
+      locale_match_comparison: 'canonical_tag_equality_after_requested_range_truncation',
+      unique_locale_fallback_properties: ['language_range'],
+      locale_fallback_variant_ids: 'must_reference_exactly_one_variant',
+      selection_order:
+        'for_each_preference_strict_lookup_then_most_specific_explicit_fallback_then_next_preference_then_unmatched_action'
     },
     'Localization readback exposes machine-readable exactness rules'
   );
@@ -3217,6 +3321,14 @@ async function runTests() {
     'Localization verifier rejects a dangling default locale variant'
   );
 
+  const danglingReadbackFallback = structuredClone(localizationReadback);
+  danglingReadbackFallback.locale_fallbacks[0].locale_variant_id = 'loc_missing';
+  testSemanticValidation(
+    validateLocalizationReadbackSemantics(danglingReadbackFallback, localizedCreative.assets),
+    'locale fallback must reference exactly one variant',
+    'Localization readback verifier rejects a dangling fallback variant ID'
+  );
+
   const driftedSourceAssets = structuredClone(localizationReadback);
   driftedSourceAssets.variants[0].assets.headline.content = 'Drifted source';
   testSemanticValidation(
@@ -3233,11 +3345,39 @@ async function runTests() {
     'RFC 4647 Lookup selects an equal available target'
   );
   testSemanticValidation(
-    selectLocalizedVariant(localizationReadback, ['es-MX']) === undefined
+    rfc4647Lookup(['es-MX'], localizationReadback.variants) === undefined
       ? []
       : ['RFC 4647 Lookup prefix-matched sibling es-ES'],
     undefined,
     'RFC 4647 Lookup does not prefix-match a sibling regional locale'
+  );
+  const mexicanSpanishFallback = structuredClone(localizationReadback);
+  mexicanSpanishFallback.variants[1].locale_variant_id = 'loc_es_mx';
+  mexicanSpanishFallback.variants[1].locale = 'es-MX';
+  mexicanSpanishFallback.locale_fallbacks[0].locale_variant_id = 'loc_es_mx';
+  testSemanticValidation(
+    selectLocalizedVariant(mexicanSpanishFallback, ['es-ES']) === 'loc_es_mx'
+      ? []
+      : ['Explicit es fallback did not select loc_es_mx'],
+    undefined,
+    'Explicit language-family fallback allows es-ES to use es-MX'
+  );
+  testSemanticValidation(
+    selectLocalizedVariant(localizationReadback, ['es-MX', 'en-US']) === 'loc_es_es'
+      ? []
+      : ['Lower-priority exact English match bypassed higher-priority Spanish fallback'],
+    undefined,
+    'Explicit fallback for a preferred locale wins before the next locale preference'
+  );
+
+  const noFamilyFallback = structuredClone(localizationReadback);
+  delete noFamilyFallback.locale_fallbacks;
+  testSemanticValidation(
+    selectLocalizedVariant(noFamilyFallback, ['es-MX']) === undefined
+      ? []
+      : ['Regional substitution occurred without an explicit fallback rule'],
+    undefined,
+    'Sibling regional locales are not substituted without an explicit fallback rule'
   );
 
   const fallbackReadback = { ...localizationReadback, unmatched_locale_action: 'serve_default' };
@@ -3323,6 +3463,13 @@ async function runTests() {
         syncItem.localization.default_locale_variant_id = 'loc_es_es';
       },
       'sync default_locale_variant_id must equal request'
+    ],
+    [
+      'list fallback mapping',
+      (_syncItem, listItem) => {
+        listItem.localization.locale_fallbacks[0].locale_variant_id = 'loc_en_us';
+      },
+      'list locale_fallbacks must exactly equal request'
     ],
     [
       'top-level provider identity',

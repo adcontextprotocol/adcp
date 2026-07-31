@@ -226,14 +226,15 @@ For a localized creative, top-level `platform_id` plus `localization` are the
 authoritative round trip. `platform_id` is the single provider creative ID;
 `localization` never duplicates it. The localization object lists exactly one
 source plus every materialized target variant. It preserves the originating
-request's exact source ID/locale, target ID/locale set, default ID, and unmatched
-action. Each entry returns complete resolved assets and provider variant
-identity. The top-level creative `status` is the single review lifecycle for
-the complete locale set.
+request's exact source ID/locale, target ID/locale set, default ID, unmatched
+action, and any explicit locale fallback rules. Each entry returns complete
+resolved assets and provider variant identity. The top-level creative `status`
+is the single review lifecycle for the complete locale set.
 
 Verifiers enforce unique locale, buyer locale-variant ID, and provider-variant
 ID values, exactly one source role, a default ID that references one variant,
-and equality between source readback assets and top-level creative assets.
+unique fallback language ranges whose IDs reference stored variants, and
+equality between source readback assets and top-level creative assets.
 These rules are machine-readable in `x-adcp-validation` because draft-07
 `uniqueItems` compares whole objects and cannot express uniqueness or reference
 integrity by property.
@@ -249,7 +250,9 @@ needed to interpret this result.
 
 At delivery, sellers apply strict RFC 4647 Lookup: progressively truncate the
 requested range and match only an equal available canonical tag. When no
-variant matches, they follow `unmatched_locale_action`: serve
+variant matches for a preference, sellers apply the most-specific explicit
+`locale_fallbacks` rule for that preference before moving to the next one. When
+all preferences miss both paths, they follow `unmatched_locale_action`: serve
 `default_locale_variant_id` or do not serve.
 The chosen `locale_variant_id` is reported by `get_creative_delivery`.
 

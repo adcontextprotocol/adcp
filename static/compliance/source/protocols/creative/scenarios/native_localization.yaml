@@ -14,8 +14,8 @@ narrative: |
   Native localization is a trafficking contract for already-materialized
   locale assets. It does not ask the seller to translate or generate creative.
   The buyer discovers structural support, syncs one source and one target with
-  an explicit default and unmatched action, then verifies exact creative-wide
-  readback. Delivery attribution is schema-required on localized executions and
+  an explicit Spanish language-family fallback, default, and unmatched action,
+  then verifies exact creative-wide readback. Delivery attribution is schema-required on localized executions and
   is exercised by delivery-capable creative specialisms.
 
 agent:
@@ -107,13 +107,16 @@ phases:
                   locale_variant_id: "loc_en_us"
                   locale: "en-US"
                 target_variants:
-                  - locale_variant_id: "loc_es_es"
-                    locale: "es-ES"
+                  - locale_variant_id: "loc_es_mx"
+                    locale: "es-MX"
                     assets:
                       headline:
                         asset_type: "text"
                         content: "Encuentra tu próximo sendero"
-                        language: "es-ES"
+                        language: "es-MX"
+                locale_fallbacks:
+                  - language_range: "es"
+                    locale_variant_id: "loc_es_mx"
                 default_locale_variant_id: "loc_en_us"
                 unmatched_locale_action: "do_not_serve"
           idempotency_key: "$generate:uuid_v4#creative_native_localization_sync"
@@ -137,6 +140,10 @@ phases:
             path: "creatives[0].localization.unmatched_locale_action"
             value: "do_not_serve"
             description: "Unmatched behavior round-trips"
+          - check: field_value
+            path: "creatives[0].localization.locale_fallbacks[0].language_range"
+            value: "es"
+            description: "Buyer-approved Spanish family fallback round-trips"
 
   - id: exact_readback
     title: "Read the authoritative locale topology"
@@ -247,8 +254,12 @@ phases:
             description: "Source identity is preserved"
           - check: field_value
             path: "creatives[0].localization.variants[1].locale_variant_id"
-            value: "loc_es_es"
+            value: "loc_es_mx"
             description: "Target identity is preserved"
+          - check: field_value
+            path: "creatives[0].localization.locale_fallbacks[0].locale_variant_id"
+            value: "loc_es_mx"
+            description: "Fallback mapping still references the stored Mexican Spanish variant"
           - check: field_absent
             path: "creatives[0].localization.variants[2]"
             description: "Failed French replacement did not append an orphan target"

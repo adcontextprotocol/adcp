@@ -67,7 +67,8 @@
                       "target_equal_properties": ["locale"],
                       "localization_equal_properties": [
                         "default_locale_variant_id",
-                        "unmatched_locale_action"
+                        "unmatched_locale_action",
+                        "locale_fallbacks"
                       ]
                     },
                     "forbidden_actions": ["failed", "deleted"]
