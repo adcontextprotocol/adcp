@@ -950,6 +950,7 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   if (scenario === 'force_create_media_buy_arm') {
     return handleForceCreateMediaBuyArm(session, ctx.principal ?? 'anonymous', rawArgs);
   }
+  // codeql[js/user-controlled-bypass] - scenario is a sandbox test-operation selector; the account gate runs above
   if (scenario === 'force_get_products_arm') {
     if (params.arm === 'rejected' && !supportsGetProductsRejected(ctx.servedAdcpVersion)) {
       return {
