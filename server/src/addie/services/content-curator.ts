@@ -134,6 +134,109 @@ interface ChannelForRouting {
   description: string;
 }
 
+const CURATOR_RELEVANCE_TAGS = new Set([
+  'adcp', 'mcp', 'a2a', 'advertising', 'programmatic', 'creative', 'signals',
+  'media-buying', 'llms', 'ai-models', 'ai-agents', 'machine-learning',
+  'responsible-ai', 'industry-news', 'market-trends', 'case-study',
+  'competitor', 'startup', 'tutorial', 'documentation', 'opinion', 'research',
+  'announcement',
+]);
+
+type CuratorAnalysis = {
+  summary: string;
+  key_insights: KeyInsight[];
+  addie_notes: string;
+  relevance_tags: string[];
+  quality_score: number | null;
+  notification_channels: string[];
+};
+
+function normalizeCuratorText(value: unknown, maxLength: number): string {
+  if (typeof value !== 'string') return '';
+  return value
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
+    .trim()
+    .slice(0, maxLength);
+}
+
+/** Validate model output before it crosses the persistence boundary. */
+export function normalizeCuratorAnalysis(
+  value: unknown,
+  allowedNotificationChannels: readonly string[] = []
+): CuratorAnalysis {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Curator model response must be a JSON object');
+  }
+  const parsed = value as Record<string, unknown>;
+
+  const rawInsights = Array.isArray(parsed.key_insights) ? parsed.key_insights : [];
+  const keyInsights: KeyInsight[] = rawInsights.slice(0, 10).flatMap((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return [];
+    const insight = normalizeCuratorText((entry as Record<string, unknown>).insight, 1_000);
+    const importance = (entry as Record<string, unknown>).importance;
+    if (!insight || !['high', 'medium', 'low'].includes(String(importance))) return [];
+    return [{ insight, importance: importance as KeyInsight['importance'] }];
+  });
+
+  const rawTags = Array.isArray(parsed.relevance_tags) ? parsed.relevance_tags : [];
+  const relevanceTags = [...new Set(rawTags.flatMap((tag) => {
+    if (typeof tag !== 'string') return [];
+    const normalized = tag.trim().toLowerCase();
+    return CURATOR_RELEVANCE_TAGS.has(normalized) ? [normalized] : [];
+  }))].slice(0, 5);
+
+  const allowedChannels = new Set(allowedNotificationChannels);
+  const rawChannels = Array.isArray(parsed.notification_channels)
+    ? parsed.notification_channels
+    : [];
+  const notificationChannels = [...new Set(rawChannels.flatMap((channel) =>
+    typeof channel === 'string' && allowedChannels.has(channel) ? [channel] : []
+  ))];
+
+  const qualityScore = typeof parsed.quality_score === 'number'
+    && Number.isInteger(parsed.quality_score)
+    && parsed.quality_score >= 1
+    && parsed.quality_score <= 5
+    ? parsed.quality_score
+    : null;
+
+  const analysis: CuratorAnalysis = {
+    summary: normalizeCuratorText(parsed.summary, 2_000),
+    key_insights: keyInsights,
+    addie_notes: normalizeCuratorText(parsed.addie_take ?? parsed.addie_notes, 1_000),
+    relevance_tags: relevanceTags,
+    quality_score: qualityScore,
+    notification_channels: notificationChannels,
+  };
+
+  if (
+    !analysis.summary
+    || analysis.key_insights.length === 0
+    || !analysis.addie_notes
+    || analysis.relevance_tags.length === 0
+    || analysis.quality_score === null
+  ) {
+    throw new Error('Curator model response is missing required valid analysis fields');
+  }
+
+  return analysis;
+}
+
+/** Parse and validate the model response so malformed output remains retryable. */
+export function parseCuratorAnalysisResponse(
+  responseText: string,
+  allowedNotificationChannels: readonly string[] = []
+): CuratorAnalysis {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(responseText);
+  } catch {
+    throw new Error('Curator model response was not valid JSON');
+  }
+
+  return normalizeCuratorAnalysis(parsed, allowedNotificationChannels);
+}
+
 /**
  * Generate summary and insights using Claude
  * Optionally includes notification channel routing if channels are provided
@@ -143,14 +246,7 @@ async function generateAnalysis(
   content: string,
   url: string,
   channels?: ChannelForRouting[]
-): Promise<{
-  summary: string;
-  key_insights: KeyInsight[];
-  addie_notes: string;
-  relevance_tags: string[];
-  quality_score: number | null;
-  notification_channels: string[];
-}> {
+): Promise<CuratorAnalysis> {
   if (!isLLMConfigured()) {
     throw new Error('ANTHROPIC_API_KEY not configured');
   }
@@ -227,36 +323,10 @@ Return ONLY the JSON, no markdown formatting.`;
   // Extract JSON from response
   const responseText = response.text;
 
-  try {
-    // Try to parse as JSON directly
-    const parsed = JSON.parse(responseText);
-    return {
-      summary: parsed.summary || '',
-      key_insights: parsed.key_insights || [],
-      // addie_take is the new field name in the prompt, maps to addie_notes in DB
-      addie_notes: parsed.addie_take || parsed.addie_notes || '',
-      relevance_tags: parsed.relevance_tags || [],
-      // Only use AI-provided score if valid, otherwise null (indicates needs human review)
-      quality_score: parsed.quality_score
-        ? Math.min(5, Math.max(1, parsed.quality_score))
-        : null,
-      notification_channels: Array.isArray(parsed.notification_channels)
-        ? parsed.notification_channels
-        : [],
-    };
-  } catch {
-    // If JSON parsing fails, extract what we can
-    // quality_score is null to indicate it needs human review
-    logger.warn({ responseText }, 'Failed to parse curator response as JSON');
-    return {
-      summary: responseText.substring(0, 500),
-      key_insights: [],
-      addie_notes: '',
-      relevance_tags: [],
-      quality_score: null,
-      notification_channels: [],
-    };
-  }
+  return parseCuratorAnalysisResponse(
+    responseText,
+    channels?.map((channel) => channel.slack_channel_id) ?? []
+  );
 }
 
 /**

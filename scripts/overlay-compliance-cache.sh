@@ -56,6 +56,11 @@ if [ "${SRC}" = "dist/compliance/latest" ]; then
   CACHE_VERSION="${PINNED_VERSION:-$(basename "$DST")}"
   SCHEMA_STAGE_DIR=$(mktemp -d -t "adcp-schema-overlay.XXXXXX")
   (cd "dist/schemas/latest" && tar -cf - .) | (cd "$SCHEMA_STAGE_DIR" && tar -xf -)
+  # MCP projections are downloadable JSON Schema 2020-12 artifacts, not part of
+  # the v3 draft-07 SDK validation bundle. The legacy SDK recursively loads this
+  # staging tree, so including mcp/ would make its draft-07 Ajv compile the
+  # projection with the wrong dialect.
+  rm -rf "$SCHEMA_STAGE_DIR/mcp"
   node - <<'NODE' "$SCHEMA_STAGE_DIR" "$CACHE_VERSION"
 const fs = require('node:fs');
 const path = require('node:path');
@@ -118,6 +123,7 @@ function patchFile(file) {
     fs.copyFileSync(file, backup);
   }
   let text = fs.readFileSync(file, 'utf8');
+  const zod = file.endsWith('.mjs') ? 'z' : 'import_zod.z';
   const legacyCapabilities =
     'zod_1.z.literal("force_creative_status"), zod_1.z.literal("force_account_status"), zod_1.z.literal("force_media_buy_status"), zod_1.z.literal("force_session_status"), zod_1.z.literal("simulate_delivery"), zod_1.z.literal("simulate_budget_spend")]))';
   const partialCapabilities =
@@ -134,10 +140,35 @@ function patchFile(file) {
     'zod_1.z.literal("seed_creative_format")]))',
     'zod_1.z.literal("seed_creative_format"), zod_1.z.literal("seed_measurement_catalog")]))',
   );
+  // Current source permits list_creatives rows to carry either legacy
+  // format_id or canonical format_kind + format_option_ref. The published SDK
+  // snapshot still requires format_id, so current-PR storyboard runs need the
+  // generated validator relaxed to the current response arms. The overlaid
+  // JSON Schema remains the authoritative mutual-exclusion check.
+  text = text.replace(
+    '    format_id: FormatReferenceStructuredObjectSchema,\n    status: CreativeStatusSchema,',
+    '    format_id: FormatReferenceStructuredObjectSchema.optional(),\n' +
+      '    format_kind: CanonicalFormatKindSchema.optional(),\n' +
+      '    format_option_ref: FormatOptionReferenceSchema.optional(),\n' +
+      '    status: CreativeStatusSchema,',
+  );
+  // Same-PR sparse selection adds assets to list_creatives.fields.
+  text = text.replaceAll(
+    `${zod}.literal("format_id"), ${zod}.literal("status")`,
+    `${zod}.literal("format_id"), ${zod}.literal("assets"), ${zod}.literal("status")`,
+  );
+  // AssetContentType gains zip in current source. Patch the generated SDK
+  // snapshot so current-source request and fixture validation accepts HTML5
+  // bundle assets before the matching SDK release is published.
+  text = text.replaceAll(
+    `${zod}.literal("javascript"), ${zod}.literal("vast")`,
+    `${zod}.literal("javascript"), ${zod}.literal("zip"), ${zod}.literal("vast")`,
+  );
   fs.writeFileSync(file, text);
 }
 
 patchFile('node_modules/@adcp/sdk/dist/lib/types/schemas.generated.js');
+patchFile('node_modules/@adcp/sdk/dist/lib/types/schemas.generated.mjs');
 NODE
 
   echo "Building development compliance bundle for SDK cache overlay"

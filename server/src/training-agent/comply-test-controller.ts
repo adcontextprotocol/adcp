@@ -649,12 +649,15 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
       const existing = session.creatives.get(creativeId);
       const now = new Date().toISOString();
       const formatKind = (fx.format_kind as string | undefined) ?? existing?.formatKind;
-      const formatId = (fx.format_id as CreativeState['formatId']) ?? existing?.formatId ?? { agent_url: getAgentUrl(), id: formatKind ?? 'image' };
+      const formatOptionRef = (fx.format_option_ref as Record<string, unknown> | undefined) ?? existing?.formatOptionRef;
+      const formatId = (fx.format_id as CreativeState['formatId'])
+        ?? existing?.formatId
+        ?? { agent_url: getAgentUrl(), id: formatKind ?? 'image' };
       session.creatives.set(creativeId, {
         creativeId,
         formatId,
         formatKind,
-        formatOptionRef: (fx.format_option_ref as Record<string, unknown> | undefined) ?? existing?.formatOptionRef,
+        formatOptionRef,
         name: (fx.name as string | undefined) ?? existing?.name,
         status: (fx.status as string | undefined) ?? existing?.status ?? 'approved',
         syncedAt: existing?.syncedAt ?? now,

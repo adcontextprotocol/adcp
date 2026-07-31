@@ -31,6 +31,10 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 const semver = require('semver');
+const {
+  MCP_PROTOCOL_VERSION,
+  generateMcpSchemaProjection,
+} = require('./mcp-schema-projection.cjs');
 
 const SOURCE_DIR = path.join(__dirname, '../static/schemas/source');
 const DIST_DIR = path.join(__dirname, '../dist/schemas');
@@ -1945,6 +1949,22 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
   return { successCount, errorCount };
 }
 
+function generateMcpProjectionForVersion(versionDir, urlVersion) {
+  const targetDir = path.join(versionDir, 'mcp', MCP_PROTOCOL_VERSION);
+  const stats = generateMcpSchemaProjection({
+    sourceDir: SOURCE_DIR,
+    targetDir,
+    manifestPath: path.join(versionDir, 'manifest.json'),
+    urlVersion,
+  });
+  console.log(
+    `   ✓ MCP ${MCP_PROTOCOL_VERSION} projection: ${stats.toolCount} tools, ${stats.schemaCount} schemas, `
+      + `${(stats.totalBytes / (1024 * 1024)).toFixed(2)} MiB total, `
+      + `${Math.ceil(stats.largestSchemaBytes / 1024)} KiB largest`
+  );
+  return stats;
+}
+
 /**
  * Copy schemas from a source directory to a skill schemas directory
  * Returns the count of files copied
@@ -2094,6 +2114,8 @@ async function main() {
     console.log(`📦 Generating bundled schemas to dist/schemas/${version}/bundled/`);
     const { successCount, errorCount } = await generateBundledSchemas(SOURCE_DIR, bundledDir, version);
     console.log(`   ✓ Bundled ${successCount} schemas${errorCount > 0 ? ` (${errorCount} failed)` : ''}`);
+    console.log(`🔀 Generating MCP ${MCP_PROTOCOL_VERSION} JSON Schema projection`);
+    generateMcpProjectionForVersion(versionDir, version);
 
     // Note: Version aliases (v2, v2.5, v1, latest) are handled by HTTP middleware
     // No symlinks needed - the server rewrites /schemas/v2.5/* to /schemas/2.5.1/*
@@ -2117,6 +2139,7 @@ async function main() {
     // Generate bundled schemas for latest
     const latestBundledDir = path.join(latestDir, 'bundled');
     await generateBundledSchemas(SOURCE_DIR, latestBundledDir, 'latest');
+    generateMcpProjectionForVersion(latestDir, 'latest');
 
     // Generate skill schemas from the release version
     generateSkillSchemas(versionDir, version);
@@ -2140,6 +2163,7 @@ async function main() {
     console.log('Released paths:');
     console.log(`   /schemas/${version}/          - Exact version (pin for production)`);
     console.log(`   /schemas/${version}/bundled/  - Bundled schemas (no $ref)`);
+    console.log(`   /schemas/${version}/mcp/${MCP_PROTOCOL_VERSION}/ - MCP 2020-12 tool schemas`);
     console.log(`   /schemas/latest/           - Development (matches release)`);
     console.log('');
     console.log('Version aliases (handled by HTTP middleware):');
@@ -2182,6 +2206,8 @@ async function main() {
     console.log(`📦 Generating bundled schemas to dist/schemas/latest/bundled/`);
     const { successCount, errorCount } = await generateBundledSchemas(SOURCE_DIR, bundledDir, 'latest');
     console.log(`   ✓ Bundled ${successCount} schemas${errorCount > 0 ? ` (${errorCount} failed)` : ''}`);
+    console.log(`🔀 Generating MCP ${MCP_PROTOCOL_VERSION} JSON Schema projection`);
+    generateMcpProjectionForVersion(latestDir, 'latest');
 
     // Generate skill schemas from latest
     generateSkillSchemas(latestDir, 'latest');
@@ -2197,6 +2223,7 @@ async function main() {
     console.log('');
     console.log('Available paths:');
     console.log(`   /schemas/latest/           - Development schemas (just rebuilt)`);
+    console.log(`   /schemas/latest/mcp/${MCP_PROTOCOL_VERSION}/ - MCP 2020-12 tool schemas`);
     if (latestReleasedVersion) {
       const releasedMajor = getMajorVersion(latestReleasedVersion);
       console.log(`   /schemas/${latestReleasedVersion}/          - Latest release (unchanged)`);

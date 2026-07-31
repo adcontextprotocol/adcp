@@ -125,6 +125,7 @@ The signal definition is not itself a `signal_ref`. In `adagents.json`, the host
 | `tags` | array | Tags for grouping (lowercase, alphanumeric: `^[a-z0-9_-]+$`) |
 | `allowed_values` | array | For categorical signals: valid values |
 | `range` | object | For numeric signals: `{ min, max, unit }` |
+| `demographic_predicate` | object | Authoritative demographic meaning for the signal. AdCP 3.2 supports canonical age bounds with explicit unknown-age membership. Names and taxonomy labels do not substitute for this field; age predicates require `restricted_attributes: ["age"]`. |
 | `restricted_attributes` | array | Restricted attribute categories this signal touches (e.g., `["health_data"]`). Enables structural governance matching. |
 | `policy_categories` | array | Policy categories this signal is sensitive for (e.g., `["children_directed"]`). Enables structural governance matching. |
 | `taxonomy` | object | External taxonomy metadata for discovery, review, and translation. Does not change `value_type` or package targeting grammar. |

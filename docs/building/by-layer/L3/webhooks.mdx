@@ -301,6 +301,8 @@ Webhook envelope shape is determined by **which registration mechanism the buyer
 |---|---|
 | AdCP `push_notification_config` (task argument, MCP/A2A/REST) | [`mcp-webhook-payload.json`](#mcp) |
 | A2A `TaskPushNotificationConfig` ([`CreateTaskPushNotificationConfig`](https://a2a-protocol.org/latest/specification/) RPC, or inline `task_push_notification_config` on `SendMessage`) | A2A native `Task` / `TaskStatusUpdateEvent` per A2A 1.0 §4.3.3 |
+| Account-level `sync_accounts.accounts[].notification_configs[]` | Event-specific AdCP payload schemas such as `creative-status-changed-webhook.json`, `account-status-changed-webhook.json`, or `wholesale-feed-webhook.json` |
+| Agent-level `sync_agent_notification_configs.notification_configs[]` | Event-specific AdCP payload schemas such as `capabilities-changed-webhook.json` |
 
 The two channels are independent. A buyer MAY register both for the same task and receive both webhooks per status change.
 
@@ -588,9 +590,15 @@ Reporting webhooks are separate from task status webhooks. They deliver periodic
 
 See [Task Reference](/docs/media-buy/task-reference) for details on `reporting_webhook`.
 
+## Agent-level webhooks
+
+Agent-level webhooks outlive any account or media buy. They are registered with [`sync_agent_notification_configs`](/docs/protocol/sync_agent_notification_configs), not with account-level `notification_configs[]` or per-task `push_notification_config`.
+
+The initial agent-level event type is `capabilities.changed`. It invalidates cached [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) responses. The webhook payload is deliberately small and does not contain the full capability document; receivers re-read `get_adcp_capabilities` and replace their cached snapshot from the fresh response. Sellers MUST publish the new capability snapshot before firing so the webhook's `capabilities_version` is observable on read. Receivers SHOULD retry the read with normal transient-error backoff if the webhook revision is not yet observable.
+
 ## Persistent channel contract
 
-Task webhooks fire once per logical task and stop when the task settles. **Persistent webhooks** — `reporting_webhook` and `push_notification_config` on a media buy — outlive any single operation and fire repeatedly for the life of the resource. The contract below applies to persistent channels.
+Task webhooks fire once per logical task and stop when the task settles. **Persistent webhooks** — `reporting_webhook`, `push_notification_config` on a media buy, account-level `notification_configs[]`, and agent-level `sync_agent_notification_configs` subscribers — outlive any single operation and fire repeatedly for the life of the resource or agent. The contract below applies to persistent channels.
 
 This section is the transport half of the [Snapshot and log contract](/docs/protocol/snapshot-and-log). For the read-side rules (snapshot is authoritative, replay = re-read), see that page.
 

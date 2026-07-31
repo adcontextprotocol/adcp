@@ -26,6 +26,7 @@
   <link rel="stylesheet" href="/design-system.css">
   <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+  <script src="/perspective-url.js"></script>
   <style>
     body {
       background: var(--color-bg-page);
@@ -1715,9 +1716,10 @@
 
           // For link posts, link directly to external URL
           // For article posts, use onclick to open the article view
-          if (post.content_type === 'link' && post.external_url) {
+          const safeExternalUrl = getSafePerspectiveExternalUrl(post.external_url);
+          if (post.content_type === 'link' && safeExternalUrl) {
             return `
-              <a href="${escapeHtml(post.external_url)}" target="_blank" rel="noopener" id="post-${escapeHtml(post.slug)}" class="post-card">
+              <a href="${escapeHtml(safeExternalUrl)}" target="_blank" rel="noopener noreferrer" id="post-${escapeHtml(post.slug)}" class="post-card">
                 <div class="post-title">
                   ${escapeHtml(post.title)}
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.5; margin-left: 4px;">
@@ -2455,9 +2457,10 @@
         const post = postsData.find(p => p.slug === decodedPostSlug);
         if (!post) return;
 
-        if (post.content_type === 'link' && post.external_url) {
+        const safeExternalUrl = getSafePerspectiveExternalUrl(post.external_url);
+        if (post.content_type === 'link' && safeExternalUrl) {
           // For link posts, redirect to external URL
-          window.open(post.external_url, '_blank', 'noopener,noreferrer');
+          window.open(safeExternalUrl, '_blank', 'noopener,noreferrer');
         } else {
           // For article posts, open the article view
           openArticle(decodedPostSlug);

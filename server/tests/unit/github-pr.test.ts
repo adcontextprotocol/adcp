@@ -87,6 +87,89 @@ describe('upsertFilePr', () => {
   });
 });
 
+describe('upsertFilesPr', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubEnv('GITHUB_TOKEN', 'test-token');
+    vi.stubEnv('GITHUB_REPO', 'acme/spec');
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  const multiFileInput = {
+    branch: 'addie/secretariat-1',
+    files: [
+      { path: 'a.md', content: 'file a\n' },
+      { path: 'nested/b.md', content: 'file b\n' },
+    ],
+    commitMessage: 'chore: two files',
+    prTitle: 'chore: two files',
+    prBody: 'body',
+  };
+
+  it('PUTs each file onto the same branch and opens one PR', async () => {
+    fetchMock
+      .mockResolvedValueOnce(json({ object: { sha: 'base-sha' } })) // GET base ref
+      .mockResolvedValueOnce(json({}, 201)) // POST create branch
+      .mockResolvedValueOnce(json({}, 404)) // GET a.md on branch (absent)
+      .mockResolvedValueOnce(json({ commit: { sha: 'c1' } })) // PUT a.md
+      .mockResolvedValueOnce(json({}, 404)) // GET nested/b.md on branch (absent)
+      .mockResolvedValueOnce(json({ commit: { sha: 'c2' } })) // PUT nested/b.md
+      .mockResolvedValueOnce(json([])) // GET open PRs (none)
+      .mockResolvedValueOnce(json({ html_url: 'https://github.com/acme/spec/pull/11', number: 11 }, 201)); // POST create PR
+
+    const { upsertFilesPr } = await import('../../src/addie/jobs/github-pr.js');
+    const result = await upsertFilesPr(multiFileInput);
+
+    expect(result).toEqual({ prUrl: 'https://github.com/acme/spec/pull/11', prNumber: 11, created: true });
+
+    const putCalls = fetchMock.mock.calls.filter(([url]) => typeof url === 'string' && url.includes('/contents/') && !url.includes('?ref='));
+    expect(putCalls).toHaveLength(2);
+
+    const putABody = JSON.parse(putCalls[0][1].body as string);
+    expect(putCalls[0][0]).toContain('/contents/a.md');
+    expect(putABody.branch).toBe('addie/secretariat-1');
+    expect(Buffer.from(putABody.content, 'base64').toString('utf8')).toBe('file a\n');
+
+    const putBBody = JSON.parse(putCalls[1][1].body as string);
+    expect(putCalls[1][0]).toContain('/contents/nested/b.md');
+    expect(putBBody.branch).toBe('addie/secretariat-1');
+    expect(Buffer.from(putBBody.content, 'base64').toString('utf8')).toBe('file b\n');
+
+    // Exactly one PR create call, not one per file.
+    const prCreateCalls = fetchMock.mock.calls.filter(
+      ([url, init]) => typeof url === 'string' && url.endsWith('/pulls') && init?.method === 'POST'
+    );
+    expect(prCreateCalls).toHaveLength(1);
+  });
+
+  it('stops after the first failing file PUT and does not attempt the PR', async () => {
+    fetchMock
+      .mockResolvedValueOnce(json({ object: { sha: 'base-sha' } })) // GET base ref
+      .mockResolvedValueOnce(json({}, 201)) // POST create branch
+      .mockResolvedValueOnce(json({}, 404)) // GET a.md (absent)
+      .mockResolvedValueOnce(json({ message: 'boom' }, 500)); // PUT a.md fails
+
+    const { upsertFilesPr } = await import('../../src/addie/jobs/github-pr.js');
+    const result = await upsertFilesPr(multiFileInput);
+
+    expect(result).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it('returns null without calling GitHub when the token is missing', async () => {
+    vi.stubEnv('GITHUB_TOKEN', '');
+    const { upsertFilesPr } = await import('../../src/addie/jobs/github-pr.js');
+    const result = await upsertFilesPr(multiFileInput);
+    expect(result).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
 describe('getFileContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();

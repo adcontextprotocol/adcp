@@ -2721,7 +2721,7 @@ async function handleFeedbackAction({ ack, body, client }: any): Promise<void> {
       // Update the message with feedback
       // Use numeric rating: 5 for positive, 1 for negative
       try {
-        await threadService.addMessageFeedback(latestAssistant.message_id, {
+        await threadService.addMessageFeedback(thread.thread_id, latestAssistant.message_id, {
           rating: isPositive ? 5 : 1,
           rating_category: isPositive ? 'helpful' : 'not_helpful',
           rated_by: userId,
@@ -5260,7 +5260,7 @@ async function handleReactionAdded({
       userInput = '[User reacted with ' + reaction + ' emoji as positive feedback]';
       // Record as positive feedback
       try {
-        await threadService.addMessageFeedback(lastAssistantMessage.message_id, {
+        await threadService.addMessageFeedback(thread.thread_id, lastAssistantMessage.message_id, {
           rating: 5,
           rating_category: 'emoji_feedback',
           rating_notes: `User reacted with :${reaction}:`,
@@ -5276,7 +5276,7 @@ async function handleReactionAdded({
       userInput = '[User reacted with ' + reaction + ' emoji as negative feedback]';
       // Record as negative feedback
       try {
-        await threadService.addMessageFeedback(lastAssistantMessage.message_id, {
+        await threadService.addMessageFeedback(thread.thread_id, lastAssistantMessage.message_id, {
           rating: 1,
           rating_category: 'emoji_feedback',
           rating_notes: `User reacted with :${reaction}:`,

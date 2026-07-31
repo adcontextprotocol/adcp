@@ -108,6 +108,7 @@
           "format_id",
           "format_kind",
           "format_option_ref",
+          "assets",
           "status",
           "created_date",
           "updated_date",

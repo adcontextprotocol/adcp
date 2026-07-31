@@ -63,6 +63,7 @@ export const MUTATING_TOOLS: ReadonlySet<string> = new Set([
   'si_initiate_session',
   'si_send_message',
   'sync_accounts',
+  'sync_agent_notification_configs',
   'sync_audiences',
   'sync_catalogs',
   'sync_creatives',

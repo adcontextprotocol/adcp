@@ -363,6 +363,8 @@ Authorization: Bearer <jwt>
 
 A valid user JWT proves identity, not entitlement. Endpoints gated on organization membership or admin role (most write endpoints) still return `403` if the authenticated user lacks the required standing.
 
+Community-mirror submissions are the exception to direct role rejection: `PUT /api/registry/mirrors/{platform}` accepts any authenticated organization. A registry moderator or AgenticAdvertising.org administrator publishes immediately; other callers create a pending proposal and receive `202 Accepted` plus `Location`, `status_url`, and `proposal_digest`. Review decisions must echo that digest, and approval fails if the public mirror changed since submission. Contributor proposals are limited to 1 MiB and 2,000 catalog items. This keeps community contribution open without allowing an organization credential to publish a global fallback catalog on another platform's behalf without bounded, revision-safe review.
+
 ### Authenticated endpoints
 
 These endpoints require a valid API key.

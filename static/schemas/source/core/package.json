@@ -77,6 +77,10 @@
     "targeting_overlay": {
       "$ref": "/schemas/core/targeting.json"
     },
+    "demographic_targeting_resolution": {
+      "$ref": "/schemas/core/demographic-targeting-resolution.json",
+      "description": "Requested-versus-applied demographic targeting and the seller execution mechanism. Sellers MUST include this whenever demographic targeting was requested or applied."
+    },
     "measurement_terms": {
       "$ref": "/schemas/core/measurement-terms.json",
       "description": "Agreed billing measurement and makegood terms for this package. Reflects what was negotiated — may differ from the buyer's proposal or the product's defaults. When present, these terms are binding for the package's duration."

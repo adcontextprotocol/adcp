@@ -480,6 +480,7 @@ export interface ManifestAsset {
   url?: string;
   width?: number;
   height?: number;
+  [key: string]: unknown;
 }
 
 /** Creative manifest with format and named asset slots. */
@@ -488,17 +489,18 @@ export interface CreativeManifest {
   format_id?: FormatID;
   format_kind?: string;
   format_option_ref?: Record<string, unknown>;
-  assets: Record<string, ManifestAsset>;
+  assets: Record<string, ManifestAsset | ManifestAsset[]>;
 }
 
 export interface CreativeState {
   creativeId: string;
   accountId?: string;
   accountRef?: AccountRef;
+  /** Internal legacy-shaped lookup key. Canonical rows emit formatKind instead. */
   formatId: FormatID;
   formatKind?: string;
   formatOptionRef?: Record<string, unknown>;
-  assets?: Record<string, ManifestAsset>;
+  assets?: Record<string, ManifestAsset | ManifestAsset[]>;
   name?: string;
   status: string;
   syncedAt: string;

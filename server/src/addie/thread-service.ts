@@ -602,6 +602,7 @@ export class ThreadService {
    * Add feedback to a message
    */
   async addMessageFeedback(
+    threadId: string,
     messageId: string,
     feedback: MessageFeedback
   ): Promise<boolean> {
@@ -616,7 +617,8 @@ export class ThreadService {
          rated_by = $7,
          rating_source = $8,
          rated_at = NOW()
-       WHERE message_id = $1`,
+       WHERE message_id = $1
+         AND thread_id = $9`,
       [
         messageId,
         feedback.rating,
@@ -626,6 +628,7 @@ export class ThreadService {
         feedback.improvement_suggestion || null,
         feedback.rated_by,
         feedback.rating_source,
+        threadId,
       ]
     );
     return result.rowCount !== null && result.rowCount > 0;

@@ -97,8 +97,7 @@
       "then": {
         "anyOf": [
           {
-            "$ref": "/schemas/core/postal-country-system.json",
-            "required": ["country", "system"]
+            "$ref": "/schemas/core/postal-country-system.json"
           },
           {
             "properties": {
