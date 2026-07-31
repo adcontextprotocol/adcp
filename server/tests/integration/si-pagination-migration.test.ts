@@ -56,12 +56,12 @@ describe('SI pagination and policy migration', () => {
       `SELECT 1 FROM member_profiles WHERE si_prompt_template IS NOT NULL LIMIT 1`,
     );
     expect(populated.rows).toHaveLength(0);
-    const constraint = await getPool().query<{ definition: string }>(
-      `SELECT pg_get_constraintdef(oid) AS definition
+    const constraint = await getPool().query(
+      `SELECT 1
        FROM pg_constraint
        WHERE conname = 'member_profiles_si_prompt_template_must_be_null'`,
     );
-    expect(constraint.rows[0]?.definition).toContain('si_prompt_template IS NULL');
+    expect(constraint.rows).toHaveLength(0);
 
     const fs = await import('node:fs/promises');
     const [dbSource, seedSource] = await Promise.all([

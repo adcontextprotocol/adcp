@@ -38,7 +38,6 @@ vi.mock('../../src/addie/error-notifier.js', () => ({
 }));
 
 import { WEBHOOK_RAW_BODY_LIMIT_BYTES } from '../../src/middleware/bounded-raw-json.js';
-import { getWorkos } from '../../src/auth/workos-client.js';
 import {
   createWebhooksRouter,
   parseCertificationReviewEmailMetadata,
@@ -49,6 +48,12 @@ function zoomSignature(rawBody: string, timestamp: string): string {
   return `v0=${createHmac('sha256', zoomSecret)
     .update(`v0:${timestamp}:${rawBody}`)
     .digest('hex')}`;
+}
+
+function workosSignature(rawBody: string, timestamp: string): string {
+  return createHmac('sha256', workosSecret)
+    .update(`${timestamp}.${rawBody}`)
+    .digest('hex');
 }
 
 function createApp() {
@@ -165,19 +170,18 @@ describe('webhook route security boundaries', () => {
     });
   });
 
-  it('verifies WorkOS signatures against the exact noncanonical raw JSON bytes', async () => {
+  it('verifies WorkOS signatures independently over exact noncanonical raw JSON bytes', async () => {
     const rawBody = `{
   "id": "event_security",
   "event": "security.test.unhandled",
   "data": { "value": 1 },
   "created_at": "2026-07-29T00:00:00.000Z"
-}`;
+    }`;
     const timestamp = Date.now().toString();
-    const signature = await getWorkos().webhooks.computeSignature(
-      timestamp,
-      rawBody,
-      workosSecret,
-    );
+    // WorkOS signs `${timestamp}.${rawBody}`. Compute the provider signature
+    // independently so this test catches SDK payload-shape regressions instead
+    // of signing and verifying with the same SDK helper.
+    const signature = workosSignature(rawBody, timestamp);
 
     const response = await request(app)
       .post('/api/webhooks/workos')
