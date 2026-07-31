@@ -29,7 +29,7 @@
     },
     {
       "$comment": "Every non-refinement build selects exactly one singular or plural output route. Refinement inherits the original leaf's target capability and therefore forbids a new selector.",
-      "oneOf": [
+      "anyOf": [
         {
           "title": "Refinement with inherited target capability",
           "required": ["refine_from_build_variant_id"],
@@ -44,14 +44,24 @@
           }
         },
         {
-          "title": "Explicit build target",
+          "title": "Canonical single-output build target",
           "not": { "required": ["refine_from_build_variant_id"] },
-          "oneOf": [
-            { "required": ["target_capability_id"] },
-            { "required": ["target_capability_ids"] },
-            { "required": ["target_format_id"] },
-            { "required": ["target_format_ids"] }
-          ]
+          "required": ["target_capability_id"]
+        },
+        {
+          "title": "Canonical multi-output build target",
+          "not": { "required": ["refine_from_build_variant_id"] },
+          "required": ["target_capability_ids"]
+        },
+        {
+          "title": "Deprecated single-output named-format target",
+          "not": { "required": ["refine_from_build_variant_id"] },
+          "required": ["target_format_id"]
+        },
+        {
+          "title": "Deprecated multi-output named-format target",
+          "not": { "required": ["refine_from_build_variant_id"] },
+          "required": ["target_format_ids"]
         }
       ]
     },
