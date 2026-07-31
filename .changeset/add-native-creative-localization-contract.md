@@ -2,4 +2,4 @@
 "adcontextprotocol": minor
 ---
 
-Add a provider-neutral native creative-localization contract with typed source and target variants, capability discovery, exact request-to-sync-to-list identity, one provider creative ID, strict status/launch pairs, whole-creative archive atomicity, safe localized-source upserts, sync-only writes, and fail-closed readback.
+Add a provider-neutral materialized creative-localization contract with typed source and target variants, explicit default and unmatched-locale behavior, RFC 4647 Lookup, creative-wide review, transactional replacement, exact request-to-sync-to-list identity, per-item fail-closed readback, and localized delivery attribution. Translation and generation remain separate creative-production operations.

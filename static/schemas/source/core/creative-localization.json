@@ -2,17 +2,26 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/creative-localization.json",
   "title": "Creative Localization",
-  "description": "Provider-neutral localization request for one creative. The creative's top-level `assets` are the source variant. Every target variant is explicit: omitting localization never asks a provider to translate. When this object is supplied on an existing creative it replaces that creative's complete locale set; omit the field to leave localization unchanged, or send `localization: null` to remove localization. Locale and locale_variant_id values MUST be unique within the creative, and no target locale may equal the source locale.",
+  "description": "Materialized localization for one creative. The creative's top-level `assets` are the source variant and every target carries buyer-supplied asset overrides; this contract never asks the receiving seller to generate or translate creative. `default_locale_variant_id` explicitly selects the fallback variant and may identify either the source or a target. Locale and locale_variant_id values MUST be unique within the creative, and no target locale may equal the source locale. A replacement is atomic: failure leaves the prior source assets and complete localization topology unchanged.",
   "x-adcp-validation": {
     "verifier_constraints": {
       "unique_target_properties": ["locale_variant_id", "locale"],
       "target_properties_disjoint_from_source": ["locale_variant_id", "locale"],
+      "default_locale_variant_id": "must_reference_exactly_one_source_or_target_variant",
+      "locale_matching": "rfc4647_lookup",
+      "locale_match_tie_break": "source_then_request_target_order",
+      "replacement_atomicity": "all_or_prior_state_unchanged",
       "request_sync_list_round_trip": {
         "source_match": { "role": "source" },
         "source_equal_properties": ["locale_variant_id", "locale"],
         "target_match_key": "locale_variant_id",
         "target_set": "exact",
-        "target_equal_properties": ["locale", "translation_mode"]
+        "target_order": "preserve_request",
+        "target_equal_properties": ["locale"],
+        "localization_equal_properties": [
+          "default_locale_variant_id",
+          "unmatched_locale_action"
+        ]
       }
     },
     "spec": "docs/creative/task-reference/sync_creatives.mdx#native-localization"
@@ -21,7 +30,7 @@
   "properties": {
     "source": {
       "type": "object",
-      "description": "Identity and locale of the source/default variant. Its asset payload is the parent creative's top-level `assets` object.",
+      "description": "Identity and locale of the source variant. Its asset payload is the parent creative's top-level `assets` object. Source identifies production provenance; it is not implicitly the serving default.",
       "properties": {
         "locale_variant_id": {
           "type": "string",
@@ -39,84 +48,65 @@
     },
     "target_variants": {
       "type": "array",
-      "description": "Complete desired target-locale set for this creative. Buyer-supplied variants carry only the locale-specific asset overrides; omitted slots inherit the source assets. Provider-generated variants carry no assets and explicitly ask the provider to translate from the source. After inheritance or generation, every resolved variant MUST satisfy the selected creative format.",
+      "description": "Complete desired target-locale set for this creative. Every target contains materialized locale-specific asset overrides. Missing slots inherit source assets; after inheritance every resolved variant MUST satisfy the selected creative format.",
       "items": {
-        "discriminator": {
-          "propertyName": "translation_mode"
-        },
-        "oneOf": [
-          {
-            "title": "BuyerSuppliedLocalizationTarget",
-            "type": "object",
-            "properties": {
-              "locale_variant_id": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 255,
-                "description": "Buyer-assigned stable identity for this target locale variant. The same value round-trips through sync_creatives and list_creatives.",
-                "x-entity": "creative_locale_variant"
-              },
-              "locale": {
-                "$ref": "/schemas/core/locale-tag.json"
-              },
-              "translation_mode": {
-                "type": "string",
-                "const": "buyer_supplied",
-                "description": "The buyer supplied explicit locale-specific asset overrides."
-              },
-              "assets": {
-                "type": "object",
-                "description": "Locale-specific asset overrides keyed by the same slot IDs as the source creative. Missing slots inherit source assets.",
-                "minProperties": 1,
-                "patternProperties": {
-                  "^[a-z0-9_]+$": {
-                    "anyOf": [
-                      { "$ref": "/schemas/core/assets/asset-union.json" },
-                      {
-                        "type": "array",
-                        "items": { "$ref": "/schemas/core/assets/asset-union.json" },
-                        "minItems": 1
-                      }
-                    ]
-                  }
-                },
-                "additionalProperties": true
-              }
-            },
-            "required": ["locale_variant_id", "locale", "translation_mode", "assets"],
-            "additionalProperties": true
+        "type": "object",
+        "properties": {
+          "locale_variant_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "description": "Buyer-assigned stable identity for this target locale variant. The same value round-trips through sync_creatives, list_creatives, and localized delivery reporting.",
+            "x-entity": "creative_locale_variant"
           },
-          {
-            "title": "ProviderGeneratedLocalizationTarget",
+          "locale": {
+            "$ref": "/schemas/core/locale-tag.json"
+          },
+          "assets": {
             "type": "object",
-            "properties": {
-              "locale_variant_id": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 255,
-                "description": "Buyer-assigned stable identity for this target locale variant. The same value round-trips through sync_creatives and list_creatives.",
-                "x-entity": "creative_locale_variant"
-              },
-              "locale": {
-                "$ref": "/schemas/core/locale-tag.json"
-              },
-              "translation_mode": {
-                "type": "string",
-                "const": "provider_generated",
-                "description": "The buyer explicitly requests provider-native translation from the source variant."
+            "description": "Materialized locale-specific asset overrides keyed by the same slot IDs as the source creative. Missing slots inherit source assets.",
+            "minProperties": 1,
+            "patternProperties": {
+              "^[a-z0-9_]+$": {
+                "anyOf": [
+                  { "$ref": "/schemas/core/assets/asset-union.json" },
+                  {
+                    "type": "array",
+                    "items": { "$ref": "/schemas/core/assets/asset-union.json" },
+                    "minItems": 1
+                  }
+                ]
               }
             },
-            "required": ["locale_variant_id", "locale", "translation_mode"],
-            "not": { "required": ["assets"] },
-            "additionalProperties": true
+            "additionalProperties": false
           }
-        ]
+        },
+        "required": ["locale_variant_id", "locale", "assets"],
+        "not": { "required": ["translation_mode"] },
+        "additionalProperties": true
       },
       "minItems": 1,
       "maxItems": 50,
       "uniqueItems": true
+    },
+    "default_locale_variant_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "description": "The source or target locale_variant_id used when RFC 4647 Lookup finds no match and unmatched_locale_action is serve_default.",
+      "x-entity": "creative_locale_variant"
+    },
+    "unmatched_locale_action": {
+      "type": "string",
+      "enum": ["serve_default", "do_not_serve"],
+      "description": "Required seller behavior when RFC 4647 Lookup finds no locale match. serve_default serves default_locale_variant_id; do_not_serve makes this creative ineligible for that opportunity."
     }
   },
-  "required": ["source", "target_variants"],
+  "required": [
+    "source",
+    "target_variants",
+    "default_locale_variant_id",
+    "unmatched_locale_action"
+  ],
   "additionalProperties": true
 }

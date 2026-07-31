@@ -1,0 +1,261 @@
+id: creative/native_localization
+version: "1.0.0"
+title: "Creative materialized localization"
+category: creative
+summary: "Verifies capability discovery, materialized localized sync, explicit default/unmatched behavior, and exact list readback."
+track: creative
+introduced_in: "3.2"
+required_tools:
+  - get_adcp_capabilities
+  - sync_creatives
+  - list_creatives
+
+narrative: |
+  Native localization is a trafficking contract for already-materialized
+  locale assets. It does not ask the seller to translate or generate creative.
+  The buyer discovers structural support, syncs one source and one target with
+  an explicit default and unmatched action, then verifies exact creative-wide
+  readback. Delivery attribution is schema-required on localized executions and
+  is exercised by delivery-capable creative specialisms.
+
+agent:
+  interaction_model: stateful_push
+  capabilities:
+    - has_creative_library
+    - localization
+  examples:
+    - "Publisher creative intake platforms"
+    - "Retail media creative libraries"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The caller has source and translated image assets prepared before sync.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: capability_discovery
+    title: "Discover materialized localization"
+    steps:
+      - id: get_capabilities
+        title: "Read localization capability"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return creative.has_creative_library true and a localization block
+          whose locale_matching is rfc4647_lookup. Do not advertise generation
+          or an exhaustive locale list through this block.
+        sample_request:
+          context:
+            correlation_id: "creative_native_localization--capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json"
+          - check: field_value
+            path: "creative.has_creative_library"
+            value: true
+            description: "Localization is backed by a creative library"
+          - check: field_value
+            path: "creative.localization.locale_matching"
+            value: "rfc4647_lookup"
+            description: "The deterministic matching algorithm is advertised"
+
+  - id: sync_localized_creative
+    title: "Sync materialized variants"
+    steps:
+      - id: sync_localized_image
+        title: "Sync source and Spanish target"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives#native-localization"
+        comply_scenario: creative_flow
+        stateful: true
+        expected: |
+          Atomically accept the complete creative. The response preserves the
+          buyer locale IDs, default ID, unmatched action, resolved assets, and
+          one creative-wide status. No locale variant has a separate status.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          creatives:
+            - creative_id: "trail_sale_localized"
+              name: "Trail sale localized"
+              format_kind: "image"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://cdn.pinnacle-agency.example/trail-sale-en.png"
+                  width: 1080
+                  height: 1080
+                headline:
+                  asset_type: "text"
+                  content: "Find your next trail"
+                  language: "en-US"
+              localization:
+                source:
+                  locale_variant_id: "loc_en_us"
+                  locale: "en-US"
+                target_variants:
+                  - locale_variant_id: "loc_es_es"
+                    locale: "es-ES"
+                    assets:
+                      headline:
+                        asset_type: "text"
+                        content: "Encuentra tu próximo sendero"
+                        language: "es-ES"
+                default_locale_variant_id: "loc_en_us"
+                unmatched_locale_action: "do_not_serve"
+          idempotency_key: "$generate:uuid_v4#creative_native_localization_sync"
+          context:
+            correlation_id: "creative_native_localization--sync"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json"
+          - check: field_value
+            path: "creatives[0].creative_id"
+            value: "trail_sale_localized"
+            description: "Response identifies the requested creative"
+          - check: field_present
+            path: "creatives[0].status"
+            description: "One creative-wide lifecycle status is returned"
+          - check: field_value
+            path: "creatives[0].localization.default_locale_variant_id"
+            value: "loc_en_us"
+            description: "Explicit default round-trips"
+          - check: field_value
+            path: "creatives[0].localization.unmatched_locale_action"
+            value: "do_not_serve"
+            description: "Unmatched behavior round-trips"
+
+  - id: exact_readback
+    title: "Read the authoritative locale topology"
+    steps:
+      - id: reject_invalid_replacement
+        title: "Reject a dangling default without mutation"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives#native-localization"
+        comply_scenario: creative_flow
+        stateful: true
+        expected: |
+          Return a per-item failed action because default_locale_variant_id does
+          not identify the source or target. The prior source assets and Spanish
+          target remain unchanged; no partially-created French provider variant
+          becomes visible.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          creatives:
+            - creative_id: "trail_sale_localized"
+              name: "Trail sale localized"
+              format_kind: "image"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://cdn.pinnacle-agency.example/trail-sale-replacement.png"
+                  width: 1080
+                  height: 1080
+                headline:
+                  asset_type: "text"
+                  content: "This replacement must roll back"
+                  language: "en-US"
+              localization:
+                source:
+                  locale_variant_id: "loc_en_us"
+                  locale: "en-US"
+                target_variants:
+                  - locale_variant_id: "loc_fr_fr"
+                    locale: "fr-FR"
+                    assets:
+                      headline:
+                        asset_type: "text"
+                        content: "Ce remplacement doit être annulé"
+                        language: "fr-FR"
+                default_locale_variant_id: "loc_missing"
+                unmatched_locale_action: "serve_default"
+          idempotency_key: "$generate:uuid_v4#creative_native_localization_invalid_replace"
+          context:
+            correlation_id: "creative_native_localization--invalid-replace"
+        validations:
+          - check: response_schema
+            description: "The per-item failure response remains schema-valid"
+          - check: field_value
+            path: "creatives[0].action"
+            value: "failed"
+            description: "Invalid default reference fails this creative"
+          - check: field_value
+            path: "creatives[0].errors[0].code"
+            value: "VALIDATION_ERROR"
+            description: "Failure is machine-readable and buyer-correctable"
+          - check: field_absent
+            path: "creatives[0].localization"
+            description: "Failed replacement does not claim new localization state"
+
+      - id: list_localized_image
+        title: "List the localized creative"
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives#localized-creative-readback"
+        comply_scenario: creative_flow
+        stateful: true
+        expected: |
+          Return the same complete topology and source assets. If exact
+          localization evidence cannot be constructed, return
+          localization_unavailable on this item instead of partial localization.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          creative_ids:
+            - "trail_sale_localized"
+          fields:
+            - "localization"
+          context:
+            correlation_id: "creative_native_localization--list"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json"
+          - check: field_value
+            path: "creatives[0].creative_id"
+            value: "trail_sale_localized"
+            description: "The synced creative is returned"
+          - check: field_value
+            path: "creatives[0].localization.locale_matching"
+            value: "rfc4647_lookup"
+            description: "Readback declares deterministic matching"
+          - check: field_value
+            path: "creatives[0].localization.variants[0].locale_variant_id"
+            value: "loc_en_us"
+            description: "Source identity is preserved"
+          - check: field_value
+            path: "creatives[0].localization.variants[1].locale_variant_id"
+            value: "loc_es_es"
+            description: "Target identity is preserved"
+          - check: field_absent
+            path: "creatives[0].localization.variants[2]"
+            description: "Failed French replacement did not append an orphan target"
+          - check: field_value
+            path: "creatives[0].assets.headline.content"
+            value: "Find your next trail"
+            description: "Failed replacement left prior source assets unchanged"
+          - check: field_absent
+            path: "creatives[0].localization_unavailable"
+            description: "Complete readback does not also report unavailable state"

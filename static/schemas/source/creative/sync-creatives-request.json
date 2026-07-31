@@ -27,7 +27,7 @@
             "type": "object",
             "properties": {
               "localization": {
-                "description": "Sync-only native-localization mutation. The top-level assets are the source/default variant. An object replaces the complete locale set, omission preserves an existing locale topology only when the top-level source assets are unchanged, and null removes localization. Receivers MUST advertise support and accepted locales through get_adcp_capabilities creative.localization before accepting this field.",
+                "description": "Sync-only materialized-localization mutation. The top-level assets are the source variant; default_locale_variant_id independently selects the serving fallback. An object transactionally replaces the source assets and complete locale set, omission preserves existing localization only when the top-level source assets are unchanged, and null removes localization. This field never requests translation or generation. Receivers MUST advertise get_adcp_capabilities creative.localization before accepting it.",
                 "anyOf": [
                   { "$ref": "/schemas/core/creative-localization.json" },
                   { "type": "null" }
@@ -41,16 +41,19 @@
           "verifier_constraints": {
             "localization_capability_gate": {
               "required_capability": "creative.localization",
-              "source_locale_set": "creative.localization.supported_locales",
-              "target_locale_set": "creative.localization.supported_locales",
-              "translation_mode_set": "creative.localization.translation_modes",
               "target_count_ceiling": "creative.localization.max_target_variants_or_50",
+              "locale_format_account_support": "validate_request_before_mutation",
               "on_violation": "reject_before_mutation"
             },
             "existing_localized_source_upsert": {
               "localization_omitted": "top_level_assets_must_equal_prior_source_assets",
               "source_assets_changed": "require_non_null_localization_or_null_removal",
               "on_violation": "reject_before_mutation"
+            },
+            "localization_replacement": {
+              "scope": "top_level_assets_and_complete_localization",
+              "on_failure": "prior_state_unchanged",
+              "orphan_provider_variants": "must_not_be_visible"
             }
           },
           "spec": "docs/creative/task-reference/sync_creatives.mdx#native-localization"

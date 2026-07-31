@@ -99,12 +99,22 @@ Each variant represents a specific execution: a fixed creative (Tier 1), an asse
 | Field | Description |
 |-------|-------------|
 | `variant_id` | Platform-assigned variant identifier |
+| `locale_variant_id` | Buyer-assigned localized variant that supplied the served assets. Required for delivered variants of a localized creative, including default fallback; omitted for unlocalized creatives. |
 | `manifest` | (Optional) The rendered creative manifest — the actual output that was served, not the input assets. Contains format_id and resolved assets. Not all platforms can provide manifests for every variant. |
 | `generation_context` | (Optional, Tier 3) Input signals that triggered generation — e.g., page topic, conversation theme, query category. Platforms provide summarized/anonymized signals, not raw user input. When content context is managed through AdCP content standards, includes an `artifact` reference linking to the specific content artifact. Supports `ext` for vendor-specific context structures. |
 | `ext` | (Optional) Platform-specific data. Social platforms use this for engagement metrics (upvotes, comments, shares) that vary by platform. |
 | Standard metrics | All [Delivery metrics fields](#delivery-metrics-fields) — same shape as `creative.totals` |
 
 `creative_id` and `variant_id` are separate namespaces. The canonical build-to-delivery join is `build_creative.variants[].build_variant_id` → promoted `creative_id` → delivery `creative_id`. `variant_id` remains the platform's served execution variant id.
+
+### Localized delivery attribution
+
+For a localized creative, every returned execution MUST include
+`locale_variant_id` and that value MUST exist in the creative's authoritative
+`list_creatives.localization.variants[]` set. This identifies the assets that
+actually served after RFC 4647 Lookup and is required when the seller used the
+default fallback. `variant_id` remains the provider execution identity;
+`locale_variant_id` is the buyer's stable locale identity.
 
 Derived metrics like `ctr`, `completion_rate`, `roas`, and `cost_per_click` are platform-calculated and may not equal naive division of their component fields due to rounding, attribution windows, or filtered impressions.
 

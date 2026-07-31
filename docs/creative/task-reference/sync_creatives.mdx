@@ -171,13 +171,14 @@ Provide either the legacy `format_id` or the canonical `format_kind` path, never
 ### Native localization
 
 Discover support before writing. The agent's
-`get_adcp_capabilities.creative.localization` block names the exact BCP 47
-locales and translation modes it currently accepts. A seller MUST reject a
-locale outside that list, a duplicate target locale/ID, a target locale/ID that
-reuses the source value, a missing buyer translation, or a lossy provider
-mapping before provider or library mutation. JSON Schema `uniqueItems` compares
-whole objects and is not sufficient for those property-level rules; verifiers
-consume the schema's `x-adcp-validation` constraints.
+`get_adcp_capabilities.creative.localization` block advertises structural
+support, RFC 4647 Lookup, and an optional target ceiling. Locale, format, and
+account support is validated against each request. A seller MUST reject an
+unsupported locale/format pair, duplicate target locale/ID, target locale/ID
+that reuses the source value, missing materialized assets, or invalid default
+reference before provider or library mutation. JSON Schema `uniqueItems`
+compares whole objects and is not sufficient for those property-level rules;
+conformance verifiers consume the schema's `x-adcp-validation` constraints.
 
 This is the only localization mutation surface. Inline package creatives in
 `create_media_buy` and `update_media_buy` reject `localization`; sync the
@@ -216,7 +217,6 @@ localized library creative here, then assign it by `creative_id`.
           {
             "locale_variant_id": "loc_es_es",
             "locale": "es-ES",
-            "translation_mode": "buyer_supplied",
             "assets": {
               "image": {
                 "asset_type": "image",
@@ -231,26 +231,36 @@ localized library creative here, then assign it by `creative_id`.
               }
             }
           }
-        ]
+        ],
+        "default_locale_variant_id": "loc_en_us",
+        "unmatched_locale_action": "do_not_serve"
       }
     }
   ]
 }
 ```
 
-The source assets are the default. A buyer-supplied target contains only its
-locale-specific overrides; missing slots inherit source. A
-`provider_generated` target contains no `assets` and is the explicit request
-for native provider translation. Source assets alone never request
-translation.
+Source identifies production provenance, not the serving default. Every target
+contains materialized locale-specific overrides; missing slots inherit source.
+`default_locale_variant_id` may select source or target. This task never asks
+the seller to translate: use buyer tooling, `build_creative`, or a separate
+translation/transformation agent first, then sync the resulting assets.
+
+At delivery, the seller applies RFC 4647 Lookup to ordered locale preferences.
+When a truncated range matches multiple available tags, source then request
+target order is the deterministic tie-break; readback preserves target order.
+If lookup finds no available locale, it follows `unmatched_locale_action`:
+serve `default_locale_variant_id` or make the creative ineligible. It never
+silently assumes the source is the default.
 
 Accepted localized results include a top-level `platform_id` as the single
 provider creative identity and `localization` as a complete source-plus-target
-variant list. The response preserves the request's exact source ID/locale and
-exact target ID/locale/translation-mode set. Each variant returns complete resolved assets,
-`provider_variant_id`, review `status`, and `launch_status`. If the provider
-cannot read back any one of those values exactly, the item fails rather than
-silently falling back to the source language.
+variant list. The response preserves the request's exact source ID/locale,
+target ID/locale set, default ID, and unmatched action. Each variant returns
+complete resolved assets and `provider_variant_id`. The enclosing creative's
+single `status` governs the complete set. If the provider cannot read back any
+one of those values exactly, the item fails rather than silently falling back
+to the source language.
 
 Every accepted localized result (`created`, `updated`, or `unchanged`) MUST
 carry top-level aggregate `status`, top-level `platform_id`, and complete
@@ -258,20 +268,14 @@ carry top-level aggregate `status`, top-level `platform_id`, and complete
 `list_creatives` read preserves the same top-level `platform_id` and exact
 source/target identities.
 
-Variant lifecycle pairs are strict: `processing`/`pending_review` require
-`launch_status: pending`, `approved` requires `ready`, and
-`suspended`/`rejected`/`archived` require `blocked` plus at least one
-machine-readable launch blocker.
-
 `delete_missing` remains creative-scoped. If it archives a creative, every
-locale variant is archived atomically; partial archive state is invalid, and
-it never treats omitted target locales as missing creatives. A non-null
-`localization` object on an upsert replaces the locale set and null removes it.
-Omission preserves localization only when top-level source assets exactly equal
-the prior localized source assets. A source asset change with localization
-omitted is rejected before mutation; send the full replacement topology or
-null. The normal active-delivery update protection applies to all three
-operations.
+locale variant follows the whole creative lifecycle, and omitted target locales
+are never treated as missing creatives. A non-null `localization` object
+transactionally replaces top-level source assets and the complete locale set;
+failure leaves the prior state unchanged and must not expose provider orphans.
+Null removes localization. Omission preserves localization only when top-level
+source assets exactly equal the prior source assets. The normal active-delivery
+update protection applies to all three operations.
 
 ### Promoting a build_creative variant
 
@@ -375,7 +379,7 @@ The final per-creative `creatives` array lands on the task completion artifact, 
 - `platform_id` - Platform's internal ID (when `action` is not `failed`)
 - `action` - Lifecycle operation performed by this sync: `created`, `updated`, `unchanged`, `failed`, `deleted`
 - `status` - **Advisory** review-lifecycle state ([`CreativeStatus`](https://adcontextprotocol.org/schemas/v3/enums/creative-status.json)): `processing`, `pending_review`, `approved`, `suspended`, `rejected`, `archived`. A UI hint and polling-scheduling signal — **not** a spend-authorization gate. Orthogonal to `action` — `action` describes what the sync did, `status` describes where the creative is in the review lifecycle. Values come from `CreativeStatus` only, never from `CreativeAction` (never put `created`/`updated`/`failed` in `status`). Sellers with async review return `processing` or `pending_review`; sellers with synchronous review MAY return a terminal value (`approved`/`rejected`) or `suspended` when a recoverable dependency/authorization gate prevents serving. **Buyers MUST NOT gate downstream spend or package activation on `status: approved` from this response** — reconcile via `list_creatives` or a signed review webhook before committing spend. Authoritative state is always via `list_creatives`. **MUST be omitted** when `action` is `failed` or `deleted` — failed items have no meaningful review state (see `errors`); deleted items are gone from the library. The schema enforces the omission rule via a conditional constraint.
-- `localization` - Exact provider-backed source/target locale state. Required with top-level `status` and `platform_id` on every accepted localized item, omitted on failed/deleted/unlocalized items. The creative-level status aggregates locale states in this precedence: `rejected`, `suspended`, `pending_review`, `processing`, `approved`; `archived` is valid only when every variant is archived.
+- `localization` - Exact provider-backed materialized source/target locale state. Required with top-level `status` and `platform_id` on every accepted localized item, omitted on failed/deleted/unlocalized items. The top-level status is the single creative-wide review state.
 - `errors` - Array of error messages (only when `action: "failed"`)
 - `warnings` - Array of non-fatal warnings (optional)
 

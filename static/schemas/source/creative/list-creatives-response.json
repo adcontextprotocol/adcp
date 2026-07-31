@@ -129,29 +129,42 @@
           },
           "localization": {
             "$ref": "/schemas/core/creative-localization-readback.json",
-            "description": "Authoritative exact provider-backed locale-variant state. Present for localized creatives. A seller MUST fail the creative read rather than return partial or lossy localization evidence.",
+            "description": "Authoritative exact provider-backed materialized locale-variant state. Present for localized creatives when complete. The enclosing creative status is the single review lifecycle for all variants.",
             "x-adcp-validation": {
               "verifier_constraints": {
-                "aggregate_status_field": "status",
-                "aggregate_variant_status_path": "localization.variants[].status",
-                "aggregate_status_precedence": [
-                  "rejected",
-                  "suspended",
-                  "pending_review",
-                  "processing",
-                  "approved"
-                ],
-                "archive_atomicity": "all_variants_or_none",
                 "platform_id_source": "enclosing_creative.platform_id",
+                "lifecycle_source": "enclosing_creative.status",
+                "source_assets": "must_equal_enclosing_creative.assets",
                 "sync_list_round_trip": {
                   "source_equal_properties": ["locale_variant_id", "locale"],
                   "target_match_key": "locale_variant_id",
                   "target_set": "exact",
-                  "target_equal_properties": ["locale", "translation_mode"]
+                  "target_equal_properties": ["locale"],
+                  "localization_equal_properties": [
+                    "default_locale_variant_id",
+                    "unmatched_locale_action"
+                  ]
                 }
               },
               "spec": "docs/creative/task-reference/list_creatives.mdx#localized-creative-readback"
             }
+          },
+          "localization_unavailable": {
+            "type": "object",
+            "description": "Per-creative fail-closed state returned instead of localization when the seller knows the creative is localized but cannot construct complete exact readback. The creative remains in this page and counts toward query_summary.returned and pagination; buyers may continue using the base creative fields but MUST NOT infer locale eligibility.",
+            "properties": {
+              "errors": {
+                "type": "array",
+                "items": { "$ref": "/schemas/core/error.json" },
+                "minItems": 1
+              },
+              "retryable": {
+                "type": "boolean",
+                "description": "Whether a later list_creatives call may recover without buyer mutation."
+              }
+            },
+            "required": ["errors", "retryable"],
+            "additionalProperties": true
           },
           "tags": {
             "type": "array",
@@ -340,7 +353,17 @@
               "required": ["localization"]
             },
             "then": {
-              "required": ["platform_id", "status"]
+              "required": ["platform_id", "status", "assets"],
+              "not": { "required": ["localization_unavailable"] }
+            }
+          },
+          {
+            "if": {
+              "required": ["localization_unavailable"]
+            },
+            "then": {
+              "required": ["platform_id", "status"],
+              "not": { "required": ["localization"] }
             }
           }
         ]

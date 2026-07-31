@@ -150,74 +150,83 @@ Creative agents MUST validate manifests against format requirements before accep
 
 Native localization is a library/trafficking capability, distinct from
 `build_creative` fan-out and from served delivery variants. An agent supports
-it only when `get_adcp_capabilities.creative.localization` is present. That
-capability returns the complete BCP 47 locale set accepted for the current
-caller, accepted translation modes, the target-variant ceiling, and whether
-provider review is per variant or creative-wide. Because exact
-`list_creatives` readback is part of the contract, advertising localization
-also requires `creative.has_creative_library: true`.
+it only when `get_adcp_capabilities.creative.localization` is present. This is
+a coarse structural capability: it advertises materialized locale variants,
+RFC 4647 Lookup, and an optional target-variant ceiling, not universal support
+for every locale, format, or account. Because exact `list_creatives` readback
+is part of the contract, advertising localization also requires
+`creative.has_creative_library: true`.
 
-`sync_creatives.creatives[].localization` makes every translation request
-explicit. It is the only localization write surface. Inline creatives on
+`sync_creatives.creatives[].localization` carries only materialized assets. It
+never asks the receiving seller to translate or generate creative. A buyer may
+produce those assets itself, through `build_creative`, or through a separate
+translation/transformation agent before sync; their production provenance does
+not change this trafficking contract. This is the only localization write
+surface. Inline creatives on
 `create_media_buy` and `update_media_buy` reject `localization`; buyers first
 sync the localized library creative and then assign it to a package.
 
-- The creative's top-level `assets` are the source/default variant.
+- The creative's top-level `assets` are the source variant.
 - `localization.source` binds those assets to a canonical BCP 47 tag and a
   buyer-assigned `locale_variant_id`.
 - Every `target_variants[]` entry has a unique locale and stable
-  `locale_variant_id`.
-- `translation_mode: buyer_supplied` carries locale-specific asset overrides;
+  `locale_variant_id` plus locale-specific materialized asset overrides;
   missing slots inherit source assets.
-- `translation_mode: provider_generated` carries no override assets and is the
-  only way to ask the provider to translate from source. A source asset alone
-  never implies translation.
+- `default_locale_variant_id` explicitly identifies the serving fallback. It
+  may reference the source or a target; source does not imply default.
+- `unmatched_locale_action` is `serve_default` or `do_not_serve`.
 
 Locale tags MUST use the canonical representation from
 [RFC 5646](https://www.rfc-editor.org/rfc/rfc5646): lower-case language and
 variants, title-case script, and upper-case region (for example `en-US` and
-`zh-Hant-TW`). A receiver MUST reject duplicate, non-canonical, unsupported, or
-lossily mapped locales before any provider or library mutation. After source
-inheritance or provider generation, each fully resolved variant MUST satisfy
-the selected creative format.
+`zh-Hant-TW`). A receiver MUST reject malformed, duplicate, non-canonical,
+unsupported, or lossily mapped locales before any provider or library mutation.
+After source inheritance, each fully resolved variant MUST satisfy the selected
+creative format.
+
+At delivery, sellers apply RFC 4647 Lookup to the opportunity's ordered locale
+preferences and the creative's available locale tags. Lookup progressively
+truncates subtags until it finds a match. If one truncated range matches more
+than one available tag, the seller chooses the first variant in source-then-
+request-target order; sellers preserve target order on readback. When no match
+exists, the seller MUST apply `unmatched_locale_action`; it MUST NOT silently
+substitute the source.
+Every delivered execution of a localized creative includes the selected
+`locale_variant_id` in `get_creative_delivery`, including default fallback.
 
 `locale_variant_id` is scoped to the parent creative. It is not a
 `build_variant_id` (a `build_creative` output leaf) and not the `variant_id`
 used for a provider's served execution in `get_creative_delivery`. A successful
 localized sync and every later `list_creatives` read MUST preserve the exact
-source ID/locale and exact target ID/locale/translation-mode set from the
-request. Readback adds a `provider_variant_id` to each variant. The single
+source ID/locale, target ID/locale set, default ID, and unmatched action from
+the request. Readback adds a `provider_variant_id` to each variant. The single
 provider creative identity is the enclosing creative's top-level `platform_id`;
 it is never duplicated inside `localization`.
 
 Localized readback is atomic. The seller returns complete resolved assets,
-provider creative/variant identities, review `status`, and `launch_status` for
-the source and every target. If any element is unavailable or cannot be mapped
-exactly, the seller MUST fail the creative read rather than omit the locale,
-substitute the source language, or return a partial localization object.
-`launch_status: ready` reports provider eligibility; it does not authorize
-buyer spend. Lifecycle pairs are closed: `processing` and `pending_review` map
-to `pending`, `approved` maps to `ready`, and `suspended`, `rejected`, and
-`archived` map to `blocked`. A blocked variant includes at least one
-machine-readable `launch_blockers` entry.
-
-The creative-level `status` is deterministic. `archived` applies only when the
-whole creative is archived, in which case every locale variant is archived.
-Otherwise the seller selects the first state present in this precedence order:
-`rejected`, `suspended`, `pending_review`, `processing`, `approved`. Therefore
-the creative is `approved` only when every locale variant is approved. When
-`review_scope: creative`, every locale MUST echo the same provider-backed
-status and launch state.
+provider creative/variant identities, default policy, and matching mode for the
+source and every target. Review remains creative-wide: the enclosing creative's
+single `status` applies to the complete locale set and normal
+`creative.status_changed` webhooks report its changes. If exact localization
+evidence is unavailable, `list_creatives` returns `localization_unavailable`
+for that creative instead of omitting a locale or returning a partial object.
+The item remains in the page and pagination counts; buyers MUST NOT infer locale
+eligibility from the base creative fields.
 
 On upsert, a non-null `localization` object replaces the creative's complete
-locale set and `localization: null` removes it. Omission preserves existing
-localization only when the top-level source assets exactly equal the prior
-localized source assets. If source assets change, the buyer MUST send the full
-replacement topology or explicit removal; the seller rejects an ambiguous
-omission before mutation. `delete_missing` still operates only at creative
-scope: archiving a missing creative archives all of its locale variants
-atomically, and it never compares locale arrays between otherwise-present
-creatives. Partial archive state is invalid.
+locale set and top-level source assets transactionally; failure leaves the
+prior source assets and complete localization state unchanged, and orphaned
+provider variants MUST NOT become visible. `localization: null` removes the
+locale topology. Omission preserves existing localization only when top-level
+source assets exactly equal the prior source assets. `delete_missing` still
+operates only at creative scope.
+
+Capabilities govern new writes, not stored-data readability. If a seller later
+withdraws localization support or stops accepting a locale/format pair, it
+MUST keep existing localized creatives readable. A dependency loss that makes
+an approved creative unsafe to serve moves the whole creative to `suspended`
+and uses the normal lifecycle webhook. Sellers may reject new or replacement
+localization, but MUST still allow explicit `localization: null` cleanup.
 
 ### Universal macros
 
