@@ -27,7 +27,9 @@ import {
   isKnowledgeReady,
   KNOWLEDGE_TOOLS,
   createKnowledgeToolHandlers,
+  createSlackKnowledgeRequestTools,
   createUserScopedBookmarkHandler,
+  isSlackKnowledgeTool,
 } from './mcp/knowledge-search.js';
 import {
   BILLING_TOOLS,
@@ -185,8 +187,10 @@ export async function initializeAddie(): Promise<void> {
   await initializeKnowledgeSearch();
 
   // Register knowledge tools
-  const knowledgeHandlers = createKnowledgeToolHandlers();
-  for (const tool of KNOWLEDGE_TOOLS) {
+  const knowledgeHandlers = createKnowledgeToolHandlers({
+    slackAccess: { kind: 'public-only' },
+  });
+  for (const tool of KNOWLEDGE_TOOLS.filter((tool) => !isSlackKnowledgeTool(tool))) {
     const handler = knowledgeHandlers.get(tool.name);
     if (handler) {
       claudeClient.registerTool(tool, handler);
@@ -350,6 +354,16 @@ async function createUserScopedTools(
   const allTools = [...MEMBER_TOOLS];
   const allHandlers = new Map(memberHandlers);
 
+  const slackKnowledge = createSlackKnowledgeRequestTools(
+    slackUserId
+      ? { kind: 'slack-user', slackUserId }
+      : { kind: 'public-only' },
+  );
+  allTools.push(...slackKnowledge.tools);
+  for (const [name, handler] of slackKnowledge.handlers) {
+    allHandlers.set(name, handler);
+  }
+
   // Add billing tools (for membership signup assistance)
   // Skip in channel mentions to prevent enrollment pitching
   if (!options?.isChannelMention) {
@@ -494,19 +508,6 @@ async function createUserScopedTools(
   // Override bookmark_resource handler with user-scoped version (for attribution)
   if (slackUserId) {
     allHandlers.set('bookmark_resource', createUserScopedBookmarkHandler(slackUserId));
-  }
-
-  // Override Slack search handlers with user-scoped versions (for private channel access control)
-  if (slackUserId) {
-    const userScopedKnowledgeHandlers = createKnowledgeToolHandlers(slackUserId);
-    const searchSlackHandler = userScopedKnowledgeHandlers.get('search_slack');
-    const getChannelActivityHandler = userScopedKnowledgeHandlers.get('get_channel_activity');
-    if (searchSlackHandler) {
-      allHandlers.set('search_slack', searchSlackHandler);
-    }
-    if (getChannelActivityHandler) {
-      allHandlers.set('get_channel_activity', getChannelActivityHandler);
-    }
   }
 
   return {
