@@ -80,6 +80,14 @@
       "$ref": "/schemas/core/demographic-targeting-resolution.json",
       "description": "Requested-versus-applied demographic targeting and the seller execution mechanism. Sellers MUST include this whenever demographic targeting was requested or applied."
     },
+    "audience_evidence_used": {
+      "type": "array",
+      "description": "Immutable copies of the compact product audience-evidence rows that influenced product selection or package construction. Sellers MUST include this when the buyer supplied audience_evidence_selected or a seller-authored proposal used audience evidence. This is planning readback only and never implies that the audience was targeted during execution.",
+      "items": {
+        "$ref": "/schemas/core/audience-evidence.json"
+      },
+      "minItems": 1
+    },
     "measurement_terms": {
       "$ref": "/schemas/core/measurement-terms.json",
       "description": "Agreed billing measurement and makegood terms for this package. Reflects what was negotiated — may differ from the buyer's proposal or the product's defaults. When present, these terms are binding for the package's duration."

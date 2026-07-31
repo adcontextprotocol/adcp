@@ -1003,6 +1003,14 @@
           "$ref": "/schemas/enums/age-verification-method.json",
           "description": "Methods for verifying user age for compliance (facial_age_estimation, id_document, digital_id, credit_card, world_id)"
         },
+        "age-evidence-basis": {
+          "$ref": "/schemas/enums/age-evidence-basis.json",
+          "description": "How an age-composition claim was established (verified, declared, inferred, or population_estimate)"
+        },
+        "age-determination-basis": {
+          "$ref": "/schemas/enums/age-determination-basis.json",
+          "description": "User-level age determination bases permitted for targeting execution (verified, declared, or inferred)"
+        },
         "device-platform": {
           "$ref": "/schemas/enums/device-platform.json",
           "description": "Operating system platforms for device targeting. Browser values from Sec-CH-UA-Platform standard, extended for CTV"

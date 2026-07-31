@@ -102,6 +102,14 @@
     "targeting_overlay": {
       "$ref": "/schemas/core/targeting.json"
     },
+    "audience_evidence_selected": {
+      "type": "array",
+      "description": "Exact compact audience-evidence rows the buyer relied on when selecting this product. Buyers that manually create a package after get_products evidence filtering copy the matching product rows here. The seller MUST validate every row against the current Product.audience_evidence set and reject stale or non-matching rows rather than silently substitute evidence; accepted rows are echoed immutably as Package.audience_evidence_used. Omit when evidence did not influence selection. For seller-authored proposals, the seller persists the selected rows with the proposal and produces the same readback without requiring this request field.",
+      "items": {
+        "$ref": "/schemas/core/audience-evidence.json"
+      },
+      "minItems": 1
+    },
     "measurement_terms": {
       "$ref": "/schemas/core/measurement-terms.json",
       "description": "Buyer's proposed billing measurement and makegood terms. Overrides product defaults. Seller accepts (echoed on confirmed package), rejects with TERMS_REJECTED, or adjusts. When absent, product's measurement_terms apply."

@@ -43,12 +43,41 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `signal_targeting_allowed` (bool, optional, default: false): Whether this product has a package-level signal targeting surface. Editability is controlled by `signal_targeting_rules`.
 - `signal_targeting_options` (list[ProductSignalTargetingOption], optional): Inline seller-offered signals that may be buyer-selected or seller-applied for this product. These may be product-local signal options or data-provider signals the seller is authorized to apply. See [Signal Targeting](#signal-targeting).
 - `signal_targeting_rules` (SignalTargetingRules, optional): Composition rules such as single/multi-select limits for the selectable signals.
+- `audience_evidence` (list[AudienceEvidence], optional): Compact product audience-composition claims. Age evidence states an age range, its estimated audience share, and whether that estimate is based on verified, declared, inferred, or aggregate population data. This supports planning and ranking only; it never implies user-level targeting or legal age verification.
 - `catalog_types` (list[string], optional): Catalog types this product supports for catalog-driven campaigns. A sponsored product listing declares `["product"]`, a job board declares `["job", "offering"]`. Buyers match synced catalogs to products via this field. See [Catalogs](/docs/creative/catalogs).
 - `catalog_match` (object, optional): When the buyer provides a `catalog` on `get_products`, indicates which catalog items are eligible for this product. Contains `matched_gtins` (cross-retailer GTIN matches), `matched_ids` (generic item ID matches), `matched_count`, and `submitted_count`.
 - `metric_optimization` (object, optional): Metric optimization capabilities for this product. Presence indicates the product supports `optimization_goals` with `kind: "metric"`. See [Metric optimization](#metric-optimization).
 - `max_optimization_goals` (integer, optional): Maximum number of `optimization_goals` this product accepts on a package. When absent, no limit is declared. Most social platforms accept only 1.
 - `conversion_tracking` (object, optional): Conversion event tracking capabilities. Presence indicates the product supports `optimization_goals` with `kind: "event"`. See [Conversion tracking](#conversion-tracking-1).
 - `product_card` (object, optional): Visual card definition for displaying this product in user interfaces. See [Product Cards](#product-cards).
+
+### Audience evidence
+
+Age evidence answers two buyer questions without exposing the seller's full methodology: what share of this product's audience is in the age range, and how was that age established?
+
+```json
+{
+  "audience_evidence": [
+    {
+      "dimension": "age",
+      "age": { "min": 25, "max": 34, "include_unknown": false },
+      "estimated_share": 0.8,
+      "basis": "population_estimate"
+    }
+  ]
+}
+```
+
+`estimated_share` uses the full product audience as its denominator, including people whose age is unknown. Unknown-age users are outside the numeric range numerator, so audience evidence always carries `include_unknown: false`.
+
+The four evidence bases are:
+
+- `verified`: underlying user ages were established using the listed `verification_methods`.
+- `declared`: users supplied an age, date of birth, or threshold affirmation.
+- `inferred`: individual ages were predicted from behavior, attributes, or a model.
+- `population_estimate`: aggregate survey or panel evidence; it says nothing about a particular user.
+
+The same product may publish multiple rows when it has distinct claims. Evidence marked `verified` MUST list its verification methods, but even verified product evidence does not establish that the seller can resolve age on an individual impression. Exact execution remains a separate `demographic_targeting` capability.
 
 ### Metric optimization
 

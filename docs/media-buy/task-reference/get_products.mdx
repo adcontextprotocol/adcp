@@ -138,6 +138,7 @@ asyncio.run(discover_with_filters())
 | `account` | AccountRef | No | Account reference for account-specific pricing. Returns products with pricing from this account's rate card. |
 | `catalog` | [Catalog](/docs/creative/catalogs) | No | Catalog of items the buyer wants to promote. The seller matches catalog items against its inventory and returns products where matches exist. Requires `brand`. See [Catalog discovery](#catalog-discovery) below. |
 | `filters` | Filters | No | Structured filters (see below) |
+| `audience_evidence_requirements` | AudienceEvidenceRequirement[] | No | Required or preferred rules for compact product audience evidence. A required rule fails closed when no matching evidence exists; a preferred rule affects ranking without excluding products. Successful responses acknowledge evaluation with `audience_evidence_requirements_applied: true`. |
 | `fields` | string[] | No | Specific product fields to include in the response for lightweight discovery. When requesting signal metadata, buyers SHOULD request `included_signals` for non-selectable bundled/planned signals, and `signal_targeting_allowed`, `signal_targeting_options`, and `signal_targeting_rules` for package-level signal selection. |
 | `property_list` | PropertyListRef | No | [AdCP 3.0] Reference to a property list for filtering. See [Property Lists](/docs/governance/property/tasks/property_lists) |
 | `pagination` | PaginationRequest | No | Cursor-based pagination to cap returned `products[]` in curated/refined responses or walk wholesale product feeds (see below) |
@@ -158,6 +159,31 @@ To use property list filtering:
 
 The seller must declare `features.property_list_filtering: true` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) to support this filter. See the [Property Governance overview](/docs/governance/property/index) for the full workflow.
 </Note>
+
+### Audience evidence requirements
+
+Buyers can request products with a minimum age-composition estimate and acceptable evidence bases:
+
+<!-- Using latest because audience evidence is not yet released in a versioned schema. Update after the next release. -->
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/media-buy/get-products-request.json",
+  "buying_mode": "wholesale",
+  "audience_evidence_requirements": [
+    {
+      "dimension": "age",
+      "age": { "min": 25, "max": 34, "include_unknown": false },
+      "minimum_share": 0.75,
+      "accepted_bases": ["verified", "declared", "population_estimate"],
+      "requirement_mode": "required"
+    }
+  ]
+}
+```
+
+All `required` rules use AND semantics: every rule must be satisfied by at least one evidence row. A row matches when its canonical age range is exactly equal, its `estimated_share` is greater than or equal to `minimum_share` when supplied, and its basis is accepted. For verified evidence, every `verification_methods` value on the row must appear in the buyer's `accepted_verification_methods` when that constraint is supplied; a mere intersection is insufficient. Products without matching evidence do not satisfy a required rule, and absence is never treated as proof. `preferred` rules inform seller ranking but do not remove products. Sellers that cannot evaluate the field reject the request with `UNSUPPORTED_FEATURE` rather than silently ignoring it. A completed response to a request containing evidence requirements MUST include `audience_evidence_requirements_applied: true`.
+
+When the buyer manually purchases a selected product, it copies the matching compact row into `packages[].audience_evidence_selected`. The seller validates that row against the current product and echoes it immutably as `audience_evidence_used`. Seller-authored proposals persist the rows they used and provide the same readback without requiring the buyer to reconstruct the selection state.
 
 ### Filters Object
 
@@ -357,6 +383,7 @@ Returns an array of `products` and optionally `proposals`.
 | `signal_targeting_options` | ProductSignalTargetingOption[] | (Optional) Inline product-scoped signal options the buyer may select, or the seller may apply when fixed/default, through `packages[].targeting_overlay.signal_targeting_groups`. May include per-signal `pricing_options`; product-scoped prices are authoritative for this product. Data-provider and signal-source refs may be reference-only; product-local refs include inline `name` and `value_type`. |
 | `signal_targeting_rules` | SignalTargetingRules | (Optional) Product-scoped composition rules for selectable signals, such as direct vs seller-planned resolution, optional, required, maximum, mutually exclusive, fixed selections, and group size limits. These limits belong on the product, not seller-wide `get_adcp_capabilities`, because products may be backed by different ad servers or seller planning layers. Fixed/default selections are applied by the seller and echoed on the resulting package state. |
 | `demographic_targeting` | DemographicTargetingCapability | (Optional) Product-scoped exact execution for canonical demographic intent. `age.execution_modes` declares continuous bounds, enumerated seller intervals, and/or signal-backed resolution; continuous mode explicitly declares `supports_unbounded_min` and `supports_unbounded_max`, while `unknown_handling` states whether unknown age is selectable, always excluded, or always included. Buyers must inspect this field before sending `targeting_overlay.demographics`. |
+| `audience_evidence` | AudienceEvidence[] | (Optional) Compact age-composition evidence: age range, estimated share, and basis (`verified`, `declared`, `inferred`, or `population_estimate`). Evidence supports planning and ranking and never implies user-level targeting capability. |
 | `brief_relevance` | string | Why this product matches the brief (when brief provided) |
 | `measurement_readiness` | [MeasurementReadiness](/docs/media-buy/conversion-tracking/#measurement-readiness) | (Optional) Whether the buyer's event setup is sufficient for this product's optimization. Only present when the seller can evaluate the buyer's account context. |
 | `measurement_terms` | [MeasurementTerms](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | (Optional) Seller's default billing measurement and makegood terms. Buyers may propose different terms at `create_media_buy`. |
@@ -446,6 +473,7 @@ updated `pagination.cursor`.
 |-------|------|-------------|
 | `property_list_applied` | boolean | [AdCP 3.0] `true` if the agent filtered products based on the provided `property_list`. Absent or `false` if not provided or not supported. |
 | `catalog_applied` | boolean | `true` if the seller filtered results based on the provided `catalog`. Absent or `false` if no catalog was provided or the seller does not support catalog matching. |
+| `audience_evidence_requirements_applied` | boolean | Present and `true` when the request supplied `audience_evidence_requirements` and the seller evaluated every rule. It is never emitted as `false`. |
 | `refinement_applied` | [RefinementResult[]](#refinement_applied-response) | Seller acknowledgment of each `refine` entry, matched by position. Only present when `buying_mode` is `"refine"`. See [refinement_applied](#refinement_applied-response) above. |
 | `incomplete` | [IncompleteEntry[]](#incomplete-array) | Declares what the seller could not finish within the `time_budget` or due to internal limits. Each entry identifies a scope with a human-readable explanation. Absent when the response is fully complete. See [incomplete array](#incomplete-array) below. |
 | `filter_diagnostics` | object | Optional non-fatal observability block describing how `filters` narrowed the candidate set — `total_candidates` plus per-filter `excluded_by` counts (keyed by filter name). Disambiguates "no inventory" from "your filter excluded everything" when the result list is empty or unexpectedly small. Counts only — never product names — to avoid leaking competitive intelligence. See [filter_diagnostics](#filter_diagnostics) below. |

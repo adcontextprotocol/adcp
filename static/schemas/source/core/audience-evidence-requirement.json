@@ -1,0 +1,70 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/audience-evidence-requirement.json",
+  "title": "Audience Evidence Requirement",
+  "description": "A buyer's compact product-discovery rule for age-composition evidence. Required rules fail closed when no admissible evidence exists; preferred rules affect ranking without excluding the product.",
+  "type": "object",
+  "properties": {
+    "dimension": {
+      "type": "string",
+      "const": "age"
+    },
+    "age": {
+      "allOf": [
+        { "$ref": "/schemas/core/demographic-age-range.json" },
+        {
+          "properties": {
+            "include_unknown": { "const": false }
+          }
+        }
+      ],
+      "description": "Canonical age range the evidence must describe exactly. include_unknown is always false."
+    },
+    "minimum_share": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Minimum acceptable estimated_share. Omit when any share is acceptable."
+    },
+    "accepted_bases": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/enums/age-evidence-basis.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "accepted_verification_methods": {
+      "type": "array",
+      "description": "Acceptable methods for evidence whose basis is verified. Valid only when accepted_bases contains verified.",
+      "items": {
+        "$ref": "/schemas/enums/age-verification-method.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "requirement_mode": {
+      "type": "string",
+      "enum": ["required", "preferred"]
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["dimension", "age", "accepted_bases", "requirement_mode"],
+  "allOf": [
+    {
+      "if": {
+        "required": ["accepted_verification_methods"]
+      },
+      "then": {
+        "properties": {
+          "accepted_bases": {
+            "contains": { "const": "verified" }
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": true
+}

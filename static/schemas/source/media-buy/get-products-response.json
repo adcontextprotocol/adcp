@@ -74,6 +74,11 @@
       "type": "boolean",
       "description": "Whether the seller filtered results based on the provided catalog. True if the seller matched catalog items against its inventory. Absent or false if no catalog was provided or the seller does not support catalog matching."
     },
+    "audience_evidence_requirements_applied": {
+      "type": "boolean",
+      "const": true,
+      "description": "Present and true when the request supplied audience_evidence_requirements and the seller evaluated every rule. Absence on such a response means the buyer cannot assume the requirements were honored. Sellers MUST NOT emit false."
+    },
     "refinement_applied": {
       "type": "array",
       "description": "Seller's response to each change request in the refine array, matched by position. Each entry acknowledges whether the corresponding ask was applied, partially applied, or unable to be fulfilled. MUST contain the same number of entries in the same order as the request's refine array. Only present when the request used buying_mode: 'refine'. Each entry MUST echo the request entry's scope and — for product and proposal scopes — the matching id field (product_id or proposal_id), so orchestrators can cross-validate alignment.",
