@@ -318,7 +318,10 @@ describe('Agent visibility E2E', () => {
       .send({ linkedin_url: 'javascript:alert(document.domain)' })
       .expect(400);
 
-    expect(response.body.field).toBe('linkedin_url');
+    expect(response.body).toMatchObject({
+      error: 'Invalid profile URL',
+      message: 'linkedin_url must be an HTTPS URL without credentials',
+    });
     const profile = await memberDb.getProfileByOrgId(orgId);
     expect(profile!.linkedin_url).toBeFalsy();
   });

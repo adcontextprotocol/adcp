@@ -313,7 +313,7 @@ describe('My Content — body, admin scope, status, delete', () => {
         })
         .expect(400);
 
-      expect(response.body.message).toMatch(/external_url.*HTTP or HTTPS/i);
+      expect(response.body.message).toMatch(/external_url.*HTTPS URL without credentials/i);
       const stored = await pool.query(`SELECT id FROM perspectives WHERE title = $1`, ['mc-test-unsafe-link']);
       expect(stored.rows).toHaveLength(0);
     });
