@@ -160,6 +160,41 @@ datamodel-codegen \
 
 For tools that don't support `$ref` resolution, use bundled schemas with all references resolved inline. Bundled schemas are available from both the website and GitHub:
 
+### MCP 2026 tool-schema projection
+
+Beginning with AdCP 3.2, every release also includes a self-contained JSON
+Schema 2020-12 projection for MCP `2026-07-28` tool discovery:
+
+```
+https://adcontextprotocol.org/schemas/{version}/mcp/2026-07-28/manifest.json
+https://adcontextprotocol.org/schemas/{version}/mcp/2026-07-28/media-buy/get-products-request.json
+https://adcontextprotocol.org/schemas/{version}/mcp/2026-07-28/media-buy/get-products-response.json
+```
+
+The projection manifest maps every AdCP tool to downloadable `inputSchema` and
+`outputSchema` files. Servers can select and embed these schemas when building
+their `tools/list` response; publishing the artifacts does not automatically
+change a server's MCP registration. MCP disables automatic network
+dereferencing by default, so each projected schema is a compact, self-contained
+document containing only local fragment references.
+
+The 3.2 projection changes schema syntax, not the AdCP payload contract. It is
+generated from the canonical draft-07 schemas and MUST preserve the same
+validation outcomes. In particular, it does not add
+`unevaluatedProperties: false` or otherwise close extension points. The build
+tests inspect every projected schema for dialect, local-reference integrity,
+and self-containment; enforce AdCP-defined defensive depth, schema-object, and
+compact-serialization byte bounds following MCP guidance; compile
+representative schemas from every protocol; and compare the source and
+projected dialects across representative instances. Repeated shared schemas are
+stored once under `$defs` rather than recursively inlined.
+
+AdCP 4.0 will make JSON Schema 2020-12 the canonical source dialect. That
+major-version migration is where the protocol may selectively use
+`unevaluatedProperties`, `dependentRequired`, `dependentSchemas`, and other
+2020-12 semantics to tighten contracts. Published v3 schemas remain draft-07
+for their support lifetime.
+
 ### Website access
 
 ```
@@ -192,6 +227,7 @@ dist/schemas/{VERSION}/
 │   ├── sponsored-intelligence/   # Sponsored intelligence tasks
 │   ├── protocol/                 # Protocol tasks
 │   └── core/                     # Core shared schemas and legacy task lifecycle schemas
+├── mcp/2026-07-28/               # Self-contained JSON Schema 2020-12 tool projections
 ├── core/                         # Modular schemas with $ref
 ├── trusted-match/                # Serve-time Context Match and Identity Match schemas
 ├── media-buy/

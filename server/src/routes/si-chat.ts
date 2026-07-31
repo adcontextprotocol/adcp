@@ -5,8 +5,9 @@
  * Bypasses Addie relay for a more direct brand conversation experience.
  */
 
-import { Router } from "express";
+import { Router, type Request } from "express";
 import cors from "cors";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { createLogger } from "../logger.js";
 import { optionalAuth } from "../middleware/auth.js";
 import { siDb, type SiSession } from "../db/si-db.js";
@@ -14,8 +15,44 @@ import { siAgentService } from "../addie/services/si-agent-service.js";
 import { query } from "../db/client.js";
 import { resolveBrandFromJson } from "../db/brand-db.js";
 import { sanitizeInput } from "../addie/security.js";
+import { UsersDatabase } from "../db/users-db.js";
+import { PostgresStore } from "../middleware/pg-rate-limit-store.js";
+import {
+  verifyAnonymousSessionCapability,
+} from "./helpers/anonymous-session-capability.js";
 
 const logger = createLogger("si-chat-routes");
+const SI_ANONYMOUS_SESSION_AUDIENCE = 'si-session-owner';
+const SI_ANONYMOUS_CAPABILITY_HEADER = 'X-SI-Session-Capability';
+const SI_MESSAGE_MAX_CHARS = 4_000;
+const SI_ACTION_RESPONSE_MAX_BYTES = 16 * 1024;
+const SI_ACTION_RESPONSE_MAX_DEPTH = 6;
+const SI_HISTORY_DEFAULT_LIMIT = 50;
+const SI_HISTORY_MAX_LIMIT = 100;
+const SI_HISTORY_MAX_OFFSET = 10_000;
+const SI_TERMINATION_REASONS = new Set([
+  'user_exit',
+  'handoff_transaction',
+  'handoff_complete',
+  'session_timeout',
+]);
+const usersDb = new UsersDatabase();
+
+const siModelRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new PostgresStore('si-model:'),
+  keyGenerator: (req: Request) => req.user?.id
+    ? `user:${req.user.id}`
+    : `ip:${ipKeyGenerator(req.ip || 'unknown')}`,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (_req, res) => res.status(429).json({
+    error: 'Too many requests',
+    message: 'Too many Sponsored Intelligence messages. Please try again shortly.',
+  }),
+});
 
 // CORS configuration for native apps
 const siCorsOptions: cors.CorsOptions = {
@@ -28,7 +65,7 @@ const siCorsOptions: cors.CorsOptions = {
   ],
   credentials: true,
   methods: ["GET", "POST", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  allowedHeaders: ["Content-Type", "Authorization", SI_ANONYMOUS_CAPABILITY_HEADER],
 };
 
 /**
@@ -73,23 +110,135 @@ async function getBrandProfile(memberProfileId: string): Promise<{
 /**
  * Verify user has access to an SI session
  * Sessions can be accessed by:
- * - The user who created it (matched by email or slack_id)
- * - Anonymous sessions (user_anonymous_id) - accessible by anyone with the session ID
+ * - The user who created it (matched by email or a linked Slack identity)
+ * - Anonymous sessions presenting the signed, session-bound capability
  */
-function verifySessionAccess(session: SiSession, userEmail?: string, userId?: string): boolean {
-  // Anonymous sessions can be accessed by anyone with the session ID
-  if (session.user_anonymous_id && !session.user_email && !session.user_slack_id) {
-    return true;
+export function verifySessionAccess(
+  session: SiSession,
+  identity: {
+    userEmail?: string;
+    linkedSlackId?: string | null;
+    anonymousCapability?: string;
+  },
+): boolean {
+  if (session.user_email || session.user_slack_id) {
+    const emailMatches = !!session.user_email && !!identity.userEmail &&
+      session.user_email.trim().toLowerCase() === identity.userEmail.trim().toLowerCase();
+    const slackMatches = !!session.user_slack_id && !!identity.linkedSlackId &&
+      session.user_slack_id === identity.linkedSlackId;
+    return emailMatches || slackMatches;
+  }
+  if (session.user_anonymous_id) {
+    return !!verifyAnonymousSessionCapability(
+      identity.anonymousCapability,
+      SI_ANONYMOUS_SESSION_AUDIENCE,
+      session.session_id,
+    );
+  }
+  return false;
+}
+
+interface SiActionResponse {
+  action: string;
+  element_id?: string;
+  payload?: Record<string, unknown>;
+}
+
+type SiMessageValidation =
+  | { ok: true; message?: string; actionResponse?: SiActionResponse }
+  | { ok: false; status: 400 | 413; error: string };
+
+function exceedsDepth(value: unknown, depth: number): boolean {
+  if (value === null || typeof value !== 'object') return false;
+  if (depth > SI_ACTION_RESPONSE_MAX_DEPTH) return true;
+  const children = Array.isArray(value) ? value : Object.values(value);
+  return children.some((child) => exceedsDepth(child, depth + 1));
+}
+
+export function validateSiMessageInput(body: unknown): SiMessageValidation {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return { ok: false, status: 400, error: 'Request body must be an object' };
+  }
+  const input = body as Record<string, unknown>;
+  const rawMessage = input.message;
+  const rawActionResponse = input.action_response;
+
+  if (rawMessage !== undefined && typeof rawMessage !== 'string') {
+    return { ok: false, status: 400, error: 'Message must be a string' };
+  }
+  if (typeof rawMessage === 'string' && rawMessage.length > SI_MESSAGE_MAX_CHARS) {
+    return { ok: false, status: 413, error: `Message exceeds ${SI_MESSAGE_MAX_CHARS} characters` };
+  }
+  const message = typeof rawMessage === 'string' ? rawMessage.trim() : undefined;
+
+  let actionResponse: SiActionResponse | undefined;
+  if (rawActionResponse !== undefined) {
+    if (!rawActionResponse || typeof rawActionResponse !== 'object' || Array.isArray(rawActionResponse)) {
+      return { ok: false, status: 400, error: 'action_response must be an object' };
+    }
+    const actionInput = rawActionResponse as Record<string, unknown>;
+    if (
+      typeof actionInput.action !== 'string' ||
+      actionInput.action.trim().length === 0 ||
+      actionInput.action.length > 128
+    ) {
+      return { ok: false, status: 400, error: 'action_response.action must be a non-empty string' };
+    }
+    if (actionInput.element_id !== undefined && typeof actionInput.element_id !== 'string') {
+      return { ok: false, status: 400, error: 'action_response.element_id must be a string' };
+    }
+    if (
+      actionInput.payload !== undefined &&
+      (!actionInput.payload || typeof actionInput.payload !== 'object' || Array.isArray(actionInput.payload))
+    ) {
+      return { ok: false, status: 400, error: 'action_response.payload must be an object' };
+    }
+    if (exceedsDepth(rawActionResponse, 1)) {
+      return {
+        ok: false,
+        status: 400,
+        error: `action_response exceeds maximum depth ${SI_ACTION_RESPONSE_MAX_DEPTH}`,
+      };
+    }
+    let serialized: string;
+    try {
+      serialized = JSON.stringify(rawActionResponse);
+    } catch {
+      return { ok: false, status: 400, error: 'action_response must be JSON serializable' };
+    }
+    if (Buffer.byteLength(serialized, 'utf8') > SI_ACTION_RESPONSE_MAX_BYTES) {
+      return {
+        ok: false,
+        status: 413,
+        error: `action_response exceeds ${SI_ACTION_RESPONSE_MAX_BYTES} bytes`,
+      };
+    }
+    actionResponse = {
+      action: actionInput.action.trim(),
+      ...(typeof actionInput.element_id === 'string' && { element_id: actionInput.element_id }),
+      ...(actionInput.payload && { payload: actionInput.payload as Record<string, unknown> }),
+    };
   }
 
-  // If session has an email, user must be authenticated with matching email
-  if (session.user_email) {
-    return !!userEmail && session.user_email === userEmail;
+  if (!message && !actionResponse) {
+    return { ok: false, status: 400, error: 'Message or action_response required' };
   }
+  return { ok: true, ...(message && { message }), ...(actionResponse && { actionResponse }) };
+}
 
-  // If no auth required and no email on session, allow access
-  // This handles edge cases where session was created without identity
-  return true;
+export function parseSiHistoryPagination(query: Record<string, unknown>): { limit: number; offset: number } {
+  const parsedLimit = typeof query.limit === 'string' && /^\d+$/.test(query.limit)
+    ? Number(query.limit)
+    : NaN;
+  const parsedOffset = typeof query.offset === 'string' && /^\d+$/.test(query.offset)
+    ? Number(query.offset)
+    : NaN;
+  return {
+    limit: Number.isFinite(parsedLimit)
+      ? Math.min(Math.max(parsedLimit, 1), SI_HISTORY_MAX_LIMIT)
+      : SI_HISTORY_DEFAULT_LIMIT,
+    offset: Number.isSafeInteger(parsedOffset) ? Math.min(parsedOffset, SI_HISTORY_MAX_OFFSET) : 0,
+  };
 }
 
 /**
@@ -100,6 +249,24 @@ export function createSiChatRoutes() {
 
   // Apply CORS for cross-origin support
   apiRouter.use(cors(siCorsOptions));
+
+  async function loadAccessibleSession(req: Request): Promise<SiSession | null> {
+    const sessionId = req.params.sessionId;
+    const session = await siDb.getSession(sessionId);
+    if (!session) return null;
+
+    let linkedSlackId: string | null = null;
+    if (session.user_slack_id && req.user?.id) {
+      const user = await usersDb.getUser(req.user.id);
+      linkedSlackId = user?.primary_slack_user_id ?? null;
+    }
+
+    return verifySessionAccess(session, {
+      userEmail: req.user?.email,
+      linkedSlackId,
+      anonymousCapability: req.get(SI_ANONYMOUS_CAPABILITY_HEADER),
+    }) ? session : null;
+  }
 
   /**
    * GET /api/si/sessions/user
@@ -117,7 +284,7 @@ export function createSiChatRoutes() {
 
       // Get sessions for this user (by email or slack_id)
       const userSessions = userEmail
-        ? await siDb.getSessionsByUser(userEmail, "email")
+        ? await siDb.getSessionsByUser(userEmail, "email", 100)
         : [];
 
       const recentSessions = userSessions
@@ -163,15 +330,11 @@ export function createSiChatRoutes() {
     try {
       const { sessionId } = req.params;
       const includeMessages = req.query.messages !== "false";
+      const pagination = parseSiHistoryPagination(req.query as Record<string, unknown>);
 
-      const session = await siDb.getSession(sessionId);
+      const session = await loadAccessibleSession(req);
       if (!session) {
         return res.status(404).json({ error: "Session not found" });
-      }
-
-      // Verify user has access to this session
-      if (!verifySessionAccess(session, req.user?.email, req.user?.id)) {
-        return res.status(403).json({ error: "Not authorized to access this session" });
       }
 
       // Get brand profile for display
@@ -183,7 +346,11 @@ export function createSiChatRoutes() {
       // Get messages if requested (default: yes)
       let messages = null;
       if (includeMessages) {
-        const sessionMessages = await siDb.getSessionMessages(sessionId);
+        const sessionMessages = await siDb.getSessionMessages(
+          sessionId,
+          pagination.limit,
+          pagination.offset,
+        );
         messages = sessionMessages.map((m) => ({
           id: m.id,
           role: m.role,
@@ -209,6 +376,9 @@ export function createSiChatRoutes() {
           brand_color: brand.brand_color,
         } : null,
         messages,
+        ...(includeMessages && {
+          pagination: { ...pagination, returned: messages?.length ?? 0 },
+        }),
       });
     } catch (error) {
       logger.error({ error }, "SI Chat: Error getting session");
@@ -223,18 +393,18 @@ export function createSiChatRoutes() {
   apiRouter.get("/sessions/:sessionId/messages", optionalAuth, async (req, res) => {
     try {
       const { sessionId } = req.params;
+      const pagination = parseSiHistoryPagination(req.query as Record<string, unknown>);
 
-      const session = await siDb.getSession(sessionId);
+      const session = await loadAccessibleSession(req);
       if (!session) {
         return res.status(404).json({ error: "Session not found" });
       }
 
-      // Verify user has access to this session
-      if (!verifySessionAccess(session, req.user?.email, req.user?.id)) {
-        return res.status(403).json({ error: "Not authorized to access this session" });
-      }
-
-      const messages = await siDb.getSessionMessages(sessionId);
+      const messages = await siDb.getSessionMessages(
+        sessionId,
+        pagination.limit,
+        pagination.offset,
+      );
 
       res.json({
         session_id: sessionId,
@@ -245,6 +415,7 @@ export function createSiChatRoutes() {
           ui_elements: m.ui_elements,
           created_at: m.created_at,
         })),
+        pagination: { ...pagination, returned: messages.length },
       });
     } catch (error) {
       logger.error({ error }, "SI Chat: Error getting messages");
@@ -256,23 +427,18 @@ export function createSiChatRoutes() {
    * POST /api/si/sessions/:sessionId/messages
    * Send a message to the SI agent (non-streaming)
    */
-  apiRouter.post("/sessions/:sessionId/messages", optionalAuth, async (req, res) => {
+  apiRouter.post("/sessions/:sessionId/messages", optionalAuth, siModelRateLimiter, async (req, res) => {
     try {
       const { sessionId } = req.params;
-      const { message, action_response } = req.body;
-
-      if (!message && !action_response) {
-        return res.status(400).json({ error: "Message or action_response required" });
+      const validation = validateSiMessageInput(req.body);
+      if (!validation.ok) {
+        return res.status(validation.status).json({ error: validation.error });
       }
+      const { message, actionResponse } = validation;
 
-      const session = await siDb.getSession(sessionId);
+      const session = await loadAccessibleSession(req);
       if (!session) {
         return res.status(404).json({ error: "Session not found" });
-      }
-
-      // Verify user has access to this session
-      if (!verifySessionAccess(session, req.user?.email, req.user?.id)) {
-        return res.status(403).json({ error: "Not authorized to access this session" });
       }
 
       if (session.status !== "active") {
@@ -296,7 +462,7 @@ export function createSiChatRoutes() {
       const response = await siAgentService.sendMessage({
         sessionId,
         message: sanitizedMessage,
-        actionResponse: action_response,
+        actionResponse,
       });
 
       res.json({
@@ -320,22 +486,17 @@ export function createSiChatRoutes() {
    * POST /api/si/sessions/:sessionId/messages/stream
    * Send a message to the SI agent with streaming response (SSE)
    */
-  apiRouter.post("/sessions/:sessionId/messages/stream", optionalAuth, async (req, res) => {
+  apiRouter.post("/sessions/:sessionId/messages/stream", optionalAuth, siModelRateLimiter, async (req, res) => {
     const { sessionId } = req.params;
-    const { message, action_response } = req.body;
-
-    if (!message && !action_response) {
-      return res.status(400).json({ error: "Message or action_response required" });
+    const validation = validateSiMessageInput(req.body);
+    if (!validation.ok) {
+      return res.status(validation.status).json({ error: validation.error });
     }
+    const { message, actionResponse } = validation;
 
-    const session = await siDb.getSession(sessionId);
+    const session = await loadAccessibleSession(req);
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
-    }
-
-    // Verify user has access to this session
-    if (!verifySessionAccess(session, req.user?.email, req.user?.id)) {
-      return res.status(403).json({ error: "Not authorized to access this session" });
     }
 
     if (session.status !== "active") {
@@ -367,7 +528,7 @@ export function createSiChatRoutes() {
       for await (const event of siAgentService.sendMessageStream({
         sessionId,
         message: sanitizedMessage,
-        actionResponse: action_response,
+        actionResponse,
       })) {
         if (event.type === "text") {
           res.write(`data: ${JSON.stringify({ type: "text", text: event.text })}\n\n`);
@@ -403,16 +564,15 @@ export function createSiChatRoutes() {
   apiRouter.delete("/sessions/:sessionId", optionalAuth, async (req, res) => {
     try {
       const { sessionId } = req.params;
-      const reason = (req.body?.reason as string) || "user_exit";
-
-      const session = await siDb.getSession(sessionId);
-      if (!session) {
-        return res.status(404).json({ error: "Session not found" });
+      const rawReason = req.body?.reason;
+      const reason = rawReason === undefined ? 'user_exit' : rawReason;
+      if (typeof reason !== 'string' || !SI_TERMINATION_REASONS.has(reason)) {
+        return res.status(400).json({ error: 'Invalid termination reason' });
       }
 
-      // Verify user has access to this session
-      if (!verifySessionAccess(session, req.user?.email, req.user?.id)) {
-        return res.status(403).json({ error: "Not authorized to access this session" });
+      const session = await loadAccessibleSession(req);
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
       }
 
       const result = await siAgentService.terminateSession(sessionId, reason);

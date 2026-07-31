@@ -169,7 +169,10 @@ export class SiDatabase {
   // --------------------------------------------------------------------------
 
   async createSession(input: CreateSessionInput): Promise<SiSession> {
-    const sessionId = `si_${Date.now()}_${uuidv4().slice(0, 8)}`;
+    // Public session handles must carry the full UUID entropy. The previous
+    // timestamp + eight-hex suffix exposed only 32 random bits, which made the
+    // unauthenticated SI route surface enumerable at machine speed.
+    const sessionId = `si_${uuidv4()}`;
 
     const result = await query(
       `INSERT INTO si_sessions (
@@ -260,7 +263,8 @@ export class SiDatabase {
 
   async getSessionsByUser(
     userIdentifier: string,
-    identifierType: "slack_id" | "email" | "anonymous"
+    identifierType: "slack_id" | "email" | "anonymous",
+    limit = 100,
   ): Promise<SiSession[]> {
     let column: string;
     switch (identifierType) {
@@ -275,9 +279,15 @@ export class SiDatabase {
         break;
     }
 
+    const boundedLimit = Number.isFinite(limit)
+      ? Math.min(Math.max(Math.trunc(limit), 1), 100)
+      : 100;
     const result = await query(
-      `SELECT * FROM si_sessions WHERE ${column} = $1 ORDER BY created_at DESC`,
-      [userIdentifier]
+      `SELECT * FROM si_sessions
+       WHERE ${column} = $1
+       ORDER BY created_at DESC, id DESC
+       LIMIT $2`,
+      [userIdentifier, boundedLimit]
     );
 
     return result.rows.map((row) => this.deserializeSession(row));
@@ -309,27 +319,24 @@ export class SiDatabase {
 
   async getSessionMessages(
     sessionId: string,
-    limit?: number
+    limit = 50,
+    offset = 0,
   ): Promise<SiSessionMessage[]> {
-    let sql =
-      "SELECT * FROM si_session_messages WHERE session_id = $1 ORDER BY created_at ASC";
-    const params: (string | number)[] = [sessionId];
-
-    if (limit) {
-      sql =
-        "SELECT * FROM si_session_messages WHERE session_id = $1 ORDER BY created_at DESC LIMIT $2";
-      params.push(limit);
-    }
-
-    const result = await query(sql, params);
+    const boundedLimit = Number.isFinite(limit)
+      ? Math.min(Math.max(Math.trunc(limit), 1), 100)
+      : 50;
+    const boundedOffset = Number.isFinite(offset)
+      ? Math.min(Math.max(Math.trunc(offset), 0), 10_000)
+      : 0;
+    const result = await query(
+      `SELECT * FROM si_session_messages
+       WHERE session_id = $1
+       ORDER BY created_at DESC, id DESC
+       LIMIT $2 OFFSET $3`,
+      [sessionId, boundedLimit, boundedOffset],
+    );
     const messages = result.rows.map((row) => this.deserializeMessage(row));
-
-    // If we limited, reverse to get chronological order
-    if (limit) {
-      messages.reverse();
-    }
-
-    return messages;
+    return messages.reverse();
   }
 
   // --------------------------------------------------------------------------
@@ -698,7 +705,6 @@ export class SiDatabase {
       si_enabled?: boolean;
       si_endpoint_url?: string | null;
       si_capabilities?: Record<string, unknown>;
-      si_prompt_template?: string | null;
       si_skills?: string[];
     }
   ): Promise<void> {
@@ -721,12 +727,6 @@ export class SiDatabase {
     if (config.si_capabilities !== undefined) {
       setClauses.push(`si_capabilities = $${paramIndex}::jsonb`);
       params.push(JSON.stringify(config.si_capabilities));
-      paramIndex++;
-    }
-
-    if (config.si_prompt_template !== undefined) {
-      setClauses.push(`si_prompt_template = $${paramIndex}`);
-      params.push(config.si_prompt_template);
       paramIndex++;
     }
 

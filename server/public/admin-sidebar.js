@@ -62,6 +62,7 @@
           { href: '/admin/policies', label: 'Policy Registry', icon: '📜' },
           { href: '/admin/network-health', label: 'Network Health', icon: '🌐' },
           { href: '/admin/brand-logos', label: 'Brand Logo Review', icon: '🖼️' },
+          { href: '/admin/community-mirrors', label: 'Community mirror review', icon: '🗂️' },
         ]
       },
       {
@@ -75,6 +76,7 @@
         items: [
           { href: '/admin/agreements', label: 'Agreements', icon: '📋' },
           { href: '/admin/addie', label: 'Addie', icon: '🤖' },
+          { href: '/admin/secretariat', label: 'Secretariat', icon: '✅' },
           { href: '/admin/prompt-metrics', label: 'Prompt Metrics', icon: '📈' },
           { href: '/admin/manifest-refs', label: 'Manifest Registry', icon: '📋' },
           { href: '/admin/moltbook', label: 'Moltbook', icon: '📱' },

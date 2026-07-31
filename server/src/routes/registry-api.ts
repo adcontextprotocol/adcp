@@ -91,6 +91,13 @@ import {
   CommunityMirrorListResponseSchema,
   CommunityMirrorGetResponseSchema,
   CommunityMirrorPublishResponseSchema,
+  CommunityMirrorProposalSubmissionResponseSchema,
+  CommunityMirrorProposalListResponseSchema,
+  CommunityMirrorProposalGetResponseSchema,
+  CommunityMirrorProposalReviewRequestSchema,
+  CommunityMirrorProposalRejectRequestSchema,
+  CommunityMirrorProposalApprovalResponseSchema,
+  CommunityMirrorProposalDecisionResponseSchema,
   CommunityMirrorDeleteResponseSchema,
   CommunityMirrorPublishErrorSchema,
   AdagentsAuthorizedAgentSchema,
@@ -1784,6 +1791,105 @@ registry.registerPath({
 // Community Mirrors
 registry.registerPath({
   method: "get",
+  path: "/api/registry/mirror-proposals",
+  operationId: "listCommunityMirrorProposals",
+  summary: "List community mirror proposals",
+  description:
+    "List the caller's own community-mirror proposals. Registry moderators and AgenticAdvertising.org administrators see the review queue and may filter by status; their default is `pending`.",
+  tags: ["Community Mirrors"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    query: z.object({
+      status: z.enum(["pending", "approved", "rejected"]).optional(),
+      review_queue: z.enum(["true", "false"]).optional().openapi({
+        description: "Set to `true` for the cross-organization moderator queue; non-moderators receive 403.",
+      }),
+      limit: z.number().int().max(50).optional(),
+      offset: z.number().int().optional(),
+    }),
+  },
+  responses: {
+    200: { description: "Community mirror proposal list", content: { "application/json": { schema: CommunityMirrorProposalListResponseSchema } } },
+    400: { description: "Invalid status", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Moderator access required for the review queue", content: { "application/json": { schema: ErrorSchema } } },
+    429: { description: "Rate limit exceeded", content: { "application/json": { schema: RateLimitErrorSchema } } },
+    500: { description: "Failed to list proposals", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/mirror-proposals/{id}",
+  operationId: "getCommunityMirrorProposal",
+  summary: "Get community mirror proposal",
+  description:
+    "Fetch a proposal owned by the caller. Registry moderators and AgenticAdvertising.org administrators may fetch any proposal.",
+  tags: ["Community Mirrors"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: { params: z.object({ id: z.string().uuid() }) },
+  responses: {
+    200: { description: "Community mirror proposal", content: { "application/json": { schema: CommunityMirrorProposalGetResponseSchema } } },
+    400: { description: "Invalid proposal identifier", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    404: { description: "Proposal not found or not visible to the caller", content: { "application/json": { schema: ErrorSchema } } },
+    429: { description: "Rate limit exceeded", content: { "application/json": { schema: RateLimitErrorSchema } } },
+    500: { description: "Failed to read proposal", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/registry/mirror-proposals/{id}/approve",
+  operationId: "approveCommunityMirrorProposal",
+  summary: "Approve community mirror proposal",
+  description:
+    "Approve and atomically publish a pending proposal. Requires a registry moderator or AgenticAdvertising.org administrator.",
+  tags: ["Community Mirrors"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    params: z.object({ id: z.string().uuid() }),
+    body: { required: true, content: { "application/json": { schema: CommunityMirrorProposalReviewRequestSchema } } },
+  },
+  responses: {
+    200: { description: "Proposal approved and mirror published", content: { "application/json": { schema: CommunityMirrorProposalApprovalResponseSchema } } },
+    400: { description: "Invalid identifier, review body, or stale schema conformance", content: { "application/json": { schema: CommunityMirrorPublishErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Reviewer role required", content: { "application/json": { schema: ErrorSchema } } },
+    404: { description: "Proposal not found", content: { "application/json": { schema: ErrorSchema } } },
+    409: { description: "Proposal changed after review, its base mirror is stale, or it was already reviewed", content: { "application/json": { schema: ErrorSchema } } },
+    429: { description: "Rate limit exceeded", content: { "application/json": { schema: RateLimitErrorSchema } } },
+    500: { description: "Failed to approve proposal", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/registry/mirror-proposals/{id}/reject",
+  operationId: "rejectCommunityMirrorProposal",
+  summary: "Reject community mirror proposal",
+  description:
+    "Reject a pending proposal with reviewer notes. Requires a registry moderator or AgenticAdvertising.org administrator.",
+  tags: ["Community Mirrors"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    params: z.object({ id: z.string().uuid() }),
+    body: { required: true, content: { "application/json": { schema: CommunityMirrorProposalRejectRequestSchema } } },
+  },
+  responses: {
+    200: { description: "Proposal rejected", content: { "application/json": { schema: CommunityMirrorProposalDecisionResponseSchema } } },
+    400: { description: "Invalid identifier or review body", content: { "application/json": { schema: CommunityMirrorPublishErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Reviewer role required", content: { "application/json": { schema: ErrorSchema } } },
+    404: { description: "Proposal not found", content: { "application/json": { schema: ErrorSchema } } },
+    409: { description: "Proposal changed after review or was already reviewed", content: { "application/json": { schema: ErrorSchema } } },
+    429: { description: "Rate limit exceeded", content: { "application/json": { schema: RateLimitErrorSchema } } },
+    500: { description: "Failed to reject proposal", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
   path: "/api/registry/mirrors",
   operationId: "listCommunityMirrors",
   summary: "List community mirrors",
@@ -1836,9 +1942,9 @@ registry.registerPath({
   method: "put",
   path: "/api/registry/mirrors/{platform}",
   operationId: "publishCommunityMirror",
-  summary: "Publish community mirror",
+  summary: "Publish or propose community mirror",
   description:
-    "Publish or update a catalog-only adagents.json community mirror. Requires a registry moderator or AgenticAdvertising.org admin. The service validates the assembled document against adagents.json, forces `authorized_agents: []`, regenerates `$schema` and `last_updated`, and updates derived publisher-domain catalog rows.",
+    "Submit a catalog-only adagents.json community mirror. Registry moderators and AgenticAdvertising.org administrators publish immediately; other authenticated organization callers create or refresh a pending proposal and receive HTTP 202. Contributor proposals are limited to 1 MiB and 2,000 catalog items. The service validates the assembled document against adagents.json, forces `authorized_agents: []`, and regenerates `$schema` and `last_updated`.",
   tags: ["Community Mirrors"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -1859,9 +1965,11 @@ registry.registerPath({
   },
   responses: {
     200: { description: "Community mirror published", content: { "application/json": { schema: CommunityMirrorPublishResponseSchema } } },
+    202: { description: "Community mirror proposal accepted for review", content: { "application/json": { schema: CommunityMirrorProposalSubmissionResponseSchema } } },
     400: { description: "Invalid platform, request body, or adagents.json conformance failure", content: { "application/json": { schema: CommunityMirrorPublishErrorSchema } } },
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
-    403: { description: "Only registry moderators or AgenticAdvertising.org admins can manage community mirrors", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Organization context required for community proposals", content: { "application/json": { schema: ErrorSchema } } },
+    413: { description: "Proposal body or catalog item count exceeds the contributor limit", content: { "application/json": { schema: ErrorSchema } } },
     429: { description: "Rate limit exceeded", content: { "application/json": { schema: RateLimitErrorSchema } } },
     500: { description: "Failed to publish community mirror", content: { "application/json": { schema: ErrorSchema } } },
   },

@@ -24,7 +24,11 @@ vi.mock('../../src/slack/client.js', () => ({
   isSlackConfigured: () => mocks.isSlackConfigured(),
 }));
 
-import { notifyPendingBrandLogo } from '../../src/notifications/registry.js';
+import {
+  notifyCommunityMirrorProposalReviewed,
+  notifyPendingBrandLogo,
+  notifyPendingCommunityMirrorProposal,
+} from '../../src/notifications/registry.js';
 
 function lastSentBlocks() {
   const call = mocks.sendChannelMessage.mock.calls.at(-1);
@@ -117,5 +121,36 @@ describe('notifyPendingBrandLogo mrkdwn sanitization', () => {
     });
     const json = lastSentJSON();
     expect(json).toContain('New press kit logo, vector master');
+  });
+});
+
+describe('community mirror notification sanitization', () => {
+  beforeEach(() => {
+    mocks.sendChannelMessage.mockReset();
+    mocks.sendChannelMessage.mockResolvedValue({ ts: '1779110411.874' });
+    mocks.isSlackConfigured.mockReturnValue(true);
+  });
+
+  it('neutralizes proposer-controlled Slack tokens', async () => {
+    await notifyPendingCommunityMirrorProposal({
+      proposal_id: '4ec8bc86-6180-4d0e-aa72-9cbf402d3638',
+      platform: 'acme_ads',
+      proposer_email: 'review <!channel>@example.com',
+      catalog_item_count: 3,
+    });
+    expect(lastSentJSON()).not.toContain('<!channel>');
+  });
+
+  it('neutralizes reviewer names and notes in decision threads', async () => {
+    await notifyCommunityMirrorProposalReviewed({
+      thread_ts: '1779110411.874',
+      platform: 'acme_ads',
+      action: 'reject',
+      reviewer_name: 'Reviewer <@U12345>',
+      note: 'Please ping <!here>',
+    });
+    const call = mocks.sendChannelMessage.mock.calls.at(-1);
+    expect(JSON.stringify(call)).not.toContain('<@U12345>');
+    expect(JSON.stringify(call)).not.toContain('<!here>');
   });
 });

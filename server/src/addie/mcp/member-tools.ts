@@ -14,6 +14,7 @@ import { createCipheriv, createDecipheriv, randomBytes, randomUUID, scryptSync }
 import { createLogger } from '../../logger.js';
 import { classifyProbeError, probeReasonLabel } from '../../utils/probe-error.js';
 import { validateExternalUrl } from '../../utils/url-security.js';
+import { validateMemberProfileUrlFields } from '../../utils/member-profile-url.js';
 import { parseOAuthClientCredentialsInput } from '../../routes/helpers/oauth-client-credentials-input.js';
 import {
   verifyAgentHostname,
@@ -2826,19 +2827,9 @@ export function createMemberToolHandlers(
       }
     }
 
-    // Validate URL fields
-    for (const urlField of ['linkedin_url', 'twitter_url'] as const) {
-      const value = updates[urlField];
-      if (value && typeof value === 'string') {
-        try {
-          const parsed = new URL(value);
-          if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-            return `${urlField} must be an HTTP or HTTPS URL.`;
-          }
-        } catch {
-          return `${urlField} must be a valid URL.`;
-        }
-      }
+    const invalidMemberProfileUrlField = validateMemberProfileUrlFields(updates);
+    if (invalidMemberProfileUrlField) {
+      return `${invalidMemberProfileUrlField} must be an HTTPS URL without credentials.`;
     }
 
     if (Object.keys(updates).length === 0) {
@@ -2966,19 +2957,9 @@ export function createMemberToolHandlers(
       return 'Tagline must be 200 characters or fewer.';
     }
 
-    // Validate URL fields
-    for (const urlField of ['linkedin_url', 'twitter_url', 'contact_website'] as const) {
-      const value = updates[urlField];
-      if (value && typeof value === 'string') {
-        try {
-          const parsed = new URL(value);
-          if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-            return `${urlField} must be an HTTP or HTTPS URL.`;
-          }
-        } catch {
-          return `${urlField} must be a valid URL.`;
-        }
-      }
+    const invalidMemberProfileUrlField = validateMemberProfileUrlFields(updates);
+    if (invalidMemberProfileUrlField) {
+      return `${invalidMemberProfileUrlField} must be an HTTPS URL without credentials.`;
     }
 
     // Validate contact email
@@ -3386,6 +3367,9 @@ export function createMemberToolHandlers(
         }
         if (error.is('invalid_post_slug')) {
           return `Generated post slug was invalid (must contain only lowercase letters, numbers, and hyphens). Try again with a different title.`;
+        }
+        if (error.is('invalid_external_url')) {
+          return `Link posts require an HTTPS URL without embedded credentials.`;
         }
         if (error.is('duplicate_post_slug')) {
           return `A post with this slug already exists in "${slug}". Try again with a different title.`;

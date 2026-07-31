@@ -8,12 +8,13 @@
 import { Router, type Request } from 'express';
 import multer from 'multer';
 import { createLogger } from '../logger.js';
-import { requireAuth, requireAdmin, isDevModeEnabled, DEV_USERS } from '../middleware/auth.js';
+import { requireAuth, requireGlobalAdmin, optionalAuth, isDevModeEnabled } from '../middleware/auth.js';
 import { OrganizationDatabase } from '../db/organization-db.js';
 import { MemberDatabase } from '../db/member-db.js';
 import { query as dbQuery } from '../db/client.js';
 import * as portraitDb from '../db/portrait-db.js';
 import { generatePortrait, VIBE_OPTIONS } from '../services/portrait-generator.js';
+import { isUuid } from '../utils/uuid.js';
 
 const logger = createLogger('portrait-routes');
 
@@ -59,7 +60,7 @@ async function isPaidMember(
   if (isDevModeEnabled()) return true;
 
   const user = req.user;
-  const requestedOrgId = req.query.org as string | undefined;
+  const requestedOrgId = typeof req.query.org === 'string' ? req.query.org : undefined;
   const userId = user?.id;
   if (!userId) return false;
 
@@ -75,7 +76,7 @@ async function isPaidMember(
 
   const orgIds = membershipRows.rows.map(row => row.workos_organization_id);
   if (requestedOrgId && !orgIds.includes(requestedOrgId)) {
-    orgIds.unshift(requestedOrgId);
+    return false;
   }
 
   for (const orgId of orgIds) {
@@ -108,10 +109,22 @@ export function createPublicPortraitRouter(): Router {
   const router = Router();
 
   // GET /api/portraits/:id.png — serve portrait image
-  router.get('/:id.png', async (req, res) => {
+  router.get('/:id.png', optionalAuth, async (req, res) => {
     try {
+      if (!isUuid(req.params.id)) {
+        return res.status(404).send('Portrait not found');
+      }
+
       const data = await portraitDb.getPortraitData(req.params.id);
       if (!data) {
+        return res.status(404).send('Portrait not found');
+      }
+
+      const canView = data.status === 'approved'
+        || (data.status === 'generated' && req.user?.id === data.user_id);
+      if (!canView) {
+        // Use the same response as a missing portrait so callers cannot use
+        // generated preview IDs as an existence oracle.
         return res.status(404).send('Portrait not found');
       }
 
@@ -119,10 +132,11 @@ export function createPublicPortraitRouter(): Router {
       if (data.portrait_data) {
         const cacheControl = data.status === 'approved'
           ? 'public, max-age=31536000, immutable'
-          : 'private, no-cache';
+          : 'private, no-store';
         res.set({
           'Content-Type': 'image/png',
           'Cache-Control': cacheControl,
+          'X-Content-Type-Options': 'nosniff',
         });
         return res.send(data.portrait_data);
       }
@@ -131,6 +145,7 @@ export function createPublicPortraitRouter(): Router {
       if (data.status === 'approved') {
         return res.redirect(301, data.image_url);
       }
+      res.set('Cache-Control', 'private, no-store');
       res.redirect(302, data.image_url);
     } catch (err) {
       logger.error({ err, id: req.params.id }, 'Failed to serve portrait');
@@ -321,7 +336,7 @@ export function createAdminPortraitRouter(): Router {
   const router = Router();
 
   // GET / — list all portraits
-  router.get('/', requireAuth, requireAdmin, async (req, res) => {
+  router.get('/', ...requireGlobalAdmin, async (req, res) => {
     try {
       const status = req.query.status as string | undefined;
       const limit = parseInt(req.query.limit as string) || 100;
@@ -336,7 +351,7 @@ export function createAdminPortraitRouter(): Router {
   });
 
   // GET /map — user_id -> portrait_id mapping (lightweight)
-  router.get('/map', requireAuth, requireAdmin, async (_req, res) => {
+  router.get('/map', ...requireGlobalAdmin, async (_req, res) => {
     try {
       const map = await portraitDb.getUserPortraitMap();
       res.json(map);
@@ -347,7 +362,7 @@ export function createAdminPortraitRouter(): Router {
   });
 
   // DELETE /:id — remove inappropriate portrait
-  router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
+  router.delete('/:id', ...requireGlobalAdmin, async (req, res) => {
     try {
       const portrait = await portraitDb.getPortraitById(req.params.id);
       if (!portrait) {

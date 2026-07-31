@@ -106,6 +106,7 @@
           "creative_id",
           "name",
           "format_id",
+          "assets",
           "status",
           "created_date",
           "updated_date",

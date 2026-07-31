@@ -11,6 +11,7 @@ import { createLogger } from "../logger.js";
 import {
   requireAuth,
   requireAdmin,
+  requireGlobalAdmin,
   refuseCrossTenantAdminApiKey,
   isDevModeEnabled,
   DEV_USERS,
@@ -64,11 +65,35 @@ import { recordProfilePublishedIfNeeded } from "../services/profile-publish-even
 import { gateAgentVisibilityForCaller, computeAgentVisibilityGate, type VisibilityWarning, type AgentVisibilityGate } from "../services/agent-visibility-gate.js";
 import { getBrandPrimaryDomain, getBrandPrimaryDomainRecord } from "../services/brand-domain-resolver.js";
 import { normalizeFoundingMemberGrant } from "../services/founding-member-grant.js";
+import { validateMemberProfileUrlFields } from "../utils/member-profile-url.js";
 
 const orgKnowledgeDb = new OrgKnowledgeDatabase();
 const snapshotDb = new AgentSnapshotDatabase();
 
 const logger = createLogger("member-profile-routes");
+
+export function selectedOrganizationMembership<
+  T extends {
+    organizationId: string;
+    status?: string | null;
+    role?: { slug?: string | null } | null;
+  },
+>(memberships: T[], requestedOrgId?: string): T | null {
+  const activeMemberships = memberships.filter(
+    (membership) => membership.status === 'active',
+  );
+  if (requestedOrgId) {
+    return activeMemberships.find((membership) => membership.organizationId === requestedOrgId) ?? null;
+  }
+  return activeMemberships[0] ?? null;
+}
+
+function isOrganizationAdminOrOwner(
+  membership: { role?: { slug?: string | null } | null },
+): boolean {
+  const role = membership.role?.slug ?? 'member';
+  return role === 'admin' || role === 'owner';
+}
 
 /**
  * Server-authoritative agent type for issue #3495.
@@ -396,30 +421,16 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
             userId: user.id,
           });
         }
-        if (memberships.data.length === 0) {
-          return res.status(404).json({
-            error: 'No organization',
-            message: 'User is not a member of any organization. Create one via POST /api/organizations first.',
+        const selectedMembership = selectedOrganizationMembership(memberships.data, requestedOrgId);
+        if (!selectedMembership) {
+          return res.status(requestedOrgId ? 403 : 404).json({
+            error: requestedOrgId ? 'Not authorized' : 'No organization',
+            message: requestedOrgId
+              ? 'User is not an active member of the requested organization'
+              : 'User has no active organization membership. Create one via POST /api/organizations first.',
           });
         }
-        if (requestedOrgId) {
-          const membership = memberships.data.find(m => m.organizationId === requestedOrgId);
-          if (!membership) {
-            return res.status(403).json({
-              error: 'Not authorized',
-              message: 'User is not a member of the requested organization',
-            });
-          }
-          // The bootstrap path creates the profile as `is_public: false` (see
-          // the createProfile call below). Public visibility flips through the
-          // dedicated `/visibility` PUT, which has its own admin/owner gate.
-          // Allowing any-role member to bootstrap mirrors the `/api/me/agents`
-          // POST auto-bootstrap behavior — the gate inconsistency between
-          // those two paths is what surfaced #4839.
-          targetOrgId = requestedOrgId;
-        } else {
-          targetOrgId = memberships.data[0].organizationId;
-        }
+        targetOrgId = selectedMembership.organizationId;
       }
 
       // Idempotency: existing profile → 200 with current state and a warning,
@@ -717,31 +728,17 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         });
       }
 
-      if (memberships.data.length === 0) {
+      const selectedMembership = selectedOrganizationMembership(memberships.data, requestedOrgId);
+      if (!selectedMembership) {
         logger.info({ userId: user.id, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile: no organization');
-        return res.status(404).json({
-          error: 'No organization',
-          message: 'User is not a member of any organization',
+        return res.status(requestedOrgId ? 403 : 404).json({
+          error: requestedOrgId ? 'Not authorized' : 'No organization',
+          message: requestedOrgId
+            ? 'User is not an active member of the requested organization'
+            : 'User has no active organization membership',
         });
       }
-
-      // Determine which org to use
-      let targetOrgId: string;
-      if (requestedOrgId) {
-        // Verify user is a member of the requested org
-        const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
-        if (!isMember) {
-          logger.info({ userId: user.id, requestedOrgId, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile: not authorized');
-          return res.status(403).json({
-            error: 'Not authorized',
-            message: 'User is not a member of the requested organization',
-          });
-        }
-        targetOrgId = requestedOrgId;
-      } else {
-        // Default to first org
-        targetOrgId = memberships.data[0].organizationId;
-      }
+      const targetOrgId = selectedMembership.organizationId;
 
       const profile = await memberDb.getProfileByOrgId(targetOrgId);
       const brandRecord = await getBrandPrimaryDomainRecord(targetOrgId);
@@ -829,6 +826,14 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         });
       }
 
+      const invalidProfileUrlField = validateMemberProfileUrlFields(req.body);
+      if (invalidProfileUrlField) {
+        return res.status(400).json({
+          error: 'Invalid profile URL',
+          message: `${invalidProfileUrlField} must be an HTTPS URL without credentials`,
+        });
+      }
+
       // Validate tagline length
       if (tagline && typeof tagline === 'string' && tagline.length > 200) {
         return res.status(400).json({
@@ -878,35 +883,17 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           });
         }
 
-        if (memberships.data.length === 0) {
-          return res.status(404).json({
-            error: 'No organization',
-            message: 'User is not a member of any organization',
+        const selectedMembership = selectedOrganizationMembership(memberships.data, requestedOrgId);
+        if (!selectedMembership) {
+          return res.status(requestedOrgId ? 403 : 404).json({
+            error: requestedOrgId ? 'Not authorized' : 'No organization',
+            message: requestedOrgId
+              ? 'User is not an active member of the requested organization'
+              : 'User has no active organization membership',
           });
         }
-
-        // Determine which org to use
-        if (requestedOrgId) {
-          const membership = memberships.data.find(m => m.organizationId === requestedOrgId);
-          if (!membership) {
-            return res.status(403).json({
-              error: 'Not authorized',
-              message: 'User is not a member of the requested organization',
-            });
-          }
-          // Any-role member may create the org's profile. The `is_public`
-          // gate happens downstream on the role check below — non-admin/owner
-          // creators have their requested `is_public: true` downgraded to
-          // false with a `visibility_downgraded` warning, matching the tier
-          // gate's pattern. The mutation-visibility separation mirrors the
-          // `/api/me/agents` POST auto-bootstrap behavior (#4839).
-          callerRole = membership.role?.slug || 'member';
-          targetOrgId = requestedOrgId;
-        } else {
-          const firstMembership = memberships.data[0];
-          callerRole = firstMembership.role?.slug || 'member';
-          targetOrgId = firstMembership.organizationId;
-        }
+        callerRole = selectedMembership.role?.slug || 'member';
+        targetOrgId = selectedMembership.organizationId;
       }
 
       // Check if profile already exists
@@ -1032,6 +1019,23 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       // previously accepted the raw body value — same smuggle class as
       // the agent-visibility bug this PR fixes.
       let effectiveIsPublic = is_public === true;
+      let effectiveShowInCarousel = show_in_carousel === true;
+      if (
+        effectiveShowInCarousel
+        && !isDevModeEnabled()
+        && callerRole !== 'admin'
+        && callerRole !== 'owner'
+      ) {
+        effectiveShowInCarousel = false;
+        createWarnings.push({
+          code: 'visibility_downgraded',
+          agent_url: 'profile-carousel',
+          requested: 'public',
+          applied: 'members_only',
+          reason: 'role_required',
+          message: 'Featuring the profile in the public carousel requires an admin or owner; stored as not featured instead.',
+        });
+      }
       if (effectiveIsPublic && !isDevModeEnabled()) {
         // Role gate: non-admin/owner creators may bootstrap the profile
         // but cannot publish it publicly in the same call. They flip
@@ -1079,7 +1083,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         markets: markets || [],
         tags: tags || [],
         is_public: effectiveIsPublic,
-        show_in_carousel: show_in_carousel ?? false,
+        show_in_carousel: effectiveShowInCarousel,
       });
 
       // Write user-reported org knowledge (fire-and-forget)
@@ -1155,11 +1159,20 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
     try {
       const user = req.user!;
       const requestedOrgId = req.query.org as string | undefined;
-      const updates = req.body;
+      const updates = { ...(req.body as Record<string, unknown>) };
+
+      const invalidProfileUrlField = validateMemberProfileUrlFields(updates);
+      if (invalidProfileUrlField) {
+        return res.status(400).json({
+          error: 'Invalid profile URL',
+          message: `${invalidProfileUrlField} must be an HTTPS URL without credentials`,
+        });
+      }
 
       // Dev mode: handle dev organizations without WorkOS
       const isDevUserProfile = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id) && requestedOrgId?.startsWith('org_dev_');
       let targetOrgId: string;
+      let callerCanManageVisibility = isDevUserProfile;
 
       if (isDevUserProfile) {
         const localOrg = await orgDb.getOrganization(requestedOrgId!);
@@ -1186,27 +1199,15 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           });
         }
 
-        if (memberships.data.length === 0) {
-          return res.status(404).json({
-            error: 'No organization',
-            message: 'User is not a member of any organization',
+        const selectedMembership = selectedOrganizationMembership(memberships.data, requestedOrgId);
+        if (!selectedMembership) {
+          return res.status(403).json({
+            error: 'Not authorized',
+            message: 'User is not an active member of the requested organization',
           });
         }
-
-        // Determine which org to use
-        if (requestedOrgId) {
-          // Verify user is a member of the requested org
-          const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
-          if (!isMember) {
-            return res.status(403).json({
-              error: 'Not authorized',
-              message: 'User is not a member of the requested organization',
-            });
-          }
-          targetOrgId = requestedOrgId;
-        } else {
-          targetOrgId = memberships.data[0].organizationId;
-        }
+        targetOrgId = selectedMembership.organizationId;
+        callerCanManageVisibility = isOrganizationAdminOrOwner(selectedMembership);
       }
 
       // Check if profile exists
@@ -1216,6 +1217,21 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           error: 'Profile not found',
           message: 'No member profile exists for your organization. Use POST to create one.',
         });
+      }
+
+      const requestedVisibilityChange = updates.is_public !== undefined
+        || updates.show_in_carousel !== undefined;
+      if (requestedVisibilityChange && !callerCanManageVisibility) {
+        return res.status(403).json({
+          error: 'Not authorized',
+          message: 'Only organization admins or owners can update profile visibility',
+        });
+      }
+      if (updates.is_public !== undefined && typeof updates.is_public !== 'boolean') {
+        return res.status(400).json({ error: 'is_public must be a boolean' });
+      }
+      if (updates.show_in_carousel !== undefined && typeof updates.show_in_carousel !== 'boolean') {
+        return res.status(400).json({ error: 'show_in_carousel must be a boolean' });
       }
 
       // Validate tagline length
@@ -1417,7 +1433,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       const knowledgeWrites: Promise<unknown>[] = [];
       const userId = user.id;
 
-      if (updates.tagline) {
+      if (typeof updates.tagline === 'string' && updates.tagline) {
         knowledgeWrites.push(orgKnowledgeDb.setKnowledge({
           workos_organization_id: targetOrgId,
           attribute: 'description',
@@ -1429,7 +1445,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         }));
       }
 
-      if (updates.description) {
+      if (typeof updates.description === 'string' && updates.description) {
         knowledgeWrites.push(orgKnowledgeDb.setKnowledge({
           workos_organization_id: targetOrgId,
           attribute: 'company_focus',
@@ -2271,18 +2287,22 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         targetOrgId = requestedOrgId!;
       } else {
         const memberships = await workos!.userManagement.listOrganizationMemberships({ userId: user.id });
-        if (memberships.data.length === 0) {
-          return res.status(404).json({ error: 'No organization', message: 'User is not a member of any organization' });
+        const selectedMembership = selectedOrganizationMembership(memberships.data, requestedOrgId);
+        if (!selectedMembership) {
+          return res.status(requestedOrgId ? 403 : 404).json({
+            error: requestedOrgId ? 'Not authorized' : 'No organization',
+            message: requestedOrgId
+              ? 'User is not an active member of the requested organization'
+              : 'User has no active organization membership',
+          });
         }
-        if (requestedOrgId) {
-          const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
-          if (!isMember) {
-            return res.status(403).json({ error: 'Not authorized', message: 'User is not a member of the requested organization' });
-          }
-          targetOrgId = requestedOrgId;
-        } else {
-          targetOrgId = memberships.data[0].organizationId;
+        if (!isOrganizationAdminOrOwner(selectedMembership)) {
+          return res.status(403).json({
+            error: 'Not authorized',
+            message: 'Only organization admins or owners can update brand identity',
+          });
         }
+        targetOrgId = selectedMembership.organizationId;
       }
 
       const profile = await memberDb.getProfileByOrgId(targetOrgId);
@@ -2440,26 +2460,20 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           userId: user.id,
         });
 
-        if (memberships.data.length === 0) {
-          return res.status(404).json({
-            error: 'No organization',
-            message: 'User is not a member of any organization',
+        const selectedMembership = selectedOrganizationMembership(memberships.data, requestedOrgId);
+        if (!selectedMembership) {
+          return res.status(403).json({
+            error: 'Not authorized',
+            message: 'User is not an active member of the requested organization',
           });
         }
-
-        // Determine which org to use
-        if (requestedOrgId) {
-          const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
-          if (!isMember) {
-            return res.status(403).json({
-              error: 'Not authorized',
-              message: 'User is not a member of the requested organization',
-            });
-          }
-          targetOrgId = requestedOrgId;
-        } else {
-          targetOrgId = memberships.data[0].organizationId;
+        if (!isOrganizationAdminOrOwner(selectedMembership)) {
+          return res.status(403).json({
+            error: 'Not authorized',
+            message: 'Only organization admins or owners can update profile visibility',
+          });
         }
+        targetOrgId = selectedMembership.organizationId;
       }
 
       // Check if profile exists
@@ -2543,34 +2557,20 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           userId: user.id,
         });
 
-        if (memberships.data.length === 0) {
-          return res.status(404).json({
-            error: 'No organization',
-            message: 'User is not a member of any organization',
+        const selectedMembership = selectedOrganizationMembership(memberships.data, requestedOrgId);
+        if (!selectedMembership) {
+          return res.status(403).json({
+            error: 'Not authorized',
+            message: 'User is not an active member of the requested organization',
           });
         }
-
-        // Determine which org to use
-        if (requestedOrgId) {
-          // Verify user is admin/owner of the requested org
-          const membership = memberships.data.find(m => m.organizationId === requestedOrgId);
-          if (!membership) {
-            return res.status(403).json({
-              error: 'Not authorized',
-              message: 'User is not a member of the requested organization',
-            });
-          }
-          const role = membership.role?.slug || 'member';
-          if (role !== 'admin' && role !== 'owner') {
-            return res.status(403).json({
-              error: 'Not authorized',
-              message: 'Only admins and owners can delete member profiles',
-            });
-          }
-          targetOrgId = requestedOrgId;
-        } else {
-          targetOrgId = memberships.data[0].organizationId;
+        if (!isOrganizationAdminOrOwner(selectedMembership)) {
+          return res.status(403).json({
+            error: 'Not authorized',
+            message: 'Only organization admins or owners can delete member profiles',
+          });
         }
+        targetOrgId = selectedMembership.organizationId;
       }
 
       // Check if profile exists
@@ -2610,8 +2610,8 @@ export function createAdminMemberProfileRouter(config: MemberProfileRoutesConfig
   const { memberDb, invalidateMemberContextCache } = config;
   const router = Router();
 
-  // GET /api/admin/member-profiles - List all member profiles (admin)
-  router.get('/', requireAuth, requireAdmin, async (req, res) => {
+  // GET /api/admin/member-profiles - List all member profiles (global admin)
+  router.get('/', ...requireGlobalAdmin, async (req, res) => {
     try {
       const { is_public, search, limit, offset } = req.query;
 
@@ -2631,11 +2631,20 @@ export function createAdminMemberProfileRouter(config: MemberProfileRoutesConfig
     }
   });
 
-  // PUT /api/admin/member-profiles/:id - Update any member profile (admin)
+  // PUT /api/admin/member-profiles/:id - Global admins may update any profile;
+  // tenant admin keys remain limited to a profile owned by their issuing org.
   router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
     try {
       const { id } = req.params;
       const updates = req.body;
+
+      const invalidProfileUrlField = validateMemberProfileUrlFields(updates);
+      if (invalidProfileUrlField) {
+        return res.status(400).json({
+          error: 'Invalid profile URL',
+          message: `${invalidProfileUrlField} must be an HTTPS URL without credentials`,
+        });
+      }
 
       // Cross-tenant gate. `requireAdmin` keys off `:orgId` in the path,
       // but this route uses `:id` (a profile UUID) — resolve the profile's
@@ -2712,7 +2721,7 @@ export function createAdminMemberProfileRouter(config: MemberProfileRoutesConfig
     }
   });
 
-  // DELETE /api/admin/member-profiles/:id - Delete any member profile (admin)
+  // DELETE /api/admin/member-profiles/:id - Same global/same-tenant split as PUT.
   router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
     try {
       const { id } = req.params;

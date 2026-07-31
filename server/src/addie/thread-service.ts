@@ -526,7 +526,30 @@ export class ThreadService {
   /**
    * Get all messages in a thread
    */
-  async getThreadMessages(threadId: string): Promise<ThreadMessage[]> {
+  async getThreadMessages(
+    threadId: string,
+    options?: { limit?: number; offset?: number },
+  ): Promise<ThreadMessage[]> {
+    if (options) {
+      const limit = Number.isFinite(options.limit)
+        ? Math.min(Math.max(Math.trunc(options.limit!), 1), 200)
+        : 100;
+      const offset = Number.isFinite(options.offset)
+        ? Math.min(Math.max(Math.trunc(options.offset!), 0), 10_000)
+        : 0;
+      const result = await query<ThreadMessage>(
+        `SELECT * FROM (
+           SELECT * FROM addie_thread_messages
+           WHERE thread_id = $1
+           ORDER BY sequence_number DESC
+           LIMIT $2 OFFSET $3
+         ) recent_messages
+         ORDER BY sequence_number ASC`,
+        [threadId, limit, offset],
+      );
+      return result.rows;
+    }
+
     const result = await query<ThreadMessage>(
       `SELECT * FROM addie_thread_messages
        WHERE thread_id = $1
@@ -602,6 +625,7 @@ export class ThreadService {
    * Add feedback to a message
    */
   async addMessageFeedback(
+    threadId: string,
     messageId: string,
     feedback: MessageFeedback
   ): Promise<boolean> {
@@ -616,7 +640,8 @@ export class ThreadService {
          rated_by = $7,
          rating_source = $8,
          rated_at = NOW()
-       WHERE message_id = $1`,
+       WHERE message_id = $1
+         AND thread_id = $9`,
       [
         messageId,
         feedback.rating,
@@ -626,6 +651,7 @@ export class ThreadService {
         feedback.improvement_suggestion || null,
         feedback.rated_by,
         feedback.rating_source,
+        threadId,
       ]
     );
     return result.rowCount !== null && result.rowCount > 0;

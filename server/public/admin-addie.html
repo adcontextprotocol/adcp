@@ -2210,7 +2210,9 @@
             : '';
 
           // Tags for curated content
-          const tags = doc.relevance_tags?.length ? doc.relevance_tags.join(', ') : '';
+          const tags = Array.isArray(doc.relevance_tags) && doc.relevance_tags.length
+            ? doc.relevance_tags.map(tag => String(tag)).join(', ')
+            : '';
 
           // Fetch status badge for curated content
           const statusBadge = isCurated && doc.fetch_status
@@ -2222,14 +2224,12 @@
 
           // Slack-specific info
           const slackInfo = isSlack && doc.slack_channel_name
-            ? `<span class="badge badge-info">#${doc.slack_channel_name}</span><span style="color: var(--color-text-muted);">@${doc.slack_username || 'unknown'}</span>`
+            ? `<span class="badge badge-info">#${escapeHtml(String(doc.slack_channel_name))}</span><span style="color: var(--color-text-muted);">@${escapeHtml(String(doc.slack_username || 'unknown'))}</span>`
             : '';
 
           // URL link
           const urlLink = doc.source_url || doc.fetch_url || doc.slack_permalink;
-          const urlHtml = urlLink
-            ? `<a href="${escapeHtml(urlLink)}" target="_blank" onclick="event.stopPropagation();" style="color: var(--color-brand);">${isSlack ? 'View in Slack' : 'Source'}</a>`
-            : '';
+          const urlHtml = renderSafeHttpLink(urlLink, isSlack ? 'View in Slack' : 'Source', true);
 
           // Content preview
           const contentPreview = doc.summary
@@ -2282,7 +2282,7 @@
                 </div>
                 ${contentPreview ? `<div class="knowledge-excerpt">${contentPreview}</div>` : ''}
                 ${addieNotes}
-                ${tags ? `<div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-1);">Tags: ${tags}</div>` : ''}
+                ${tags ? `<div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-1);">Tags: ${escapeHtml(tags)}</div>` : ''}
               </div>
               ${actions ? `<div class="knowledge-actions" onclick="event.stopPropagation();">${actions}</div>` : ''}
             </div>
@@ -2325,15 +2325,25 @@
 
         document.getElementById('resource-edit-id').value = r.id;
         document.getElementById('resource-title').textContent = r.title;
-        document.getElementById('resource-url').innerHTML = `<a href="${escapeHtml(r.source_url || r.fetch_url)}" target="_blank">${escapeHtml(r.source_url || r.fetch_url)}</a>`;
+        const resourceUrl = r.source_url || r.fetch_url || '';
+        const resourceUrlEl = document.getElementById('resource-url');
+        const safeResourceLink = renderSafeHttpLink(resourceUrl, resourceUrl);
+        if (safeResourceLink) {
+          resourceUrlEl.innerHTML = safeResourceLink;
+        } else {
+          // Preserve legacy values for admins to diagnose without activating them.
+          resourceUrlEl.textContent = resourceUrl || 'No URL';
+        }
         document.getElementById('resource-summary').textContent = r.summary || 'Not yet fetched';
 
         // Display key insights
         const insightsEl = document.getElementById('resource-insights');
         if (r.key_insights && r.key_insights.length > 0) {
-          insightsEl.innerHTML = r.key_insights.map(i =>
-            `<div style="margin-bottom: var(--space-1);"><span class="badge badge-${i.importance === 'high' ? 'error' : i.importance === 'medium' ? 'warning' : 'info'}">${i.importance}</span> ${escapeHtml(i.insight)}</div>`
-          ).join('');
+          insightsEl.innerHTML = r.key_insights.map(i => {
+            const importance = ['high', 'medium', 'low'].includes(i.importance) ? i.importance : 'low';
+            const badge = importance === 'high' ? 'error' : importance === 'medium' ? 'warning' : 'info';
+            return `<div style="margin-bottom: var(--space-1);"><span class="badge badge-${badge}">${importance}</span> ${escapeHtml(i.insight)}</div>`;
+          }).join('');
         } else {
           insightsEl.textContent = 'No insights yet';
         }
@@ -2735,8 +2745,8 @@
         if (data.tags && data.tags.length > 0) {
           tagsContainer.innerHTML = data.tags.map(t => `
             <div class="tag-stat">
-              <span>${t.tag.replace('_', ' ')}</span>
-              <span class="tag-stat-count">${t.count}</span>
+              <span>${escapeHtml(String(t.tag ?? '').replace('_', ' '))}</span>
+              <span class="tag-stat-count">${escapeHtml(String(t.count ?? ''))}</span>
             </div>
           `).join('');
         } else {
@@ -2925,6 +2935,31 @@
       const div = document.createElement('div');
       div.textContent = text;
       return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function getSafeHttpUrl(value) {
+      if (typeof value !== 'string' || !value.trim()) return null;
+      try {
+        const parsed = new URL(value.trim());
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+        if (parsed.username || parsed.password) return null;
+        return parsed.href;
+      } catch {
+        return null;
+      }
+    }
+
+    function renderSafeHttpLink(value, label, stopPropagation = false) {
+      const safeUrl = getSafeHttpUrl(value);
+      if (!safeUrl) return '';
+      const anchor = document.createElement('a');
+      anchor.href = safeUrl;
+      anchor.target = '_blank';
+      anchor.rel = 'noopener noreferrer';
+      anchor.textContent = String(label || safeUrl);
+      anchor.style.color = 'var(--color-brand)';
+      if (stopPropagation) anchor.setAttribute('onclick', 'event.stopPropagation();');
+      return anchor.outerHTML;
     }
 
     function copyThreadId(el) {
@@ -3126,7 +3161,10 @@
             <h4>External Sources to Reference</h4>
             <div class="suggestion-detail-content">
               <ul style="margin: 0; padding-left: var(--space-4);">
-                ${s.external_sources.map(url => `<li><a href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a></li>`).join('')}
+                ${s.external_sources.map(url => {
+                  const link = renderSafeHttpLink(url, url);
+                  return `<li>${link || escapeHtml(String(url ?? ''))}</li>`;
+                }).join('')}
               </ul>
             </div>
           </div>
@@ -3438,17 +3476,21 @@
         const linksEl = document.getElementById('extracted-links');
         if (extractedLinks.length > 0) {
           linksEl.style.display = 'block';
-          document.getElementById('links-list').innerHTML = extractedLinks.map(link => `
+          const safeExtractedLinks = extractedLinks.flatMap(link => {
+            const safeUrl = getSafeHttpUrl(link.url);
+            return safeUrl ? [{ ...link, url: safeUrl }] : [];
+          });
+          document.getElementById('links-list').innerHTML = safeExtractedLinks.map(link => `
             <div class="link-item">
-              <span class="link-source">${link.source}</span>
-              <a href="${escapeHtml(link.url)}" target="_blank" rel="noopener">${escapeHtml(link.url)}</a>
+              <span class="link-source">${escapeHtml(String(link.source || ''))}</span>
+              ${renderSafeHttpLink(link.url, link.url)}
             </div>
           `).join('');
 
           // Populate URL dropdown for perspectives form
           const urlSelect = document.getElementById('perspectives-url');
           urlSelect.innerHTML = '<option value="">Select or enter URL...</option>' +
-            extractedLinks.map(link => `<option value="${escapeHtml(link.url)}">${escapeHtml(link.url)}</option>`).join('');
+            safeExtractedLinks.map(link => `<option value="${escapeHtml(link.url)}">${escapeHtml(link.url)}</option>`).join('');
         } else {
           linksEl.style.display = 'none';
         }
@@ -3546,7 +3588,7 @@
           <span class="thumbs">${msg.rating >= 3 ? '👍' : '👎'}</span>
           <span class="rating-source">(${escapeHtml(msg.rating_source || 'unknown')})</span>
           ${msg.rating_notes ? `<span title="${escapeHtml(msg.rating_notes)}">"${escapeHtml(msg.rating_notes.substring(0, 30))}${msg.rating_notes.length > 30 ? '...' : ''}"</span>` : ''}
-          ${msg.feedback_tags && msg.feedback_tags.length > 0 ? `<span>[${msg.feedback_tags.join(', ')}]</span>` : ''}
+          ${msg.feedback_tags && msg.feedback_tags.length > 0 ? `<span>[${escapeHtml(msg.feedback_tags.map(tag => String(tag)).join(', '))}]</span>` : ''}
         </div>
       ` : '';
 
@@ -3570,7 +3612,7 @@
             </div>
             <textarea class="feedback-notes"
                       id="feedback-notes-${msg.message_id}"
-                      placeholder="What's good or bad about this response?">${msg.rating_notes || ''}</textarea>
+                      placeholder="What's good or bad about this response?">${escapeHtml(msg.rating_notes || '')}</textarea>
             <div class="feedback-actions">
               <button class="btn btn-small btn-primary" onclick="saveMessageFeedback('${msg.message_id}')">Save</button>
             </div>
@@ -3704,6 +3746,46 @@
       `;
     }
 
+    function linkifyBareUrls(html) {
+      const template = document.createElement('template');
+      template.innerHTML = html;
+      const walker = document.createTreeWalker(template.content, 4);
+      const textNodes = [];
+      let node;
+
+      while ((node = walker.nextNode())) textNodes.push(node);
+
+      textNodes.forEach(textNode => {
+        if (textNode.parentElement?.closest('a, code, pre')) return;
+
+        const value = textNode.nodeValue || '';
+        const urlPattern = /https?:\/\/[^\s<>"]+/g;
+        let match;
+        let cursor = 0;
+        let fragment = null;
+
+        while ((match = urlPattern.exec(value))) {
+          fragment ||= document.createDocumentFragment();
+          fragment.append(document.createTextNode(value.slice(cursor, match.index)));
+
+          const anchor = document.createElement('a');
+          anchor.href = match[0];
+          anchor.target = '_blank';
+          anchor.rel = 'noopener noreferrer';
+          anchor.textContent = match[0];
+          fragment.append(anchor);
+          cursor = match.index + match[0].length;
+        }
+
+        if (fragment) {
+          fragment.append(document.createTextNode(value.slice(cursor)));
+          textNode.replaceWith(fragment);
+        }
+      });
+
+      return template.innerHTML;
+    }
+
     function renderMarkdown(text) {
       // Replace Slack user mentions with display names before escaping HTML
       // Format: <@U1234567> -> @DisplayName
@@ -3713,7 +3795,11 @@
       });
 
       // Escape HTML first
-      text = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      text = text.replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 
       // Code blocks
       text = text.replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
@@ -3728,10 +3814,15 @@
       text = text.replace(/\*([^*]+)\*/g, '<em>$1</em>');
 
       // Links - make them clickable
-      text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
-
-      // Bare URLs (not already in markdown links)
-      text = text.replace(/(?<!href="|>)(https?:\/\/[^\s<>"]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+      text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, label, href) => {
+        try {
+          const parsed = new URL(href.replace(/&amp;/g, '&'));
+          if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return label;
+          return `<a href="${href}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+        } catch {
+          return label;
+        }
+      });
 
       // Line breaks to paragraphs
       const paragraphs = text.split(/\n\n+/);
@@ -3750,7 +3841,8 @@
         return '<p>' + p.replace(/\n/g, '<br>') + '</p>';
       }).join('');
 
-      return text;
+      // Linkify text nodes only, so generated Markdown/code HTML is never reprocessed.
+      return linkifyBareUrls(text);
     }
 
     function renderExecutionPlan(toolExecutions, totalLatency) {

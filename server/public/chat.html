@@ -2888,6 +2888,7 @@
   <footer style="display:none"></footer>
 
   <script src="/nav.js"></script>
+  <script src="/external-url.js"></script>
   <script>
     window.siBranding = (() => {
       'use strict';
@@ -3098,6 +3099,7 @@
 
       // SI (Sponsored Intelligence) Modal State
       let siSessionId = null;
+      let siSessionCapability = null;
       let siBrandName = null;
       let siBrandInfo = null;
       let siIsLoading = false;
@@ -3135,6 +3137,13 @@
         const headers = { ...options.headers };
         if (nativeAuthToken) {
           headers['Authorization'] = `Bearer ${nativeAuthToken}`;
+        }
+        if (
+          siSessionCapability &&
+          siSessionId &&
+          url.startsWith(`/api/si/sessions/${encodeURIComponent(siSessionId)}`)
+        ) {
+          headers['X-SI-Session-Capability'] = siSessionCapability;
         }
         return fetch(url, { ...options, headers, credentials: 'include' });
       }
@@ -4982,7 +4991,7 @@
 
                   // Store SI session data - will open modal after stream is completely done
                   if (data.si_session && data.si_session.session_id) {
-                    console.log('SI session detected, will open modal after stream completes:', data.si_session);
+                    console.log('SI session detected, will open modal after stream completes:', data.si_session.session_id);
                     pendingSiSession = data.si_session;
                   }
 
@@ -5038,7 +5047,7 @@
           // Open SI modal if a brand agent session was created
           // This must happen AFTER the stream is completely done to avoid race conditions
           if (pendingSiSession) {
-            console.log('Stream complete, opening SI modal:', pendingSiSession);
+            console.log('Stream complete, opening SI modal:', pendingSiSession.session_id);
             // Small delay to ensure DOM is fully settled
             setTimeout(async () => {
               try {
@@ -5220,6 +5229,7 @@
 
           // Set up modal state
           siSessionId = sessionId;
+          siSessionCapability = null;
           siBrandName = brandName;
           siBrandInfo = data.brand || null;
 
@@ -5289,6 +5299,7 @@
       // Open SI modal with brand info and initial response
       async function siOpenModal(sessionData) {
         siSessionId = sessionData.session_id;
+        siSessionCapability = sessionData.anonymous_access_token || null;
         siBrandName = sessionData.brand_name;
 
         // Update modal header and clear any styling left by the previous brand.
@@ -5362,6 +5373,7 @@
 
         // Reset state
         siSessionId = null;
+        siSessionCapability = null;
         siBrandName = null;
         siBrandInfo = null;
         siIsLoading = false;
@@ -5437,7 +5449,8 @@
               } else if (data.action === 'checkout' || data.action === 'acp_checkout') {
                 siHandleCheckout(data);
               } else if (data.url) {
-                window.open(data.url, '_blank');
+                const safeUrl = safeExternalHttpUrl(data.url);
+                if (safeUrl) window.open(safeUrl, '_blank', 'noopener,noreferrer');
               } else if (data.action) {
                 // Generic action - send to SI agent
                 siSendAction(data.action, data.payload);
@@ -5447,22 +5460,24 @@
           } else if (type === 'link') {
             const link = document.createElement('a');
             link.className = 'si-ui-link';
-            link.href = data.url || '#';
+            link.href = safeExternalHttpUrl(data.url) || '#';
             link.target = '_blank';
+            link.rel = 'noopener noreferrer';
             link.textContent = data.text || data.label || data.url;
             container.appendChild(link);
           } else if (type === 'image') {
             const imageDiv = document.createElement('div');
             imageDiv.className = 'si-image';
+            const imageUrl = safeExternalHttpUrl(data.url || data.image_url);
             imageDiv.innerHTML = `
-              <img src="${escapeHtml(data.url || data.image_url)}" alt="${escapeHtml(data.alt || '')}">
+              ${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(data.alt || '')}">` : ''}
               ${data.caption ? `<div class="si-image-caption">${escapeHtml(data.caption)}</div>` : ''}
             `;
             container.appendChild(imageDiv);
           } else if (type === 'product_card') {
             const card = document.createElement('div');
             card.className = 'si-product-card';
-            const imageUrl = data.image || data.image_url;
+            const imageUrl = safeExternalHttpUrl(data.image || data.image_url);
             const hasAction = data.cta && data.cta.action;
             card.innerHTML = `
               ${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(data.title || '')}" class="si-product-image">` : ''}
@@ -5505,7 +5520,7 @@
             for (const item of items) {
               const itemDiv = document.createElement('div');
               itemDiv.className = 'si-carousel-item';
-              const itemImageUrl = item.image || item.image_url;
+              const itemImageUrl = safeExternalHttpUrl(item.image || item.image_url);
               itemDiv.innerHTML = `
                 ${itemImageUrl ? `<img src="${escapeHtml(itemImageUrl)}" alt="${escapeHtml(item.title || '')}" class="si-carousel-item-image">` : '<div class="si-carousel-item-image"></div>'}
                 <div class="si-carousel-item-content">
@@ -5518,7 +5533,8 @@
                 if (item.action) {
                   siSendAction(item.action, { item });
                 } else if (item.url) {
-                  window.open(item.url, '_blank');
+                  const safeUrl = safeExternalHttpUrl(item.url);
+                  if (safeUrl) window.open(safeUrl, '_blank', 'noopener,noreferrer');
                 } else {
                   // Default: select this item
                   siSendAction('select_item', { item });
@@ -5725,8 +5741,11 @@
       function siRenderA2UILink(props, dataModel, itemContext) {
         const link = document.createElement('a');
         link.className = 'si-ui-link';
-        link.href = siResolveBoundValue(props.url, dataModel, itemContext) || '#';
-        if (props.external !== false) link.target = '_blank';
+        link.href = safeExternalHttpUrl(siResolveBoundValue(props.url, dataModel, itemContext)) || '#';
+        if (props.external !== false) {
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+        }
         link.textContent = siResolveBoundValue(props.label, dataModel, itemContext) || link.href;
         return link;
       }
@@ -5736,7 +5755,7 @@
         container.className = 'si-image';
 
         const img = document.createElement('img');
-        img.src = siResolveBoundValue(props.url, dataModel, itemContext) || '';
+        img.src = safeExternalHttpUrl(siResolveBoundValue(props.url, dataModel, itemContext)) || '';
         img.alt = siResolveBoundValue(props.alt, dataModel, itemContext) || '';
         container.appendChild(img);
 
@@ -5755,7 +5774,7 @@
         const card = document.createElement('div');
         card.className = 'si-product-card';
 
-        const imageUrl = siResolveBoundValue(props.image, dataModel, itemContext);
+        const imageUrl = safeExternalHttpUrl(siResolveBoundValue(props.image, dataModel, itemContext));
         const title = siResolveBoundValue(props.title, dataModel, itemContext);
         const price = siResolveBoundValue(props.price, dataModel, itemContext);
         const description = siResolveBoundValue(props.description, dataModel, itemContext);
@@ -5882,7 +5901,7 @@
 
         const title = siResolveBoundValue(props.title, dataModel, itemContext);
         const subtitle = siResolveBoundValue(props.subtitle, dataModel, itemContext);
-        const image = siResolveBoundValue(props.image, dataModel, itemContext);
+        const image = safeExternalHttpUrl(siResolveBoundValue(props.image, dataModel, itemContext));
 
         card.innerHTML = `
           ${image ? `<img src="${escapeHtml(image)}" alt="${escapeHtml(title || '')}" class="si-product-image">` : ''}
@@ -6069,16 +6088,9 @@
         let hasHandoff = false;
 
         try {
-          // Get auth headers
-          const headers = { 'Content-Type': 'application/json' };
-          const token = localStorage.getItem('jwt');
-          if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-          }
-
-          const response = await fetch(`/api/si/sessions/${siSessionId}/messages/stream`, {
+          const response = await authFetch(`/api/si/sessions/${siSessionId}/messages/stream`, {
             method: 'POST',
-            headers,
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ message })
           });
 

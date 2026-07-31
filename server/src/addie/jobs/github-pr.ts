@@ -30,6 +30,25 @@ export interface UpsertFilePrInput {
   prBody: string;
 }
 
+export interface FileChange {
+  /** Repo-relative file path to create or update. */
+  path: string;
+  content: string;
+}
+
+export interface UpsertFilesPrInput {
+  /** Repo slug `owner/name`. Defaults to `GITHUB_REPO` env or `adcontextprotocol/adcp`. */
+  repo?: string;
+  /** Head branch the PR ships from, e.g. `addie/secretariat-1234`. */
+  branch: string;
+  /** Base branch. Defaults to `main`. */
+  baseBranch?: string;
+  files: FileChange[];
+  commitMessage: string;
+  prTitle: string;
+  prBody: string;
+}
+
 export interface UpsertFilePrResult {
   prUrl: string;
   prNumber: number;
@@ -84,10 +103,147 @@ export async function getFileContent(
 }
 
 /**
+ * Ensure `branch` exists at `base`'s current head, force-resetting it if
+ * it already exists so stale content never leaks into the diff. Returns
+ * the base sha on success, null on any failure.
+ */
+async function resetBranchToBase(
+  token: string,
+  api: string,
+  branch: string,
+  base: string,
+  repo: string
+): Promise<string | null> {
+  const refResp = await ghFetch(token, `${api}/git/ref/heads/${base}`);
+  if (!refResp.ok) {
+    logger.error({ status: refResp.status, repo, base }, 'Base ref lookup failed');
+    return null;
+  }
+  const baseSha = ((await refResp.json()) as { object: { sha: string } }).object.sha;
+
+  const createResp = await ghFetch(token, `${api}/git/refs`, {
+    method: 'POST',
+    body: JSON.stringify({ ref: `refs/heads/${branch}`, sha: baseSha }),
+  });
+  if (!createResp.ok) {
+    if (createResp.status !== 422) {
+      logger.error({ status: createResp.status, repo }, 'Branch create failed');
+      return null;
+    }
+    const resetResp = await ghFetch(token, `${api}/git/refs/heads/${branch}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ sha: baseSha, force: true }),
+    });
+    if (!resetResp.ok) {
+      logger.error({ status: resetResp.status, repo }, 'Branch reset failed');
+      return null;
+    }
+  }
+  return baseSha;
+}
+
+/**
+ * PUT a single file's content onto `branch` via the Contents API,
+ * looking up the existing blob sha first (absent on a first-ever write).
+ * Returns true on success.
+ */
+async function putFileContent(
+  token: string,
+  api: string,
+  branch: string,
+  file: FileChange,
+  commitMessage: string,
+  repo: string
+): Promise<boolean> {
+  const fileResp = await ghFetch(
+    token,
+    `${api}/contents/${file.path}?ref=${encodeURIComponent(branch)}`
+  );
+  let existingSha: string | undefined;
+  if (fileResp.ok) {
+    existingSha = ((await fileResp.json()) as { sha?: string }).sha;
+  } else if (fileResp.status !== 404) {
+    logger.error({ status: fileResp.status, repo, path: file.path }, 'File lookup failed');
+    return false;
+  }
+
+  const putResp = await ghFetch(token, `${api}/contents/${file.path}`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      message: commitMessage,
+      content: Buffer.from(file.content, 'utf8').toString('base64'),
+      branch,
+      ...(existingSha ? { sha: existingSha } : {}),
+    }),
+  });
+  if (!putResp.ok) {
+    const err = await putResp.text().catch(() => '');
+    logger.error({ status: putResp.status, err, repo, path: file.path }, 'File commit failed');
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Reuse the open PR for `branch` if one exists, or open a new one.
+ */
+async function reuseOrOpenPr(
+  token: string,
+  api: string,
+  repo: string,
+  branch: string,
+  base: string,
+  prTitle: string,
+  prBody: string
+): Promise<UpsertFilePrResult | null> {
+  const owner = repo.split('/')[0];
+  const listResp = await ghFetch(
+    token,
+    `${api}/pulls?head=${owner}:${encodeURIComponent(branch)}&base=${base}&state=open`
+  );
+  if (listResp.ok) {
+    const open = (await listResp.json()) as Array<{ html_url: string; number: number }>;
+    if (open.length > 0) {
+      return { prUrl: open[0].html_url, prNumber: open[0].number, created: false };
+    }
+  }
+
+  const prResp = await ghFetch(token, `${api}/pulls`, {
+    method: 'POST',
+    body: JSON.stringify({ title: prTitle, head: branch, base, body: prBody }),
+  });
+  if (!prResp.ok) {
+    const err = await prResp.text().catch(() => '');
+    logger.error({ status: prResp.status, err, repo }, 'PR create failed');
+    return null;
+  }
+  const pr = (await prResp.json()) as { html_url: string; number: number };
+  return { prUrl: pr.html_url, prNumber: pr.number, created: true };
+}
+
+/**
  * Create or refresh a single-file PR. Returns null on any failure so
  * job callers can record the miss without throwing.
  */
 export async function upsertFilePr(input: UpsertFilePrInput): Promise<UpsertFilePrResult | null> {
+  return upsertFilesPr({
+    repo: input.repo,
+    branch: input.branch,
+    baseBranch: input.baseBranch,
+    files: [{ path: input.path, content: input.content }],
+    commitMessage: input.commitMessage,
+    prTitle: input.prTitle,
+    prBody: input.prBody,
+  });
+}
+
+/**
+ * Create or refresh a multi-file PR: force-resets the working branch to
+ * base head, PUTs each file's content, then reuses or opens the PR.
+ * Returns null on any failure so job callers can record the miss without
+ * throwing.
+ */
+export async function upsertFilesPr(input: UpsertFilesPrInput): Promise<UpsertFilePrResult | null> {
   const token = await resolveGitHubToken();
   if (!token) {
     logger.warn('No GitHub credential available; cannot open PR');
@@ -98,94 +254,17 @@ export async function upsertFilePr(input: UpsertFilePrInput): Promise<UpsertFile
   const api = `https://api.github.com/repos/${repo}`;
 
   try {
-    const refResp = await ghFetch(token, `${api}/git/ref/heads/${base}`);
-    if (!refResp.ok) {
-      logger.error({ status: refResp.status, repo, base }, 'Base ref lookup failed');
-      return null;
-    }
-    const baseSha = ((await refResp.json()) as { object: { sha: string } }).object.sha;
+    const baseSha = await resetBranchToBase(token, api, input.branch, base, repo);
+    if (!baseSha) return null;
 
-    // Ensure the working branch exists at base head. Force-reset an
-    // existing branch so stale content never leaks into the diff.
-    const createResp = await ghFetch(token, `${api}/git/refs`, {
-      method: 'POST',
-      body: JSON.stringify({ ref: `refs/heads/${input.branch}`, sha: baseSha }),
-    });
-    if (!createResp.ok) {
-      if (createResp.status !== 422) {
-        logger.error({ status: createResp.status, repo }, 'Branch create failed');
-        return null;
-      }
-      const resetResp = await ghFetch(token, `${api}/git/refs/heads/${input.branch}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ sha: baseSha, force: true }),
-      });
-      if (!resetResp.ok) {
-        logger.error({ status: resetResp.status, repo }, 'Branch reset failed');
-        return null;
-      }
+    for (const file of input.files) {
+      const ok = await putFileContent(token, api, input.branch, file, input.commitMessage, repo);
+      if (!ok) return null;
     }
 
-    // Blob sha of the file on the branch (equals base's copy after the
-    // reset); absent for a first-ever refresh.
-    const fileResp = await ghFetch(
-      token,
-      `${api}/contents/${input.path}?ref=${encodeURIComponent(input.branch)}`
-    );
-    let existingSha: string | undefined;
-    if (fileResp.ok) {
-      existingSha = ((await fileResp.json()) as { sha?: string }).sha;
-    } else if (fileResp.status !== 404) {
-      logger.error({ status: fileResp.status, repo }, 'File lookup failed');
-      return null;
-    }
-
-    const putResp = await ghFetch(token, `${api}/contents/${input.path}`, {
-      method: 'PUT',
-      body: JSON.stringify({
-        message: input.commitMessage,
-        content: Buffer.from(input.content, 'utf8').toString('base64'),
-        branch: input.branch,
-        ...(existingSha ? { sha: existingSha } : {}),
-      }),
-    });
-    if (!putResp.ok) {
-      const err = await putResp.text().catch(() => '');
-      logger.error({ status: putResp.status, err, repo }, 'File commit failed');
-      return null;
-    }
-
-    // Reuse the open PR for this branch, or open one.
-    const owner = repo.split('/')[0];
-    const listResp = await ghFetch(
-      token,
-      `${api}/pulls?head=${owner}:${encodeURIComponent(input.branch)}&base=${base}&state=open`
-    );
-    if (listResp.ok) {
-      const open = (await listResp.json()) as Array<{ html_url: string; number: number }>;
-      if (open.length > 0) {
-        return { prUrl: open[0].html_url, prNumber: open[0].number, created: false };
-      }
-    }
-
-    const prResp = await ghFetch(token, `${api}/pulls`, {
-      method: 'POST',
-      body: JSON.stringify({
-        title: input.prTitle,
-        head: input.branch,
-        base,
-        body: input.prBody,
-      }),
-    });
-    if (!prResp.ok) {
-      const err = await prResp.text().catch(() => '');
-      logger.error({ status: prResp.status, err, repo }, 'PR create failed');
-      return null;
-    }
-    const pr = (await prResp.json()) as { html_url: string; number: number };
-    return { prUrl: pr.html_url, prNumber: pr.number, created: true };
+    return await reuseOrOpenPr(token, api, repo, input.branch, base, input.prTitle, input.prBody);
   } catch (err) {
-    logger.error({ err, repo }, 'upsertFilePr threw');
+    logger.error({ err, repo }, 'upsertFilesPr threw');
     return null;
   }
 }

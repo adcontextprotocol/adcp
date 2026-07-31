@@ -7,6 +7,7 @@
   <title>Admin - Industry Feeds - AdCP Registry</title>
   <script src="/nav.js"></script>
   <script src="/admin-sidebar.js"></script>
+  <script src="/perspective-url.js"></script>
   <link rel="stylesheet" href="/design-system.css">
   <style>
     body {
@@ -937,10 +938,14 @@
           const summary = article.summary
             ? `<div class="article-summary">${escapeHtml(article.summary)}</div>`
             : '';
+          const safeExternalUrl = getSafePerspectiveExternalUrl(article.external_url);
+          const titleHtml = safeExternalUrl
+            ? `<a href="${escapeHtml(safeExternalUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(article.title)}</a>`
+            : escapeHtml(article.title);
           html += `
             <div class="article-item">
               <div class="article-title-row">
-                ${pendingIcon}<a href="${escapeHtml(article.external_url)}" target="_blank">${escapeHtml(article.title)}</a>
+                ${pendingIcon}${titleHtml}
               </div>
               <div class="article-meta">${date} ${quality}</div>
               ${summary}
