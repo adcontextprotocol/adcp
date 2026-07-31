@@ -41,4 +41,3 @@ export function boundedRawJson(req: Request, res: Response, next: NextFunction):
     }
   });
 }
-
