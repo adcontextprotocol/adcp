@@ -186,9 +186,9 @@ creative format.
 
 At delivery, sellers apply RFC 4647 Lookup to the opportunity's ordered locale
 preferences and the creative's available locale tags. Lookup progressively
-truncates subtags until it finds a match. If one truncated range matches more
-than one available tag, the seller chooses the first variant in source-then-
-request-target order; sellers preserve target order on readback. When no match
+truncates the requested range until it finds an available canonical tag equal
+to that range. Matching is equality, not prefix/subordination: `es-MX` does not
+match an available `es-ES` after truncation to `es`. When no equality match
 exists, the seller MUST apply `unmatched_locale_action`; it MUST NOT silently
 substitute the source.
 Every delivered execution of a localized creative includes the selected

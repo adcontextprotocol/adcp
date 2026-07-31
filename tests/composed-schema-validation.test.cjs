@@ -161,10 +161,6 @@ function rfc4647Lookup(preferences, variants) {
     let candidate = preference.toLowerCase();
     while (candidate) {
       if (byLocale.has(candidate)) return byLocale.get(candidate);
-      const prefixMatch = variants.find((variant) =>
-        variant.locale.toLowerCase().startsWith(`${candidate}-`)
-      );
-      if (prefixMatch) return prefixMatch;
       const parts = candidate.split('-');
       parts.pop();
       if (parts.at(-1)?.length === 1) parts.pop();
@@ -2962,14 +2958,13 @@ async function runTests() {
       target_properties_disjoint_from_source: ['locale_variant_id', 'locale'],
       default_locale_variant_id: 'must_reference_exactly_one_source_or_target_variant',
       locale_matching: 'rfc4647_lookup',
-      locale_match_tie_break: 'source_then_request_target_order',
+      locale_match_comparison: 'canonical_tag_equality_after_requested_range_truncation',
       replacement_atomicity: 'all_or_prior_state_unchanged',
       request_sync_list_round_trip: {
         source_match: { role: 'source' },
         source_equal_properties: ['locale_variant_id', 'locale'],
         target_match_key: 'locale_variant_id',
         target_set: 'exact',
-        target_order: 'preserve_request',
         target_equal_properties: ['locale'],
         localization_equal_properties: [
           'default_locale_variant_id',
@@ -3150,7 +3145,7 @@ async function runTests() {
       default_locale_variant_id: 'must_reference_exactly_one_variant',
       source_assets: 'must_equal_enclosing_creative.assets',
       locale_matching: 'rfc4647_lookup',
-      locale_match_tie_break: 'source_then_request_target_order'
+      locale_match_comparison: 'canonical_tag_equality_after_requested_range_truncation'
     },
     'Localization readback exposes machine-readable exactness rules'
   );
@@ -3231,11 +3226,18 @@ async function runTests() {
   );
 
   testSemanticValidation(
-    selectLocalizedVariant(localizationReadback, ['es-MX']) === 'loc_es_es'
+    selectLocalizedVariant(localizationReadback, ['es-ES']) === 'loc_es_es'
       ? []
-      : ['RFC 4647 Lookup did not select loc_es_es'],
+      : ['RFC 4647 Lookup did not select the equal es-ES tag'],
     undefined,
-    'RFC 4647 Lookup selects the available target through progressive truncation'
+    'RFC 4647 Lookup selects an equal available target'
+  );
+  testSemanticValidation(
+    selectLocalizedVariant(localizationReadback, ['es-MX']) === undefined
+      ? []
+      : ['RFC 4647 Lookup prefix-matched sibling es-ES'],
+    undefined,
+    'RFC 4647 Lookup does not prefix-match a sibling regional locale'
   );
 
   const fallbackReadback = { ...localizationReadback, unmatched_locale_action: 'serve_default' };

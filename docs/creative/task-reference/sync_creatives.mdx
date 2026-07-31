@@ -247,8 +247,8 @@ the seller to translate: use buyer tooling, `build_creative`, or a separate
 translation/transformation agent first, then sync the resulting assets.
 
 At delivery, the seller applies RFC 4647 Lookup to ordered locale preferences.
-When a truncated range matches multiple available tags, source then request
-target order is the deterministic tie-break; readback preserves target order.
+Each progressively truncated requested range matches only an equal available
+canonical tag; it does not prefix-match sibling regional tags.
 If lookup finds no available locale, it follows `unmatched_locale_action`:
 serve `default_locale_variant_id` or make the creative ineligible. It never
 silently assumes the source is the default.

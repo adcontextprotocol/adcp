@@ -9,14 +9,13 @@
       "target_properties_disjoint_from_source": ["locale_variant_id", "locale"],
       "default_locale_variant_id": "must_reference_exactly_one_source_or_target_variant",
       "locale_matching": "rfc4647_lookup",
-      "locale_match_tie_break": "source_then_request_target_order",
+      "locale_match_comparison": "canonical_tag_equality_after_requested_range_truncation",
       "replacement_atomicity": "all_or_prior_state_unchanged",
       "request_sync_list_round_trip": {
         "source_match": { "role": "source" },
         "source_equal_properties": ["locale_variant_id", "locale"],
         "target_match_key": "locale_variant_id",
         "target_set": "exact",
-        "target_order": "preserve_request",
         "target_equal_properties": ["locale"],
         "localization_equal_properties": [
           "default_locale_variant_id",

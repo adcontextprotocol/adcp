@@ -14,7 +14,7 @@
       "default_locale_variant_id": "must_reference_exactly_one_variant",
       "source_assets": "must_equal_enclosing_creative.assets",
       "locale_matching": "rfc4647_lookup",
-      "locale_match_tie_break": "source_then_request_target_order"
+      "locale_match_comparison": "canonical_tag_equality_after_requested_range_truncation"
     },
     "spec": "docs/creative/task-reference/list_creatives.mdx#localized-creative-readback"
   },
@@ -34,7 +34,7 @@
     "locale_matching": {
       "type": "string",
       "const": "rfc4647_lookup",
-      "description": "The deterministic matching algorithm applied to ordered locale preferences. RFC 4647 Lookup progressively truncates subtags until it finds an available variant."
+      "description": "Strict RFC 4647 section 3.4 Lookup applied to ordered locale preferences. The seller progressively truncates the requested range and matches only an available canonical tag equal to that range; it does not prefix-match sibling regional tags."
     },
     "variants": {
       "type": "array",

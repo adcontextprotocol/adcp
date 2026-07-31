@@ -247,8 +247,10 @@ eligibility. Selecting `fields: ["localization"]` automatically includes the
 creative ID, platform ID, status, assets, format identity, and unavailable state
 needed to interpret this result.
 
-At delivery, sellers apply RFC 4647 Lookup. When no variant matches, they follow
-`unmatched_locale_action`: serve `default_locale_variant_id` or do not serve.
+At delivery, sellers apply strict RFC 4647 Lookup: progressively truncate the
+requested range and match only an equal available canonical tag. When no
+variant matches, they follow `unmatched_locale_action`: serve
+`default_locale_variant_id` or do not serve.
 The chosen `locale_variant_id` is reported by `get_creative_delivery`.
 
 ### Pricing
