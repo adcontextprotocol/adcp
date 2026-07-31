@@ -22,6 +22,34 @@ function loadSafePerspectiveExternalUrl(): (value: unknown) => string | null {
 }
 
 describe('runtime XSS regressions', () => {
+  it('renders community mirror proposal JSON and organization IDs as escaped text', () => {
+    const source = readPublicFile('admin-community-mirrors.html');
+    const rendererSource = section(source, 'function escapeHtml(value)', 'async function fetchJson(url)');
+    const renderProposal = new Function(
+      'catalogFields',
+      `${rendererSource}\nreturn renderProposal;`,
+    )(['formats', 'properties', 'placements', 'collections', 'signals']) as (
+      entry: Record<string, any>,
+    ) => string;
+    const hostile = '</pre><img src=x onerror="globalThis.__mirrorXss = true"><script>bad()</script>';
+    const html = renderProposal({
+      proposal: {
+        id: '4ec8bc86-6180-4d0e-aa72-9cbf402d3638',
+        platform: 'acme_ads',
+        proposed_at: new Date().toISOString(),
+        proposed_by_email: hostile,
+        proposed_by_organization_id: hostile,
+        adagents_json: { formats: [{ display_name: hostile }] },
+      },
+      current: null,
+    });
+    const dom = new JSDOM(`<body>${html}</body>`);
+
+    expect(dom.window.document.querySelector('img')).toBeNull();
+    expect(dom.window.document.querySelector('script')).toBeNull();
+    expect(dom.window.document.body.textContent).toContain(hostile);
+  });
+
   it('keeps hostile Markdown link destinations out of executable admin transcript markup', () => {
     const source = readPublicFile('admin-addie.html');
     const renderMarkdownSource = section(

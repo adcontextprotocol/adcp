@@ -5392,6 +5392,8 @@ export class HTTPServer {
     // queue with a "not authorized" message rather than a hard 404.
     this.app.get('/admin/brand-logos', requireAuth, (req, res) =>
       this.serveHtmlWithConfig(req, res, 'admin-brand-logos.html'));
+    this.app.get('/admin/community-mirrors', requireAuth, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'admin-community-mirrors.html'));
 
     // Redirects from old /manage paths (preserve query strings)
     const manageRedirect = (target: string) => (req: express.Request, res: express.Response) => {

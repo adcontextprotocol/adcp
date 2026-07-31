@@ -1619,6 +1619,12 @@ components:
           type:
             - string
             - "null"
+        proposed_by_email:
+          type:
+            - string
+            - "null"
+          format: email
+          description: Contributor email, returned only to registry moderators and AgenticAdvertising.org administrators.
         proposed_at:
           type: string
           format: date-time
@@ -7349,6 +7355,16 @@ paths:
           name: status
           in: query
         - schema:
+            type: string
+            enum:
+              - "true"
+              - "false"
+            description: Set to `true` for the cross-organization moderator queue; non-moderators receive 403.
+          required: false
+          description: Set to `true` for the cross-organization moderator queue; non-moderators receive 403.
+          name: review_queue
+          in: query
+        - schema:
             type: integer
             maximum: 50
           required: false
@@ -7374,6 +7390,12 @@ paths:
                 $ref: "#/components/schemas/Error"
         "401":
           description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Moderator access required for the review queue
           content:
             application/json:
               schema:

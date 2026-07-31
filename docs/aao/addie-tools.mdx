@@ -1217,6 +1217,12 @@ Approve, reject, or delete a pending brand logo. Approving makes it visible on t
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
+### `list_pending_community_mirrors`
+
+List community mirror proposals awaiting expert review, including platform, proposal ID, digest, and submission time.
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
 ### `update_member_logo`
 
 Set or update the logo URL on a member's directory profile. Requires a publicly hosted HTTPS logo URL plus either the member's org_name or profile slug to identify them. Creates a brand entry if none exists, or updates the existing one.
@@ -1357,7 +1363,7 @@ Mark modules as tested out after a placement assessment confirms the learner alr
 
 ### `start_certification_exam`
 
-Begin a specialist deep dive module (S1: Media Buy, S2: Creative, S3: Signals, S4: Governance, S5: Sponsored Intelligence). The learner must hold the Practitioner credential. Returns the capstone format, lab exercises, and assessment criteria. You (Sage) will conduct the combined hands-on lab and adaptive exam — technically assess the learner against the spec.
+Begin an available specialist deep dive module (S1: Media Buy, S2: Creative, S3: Signals, S4: Governance, S6: Security). S5 Sponsored Intelligence is listed in the curriculum but is not assessable until its sandbox labs exist. The learner must hold the Practitioner credential. Returns the capstone format, lab exercises, and assessment criteria. You (Sage) will conduct the combined hands-on lab and adaptive exam — technically assess the learner against the spec.
 
 *Source: `server/src/addie/mcp/certification-tools.ts`*
 

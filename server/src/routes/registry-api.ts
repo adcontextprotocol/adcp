@@ -1801,6 +1801,9 @@ registry.registerPath({
   request: {
     query: z.object({
       status: z.enum(["pending", "approved", "rejected"]).optional(),
+      review_queue: z.enum(["true", "false"]).optional().openapi({
+        description: "Set to `true` for the cross-organization moderator queue; non-moderators receive 403.",
+      }),
       limit: z.number().int().max(50).optional(),
       offset: z.number().int().optional(),
     }),
@@ -1809,6 +1812,7 @@ registry.registerPath({
     200: { description: "Community mirror proposal list", content: { "application/json": { schema: CommunityMirrorProposalListResponseSchema } } },
     400: { description: "Invalid status", content: { "application/json": { schema: ErrorSchema } } },
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Moderator access required for the review queue", content: { "application/json": { schema: ErrorSchema } } },
     429: { description: "Rate limit exceeded", content: { "application/json": { schema: RateLimitErrorSchema } } },
     500: { description: "Failed to list proposals", content: { "application/json": { schema: ErrorSchema } } },
   },
