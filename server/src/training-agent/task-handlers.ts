@@ -16,13 +16,10 @@ import {
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { InMemoryTaskStore } from '@modelcontextprotocol/sdk/experimental/tasks';
-import { PostgresTaskStore } from '@adcp/sdk';
 import { mergeSeedProduct } from '@adcp/sdk/testing';
-import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
 import { isPrivateHostname, normalizeExternalHostname, safeFetchAxiosLike } from '../utils/url-security.js';
-import type { TrainingContext, CatalogProduct, MediaBuyState, MediaBuyAvailableActionState, MediaBuyProductAllowedActionState, PackageState, SignalActivationState, CreativeState, CreativeManifest, ToolArgs, ListReference, PackageTargeting, AccountRef, SessionState } from './types.js';
+import { GET_PRODUCTS_REJECTED_ADCP_VERSION, supportsGetProductsRejected, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type SessionState } from './types.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import type {
   Product,
@@ -47,6 +44,8 @@ import type {
   CreativeManifest as AdcpCreativeManifest,
 } from '@adcp/sdk';
 import { CreativeManifestSchema } from '@adcp/sdk/schemas';
+import { clearTaskStore, getTaskStoreForPrincipal, pendingTaskKey, registerSubmittedTask, taskOwnerKey, type PrincipalTaskStore } from './task-store.js';
+export { clearTaskStore } from './task-store.js';
 /** Escape HTML special characters to prevent injection in generated HTML responses. */
 function escapeHtmlAttr(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -89,6 +88,20 @@ type PackageUpdateExt = PackageUpdate & {
 };
 type Destination = NonNullable<ActivateSignalRequest['destinations']>[number];
 type SignalFilters = NonNullable<GetSignalsRequest['filters']>;
+type GetProductsRejectedResponse = {
+  status: 'rejected';
+  adcp_version: typeof GET_PRODUCTS_REJECTED_ADCP_VERSION;
+  reason: string;
+  suggestions?: string[];
+  context?: Record<string, unknown>;
+};
+type GetProductsSubmittedResponse = {
+  status: 'submitted';
+  task_id: string;
+  message?: string;
+  adcp_version?: string;
+  context?: Record<string, unknown>;
+};
 type PricingOption = Product['pricing_options'][number];
 type AuctionPricingOption = Exclude<PricingOption, { pricing_model: 'cpa' }>;
 type WholesaleFeedRequest = {
@@ -921,9 +934,9 @@ import { maybeEmitCompletionWebhook } from './webhooks.js';
 import { selectSigningCapability } from './request-signing.js';
 
 const SUPPORTED_MAJOR_VERSIONS = [3] as const;
-const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15'] as const;
+const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', GET_PRODUCTS_REJECTED_ADCP_VERSION] as const;
 const DEFAULT_ADCP_VERSION = '3.0';
-const CURRENT_ADCP_VERSION = '3.1-rc.15';
+const CURRENT_ADCP_VERSION = GET_PRODUCTS_REJECTED_ADCP_VERSION;
 const MAX_PACKAGES_PER_BUY = 50;
 
 interface ParsedAdcpReleaseVersion {
@@ -1155,7 +1168,7 @@ function addServedAdcpVersion(result: unknown, servedAdcpVersion: string, contex
   };
 }
 
-function installTaskProtocolVersionNegotiation(server: Server): void {
+function installTaskProtocolVersionNegotiation(server: Server, taskStore: PrincipalTaskStore): void {
   const handlers = (server as unknown as { _requestHandlers?: Map<string, McpRequestHandler> })._requestHandlers;
   if (!handlers) return;
 
@@ -1170,7 +1183,7 @@ function installTaskProtocolVersionNegotiation(server: Server): void {
         throw versionUnsupportedJsonRpcError(versionResolution, callerContext);
       }
       try {
-        const result = await original(request, extra);
+        const result = await taskStore.runWithAccountScope(rawParams, () => original(request, extra));
         return addServedAdcpVersion(result, versionResolution.servedVersion, callerContext);
       } catch (error) {
         rethrowWithServedAdcpVersion(error, versionResolution.servedVersion);
@@ -1180,28 +1193,6 @@ function installTaskProtocolVersionNegotiation(server: Server): void {
 }
 
 // ── MCP Tasks store (SDK-managed) ─────────────────────────────────
-
-/**
- * Shared task store across per-request Server instances.
- *
- * In production (database available), uses PostgresTaskStore so tasks
- * survive across Fly.io instances. In tests (no database), falls back
- * to InMemoryTaskStore.
- *
- * Note: no session isolation — any session can see/cancel tasks from
- * another. This is intentional for the training agent where all sessions
- * are sandboxed. Production servers should scope tasks by sessionId.
- */
-let sdkTaskStore: InMemoryTaskStore | PostgresTaskStore | null = null;
-
-function getTaskStore(): InMemoryTaskStore | PostgresTaskStore {
-  if (!sdkTaskStore) {
-    sdkTaskStore = isDatabaseInitialized()
-      ? new PostgresTaskStore(getPool())
-      : new InMemoryTaskStore();
-  }
-  return sdkTaskStore;
-}
 
 /** Look up which tools allow task augmentation. */
 function toolSupportsTask(toolName: string): boolean {
@@ -1244,12 +1235,6 @@ function withUsageAccountScope<T extends Record<string, unknown>>(req: T): T {
     return { ...req, account: usageAccount };
   }
   return req;
-}
-
-/** Clear the task store (for tests). Calls cleanup() to cancel TTL timers. */
-export function clearTaskStore(): void {
-  sdkTaskStore?.cleanup();
-  sdkTaskStore = null;
 }
 
 /** Translate the agent's internal governance check shape into the wire-format
@@ -3078,9 +3063,19 @@ function toolAvailableForServedAdcpVersion(toolName: string, servedAdcpVersion: 
 
 // ── Task handler implementations ──────────────────────────────────
 
-export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): Promise<GetProductsResponse | { errors: TaskError[] }> {
+export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): Promise<GetProductsResponse | GetProductsRejectedResponse | GetProductsSubmittedResponse | { errors: TaskError[] }> {
   const req = args as unknown as GetProductsRequest & ToolArgs;
-  const buyingMode = req.buying_mode || 'brief';
+  const buyingMode = (req as unknown as Record<string, unknown>).buying_mode ?? 'brief';
+  if (buyingMode !== 'brief' && buyingMode !== 'wholesale' && buyingMode !== 'refine') {
+    return {
+      errors: [{
+        code: 'INVALID_REQUEST',
+        message: 'buying_mode must be one of "brief", "wholesale", or "refine".',
+        field: 'buying_mode',
+        recovery: 'correctable',
+      }] as TaskError[],
+    };
+  }
   const brief = (req as Record<string, unknown>).brief;
   if (brief !== undefined && typeof brief !== 'string') {
     return {
@@ -3129,6 +3124,50 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
     ? productWholesaleFeedMeta(req as WholesaleFeedRequest, session)
     : undefined;
   const contextEcho = req.context ? { context: req.context } : {};
+
+  const directivePrincipal = ctx.principal ?? 'anonymous';
+  const directiveOwner = taskOwnerKey(directivePrincipal, args as Record<string, unknown>);
+  const directive = buyingMode === 'brief' || buyingMode === 'refine'
+    ? session.complyExtensions.forcedGetProductsArms.get(directiveOwner)
+    : undefined;
+  if (directive?.arm === 'submitted') {
+    const pendingKey = pendingTaskKey(directivePrincipal, args as Record<string, unknown>, directive.taskId);
+    if (
+      !session.complyExtensions.pendingSubmittedTasks.has(pendingKey)
+      && session.complyExtensions.pendingSubmittedTasks.size >= 1000
+    ) {
+      throw new Error('Pending submitted task cap reached (1000)');
+    }
+    await registerSubmittedTask(directive.taskId, args, directivePrincipal, 'get_products');
+    session.complyExtensions.pendingSubmittedTasks.set(pendingKey, {
+      taskId: directive.taskId,
+      toolName: 'get_products',
+      args: { ...(args as Record<string, unknown>) },
+      principal: directivePrincipal,
+      webhookPrincipal: scopedPrincipal(directivePrincipal, deriveAccountScope(args as Record<string, unknown>)),
+      ...(typeof (args as Record<string, unknown>).idempotency_key === 'string' && {
+        requestIdempotencyKey: (args as Record<string, unknown>).idempotency_key as string,
+      }),
+    });
+    session.complyExtensions.forcedGetProductsArms.delete(directiveOwner);
+    return {
+      status: 'submitted',
+      task_id: directive.taskId,
+      ...(directive.message && { message: directive.message }),
+      ...(ctx.servedAdcpVersion && { adcp_version: ctx.servedAdcpVersion }),
+      ...contextEcho,
+    };
+  }
+  if (directive?.arm === 'rejected' && supportsGetProductsRejected(ctx.servedAdcpVersion)) {
+    session.complyExtensions.forcedGetProductsArms.delete(directiveOwner);
+    return {
+      status: 'rejected',
+      adcp_version: GET_PRODUCTS_REJECTED_ADCP_VERSION,
+      reason: directive.reason,
+      ...(directive.suggestions && { suggestions: [...directive.suggestions] }),
+      ...contextEcho,
+    };
+  }
 
   if (wholesaleMeta && wholesaleFeedUnchanged(req as WholesaleFeedRequest, wholesaleMeta)) {
     return {
@@ -4482,7 +4521,9 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   // Idempotency_key replay is unaffected: the SDK's request-idempotency cache
   // wraps this handler, so a replayed request returns the cached submitted
   // response without re-evaluating the (now-empty) directive slot.
-  const directive = session.complyExtensions.forcedCreateMediaBuyArm;
+  const directivePrincipal = ctx.principal ?? 'anonymous';
+  const directiveOwner = taskOwnerKey(directivePrincipal, args as Record<string, unknown>);
+  const directive = session.complyExtensions.forcedCreateMediaBuyArms.get(directiveOwner);
   if (
     directive
     && directive.arm === 'submitted'
@@ -4490,7 +4531,25 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     && directive.taskId.length > 0
     && directive.taskId.length <= 128
   ) {
-    session.complyExtensions.forcedCreateMediaBuyArm = undefined;
+    const pendingKey = pendingTaskKey(directivePrincipal, args as Record<string, unknown>, directive.taskId);
+    if (
+      !session.complyExtensions.pendingSubmittedTasks.has(pendingKey)
+      && session.complyExtensions.pendingSubmittedTasks.size >= 1000
+    ) {
+      throw new Error('Pending submitted task cap reached (1000)');
+    }
+    await registerSubmittedTask(directive.taskId, args, directivePrincipal, 'create_media_buy');
+    session.complyExtensions.pendingSubmittedTasks.set(pendingKey, {
+      taskId: directive.taskId,
+      toolName: 'create_media_buy',
+      args: { ...(args as Record<string, unknown>) },
+      principal: directivePrincipal,
+      webhookPrincipal: scopedPrincipal(directivePrincipal, deriveAccountScope(args as Record<string, unknown>)),
+      ...(typeof (args as Record<string, unknown>).idempotency_key === 'string' && {
+        requestIdempotencyKey: (args as Record<string, unknown>).idempotency_key as string,
+      }),
+    });
+    session.complyExtensions.forcedCreateMediaBuyArms.delete(directiveOwner);
     const responseMessage =
       typeof directive.message === 'string' && directive.message.length <= 2000
         ? directive.message
@@ -6511,6 +6570,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
     'force_account_status',
     'force_media_buy_status',
     'force_create_media_buy_arm',
+    'force_get_products_arm',
     'force_task_completion',
     ...(!isThreeZeroStoryboardCompat(ctx) ? ['force_creative_purge'] : []),
     'force_session_status',
@@ -8144,7 +8204,7 @@ export async function executeTrainingAgentTool(
     return { success: false, error: `Unknown tool: ${toolName}` };
   }
   try {
-    const result = await Promise.resolve(handler(args, ctx));
+    const result = await Promise.resolve(handler(args, { ...ctx, servedAdcpVersion: versionResolution.servedVersion }));
     return { success: true, data: addServedAdcpVersion(result, versionResolution.servedVersion) as object };
   } catch (error) {
     logger.error({ error, tool: toolName }, 'Training agent in-process tool error');
@@ -8158,7 +8218,7 @@ export async function executeTrainingAgentTool(
  * Create a per-request MCP Server with training agent tools.
  */
 export function createTrainingAgentServer(ctx: TrainingContext): Server {
-  const taskStore = getTaskStore();
+  const protocolTaskStore = getTaskStoreForPrincipal(ctx.principal ?? 'anonymous');
   const server = new Server(
     { name: 'adcp-training-agent', version: '1.0.0' },
     {
@@ -8170,7 +8230,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
           requests: { tools: { call: {} } },
         },
       },
-      taskStore,
+      taskStore: protocolTaskStore,
     },
   );
 
@@ -8190,7 +8250,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       return result;
     });
   });
-  installTaskProtocolVersionNegotiation(server);
+  installTaskProtocolVersionNegotiation(server, protocolTaskStore);
 
   async function dispatchCallTool(
     request: { params: { name: string; arguments?: unknown; task?: { ttl?: number } } },
@@ -8359,7 +8419,10 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     if (skipHandler) {
       // toolResult already set from idempotency replay path above
     } else try {
-      const result = await Promise.resolve(handler((handlerArgs as ToolArgs) || {}, ctx));
+      const result = await Promise.resolve(handler(
+        (handlerArgs as ToolArgs) || {},
+        { ...ctx, servedAdcpVersion },
+      ));
       const resultObj = result as Record<string, unknown> & {
         errors?: Array<{ code: string; message: string; field?: string; details?: unknown; recovery?: string }>;
       };
@@ -8474,6 +8537,9 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       cachableResponse !== null
       && !toolResult.isError
       && !handlerThrew
+      && cachableResponse.status !== 'submitted'
+      && cachableResponse.status !== 'working'
+      && cachableResponse.status !== 'input-required'
     ) {
       maybeEmitCompletionWebhook({
         toolName: name,
@@ -8505,13 +8571,17 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     // request uses a fresh transport). Using the raw store avoids this
     // while keeping tasks visible to subsequent tasks/get requests.
     const terminalStatus: 'completed' | 'failed' = taskFailed ? 'failed' : 'completed';
-    const created = await taskStore.createTask(
+    const created = await protocolTaskStore.runWithAccountScope(handlerArgs, () => protocolTaskStore.createTask(
       { ttl: clampedTtl },
       0,
       request as unknown as { method: string; params?: { _meta?: Record<string, unknown> } },
-    );
-    await taskStore.storeTaskResult(created.taskId, terminalStatus, toolResult);
-    const task = await taskStore.getTask(created.taskId);
+    ));
+    await protocolTaskStore.runWithAccountScope(handlerArgs, () => (
+      protocolTaskStore.storeTaskResult(created.taskId, terminalStatus, toolResult)
+    ));
+    const task = await protocolTaskStore.runWithAccountScope(handlerArgs, () => (
+      protocolTaskStore.getTask(created.taskId)
+    ));
     if (!task) {
       throw new Error(`Task disappeared after creation for tool "${name}"`);
     }

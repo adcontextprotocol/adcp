@@ -11,6 +11,18 @@ type SpecialCategory = 'premiere' | 'finale' | 'holiday' | 'awards' | 'reunion' 
 export const TALENT_ROLES = ['host', 'guest', 'creator', 'cast', 'narrator', 'producer', 'correspondent', 'commentator', 'analyst'] as const;
 export type TalentRole = typeof TALENT_ROLES[number];
 
+/** First wire release that carries the get_products business-rejection arm. */
+export const GET_PRODUCTS_REJECTED_ADCP_VERSION = '3.2-beta.0' as const;
+
+export function supportsGetProductsRejected(servedVersion: string | undefined): boolean {
+  if (!servedVersion) return false;
+  const match = servedVersion.match(/^(\d+)\.(\d+)(?:-|$)/);
+  if (!match) return false;
+  const major = Number.parseInt(match[1], 10);
+  const minor = Number.parseInt(match[2], 10);
+  return major > 3 || (major === 3 && minor >= 2);
+}
+
 /** AccountReference from SDK — identifies an account on create_media_buy */
 type AccountReference = CreateMediaBuyRequest['account'];
 
@@ -26,6 +38,10 @@ export interface TrainingContext {
    *  Derived from the bearer token in the MCP route; defaults to `anonymous`
    *  when no auth is configured (dev / test). */
   principal?: string;
+  /** Release-precision AdCP version selected by the protocol dispatcher after
+   * applying exact-release or major-only negotiation. Handlers gate additive
+   * behavior on this value rather than re-reading raw request fields. */
+  servedAdcpVersion?: string;
   /** Route is the grader-targeted `/mcp-strict` endpoint. Advertises
    *  `required_for: ['create_media_buy']` in capabilities and enforces
    *  presence-gated signing at the auth layer. Default `/mcp` does not
@@ -266,11 +282,29 @@ export interface ComplyExtensions {
    * is no INPUT_REQUIRED value in the canonical error-code enum (it's a task-status)
    * and the response schema has no fourth oneOf branch for an input-required envelope.
    * The controller rejects that arm with INVALID_PARAMS until the spec resolves it. */
-  forcedCreateMediaBuyArm?: {
+  forcedCreateMediaBuyArms: Map<string, {
     arm: 'submitted';
     taskId: string;
     message?: string;
-  };
+  }>;
+  /** Single-shot response directive registered by
+   * comply_test_controller.force_get_products_arm.
+   * Keyed by authenticated principal and consumed only by that principal's next
+   * brief/refine get_products call in this session; wholesale reads leave it untouched. */
+  forcedGetProductsArms: Map<string,
+    | { arm: 'submitted'; taskId: string; message?: string }
+    | { arm: 'rejected'; reason: string; suggestions?: string[] }
+  >;
+  /** Submitted compliance tasks awaiting force_task_completion, keyed by
+   * authenticated principal + caller-supplied task ID. */
+  pendingSubmittedTasks: Map<string, {
+    taskId: string;
+    toolName: 'get_products' | 'create_media_buy';
+    args: Record<string, unknown>;
+    principal: string;
+    webhookPrincipal: string;
+    requestIdempotencyKey?: string;
+  }>;
   /** Single-shot stale-cache directive registered by
    * comply_test_controller.force_upstream_unavailable. Consumed by the next
    * matching read tool so follow-up healthy reads do not emit STALE_RESPONSE. */

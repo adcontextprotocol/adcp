@@ -172,6 +172,48 @@ describe('force_create_media_buy_arm', () => {
       expect(buy.packages).toBeUndefined();
     });
 
+    it('materializes the completed media buy for downstream simulation scenarios', async () => {
+      const pkg = await getValidPackage(server);
+      const request = buildCreateMediaBuyArgs(pkg);
+      const taskId = 'task_materialized_buy';
+      await callTool(server, 'comply_test_controller', {
+        scenario: 'force_create_media_buy_arm',
+        params: { arm: 'submitted', task_id: taskId },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      await callTool(server, 'create_media_buy', request);
+
+      const completion = await callTool(server, 'comply_test_controller', {
+        scenario: 'force_task_completion',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          task_id: taskId,
+          result: {
+            status: 'completed',
+            media_buy_id: 'mb_materialized_buy',
+            media_buy_status: 'active',
+            packages: [{
+              package_id: 'pkg_materialized_buy',
+              product_id: pkg.product_id,
+              budget: 10000,
+              pricing_option_id: pkg.pricing_option_id,
+            }],
+          },
+        },
+      });
+      expect(completion.success).toBe(true);
+
+      const simulated = await callTool(server, 'comply_test_controller', {
+        scenario: 'simulate_delivery',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: { media_buy_id: 'mb_materialized_buy', impressions: 100 },
+      });
+      expect(simulated.success).toBe(true);
+    });
+
     it('is single-shot — the second create_media_buy returns the default arm', async () => {
       const pkg = await getValidPackage(server);
 

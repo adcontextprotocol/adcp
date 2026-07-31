@@ -54,7 +54,7 @@ const VALID_PRICING_MODELS = [
 ] as const;
 
 const TEST_AGENT_URL = 'http://localhost:3000/api/training-agent';
-const CURRENT_ADCP_VERSION = '3.1-rc.15';
+const CURRENT_ADCP_VERSION = '3.2-beta.0';
 
 const DEFAULT_CTX: TrainingContext = { mode: 'open' };
 
@@ -9043,7 +9043,7 @@ describe('get_adcp_capabilities handler', () => {
 
     expect(result.adcp).toMatchObject({
       major_versions: [3],
-      supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15'],
+      supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.0'],
       idempotency: { supported: true, replay_ttl_seconds: 86400 },
     });
     expect(result.adcp_version).toBe('3.0');
@@ -9190,6 +9190,7 @@ describe('get_adcp_capabilities handler', () => {
       'force_account_status',
       'force_media_buy_status',
       'force_create_media_buy_arm',
+      'force_get_products_arm',
       'force_task_completion',
       'force_creative_purge',
       'force_session_status',
@@ -9853,6 +9854,140 @@ describe('MCP Tasks protocol', () => {
     expect(getResponse.status).toBe('completed');
   });
 
+  it('registers a forced get_products submitted task under the emitted task_id', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const taskId = 'task_forced_products_pollable';
+    const controllerResponse = await simulateCallTool(server, 'comply_test_controller', {
+      scenario: 'force_get_products_arm',
+      params: { arm: 'submitted', task_id: taskId, message: 'Curation queued.' },
+    });
+    expect(controllerResponse.result.success).toBe(true);
+
+    const submitted = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'Streaming video inventory',
+    });
+    expect(submitted.result).toEqual(expect.objectContaining({
+      status: 'submitted',
+      task_id: taskId,
+      message: 'Curation queued.',
+    }));
+
+    const polled = await simulateGetTask(server, taskId);
+    expect(polled).toEqual(expect.objectContaining({
+      taskId,
+      status: 'working',
+      ttl: 900_000,
+    }));
+    const listed = await simulateListTasks(server);
+    expect(listed.tasks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ taskId, status: 'working' }),
+    ]));
+
+    const otherPrincipalServer = createTrainingAgentServer({ mode: 'open', principal: 'other-principal' });
+    await expect(simulateGetTask(otherPrincipalServer, taskId)).rejects.toThrow(/Task not found/);
+    const otherPrincipalTasks = await simulateListTasks(otherPrincipalServer);
+    expect(otherPrincipalTasks.tasks).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ taskId }),
+    ]));
+    await simulateCallTool(otherPrincipalServer, 'comply_test_controller', {
+      scenario: 'force_get_products_arm',
+      params: { arm: 'submitted', task_id: taskId },
+    });
+    const otherSubmitted = await simulateCallTool(otherPrincipalServer, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'Audio inventory',
+    });
+    expect(otherSubmitted.result.task_id).toBe(taskId);
+    expect(await simulateGetTask(otherPrincipalServer, taskId)).toEqual(expect.objectContaining({
+      taskId,
+      status: 'working',
+    }));
+    expect(await simulateCancel(otherPrincipalServer, taskId)).toEqual(expect.objectContaining({
+      taskId,
+      status: 'cancelled',
+    }));
+    expect((await simulateListTasks(otherPrincipalServer)).tasks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ taskId, status: 'cancelled' }),
+    ]));
+    const canceledCompletion = await simulateCallTool(otherPrincipalServer, 'comply_test_controller', {
+      scenario: 'force_task_completion',
+      params: { task_id: taskId, result: { status: 'completed', products: [] } },
+    });
+    expect(canceledCompletion.result).toEqual(expect.objectContaining({
+      success: false,
+      error: 'INVALID_TRANSITION',
+      current_state: 'canceled',
+    }));
+
+    const completion = await simulateCallTool(server, 'comply_test_controller', {
+      scenario: 'force_task_completion',
+      params: { task_id: taskId, result: { status: 'completed', products: [] } },
+    });
+    expect(completion.result).toEqual(expect.objectContaining({
+      success: true,
+      previous_state: 'submitted',
+      current_state: 'completed',
+    }));
+
+    const completed = await simulateGetTask(server, taskId);
+    expect(completed).toEqual(expect.objectContaining({ taskId, status: 'completed' }));
+    const taskResult = await simulateGetTaskResult(server, taskId);
+    expect(taskResult.structuredContent).toEqual({ status: 'completed', products: [] });
+  });
+
+  it('scopes deterministic submitted task IDs by account for one principal', async () => {
+    const server = createTrainingAgentServer({ mode: 'open', principal: 'multi-account-principal' });
+    const taskId = 'shared_storyboard_task_id';
+    const accounts = [
+      { account_id: 'task-scope-a', brand: { domain: 'shared-task-scope.example' }, operator: 'test-operator', sandbox: true },
+      { account_id: 'task-scope-b', brand: { domain: 'shared-task-scope.example' }, operator: 'test-operator', sandbox: true },
+    ];
+
+    await simulateCallTool(server, 'comply_test_controller', {
+      scenario: 'force_get_products_arm',
+      account: accounts[0],
+      params: { arm: 'submitted', task_id: taskId },
+    });
+    const wrongAccount = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'Curated inventory',
+      account: accounts[1],
+    });
+    expect(wrongAccount.result.status).toBe('completed');
+    expect(wrongAccount.result.task_id).toBeUndefined();
+
+    for (const account of accounts) {
+      if (account === accounts[1]) {
+        await simulateCallTool(server, 'comply_test_controller', {
+          scenario: 'force_get_products_arm',
+          account,
+          params: { arm: 'submitted', task_id: taskId },
+        });
+      }
+      const submitted = await simulateCallTool(server, 'get_products', {
+        buying_mode: 'brief',
+        brief: 'Curated inventory',
+        account,
+      });
+      expect(submitted.result.task_id).toBe(taskId);
+    }
+
+    await simulateCallTool(server, 'comply_test_controller', {
+      scenario: 'force_task_completion',
+      account: accounts[0],
+      params: { task_id: taskId, result: { status: 'completed', products: [] } },
+    });
+    expect(await simulateGetTask(server, taskId, { account: accounts[0] })).toEqual(expect.objectContaining({
+      taskId,
+      status: 'completed',
+    }));
+    expect(await simulateGetTask(server, taskId, { account: accounts[1] })).toEqual(expect.objectContaining({
+      taskId,
+      status: 'working',
+    }));
+  });
+
   it('retrieves task result via tasks/result', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const createResponse = await simulateCallToolAsTask(server, 'get_products', {
@@ -9912,7 +10047,7 @@ describe('MCP Tasks protocol', () => {
         code: -32602,
         data: {
           adcp_version: '99.0',
-          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15'],
+          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.0'],
           supported_majors: [3],
           context: { correlation_id: 'task-version-unsupported' },
           adcp_error: {
@@ -11737,7 +11872,7 @@ describe('AdCP protocol compliance', () => {
     expect(parsed.adcp_version).toBe('3.0');
     expect(parsed.adcp).toMatchObject({
       major_versions: [3],
-      supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15'],
+      supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.0'],
     });
   });
 
@@ -11802,7 +11937,7 @@ describe('AdCP protocol compliance', () => {
       details: {
         adcp_version: '4.0',
         adcp_major_version: 4,
-        supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15'],
+        supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.0'],
         supported_majors: [3],
       },
     });
@@ -11823,7 +11958,7 @@ describe('AdCP protocol compliance', () => {
       field: 'adcp_version',
       details: {
         adcp_version: '3.1-beta',
-        supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15'],
+        supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.0'],
         supported_majors: [3],
       },
     });
