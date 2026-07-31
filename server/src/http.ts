@@ -76,6 +76,7 @@ import {
 import { createAdminRouter } from "./routes/admin.js";
 import { createAdminInsightsRouter } from "./routes/admin-insights.js";
 import { createAddieAdminRouter } from "./routes/addie-admin.js";
+import { createSecretariatAdminRouter } from "./routes/secretariat-admin.js";
 import { createAddieChatRouter } from "./routes/addie-chat.js";
 import { createTavusRouter } from "./routes/tavus.js";
 import { createSiChatRoutes } from "./routes/si-chat.js";
@@ -1330,6 +1331,11 @@ export class HTTPServer {
     const { pageRouter: addiePageRouter, apiRouter: addieApiRouter } = createAddieAdminRouter();
     this.app.use('/admin/addie', addiePageRouter);      // Page routes: /admin/addie
     this.app.use('/api/admin/addie', addieApiRouter);   // API routes: /api/admin/addie/*
+
+    // Mount Secretariat console routes (human-approved action queue)
+    const { pageRouter: secretariatPageRouter, apiRouter: secretariatApiRouter } = createSecretariatAdminRouter();
+    this.app.use('/admin/secretariat', secretariatPageRouter);      // Page routes: /admin/secretariat
+    this.app.use('/api/admin/secretariat', secretariatApiRouter);   // API routes: /api/admin/secretariat/*
 
 
     // Mount Addie chat routes (public chat interface)
