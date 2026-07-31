@@ -282,6 +282,9 @@ export const CommunityMirrorProposalSchema = z
     }),
     status: z.enum(["pending", "approved", "rejected"]),
     proposed_by_organization_id: z.string().nullable(),
+    proposed_by_email: z.string().email().nullable().optional().openapi({
+      description: "Contributor email, returned only to registry moderators and AgenticAdvertising.org administrators.",
+    }),
     proposed_at: z.string().datetime(),
     reviewed_at: z.string().datetime().nullable(),
     review_notes: z.string().nullable(),
@@ -294,6 +297,7 @@ export const CommunityMirrorProposalSchema = z
 export const CommunityMirrorProposalSummarySchema = CommunityMirrorProposalSchema.omit({
   adagents_json: true,
   proposed_by_organization_id: true,
+  proposed_by_email: true,
   review_notes: true,
   created_at: true,
 }).openapi("CommunityMirrorProposalSummary");

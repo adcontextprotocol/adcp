@@ -388,6 +388,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       "list_pending_brand_logos",
       "list_brand_logos",
       "review_brand_logo",
+      "list_pending_community_mirrors",
       "update_member_logo",
       "update_member_profile",
       "transfer_brand_ownership",

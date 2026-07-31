@@ -32,6 +32,10 @@ import { validateAdagentsDocument } from '../services/adagents-schema-validator.
 import { registryReadRateLimiter, brandCreationRateLimiter } from '../middleware/rate-limit.js';
 import { createLogger } from '../logger.js';
 import { resolveCallerOrgId } from './helpers/resolve-caller-org.js';
+import {
+  notifyCommunityMirrorProposalReviewed,
+  notifyPendingCommunityMirrorProposal,
+} from '../notifications/registry.js';
 
 const logger = createLogger('community-mirrors');
 
@@ -126,14 +130,17 @@ function proposalDigest(document: Record<string, unknown>, baseMirrorDigest: str
     .digest('hex');
 }
 
-function proposalForResponse(proposal: CommunityMirrorProposal) {
+function proposalForResponse(proposal: CommunityMirrorProposal, includeProposer = false) {
   const {
     proposed_by_user_id: _proposedByUserId,
     proposed_by_email: _proposedByEmail,
     reviewed_by_user_id: _reviewedByUserId,
+    slack_thread_ts: _slackThreadTs,
     ...safe
   } = proposal;
-  return safe;
+  return includeProposer
+    ? { ...safe, proposed_by_email: proposal.proposed_by_email }
+    : safe;
 }
 
 export function createCommunityMirrorRouter(config: CommunityMirrorRouterConfig): Router {
@@ -194,7 +201,14 @@ export function createCommunityMirrorRouter(config: CommunityMirrorRouterConfig)
     if (requestedStatus && !['pending', 'approved', 'rejected'].includes(requestedStatus)) {
       return res.status(400).json({ error: 'Invalid proposal status' });
     }
+    const reviewQueue = req.query.review_queue === 'true';
+    if (req.query.review_queue !== undefined && !['true', 'false'].includes(String(req.query.review_queue))) {
+      return res.status(400).json({ error: 'Invalid review_queue flag' });
+    }
     const isManager = await canManageMirrors(userId);
+    if (reviewQueue && !isManager) {
+      return res.status(403).json({ error: 'Registry moderator access is required for the review queue' });
+    }
     const organizationId = isManager ? null : await callerOrganizationId(req);
     const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : undefined;
     const offset = req.query.offset ? parseInt(String(req.query.offset), 10) : undefined;
@@ -235,7 +249,7 @@ export function createCommunityMirrorRouter(config: CommunityMirrorRouterConfig)
       if (!ownsProposal && !isManager) {
         return res.status(404).json({ error: 'Community mirror proposal not found' });
       }
-      return res.json({ proposal: proposalForResponse(proposal) });
+      return res.json({ proposal: proposalForResponse(proposal, isManager) });
     } catch (err) {
       logger.error({ err, proposalId }, 'Failed to read community mirror proposal');
       return res.status(500).json({ error: 'Failed to read community mirror proposal' });
@@ -310,6 +324,18 @@ export function createCommunityMirrorRouter(config: CommunityMirrorRouterConfig)
       });
       await mirrorDb.approveProposalWithClient(client, proposalId, managerId, review.data.review_notes);
       await client.query('COMMIT');
+      notifyCommunityMirrorProposalReviewed({
+        thread_ts: proposal.slack_thread_ts,
+        platform: proposal.platform,
+        action: 'approve',
+        reviewer_email: req.user?.email,
+        reviewer_name: req.user?.firstName
+          ? `${req.user.firstName} ${req.user.lastName ?? ''}`.trim()
+          : undefined,
+        note: review.data.review_notes,
+      }).catch((err) => {
+        logger.warn({ err, proposalId }, 'Community-mirror approval Slack reply failed');
+      });
       logger.info({ proposalId, platform: proposal.platform, by: managerId }, 'Approved community mirror proposal');
       return res.json({
         success: true,
@@ -359,6 +385,18 @@ export function createCommunityMirrorRouter(config: CommunityMirrorRouterConfig)
         return res.status(409).json({ error: `Community mirror proposal is already ${existing.status}` });
       }
       logger.info({ proposalId, platform: proposal.platform, by: managerId }, 'Rejected community mirror proposal');
+      notifyCommunityMirrorProposalReviewed({
+        thread_ts: proposal.slack_thread_ts,
+        platform: proposal.platform,
+        action: 'reject',
+        reviewer_email: req.user?.email,
+        reviewer_name: req.user?.firstName
+          ? `${req.user.firstName} ${req.user.lastName ?? ''}`.trim()
+          : undefined,
+        note: review.data.review_notes,
+      }).catch((err) => {
+        logger.warn({ err, proposalId }, 'Community-mirror rejection Slack reply failed');
+      });
       return res.json({ success: true, proposal: proposalForResponse(proposal) });
     } catch (err) {
       logger.error({ err, proposalId }, 'Failed to reject community mirror proposal');
@@ -456,9 +494,9 @@ export function createCommunityMirrorRouter(config: CommunityMirrorRouterConfig)
         error: 'A community mirror must carry catalog content (formats, properties, placements, collections, or signals)',
       });
     }
+    const catalogItemCount = [body.formats, body.properties, body.placements, body.collections, body.signals]
+      .reduce((total, items) => total + (Array.isArray(items) ? items.length : 0), 0);
     if (!isManager) {
-      const catalogItemCount = [body.formats, body.properties, body.placements, body.collections, body.signals]
-        .reduce((total, items) => total + (Array.isArray(items) ? items.length : 0), 0);
       if (catalogItemCount > MAX_PROPOSAL_CATALOG_ITEMS) {
         return res.status(413).json({
           error: `Community mirror proposals may contain at most ${MAX_PROPOSAL_CATALOG_ITEMS} catalog items`,
@@ -505,6 +543,19 @@ export function createCommunityMirrorRouter(config: CommunityMirrorRouterConfig)
           proposed_by_user_id: userId,
           proposed_by_email: req.user?.email ?? null,
           proposed_by_organization_id: organizationId,
+        });
+        notifyPendingCommunityMirrorProposal({
+          proposal_id: proposal.id,
+          platform: proposal.platform,
+          proposer_email: req.user?.email,
+          organization_id: organizationId ?? undefined,
+          catalog_item_count: catalogItemCount,
+        }).then((threadTs) => {
+          if (threadTs) {
+            return mirrorDb.setProposalSlackThreadTs(proposal.id, proposal.proposal_digest, threadTs);
+          }
+        }).catch((err) => {
+          logger.warn({ err, proposalId: proposal.id }, 'Pending community-mirror Slack notification failed');
         });
         logger.info({ platform, proposalId: proposal.id, by: userId }, 'Submitted community mirror proposal');
         const statusUrl = `/api/registry/mirror-proposals/${proposal.id}`;

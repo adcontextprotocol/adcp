@@ -39,6 +39,7 @@ import { autoLinkUnmappedSlackUsers, autoAddVerifiedDomainUsersAsMembers } from 
 import { runCredentialDigestJob } from './credential-digest.js';
 import { runCertificationRecoveryJob } from './certification-recovery.js';
 import { runBrandLogoDigestJob } from './brand-logo-digest.js';
+import { runCommunityMirrorDigestJob } from './community-mirror-digest.js';
 import { runWgDigestJob, runWgDigestPrepJob } from './wg-digest.js';
 import { runWgSlackContextJob } from './wg-slack-context.js';
 import { runSecretariatExecutorJob } from './secretariat-executor.js';
@@ -468,6 +469,16 @@ export function registerAllJobs(): void {
     interval: { value: 24, unit: 'hours' },
     initialDelay: { value: 25, unit: 'minutes' },
     runner: runBrandLogoDigestJob,
+    businessHours: { startHour: 9, endHour: 10 },
+    shouldLogResult: (r) => r.posted || r.staleCount > 0,
+  });
+
+  jobScheduler.register({
+    name: 'community-mirror-digest',
+    description: 'Daily digest of community mirror proposals pending review',
+    interval: { value: 24, unit: 'hours' },
+    initialDelay: { value: 27, unit: 'minutes' },
+    runner: runCommunityMirrorDigestJob,
     businessHours: { startHour: 9, endHour: 10 },
     shouldLogResult: (r) => r.posted || r.staleCount > 0,
   });
@@ -977,6 +988,7 @@ export const JOB_NAMES = {
   CREDENTIAL_DIGEST: 'credential-digest',
   CERTIFICATION_RECOVERY: 'certification-recovery',
   BRAND_LOGO_DIGEST: 'brand-logo-digest',
+  COMMUNITY_MIRROR_DIGEST: 'community-mirror-digest',
   SOCIAL_POST_IDEAS: 'social-post-ideas',
   CONVERSATION_INSIGHTS: 'conversation-insights',
   SLACK_AUTO_LINK: 'slack-auto-link',
