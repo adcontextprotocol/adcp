@@ -450,8 +450,8 @@ export class AddieDatabase {
    * Search Slack messages stored locally using PostgreSQL full-text search
    *
    * @param accessiblePrivateChannelIds - List of private channel IDs the user has access to.
-   *   If provided, results will only include public channels OR private channels in this list.
-   *   If not provided (undefined), no access filtering is applied (use for internal/admin queries).
+   *   Results only include public channels OR private channels in this list.
+   *   Omitting this value fails closed to public-only results.
    */
   async searchSlackMessages(searchQuery: string, options: {
     limit?: number;
@@ -460,7 +460,7 @@ export class AddieDatabase {
   } = {}): Promise<SlackSearchResult[]> {
     const limit = options.limit ?? 10;
     const channel = options.channel;
-    const accessiblePrivateChannelIds = options.accessiblePrivateChannelIds;
+    const accessiblePrivateChannelIds = options.accessiblePrivateChannelIds ?? [];
 
     // Build dynamic query with optional filters
     const params: (string | number | string[])[] = [searchQuery, limit];
@@ -474,29 +474,24 @@ export class AddieDatabase {
       paramIndex++;
     }
 
-    // Access control filter for private channels
-    // Only include messages from:
-    // 1. Public channels (those without a working group - tracked via slack_channel_id)
-    // 2. Private channels the user has access to (in accessiblePrivateChannelIds)
-    let accessFilter = '';
-    if (accessiblePrivateChannelIds !== undefined) {
-      if (accessiblePrivateChannelIds.length > 0) {
-        // Include public channels (not in any working group) OR accessible private channels
-        accessFilter = `AND (
+    // Indexed private channels are linked to working groups. Missing ACL
+    // context is deliberately equivalent to an empty allowlist rather than
+    // unrestricted access.
+    let accessFilter: string;
+    if (accessiblePrivateChannelIds.length > 0) {
+      accessFilter = `AND (
           NOT EXISTS (
             SELECT 1 FROM working_groups wg
             WHERE wg.slack_channel_id = addie_knowledge.slack_channel_id
           )
           OR slack_channel_id = ANY($${paramIndex}::text[])
         )`;
-        params.push(accessiblePrivateChannelIds);
-      } else {
-        // User has no private channel access - only show public channels
-        accessFilter = `AND NOT EXISTS (
+      params.push(accessiblePrivateChannelIds);
+    } else {
+      accessFilter = `AND NOT EXISTS (
           SELECT 1 FROM working_groups wg
           WHERE wg.slack_channel_id = addie_knowledge.slack_channel_id
         )`;
-      }
     }
 
     const result = await query<SlackSearchResult>(
@@ -539,6 +534,7 @@ export class AddieDatabase {
   async getChannelActivity(channel: string, options: {
     days?: number;
     limit?: number;
+    accessiblePrivateChannelIds?: string[];
   } = {}): Promise<Array<{
     text: string;
     channel_name: string;
@@ -548,6 +544,24 @@ export class AddieDatabase {
   }>> {
     const days = Math.min(options.days ?? 30, 90);
     const limit = Math.min(options.limit ?? 25, 50);
+    const accessiblePrivateChannelIds = options.accessiblePrivateChannelIds ?? [];
+    const params: (string | number | string[])[] = [`%${channel}%`, days, limit];
+    let accessFilter: string;
+    if (accessiblePrivateChannelIds.length > 0) {
+      accessFilter = `AND (
+         NOT EXISTS (
+           SELECT 1 FROM working_groups wg
+           WHERE wg.slack_channel_id = addie_knowledge.slack_channel_id
+         )
+         OR slack_channel_id = ANY($4::text[])
+       )`;
+      params.push(accessiblePrivateChannelIds);
+    } else {
+      accessFilter = `AND NOT EXISTS (
+         SELECT 1 FROM working_groups wg
+         WHERE wg.slack_channel_id = addie_knowledge.slack_channel_id
+       )`;
+    }
 
     const result = await query<{
       text: string;
@@ -568,9 +582,10 @@ export class AddieDatabase {
          AND LOWER(slack_channel_name) LIKE LOWER($1)
          AND slack_ts IS NOT NULL
          AND TO_TIMESTAMP(slack_ts::numeric) >= NOW() - INTERVAL '1 day' * $2
+         ${accessFilter}
        ORDER BY slack_ts::numeric DESC
        LIMIT $3`,
-      [`%${channel}%`, days, limit]
+      params
     );
     return result.rows;
   }
@@ -1573,4 +1588,3 @@ export interface ConfigVersionInfo {
   avg_rating: number | null;
   source_synthesis_run_ids: number[] | null;
 }
-

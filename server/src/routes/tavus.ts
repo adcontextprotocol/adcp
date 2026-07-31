@@ -13,6 +13,8 @@ import {
   initializeKnowledgeSearch,
   KNOWLEDGE_TOOLS,
   createKnowledgeToolHandlers,
+  createSlackKnowledgeRequestTools,
+  isSlackKnowledgeTool,
 } from "../addie/mcp/knowledge-search.js";
 import {
   DIRECTORY_TOOLS,
@@ -106,8 +108,10 @@ async function initializeTavusClient(): Promise<void> {
     }
     claudeClient = new AddieClaudeClient(apiKey, AddieModelConfig.voice);
     await initializeKnowledgeSearch();
-    const knowledgeHandlers = createKnowledgeToolHandlers();
-    for (const tool of KNOWLEDGE_TOOLS) {
+    const knowledgeHandlers = createKnowledgeToolHandlers({
+      slackAccess: { kind: 'public-only' },
+    });
+    for (const tool of KNOWLEDGE_TOOLS.filter((tool) => !isSlackKnowledgeTool(tool))) {
       const handler = knowledgeHandlers.get(tool.name);
       if (handler) claudeClient.registerTool(tool, handler);
     }
@@ -231,6 +235,16 @@ async function buildVoiceRequestTools(
     ...createEscalationToolHandlers(memberContext, linkedSlackUserId, threadId),
     ...createBillingToolHandlers(memberContext),
   ]);
+
+  const slackKnowledge = createSlackKnowledgeRequestTools(
+    linkedSlackUserId
+      ? { kind: 'slack-user', slackUserId: linkedSlackUserId }
+      : { kind: 'public-only' },
+  );
+  allTools.push(...slackKnowledge.tools);
+  for (const [name, handler] of slackKnowledge.handlers) {
+    combinedHandlers.set(name, handler);
+  }
 
   // Schema tools
   allTools.push(...SCHEMA_TOOLS);

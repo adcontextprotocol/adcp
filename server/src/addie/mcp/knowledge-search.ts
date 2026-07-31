@@ -363,6 +363,20 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
   },
 ];
 
+/** Slack history tools must only be installed with an explicit request scope. */
+export const SLACK_KNOWLEDGE_TOOL_NAMES = new Set([
+  'search_slack',
+  'get_channel_activity',
+]);
+
+export function isSlackKnowledgeTool(tool: AddieTool): boolean {
+  return SLACK_KNOWLEDGE_TOOL_NAMES.has(tool.name);
+}
+
+export type SlackKnowledgeAccess =
+  | { kind: 'public-only' }
+  | { kind: 'slack-user'; slackUserId: string };
+
 /**
  * Extract a smart excerpt that shows content around query matches
  * instead of just the first N characters
@@ -478,21 +492,39 @@ function extractSmartExcerpt(content: string, query: string, maxLength: number =
 
 /**
  * Tool handlers
- * @param slackUserId - Optional Slack user ID for access control on private channels
+ * @param options.slackAccess - Explicit Slack-history access scope. Missing access
+ *   context defaults to public-only; it never grants access to every channel.
  * @param options.anonymous - When true, restrict resource sources to curated/rss
  *   and strip Addie-generated notes. Anonymous web/MCP callers should pass true
  *   so attacker-controlled URLs queued via `bookmark_resource` (Slack-authenticated
  *   path) cannot become a prompt-injection vector for unauthenticated sessions.
  */
 export function createKnowledgeToolHandlers(
-  slackUserId?: string,
-  options: { anonymous?: boolean } = {}
+  options: {
+    anonymous?: boolean;
+    slackAccess?: SlackKnowledgeAccess;
+  } = {}
 ): Map<
   string,
   (input: Record<string, unknown>) => Promise<string>
 > {
   const handlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
   const anonymous = options.anonymous === true;
+  const slackUserId = options.slackAccess?.kind === 'slack-user'
+    ? options.slackAccess.slackUserId
+    : undefined;
+
+  const resolveAccessiblePrivateChannelIds = async (): Promise<string[]> => {
+    if (!slackUserId) return [];
+    try {
+      return await getAccessiblePrivateChannelIds(slackUserId);
+    } catch (error) {
+      // The Slack client currently also fails closed, but this boundary must
+      // stay safe if its implementation changes or a test double rejects.
+      logger.warn({ error, slackUserId }, 'Addie: Failed to resolve Slack channel permissions');
+      return [];
+    }
+  };
 
   handlers.set('search_docs', async (input) => {
     const startTime = Date.now();
@@ -671,10 +703,7 @@ ${excerpt}`;
 
       // Get accessible private channel IDs for access filtering
       // This ensures search results don't leak private channel content
-      let accessiblePrivateChannelIds: string[] | undefined;
-      if (slackUserId) {
-        accessiblePrivateChannelIds = await getAccessiblePrivateChannelIds(slackUserId);
-      }
+      const accessiblePrivateChannelIds = await resolveAccessiblePrivateChannelIds();
 
       // Search local database with optional channel filter and access control
       const localResults = await addieDb.searchSlackMessages(searchQuery, {
@@ -719,24 +748,30 @@ ${excerpt}`;
     const limit = input.limit as number | undefined;
 
     try {
+      const accessiblePrivateChannelIds = await resolveAccessiblePrivateChannelIds();
+      let requestedPrivateChannelName: string | undefined;
+
       // Check access if we have user context
       if (slackUserId) {
         const accessResult = await findChannelWithAccess(channel, slackUserId);
         if (accessResult && !accessResult.hasAccess) {
           return `Cannot access #${accessResult.channel.name}: ${accessResult.reason || 'Access denied'}.\n\nPrivate channel activity is only accessible to channel members.`;
         }
-        // If it's a private channel and not indexed, inform the user
-        if (accessResult && accessResult.channel.is_private) {
-          const messages = await addieDb.getChannelActivity(channel, { days, limit });
-          if (messages.length === 0) {
-            return `No indexed activity found for private channel #${accessResult.channel.name}.\n\nPrivate channels are indexed but may not have historical data. Recent messages should appear after they are sent.`;
-          }
+        if (accessResult?.channel.is_private) {
+          requestedPrivateChannelName = accessResult.channel.name;
         }
       }
 
-      const messages = await addieDb.getChannelActivity(channel, { days, limit });
+      const messages = await addieDb.getChannelActivity(channel, {
+        days,
+        limit,
+        accessiblePrivateChannelIds,
+      });
 
       if (messages.length === 0) {
+        if (requestedPrivateChannelName) {
+          return `No indexed activity found for private channel #${requestedPrivateChannelName}.\n\nPrivate channels are indexed but may not have historical data. Recent messages should appear after they are sent.`;
+        }
         return `No recent activity found in channels matching "${channel}".\n\nThis could mean:\n- The channel name might be different (try partial matches like "technical" for "technical-standards-wg")\n- No messages in the last ${days ?? 30} days\n- The channel may not be indexed yet`;
       }
 
@@ -941,6 +976,25 @@ ${addieNotesBlock}`;
   });
 
   return handlers;
+}
+
+/**
+ * Build the two Slack-history tools as an atomic request-scoped unit. Keeping
+ * definitions and handlers together prevents a routed tool definition from
+ * falling back to a shared-client handler with a different caller's scope.
+ */
+export function createSlackKnowledgeRequestTools(slackAccess: SlackKnowledgeAccess): {
+  tools: AddieTool[];
+  handlers: Map<string, (input: Record<string, unknown>) => Promise<string>>;
+} {
+  const allHandlers = createKnowledgeToolHandlers({ slackAccess });
+  const tools = KNOWLEDGE_TOOLS.filter(isSlackKnowledgeTool);
+  const handlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
+  for (const tool of tools) {
+    const handler = allHandlers.get(tool.name);
+    if (handler) handlers.set(tool.name, handler);
+  }
+  return { tools, handlers };
 }
 
 /**
