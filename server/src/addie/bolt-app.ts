@@ -42,7 +42,7 @@ import { getPool } from '../db/client.js';
 import { linkDomain } from '../db/organization-domains-db.js';
 import {
   isKnowledgeReady,
-  createKnowledgeToolHandlers,
+  createSlackKnowledgeRequestTools,
   createUserScopedBookmarkHandler,
 } from './mcp/knowledge-search.js';
 import { registerBaselineTools } from './register-baseline-tools.js';
@@ -1002,6 +1002,16 @@ async function createUserScopedTools(
   let allTools = [...MEMBER_TOOLS];
   const allHandlers = new Map(memberHandlers);
 
+  const slackKnowledge = createSlackKnowledgeRequestTools(
+    slackUserId
+      ? { kind: 'slack-user', slackUserId }
+      : { kind: 'public-only' },
+  );
+  allTools.push(...slackKnowledge.tools);
+  for (const [name, handler] of slackKnowledge.handlers) {
+    allHandlers.set(name, handler);
+  }
+
   // Re-register Google Docs tools with user context for per-user rate
   // limiting (see tool-rate-limiter.ts). The boot-time registration
   // remains as a fallback; this per-request copy shadows whenever
@@ -1214,19 +1224,6 @@ async function createUserScopedTools(
   // Override bookmark_resource handler with user-scoped version (for attribution)
   if (slackUserId) {
     allHandlers.set('bookmark_resource', createUserScopedBookmarkHandler(slackUserId));
-  }
-
-  // Override Slack search handlers with user-scoped versions (for private channel access control)
-  if (slackUserId) {
-    const userScopedKnowledgeHandlers = createKnowledgeToolHandlers(slackUserId);
-    const searchSlackHandler = userScopedKnowledgeHandlers.get('search_slack');
-    const getChannelActivityHandler = userScopedKnowledgeHandlers.get('get_channel_activity');
-    if (searchSlackHandler) {
-      allHandlers.set('search_slack', searchSlackHandler);
-    }
-    if (getChannelActivityHandler) {
-      allHandlers.set('get_channel_activity', getChannelActivityHandler);
-    }
   }
 
   // Remove enrollment tools in public channels (covers all handler paths,
