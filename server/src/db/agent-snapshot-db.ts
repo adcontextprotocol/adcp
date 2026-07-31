@@ -164,7 +164,10 @@ export class AgentSnapshotDatabase {
            protocol = EXCLUDED.protocol,
            discovered_tools_json = EXCLUDED.discovered_tools_json,
            standard_operations_json = EXCLUDED.standard_operations_json,
-           creative_capabilities_json = EXCLUDED.creative_capabilities_json,
+           creative_capabilities_json = CASE
+             WHEN $16::boolean THEN agent_capabilities_snapshot.creative_capabilities_json
+             ELSE EXCLUDED.creative_capabilities_json
+           END,
            signals_capabilities_json = EXCLUDED.signals_capabilities_json,
            measurement_capabilities_json = EXCLUDED.measurement_capabilities_json,
            inferred_type = CASE
@@ -216,6 +219,7 @@ export class AgentSnapshotDatabase {
           unknownState?.lastAttemptAt ?? null,
           unknownState?.nextProbeAfter ?? null,
           unknownState?.terminalState ?? null,
+          profile.creative_capabilities_probe_failed === true,
         ],
       );
     } catch (err) {
@@ -317,6 +321,60 @@ export class AgentSnapshotDatabase {
       conditions.push(`EXISTS (
         SELECT 1 FROM jsonb_array_elements(measurement_capabilities_json->'metrics') AS m
         WHERE m->>'metric_id' ILIKE $${params.length} ESCAPE '\\'
+      )`);
+    }
+
+    const sql = `SELECT agent_url FROM agent_capabilities_snapshot WHERE ${conditions.join(' AND ')}`;
+    const result = await query<{ agent_url: string }>(sql, params);
+    return new Set(result.rows.map(r => r.agent_url));
+  }
+
+  /**
+   * Reverse discovery for canonical creative capabilities. All supplied
+   * predicates must match the same supported_formats[] entry so a publisher
+   * identity cannot accidentally combine with an unrelated generic format
+   * capability on the same agent.
+   */
+  async filterCreativeAgents(filters: {
+    format_kinds?: string[];
+    publisher_domain?: string;
+    format_option_id?: string;
+    capability_id?: string;
+    operations?: string[];
+  }): Promise<Set<string>> {
+    const params: unknown[] = [];
+    const entryConditions: string[] = [];
+
+    if (filters.format_kinds?.length) {
+      params.push(filters.format_kinds);
+      entryConditions.push(`entry->'format'->>'format_kind' = ANY($${params.length}::text[])`);
+    }
+    if (filters.publisher_domain) {
+      params.push(filters.publisher_domain.toLowerCase());
+      entryConditions.push(`LOWER(entry->'format'->>'publisher_domain') = $${params.length}`);
+    }
+    if (filters.format_option_id) {
+      params.push(filters.format_option_id);
+      entryConditions.push(`entry->'format'->>'format_option_id' = $${params.length}`);
+    }
+    if (filters.capability_id) {
+      params.push(filters.capability_id);
+      entryConditions.push(`entry->>'capability_id' = $${params.length}`);
+    }
+    if (filters.operations?.length) {
+      params.push(filters.operations);
+      entryConditions.push(`entry->'operations' ?| $${params.length}::text[]`);
+    }
+
+    const conditions = [
+      `creative_capabilities_json IS NOT NULL`,
+      `jsonb_typeof(creative_capabilities_json->'supported_formats') = 'array'`,
+    ];
+    if (entryConditions.length > 0) {
+      conditions.push(`EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(creative_capabilities_json->'supported_formats') AS entry
+        WHERE ${entryConditions.join(' AND ')}
       )`);
     }
 

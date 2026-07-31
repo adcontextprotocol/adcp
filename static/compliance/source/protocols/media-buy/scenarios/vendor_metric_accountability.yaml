@@ -62,8 +62,12 @@ fixtures:
     - product_id: "display_premium_vendor_metrics"
       delivery_type: "guaranteed"
       channels: ["display"]
-      format_ids:
-        - id: "display_300x250"
+      format_options:
+        - format_option_id: "display_300x250"
+          format_kind: "image"
+          params:
+            width: 300
+            height: 250
       reporting_capabilities:
         available_metrics:
           - impressions

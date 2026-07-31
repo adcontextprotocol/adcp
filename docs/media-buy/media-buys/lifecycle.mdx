@@ -242,7 +242,7 @@ Each `reason_code` has a typical buyer remediation path. Sellers don't fill this
 | `identity_authorization_expired` | Renew the downstream identity/post authorization through the seller's connection flow, then let the seller re-check or re-review the creative. |
 | `source_private` | Restore source post visibility or replace the affected `published_post` reference. |
 | `source_offline` | Verify the tag is firing on the buyer's properties (this is often a buyer/publisher integration issue, not a seller-side outage), then re-sync via `sync_event_sources`. |
-| `seller_removed` | No buyer-side resubmit path. Find a replacement via the same discovery tool used at campaign setup (`get_products`, `get_signals`, `list_creative_formats`), or contact the seller for restoration ETA. |
+| `seller_removed` | No buyer-side resubmit path. Find a replacement via the same discovery surfaces used at campaign setup (`get_products`, `get_signals`, and canonical product format options), or contact the seller for restoration ETA. |
 | `policy_violation` | Seller-side enforcement; buyer-side resubmit unlikely to clear. Await resolution or escalate per the seller's standard contact path. |
 | `property_depublished` | No buyer-side fix — property publication is controlled by the publisher's `brand.json` / `adagents.json`. Find a replacement property via `get_products` or remove from targeting. |
 

@@ -250,18 +250,181 @@ function formatIdsForChannels(channels: string[], agentUrl: string): FormatID[] 
   return ids;
 }
 
-const CANONICAL_FORMAT_PROJECTION_BY_LEGACY_ID: Partial<Record<string, CanonicalFormatProjection>> = {
+/**
+ * Explicit compatibility projection for every legacy format still exposed by
+ * the training agent. Products are authored from these canonical declarations;
+ * format_ids are retained only so older 3.x clients can consume the catalog.
+ */
+const CANONICAL_FORMAT_PROJECTION_BY_LEGACY_ID: Record<string, CanonicalFormatProjection> = {
+  display_static: {
+    format_kind: 'image',
+    params: {},
+  },
   display_300x250: {
     format_kind: 'image',
     params: { width: 300, height: 250 },
   },
+  display_728x90: {
+    format_kind: 'image',
+    params: { width: 728, height: 90 },
+  },
+  display_320x50: {
+    format_kind: 'image',
+    params: { width: 320, height: 50 },
+  },
+  video_preroll: {
+    format_kind: 'video_vast',
+    params: { vast_version: '3.0' },
+  },
+  video_outstream: {
+    format_kind: 'video_vast',
+    params: { vast_version: '3.0', aspect_ratio: '16:9' },
+  },
+  ctv_fullscreen: {
+    format_kind: 'video_vast',
+    params: { vast_version: '4.2', aspect_ratio: '16:9' },
+  },
+  audio_spot: {
+    format_kind: 'audio_daast',
+    params: { daast_version: '1.0' },
+  },
+  dooh_landscape: {
+    format_kind: 'image',
+    params: { width: 1920, height: 1080 },
+  },
+  dooh_portrait: {
+    format_kind: 'image',
+    params: { width: 1080, height: 1920 },
+  },
+  social_feed_card: {
+    format_kind: 'native_in_feed',
+    params: { title_max_chars: 100, body_text_max_chars: 300, main_image_sizes: [{ width: 1080, height: 1080 }] },
+  },
+  social_story: {
+    format_kind: 'image',
+    params: { width: 1080, height: 1920, aspect_ratio: '9:16' },
+  },
+  social_video_reel: {
+    format_kind: 'video_hosted',
+    params: { orientation: 'vertical', aspect_ratio: '9:16', duration_ms_range: [5000, 60000] },
+  },
+  native_content_card: {
+    format_kind: 'native_in_feed',
+    params: { title_max_chars: 90, body_text_max_chars: 200, main_image_sizes: [{ width: 600, height: 400 }] },
+  },
+  carousel_card: {
+    format_kind: 'image_carousel',
+    params: { min_cards: 2, max_cards: 10, card_image_sizes: [{ width: 1080, height: 1080 }] },
+  },
+  email_sponsored: {
+    format_kind: 'native_in_feed',
+    params: { title_max_chars: 80, body_text_max_chars: 250, main_image_sizes: [{ width: 600, height: 200 }] },
+  },
+  sponsored_product: {
+    format_kind: 'sponsored_placement',
+    params: { catalog_type: 'product' },
+  },
+  creator_brief: {
+    format_kind: 'native_in_feed',
+    params: {
+      asset_source: 'seller_human_designed',
+      buyer_asset_acceptance: 'rejected',
+      slots: [
+        { asset_group_id: 'brief', asset_type: 'brief', required: true },
+        { asset_group_id: 'logo', asset_type: 'image', required: false },
+      ],
+    },
+  },
+  gaming_interstitial: {
+    format_kind: 'image',
+    params: { width: 1080, height: 1920, aspect_ratio: '9:16' },
+  },
+  gaming_rewarded_video: {
+    format_kind: 'video_vast',
+    params: { vast_version: '4.2', aspect_ratio: '16:9' },
+  },
+  search_text_ad: {
+    format_kind: 'responsive_creative',
+    params: { headline_max_chars: 30, body_text_max_chars: 90 },
+  },
+  search_shopping: {
+    format_kind: 'sponsored_placement',
+    params: { catalog_type: 'product' },
+  },
+  ai_sponsored_recommendation: {
+    format_kind: 'native_in_feed',
+    params: { body_text_max_chars: 500 },
+  },
+  ai_sponsored_agent: {
+    format_kind: 'agent_placement',
+    params: { system_prompt_max_chars: 4000 },
+  },
+  print_full_page: {
+    format_kind: 'image',
+    params: {
+      width: 2550,
+      height: 3300,
+      image_formats: ['jpg', 'png'],
+      max_file_size_kb: 50000,
+      min_resolution_dpi: 300,
+    },
+  },
+  radio_spot: {
+    format_kind: 'audio_hosted',
+    params: {},
+  },
+  broadcast_30s: {
+    format_kind: 'video_hosted',
+    params: { orientation: 'horizontal', aspect_ratio: '16:9', duration_ms_exact: 30000 },
+  },
+  broadcast_15s: {
+    format_kind: 'video_hosted',
+    params: { orientation: 'horizontal', aspect_ratio: '16:9', duration_ms_exact: 15000 },
+  },
+  ssai_30s: {
+    format_kind: 'video_hosted',
+    params: { orientation: 'horizontal', aspect_ratio: '16:9', duration_ms_exact: 30000 },
+  },
+  preroll_15s: {
+    format_kind: 'video_hosted',
+    params: { orientation: 'horizontal', aspect_ratio: '16:9', duration_ms_exact: 15000 },
+  },
+  native_feed: {
+    format_kind: 'native_in_feed',
+    params: { title_max_chars: 40, main_image_sizes: [{ width: 1080, height: 1080 }] },
+  },
+  display_300x250_generative: {
+    format_kind: 'image',
+    params: { width: 300, height: 250, asset_source: 'agent_synthesized', buyer_asset_acceptance: 'rejected' },
+  },
+  video_30s_generative: {
+    format_kind: 'video_hosted',
+    params: { orientation: 'horizontal', aspect_ratio: '16:9', duration_ms_exact: 30000, asset_source: 'agent_synthesized', buyer_asset_acceptance: 'rejected' },
+  },
+  video_30s: {
+    format_kind: 'video_hosted',
+    params: { orientation: 'horizontal', aspect_ratio: '16:9', duration_ms_exact: 30000 },
+  },
+  native_post: {
+    format_kind: 'native_in_feed',
+    params: { main_image_sizes: [{ width: 1080, height: 1080 }] },
+  },
+  native_content: {
+    format_kind: 'native_in_feed',
+    params: { main_image_sizes: [{ width: 1200, height: 630 }] },
+  },
+  product_carousel_3_to_10: {
+    format_kind: 'image_carousel',
+    params: { min_cards: 3, max_cards: 10, card_image_sizes: [{ width: 1200, height: 1200 }] },
+  },
 };
 
 function formatOptionsForFormatIds(formatIds: FormatID[]): ProductFormatDeclaration[] {
-  return formatIds.flatMap(formatId => {
-    // Omitted ids stay legacy-only until they have a clean canonical projection.
+  return formatIds.map(formatId => {
     const projection = CANONICAL_FORMAT_PROJECTION_BY_LEGACY_ID[formatId.id];
-    if (!projection) return [];
+    if (!projection) {
+      throw new Error(`Training format ${formatId.id} has no canonical 3.2 projection`);
+    }
     return {
       format_kind: projection.format_kind,
       format_option_id: `${formatId.id}_${projection.format_kind}`,

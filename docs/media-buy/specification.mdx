@@ -246,18 +246,21 @@ Each `get_products` request with `buying_mode: "refine"` is self-contained — s
 - Sales agents that return `refinement_applied` MUST echo `scope` on each entry and MUST echo `product_id` / `proposal_id` for product and proposal scopes, so orchestrators can cross-validate alignment
 - Sales agents MAY return proposals alongside products in refine mode, even when the orchestrator did not include proposal entries
 
-### list_creative_formats
+### Canonical creative-format discovery
 
-**Schema**: [`media-buy/list-creative-formats-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/list-creative-formats-request.json) / [`media-buy/list-creative-formats-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/list-creative-formats-response.json)
+Sales-agent `list_creative_formats` is deprecated in AdCP 3.2. An agent-global list cannot represent product-, placement-, account-, or inventory-specific deliverability.
 
-**Reference**: [`list_creative_formats` task](/docs/creative/task-reference/list_creative_formats)
+Use these canonical sources instead:
 
-Discover creative format requirements and specifications.
+- Publisher acceptance: publisher `adagents.json.formats[]`
+- Sales-agent deliverability: `get_products` `Product.format_options[]`
+- Creative production/validation/preview: creative agent `get_adcp_capabilities.creative.supported_formats[]`
 
 **Requirements:**
-- Sales agents MUST return all supported creative formats
-- Sales agents MUST include technical specifications for each format
-- Sales agents SHOULD reference standard format IDs from the Creative Protocol when applicable
+- Sales agents MUST publish the closed sellable format set on every product's canonical `format_options[]`
+- Placement-level declarations MAY narrow, but MUST NOT broaden, the product set
+- Sales agents MUST NOT present publisher-catalog formats as if every declared format were deliverable by that agent
+- Compatibility `list_creative_formats` responses MAY be projected from canonical declarations for older 3.x peers, but MUST NOT be independently authored
 
 ### create_media_buy
 
@@ -531,7 +534,7 @@ Sales agents SHOULD target the following response times:
 
 | Operation Type | Target Latency |
 |----------------|----------------|
-| Simple lookups (list_creative_formats) | < 1 second |
+| Capability/catalog lookups | < 1 second |
 | Discovery with AI/LLM (get_products) | < 60 seconds |
 | Reporting queries (get_media_buy_delivery) | < 60 seconds |
 | Campaign operations (create, update, sync) | Async acceptable |
@@ -566,8 +569,8 @@ Sales agents MAY require human approval for any operation. Approval is modelled 
 | [`media-buy/create-media-buy-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-response.json) | create_media_buy response |
 | [`media-buy/update-media-buy-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/update-media-buy-request.json) | update_media_buy request |
 | [`media-buy/update-media-buy-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/update-media-buy-response.json) | update_media_buy response |
-| [`media-buy/list-creative-formats-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/list-creative-formats-request.json) | list_creative_formats request |
-| [`media-buy/list-creative-formats-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/list-creative-formats-response.json) | list_creative_formats response |
+| [`media-buy/list-creative-formats-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/list-creative-formats-request.json) | Deprecated named-format compatibility request |
+| [`media-buy/list-creative-formats-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/list-creative-formats-response.json) | Deprecated named-format compatibility response |
 | [`creative/list-creatives-request.json`](https://adcontextprotocol.org/schemas/v3/creative/list-creatives-request.json) | list_creatives request (Creative Protocol) |
 | [`creative/list-creatives-response.json`](https://adcontextprotocol.org/schemas/v3/creative/list-creatives-response.json) | list_creatives response (Creative Protocol) |
 | [`creative/sync-creatives-request.json`](https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-request.json) | sync_creatives request (Creative Protocol) |

@@ -58,7 +58,8 @@ The `filters` object supports these optional, composable filters:
 | Filter | Type | Description |
 |--------|------|-------------|
 | `accounts` | [AccountRef](/docs/building/by-layer/L2/accounts-and-agents#account-references)[] | Filter by owning accounts |
-| `format_ids` | FormatID[] | Filter by structured format IDs |
+| `format_kinds` | CanonicalFormatKind[] | Filter by canonical format kinds |
+| `format_ids` | FormatID[] | Deprecated named-format compatibility filter |
 | `statuses` | [CreativeStatus](/docs/creative/specification#creative-status-lifecycle)[] | Filter by approval status |
 | `tags` | string[] | Filter by tags (all must match) |
 | `tags_any` | string[] | Filter by tags (any must match) |
@@ -140,12 +141,7 @@ The response provides creative data with optional enrichment:
     {
       "creative_id": "ft_88201",
       "name": "Holiday Sale - Medium Rectangle",
-      "format_id": {
-        "agent_url": "https://creative.example.com",
-        "id": "display_static",
-        "width": 300,
-        "height": 250
-      },
+      "format_kind": "image",
       "status": "approved",
       "created_date": "2026-01-15T10:30:00Z",
       "updated_date": "2026-01-15T14:20:00Z",
@@ -177,7 +173,9 @@ The response provides creative data with optional enrichment:
 |-------|------|-------------|
 | `creative_id` | string | Unique creative identifier |
 | `name` | string | Human-readable name |
-| `format_id` | object | Structured format reference |
+| `format_kind` | string | Canonical format kind |
+| `format_option_ref` | object | Optional exact publisher/product option reference |
+| `format_id` | object | Deprecated 3.x named-format compatibility field |
 | `status` | string | Approval status |
 | `created_date` | string | Creation timestamp |
 | `updated_date` | string | Last modified timestamp |
@@ -351,25 +349,12 @@ List all approved creatives in a specific concept, including DCO variable defini
 
 ### Format-specific query
 
-Find creatives matching specific format IDs across concepts:
+Find canonical image creatives across concepts:
 
 ```json
 {
   "filters": {
-    "format_ids": [
-      {
-        "agent_url": "https://creative.example.com",
-        "id": "display_static",
-        "width": 300,
-        "height": 250
-      },
-      {
-        "agent_url": "https://creative.example.com",
-        "id": "display_static",
-        "width": 728,
-        "height": 90
-      }
-    ],
+    "format_kinds": ["image"],
     "statuses": ["approved"]
   }
 }
@@ -395,7 +380,7 @@ Get minimal creative data for a selection dropdown:
 
 ```json
 {
-  "fields": ["creative_id", "name", "format_id", "status"],
+  "fields": ["creative_id", "name", "format_kind", "status"],
   "include_assignments": false,
   "filters": {
     "statuses": ["approved"]
@@ -431,5 +416,5 @@ Find active creatives with delivery snapshots to identify stale or dormant asset
 - [`get_creative_delivery`](/docs/creative/task-reference/get_creative_delivery) - Detailed performance analytics with date ranges, variant breakdowns, and full delivery metrics
 - [`build_creative`](/docs/creative/task-reference/build_creative) - Build manifests from library creatives or generate from scratch
 - [`sync_creatives`](/docs/creative/task-reference/sync_creatives) - Upload and manage creative assets on any agent hosting a creative library
-- [`list_creative_formats`](/docs/creative/task-reference/list_creative_formats) - Discover supported creative formats
+- [Canonical formats](/docs/creative/canonical-formats) - Discover product, publisher, and creative-agent format declarations
 - [`preview_creative`](/docs/creative/task-reference/preview_creative) - Generate previews of creative manifests

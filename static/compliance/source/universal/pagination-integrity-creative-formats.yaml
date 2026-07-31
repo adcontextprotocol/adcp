@@ -1,8 +1,8 @@
 id: pagination_integrity_creative_formats
 version: "1.0.0"
-title: "Pagination cursor integrity — list_creative_formats"
+title: "Deprecated list_creative_formats compatibility — pagination cursor integrity"
 category: schema_validation
-summary: "Validates the cursor↔has_more invariant on list_creative_formats by seeding two formats and walking pages with max_results=1."
+summary: "When an agent still exposes deprecated list_creative_formats compatibility, validates its cursor↔has_more invariant by seeding two formats and walking pages with max_results=1."
 track: core
 required_tools:
   - list_creative_formats
@@ -35,7 +35,7 @@ agent:
   capabilities:
     - has_creative_formats
   examples:
-    - "Any AdCP agent that exposes a paginated list_creative_formats"
+    - "Any legacy-compatible AdCP agent that voluntarily exposes paginated list_creative_formats"
 
 caller:
   role: buyer_agent

@@ -374,11 +374,20 @@ export const AgentCapabilitiesSchema = z
       .optional(),
     creative_capabilities: z
       .object({
-        formats_supported: z.array(z.string()),
+        supported_formats: z.array(z.object({
+          capability_id: z.string(),
+          format: z.object({
+            format_kind: z.string(),
+            publisher_domain: z.string().optional(),
+            format_option_id: z.string().optional(),
+            params: z.record(z.string(), z.unknown()).optional(),
+          }).passthrough(),
+          operations: z.array(z.enum(["build", "validate", "preview"])).min(1),
+        }).passthrough()),
         can_generate: z.boolean(),
         can_validate: z.boolean(),
         can_preview: z.boolean(),
-      })
+      }).passthrough()
       .optional(),
     signals_capabilities: z
       .object({
@@ -977,6 +986,29 @@ const PublisherFormatSummarySchema = z.object({
   experimental: z.boolean().optional().openapi({ description: "Whether this seller's format declaration is marked experimental." }),
 });
 
+const PublisherPlacementFormatSummarySchema = z.object({
+  format_option_id: z.string().optional(),
+  format_kind: z.string().openapi({ description: "Resolved canonical format kind accepted by this placement." }),
+  params: z.record(z.string(), z.unknown()).optional().openapi({ description: "Resolved canonical narrowing for this placement format." }),
+});
+
+const PublisherPlacementSummarySchema = z.object({
+  placement_id: z.string(),
+  name: z.string(),
+  description: z.string().optional(),
+  property_ids: z.array(z.string()).optional(),
+  property_tags: z.array(z.string()).optional(),
+  collection_ids: z.array(z.string()).optional(),
+  channels: z.array(z.string()).optional(),
+  tags: z.array(z.string()).optional(),
+  format_options: z.array(PublisherPlacementFormatSummarySchema).optional().openapi({
+    description: "Placement format references resolved against the same response's top-level formats plus any inline canonical declarations.",
+  }),
+  source: z.enum(["adagents_json", "community"]).openapi({
+    description: "Publisher-origin placements are adagents_json; moderator-maintained catalog placements are community.",
+  }),
+});
+
 const PublisherAuthorizedAgentSchema = z.object({
   url: z.string(),
   authorized_for: z.string().optional(),
@@ -1071,7 +1103,11 @@ export const PublisherLookupResultSchema = z
     }),
     formats: z.array(PublisherFormatSummarySchema).optional().openapi({
       description:
-        "Display-oriented summary of top-level adagents.json `formats[]`, normalized for publisher pages and agent discovery clients. Each entry preserves `format_kind`, `format_option_id`, and canonical params.",
+        "Lossy display-oriented summary of top-level adagents.json `formats[]`, normalized for publisher pages and eligibility discovery. It preserves `format_kind`, `format_option_id`, params, property scope, preference, and experimental status, but omits `v1_format_ref`, `canonical_formats_only`, `applies_to_channels`, `publisher_domain`, and custom `format_shape`/`format_schema`. Fetch the canonical document at hosting.resolved_url (or hosting.expected_url when self-hosted) for creative validation.",
+    }),
+    placements: z.array(PublisherPlacementSummarySchema).optional().openapi({
+      description:
+        "Eligibility-oriented publisher placement summaries. Present only when the request includes `include=placements`; format references are resolved to canonical kind/params so callers can join property → placement → format without a second origin fetch.",
     }),
     authorized_agents: z.array(PublisherAuthorizedAgentSchema),
     rollup_truncated: z.object({

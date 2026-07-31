@@ -1199,11 +1199,11 @@
         "list-creative-formats": {
           "request": {
             "$ref": "/schemas/media-buy/list-creative-formats-request.json",
-            "description": "Request parameters for discovering format IDs and creative agents supported by this sales agent"
+            "description": "Deprecated 3.x compatibility request. Sales agents publish canonical sellable formats through get_products Product.format_options[]."
           },
           "response": {
             "$ref": "/schemas/media-buy/list-creative-formats-response.json",
-            "description": "Response payload with format_ids and creative_agents list. Sales agent returns which formats it supports and which creative agents provide those formats. Buyers query creative agents for full format specifications."
+            "description": "Deprecated 3.x compatibility response for legacy named formats. Not a sales-agent deliverability contract."
           }
         },
         "create-media-buy": {
@@ -1324,11 +1324,11 @@
         "list-creative-formats": {
           "request": {
             "$ref": "/schemas/creative/list-creative-formats-request.json",
-            "description": "Request parameters for discovering creative formats from this creative agent"
+            "description": "Deprecated 3.x compatibility request; use get_adcp_capabilities creative.supported_formats[]."
           },
           "response": {
             "$ref": "/schemas/creative/list-creative-formats-response.json",
-            "description": "Response payload with full format definitions - this is the authoritative source for format specifications"
+            "description": "Deprecated 3.x compatibility response for legacy named formats."
           }
         },
         "list-transformers": {

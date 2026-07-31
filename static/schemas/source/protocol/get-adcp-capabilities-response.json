@@ -950,7 +950,7 @@
         },
         "supports_transformation": {
           "type": "boolean",
-          "description": "When true, this agent can transform or resize existing manifests via build_creative. The buyer provides a creative_manifest and a target_format_id, and the agent adapts the creative to the new format.",
+          "description": "When true, this agent can transform or resize existing canonical manifests via build_creative. The buyer supplies a creative_manifest and an advertised target_capability_id.",
           "default": false
         },
         "supports_transformers": {
@@ -1044,20 +1044,33 @@
         },
         "supported_formats": {
           "type": "array",
-          "description": "Canonical-formats path: format declarations describing which canonical formats this creative agent can produce via `build_creative`. Each entry uses the same `ProductFormatDeclaration` shape as a product's inline `format_options[i]` — `format_kind` discriminator + `params` (canonical's parameter schema including `slots`, dimensions, durations, codecs, character limits, platform_extensions, tracking_extensions). Replaces the v1 `list_creative_formats` discovery surface for creative agents.",
+          "minItems": 1,
+          "description": "Canonical-format capability catalog for this creative agent. This is the 3.2 source of truth for discovering which format contracts the agent can build, validate, or preview; it replaces the deprecated `list_creative_formats` task. Each entry uses the same `ProductFormatDeclaration` shape as a product's inline `format_options[i]` and MUST carry a stable agent-local `capability_id` for task routing.\n\n**Publisher-specific support.** To claim exact support for a publisher declaration, `format` carries the declaration's `{publisher_domain, format_option_id}` pair plus its canonical `format_kind` and narrowed `params`. Generic creative agents MAY instead advertise a canonical parameter envelope without publisher identity. A generic capability matches a target declaration only when the capability can satisfy every target constraint; matching canonical names alone is insufficient. Registries MAY reverse-index these entries by `format.format_kind`, `format.publisher_domain`, and `format.format_option_id`.\n\nThis catalog describes creative operations, not sales-agent inventory deliverability. Sales agents publish the purchasable closed set on each `Product.format_options[]`; publisher acceptance lives in `adagents.json.formats[]`.",
           "items": {
             "type": "object",
             "properties": {
               "capability_id": {
                 "type": "string",
-                "description": "Stable identifier for this format declaration within the agent (e.g., 'audiostack_audio_30s'). Optional but recommended for declarations that may be referenced over time."
+                "pattern": "^[a-zA-Z0-9_-]+$",
+                "description": "Stable identifier for this format capability within the creative agent (e.g., 'audiostack_audio_30s'). Route the advertised operation with this ID: build_creative.target_capability_id(s) for build, preview_creative.target_capability_id for preview, or validate_input targets[] kind capability for validate. Capability IDs are agent-local routes and do not appear on portable manifests or products."
               },
               "format": {
                 "$ref": "/schemas/core/product-format-declaration.json",
-                "description": "Format declaration this agent can produce. Same shape as a product's inline `format_options[i]`: `format_kind` + `params` + `slots`."
+                "description": "Format declaration on which this agent can perform the listed operations. Same shape as a product's inline format_options entry: format_kind plus params and slots."
+              },
+              "operations": {
+                "type": "array",
+                "description": "Creative operations this capability supports. `build` means the agent can produce a conforming manifest via build_creative; `validate` means it can evaluate inputs against the declaration; `preview` means it can render a preview. Required in 3.2 so buyers and registries can distinguish producers, validators, and renderers without probing tasks.",
+                "items": {
+                  "type": "string",
+                  "enum": ["build", "validate", "preview"]
+                },
+                "minItems": 1,
+                "uniqueItems": true,
+                "default": ["build"]
               }
             },
-            "required": ["format"],
+            "required": ["capability_id", "format", "operations"],
             "additionalProperties": true
           }
         },
@@ -1072,6 +1085,36 @@
           "description": "Optional. The AdCP canonical-formats catalog version this agent's runtime is built against (e.g., `3.1`, `3.2.0`). Lets buyer SDKs detect canonical-catalog skew between their generated types and the seller's actual support. SDKs MAY declare the version they were generated against (typically the AdCP version they ship for); when seller and SDK versions disagree, SDKs SHOULD soft-warn rather than fail (the open-enum semantics on `canonical-format-kind.json` make unknown canonicals safe to retain, so skew is not a hard error — it just means the older side might not understand newer canonical values). Omitted by sellers who haven't yet generated against a versioned catalog; absence is interpreted as the AdCP version advertised by the broader capabilities response."
         }
       },
+      "allOf": [
+        {
+          "$comment": "Flags that advertise a build_creative surface require a non-empty canonical operation catalog. Preview-only and validate-only agents advertise that surface directly by publishing supported_formats entries whose operations contain preview or validate.",
+          "if": {
+            "anyOf": [
+              { "properties": { "has_creative_library": { "const": true } }, "required": ["has_creative_library"] },
+              { "properties": { "supports_generation": { "const": true } }, "required": ["supports_generation"] },
+              { "properties": { "supports_transformation": { "const": true } }, "required": ["supports_transformation"] },
+              { "properties": { "supports_transformers": { "const": true } }, "required": ["supports_transformers"] },
+              { "properties": { "supports_refinement": { "const": true } }, "required": ["supports_refinement"] }
+            ]
+          },
+          "then": {
+            "required": ["supported_formats"],
+            "properties": {
+              "supported_formats": {
+                "contains": {
+                  "type": "object",
+                  "properties": {
+                    "operations": {
+                      "contains": { "const": "build" }
+                    }
+                  },
+                  "required": ["operations"]
+                }
+              }
+            }
+          }
+        }
+      ],
       "additionalProperties": true
     },
     "request_signing": {

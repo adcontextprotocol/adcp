@@ -5,39 +5,40 @@ description: Execute AdCP Creative Protocol operations with creative agents - bu
 
 # AdCP Creative Protocol
 
-This skill enables you to execute the AdCP Creative Protocol with creative agents. Use the standard MCP tools (`list_creative_formats`, `build_creative`, `preview_creative`) exposed by the connected agent.
+This skill enables you to execute the AdCP Creative Protocol with creative agents. Use `get_adcp_capabilities`, `list_transformers`, `build_creative`, and `preview_creative` exposed by the connected agent. In AdCP 3.2, `list_creative_formats` is deprecated and must not drive a new workflow.
 
 > **Buyer-side basics** — idempotency replay, `oneOf` variants, async `status:'submitted'` polling, error recovery from `adcp_error.issues[]` — live in `skills/call-adcp-agent/SKILL.md`. This skill covers per-task semantics only.
 
 ## Overview
 
-The Creative Protocol provides 4 standardized tasks for building and previewing advertising creatives:
+The Creative Protocol provides standardized discovery, build, and preview tasks:
 
 | Task | Purpose | Response Time |
 |------|---------|---------------|
-| `list_creative_formats` | View format specifications | ~1s |
+| `get_adcp_capabilities` | Discover canonical creative capabilities | ~1s |
+| `list_transformers` | Discover selectable production services | ~1s |
 | `build_creative` | Generate or transform creatives | ~30s-5m |
 | `preview_creative` | Get visual previews | ~5s |
 | `get_creative_delivery` | Variant-level delivery data | ~5-30s |
 
 ## Typical Workflow
 
-1. **Discover formats**: `list_creative_formats` to see available format specs
+1. **Discover capabilities**: read `get_adcp_capabilities.creative.supported_formats[]`
 2. **Build creative**: `build_creative` to generate or transform a manifest
 3. **Preview**: `preview_creative` to see how it renders
 4. **Sync**: Use `sync_creatives` (media-buy task) to traffic the creative
 
 ---
 
-## Canonical formats (AdCP 3.1+)
+## Canonical formats (AdCP 3.2)
 
-Products and manifests use the **canonical-formats** vocabulary — 11 canonical `format_kind` values that name the underlying creative shape (image / html5 / display_tag / video_hosted / video_vast / audio_hosted / audio_daast / image_carousel / responsive_creative / sponsored_placement / agent_placement / custom).
+Products and manifests use 12 canonical `format_kind` values: `image`, `html5`, `display_tag`, `image_carousel`, `video_hosted`, `video_vast`, `audio_hosted`, `audio_daast`, `sponsored_placement`, `native_in_feed`, `responsive_creative`, and `agent_placement`. Use `custom` only for a shape outside those canonicals, with required `format_shape` and `format_schema`.
 
 A `ProductFormatDeclaration` carries:
 
 - `format_kind`: the canonical (discriminator)
 - `params`: per-canonical parameters narrowing the format (dimensions, durations, codecs, char limits, CTA enums, sizes[], etc.)
-- Optional `capability_id`: stable identifier for routing when a product carries multiple declarations of the same kind
+- Optional `format_option_id`: stable product/publisher option identifier when declarations need routing
 - Optional `v1_format_ref: [{agent_url, id}]`: **always an array** — links this v2 declaration to one or more v1 named formats. Multi-size declarations should carry one ref per size in `sizes[]`.
 - Optional `seller_preference: "preferred" | "accepted" | "discouraged"`: soft routing hint when a product carries multiple format_options
 
@@ -46,12 +47,13 @@ A `ProductFormatDeclaration` carries:
 | Where | When to use |
 |---|---|
 | `adagents.json` top-level `formats[]` (publisher catalog) | Format shared across many sellers of the same publisher inventory; declares the publisher-authoritative shape once |
-| `Product.format_options[]` (inline on a product) | Seller-specific narrowing, custom format, or one-off pricing variant. Reference a publisher catalog entry by `capability_id` when applicable |
-| `Placement.format_options[]` (capability_id reference OR inline) | Tying a publisher placement to one or more accepted formats |
+| `Product.format_options[]` (inline on a product) | Seller-specific accepted set. Reference a publisher declaration with `{publisher_domain, format_option_id}` when applicable |
+| `Placement.format_options[]` (`format_option_id` reference or inline) | Tying a publisher placement to accepted publisher formats |
+| `get_adcp_capabilities.creative.supported_formats[]` | What a creative agent can build, validate, or preview; every entry has an agent-local `capability_id` |
 
 **Size flexibility (image / html5 / display_tag):** exactly one of three modes — `width`+`height` (fixed), `sizes: [{w,h}]` (multi-size, mirrors OpenRTB `banner.format[]`), or `min_width`/`max_width`/`min_height`/`max_height` (responsive).
 
-**Community mirror for unadopted platforms:** the AAO publishes adagents.json files for unadopted platforms (Meta, TikTok, etc.) at `https://creative.adcontextprotocol.org/translated/<platform>/adagents.json`. When the request asks "what formats does meta.com support?" the SDK fetches the platform's hosted file first, falls back to the AAO mirror, and surfaces which tier produced the result via the response's `source` field.
+**Publisher catalog resolution:** call `GET https://agenticadvertising.org/api/registry/publisher?domain=<publisher_domain>` for the complete publisher-origin → AgenticAdvertising.org community-catalog → fail-closed resolution order and provenance. Add `&include=placements` for provenance-labeled placement summaries with resolved canonical format options. The top-level `formats[]` remains a lossy display summary; fetch the raw URL returned in `files.adagents_json.registry_url` or `hosting.resolved_url` / `hosting.expected_url` for custom-format validation and omitted declaration fields. Do not synthesize publisher authority from a sales or creative agent.
 
 **Conversion tracking is NOT a creative-format concern.** Pixel-firing, conversion events, and attribution belong on `sync_event_sources` / `event_log` (campaign-scoped). Don't stuff `pixel_id` into `platform_extensions` on a format declaration.
 
@@ -61,29 +63,18 @@ See `docs/creative/canonical-formats.mdx` for the full vocabulary, narrowing rul
 
 ## Task Reference
 
-### list_creative_formats
+### get_adcp_capabilities
 
-Discover creative formats and their specifications.
+Discover this creative agent's canonical operations.
 
 **Request:**
 ```json
-{
-  "type": "video",
-  "asset_types": ["image", "text"]
-}
+{ "protocols": ["creative"] }
 ```
 
-**Key fields:**
-- `format_ids` (array, optional): Request specific format IDs
-- `type` (string, optional): Filter by type: `video`, `display`, `audio`, `dooh`
-- `asset_types` (array, optional): Filter by accepted asset types
-- `max_width`, `max_height` (integer, optional): Dimension constraints
-- `is_responsive` (boolean, optional): Filter for responsive formats
-- `name_search` (string, optional): Search formats by name
-
 **Response contains:**
-- `formats`: Array of format definitions with `format_id`, `name`, `type`, `assets_required`, `renders`
-- `creative_agents`: Optional array of other creative agents providing additional formats
+- `creative.supported_formats[]`: entries with stable `capability_id`, canonical `format`, and `operations`
+- capability booleans such as `supports_generation`, `supports_transformers`, and `can_preview`
 
 ---
 
@@ -95,10 +86,8 @@ Generate a creative from scratch or transform an existing creative to a differen
 ```json
 {
   "message": "Create a banner promoting our winter sale with a warm, inviting feel",
-  "target_format_id": {
-    "agent_url": "https://creative.adcontextprotocol.org",
-    "id": "display_300x250_generative"
-  },
+  "target_capability_id": "winter_banner_300x250",
+  "idempotency_key": "1db179c8-09c8-4eb3-9b96-ae741acdaf1f",
   "brand": {
     "domain": "mybrand.com"
   }
@@ -110,34 +99,29 @@ Generate a creative from scratch or transform an existing creative to a differen
 {
   "message": "Adapt this leaderboard to a 300x250 banner",
   "creative_manifest": {
-    "format_id": {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_728x90"
-    },
+    "format_kind": "image",
     "assets": {
-      "banner_image": {
+      "image_main": {
         "asset_type": "image",
         "url": "https://cdn.mybrand.com/leaderboard.png",
         "width": 728,
         "height": 90
       },
-      "headline": {
-        "asset_type": "text",
-        "content": "Spring Sale - 30% Off"
+      "landing_page_url": {
+        "asset_type": "url",
+        "url": "https://mybrand.com/spring-sale"
       }
     }
   },
-  "target_format_id": {
-    "agent_url": "https://creative.adcontextprotocol.org",
-    "id": "display_300x250"
-  }
+  "target_capability_id": "banner_resize_300x250",
+  "idempotency_key": "4c052b08-2e5f-4a66-b0c0-57c199302411"
 }
 ```
 
 **Key fields:**
 - `message` (string, optional): Natural language instructions for generation/transformation
 - `creative_manifest` (object, optional): Source manifest - minimal for generation, complete for transformation
-- `target_format_id` (object, required): Format to generate - `{ agent_url, id }`
+- `target_capability_id` (string): One output advertised by this agent; use `target_capability_ids[]` for multiple outputs
 
 **Response contains:**
 - `creative_manifest`: Complete manifest ready for `preview_creative` or `sync_creatives`
@@ -153,12 +137,9 @@ Generate visual previews of creative manifests.
 {
   "request_type": "single",
   "creative_manifest": {
-    "format_id": {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_300x250"
-    },
+    "format_kind": "image",
     "assets": {
-      "banner_image": {
+      "image_main": {
         "asset_type": "image",
         "url": "https://cdn.example.com/banner.png",
         "width": 300,
@@ -173,7 +154,7 @@ Generate visual previews of creative manifests.
 ```json
 {
   "request_type": "single",
-  "creative_manifest": { /* includes format_id, assets */ },
+  "creative_manifest": { /* includes format_kind, assets */ },
   "inputs": [
     { "name": "Desktop", "macros": { "DEVICE_TYPE": "desktop" } },
     { "name": "Mobile", "macros": { "DEVICE_TYPE": "mobile" } }
@@ -194,7 +175,6 @@ Generate visual previews of creative manifests.
 
 **Key fields:**
 - `request_type` (string, required): `"single"` or `"batch"`
-- `format_id` (object, optional): Format identifier. Defaults to `creative_manifest.format_id` if omitted.
 - `creative_manifest` (object, required): Complete creative manifest
 - `inputs` (array, optional): Generate variants with different macros/contexts
 - `output_format` (string, optional): `"url"` (default) or `"html"`
@@ -239,29 +219,23 @@ At least one scoping filter (`media_buy_ids` or `creative_ids`) is required.
 
 ## Key Concepts
 
-### Format IDs
+### Capability IDs and canonical manifests
 
-All format references use structured objects:
+A creative agent's `capability_id` is a local operation selector:
 ```json
 {
-  "format_id": {
-    "agent_url": "https://creative.adcontextprotocol.org",
-    "id": "display_300x250"
-  }
+  "target_capability_id": "winter_banner_300x250"
 }
 ```
 
-The `agent_url` specifies the creative agent authoritative for this format.
+It is never copied into a product or manifest. The resulting manifest is portable and carries the canonical format contract:
 
 ### Creative Manifests
 
 Manifests pair format specifications with actual assets:
 ```json
 {
-  "format_id": {
-    "agent_url": "https://creative.adcontextprotocol.org",
-    "id": "display_300x250"
-  },
+  "format_kind": "image",
   "assets": {
     "banner_image": {
       "asset_type": "image",
@@ -307,7 +281,7 @@ The agent resolves the domain to retrieve the brand's identity (name, colors, gu
 
 ### Generative vs Transformation
 
-- **Pure Generation**: Provide `target_format_id`, `brand`, and a natural language `message`. Creative agent generates all output assets from scratch.
+- **Pure Generation**: Provide `target_capability_id`, `brand`, and a natural language `message`. The creative agent generates all output assets from scratch.
 - **Transformation**: Complete manifest with existing assets. Creative agent adapts to target format, following `message` guidance.
 
 ---
@@ -316,16 +290,16 @@ The agent resolves the domain to retrieve the brand's identity (name, colors, gu
 
 Common error patterns:
 
-- **400 Bad Request**: Invalid manifest or format_id
-- **404 Not Found**: Format not supported by this agent
+- **400 Bad Request**: Invalid manifest or capability selector
+- **404 Not Found**: Capability not supported by this agent
 - **422 Validation Error**: Manifest doesn't match format requirements
 
 Error responses include:
 ```json
 {
   "error": {
-    "code": "INVALID_FORMAT_ID",
-    "message": "format_id must be a structured object with 'agent_url' and 'id' fields"
+    "code": "FORMAT_NOT_SUPPORTED",
+    "message": "target_capability_id is not advertised by this creative agent"
   }
 }
 ```

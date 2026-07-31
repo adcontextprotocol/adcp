@@ -484,7 +484,10 @@ export interface ManifestAsset {
 
 /** Creative manifest with format and named asset slots. */
 export interface CreativeManifest {
-  format_id: FormatID;
+  /** @deprecated AdCP 3.x compatibility path. */
+  format_id?: FormatID;
+  format_kind?: string;
+  format_option_ref?: Record<string, unknown>;
   assets: Record<string, ManifestAsset>;
 }
 
@@ -493,6 +496,9 @@ export interface CreativeState {
   accountId?: string;
   accountRef?: AccountRef;
   formatId: FormatID;
+  formatKind?: string;
+  formatOptionRef?: Record<string, unknown>;
+  assets?: Record<string, ManifestAsset>;
   name?: string;
   status: string;
   syncedAt: string;

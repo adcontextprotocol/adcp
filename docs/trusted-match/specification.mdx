@@ -406,7 +406,8 @@ Package metadata is synced from seller agents to TMP providers at media buy crea
 | `package_id` | string | Yes | Unique identifier for the package. |
 | `media_buy_id` | string | Yes | Media buy this package belongs to. |
 | `seller_agent` | SellerAgentRef | Yes | Seller agent that owns this package. `agent_url` MUST match one of `authorized_agents[].url` in the adagents.json authoritative for every property this package may serve. See [Seller Agent Attribution](#seller-agent-attribution). |
-| `format_ids` | List\<FormatId\> | No | Creative format identifiers eligible for this package. Uses the standard `{agent_url, id}` shape. |
+| `format_options` | ProductFormatDeclaration[] | No | Canonical creative contracts eligible for this package. |
+| `format_ids` | FormatId[] | No | Deprecated 3.x named-format compatibility projection. |
 | `catalogs` | List\<Catalog\> | No | Buyer catalogs attached to this package, with selectors scoping which items are in play. Referenced by `catalog_id` against separately-synced catalog data. |
 
 #### SellerAgentRef

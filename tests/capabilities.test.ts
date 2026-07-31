@@ -1,5 +1,51 @@
 import { describe, it, expect } from 'vitest';
-import { CapabilityDiscovery, type AgentCapabilityProfile } from "../server/src/capabilities.js";
+import {
+  CapabilityDiscovery,
+  sanitizeCreativeCapabilities,
+  type AgentCapabilityProfile,
+} from "../server/src/capabilities.js";
+
+describe('sanitizeCreativeCapabilities', () => {
+  const validEntry = {
+    capability_id: 'image_300x250',
+    format: { format_kind: 'image', params: { width: 300, height: 250 } },
+    operations: ['build', 'preview'],
+  };
+
+  it('validates complete canonical declarations', async () => {
+    await expect(sanitizeCreativeCapabilities({ supported_formats: [validEntry] }))
+      .resolves.toMatchObject({
+        supported_formats: [validEntry],
+        can_generate: true,
+        can_validate: false,
+        can_preview: true,
+      });
+  });
+
+  it('rejects build claims without an advertised build capability', async () => {
+    await expect(sanitizeCreativeCapabilities({
+      supports_generation: true,
+      supported_formats: [{ ...validEntry, operations: ['preview'] }],
+    })).rejects.toThrow('requires at least one entry with the build operation');
+  });
+
+  it('rejects incomplete ProductFormatDeclaration objects', async () => {
+    await expect(sanitizeCreativeCapabilities({
+      supported_formats: [{ ...validEntry, format: { format_kind: 'image' } }],
+    })).rejects.toThrow('supported_formats[0].format');
+  });
+
+  it('rejects duplicate capability IDs', async () => {
+    await expect(sanitizeCreativeCapabilities({ supported_formats: [validEntry, validEntry] }))
+      .rejects.toThrow("duplicate 'image_300x250'");
+  });
+
+  it('rejects duplicate operations', async () => {
+    await expect(sanitizeCreativeCapabilities({
+      supported_formats: [{ ...validEntry, operations: ['build', 'build'] }],
+    })).rejects.toThrow('unique non-empty');
+  });
+});
 
 describe("CapabilityDiscovery", () => {
   const discovery = new CapabilityDiscovery();
@@ -98,7 +144,11 @@ describe("CapabilityDiscovery", () => {
       const profile: AgentCapabilityProfile = {
         ...baseProfile,
         creative_capabilities: {
-          formats_supported: ["display_300x250"],
+          supported_formats: [{
+            capability_id: "image_300x250",
+            format: { format_kind: "image", params: { width: 300, height: 250 } },
+            operations: ["build"],
+          }],
           can_generate: true,
           can_validate: true,
           can_preview: false,
@@ -137,7 +187,7 @@ describe("CapabilityDiscovery", () => {
           can_list_properties: false,
         },
         creative_capabilities: {
-          formats_supported: [],
+          supported_formats: [],
           can_generate: true,
           can_validate: false,
           can_preview: false,
@@ -149,7 +199,7 @@ describe("CapabilityDiscovery", () => {
       const creativeAndSignals: AgentCapabilityProfile = {
         ...baseProfile,
         creative_capabilities: {
-          formats_supported: [],
+          supported_formats: [],
           can_generate: true,
           can_validate: false,
           can_preview: false,

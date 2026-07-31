@@ -436,11 +436,11 @@ export function buildFormats(agentUrl: string): TrainingFormat[] {
     {
       format_id: { agent_url: agentUrl, id: 'print_full_page' },
       name: 'Print full page',
-      description: 'Full-page print ad. High-resolution image with bleed area. Delivered as print-ready PDF.',
-      renders: [{ role: 'primary', dimensions: { width: 8.5, height: 11, unit: 'inches' } }],
+      description: 'Full-page print ad. High-resolution raster artwork at 300 DPI (2550x3300 pixels).',
+      renders: [{ role: 'primary', dimensions: { width: 2550, height: 3300 } }],
       assets: [
         { item_type: 'individual', asset_id: 'artwork', asset_type: 'image', asset_role: 'print_creative', required: true,
-          requirements: { mime_types: ['application/pdf'], min_resolution_dpi: 300, max_file_size_bytes: 50000000 } },
+          requirements: { mime_types: ['image/jpeg', 'image/png'], min_width: 2550, min_height: 3300, min_resolution_dpi: 300, max_file_size_bytes: 50000000 } },
       ],
     },
 

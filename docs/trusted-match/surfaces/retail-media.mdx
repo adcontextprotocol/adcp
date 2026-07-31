@@ -44,16 +44,14 @@ The buyer responds with an offer:
       "price": { "amount": 2.50, "currency": "USD", "model": "cpc" },
       "summary": "Cold brew and iced latte — buy 2 get 1 free promotion",
       "creative_manifest": {
-        "format_id": { "agent_url": "https://grocery-retailer.example.com", "id": "sponsored_product_listing" },
+        "format_kind": "sponsored_placement",
         "assets": {
-          "items": {
-            "type": "product",
-            "items": [
-              { "gtin": "gtin-cold-brew-12oz", "badge": "BOGO", "image_url": "https://cdn.example.com/cold-brew-12oz.jpg" },
-              { "gtin": "gtin-iced-latte-4pk", "badge": "PROMO", "image_url": "https://cdn.example.com/iced-latte-4pk.jpg" }
-            ]
+          "source_catalog": {
+            "asset_type": "catalog",
+            "catalog_id": "coldbrew-products"
           },
           "promo_banner": {
+            "asset_type": "image",
             "url": "https://cdn.example.com/banners/b2g1.png",
             "width": 728,
             "height": 90

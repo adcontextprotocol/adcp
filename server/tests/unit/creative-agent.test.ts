@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { buildFormats } from '../../src/shared/formats.js';
-import { handleListCreativeFormats, handlePreviewCreative, buildReferenceFormats, createCreativeAgentServer } from '../../src/creative-agent/task-handlers.js';
+import { handleListCreativeFormats, handlePreviewCreative, buildReferenceFormats, buildCreativeCapabilities, createCreativeAgentServer } from '../../src/creative-agent/task-handlers.js';
 import { renderPreview } from '../../src/creative-agent/preview-renderer.js';
 import { storePreview, getPreview, cleanExpiredPreviews } from '../../src/creative-agent/preview-store.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { sanitizeCreativeCapabilities } from '../../src/capabilities.js';
 
 const TEST_BASE_URL = 'http://localhost:3000';
 const TEST_AGENT_URL = `${TEST_BASE_URL}/api/creative-agent`;
@@ -150,6 +151,36 @@ describe('reference formats', () => {
       expect(typeof f.description).toBe('string');
     }
   });
+
+  it('projects reviewed mappings into canonical preview capabilities', () => {
+    const capabilities = buildCreativeCapabilities(buildReferenceFormats(TEST_AGENT_URL));
+    expect(capabilities).toHaveLength(55);
+    expect(capabilities[0]).toMatchObject({
+      capability_id: expect.stringMatching(/^preview_[a-zA-Z0-9_-]+$/),
+      operations: ['preview'],
+      format: { format_kind: expect.any(String), params: expect.any(Object) },
+    });
+    expect(capabilities.every(capability => capability.format_id === undefined)).toBe(true);
+
+    const byId = new Map(capabilities.map(capability => [capability.capability_id, capability]));
+    expect(byId.get('preview_video_vast_30s')).toMatchObject({
+      format: { format_kind: 'video_vast', params: { duration_ms_exact: 30000 } },
+    });
+    expect(byId.get('preview_video_standard_15s')).toMatchObject({
+      format: {
+        format_kind: 'video_hosted',
+        params: {
+          duration_ms_exact: 15000,
+          containers: ['mp4', 'mov', 'webm'],
+        },
+      },
+    });
+  });
+
+  it('emits a schema-valid canonical capability catalog', async () => {
+    const supportedFormats = buildCreativeCapabilities(buildReferenceFormats(TEST_AGENT_URL));
+    await expect(sanitizeCreativeCapabilities({ supported_formats: supportedFormats })).resolves.toBeDefined();
+  });
 });
 
 // ── list_creative_formats handler ───────────────────────────────────
@@ -267,6 +298,69 @@ describe('handlePreviewCreative', () => {
     expect(renders[0].role).toBe('primary');
     expect(renders[0].preview_url).toBeTruthy();
     expect((renders[0].preview_url as string)).toContain('/preview/');
+  });
+
+  it('requires a selector when a canonical manifest matches multiple renderers', () => {
+    const result = handlePreviewCreative({
+      request_type: 'single',
+      creative_manifest: {
+        format_kind: 'image',
+        assets: {
+          image_main: { asset_type: 'image', url: 'https://example.com/canonical-ad.jpg' },
+        },
+      },
+    }, formats, TEST_BASE_URL);
+
+    expect(result.errors).toEqual([expect.objectContaining({
+      code: 'validation_error',
+      message: expect.stringContaining('matches multiple preview capabilities'),
+    })]);
+  });
+
+  it('does not silently pick the first renderer when dimensions remain ambiguous', () => {
+    const result = handlePreviewCreative({
+      request_type: 'single',
+      creative_manifest: {
+        format_kind: 'image',
+        assets: {
+          image_main: {
+            asset_type: 'image',
+            url: 'https://example.com/leaderboard.jpg',
+            width: 728,
+            height: 90,
+          },
+        },
+      },
+    }, formats, TEST_BASE_URL);
+
+    expect(result.errors).toEqual([expect.objectContaining({
+      code: 'validation_error',
+      message: expect.stringContaining('matches multiple preview capabilities'),
+    })]);
+  });
+
+  it('routes an advertised target_capability_id to its exact renderer', () => {
+    const result = handlePreviewCreative({
+      request_type: 'single',
+      target_capability_id: 'preview_display_300x250_image',
+      creative_manifest: { format_kind: 'image', assets: {} },
+    }, formats, TEST_BASE_URL);
+
+    const renders = ((result.previews as any[])[0].renders as any[]);
+    expect(renders[0].dimensions).toEqual({ width: 300, height: 250 });
+  });
+
+  it('fails closed for an unknown canonical preview selector', () => {
+    const result = handlePreviewCreative({
+      request_type: 'single',
+      target_capability_id: 'preview_not_declared',
+      creative_manifest: { format_kind: 'image', assets: {} },
+    }, formats, TEST_BASE_URL);
+
+    expect(result.errors).toEqual([expect.objectContaining({
+      code: 'validation_error',
+      message: expect.stringContaining('Unknown preview capability_id'),
+    })]);
   });
 
   it('returns html output when requested', () => {
@@ -558,6 +652,18 @@ describe('MCP tool responses include structuredContent', () => {
   afterEach(async () => {
     await client.close();
     await server.close();
+  });
+
+  it('get_adcp_capabilities returns canonical supported_formats', async () => {
+    const response = await client.callTool({ name: 'get_adcp_capabilities', arguments: {} });
+    const structured = response.structuredContent as Record<string, any>;
+    expect(structured.creative.supported_formats).toHaveLength(55);
+    expect(structured.creative.supported_formats[0]).toMatchObject({ operations: ['preview'] });
+    expect(structured).toMatchObject({
+      adcp_version: '3.2',
+      adcp: { major_versions: [3], supported_versions: ['3.2'] },
+      supported_protocols: ['creative'],
+    });
   });
 
   it('list_creative_formats returns structuredContent with formats array', async () => {

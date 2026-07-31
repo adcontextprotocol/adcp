@@ -13,7 +13,7 @@ The protocol is maintained by AgenticAdvertising.org, an open member organizatio
 AdCP is organized into eight protocol domains:
 
 - **Media buy**: Product discovery, media buy creation, audience syncing, creative assignment, delivery reporting, and conversion tracking
-- **Creative**: Creative format discovery, asset building, preview rendering, and delivery verification
+- **Creative**: Canonical creative capability discovery, asset building, preview rendering, and delivery verification
 - **Accounts**: Account listing, syncing, financial reporting, and usage tracking across platforms
 - **Signals**: Audience and contextual signal discovery, activation, and data provider integration
 - **Governance**: Content standards, property authorization (adagents.json), creative provenance, and delivery validation
@@ -79,8 +79,9 @@ Served by AgenticAdvertising.org:
 - **Task**: A discrete unit of work in AdCP (e.g., get_products, create_media_buy)
 - **Media product**: An advertising opportunity offered by a publisher or platform
 - **Content standards**: Brand safety and suitability rules that govern where ads can appear
-- **format_id**: A structured object — never a plain string — that identifies a creative format by its declaring agent and local slug: `{ "agent_url": "https://...", "id": "display_300x250" }`. Optionally includes `width`/`height` (integers) or `duration_ms` (number) for parameterized template formats. `format_id` is a pointer to a format, not the format definition itself.
-- **format** (definition object): The complete format specification returned by `list_creative_formats`. Contains a `format_id` plus `name`, `assets`, `renders`, and other fields. A `format` object always wraps a `format_id`; they are not interchangeable — `format_id` is the reference, `format` is the definition.
+- **Canonical format declaration**: A portable creative contract with `format_kind` and typed `params`, embedded in publisher catalogs, product `format_options[]`, and creative-agent capabilities.
+- **capability_id**: An agent-local identifier from `get_adcp_capabilities.creative.supported_formats[]`, selected with `target_capability_id` when asking that creative agent to build.
+- **format_id**: Deprecated in AdCP 3.2. Structured named-format references remain only for 3.x compatibility.
 
 ## Full documentation
 

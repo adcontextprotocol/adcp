@@ -58,6 +58,15 @@
   },
   "allOf": [
     {
+      "$comment": "Publisher-scoped canonical declarations are addressable only by the complete {publisher_domain, format_option_id} identity pair.",
+      "if": {
+        "required": ["publisher_domain"]
+      },
+      "then": {
+        "required": ["format_option_id"]
+      }
+    },
+    {
       "if": {
         "properties": { "format_kind": { "const": "custom" } },
         "required": ["format_kind"]

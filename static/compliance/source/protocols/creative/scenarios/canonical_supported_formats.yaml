@@ -2,7 +2,7 @@ id: creative/canonical_supported_formats
 version: "1.0.1"
 title: "Creative canonical supported formats"
 category: creative
-summary: "Verifies the 3.1 creative-agent canonical path: targetable supported_formats capability IDs, build_creative routing, and unsupported target rejection."
+summary: "Verifies the 3.2 creative-agent canonical path: targetable supported_formats capability IDs, build_creative routing, and unsupported target rejection."
 track: creative
 introduced_in: "3.1"
 required_tools:
@@ -10,7 +10,7 @@ required_tools:
   - build_creative
 
 narrative: |
-  Creative agents in 3.1 declare what they can produce via
+  Creative agents in 3.2 declare what they can produce via
   `creative.supported_formats` on `get_adcp_capabilities`. Targetable
   supported-format entries carry an agent-local stable `capability_id` that
   selects the build path on that creative agent. This is separate from media-buy
@@ -46,7 +46,7 @@ phases:
     title: "Discover canonical build capabilities"
     narrative: |
       The buyer calls `get_adcp_capabilities` and reads
-      `creative.supported_formats` as the creative agent's 3.1 canonical build
+      `creative.supported_formats` as the creative agent's 3.2 canonical build
       catalog. The first advertised image capability is used in the next phase.
 
     steps:
@@ -62,9 +62,9 @@ phases:
           Return a creative capability block with implemented `supported_formats[]`.
           The targetable entry used for build routing has:
           - `capability_id` at the supported-format entry level
+          - required non-empty `operations` containing `build`
           - `format.format_kind` and `format.params.slots[]`
-          - no product-level `format_option_id` on the creative-agent
-            capability entry used for build routing
+          - optional publisher identity when the capability claims exact support
         sample_request:
           context:
             correlation_id: "creative_canonical_supported_formats--get_capabilities"
@@ -80,6 +80,9 @@ phases:
           - check: field_present
             path: "creative.supported_formats[0].capability_id"
             description: "The advertised canonical format entry carries a capability_id for build routing"
+          - check: field_present
+            path: "creative.supported_formats[0].operations"
+            description: "The selected capability explicitly declares its supported operations"
           - check: field_value
             path: "creative.supported_formats[0].format.format_kind"
             value: "image"
@@ -87,9 +90,6 @@ phases:
           - check: field_present
             path: "creative.supported_formats[0].format.params.slots[0].asset_group_id"
             description: "Canonical format declaration includes slot metadata"
-          - check: field_absent
-            path: "creative.supported_formats[0].format.format_option_id"
-            description: "Creative-agent build routing uses capability_id, not product format_option_id"
           - check: field_value
             path: "context.correlation_id"
             value: "creative_canonical_supported_formats--get_capabilities"
@@ -99,7 +99,7 @@ phases:
     title: "Build using the advertised capability"
     narrative: |
       The buyer invokes `build_creative` using the advertised image build
-      capability. The produced manifest uses the 3.1 canonical manifest path
+      capability. The produced manifest uses the canonical manifest path
       (`format_kind`) and does not fall back to a legacy named format.
 
     steps:
@@ -117,9 +117,7 @@ phases:
           - generated assets keyed by canonical slot names
         sample_request:
           message: "Create a clean image creative for Acme Outdoor's summer trail sale. Use a direct headline and a clear landing page."
-          target_format_id:
-            agent_url: "https://your-agent.example.com"
-            id: "$context.image_build_capability_id"
+          target_capability_id: "$context.image_build_capability_id"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -136,7 +134,7 @@ phases:
           - check: field_value
             path: "creative_manifest.format_kind"
             value: "image"
-            description: "Generated manifest uses the 3.1 canonical manifest path"
+            description: "Generated manifest uses the canonical manifest path"
           - check: field_absent
             path: "creative_manifest.format_id"
             description: "Canonical build does not invent a legacy named-format id"
@@ -171,13 +169,11 @@ phases:
         expected: |
           Return a build_creative error response with:
           - errors[0].code: FORMAT_NOT_SUPPORTED
-          - errors[0].field: target_format_id
+          - errors[0].field: target_capability_id
           - errors[0].recovery: correctable
         sample_request:
           message: "Create an unsupported canonical creative."
-          target_format_id:
-            agent_url: "https://your-agent.example.com"
-            id: "unknown_takeover_generation"
+          target_capability_id: "unknown_takeover_generation"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -196,7 +192,7 @@ phases:
             description: "Unsupported build target is rejected with the canonical error code"
           - check: field_value
             path: "errors[0].field"
-            value: "target_format_id"
+            value: "target_capability_id"
             description: "Error points at the unsupported target selector"
           - check: field_value
             path: "errors[0].recovery"

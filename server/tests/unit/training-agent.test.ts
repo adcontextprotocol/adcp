@@ -268,6 +268,48 @@ describe('buildCatalog', () => {
       }
     });
 
+    it('authors every product canonically and links every compatibility format', () => {
+      for (const cp of catalog) {
+        const formatIds = cp.product.format_ids as Array<{ agent_url: string; id: string }>;
+        const formatOptions = cp.product.format_options as Array<{
+          format_kind: string;
+          format_option_id: string;
+          params: Record<string, unknown>;
+          v1_format_ref: Array<{ agent_url: string; id: string }>;
+        }>;
+
+        expect(formatOptions, `${cp.product.product_id} missing canonical format_options`).toHaveLength(formatIds.length);
+        expect(formatOptions.every(option => option.format_kind && option.format_option_id && option.params)).toBe(true);
+        expect(formatOptions.flatMap(option => option.v1_format_ref)).toEqual(expect.arrayContaining(formatIds));
+      }
+    });
+
+    it('projects print artwork and creator briefs to honest canonical contracts', () => {
+      const options = catalog.flatMap(entry => entry.product.format_options ?? []) as Array<Record<string, any>>;
+      const print = options.find(option => option.format_option_id === 'print_full_page_image');
+      expect(print).toMatchObject({
+        format_kind: 'image',
+        params: {
+          width: 2550,
+          height: 3300,
+          image_formats: ['jpg', 'png'],
+          min_resolution_dpi: 300,
+        },
+      });
+
+      const creatorBrief = options.find(option => option.format_option_id === 'creator_brief_native_in_feed');
+      expect(creatorBrief).toMatchObject({
+        format_kind: 'native_in_feed',
+        params: {
+          asset_source: 'seller_human_designed',
+          buyer_asset_acceptance: 'rejected',
+          slots: expect.arrayContaining([
+            expect.objectContaining({ asset_group_id: 'brief', asset_type: 'brief', required: true }),
+          ]),
+        },
+      });
+    });
+
     it('has delivery_type as guaranteed or non_guaranteed', () => {
       for (const cp of catalog) {
         expect(['guaranteed', 'non_guaranteed']).toContain(cp.product.delivery_type);
@@ -1495,6 +1537,20 @@ describe('get_products handler', () => {
     }
   });
 
+  it('filters products by canonical format kind', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      filters: { format_kinds: ['video_hosted'] },
+    });
+
+    const products = result.products as Array<Record<string, any>>;
+    expect(products.length).toBeGreaterThan(0);
+    for (const product of products) {
+      expect(product.format_options.some((option: Record<string, unknown>) => option.format_kind === 'video_hosted')).toBe(true);
+    }
+  });
+
   it('filters by delivery_type', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'get_products', {
@@ -1651,7 +1707,7 @@ describe('get_products handler', () => {
 
 // ── list_creative_formats handler ──────────────────────────────────
 
-describe('list_creative_formats handler', () => {
+describe('deprecated list_creative_formats compatibility handler', () => {
   beforeEach(() => {
     invalidateCache();
   });
@@ -1710,10 +1766,19 @@ describe('creative transformers handler', () => {
     expect(voiceParam?.options).toEqual([]);
   });
 
+  it('returns canonical output capability IDs without legacy format IDs', async () => {
+    const result = await handleListTransformers({}, DEFAULT_CTX) as {
+      transformers: Array<{ output_capability_ids?: string[]; output_format_ids?: unknown[] }>;
+    };
+
+    expect(result.transformers[0].output_capability_ids).toEqual(['audio_vo']);
+    expect(result.transformers[0].output_format_ids).toBeUndefined();
+  });
+
   it('rejects plural transformer targets outside the transformer output set', async () => {
     const result = await handleBuildCreative({
       transformer_id: 'audiostack_voiceover',
-      target_format_ids: [{ agent_url: TEST_AGENT_URL, id: 'display_300x250' }],
+      target_capability_ids: ['training_image_generation'],
       max_variants: 2,
       variant_axis: { dimension: 'best_of_n' },
       idempotency_key: 'test-transformer-plural-target',
@@ -1723,7 +1788,7 @@ describe('creative transformers handler', () => {
     expect(result.status).toBe('completed');
     expect(errors?.[0]).toMatchObject({
       code: 'INVALID_REQUEST',
-      field: 'target_format_ids[0]',
+      field: 'target_capability_ids[0]',
     });
   });
 });
@@ -4268,6 +4333,52 @@ describe('sync_creatives handler', () => {
     expect(creatives[0].action).toBe('created');
   });
 
+  it('preserves canonical identity through sync, list, build, and preview', async () => {
+    const account = { brand: { domain: 'canonical-lifecycle.example' }, operator: 'canonical-lifecycle.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: synced } = await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_canonical_lifecycle',
+        format_kind: 'image',
+        format_option_ref: { scope: 'publisher', publisher_domain: 'publisher.example', format_option_id: 'homepage_image' },
+        name: 'Canonical lifecycle creative',
+        assets: {
+          image_main: { asset_type: 'image', url: 'https://cdn.example/canonical.png', width: 1200, height: 600 },
+        },
+      }],
+    });
+    expect(synced.errors).toBeUndefined();
+
+    const { result: listed } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'list_creatives', {
+      account,
+      filters: { format_kinds: ['image'] },
+    });
+    const listedCreative = (listed.creatives as Array<Record<string, unknown>>)[0];
+    expect(listedCreative).toMatchObject({
+      creative_id: 'cr_canonical_lifecycle',
+      format_kind: 'image',
+      format_option_ref: { scope: 'publisher', publisher_domain: 'publisher.example', format_option_id: 'homepage_image' },
+    });
+    expect(listedCreative.format_id).toBeUndefined();
+
+    const { result: built } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'build_creative', {
+      account,
+      creative_id: 'cr_canonical_lifecycle',
+    });
+    expect(built.creative_manifest).toMatchObject({ format_kind: 'image' });
+    expect((built.creative_manifest as Record<string, unknown>).format_id).toBeUndefined();
+
+    const { result: previewed } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'preview_creative', {
+      account,
+      request_type: 'single',
+      creative_id: 'cr_canonical_lifecycle',
+      output_format: 'url',
+    });
+    expect(previewed.response_type).toBe('single');
+    expect((previewed.previews as unknown[])).toHaveLength(1);
+  });
+
   it('returns "updated" action for existing creative', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const args = {
@@ -5053,7 +5164,7 @@ describe('canonical creative build capabilities', () => {
       account: { brand: { domain: 'build-canonical.example' }, operator: 'build-canonical.example' },
       brand: { domain: 'build-canonical.example' },
       message: 'Create an image creative for the summer trail sale.',
-      target_format_id: { agent_url: TEST_AGENT_URL, id: 'training_image_generation' },
+      target_capability_id: 'training_image_generation',
     });
 
     const manifest = result.creative_manifest as Record<string, any>;
@@ -5062,17 +5173,41 @@ describe('canonical creative build capabilities', () => {
     expect(manifest.assets.image_main.asset_type).toBe('image');
   });
 
+  it('builds a valid hosted-audio manifest for the audio_vo capability', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'build_creative', {
+      account: { brand: { domain: 'build-audio.example' }, operator: 'build-audio.example' },
+      brand: { domain: 'build-audio.example' },
+      message: 'Create a 30 second voiceover.',
+      target_capability_id: 'audio_vo',
+    });
+
+    const manifest = result.creative_manifest as Record<string, any>;
+    expect(manifest).toMatchObject({
+      format_kind: 'audio_hosted',
+      assets: {
+        audio_main: {
+          asset_type: 'audio',
+          duration_ms: 30000,
+          container_format: 'mp3',
+        },
+      },
+    });
+    expect(manifest.format_id).toBeUndefined();
+    expect(manifest.assets.serving_tag).toBeUndefined();
+  });
+
   it('rejects unsupported build targets with FORMAT_NOT_SUPPORTED', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'build_creative', {
       account: { brand: { domain: 'build-canonical.example' }, operator: 'build-canonical.example' },
       brand: { domain: 'build-canonical.example' },
       message: 'Create an unknown format.',
-      target_format_id: { agent_url: TEST_AGENT_URL, id: 'unknown_takeover_generation' },
+      target_capability_id: 'unknown_takeover_generation',
     });
 
     expect(result.code).toBe('FORMAT_NOT_SUPPORTED');
-    expect(result.field).toBe('target_format_id');
+    expect(result.field).toBe('target_capability_id');
     expect(result.recovery).toBe('correctable');
   });
 
@@ -5082,11 +5217,11 @@ describe('canonical creative build capabilities', () => {
       account: { brand: { domain: 'build-canonical.example' }, operator: 'build-canonical.example' },
       brand: { domain: 'build-canonical.example' },
       message: 'Create an HTML5 creative.',
-      target_format_id: { agent_url: TEST_AGENT_URL, id: 'training_html5_generation' },
+      target_capability_id: 'training_html5_generation',
     });
 
     expect(result.code).toBe('FORMAT_NOT_SUPPORTED');
-    expect(result.field).toBe('target_format_id');
+    expect(result.field).toBe('target_capability_id');
   });
 
   it('does not accept 3.1 build capability selectors in 3.0 compat mode', async () => {

@@ -585,7 +585,9 @@
                 return {
                     ...agent,
                     properties: agent.properties || [],
-                    formats: agent.capabilities?.creative_capabilities?.formats_supported || [],
+                    formats: (agent.capabilities?.creative_capabilities?.supported_formats || [])
+                        .map(entry => entry.format?.format_kind || entry.capability_id)
+                        .filter(Boolean),
                     propertiesError: agent.propertiesError,
                     compliance: agent.compliance || null,
                     health: hasPropertyError
@@ -948,7 +950,7 @@
                 if (agent.type === 'sales' && caps.tools) {
                     const toolNames = new Set(caps.tools.map(t => t.name.toLowerCase()));
                     const coreTools = ['get_products', 'create_media_buy', 'update_media_buy', 'get_media_buy_delivery'];
-                    const optionalTools = ['sync_creatives', 'list_authorized_properties', 'list_creative_formats', 'build_creative'];
+                    const optionalTools = ['sync_creatives', 'list_authorized_properties', 'build_creative'];
                     const coreImplemented = coreTools.filter(tool => toolNames.has(tool));
                     const optionalImplemented = optionalTools.filter(tool => toolNames.has(tool));
                     const hasCoreTools = coreImplemented.length >= 2; // at minimum get_products + one buy tool
@@ -972,7 +974,8 @@
                     `;
                 } else if (agent.type === 'creative' && caps.creative_capabilities) {
                     const cc = caps.creative_capabilities;
-                    const isCompliant = cc.formats_supported.length > 0;
+                    const supportedFormats = cc.supported_formats || [];
+                    const isCompliant = supportedFormats.length > 0;
                     const hasOptionalBuild = cc.can_generate;
                     const hasOptionalPreview = cc.can_preview;
 
@@ -986,8 +989,8 @@
                                 <div class="compliance-badge__title">${isCompliant ? 'AdCP creative agent' : 'Incomplete implementation'}</div>
                                 <div class="compliance-badge__subtitle">
                                     ${isCompliant ?
-                                        `${cc.formats_supported.length} format(s)${capabilities.length > 0 ? ' &middot; ' + capabilities.join(' &middot; ') : ' &middot; Formats only'}` :
-                                        'Missing required list_creative_formats tool'}
+                                        `${supportedFormats.length} canonical capability(s)${capabilities.length > 0 ? ' &middot; ' + capabilities.join(' &middot; ') : ''}` :
+                                        'Missing creative.supported_formats declaration'}
                                 </div>
                             </div>
                         </div>
@@ -1320,43 +1323,21 @@
         section.innerHTML = '<div class="loading">Loading formats...</div>';
 
         try {
-            const response = await fetch(`/mcp`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    jsonrpc: '2.0',
-                    id: 1,
-                    method: 'tools/call',
-                    params: {
-                        name: 'list_creative_formats_for_agent',
-                        arguments: { agent_url: agent.url, params: {} }
-                    }
-                })
-            });
+            const response = await fetch(`/api/public/agent-products?url=${encodeURIComponent(agent.url)}`);
             const data = await response.json();
 
-            if (data.error) {
-                section.innerHTML = `<div class="property-section-small">Unable to fetch formats: ${escapeHtml(data.error.message || 'Unknown error')}</div>`;
+            if (!response.ok || data.error) {
+                section.innerHTML = `<div class="property-section-small">Unable to fetch formats: ${escapeHtml(data.error?.message || data.error || 'Unknown error')}</div>`;
                 return;
             }
 
-            const result = JSON.parse(data.result.content[0].resource.text);
-
-            if (result.error) {
-                section.innerHTML = `<div class="property-section-small">${escapeHtml(result.error)}</div>`;
-                return;
-            }
-
-            let formats = [];
-            if (Array.isArray(result)) {
-                formats = result;
-            } else if (result.formats && Array.isArray(result.formats)) {
-                formats = result.formats;
-            } else if (result.data && Array.isArray(result.data)) {
-                formats = result.data;
-            } else if (result.data && result.data.formats) {
-                formats = result.data.formats;
-            }
+            const formats = (data.products || []).flatMap(product =>
+                (product.format_options || []).map(option => ({
+                    name: option.label || option.format_option_id || option.format?.format_kind,
+                    format: option.format,
+                    description: product.description
+                }))
+            );
 
             if (formats.length === 0) {
                 section.innerHTML = '<div class="property-section-small">No creative formats available</div>';
@@ -1365,8 +1346,9 @@
 
             let html = '<div class="format-card-grid">';
             formats.forEach(format => {
-                const formatName = typeof format === 'string' ? format : (format.name || format.format || 'Unknown');
-                const dimensions = typeof format === 'object' ? (format.dimensions || format.size) : null;
+                const formatName = format.name || format.format?.format_kind || 'Unknown';
+                const params = format.format?.params || {};
+                const dimensions = params.width && params.height ? `${params.width}×${params.height}` : null;
                 const description = typeof format === 'object' ? format.description : null;
 
                 html += `
@@ -1457,41 +1439,22 @@
         section.innerHTML = '<div class="loading">Loading formats...</div>';
 
         try {
-            const response = await fetch(`/mcp`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    jsonrpc: '2.0',
-                    id: 1,
-                    method: 'tools/call',
-                    params: {
-                        name: 'list_creative_formats_for_agent',
-                        arguments: { agent_url: agent.url, params: {} }
-                    }
-                })
-            });
+            const response = await fetch(`/api/public/agent-formats?url=${encodeURIComponent(agent.url)}`);
             const data = await response.json();
 
-            if (data.error) {
-                section.innerHTML = `<div class="property-section-small">Unable to fetch formats: ${escapeHtml(data.error.message || 'Unknown error')}</div>`;
+            if (!response.ok || data.error) {
+                section.innerHTML = `<div class="property-section-small">Unable to fetch formats: ${escapeHtml(data.error?.message || data.error || 'Unknown error')}</div>`;
                 return;
             }
 
-            const result = JSON.parse(data.result.content[0].resource.text);
-
-            if (result.error) {
-                section.innerHTML = `<div class="property-section-small">${escapeHtml(result.error)}</div>`;
-                return;
-            }
-
-            const formats = result.formats || [];
+            const formats = data.formats || [];
 
             if (formats.length === 0) {
                 section.innerHTML = '<div class="property-section-small">No creative formats available</div>';
                 return;
             }
 
-            const types = [...new Set(formats.map(f => f.type).filter(Boolean))];
+            const types = [...new Set(formats.map(f => f.format?.format_kind).filter(Boolean))];
 
             // Store formats for use by filter buttons and detail modal
             window.currentFormats = formats;
@@ -1504,7 +1467,7 @@
                     </button>
                     ${types.map(type => `
                         <button class="format-filter-btn" data-type="${escapeHtml(type)}">
-                            ${escapeHtml(type.replace(/_/g, ' '))} (${formats.filter(f => f.type === type).length})
+                            ${escapeHtml(type.replace(/_/g, ' '))} (${formats.filter(f => f.format?.format_kind === type).length})
                         </button>
                     `).join('')}
                 </div>
@@ -1512,27 +1475,23 @@
             `;
 
             formats.forEach((format, index) => {
-                const dimensions = format.renders?.[0]?.dimensions;
-                const width = dimensions?.width || dimensions?.max_width;
-                const height = dimensions?.height || dimensions?.max_height;
-                const isResponsive = dimensions?.min_width || dimensions?.min_height;
+                const params = format.format?.params || {};
+                const width = params.width;
+                const height = params.height;
+                const isResponsive = params.min_width || params.min_height;
 
                 html += `
-                    <div class="format-card format-card-item" data-index="${index}">
-                        ${format.preview_image ? `
-                            <div class="format-card-preview">
-                                <img src="${escapeHtml(format.preview_image)}" alt="${escapeHtml(format.name || '')}" onerror="this.parentElement.innerHTML='<div class=&quot;format-card-preview__placeholder&quot;>&#127912;</div>'">
-                            </div>
-                        ` : `
+                    <div class="format-card format-card-item" data-index="${index}" data-type="${escapeHtml(format.format?.format_kind || '')}">
                             <div class="format-card-preview">
                                 <span class="format-card-preview__placeholder">&#127912;</span>
                             </div>
-                        `}
+
                         <div class="format-card-body">
-                            <div class="format-card-name">${escapeHtml(format.name || format.format_id || 'Unnamed format')}</div>
+                            <div class="format-card-name">${escapeHtml(format.capability_id || format.format?.format_kind || 'Unnamed capability')}</div>
+                            <div class="product-card__desc">${escapeHtml((format.operations || []).join(', '))}</div>
                             ${width && height ? `
                                 <div class="format-card-dimensions">
-                                    ${isResponsive ? 'Responsive: ' : ''}${escapeHtml(String(width))}&times;${escapeHtml(String(height))}${escapeHtml(dimensions?.unit ? dimensions.unit : 'px')}
+                                    ${isResponsive ? 'Responsive: ' : ''}${escapeHtml(String(width))}&times;${escapeHtml(String(height))}px
                                 </div>
                             ` : ''}
                         </div>
@@ -1579,33 +1538,24 @@
         modal.className = 'format-modal-overlay';
         modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
 
-        const dimensions = format.renders?.[0]?.dimensions;
-        const width = dimensions?.width || dimensions?.max_width;
-        const height = dimensions?.height || dimensions?.max_height;
+        const params = format.format?.params || {};
+        const width = params.width || params.max_width;
+        const height = params.height || params.max_height;
 
         modal.innerHTML = `
             <div class="format-modal" onclick="event.stopPropagation()">
                 <div class="format-modal__header">
-                    <h3 class="format-modal__title">${escapeHtml(format.name || format.format_id || '')}</h3>
+                    <h3 class="format-modal__title">${escapeHtml(format.capability_id || format.format?.format_kind || '')}</h3>
                     <button onclick="this.closest('.format-modal-overlay').remove()" class="format-modal__close">&times;</button>
                 </div>
                 <div class="format-modal__body">
-                    ${format.preview_image ? `
-                        <div class="format-modal__preview">
-                            <img src="${escapeHtml(format.preview_image)}" alt="${escapeHtml(format.name || '')}">
-                        </div>
-                    ` : ''}
-                    ${format.description ? `<p class="format-modal__desc">${escapeHtml(format.description)}</p>` : ''}
                     <div class="format-modal__meta">
-                        ${format.format_id ? `<div><strong>Format ID:</strong> <code class="format-modal__code">${escapeHtml(format.format_id)}</code></div>` : ''}
-                        ${width && height ? `<div><strong>Dimensions:</strong> ${escapeHtml(String(width))}&times;${escapeHtml(String(height))}${escapeHtml(dimensions?.unit || 'px')}</div>` : ''}
-                        ${dimensions?.min_width || dimensions?.min_height ? `<div><strong>Responsive:</strong> Yes (${dimensions.min_width || 0}&times;${dimensions.min_height || 0} to ${dimensions.max_width || width}&times;${dimensions.max_height || height})</div>` : ''}
+                        <div><strong>Capability:</strong> <code class="format-modal__code">${escapeHtml(format.capability_id || '')}</code></div>
+                        <div><strong>Canonical kind:</strong> ${escapeHtml(format.format?.format_kind || '')}</div>
+                        <div><strong>Operations:</strong> ${escapeHtml((format.operations || []).join(', '))}</div>
+                        ${width && height ? `<div><strong>Dimensions:</strong> ${escapeHtml(String(width))}&times;${escapeHtml(String(height))}px</div>` : ''}
+                        ${params.min_width || params.min_height ? `<div><strong>Responsive:</strong> Yes (${params.min_width || 0}&times;${params.min_height || 0} to ${params.max_width || width}&times;${params.max_height || height})</div>` : ''}
                     </div>
-                    ${format.example_url ? `
-                        <a href="${escapeHtml(format.example_url)}" target="_blank" rel="noopener noreferrer" class="format-modal__cta">
-                            View examples &amp; demos &rarr;
-                        </a>
-                    ` : ''}
                 </div>
             </div>
         `;

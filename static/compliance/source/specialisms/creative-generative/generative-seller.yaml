@@ -8,7 +8,6 @@ required_tools:
   - sync_governance
   - get_products
   - create_media_buy
-  - list_creative_formats
   - sync_creatives
   - get_media_buy_delivery
 requires_scenarios:
@@ -77,13 +76,20 @@ fixtures:
     - product_id: "outdoor_display_q2"
       delivery_type: "guaranteed"
       channels: ["display"]
-      format_ids:
-        - id: "display_300x250"
+      format_options:
+        - format_option_id: "display_300x250"
+          format_kind: "image"
+          params:
+            width: 300
+            height: 250
     - product_id: "outdoor_video_q2"
       delivery_type: "guaranteed"
       channels: ["video"]
-      format_ids:
-        - id: "video_15s"
+      format_options:
+        - format_option_id: "video_15s"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 15000
   pricing_options:
     - product_id: "outdoor_display_q2"
       pricing_option_id: "cpm_guaranteed"
@@ -233,76 +239,6 @@ phases:
             path: "context.correlation_id"
             value: "creative_generative--seller--sync_governance"
             description: "Context correlation_id returned unchanged"
-  - id: format_discovery
-    title: "Format discovery"
-    narrative: |
-      The buyer discovers what your platform can accept. A generative seller's format catalog
-      has two parts: generative formats that accept briefs as inputs, and standard IAB formats
-      that accept pre-built assets.
-
-      Generative formats declare brief asset slots. Standard formats declare image, video, or
-      HTML asset slots. The buyer uses this to decide whether to send a brief or upload finished
-      assets for each package.
-
-      A platform selling programmatic inventory should support both. Generative-only is fine for
-      a pure creative agent, but a seller that takes media buys needs to accept pre-built assets
-      from buyers who already have creatives.
-
-    steps:
-      - id: list_formats
-        title: "Discover creative formats"
-        narrative: |
-          The buyer asks what formats your platform supports. Your response should include both
-          generative formats (accepting brief inputs) and standard IAB formats (accepting image,
-          video, VAST, etc.).
-
-          A programmatic seller that only returns generative formats means the buyer can never
-          bring their own assets. If you sell inventory, you should accept pre-built creatives
-          too — the generative capability is additive.
-        task: list_creative_formats
-        schema_ref: "creative/list-creative-formats-request.json"
-        response_schema_ref: "creative/list-creative-formats-response.json"
-        doc_ref: "/creative/task-reference/list_creative_formats"
-        comply_scenario: creative_lifecycle
-        stateful: false
-        expected: |
-          Return your format catalog. It should include:
-
-          Generative formats:
-          - format_id with your agent_url and a unique id (e.g., "display_300x250_generative")
-          - Asset slots accepting brief asset types
-          - Render dimensions for the output
-          - Description indicating this is a generative format
-
-          Standard formats:
-          - Standard IAB display formats (300x250, 728x90, etc.)
-          - Video formats (VAST, pre-roll, etc.) if applicable
-          - Asset slots accepting image, video, html, etc.
-
-          Both types should be present for a programmatic seller. Buyers who already
-          have creatives need to be able to upload them directly.
-
-        sample_request:
-          context:
-            correlation_id: "creative_generative--seller--list_formats"
-
-        validations:
-          - check: response_schema
-            description: "Response matches list-creative-formats-response.json schema"
-          - check: field_present
-            path: "formats"
-            description: "Response contains a formats array"
-          - check: field_present
-            path: "formats[0].format_id.agent_url"
-            description: "Each format has a format_id with agent_url"
-
-          - check: field_present
-            path: "context"
-            description: "Response echoes back the context object"
-          - check: field_value
-            path: "context.correlation_id"
-            value: "creative_generative--seller--list_formats"
-            description: "Context correlation_id returned unchanged"
   - id: product_discovery
     title: "Product discovery"
     narrative: |
@@ -319,7 +255,7 @@ phases:
         title: "Send a brief"
         narrative: |
           The buyer describes what they want. Your platform returns products. Each product's
-          creative_format_ids should reference formats from the catalog — some generative,
+          canonical format_options should declare the formats this product accepts — some generative,
           some standard. The buyer uses this to decide the creative approach per product.
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
@@ -334,7 +270,7 @@ phases:
           - delivery_type: guaranteed or non_guaranteed
           - pricing_models: available pricing options
           - forecast: estimated impressions, reach
-          - creative_format_ids: formats this product accepts (including generative formats)
+          - creative format_options: canonical formats this product accepts, including generative formats
 
         sample_request:
           buying_mode: "brief"
@@ -373,14 +309,14 @@ phases:
             value: "creative_generative--seller--get_products_brief"
             description: "Context correlation_id returned unchanged"
           - check: field_present
-            path: "products[0].format_ids"
-            description: "Products include format_ids for creative requirements"
+            path: "products[0].format_options"
+            description: "Products include canonical format_options for creative requirements"
           - check: field_present
-            path: "products[0].format_ids[0].agent_url"
-            description: "Format IDs include agent_url — must match this agent's URL"
+            path: "products[0].format_options[0].format_kind"
+            description: "Canonical format options include a format_kind discriminator"
           - check: field_present
-            path: "products[0].format_ids[0].id"
-            description: "Format IDs include id — must be accepted back in sync_creatives"
+            path: "products[0].format_options[0].format_option_id"
+            description: "Canonical format options include a stable ID accepted by sync_creatives"
   - id: create_buy
     title: "Create the media buy"
     narrative: |
@@ -457,8 +393,8 @@ phases:
     narrative: |
       This is where a generative seller diverges from the standard flow. Instead of the buyer
       uploading finished assets, they send a creative brief through sync_creatives. The brief
-      describes campaign messaging, tone, audience, and compliance requirements. The format_id
-      points to a generative format that accepts brief asset types.
+      describes campaign messaging, tone, audience, and compliance requirements. The manifest's
+      format_kind and product format option identify the generative contract that accepts brief assets.
 
       Your platform resolves the brand via AgenticAdvertising.org (using the account's brand
       domain), pulls brand.json for visual identity, and generates the creative. This may be
@@ -469,8 +405,8 @@ phases:
       - id: sync_creatives_brief
         title: "Send creative brief via sync_creatives"
         narrative: |
-          The buyer sends a creative brief through sync_creatives, using a generative format_id
-          that accepts brief asset types. The account's brand domain tells your platform where
+          The buyer sends a creative brief through sync_creatives, using the product's canonical
+          format option for brief assets. The account's brand domain tells your platform where
           to resolve brand identity for generation.
 
           Your platform should actually read the operator and brand from the request — not
@@ -498,9 +434,7 @@ phases:
           creatives:
             - creative_id: "gen_display_summer_sale"
               name: "Summer Sale - Generated Display 300x250"
-              format_id:
-                agent_url: "https://your-platform.example.com"
-                id: "display_300x250_generative"
+              format_kind: "image"
               assets:
                 brief:
                   asset_type: "brief"
@@ -525,9 +459,7 @@ phases:
                       - "Best price guaranteed"
             - creative_id: "gen_video_summer_sale"
               name: "Summer Sale - Generated Video 30s"
-              format_id:
-                agent_url: "https://your-platform.example.com"
-                id: "video_30s_generative"
+              format_kind: "video_hosted"
               assets:
                 brief:
                   asset_type: "brief"
@@ -598,9 +530,7 @@ phases:
           creatives:
             - creative_id: "static_display_300x250"
               name: "Trail Pro 3000 - Pre-built Display 300x250"
-              format_id:
-                agent_url: "https://your-platform.example.com"
-                id: "display_300x250"
+              format_kind: "image"
               assets:
                 image:
                   asset_type: "image"
@@ -652,9 +582,7 @@ phases:
           creatives:
             - creative_id: "gen_invalid_brand"
               name: "Invalid Brand Test"
-              format_id:
-                agent_url: "https://your-platform.example.com"
-                id: "display_300x250_generative"
+              format_kind: "image"
               assets:
                 brief:
                   asset_type: "brief"
@@ -723,9 +651,7 @@ phases:
           creatives:
             - creative_id: "gen_display_summer_sale"
               name: "Summer Sale - Generated Display 300x250"
-              format_id:
-                agent_url: "https://your-platform.example.com"
-                id: "display_300x250_generative"
+              format_kind: "image"
               assets:
                 brief:
                   asset_type: "brief"
@@ -737,9 +663,7 @@ phases:
                     cta: "Shop Now"
             - creative_id: "gen_video_summer_sale"
               name: "Summer Sale - Generated Video 30s"
-              format_id:
-                agent_url: "https://your-platform.example.com"
-                id: "video_30s_generative"
+              format_kind: "video_hosted"
               assets:
                 brief:
                   asset_type: "brief"

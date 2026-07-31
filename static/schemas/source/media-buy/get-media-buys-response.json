@@ -238,7 +238,8 @@
                 },
                 "format_ids": {
                   "type": "array",
-                  "description": "Legacy named-format IDs supplied for this package on create_media_buy. Sellers SHOULD echo this field whenever the request included it, including dual-emission cases where another selector won precedence.",
+                  "deprecated": true,
+                  "description": "**DEPRECATED in 3.2.** Legacy named-format IDs supplied by an older 3.x buyer and echoed for compatibility.",
                   "items": {
                     "$ref": "/schemas/core/format-id.json"
                   },

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/build-creative-request.json",
   "title": "Build Creative Request",
-  "description": "Request to transform, generate, refine, or retrieve a creative manifest. Supports four modes: (1) generation from a brief or seed assets, (2) transformation of an existing manifest, (3) refinement of a prior produced variant via refine_from_build_variant_id (re-build with a natural-language message + config delta), (4) retrieval from a creative library by creative_id. Produces target manifest(s) in the specified format(s). Provide either target_format_id for a single format or target_format_ids for multiple formats.",
+  "description": "Request to transform, generate, refine, or retrieve a creative manifest. Supports four modes: (1) generation from a brief or seed assets, (2) transformation of an existing manifest, (3) refinement of a prior produced variant via refine_from_build_variant_id (re-build with a natural-language message + config delta), (4) retrieval from a creative library by creative_id. Produces target manifest(s) through canonical capabilities advertised in `get_adcp_capabilities.creative.supported_formats[]`. In 3.2, provide `target_capability_id` for one output or `target_capability_ids` for multiple outputs. Legacy `target_format_id` / `target_format_ids` remain accepted during the 3.x compatibility window but are deprecated.",
   "type": "object",
   "allOf": [
     {
@@ -11,6 +11,49 @@
     {
       "$comment": "target_format_id and target_format_ids are mutually exclusive (single vs multi).",
       "not": { "required": ["target_format_id", "target_format_ids"] }
+    },
+    {
+      "$comment": "target_capability_id and target_capability_ids are mutually exclusive (single vs multi).",
+      "not": { "required": ["target_capability_id", "target_capability_ids"] }
+    },
+    {
+      "$comment": "Canonical capability selectors and legacy named-format selectors cannot be mixed.",
+      "not": {
+        "anyOf": [
+          { "required": ["target_capability_id", "target_format_id"] },
+          { "required": ["target_capability_id", "target_format_ids"] },
+          { "required": ["target_capability_ids", "target_format_id"] },
+          { "required": ["target_capability_ids", "target_format_ids"] }
+        ]
+      }
+    },
+    {
+      "$comment": "Every non-refinement build selects exactly one singular or plural output route. Refinement inherits the original leaf's target capability and therefore forbids a new selector.",
+      "oneOf": [
+        {
+          "title": "Refinement with inherited target capability",
+          "required": ["refine_from_build_variant_id"],
+          "not": {
+            "anyOf": [
+              { "required": ["target_capability_id"] },
+              { "required": ["target_capability_ids"] },
+              { "required": ["target_format_id"] },
+              { "required": ["target_format_ids"] },
+              { "required": ["transformer_id"] }
+            ]
+          }
+        },
+        {
+          "title": "Explicit build target",
+          "not": { "required": ["refine_from_build_variant_id"] },
+          "oneOf": [
+            { "required": ["target_capability_id"] },
+            { "required": ["target_capability_ids"] },
+            { "required": ["target_format_id"] },
+            { "required": ["target_format_ids"] }
+          ]
+        }
+      ]
     },
     {
       "$comment": "Refinement targets one prior creative, not a catalog fan-out.",
@@ -25,7 +68,7 @@
     },
     "creative_manifest": {
       "$ref": "/schemas/core/creative-manifest.json",
-      "description": "Creative manifest to transform or generate from. For pure generation, this should include the target format_id and any required input assets. For transformation (e.g., resizing, reformatting), this is the complete creative to adapt. When creative_id is provided, the agent resolves the creative from its library and this field is ignored."
+      "description": "Creative manifest to transform or generate from. On the canonical 3.2 path it carries `format_kind`, optional `format_option_ref`, and the required input assets. For transformation (for example resizing or reformatting), this is the complete creative to adapt. When creative_id is provided, the agent resolves the creative from its library and this field is ignored."
     },
     "creative_id": {
       "type": "string",
@@ -48,7 +91,8 @@
     },
     "target_format_id": {
       "$ref": "/schemas/core/format-id.json",
-      "description": "Single format ID to generate. Mutually exclusive with target_format_ids. The format definition specifies required input assets and output structure."
+      "deprecated": true,
+      "description": "**DEPRECATED in 3.2.** Legacy named-format selector. Use `target_capability_id` with a value advertised in `get_adcp_capabilities.creative.supported_formats[].capability_id`."
     },
     "target_format_ids": {
       "type": "array",
@@ -56,12 +100,28 @@
         "$ref": "/schemas/core/format-id.json"
       },
       "minItems": 1,
-      "description": "Array of format IDs to generate in a single call. Mutually exclusive with target_format_id. The creative agent produces one manifest per format. Each format definition specifies its own required input assets and output structure."
+      "deprecated": true,
+      "description": "**DEPRECATED in 3.2.** Legacy named-format selectors. Use `target_capability_ids` with values advertised in `get_adcp_capabilities.creative.supported_formats[].capability_id`."
+    },
+    "target_capability_id": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "description": "Canonical 3.2 single-output selector. Matches exactly one `get_adcp_capabilities.creative.supported_formats[].capability_id` advertised by this creative agent. The matched entry supplies the canonical `format` declaration used to validate inputs and the returned manifest. Mutually exclusive with `target_capability_ids` and the deprecated target_format_id fields."
+    },
+    "target_capability_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-zA-Z0-9_-]+$"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Canonical 3.2 multi-output selector. Each value matches a `get_adcp_capabilities.creative.supported_formats[].capability_id`. The creative agent produces one canonical manifest per capability in request order. Mutually exclusive with `target_capability_id` and the deprecated target_format_id fields."
     },
     "transformer_id": {
       "type": "string",
       "x-entity": "transformer",
-      "description": "Selects an account-scoped transformer (discovered via list_transformers) to perform the build. One transformer per call. When present, the build uses this transformer and target_format_id/target_format_ids select which of its outputs to produce — they MUST be a subset of the transformer's output_format_ids. Render configuration goes in `config`."
+      "description": "Selects an account-scoped transformer (discovered via list_transformers) to perform the build. One transformer per call. When present, the build uses this transformer and target_capability_id/target_capability_ids select which of its outputs to produce — they MUST be a subset of the transformer's output_capability_ids. Deprecated target_format_id fields use the legacy output_format_ids compatibility path. Render configuration goes in `config`."
     },
     "config": {
       "type": "object",
@@ -71,7 +131,7 @@
     "refine_from_build_variant_id": {
       "type": "string",
       "x-entity": "build_variant",
-      "description": "Refine a previously produced variant: re-build from the referenced `build_variant_id`, applying the natural-language instruction in `message` and any `config` delta, and return NEW lineage-linked variant(s) — each with `parent_build_variant_id` set to this id. A refinement is never a mutation; the parent leaf is unchanged. The `transformer_id` and target format(s) are inherited from the parent and need not be repeated; passing a `transformer_id` or `target_format_id`/`target_format_ids` that differs from the parent's is rejected with `INVALID_REQUEST`. Composes with `max_variants` / `variant_axis` (produces N refined alternatives), but is mutually exclusive with `max_creatives` / catalog fan-out (you refine one prior creative, not a catalog). Requires the agent to advertise `creative.supports_refinement: true` in get_adcp_capabilities; agents that do not retain prior builds reject with `UNSUPPORTED_FEATURE`. A ref that is unknown or no longer retained (agents retain produced leaves for an agent-defined window) is rejected with `REFERENCE_NOT_FOUND`, with `error.field` set to `refine_from_build_variant_id`. To refine a buyer-held manifest when the agent retains nothing, use the transform path instead (`creative_manifest` + `message`)."
+      "description": "Refine a previously produced variant and return new lineage-linked variants. The transformer and target capability are inherited from the parent leaf. A refinement request MUST omit transformer_id, target_capability_id(s), and deprecated target_format_id(s); changing transformer or output format is a new transformation build, not refinement. Requires creative.supports_refinement."
     },
     "mode": {
       "type": "string",
@@ -187,7 +247,7 @@
     },
     "preview_inputs": {
       "type": "array",
-      "description": "Input sets for preview generation when include_preview is true. Each input set defines macros and context values for one preview variant. If include_preview is true but this is omitted, the agent generates a single default preview. Only supported with target_format_id (single-format requests). Ignored when using target_format_ids — multi-format requests generate one default preview per format. Ignored when include_preview is false or omitted.",
+      "description": "Input sets for preview generation when include_preview is true. Supported with a single target_capability_id; multi-capability requests generate one default preview per output. Deprecated target-format selectors retain equivalent compatibility behavior.",
       "items": {
         "type": "object",
         "properties": {

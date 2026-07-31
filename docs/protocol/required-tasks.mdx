@@ -11,7 +11,7 @@ Each AdCP protocol defines tasks that agents implement depending on their role. 
 
 **Legend**: **Required** — the specification mandates implementation. **Conditional** — required when the agent has a specific capability. **Optional** — the specification recommends but does not mandate.
 
-Some tasks span protocols. For example, `list_creative_formats` and `sync_creatives` are defined in the Creative Protocol but also implemented by Media Buy sales agents. These appear under both protocols with a note indicating the source.
+Some tasks span protocols. For example, `sync_creatives` is defined in the Creative Protocol but may also be implemented by Media Buy sales agents. Canonical format discovery itself is no longer a shared task: each owning surface publishes its declaration directly.
 
 ## Shared
 
@@ -32,7 +32,7 @@ AdCP task lifecycle state is application-layer state, not MCP-native or A2A-nati
 | Task | Requirement | Notes |
 |------|------------|-------|
 | `get_products` | Required | Inventory discovery |
-| `list_creative_formats` | Required | Format specifications (Creative Protocol task) |
+| `get_adcp_capabilities` | Required | Agent capabilities; sellable formats remain product-scoped in `get_products` |
 | `create_media_buy` | Required | Campaign creation and order confirmation |
 | `update_media_buy` | Required | Budget, targeting, pause, cancel |
 | `get_media_buys` | Required | Operational state retrieval |
@@ -67,7 +67,7 @@ Orchestrators are not MCP/A2A servers — they call sales agent tasks. Conforman
 
 | Task | Requirement | Notes |
 |------|------------|-------|
-| `list_creative_formats` | Required | Format discovery with technical specs |
+| `get_adcp_capabilities` | Required | Canonical creative capability discovery through `creative.supported_formats[]` |
 | `list_transformers` | Conditional | Required when the agent advertises `creative.supports_transformers: true` |
 | `build_creative` | Optional | Generation, transformation, or library retrieval |
 | `preview_creative` | Optional | Preview rendering |
@@ -75,7 +75,7 @@ Orchestrators are not MCP/A2A servers — they call sales agent tasks. Conforman
 | `sync_creatives` | Conditional | Required when the agent accepts creative uploads |
 | `get_creative_delivery` | Optional | Variant-level delivery metrics |
 
-Creative agents MUST return authoritative format definitions only for formats they own.
+Creative agents MUST publish accurate canonical capability declarations. Exact publisher-format claims carry publisher identity; generic claims carry an honest parameter envelope.
 
 **Reference**: [Creative Specification](/docs/creative/specification)
 
