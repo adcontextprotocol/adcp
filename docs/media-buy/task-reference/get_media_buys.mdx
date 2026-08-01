@@ -86,7 +86,6 @@ Returns an array of media buys with current status, creative approval state, and
 | `params` | Parameters for the direct canonical selector in `format_kind`, echoed whenever the original request included them; requires `format_kind`. |
 | `targeting_overlay` | Targeting currently applied to the package. Demographic targeting preserves the buyer's age predicate and accepted determination bases. |
 | `demographic_targeting_resolution` | Lossless demographic readback containing `requested`, `applied`, exact-only `equivalent: true`, execution mechanism, and effective `applied_bases` / `applied_verification_methods` when the buyer constrained determination. Required whenever demographics were requested or applied. Sellers reject non-equivalent predicates, unsupported bases, and empty compliance intersections. |
-| `audience_evidence_used` | Immutable copies of compact product audience-evidence rows that influenced selection or package construction. This preserves the planning basis without implying that the audience was targeted during execution. |
 | `start_time` | Flight start time (ISO 8601). Check this before interpreting delivery status. |
 | `end_time` | Flight end time (ISO 8601) |
 | `paused` | Whether buyer has paused this package |

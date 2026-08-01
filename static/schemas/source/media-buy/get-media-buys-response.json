@@ -274,14 +274,6 @@
                   "$ref": "/schemas/core/demographic-targeting-resolution.json",
                   "description": "Lossless requested-versus-applied demographic readback. Sellers MUST include this whenever demographic targeting was requested or applied. targeting_overlay.demographics preserves the buyer predicate and determination constraints; this object's applied predicate and applied_bases report the effective booked state."
                 },
-                "audience_evidence_used": {
-                  "type": "array",
-                  "description": "Immutable copies of compact product audience-evidence rows that influenced product selection or package construction. Planning readback only; does not imply targeting execution.",
-                  "items": {
-                    "$ref": "/schemas/core/audience-evidence.json"
-                  },
-                  "minItems": 1
-                },
                 "start_time": {
                   "type": "string",
                   "format": "date-time",

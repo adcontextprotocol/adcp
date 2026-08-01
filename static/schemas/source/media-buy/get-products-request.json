@@ -174,14 +174,6 @@
     "filters": {
       "$ref": "/schemas/core/product-filters.json"
     },
-    "audience_evidence_requirements": {
-      "type": "array",
-      "description": "Buyer rules for compact audience evidence. A required rule excludes every product without a matching evidence row; absence never satisfies required. A preferred rule affects ranking but does not exclude. Sellers unable to evaluate this field MUST reject with UNSUPPORTED_FEATURE rather than silently ignore it, and successful responses MUST set audience_evidence_requirements_applied to true.",
-      "items": {
-        "$ref": "/schemas/core/audience-evidence-requirement.json"
-      },
-      "minItems": 1
-    },
     "property_list": {
       "$ref": "/schemas/core/property-list-ref.json",
       "description": "[AdCP 3.0] Reference to an externally managed property list. When provided, the sales agent should filter products to only those available on properties in the list."
@@ -222,7 +214,6 @@
           "signal_targeting_options",
           "signal_targeting_rules",
           "demographic_targeting",
-          "audience_evidence",
           "max_optimization_goals",
           "catalog_match",
           "collections",
