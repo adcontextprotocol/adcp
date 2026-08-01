@@ -603,7 +603,7 @@
         "format_ids": {
           "type": "array",
           "deprecated": true,
-          "description": "Deprecated 3.x named-format profile projection.",
+          "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Named-format profile projection. Use canonical `format_kinds` and `format_option_refs`.",
           "items": { "$ref": "/schemas/core/format-id.json" }
         },
         "format_kinds": {

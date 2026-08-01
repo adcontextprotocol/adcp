@@ -21,7 +21,7 @@
     "format_ids": {
       "type": "array",
       "deprecated": true,
-      "description": "**DEPRECATED in 3.2.** Legacy named-format selector retained for older 3.x peers. New buyers select canonical product contracts with `format_option_refs` or `format_kind` plus `params`. Sellers normalize this field to canonical declarations before product satisfaction checks.",
+      "description": "**DEPRECATED in 3.2. Removed in AdCP 4.0.** Legacy named-format selector retained for older 3.x peers. New buyers select canonical product contracts with `format_option_refs` or `format_kind` plus `params`. Sellers normalize this field to canonical declarations before product satisfaction checks.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
       },

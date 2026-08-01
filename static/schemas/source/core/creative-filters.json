@@ -105,7 +105,7 @@
     "format_ids": {
       "type": "array",
       "deprecated": true,
-      "description": "**DEPRECATED in 3.2.** Filter legacy named-format creatives. Use `format_kinds` for canonical libraries.",
+      "description": "**DEPRECATED in 3.2. Removed in AdCP 4.0.** Filter legacy named-format creatives. Use `format_kinds` for canonical libraries.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
       },

@@ -30,7 +30,8 @@
   "properties": {
     "format_ids": {
       "type": "array",
-      "description": "Return only these specific format IDs",
+      "deprecated": true,
+      "description": "Deprecated in AdCP 3.1; removed in AdCP 4.0. Return only these specific named-format IDs. Use canonical-format discovery in 4.0.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
       },

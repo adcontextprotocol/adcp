@@ -91,3 +91,26 @@ test('lifecycle status is metadata, not part of generated type names', () => {
 
   assert.deepEqual(offenders, [], `Lifecycle markers belong in metadata, not titles:\n${offenders.join('\n')}`);
 });
+
+test('format_ids is a deprecated 3.x-only field everywhere', () => {
+  const offenders = [];
+
+  for (const file of findJsonFiles(SOURCE_DIR)) {
+    const schema = JSON.parse(fs.readFileSync(file, 'utf8'));
+    walk(schema, '', (node, pointer) => {
+      if (pointer.includes('/examples/')) return;
+      const formatIds = node.properties?.format_ids;
+      if (formatIds === null || typeof formatIds !== 'object') return;
+
+      if (formatIds.deprecated !== true || !/removed in AdCP 4\.0/i.test(formatIds.description || '')) {
+        offenders.push(`${path.relative(SOURCE_DIR, file)}#${pointer || '/'}/properties/format_ids`);
+      }
+    });
+  }
+
+  assert.deepEqual(
+    offenders,
+    [],
+    `Every format_ids field must be deprecated and scheduled for 4.0 removal:\n${offenders.join('\n')}`,
+  );
+});
