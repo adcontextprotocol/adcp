@@ -83,6 +83,9 @@ export interface QueueIssueSummary {
 
 export interface NeedsAttentionQueue {
   count: number;
+  /** True when either source query overflowed its fetched page, so `count`
+   *  (a dedup over fetched pages) is a lower bound rather than exact. */
+  countIsLowerBound: boolean;
   items: QueueIssueSummary[];
   viewAllUrl: string;
 }
@@ -120,6 +123,9 @@ export interface QueuesSnapshot {
   waitingOnWg: WaitingOnWgQueue;
   burnDown: BurnDownQueue;
   fetchedAt: string;
+  /** True when a refresh failed and this is the last good snapshot,
+   *  served past its TTL rather than blanking the dashboard. */
+  stale?: boolean;
 }
 
 function ageInDays(createdAt: string): number {
@@ -205,7 +211,10 @@ async function buildNeedsAttentionQueue(token: string, repo: string): Promise<Ne
     if (labels.includes(PRIORITY_P1_LABEL)) tags.push('P1');
     return toQueueItem(issue, tags);
   });
-  return { count: merged.length, items, viewAllUrl: issuesWebUrl(repo, priorityQualifier) };
+  const countIsLowerBound =
+    milestoneResult.total_count > milestoneResult.items.length ||
+    priorityResult.total_count > priorityResult.items.length;
+  return { count: merged.length, countIsLowerBound, items, viewAllUrl: issuesWebUrl(repo, priorityQualifier) };
 }
 
 /** Triage — needs assignment/eval: no milestone assigned yet, plus anything
@@ -312,8 +321,19 @@ export async function getQueuesSnapshot(repo: string): Promise<QueuesSnapshot | 
   const snapshot = await buildQueuesSnapshot(repo);
   if (snapshot) {
     queuesCache = { snapshot, expiresAtMs: Date.now() + QUEUES_CACHE_TTL_MS };
+    return snapshot;
   }
-  return snapshot;
+  // Refresh failed (transient GitHub error, rate limit, outage): serve the
+  // last good snapshot marked stale rather than blanking all four panels.
+  // The expired cache entry is deliberately retained for exactly this case.
+  if (queuesCache) {
+    logger.warn(
+      { repo, fetchedAt: queuesCache.snapshot.fetchedAt },
+      'Queues snapshot refresh failed; serving stale snapshot'
+    );
+    return { ...queuesCache.snapshot, stale: true };
+  }
+  return null;
 }
 
 /** Test seam: clear the in-memory cache between test cases. */

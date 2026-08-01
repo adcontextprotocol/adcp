@@ -244,4 +244,33 @@ describe('secretariat queues snapshot', () => {
     await getQueuesSnapshot(REPO);
     expect(fetchMock.mock.calls.length).toBe(callsAfterFirst * 2);
   });
+
+  it('serves the last good snapshot marked stale when a refresh fails, and recovers', async () => {
+    const { getQueuesSnapshot } = await import('../../src/addie/jobs/secretariat-queues.js');
+    vi.useFakeTimers();
+    try {
+      const first = await getQueuesSnapshot(REPO);
+      expect(first).not.toBeNull();
+      expect(first?.stale).toBeUndefined();
+
+      // Expire the cache, then make every GitHub call fail.
+      vi.setSystemTime(Date.now() + 6 * 60_000);
+      fetchMock.mockImplementation(async () => {
+        throw new Error('GitHub down');
+      });
+      const fallback = await getQueuesSnapshot(REPO);
+      expect(fallback).not.toBeNull();
+      expect(fallback?.stale).toBe(true);
+      expect(fallback?.needsAttention).toEqual(first?.needsAttention);
+      expect(fallback?.fetchedAt).toBe(first?.fetchedAt);
+
+      // GitHub healthy again: next expired read refreshes and clears stale.
+      fetchMock.mockImplementation(async (url: string) => routeFetch(url));
+      vi.setSystemTime(Date.now() + 6 * 60_000);
+      const recovered = await getQueuesSnapshot(REPO);
+      expect(recovered?.stale).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
