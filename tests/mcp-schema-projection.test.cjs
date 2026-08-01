@@ -341,7 +341,7 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
       assert.equal(projectedSchema.$schema, JSON_SCHEMA_2020_12);
       assert.equal(
         projectedSchema.$id,
-        `/schemas/latest/mcp/${MCP_PROTOCOL_VERSION}/${relativePath}`
+        `https://adcontextprotocol.org/schemas/latest/mcp/${MCP_PROTOCOL_VERSION}/${relativePath}`
       );
       assert.deepEqual(collectExternalRefs(projectedSchema), []);
       localRefCount += assertLocalRefsResolve(projectedSchema);

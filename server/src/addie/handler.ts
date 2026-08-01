@@ -7,9 +7,9 @@
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('addie-handler');
-import { sendChannelMessage } from '../slack/client.js';
+import { getChannelInfo, sendChannelMessage } from '../slack/client.js';
 import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, type UserScopedToolsResult } from './claude-client.js';
-import { buildSlackCostScope } from './claude-cost-tracker.js';
+import { buildSlackCostOptions } from './claude-cost-tracker.js';
 import {
   sanitizeInput,
   validateOutput,
@@ -660,7 +660,7 @@ export async function handleAssistantMessage(
     const processOptions: import('./claude-client.js').ProcessMessageOptions = {
       requestContext,
       ...(userIsAdmin && { maxIterations: ADMIN_MAX_ITERATIONS }),
-      costScope: await buildSlackCostScope(memberContext, event.user),
+      ...(await buildSlackCostOptions(memberContext, event.user)),
     };
 
     // Process with Claude
@@ -828,11 +828,25 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
     const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user, event.thread_ts || event.ts, { isChannelMention: true });
 
     // Admin users get higher iteration limit for bulk operations.
-    // Cost-cap scope (#2790 / #2945 f/u) resolved via shared helper.
+    // Public home-workspace discussions use a bounded community budget;
+    // private/shared channels and unresolved privacy stay user-scoped.
+    const channelInfo = await getChannelInfo(event.channel, { forceRefresh: true });
     const processOptions: import('./claude-client.js').ProcessMessageOptions = {
       requestContext,
       ...(userIsAdmin && { maxIterations: ADMIN_MAX_ITERATIONS }),
-      costScope: await buildSlackCostScope(memberContext, event.user),
+      ...(await buildSlackCostOptions(
+        memberContext,
+        event.user,
+        channelInfo
+          ? {
+              channelId: event.channel,
+              isPrivate: channelInfo.is_private,
+              isShared: channelInfo.is_shared,
+              isOrgShared: channelInfo.is_org_shared,
+              isPendingExtShared: channelInfo.is_pending_ext_shared,
+            }
+          : undefined,
+      )),
     };
 
     // Process with Claude

@@ -749,14 +749,20 @@ export async function getSlackChannels(
 }
 
 /**
- * Get channel info by ID (cached for 30 minutes)
+ * Get channel info by ID (cached for 30 minutes by default). Security
+ * decisions that depend on current channel privacy/sharing should pass
+ * `forceRefresh: true` so a recent Slack Connect change cannot reuse
+ * stale metadata.
  */
-export async function getChannelInfo(channelId: string): Promise<SlackChannel | null> {
+export async function getChannelInfo(
+  channelId: string,
+  options?: { forceRefresh?: boolean },
+): Promise<SlackChannel | null> {
   const now = Date.now();
 
   // Check cache
   const cached = channelCache.get(channelId);
-  if (cached && cached.expiresAt > now) {
+  if (!options?.forceRefresh && cached && cached.expiresAt > now) {
     return cached.channel;
   }
 

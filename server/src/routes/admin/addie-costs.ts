@@ -56,6 +56,7 @@ function namespaceCaseSql(col: string): string {
   return `
     CASE
       WHEN ${col} LIKE 'email:%' THEN 'email'
+      WHEN ${col} = 'slack-public-community' THEN 'slack_public'
       WHEN ${col} LIKE 'slack:%' THEN 'slack'
       WHEN ${col} LIKE 'mcp:%' THEN 'mcp'
       WHEN ${col} LIKE 'tavus:ip:%' THEN 'tavus'

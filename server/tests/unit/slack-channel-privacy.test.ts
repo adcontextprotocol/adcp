@@ -9,6 +9,7 @@ vi.hoisted(() => {
 
 import {
   sendChannelMessage,
+  getChannelInfo,
   verifyChannelStillPrivate,
   verifyChannelPrivacyForWrite,
   __resetChannelCacheForTests,
@@ -78,6 +79,17 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+});
+
+describe('getChannelInfo({ forceRefresh: true })', () => {
+  it('bypasses cached channel metadata for current privacy decisions', async () => {
+    channelInfoResponses.set('C_fresh', { id: 'C_fresh', name: 'fresh', is_private: false });
+    expect((await getChannelInfo('C_fresh'))?.is_private).toBe(false);
+
+    channelInfoResponses.set('C_fresh', { id: 'C_fresh', name: 'fresh', is_private: true });
+    expect((await getChannelInfo('C_fresh'))?.is_private).toBe(false);
+    expect((await getChannelInfo('C_fresh', { forceRefresh: true }))?.is_private).toBe(true);
+  });
 });
 
 describe('verifyChannelStillPrivate', () => {

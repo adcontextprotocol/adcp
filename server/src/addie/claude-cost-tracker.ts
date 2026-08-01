@@ -55,8 +55,8 @@ const MICROS_PER_DOLLAR = 1_000_000;
 const WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Per-user daily budgets in USD micros. Tier-aware so anonymous /
- * Explorer users get a smaller ceiling than paying members.
+ * Per-scope daily budgets in USD micros. User tiers distinguish member
+ * entitlements; public community discussions use a workspace scope.
  *
  * Rationales:
  * - `anonymous`: $3/day. Sized to slightly exceed the per-IP message
@@ -72,6 +72,9 @@ const WINDOW_MS = 24 * 60 * 60 * 1000;
  * - `member_paid`: $25/day. Paying members get a generous ceiling
  *   that's still a real cap — a runaway automated session still
  *   trips it within an hour of sustained abuse.
+ * - `public_community`: $25/day across public, non-shared Slack channels.
+ *   Community discussions do not consume a participant's personal budget,
+ *   while the workspace ceiling still bounds automated or abusive spend.
  * - `aao_team`: uncapped. AAO staff/admin/team users are operating
  *   the service, not consuming member benefits, so they should not
  *   hit a self-service spend ceiling while doing support or admin work.
@@ -80,16 +83,18 @@ export const DAILY_BUDGET_USD = {
   anonymous: 3,
   member_free: 5,
   member_paid: 25,
-} as const satisfies Record<'anonymous' | 'member_free' | 'member_paid', number>;
+  public_community: 25,
+} as const satisfies Record<'anonymous' | 'member_free' | 'member_paid' | 'public_community', number>;
 
-type CappedUserTier = keyof typeof DAILY_BUDGET_USD;
-const DAILY_BUDGET_MICROS: Record<CappedUserTier, number> = {
+type CappedTier = keyof typeof DAILY_BUDGET_USD;
+const DAILY_BUDGET_MICROS: Record<CappedTier, number> = {
   anonymous: DAILY_BUDGET_USD.anonymous * MICROS_PER_DOLLAR,
   member_free: DAILY_BUDGET_USD.member_free * MICROS_PER_DOLLAR,
   member_paid: DAILY_BUDGET_USD.member_paid * MICROS_PER_DOLLAR,
+  public_community: DAILY_BUDGET_USD.public_community * MICROS_PER_DOLLAR,
 };
 
-export type UserTier = CappedUserTier | 'aao_team';
+export type UserTier = CappedTier | 'aao_team';
 
 export interface CostCheckResult {
   ok: boolean;
@@ -240,6 +245,12 @@ export function formatCapExceededMessage(result: CostCheckResult): string {
   const tier = result.tier ?? 'anonymous';
   if (tier === 'aao_team') {
     return 'AAO team usage is uncapped.';
+  }
+  if (tier === 'public_community') {
+    return (
+      `Public Addie discussions have reached today's community conversation capacity. ` +
+      `Please try again tomorrow or ping the AgenticAdvertising.org team if the discussion is time-sensitive.`
+    );
   }
   return (
     `You've reached your daily conversation limit with Addie. ` +
@@ -412,6 +423,48 @@ export async function buildSlackCostScope(
   const userId = memberContext?.workos_user?.workos_user_id ?? `slack:${slackUserId}`;
   const tier = await resolveUserTierFromDb(userId);
   return { userId, tier };
+}
+
+export interface SlackChannelCostContext {
+  channelId: string;
+  isPrivate: boolean | undefined;
+  isShared: boolean | undefined;
+  isOrgShared: boolean | undefined;
+  isPendingExtShared?: boolean;
+}
+
+export interface SlackCostOptions {
+  costScope: { userId: string; tier: UserTier };
+}
+
+/**
+ * Choose the Claude cost-control options for a Slack conversation.
+ * Public, non-shared channel discussions benefit the whole community,
+ * so they use a bounded workspace scope instead of one participant's
+ * personal daily cap. DMs, private/shared channels, reactions, and
+ * unresolved privacy remain user-scoped.
+ */
+export async function buildSlackCostOptions(
+  memberContext: Pick<MemberContext, 'workos_user'> | null | undefined,
+  slackUserId: string,
+  channelContext?: SlackChannelCostContext,
+): Promise<SlackCostOptions> {
+  const isPublicCommunityDiscussion = channelContext !== undefined &&
+    channelContext.channelId.trim().length > 0 &&
+    channelContext.isPrivate === false &&
+    channelContext.isShared === false &&
+    channelContext.isOrgShared === false &&
+    channelContext.isPendingExtShared !== true;
+
+  if (isPublicCommunityDiscussion) {
+    return {
+      costScope: {
+        userId: 'slack-public-community',
+        tier: 'public_community',
+      },
+    };
+  }
+  return { costScope: await buildSlackCostScope(memberContext, slackUserId) };
 }
 
 /**
