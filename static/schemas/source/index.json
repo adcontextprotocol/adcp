@@ -475,6 +475,7 @@
         },
         "signal-pricing-option": {
           "$ref": "/schemas/core/signal-pricing-option.json",
+          "deprecated": true,
           "description": "Deprecated — alias for vendor-pricing-option.json. Retained for backward compatibility. Prefer vendor-pricing-option.json for new implementations."
         },
         "vendor-pricing-option": {
@@ -997,6 +998,7 @@
         },
         "legacy-postal-system": {
           "$ref": "/schemas/enums/legacy-postal-system.json",
+          "deprecated": true,
           "description": "Deprecated country-fused postal code systems for compatibility (us_zip, gb_outward, ca_fsa, etc.)"
         },
         "age-verification-method": {

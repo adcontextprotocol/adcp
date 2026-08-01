@@ -281,7 +281,7 @@
         ],
         "oneOf": [
           {
-            "title": "Legacy listed creative (named-format reference)",
+            "title": "Listed creative (named-format reference)",
             "required": [
               "format_id"
             ],

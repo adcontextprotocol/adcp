@@ -18,6 +18,7 @@
     },
     "adcp_major_version": {
       "type": "integer",
+      "deprecated": true,
       "description": "DEPRECATED in favor of adcp_version. Removed in 4.0. Inlined alongside adcp_version to preserve strict-mode on this endpoint.",
       "minimum": 1,
       "maximum": 99

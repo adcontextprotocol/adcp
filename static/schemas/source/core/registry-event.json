@@ -452,6 +452,7 @@
             "publisher_domain": { "$ref": "#/$defs/domain" },
             "domain": {
               "$ref": "#/$defs/domain",
+              "deprecated": true,
               "description": "Legacy alias for publisher_domain retained for early feed examples."
             },
             "properties_added": { "type": "integer", "minimum": 0 },

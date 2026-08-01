@@ -118,6 +118,7 @@
     },
     "outcome_measurement": {
       "$ref": "/schemas/core/outcome-measurement.json",
+      "deprecated": true,
       "description": "**Deprecated as of this minor.** Outcome capabilities (incremental sales lift, brand lift, foot traffic, etc.) are now declared via `reporting_capabilities.available_metrics` (the same path used for impressions, conversions, ROAS) with `qualifier.attribution_methodology` and `qualifier.attribution_window` carrying the methodology and window on commit. New implementations SHOULD use the unified pattern; this field is retained for one-minor backwards compatibility and removed at the next major. See `outcome-measurement.json` description for migration guidance."
     },
     "delivery_measurement": {
@@ -134,6 +135,7 @@
         },
         "provider": {
           "type": "string",
+          "deprecated": true,
           "description": "**Deprecated as of this minor.** Free-form measurement provider description (e.g., 'Google Ad Manager with IAS viewability', 'Nielsen DAR', 'Geopath for DOOH impressions'). New implementations SHOULD use the structured `vendors` field instead. Retained for one-minor backwards compatibility; removed at the next major. When both `vendors` and `provider` are present, consumers MUST use `vendors` for vendor identity and treat `provider` as informational text."
         },
         "notes": {
@@ -607,7 +609,7 @@
       "required": ["format_ids"]
     },
     {
-      "title": "3.1+ Product (format-option declarations)",
+      "title": "v2 Product (inline format declarations)",
       "description": "Product carries one or more inline ProductFormatDeclarations, each narrowing a canonical format. This is the 3.1+ format-option path introduced by RFC #3305. A single-element `format_options` array is the 90% case; multi-element arrays declare that the product accepts any of the listed format options.",
       "required": ["format_options"]
     }

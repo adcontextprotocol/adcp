@@ -28,7 +28,7 @@
     "build:mintlify": "cd mintlify-docs && mintlify build",
     "deploy:mintlify": "mintlify deploy",
     "typecheck": "tsc --project server/tsconfig.json --noEmit",
-    "test:schemas": "node tests/schema-validation.test.cjs",
+    "test:schemas": "node tests/schema-validation.test.cjs && node --test tests/schema-deprecation-metadata.test.cjs",
     "test:dist-schema-version-ids": "node --test --test-force-exit --test-timeout=30000 tests/dist-schema-version-ids.test.cjs",
     "test:examples": "node tests/example-validation-simple.test.cjs",
     "test:extensions": "node tests/extension-fields.test.cjs",

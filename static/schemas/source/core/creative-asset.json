@@ -99,6 +99,7 @@
     },
     "placement_ids": {
       "type": "array",
+      "deprecated": true,
       "description": "Legacy shorthand array of placement IDs where this creative should run when uploading via create_media_buy or update_media_buy. New senders SHOULD use `placement_refs` because placement IDs are publisher-scoped and strings are ambiguous in multi-publisher products. If omitted, creative runs on all buyer-targetable placements. If `placement_refs` is also present, receivers MUST ignore this field. Only used during upload to media buy - not stored in creative library.",
       "items": {
         "type": "string"
