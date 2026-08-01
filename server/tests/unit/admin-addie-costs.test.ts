@@ -22,6 +22,7 @@ describe('classifyScopeKey', () => {
   // can't claim a namespace count that the leaderboard can't reproduce.
   const cases: Array<[string, ReturnType<typeof classifyScopeKey>]> = [
     ['email:abc123def4567890', 'email'],
+    ['slack-public-community', 'slack_public'],
     ['slack:U12345', 'slack'],
     ['mcp:oauth-user-001', 'mcp'],
     ['tavus:ip:10.0.0.1', 'tavus'],
@@ -73,6 +74,7 @@ describe('inferDisplayTier', () => {
   it('falls back to namespace-level tier when subscription status is unknown', () => {
     expect(inferDisplayTier('workos', null)).toBe('member_free');
     expect(inferDisplayTier('slack', null)).toBe('member_free');
+    expect(inferDisplayTier('slack_public', null)).toBe('public_community');
     expect(inferDisplayTier('email', null)).toBe('anonymous');
     expect(inferDisplayTier('mcp', null)).toBe('anonymous');
     expect(inferDisplayTier('tavus', null)).toBe('anonymous');
@@ -89,7 +91,7 @@ describe('inferDisplayTier', () => {
   it('has a fallback entry for every namespace', () => {
     // Guard against adding a new Namespace literal and forgetting to
     // wire it into NAMESPACE_FALLBACK_TIER.
-    const namespaces = ['email', 'slack', 'mcp', 'tavus', 'anon', 'workos', 'unknown'] as const;
+    const namespaces = ['email', 'slack', 'slack_public', 'mcp', 'tavus', 'anon', 'workos', 'unknown'] as const;
     for (const ns of namespaces) {
       expect(NAMESPACE_FALLBACK_TIER[ns]).toBeDefined();
     }

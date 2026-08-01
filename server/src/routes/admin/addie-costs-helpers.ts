@@ -7,8 +7,8 @@
 
 const MICROS_PER_DOLLAR = 1_000_000;
 
-export type Namespace = 'email' | 'slack' | 'mcp' | 'tavus' | 'anon' | 'workos' | 'unknown';
-export type DisplayTier = 'anonymous' | 'member_free' | 'member_paid' | 'aao_team';
+export type Namespace = 'email' | 'slack' | 'slack_public' | 'mcp' | 'tavus' | 'anon' | 'workos' | 'unknown';
+export type DisplayTier = 'anonymous' | 'member_free' | 'member_paid' | 'public_community' | 'aao_team';
 
 /**
  * Fallback tier inference when we can't join to organizations (every
@@ -22,6 +22,7 @@ export const NAMESPACE_FALLBACK_TIER: Record<Namespace, Exclude<DisplayTier, 'aa
   tavus: 'anonymous',
   anon: 'anonymous',
   slack: 'member_free',
+  slack_public: 'public_community',
   workos: 'member_free',
   unknown: 'member_free',
 };
@@ -52,6 +53,7 @@ export function inferDisplayTier(
  */
 export function classifyScopeKey(key: string): Namespace {
   if (key.startsWith('email:')) return 'email';
+  if (key === 'slack-public-community') return 'slack_public';
   if (key.startsWith('slack:')) return 'slack';
   if (key.startsWith('mcp:')) return 'mcp';
   if (key.startsWith('tavus:ip:')) return 'tavus';
