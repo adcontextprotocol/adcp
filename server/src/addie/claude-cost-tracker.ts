@@ -55,6 +55,13 @@ const MICROS_PER_DOLLAR = 1_000_000;
 const WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /**
+ * Slack sharing metadata may be this old when choosing a public-community
+ * cost scope. Ten seconds avoids an uncached conversations.info call on every
+ * busy-channel turn while bounding exposure to a recent Slack Connect change.
+ */
+export const SLACK_COST_CHANNEL_INFO_MAX_AGE_MS = 10_000;
+
+/**
  * Per-scope daily budgets in USD micros. User tiers distinguish member
  * entitlements; public community discussions use a workspace scope.
  *
@@ -441,8 +448,11 @@ export interface SlackCostOptions {
  * Choose the Claude cost-control options for a Slack conversation.
  * Public, non-shared channel discussions benefit the whole community,
  * so they use a bounded workspace scope instead of one participant's
- * personal daily cap. DMs, private/shared channels, reactions, and
- * unresolved privacy remain user-scoped.
+ * personal daily cap. The resulting shared-fate ceiling is intentional:
+ * it bounds total community spend, and exhaustion pauses all public-channel
+ * discussions rather than charging or blocking one participant personally.
+ * DMs, private/shared channels, reactions, and unresolved privacy remain
+ * user-scoped.
  */
 export async function buildSlackCostOptions(
   memberContext: Pick<MemberContext, 'workos_user'> | null | undefined,

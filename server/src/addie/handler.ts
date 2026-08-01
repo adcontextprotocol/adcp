@@ -9,7 +9,10 @@ import { createLogger } from '../logger.js';
 const logger = createLogger('addie-handler');
 import { getChannelInfo, sendChannelMessage } from '../slack/client.js';
 import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, type UserScopedToolsResult } from './claude-client.js';
-import { buildSlackCostOptions } from './claude-cost-tracker.js';
+import {
+  buildSlackCostOptions,
+  SLACK_COST_CHANNEL_INFO_MAX_AGE_MS,
+} from './claude-cost-tracker.js';
 import {
   sanitizeInput,
   validateOutput,
@@ -830,7 +833,9 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
     // Admin users get higher iteration limit for bulk operations.
     // Public home-workspace discussions use a bounded community budget;
     // private/shared channels and unresolved privacy stay user-scoped.
-    const channelInfo = await getChannelInfo(event.channel, { forceRefresh: true });
+    const channelInfo = await getChannelInfo(event.channel, {
+      maxAgeMs: SLACK_COST_CHANNEL_INFO_MAX_AGE_MS,
+    });
     const processOptions: import('./claude-client.js').ProcessMessageOptions = {
       requestContext,
       ...(userIsAdmin && { maxIterations: ADMIN_MAX_ITERATIONS }),

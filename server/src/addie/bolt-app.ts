@@ -34,7 +34,10 @@ const logger = createLogger('addie-bolt-app');
 import { sanitizeSpeakerName } from './prompts.js';
 import { captureEvent } from '../utils/posthog.js';
 import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, CERTIFICATION_MAX_ITERATIONS, type AddieResponse, type UserScopedToolsResult } from './claude-client.js';
-import { buildSlackCostOptions } from './claude-cost-tracker.js';
+import {
+  buildSlackCostOptions,
+  SLACK_COST_CHANNEL_INFO_MAX_AGE_MS,
+} from './claude-cost-tracker.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { SlackDatabase } from '../db/slack-db.js';
 import { EmailPreferencesDatabase } from '../db/email-preferences-db.js';
@@ -561,16 +564,19 @@ async function buildChannelContext(channelId: string): Promise<Partial<ThreadCon
 }
 
 /**
- * Resolve current Slack sharing metadata only when a channel message is
- * actually about to invoke Claude. This keeps cost-scope eligibility fresh
- * without bypassing the channel cache for messages the router ignores.
+ * Resolve recent Slack sharing metadata only when a channel message is
+ * actually about to invoke Claude. A seconds-scale cache age keeps
+ * cost-scope eligibility fresh without putting conversations.info on every
+ * busy-channel turn or fetching metadata for messages the router ignores.
  */
 async function buildCurrentChannelCostOptions(
   memberContext: MemberContext | null | undefined,
   slackUserId: string,
   channelId: string,
 ) {
-  const channelInfo = await getChannelInfo(channelId, { forceRefresh: true });
+  const channelInfo = await getChannelInfo(channelId, {
+    maxAgeMs: SLACK_COST_CHANNEL_INFO_MAX_AGE_MS,
+  });
   return buildSlackCostOptions(
     memberContext,
     slackUserId,

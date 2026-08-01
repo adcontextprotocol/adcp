@@ -55,6 +55,7 @@ const MAX_CHANNEL_CACHE_SIZE = 500;
 
 interface ChannelCacheEntry {
   channel: SlackChannel;
+  fetchedAt: number;
   expiresAt: number;
 }
 
@@ -749,20 +750,26 @@ export async function getSlackChannels(
 }
 
 /**
- * Get channel info by ID (cached for 30 minutes by default). Security
- * decisions that depend on current channel privacy/sharing should pass
- * `forceRefresh: true` so a recent Slack Connect change cannot reuse
- * stale metadata.
+ * Get channel info by ID (cached for 30 minutes by default). Callers that
+ * need fresher metadata without putting an uncached Slack request on every
+ * hot-path invocation can pass `maxAgeMs`; strict write-time security checks
+ * can still pass `forceRefresh: true`.
  */
 export async function getChannelInfo(
   channelId: string,
-  options?: { forceRefresh?: boolean },
+  options?: { forceRefresh?: boolean; maxAgeMs?: number },
 ): Promise<SlackChannel | null> {
   const now = Date.now();
 
   // Check cache
   const cached = channelCache.get(channelId);
-  if (!options?.forceRefresh && cached && cached.expiresAt > now) {
+  const maxAgeMs = Math.max(0, options?.maxAgeMs ?? CHANNEL_CACHE_TTL_MS);
+  if (
+    !options?.forceRefresh &&
+    cached &&
+    cached.expiresAt > now &&
+    now - cached.fetchedAt <= maxAgeMs
+  ) {
     return cached.channel;
   }
 
@@ -780,9 +787,11 @@ export async function getChannelInfo(
     }
 
     // Cache the result
+    const fetchedAt = Date.now();
     channelCache.set(channelId, {
       channel: response.channel,
-      expiresAt: now + CHANNEL_CACHE_TTL_MS,
+      fetchedAt,
+      expiresAt: fetchedAt + CHANNEL_CACHE_TTL_MS,
     });
 
     return response.channel;
