@@ -11,6 +11,7 @@ import {
   clearForcedTaskCompletions,
   getForcedTaskCompletions,
 } from '../../src/training-agent/comply-test-controller.js';
+import { registerSubmittedTask } from '../../src/training-agent/task-store.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
 
 const DEFAULT_CTX: TrainingContext = { mode: 'open' };
@@ -180,6 +181,51 @@ describe('force_task_completion', () => {
   });
 
   describe('replay semantics', () => {
+    it('returns INVALID_REQUEST when task registration races after directive setup', async () => {
+      const taskId = 'task_registration_race';
+      const request = {
+        buying_mode: 'brief',
+        brief: 'Curated video inventory',
+        account: ACCOUNT_A,
+        brand: BRAND_A,
+      };
+      const directive = await callTool(server, 'comply_test_controller', {
+        scenario: 'force_get_products_arm',
+        params: { arm: 'submitted', task_id: taskId },
+        account: ACCOUNT_A,
+        brand: BRAND_A,
+      });
+      expect(directive.success).toBe(true);
+      expect((await registerSubmittedTask(taskId, request, 'anonymous', 'get_products')).registered).toBe(true);
+
+      const raced = await callTool(server, 'get_products', request);
+      expect(raced.code).toBe('INVALID_REQUEST');
+      expect(raced.field).toBe('task_id');
+      expect(raced.message).toMatch(/already registered/);
+    });
+
+    it('rejects re-registering a completed task_id while the task is retained', async () => {
+      const taskId = 'task_retained_completion';
+      await registerSubmittedProductTask(server, taskId);
+      const completion = await callTool(server, 'comply_test_controller', {
+        scenario: 'force_task_completion',
+        params: { task_id: taskId, result: SAMPLE_RESULT },
+        account: ACCOUNT_A,
+        brand: BRAND_A,
+      });
+      expect(completion.success).toBe(true);
+
+      const duplicate = await callTool(server, 'comply_test_controller', {
+        scenario: 'force_get_products_arm',
+        params: { arm: 'submitted', task_id: taskId },
+        account: ACCOUNT_A,
+        brand: BRAND_A,
+      });
+      expect(duplicate.success).toBe(false);
+      expect(duplicate.error).toBe('INVALID_PARAMS');
+      expect(duplicate.error_detail).toMatch(/already identifies a completed task/);
+    });
+
     it('replays with identical params are idempotent no-ops', async () => {
       await registerSubmittedProductTask(server, 'task_replay');
       const args = {

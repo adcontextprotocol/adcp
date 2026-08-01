@@ -43,7 +43,7 @@ import { verifyGovernanceToken, mintRevokedDemoToken, mintWrongAudDemoToken } fr
 import { emitAccountNotificationWebhook, maybeEmitCompletionWebhook } from './webhooks.js';
 import { buildCatalog } from './product-factory.js';
 import { getAllSignals } from './signal-providers.js';
-import { completeRegisteredTask, pendingTaskKey, taskOwnerKey } from './task-store.js';
+import { completeRegisteredTask, getRegisteredTask, pendingTaskKey, taskOwnerKey } from './task-store.js';
 import { CreateMediaBuyResponseSchema, GetProductsResponseSchema } from '@adcp/sdk/schemas';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1600,11 +1600,11 @@ async function handleForceCreativePurge(session: SessionState, sessionKey: strin
  * idempotency cache wraps the handler, so a replayed create_media_buy returns the
  * cached submitted response without re-evaluating the empty directive slot.
  */
-function handleForceCreateMediaBuyArm(
+async function handleForceCreateMediaBuyArm(
   session: SessionState,
   principal: string,
   rawArgs: Record<string, unknown>,
-): object {
+): Promise<object> {
   const params = rawArgs.params as Record<string, unknown> | undefined;
   if (!params || typeof params !== 'object') {
     return {
@@ -1657,7 +1657,17 @@ function handleForceCreateMediaBuyArm(
     };
   }
 
+  const existingTask = await getRegisteredTask(taskId, rawArgs as ToolArgs, principal);
+  if (existingTask) {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: `task_id "${taskId}" already identifies a ${existingTask.status} task for this sandbox account; use a different task_id or wait for it to expire`,
+    };
+  }
+
   const directiveOwner = taskOwnerKey(principal, rawArgs);
+  FORCED_TASK_COMPLETIONS.delete(`${directiveOwner}\0${taskId}`);
   enforceMapCap(session.complyExtensions.forcedCreateMediaBuyArms, directiveOwner, 'forced create_media_buy arms');
   session.complyExtensions.forcedCreateMediaBuyArms.set(directiveOwner, {
     arm,
@@ -1674,7 +1684,7 @@ function handleForceCreateMediaBuyArm(
 
 /** Compatibility implementation that extends the SDK's submitted discovery
  * directive with the 3.2 rejected arm. */
-function handleForceGetProductsArm(session: SessionState, principal: string, rawArgs: Record<string, unknown>): object {
+async function handleForceGetProductsArm(session: SessionState, principal: string, rawArgs: Record<string, unknown>): Promise<object> {
   const params = rawArgs.params as Record<string, unknown> | undefined;
   const directiveOwner = taskOwnerKey(principal, rawArgs);
   if (params?.arm === 'submitted') {
@@ -1694,6 +1704,15 @@ function handleForceGetProductsArm(session: SessionState, principal: string, raw
         error_detail: 'message must be a string up to 2000 characters',
       };
     }
+    const existingTask = await getRegisteredTask(taskId, rawArgs as ToolArgs, principal);
+    if (existingTask) {
+      return {
+        success: false,
+        error: 'INVALID_PARAMS',
+        error_detail: `task_id "${taskId}" already identifies a ${existingTask.status} task for this sandbox account; use a different task_id or wait for it to expire`,
+      };
+    }
+    FORCED_TASK_COMPLETIONS.delete(`${directiveOwner}\0${taskId}`);
     enforceMapCap(session.complyExtensions.forcedGetProductsArms, directiveOwner, 'forced get_products arms');
     session.complyExtensions.forcedGetProductsArms.set(directiveOwner, {
       arm: 'submitted',

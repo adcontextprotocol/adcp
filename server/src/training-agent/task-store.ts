@@ -80,12 +80,25 @@ export function getTaskStore(): DeterministicInMemoryTaskStore | PostgresTaskSto
   return sdkTaskStore;
 }
 
+export async function getRegisteredTask(
+  taskId: string,
+  requestArgs: ToolArgs,
+  principal: string,
+): Promise<Task | null> {
+  const storedTaskId = internalTaskId(taskOwnerKey(principal, requestArgs as Record<string, unknown>), taskId);
+  return getTaskStore().getTask(storedTaskId);
+}
+
+export type RegisterSubmittedTaskResult =
+  | { registered: true }
+  | { registered: false; existingStatus?: Task['status'] };
+
 export async function registerSubmittedTask(
   taskId: string,
   requestArgs: ToolArgs,
   principal: string,
   toolName: 'get_products' | 'create_media_buy',
-): Promise<void> {
+): Promise<RegisterSubmittedTaskResult> {
   const taskStore = getTaskStore();
   const taskParams = { ttl: 15 * 60 * 1000, pollInterval: 1000 };
   const storedTaskId = internalTaskId(taskOwnerKey(principal, requestArgs as Record<string, unknown>), taskId);
@@ -93,12 +106,27 @@ export async function registerSubmittedTask(
     method: 'tools/call',
     params: { name: toolName, arguments: requestArgs },
   } as const;
-  if (taskStore instanceof DeterministicInMemoryTaskStore) {
-    await taskStore.createTaskWithId(storedTaskId, taskParams, 0, request);
-  } else {
-    await taskStore.createTask({ ...taskParams, taskId: storedTaskId }, 0, request);
+
+  if (taskStore instanceof PostgresTaskStore) await taskStore.cleanupExpired();
+  const existing = await taskStore.getTask(storedTaskId);
+  if (existing) return { registered: false, existingStatus: existing.status };
+
+  try {
+    if (taskStore instanceof DeterministicInMemoryTaskStore) {
+      await taskStore.createTaskWithId(storedTaskId, taskParams, 0, request);
+    } else {
+      await taskStore.createTask({ ...taskParams, taskId: storedTaskId }, 0, request);
+    }
+  } catch (error) {
+    const racedTask = await taskStore.getTask(storedTaskId);
+    if (racedTask) return { registered: false, existingStatus: racedTask.status };
+    if (error instanceof Error && error.message.includes('already exists')) {
+      return { registered: false };
+    }
+    throw error;
   }
   await taskStore.updateTaskStatus(storedTaskId, 'working', externalIdStatus(taskId, principal));
+  return { registered: true };
 }
 
 /** Complete a task when the compliance controller recognizes its deterministic ID. */

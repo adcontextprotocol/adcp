@@ -44,7 +44,7 @@ import type {
   CreativeManifest as AdcpCreativeManifest,
 } from '@adcp/sdk';
 import { CreativeManifestSchema } from '@adcp/sdk/schemas';
-import { clearTaskStore, getTaskStoreForPrincipal, pendingTaskKey, registerSubmittedTask, taskOwnerKey, type PrincipalTaskStore } from './task-store.js';
+import { getTaskStoreForPrincipal, pendingTaskKey, registerSubmittedTask, taskOwnerKey, type PrincipalTaskStore } from './task-store.js';
 export { clearTaskStore } from './task-store.js';
 /** Escape HTML special characters to prevent injection in generated HTML responses. */
 function escapeHtmlAttr(s: string): string {
@@ -3061,6 +3061,17 @@ function toolAvailableForServedAdcpVersion(toolName: string, servedAdcpVersion: 
   return !(toolName === 'validate_input' && servedAdcpVersion.startsWith('3.0'));
 }
 
+function submittedTaskIdConflict(taskId: string): { errors: TaskError[] } {
+  return {
+    errors: [{
+      code: 'INVALID_REQUEST',
+      message: `task_id "${taskId}" is already registered for this sandbox account. Use a different task_id or wait for the existing task to expire.`,
+      field: 'task_id',
+      recovery: 'correctable',
+    }] as TaskError[],
+  };
+}
+
 // ── Task handler implementations ──────────────────────────────────
 
 export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): Promise<GetProductsResponse | GetProductsRejectedResponse | GetProductsSubmittedResponse | { errors: TaskError[] }> {
@@ -3138,7 +3149,11 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
     ) {
       throw new Error('Pending submitted task cap reached (1000)');
     }
-    await registerSubmittedTask(directive.taskId, args, directivePrincipal, 'get_products');
+    const registration = await registerSubmittedTask(directive.taskId, args, directivePrincipal, 'get_products');
+    if (!registration.registered) {
+      session.complyExtensions.forcedGetProductsArms.delete(directiveOwner);
+      return submittedTaskIdConflict(directive.taskId);
+    }
     session.complyExtensions.pendingSubmittedTasks.set(pendingKey, {
       taskId: directive.taskId,
       toolName: 'get_products',
@@ -4538,7 +4553,11 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     ) {
       throw new Error('Pending submitted task cap reached (1000)');
     }
-    await registerSubmittedTask(directive.taskId, args, directivePrincipal, 'create_media_buy');
+    const registration = await registerSubmittedTask(directive.taskId, args, directivePrincipal, 'create_media_buy');
+    if (!registration.registered) {
+      session.complyExtensions.forcedCreateMediaBuyArms.delete(directiveOwner);
+      return submittedTaskIdConflict(directive.taskId);
+    }
     session.complyExtensions.pendingSubmittedTasks.set(pendingKey, {
       taskId: directive.taskId,
       toolName: 'create_media_buy',

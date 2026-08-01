@@ -255,6 +255,29 @@ describe('force_create_media_buy_arm', () => {
       expect(buy.task_id).toBe('task_second');
     });
 
+    it('rejects re-registering a task_id while its submitted task is retained', async () => {
+      const pkg = await getValidPackage(server);
+      const taskId = 'task_retained_media_buy';
+      await callTool(server, 'comply_test_controller', {
+        scenario: 'force_create_media_buy_arm',
+        params: { arm: 'submitted', task_id: taskId },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      const submitted = await callTool(server, 'create_media_buy', buildCreateMediaBuyArgs(pkg));
+      expect(submitted.status).toBe('submitted');
+
+      const duplicate = await callTool(server, 'comply_test_controller', {
+        scenario: 'force_create_media_buy_arm',
+        params: { arm: 'submitted', task_id: taskId },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect(duplicate.success).toBe(false);
+      expect(duplicate.error).toBe('INVALID_PARAMS');
+      expect(duplicate.error_detail).toMatch(/already identifies a working task/);
+    });
+
     it('replays the cached submitted response on idempotency_key replay (does not re-evaluate the empty directive slot)', async () => {
       const pkg = await getValidPackage(server);
 
