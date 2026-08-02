@@ -41,7 +41,7 @@ jobs:
           repositories: adcp
 
       - name: Checkout Repo
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
