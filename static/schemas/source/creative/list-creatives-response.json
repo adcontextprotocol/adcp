@@ -292,7 +292,7 @@
             }
           },
           {
-            "title": "Canonical 3.2 listed creative",
+            "title": "Listed creative (canonical format kind)",
             "required": [
               "format_kind"
             ],

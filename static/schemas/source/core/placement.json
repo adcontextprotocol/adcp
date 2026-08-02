@@ -44,7 +44,7 @@
     "format_ids": {
       "type": "array",
       "deprecated": true,
-      "description": "**DEPRECATED in 3.2. Removed in AdCP 4.0.** Legacy named-format placement narrowing. Use canonical `format_options`.",
+      "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Legacy named-format placement narrowing. Use canonical `format_options`.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
       },

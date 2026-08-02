@@ -40,7 +40,7 @@
     "format_ids": {
       "type": "array",
       "deprecated": true,
-      "description": "**DEPRECATED in 3.2. Removed in AdCP 4.0.** Legacy named-format compatibility path. New products MUST author canonical `format_options[]`; sellers MAY additionally project those declarations to format_ids for 3.x legacy buyers. When both fields are present they MUST describe the same underlying formats, and buyers MUST prefer format_options. Do not author a new product from format_ids alone.",
+      "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Legacy named-format compatibility path. New products MUST author canonical `format_options[]`; sellers MAY additionally project those declarations to format_ids for 3.x legacy buyers. When both fields are present they MUST describe the same underlying formats, and buyers MUST prefer format_options. Do not author a new product from format_ids alone.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
       }
@@ -604,12 +604,13 @@
   ],
   "anyOf": [
     {
-      "title": "Legacy Product (named-format reference)",
+      "title": "Named-format product",
+      "deprecated": true,
       "description": "Deprecated 3.x compatibility branch. Product references one or more named formats by structured format_id ({ agent_url, id }). New 3.2 products use format_options.",
       "required": ["format_ids"]
     },
     {
-      "title": "v2 Product (inline format declarations)",
+      "title": "Canonical-format product",
       "description": "Product carries one or more inline ProductFormatDeclarations, each narrowing a canonical format. This is the 3.1+ format-option path introduced by RFC #3305. A single-element `format_options` array is the 90% case; multi-element arrays declare that the product accepts any of the listed format options.",
       "required": ["format_options"]
     }

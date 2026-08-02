@@ -132,13 +132,14 @@
   },
   "oneOf": [
     {
-      "title": "Legacy creative (named-format reference)",
+      "title": "Named-format creative",
+      "deprecated": true,
       "description": "Deprecated 3.x compatibility branch using a structured named-format reference.",
       "required": ["format_id"],
       "not": { "required": ["format_kind"] }
     },
     {
-      "title": "Canonical creative",
+      "title": "Canonical-format creative",
       "description": "Creative declares the portable canonical contract it targets via `format_kind` and optional `format_option_ref`.",
       "required": ["format_kind"],
       "not": { "required": ["format_id"] }

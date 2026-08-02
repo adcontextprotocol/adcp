@@ -52,7 +52,7 @@
     "format_ids": {
       "type": "array",
       "deprecated": true,
-      "description": "**DEPRECATED in 3.2. Removed in AdCP 4.0.** Legacy named-format IDs supplied by an older 3.x buyer and echoed for compatibility.",
+      "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Legacy named-format IDs supplied by an older 3.x buyer and echoed for compatibility.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
       }

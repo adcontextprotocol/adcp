@@ -111,7 +111,8 @@
         },
         "format": {
           "$ref": "/schemas/core/format.json",
-          "description": "Deprecated 3.x named-format compatibility definition; use ProductFormatDeclaration canonical contracts for new integrations."
+          "description": "Deprecated 3.x named-format compatibility definition; use ProductFormatDeclaration canonical contracts for new integrations.",
+          "deprecated": true
         },
         "overlay": {
           "$ref": "/schemas/core/overlay.json",
@@ -1237,10 +1238,12 @@
         "list-creative-formats": {
           "request": {
             "$ref": "/schemas/media-buy/list-creative-formats-request.json",
+            "deprecated": true,
             "description": "Deprecated 3.x compatibility request. Sales agents publish canonical sellable formats through get_products Product.format_options[]."
           },
           "response": {
             "$ref": "/schemas/media-buy/list-creative-formats-response.json",
+            "deprecated": true,
             "description": "Deprecated 3.x compatibility response for legacy named formats. Not a sales-agent deliverability contract."
           }
         },
@@ -1362,10 +1365,12 @@
         "list-creative-formats": {
           "request": {
             "$ref": "/schemas/creative/list-creative-formats-request.json",
+            "deprecated": true,
             "description": "Deprecated 3.x compatibility request; use get_adcp_capabilities creative.supported_formats[]."
           },
           "response": {
             "$ref": "/schemas/creative/list-creative-formats-response.json",
+            "deprecated": true,
             "description": "Deprecated 3.x compatibility response for legacy named formats."
           }
         },

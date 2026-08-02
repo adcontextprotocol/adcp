@@ -58,14 +58,14 @@ test('explicitly deprecated schema nodes carry deprecated: true', () => {
   assert.deepEqual(missing, [], `Missing deprecated: true annotations:\n${missing.join('\n')}`);
 });
 
-test('codegen-facing format-variant titles remain stable', () => {
+test('codegen-facing format-variant titles use stable structural names', () => {
   const expectations = [
-    ['core/product.json', ['anyOf', 0, 'title'], 'v1 Product (named-format reference)'],
-    ['core/product.json', ['anyOf', 1, 'title'], 'v2 Product (inline format declarations)'],
-    ['core/creative-asset.json', ['oneOf', 0, 'title'], 'v1 creative (named-format reference)'],
-    ['core/creative-asset.json', ['oneOf', 1, 'title'], 'v2 creative (canonical format kind)'],
-    ['core/creative-manifest.json', ['oneOf', 0, 'title'], 'v1 manifest (named-format reference)'],
-    ['core/creative-manifest.json', ['oneOf', 1, 'title'], 'v2 manifest (canonical format kind)'],
+    ['core/product.json', ['anyOf', 0, 'title'], 'Named-format product'],
+    ['core/product.json', ['anyOf', 1, 'title'], 'Canonical-format product'],
+    ['core/creative-asset.json', ['oneOf', 0, 'title'], 'Named-format creative'],
+    ['core/creative-asset.json', ['oneOf', 1, 'title'], 'Canonical-format creative'],
+    ['core/creative-manifest.json', ['oneOf', 0, 'title'], 'Named-format manifest'],
+    ['core/creative-manifest.json', ['oneOf', 1, 'title'], 'Canonical-format manifest'],
     ['creative/list-creatives-response.json', ['properties', 'creatives', 'items', 'oneOf', 0, 'title'], 'Listed creative (named-format reference)'],
     ['creative/list-creatives-response.json', ['properties', 'creatives', 'items', 'oneOf', 1, 'title'], 'Listed creative (canonical format kind)'],
   ];
@@ -92,7 +92,7 @@ test('lifecycle status is metadata, not part of generated type names', () => {
   assert.deepEqual(offenders, [], `Lifecycle markers belong in metadata, not titles:\n${offenders.join('\n')}`);
 });
 
-test('format_ids is a deprecated 3.x-only field everywhere', () => {
+test('format_ids is deprecated in 3.2 and removed in 4.0 everywhere', () => {
   const offenders = [];
 
   for (const file of findJsonFiles(SOURCE_DIR)) {
@@ -102,7 +102,12 @@ test('format_ids is a deprecated 3.x-only field everywhere', () => {
       const formatIds = node.properties?.format_ids;
       if (formatIds === null || typeof formatIds !== 'object') return;
 
-      if (formatIds.deprecated !== true || !/removed in AdCP 4\.0/i.test(formatIds.description || '')) {
+      const description = formatIds.description || '';
+      if (
+        formatIds.deprecated !== true ||
+        !/deprecated in AdCP 3\.2/i.test(description) ||
+        !/removed in AdCP 4\.0/i.test(description)
+      ) {
         offenders.push(`${path.relative(SOURCE_DIR, file)}#${pointer || '/'}/properties/format_ids`);
       }
     });
@@ -111,6 +116,6 @@ test('format_ids is a deprecated 3.x-only field everywhere', () => {
   assert.deepEqual(
     offenders,
     [],
-    `Every format_ids field must be deprecated and scheduled for 4.0 removal:\n${offenders.join('\n')}`,
+    `Every format_ids field must be deprecated in 3.2 and scheduled for 4.0 removal:\n${offenders.join('\n')}`,
   );
 });

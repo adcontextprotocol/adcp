@@ -1,5 +1,5 @@
 ---
-"adcontextprotocol": patch
+"adcontextprotocol": minor
 ---
 
-Keep schema titles stable for generated type names, consistently annotate deprecated fields with `deprecated: true`, and schedule the legacy `format_ids` field for removal in AdCP 4.0.
+Use stable structural schema titles for generated type names, consistently annotate deprecated fields with `deprecated: true`, and deprecate exact `format_ids` fields in AdCP 3.2 ahead of their removal in AdCP 4.0.
