@@ -6,8 +6,8 @@
   "type": "object",
   "properties": {
     "requested": {
-      "$ref": "/schemas/core/demographic-predicate.json",
-      "description": "Canonical demographic predicate requested by the buyer."
+      "$ref": "/schemas/core/demographic-targeting-intent.json",
+      "description": "Canonical demographic predicate and determination constraints requested by the buyer."
     },
     "applied": {
       "$ref": "/schemas/core/demographic-predicate.json",
@@ -84,11 +84,71 @@
         }
       ]
     },
+    "applied_bases": {
+      "type": "array",
+      "description": "Effective user-level determination bases configured for this package after intersecting buyer accepted_bases, product supported_bases, and age_restriction. This is an auditable configuration readback, not proof that every impression used every listed basis.",
+      "items": {
+        "$ref": "/schemas/enums/age-determination-basis.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "applied_verification_methods": {
+      "type": "array",
+      "description": "Effective verification methods when applied_bases contains verified. A method name does not establish that a particular proof or claim was valid; runtime verification and claim entailment remain required.",
+      "items": {
+        "$ref": "/schemas/enums/age-verification-method.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
   },
   "required": ["requested", "applied", "equivalent", "execution"],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "requested": {
+            "properties": {
+              "age": { "required": ["accepted_bases"] }
+            }
+          }
+        }
+      },
+      "then": {
+        "required": ["applied_bases"]
+      }
+    },
+    {
+      "if": {
+        "required": ["applied_verification_methods"]
+      },
+      "then": {
+        "required": ["applied_bases"],
+        "properties": {
+          "applied_bases": {
+            "contains": { "const": "verified" }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "applied_bases": {
+            "contains": { "const": "verified" }
+          }
+        },
+        "required": ["applied_bases"]
+      },
+      "then": {
+        "required": ["applied_verification_methods"]
+      }
+    }
+  ],
   "not": {
     "anyOf": [
       { "required": ["difference_reason"] },

@@ -65,7 +65,9 @@ A product that accepts arbitrary bounds declares `continuous_bounds`:
       "max_supported_age": 65,
       "supports_unbounded_min": true,
       "supports_unbounded_max": true,
-      "unknown_handling": "selectable"
+      "unknown_handling": "selectable",
+      "supported_bases": ["verified", "declared", "inferred"],
+      "supported_verification_methods": ["world_id", "id_document"]
     }
   }
 }
@@ -97,6 +99,38 @@ That product cannot execute ages 21–35 exactly: `18–24 ∪ 25–34 ∪ 35–
 - `always_excluded`: only `include_unknown: false` is supported.
 - `always_included`: only `include_unknown: true` is supported.
 
+`supported_bases` declares how the product can determine age for an individual impression. Sellers publish only bases whose provenance they can preserve and audit; an opaque platform age bucket does not justify guessing a basis. When omitted, the product makes no basis-aware targeting commitment and rejects buyer requests that specify `accepted_bases`.
+
+### Acceptable age determination
+
+Buyers place determination constraints directly on the requested age range:
+
+```json
+{
+  "demographics": {
+    "age": {
+      "min": 25,
+      "max": 34,
+      "include_unknown": false,
+      "accepted_bases": ["verified", "declared"],
+      "accepted_verification_methods": ["world_id", "id_document"]
+    }
+  }
+}
+```
+
+Execution accepts only user-level bases:
+
+- `verified`: an applicable age claim was established through an accepted age-assurance method.
+- `declared`: the user supplied an age, date of birth, or threshold affirmation.
+- `inferred`: the user's age was predicted from behavior, attributes, or a model.
+
+`population_estimate` is deliberately invalid in targeting. Knowing that 80% of a product audience is 25–34 cannot establish whether the current user is 25–34.
+
+`accepted_bases` constrains provenance; it does not weaken the age predicate. The underlying claim must establish the entire requested interval. A declaration that a user is over 16 cannot establish ages 25–34, and a threshold-only World ID `age_over_18` claim cannot establish the upper bound of 34. Sellers reject these requests rather than silently broadening them.
+
+`age_restriction` remains an independent compliance floor and always wins. When `verification_required` is true, the effective basis is `verified`; its `accepted_methods` are intersected with `accepted_verification_methods`. An empty intersection is invalid. A World ID nullifier, `unique_human` claim, or Orb verification level alone never establishes age—the verified proof must contain an applicable `age_over_N` claim and pass the TMP verification, relying-party binding, freshness, and expiry checks.
+
 ### Signal-backed execution
 
 A product can declare the `signals` execution mode when it resolves canonical age intent through catalogued signals. The signal's authoritative definition must carry `demographic_predicate`; its name is never evidence of its bounds. Age-annotated signals also declare `restricted_attributes: ["age"]` so governance checks remain structural.
@@ -127,23 +161,35 @@ Whenever demographic targeting was requested or applied, package state includes 
 {
   "targeting_overlay": {
     "demographics": {
-      "age": { "min": 21, "max": 35, "include_unknown": false }
+      "age": {
+        "min": 21,
+        "include_unknown": false,
+        "accepted_bases": ["verified", "declared"],
+        "accepted_verification_methods": ["world_id"]
+      }
     }
   },
   "demographic_targeting_resolution": {
     "requested": {
-      "age": { "min": 21, "max": 35, "include_unknown": false }
+      "age": {
+        "min": 21,
+        "include_unknown": false,
+        "accepted_bases": ["verified", "declared"],
+        "accepted_verification_methods": ["world_id"]
+      }
     },
     "applied": {
-      "age": { "min": 21, "max": 35, "include_unknown": false }
+      "age": { "min": 21, "include_unknown": false }
     },
     "equivalent": true,
-    "execution": { "type": "continuous_bounds" }
+    "execution": { "type": "continuous_bounds" },
+    "applied_bases": ["verified"],
+    "applied_verification_methods": ["world_id"]
   }
 }
 ```
 
-`targeting_overlay.demographics` is applied state and matches the resolution's `applied` predicate. `equivalent` is always `true` for stored packages, and buyers should still recompute equality from `requested` and `applied`. A seller rejects any non-equivalent compilation; selecting a suggested predicate requires a new buyer request, which becomes the new auditable intent. The same core `Package` schema carries this readback in synchronous `CreateMediaBuySuccess` responses and terminal async completion artifacts; `get_media_buys` exposes the corresponding `PackageStatus` field. Updates use the normal full-overlay replacement semantics and refresh the resolution atomically.
+`targeting_overlay.demographics` preserves the booked predicate and buyer determination constraints. The resolution's `applied` field contains the canonical predicate actually applied; `equivalent` is always `true` for stored packages, and buyers should still recompute predicate equality from `requested` and `applied`. `applied_bases` and `applied_verification_methods` record the effective configured eligibility paths after intersecting buyer constraints, product capability, and age compliance. They do not assert which path every individual impression used. A seller rejects any non-equivalent or unsupported compilation. The same core `Package` schema carries this readback in synchronous `CreateMediaBuySuccess` responses and terminal async completion artifacts; `get_media_buys` exposes the corresponding `PackageStatus` field. Updates use the normal full-overlay replacement semantics and refresh the resolution atomically.
 
 ## Why Brief-Based Targeting?
 
@@ -428,7 +474,7 @@ Use for **legal compliance** requirements:
 - `id_document` - Government ID scan
 - `digital_id` - Verified digital identity credentials
 - `credit_card` - Payment card age gate
-- `world_id` - World ID orb verification
+- `world_id` - Applicable verified World ID age-threshold proof or credential. Orb/personhood verification alone is insufficient.
 
 **Note**: "Inferred" age (guessing from behavior/profile) is **not** accepted for regulatory compliance. Platforms declare their supported verification methods in `get_adcp_capabilities`.
 
@@ -775,7 +821,7 @@ For products where inventory and audience planning are inseparable, such as line
 ### age_restriction
 - **Description**: Require minimum age for compliance
 - **Format**: Object with `min` (required), `verification_required`, and `accepted_methods`
-- **Examples**: `{"min": 21, "verification_required": true}`, `{"min": 18, "accepted_methods": ["world_id"]}`
+- **Examples**: `{"min": 21, "verification_required": true}`, `{"min": 18, "verification_required": true, "accepted_methods": ["world_id"]}`
 - **Use cases**: Alcohol (21+), gambling (18+), cannabis regulations
 - **Note**: Platforms declare supported verification methods in `get_adcp_capabilities`
 

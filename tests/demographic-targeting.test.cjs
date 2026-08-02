@@ -20,6 +20,7 @@ async function compile(uri) {
 
 describe('portable demographic targeting', () => {
   let validatePredicate;
+  let validateIntent;
   let validateTargeting;
   let validateCapability;
   let validateResolution;
@@ -27,8 +28,9 @@ describe('portable demographic targeting', () => {
   let validateListing;
 
   before(async () => {
-    [validatePredicate, validateTargeting, validateCapability, validateResolution, validateDefinition, validateListing] = await Promise.all([
+    [validatePredicate, validateIntent, validateTargeting, validateCapability, validateResolution, validateDefinition, validateListing] = await Promise.all([
       compile('/schemas/core/demographic-predicate.json'),
+      compile('/schemas/core/demographic-targeting-intent.json'),
       compile('/schemas/core/targeting.json'),
       compile('/schemas/core/demographic-targeting-capability.json'),
       compile('/schemas/core/demographic-targeting-resolution.json'),
@@ -58,6 +60,53 @@ describe('portable demographic targeting', () => {
     }), false);
   });
 
+  it('keeps basis constraints inside targeting age and excludes population estimates from execution', () => {
+    assert.equal(validateIntent({
+      age: {
+        min: 25,
+        max: 34,
+        include_unknown: false,
+        accepted_bases: ['verified', 'declared'],
+        accepted_verification_methods: ['world_id', 'id_document'],
+      },
+    }), true, JSON.stringify(validateIntent.errors));
+
+    assert.equal(validateIntent({
+      age: {
+        min: 25,
+        max: 34,
+        include_unknown: false,
+        accepted_bases: ['population_estimate'],
+      },
+    }), false, 'aggregate evidence cannot be used for per-user execution');
+
+    assert.equal(validateIntent({
+      age: {
+        min: 25,
+        max: 34,
+        include_unknown: false,
+        accepted_bases: ['declared'],
+        accepted_verification_methods: ['world_id'],
+      },
+    }), false, 'verification methods require verified to be an accepted basis');
+  });
+
+  it('lets legal verification narrow demographic bases but rejects an empty intersection', () => {
+    assert.equal(validateTargeting({
+      demographics: {
+        age: { min: 21, include_unknown: false, accepted_bases: ['verified', 'declared'] },
+      },
+      age_restriction: { min: 21, verification_required: true, accepted_methods: ['world_id'] },
+    }), true, JSON.stringify(validateTargeting.errors));
+
+    assert.equal(validateTargeting({
+      demographics: {
+        age: { min: 21, include_unknown: false, accepted_bases: ['declared', 'inferred'] },
+      },
+      age_restriction: { min: 21, verification_required: true },
+    }), false, 'verification_required wins over permissive demographic bases');
+  });
+
   it('requires the execution detail promised by each product mode', () => {
     assert.equal(validateCapability({
       age: {
@@ -69,6 +118,44 @@ describe('portable demographic targeting', () => {
         unknown_handling: 'selectable',
       },
     }), true);
+
+    assert.equal(validateCapability({
+      age: {
+        execution_modes: ['continuous_bounds'],
+        min_supported_age: 18,
+        max_supported_age: 65,
+        supports_unbounded_min: true,
+        supports_unbounded_max: true,
+        unknown_handling: 'selectable',
+        supported_bases: ['verified', 'declared'],
+        supported_verification_methods: ['world_id'],
+      },
+    }), true, JSON.stringify(validateCapability.errors));
+
+    assert.equal(validateCapability({
+      age: {
+        execution_modes: ['continuous_bounds'],
+        min_supported_age: 18,
+        max_supported_age: 65,
+        supports_unbounded_min: true,
+        supports_unbounded_max: true,
+        unknown_handling: 'selectable',
+        supported_bases: ['declared'],
+        supported_verification_methods: ['world_id'],
+      },
+    }), false, 'verification methods require verified product support');
+
+    assert.equal(validateCapability({
+      age: {
+        execution_modes: ['continuous_bounds'],
+        min_supported_age: 18,
+        max_supported_age: 65,
+        supports_unbounded_min: true,
+        supports_unbounded_max: true,
+        unknown_handling: 'selectable',
+        supported_bases: ['verified'],
+      },
+    }), false, 'verified product support must name its available methods');
 
     assert.equal(validateCapability({
       age: {
@@ -153,6 +240,41 @@ describe('portable demographic targeting', () => {
 
     assert.equal(validateResolution({ ...base, execution: { type: 'continuous_bounds' } }), true);
     assert.equal(validateResolution({
+      requested: {
+        age: {
+          min: 21,
+          max: 35,
+          include_unknown: false,
+          accepted_bases: ['verified', 'declared'],
+          accepted_verification_methods: ['world_id'],
+        },
+      },
+      applied: requested,
+      equivalent: true,
+      execution: { type: 'continuous_bounds' },
+      applied_bases: ['verified'],
+      applied_verification_methods: ['world_id'],
+    }), true, JSON.stringify(validateResolution.errors));
+    assert.equal(validateResolution({
+      requested: {
+        age: { min: 21, max: 35, include_unknown: false, accepted_bases: ['declared'] },
+      },
+      applied: requested,
+      equivalent: true,
+      execution: { type: 'continuous_bounds' },
+    }), false, 'basis-constrained intent requires applied basis readback');
+    assert.equal(validateResolution({
+      ...base,
+      execution: { type: 'continuous_bounds' },
+      applied_bases: ['declared'],
+      applied_verification_methods: ['world_id'],
+    }), false, 'verification methods cannot accompany a non-verified applied basis');
+    assert.equal(validateResolution({
+      ...base,
+      execution: { type: 'continuous_bounds' },
+      applied_bases: ['verified'],
+    }), false, 'verified readback must name its effective methods');
+    assert.equal(validateResolution({
       ...base,
       execution: { type: 'enumerated_intervals', interval_ids: ['age_21_24', 'age_25_34', 'age_35'] },
     }), true);
@@ -165,6 +287,25 @@ describe('portable demographic targeting', () => {
         signal_refs: [{ scope: 'data_provider', data_provider_domain: 'pinnacle-data.example', signal_id: 'adults_25_34' }],
       },
     }), true);
+  });
+
+  it('records the negative entailment vector for threshold-only verification', () => {
+    const worldIdThresholdEntails = (predicate, threshold) => (
+      predicate.min === threshold && predicate.max === undefined && predicate.include_unknown === false
+    );
+
+    assert.equal(worldIdThresholdEntails({ min: 21, include_unknown: false }, 21), true);
+    assert.equal(worldIdThresholdEntails({ min: 25, max: 34, include_unknown: false }, 18), false);
+    assert.equal(worldIdThresholdEntails({ min: 18, max: 34, include_unknown: false }, 18), false);
+  });
+
+  it('documents World ID compliance without a personhood-only or fail-open path', () => {
+    const docs = fs.readFileSync(path.join(__dirname, '..', 'docs', 'media-buy', 'advanced-topics', 'targeting.mdx'), 'utf8');
+
+    assert.doesNotMatch(docs, /World ID orb verification/);
+    assert.match(docs, /Orb\/personhood verification alone is insufficient/);
+    assert.doesNotMatch(docs, /\{"min": 18, "accepted_methods": \["world_id"\]\}/);
+    assert.match(docs, /\{"min": 18, "verification_required": true, "accepted_methods": \["world_id"\]\}/);
   });
 
   it('rejects every non-equivalent or self-approved stored resolution', () => {
@@ -191,7 +332,7 @@ describe('portable demographic targeting', () => {
     const packageSchema = readSchema('/schemas/core/package.json');
     const getMediaBuys = readSchema('/schemas/media-buy/get-media-buys-response.json');
 
-    assert.equal(targeting.properties.demographics.$ref, '/schemas/core/demographic-predicate.json');
+    assert.equal(targeting.properties.demographics.$ref, '/schemas/core/demographic-targeting-intent.json');
     assert.equal(product.properties.demographic_targeting.$ref, '/schemas/core/demographic-targeting-capability.json');
     assert.equal(capabilities.properties.media_buy.properties.execution.properties.targeting.properties.demographics.properties.supported.type, 'boolean');
     assert.equal(packageSchema.properties.demographic_targeting_resolution.$ref, '/schemas/core/demographic-targeting-resolution.json');

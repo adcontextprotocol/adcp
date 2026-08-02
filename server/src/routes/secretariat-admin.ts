@@ -16,7 +16,7 @@ import { serveHtmlWithConfig } from "../utils/html-config.js";
 import * as secretariatDb from "../db/secretariat-actions-db.js";
 import type { SecretariatActionStatus } from "../db/secretariat-actions-db.js";
 import { ALLOWED_KINDS } from "../addie/jobs/secretariat-executor.js";
-import { resolveGitHubToken } from "../addie/jobs/github-app-token.js";
+import { getQueuesSnapshot } from "../addie/jobs/secretariat-queues.js";
 
 const logger = createLogger("secretariat-admin-routes");
 
@@ -25,9 +25,6 @@ const VALID_STATUSES: SecretariatActionStatus[] = [
 ];
 
 const DEFAULT_REPO = 'adcontextprotocol/adcp';
-const NEEDS_WG_REVIEW_LABEL = 'needs-wg-review';
-const WATCHING_CACHE_TTL_MS = 5 * 60_000;
-const API_TIMEOUT_MS = 10_000;
 
 function isValidUuid(id: string): boolean {
   return uuidValidate(id);
@@ -36,131 +33,6 @@ function isValidUuid(id: string): boolean {
 /** Who made this decision, for the audit trail. */
 function resolveDecider(req: { user?: { email?: string } }): string {
   return req.user?.email ?? 'unknown-admin';
-}
-
-async function ghFetch(token: string, url: string): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
-  try {
-    return await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/vnd.github.v3+json',
-        'User-Agent': 'aao-secretariat/1.0',
-      },
-    });
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-interface GhPullRequest {
-  number: number;
-  title: string;
-  user: { login: string } | null;
-  created_at: string;
-  draft?: boolean;
-  requested_reviewers?: unknown[];
-  requested_teams?: unknown[];
-  html_url: string;
-}
-
-interface GhIssue {
-  number: number;
-  created_at: string;
-  pull_request?: unknown;
-}
-
-export interface WatchingPr {
-  number: number;
-  title: string;
-  author: string;
-  ageDays: number;
-  reviewState: 'draft' | 'awaiting_reviewers' | 'no_reviewers_requested';
-  url: string;
-}
-
-export interface WatchingSnapshot {
-  openPrs: WatchingPr[];
-  needsWgReview: {
-    count: number;
-    ageBuckets: { under7d: number; d7to14: number; over14d: number };
-  };
-  fetchedAt: string;
-}
-
-function ageInDays(createdAt: string): number {
-  return Math.floor((Date.now() - new Date(createdAt).getTime()) / (24 * 60 * 60 * 1000));
-}
-
-async function buildWatchingSnapshot(repo: string): Promise<WatchingSnapshot | null> {
-  const token = await resolveGitHubToken();
-  if (!token) {
-    logger.warn('No GitHub credential available; cannot build watching snapshot');
-    return null;
-  }
-
-  const [prsResp, issuesResp] = await Promise.all([
-    ghFetch(token, `https://api.github.com/repos/${repo}/pulls?state=open&per_page=100`),
-    ghFetch(
-      token,
-      `https://api.github.com/repos/${repo}/issues?state=open&labels=${encodeURIComponent(NEEDS_WG_REVIEW_LABEL)}&per_page=100`
-    ),
-  ]);
-
-  if (!prsResp.ok || !issuesResp.ok) {
-    logger.warn({ prsStatus: prsResp.status, issuesStatus: issuesResp.status, repo }, 'Watching snapshot: GitHub lookup failed');
-    return null;
-  }
-
-  const pulls = (await prsResp.json()) as GhPullRequest[];
-  const issues = (await issuesResp.json()) as GhIssue[];
-
-  const openPrs: WatchingPr[] = pulls.map((pr) => {
-    let reviewState: WatchingPr['reviewState'] = 'no_reviewers_requested';
-    if (pr.draft) reviewState = 'draft';
-    else if ((pr.requested_reviewers?.length ?? 0) > 0 || (pr.requested_teams?.length ?? 0) > 0) {
-      reviewState = 'awaiting_reviewers';
-    }
-    return {
-      number: pr.number,
-      title: pr.title,
-      author: pr.user?.login ?? 'unknown',
-      ageDays: ageInDays(pr.created_at),
-      reviewState,
-      url: pr.html_url,
-    };
-  });
-
-  // The issues endpoint returns PRs too; exclude them from the WG-review queue.
-  const wgReviewIssues = issues.filter((i) => !i.pull_request);
-  const ageBuckets = { under7d: 0, d7to14: 0, over14d: 0 };
-  for (const issue of wgReviewIssues) {
-    const age = ageInDays(issue.created_at);
-    if (age < 7) ageBuckets.under7d++;
-    else if (age <= 14) ageBuckets.d7to14++;
-    else ageBuckets.over14d++;
-  }
-
-  return {
-    openPrs,
-    needsWgReview: { count: wgReviewIssues.length, ageBuckets },
-    fetchedAt: new Date().toISOString(),
-  };
-}
-
-let watchingCache: { snapshot: WatchingSnapshot; expiresAtMs: number } | null = null;
-
-async function getWatchingSnapshot(repo: string): Promise<WatchingSnapshot | null> {
-  if (watchingCache && watchingCache.expiresAtMs > Date.now()) {
-    return watchingCache.snapshot;
-  }
-  const snapshot = await buildWatchingSnapshot(repo);
-  if (snapshot) {
-    watchingCache = { snapshot, expiresAtMs: Date.now() + WATCHING_CACHE_TTL_MS };
-  }
-  return snapshot;
 }
 
 export function createSecretariatAdminRouter(): { pageRouter: Router; apiRouter: Router } {
@@ -202,17 +74,17 @@ export function createSecretariatAdminRouter(): { pageRouter: Router; apiRouter:
     }
   });
 
-  // GET /api/admin/secretariat/watching
+  // GET /api/admin/secretariat/queues
   // NOTE: defined before /actions/:id-shaped routes don't collide since path differs.
-  apiRouter.get("/watching", requireAuth, requireAdmin, async (_req, res) => {
+  apiRouter.get("/queues", requireAuth, requireAdmin, async (_req, res) => {
     try {
-      const snapshot = await getWatchingSnapshot(DEFAULT_REPO);
+      const snapshot = await getQueuesSnapshot(DEFAULT_REPO);
       if (!snapshot) {
         return res.status(502).json({ error: "GitHub lookup unavailable" });
       }
       res.json(snapshot);
     } catch (error) {
-      logger.error({ err: error }, "Error building watching snapshot");
+      logger.error({ err: error }, "Error building queues snapshot");
       res.status(500).json({ error: "Internal server error" });
     }
   });

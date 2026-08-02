@@ -34,7 +34,10 @@ const logger = createLogger('addie-bolt-app');
 import { sanitizeSpeakerName } from './prompts.js';
 import { captureEvent } from '../utils/posthog.js';
 import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, CERTIFICATION_MAX_ITERATIONS, type AddieResponse, type UserScopedToolsResult } from './claude-client.js';
-import { buildSlackCostScope } from './claude-cost-tracker.js';
+import {
+  buildSlackCostOptions,
+  SLACK_COST_CHANNEL_INFO_MAX_AGE_MS,
+} from './claude-cost-tracker.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { SlackDatabase } from '../db/slack-db.js';
 import { EmailPreferencesDatabase } from '../db/email-preferences-db.js';
@@ -558,6 +561,35 @@ async function buildChannelContext(channelId: string): Promise<Partial<ThreadCon
   }
 
   return context;
+}
+
+/**
+ * Resolve recent Slack sharing metadata only when a channel message is
+ * actually about to invoke Claude. A seconds-scale cache age keeps
+ * cost-scope eligibility fresh without putting conversations.info on every
+ * busy-channel turn or fetching metadata for messages the router ignores.
+ */
+async function buildCurrentChannelCostOptions(
+  memberContext: MemberContext | null | undefined,
+  slackUserId: string,
+  channelId: string,
+) {
+  const channelInfo = await getChannelInfo(channelId, {
+    maxAgeMs: SLACK_COST_CHANNEL_INFO_MAX_AGE_MS,
+  });
+  return buildSlackCostOptions(
+    memberContext,
+    slackUserId,
+    channelInfo
+      ? {
+          channelId,
+          isPrivate: channelInfo.is_private,
+          isShared: channelInfo.is_shared,
+          isOrgShared: channelInfo.is_org_shared,
+          isPendingExtShared: channelInfo.is_pending_ext_shared,
+        }
+      : undefined,
+  );
 }
 
 let addieDb: AddieDatabase | null = null;
@@ -1739,7 +1771,7 @@ async function handleUserMessage({
         : {}),
     slackUserId: userId,
     threadId: thread.thread_id,
-    costScope: await buildSlackCostScope(memberContext, userId),
+    ...(await buildSlackCostOptions(memberContext, userId)),
     currentSpeakerName: resolveSpeakerDisplayName(memberContext),
   };
 
@@ -2574,16 +2606,15 @@ async function handleAppMention({
       : undefined;
 
   // Admin users get higher iteration limit for bulk operations.
-  // Cost cap (#2790 / #2950): prefer WorkOS user ID; fall back to a
-  // namespaced Slack ID so unmapped users still get a bounded
-  // daily Addie spend budget.
+  // Public home-workspace discussions use a bounded community budget;
+  // private/shared channels remain user-scoped.
   const processOptions = {
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
     ...(mentionModelOverride ? { modelOverride: mentionModelOverride } : {}),
     requestContext,
     slackUserId: userId,
     threadId: thread.thread_id,
-    costScope: await buildSlackCostScope(memberContext, userId),
+    ...(await buildCurrentChannelCostOptions(memberContext, userId, channelId)),
     currentSpeakerName: resolveSpeakerDisplayName(mentionMemberContext ?? memberContext),
   };
 
@@ -3556,8 +3587,8 @@ async function handleDirectMessage(
     .filter(Boolean)
     .join('\n\n');
 
-  // Admin users get higher iteration limit for bulk operations.
-  // Cost cap scope follows the mention-handler pattern above.
+  // Admin users get higher iteration limit for bulk operations. DMs
+  // remain user-scoped.
   const processOptions = {
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
     ...(routedTools.requiresPrecision
@@ -3568,7 +3599,7 @@ async function handleDirectMessage(
     requestContext,
     slackUserId: userId,
     threadId: thread.thread_id,
-    costScope: await buildSlackCostScope(memberContext, userId),
+    ...(await buildSlackCostOptions(memberContext, userId)),
     currentSpeakerName: resolveSpeakerDisplayName(memberContext),
   };
 
@@ -3949,15 +3980,15 @@ async function handleActiveThreadReply({
       ? ModelConfig.depth
       : undefined;
 
-  // Admin users get higher iteration limit.
-  // Cost cap scope follows the mention-handler pattern above.
+  // Admin users get higher iteration limit. Public home-workspace
+  // discussions use a bounded community budget; other channels stay user-scoped.
   const processOptions = {
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
     ...(threadModelOverride ? { modelOverride: threadModelOverride } : {}),
     requestContext,
     slackUserId: userId,
     threadId: thread.thread_id,
-    costScope: await buildSlackCostScope(memberContext, userId),
+    ...(await buildCurrentChannelCostOptions(memberContext, userId, channelId)),
     currentSpeakerName: resolveSpeakerDisplayName(memberContext),
   };
 
@@ -4547,14 +4578,15 @@ async function handleChannelMessage({
         ? ModelConfig.depth
         : undefined;
     const effectiveModel = channelModelOverride ?? AddieModelConfig.chat;
-    // Cost cap scope follows the mention-handler pattern above.
+    // Public home-workspace discussions use a bounded community budget;
+    // private/shared channels stay user-scoped.
     const processOptions = {
       ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
       ...(channelModelOverride ? { modelOverride: channelModelOverride } : {}),
       requestContext,
       slackUserId: userId,
       threadId: thread.thread_id,
-      costScope: await buildSlackCostScope(memberContext, userId),
+      ...(await buildCurrentChannelCostOptions(memberContext, userId, channelId)),
       currentSpeakerName: resolveSpeakerDisplayName(memberContext),
     };
     const response = await claudeClient.processMessage(messageText, undefined, filteredTools, undefined, processOptions);
@@ -5353,13 +5385,13 @@ async function handleReactionAdded({
   const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, reactingUserId, thread.thread_id, channelContext);
 
   // Admin users get higher iteration limit for bulk operations.
-  // Cost cap scope follows the mention-handler pattern above.
+  // Reactions can confirm tool actions, so they remain user-scoped.
   const processOptions = {
     ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
     requestContext,
     slackUserId: reactingUserId,
     threadId: thread.thread_id,
-    costScope: await buildSlackCostScope(memberContext, reactingUserId),
+    ...(await buildSlackCostOptions(memberContext, reactingUserId)),
     currentSpeakerName: resolveSpeakerDisplayName(memberContext),
   };
 

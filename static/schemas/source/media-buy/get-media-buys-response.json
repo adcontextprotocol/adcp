@@ -273,7 +273,7 @@
                 },
                 "demographic_targeting_resolution": {
                   "$ref": "/schemas/core/demographic-targeting-resolution.json",
-                  "description": "Lossless requested-versus-applied demographic readback. Sellers MUST include this whenever demographic targeting was requested or applied. targeting_overlay.demographics represents applied state and MUST equal this object's applied predicate."
+                  "description": "Lossless requested-versus-applied demographic readback. Sellers MUST include this whenever demographic targeting was requested or applied. targeting_overlay.demographics preserves the buyer predicate and determination constraints; this object's applied predicate and applied_bases report the effective booked state."
                 },
                 "start_time": {
                   "type": "string",

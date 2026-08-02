@@ -8,6 +8,7 @@ const path = require('node:path');
 const MCP_PROTOCOL_VERSION = '2026-07-28';
 const JSON_SCHEMA_DRAFT_07 = 'http://json-schema.org/draft-07/schema#';
 const JSON_SCHEMA_2020_12 = 'https://json-schema.org/draft/2020-12/schema';
+const SCHEMA_ORIGIN = 'https://adcontextprotocol.org';
 const MAX_SCHEMA_DEPTH = 64;
 const MAX_SCHEMA_OBJECTS = 10_000;
 const MAX_SCHEMA_BYTES = 4 * 1024 * 1024;
@@ -526,7 +527,7 @@ function projectSourceSchema(schema, rootFile, sourceDir, urlVersion, relativePa
   const compact = compactDraft07Schema(schema, rootFile, sourceDir);
   const projected = projectDraft07Node(compact);
   projected.$schema = JSON_SCHEMA_2020_12;
-  projected.$id = `/schemas/${urlVersion}/mcp/${MCP_PROTOCOL_VERSION}/${relativePath}`;
+  projected.$id = `${SCHEMA_ORIGIN}/schemas/${urlVersion}/mcp/${MCP_PROTOCOL_VERSION}/${relativePath}`;
   delete projected._bundled;
 
   const externalRefs = collectExternalRefs(projected);
