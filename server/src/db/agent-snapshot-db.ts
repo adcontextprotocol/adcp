@@ -363,6 +363,7 @@ export class AgentSnapshotDatabase {
     }
     if (filters.operations?.length) {
       params.push(filters.operations);
+      entryConditions.push(`entry ? 'capability_id'`);
       entryConditions.push(`entry->'operations' ?| $${params.length}::text[]`);
     }
 

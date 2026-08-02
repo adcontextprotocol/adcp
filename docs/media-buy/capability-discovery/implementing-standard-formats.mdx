@@ -14,7 +14,9 @@ This guide is for sales agents declaring the creative contracts their inventory 
 | What can this seller deliver for a product? | That product's closed `format_options[]` set |
 | Which creative agent can produce or validate it? | `get_adcp_capabilities.creative.supported_formats[]` |
 
-The seller declares deliverability; it does not nominate a creative producer. Buyers can use the AAO registry to find creative agents whose self-declared canonical envelope satisfies the product declaration.
+The seller declares deliverability; it does not nominate a creative producer. Buyers can use the AgenticAdvertising.org registry to find creative agents whose self-declared canonical envelope satisfies the product declaration.
+
+Zero registry matches is a valid result: it means no protocol-exposed build, validation, or preview service currently advertises that contract. The buyer may still supply an already-conforming finished manifest or use a seller-returned preview, but MUST NOT infer a renderer from the publisher or product format declaration.
 
 ## Standard formats
 
@@ -67,7 +69,7 @@ When a product sells a publisher-catalog format, repeat its namespace and canoni
 }
 ```
 
-Resolve the publisher's `/.well-known/adagents.json` first. If the publisher has not adopted AdCP, use an explicitly identified AAO community mirror. Do not promote one sales agent's product declaration into a publisher fact.
+Resolve the publisher's `/.well-known/adagents.json` first. If the publisher has not adopted AdCP, use an explicitly identified AgenticAdvertising.org community mirror. Do not promote one sales agent's product declaration into a publisher fact.
 
 ## Custom formats
 

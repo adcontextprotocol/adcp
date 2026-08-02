@@ -1827,6 +1827,52 @@ describe('validate_input handler', () => {
     ]);
   });
 
+  it('routes validation through an advertised capability ID', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      manifest: {
+        format_kind: 'image',
+        assets: {
+          image_main: {
+            asset_type: 'image',
+            url: 'https://cdn.acme.example/mrec.png',
+            width: 300,
+            height: 250,
+          },
+        },
+      },
+      targets: [{ kind: 'capability', id: 'training_image_generation' }],
+    });
+
+    expect(result.results).toEqual([
+      { target: { kind: 'capability', id: 'training_image_generation' }, result_kind: 'validated_pass' },
+    ]);
+  });
+
+  it('fails closed for an unknown validation capability ID', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      manifest: {
+        format_kind: 'image',
+        assets: {
+          image_main: {
+            asset_type: 'image',
+            url: 'https://cdn.acme.example/mrec.png',
+            width: 300,
+            height: 250,
+          },
+        },
+      },
+      targets: [{ kind: 'capability', id: 'unknown_image_validator' }],
+    });
+
+    expect(result.results[0]).toMatchObject({
+      target: { kind: 'capability', id: 'unknown_image_validator' },
+      result_kind: 'validated_fail',
+      violations: [{ rule: 'capability_target_supported', field: 'targets[].id' }],
+    });
+  });
+
   it('caps validate_input targets before third-party fan-out', async () => {
     const result = await executeTrainingAgentTool('validate_input', {
       adcp_version: CURRENT_ADCP_VERSION,
@@ -5349,6 +5395,45 @@ describe('canonical creative build capabilities', () => {
     expect(result.code).toBe('FORMAT_NOT_SUPPORTED');
     expect(result.field).toBe('target_capability_id');
     expect(result.recovery).toBe('correctable');
+  });
+
+  it('rejects more than 50 canonical build targets instead of truncating', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'build_creative', {
+      account: { brand: { domain: 'build-canonical.example' }, operator: 'build-canonical.example' },
+      target_capability_ids: Array.from({ length: 51 }, (_, index) => `capability_${index}`),
+      message: 'Create many outputs.',
+    });
+
+    expect(result).toMatchObject({
+      code: 'INVALID_REQUEST',
+      field: 'target_capability_ids',
+      recovery: 'correctable',
+    });
+  });
+
+  it('routes previews through advertised capability IDs and rejects unknown routes', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const manifest = {
+      format_kind: 'image',
+      assets: {
+        image_main: { asset_type: 'image', url: 'https://cdn.acme.example/mrec.png' },
+      },
+    };
+
+    const success = await simulateCallTool(server, 'preview_creative', {
+      request_type: 'single',
+      target_capability_id: 'training_image_generation',
+      creative_manifest: manifest,
+    });
+    expect(success.result.response_type).toBe('single');
+
+    const failure = await simulateCallTool(server, 'preview_creative', {
+      request_type: 'single',
+      target_capability_id: 'unknown_image_preview',
+      creative_manifest: manifest,
+    });
+    expect(failure.result.code).toBe('FORMAT_NOT_SUPPORTED');
   });
 
   it('rejects unimplemented canonical capabilities instead of emitting invalid manifests', async () => {

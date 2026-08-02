@@ -103,7 +103,7 @@ type WholesaleFeedMeta = {
   cache_scope: 'public' | 'account';
 };
 type ValidateInputTarget = {
-  kind: 'canonical' | 'product' | 'third_party_format';
+  kind: 'canonical' | 'product' | 'capability' | 'third_party_format';
   id: string;
 };
 type ValidateInputArgs = ToolArgs & {
@@ -2938,10 +2938,10 @@ const TOOLS = [
         account: ACCOUNT_REF_SCHEMA,
         creative_id: { type: 'string', description: 'Reference to a synced creative (ad server mode)' },
         creative_manifest: { type: 'object', description: 'Inline manifest with assets (transformation mode)' },
-        target_capability_id: { type: 'string', description: 'Canonical output capability ID from creative.supported_formats' },
-        target_capability_ids: { type: 'array', items: { type: 'string' }, description: 'Multiple canonical output capability IDs' },
+        target_capability_id: { type: 'string', pattern: '^[a-zA-Z0-9_-]+$', description: 'Canonical output capability ID from creative.supported_formats' },
+        target_capability_ids: { type: 'array', minItems: 1, maxItems: 50, uniqueItems: true, items: { type: 'string', pattern: '^[a-zA-Z0-9_-]+$' }, description: 'Multiple canonical output capability IDs' },
         target_format_id: { type: 'object', properties: { agent_url: { type: 'string' }, id: { type: 'string' } }, description: 'Deprecated 3.x named-format selector' },
-        target_format_ids: { type: 'array', items: { type: 'object', properties: { agent_url: { type: 'string' }, id: { type: 'string' } } }, description: 'Deprecated 3.x named-format selectors' },
+        target_format_ids: { type: 'array', minItems: 1, maxItems: 50, items: { type: 'object', properties: { agent_url: { type: 'string' }, id: { type: 'string' } } }, description: 'Deprecated 3.x named-format selectors' },
         brand: { type: 'object', properties: { domain: { type: 'string' } }, description: 'Brand reference for identity resolution' },
         media_buy_id: { type: 'string', description: 'Media buy context for placement-level tags' },
         package_id: { type: 'string', description: 'Package context for placement-level tags' },
@@ -2963,8 +2963,9 @@ const TOOLS = [
         account: ACCOUNT_REF_SCHEMA,
         request_type: { type: 'string', enum: ['single', 'batch', 'variant'], description: 'Preview mode: single, batch, or variant' },
         creative_manifest: { type: 'object', description: 'Creative manifest with assets to preview (required for single mode)' },
+        target_capability_id: { type: 'string', pattern: '^[a-zA-Z0-9_-]+$', description: 'Preview capability ID from creative.supported_formats' },
         creative_id: { type: 'string', description: 'Creative identifier for context (variant mode)' },
-        requests: { type: 'array', description: 'Array of preview requests for batch mode (1-50 items)', minItems: 1, maxItems: 50, items: { type: 'object', properties: { creative_manifest: { type: 'object' } }, required: ['creative_manifest'] } },
+        requests: { type: 'array', description: 'Array of preview requests for batch mode (1-50 items)', minItems: 1, maxItems: 50, items: { type: 'object', properties: { target_capability_id: { type: 'string', pattern: '^[a-zA-Z0-9_-]+$' }, creative_manifest: { type: 'object' }, creative_id: { type: 'string' } } } },
         variant_id: { type: 'string', description: 'Variant ID from get_creative_delivery (required for variant mode)' },
         output_format: { type: 'string', enum: ['url', 'html', 'both'], description: 'Preview output format' },
         quality: { type: 'string', enum: ['draft', 'production'] },
@@ -4397,6 +4398,41 @@ function validateCanonicalTarget(
     : { target, result_kind: 'validated_pass' };
 }
 
+function validateCapabilityTarget(
+  target: ValidateInputTarget,
+  manifest: NonNullable<ValidateInputArgs['manifest']>,
+): ValidateInputResult {
+  const capability = supportedCanonicalBuildCapability(target.id);
+  if (!capability) {
+    return {
+      target,
+      result_kind: 'validated_fail',
+      violations: [{
+        rule: 'capability_target_supported',
+        field: 'targets[].id',
+        expected: SUPPORTED_CANONICAL_BUILD_CAPABILITIES.map(item => item.capabilityId),
+        predicted: target.id,
+      }],
+    };
+  }
+  if (manifest.format_kind !== capability.formatKind) {
+    return {
+      target,
+      result_kind: 'validated_fail',
+      violations: [{
+        rule: 'format_kind',
+        field: 'manifest.format_kind',
+        expected: capability.formatKind,
+        predicted: manifest.format_kind,
+      }],
+    };
+  }
+  const violations = validateManifestSlots(manifest, capability.slots);
+  return violations.length > 0
+    ? { target, result_kind: 'validated_fail', violations }
+    : { target, result_kind: 'validated_pass' };
+}
+
 function validateProductTarget(
   target: ValidateInputTarget,
   manifest: NonNullable<ValidateInputArgs['manifest']>,
@@ -4542,6 +4578,9 @@ export async function handleValidateInput(args: ToolArgs, ctx: TrainingContext):
     }
     if (target.kind === 'product') {
       return validateProductTarget(target, req.manifest!, productsById.get(target.id));
+    }
+    if (target.kind === 'capability') {
+      return validateCapabilityTarget(target, req.manifest!);
     }
     return validateThirdPartyTarget(target, req.manifest!);
   }));
@@ -7483,15 +7522,26 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
 
   // Determine target formats (cap at 50 to prevent response amplification)
   const MAX_TARGET_FORMATS = 50;
+  if ((req.target_capability_ids?.length ?? 0) > MAX_TARGET_FORMATS || (req.target_format_ids?.length ?? 0) > MAX_TARGET_FORMATS) {
+    const field = (req.target_capability_ids?.length ?? 0) > MAX_TARGET_FORMATS
+      ? 'target_capability_ids'
+      : 'target_format_ids';
+    return buildCreativeCompleted({ errors: [{
+      code: 'INVALID_REQUEST',
+      message: `${field} supports at most ${MAX_TARGET_FORMATS} entries.`,
+      field,
+      recovery: 'correctable',
+    }] });
+  }
   const targetCapabilityIds = req.target_capability_ids?.length
-    ? req.target_capability_ids.slice(0, MAX_TARGET_FORMATS)
+    ? req.target_capability_ids
     : req.target_capability_id
       ? [req.target_capability_id]
       : [];
   const targetIds: FormatID[] = targetCapabilityIds.length
     ? targetCapabilityIds.map(id => ({ agent_url: agentUrl, id }))
     : req.target_format_ids?.length
-    ? req.target_format_ids.slice(0, MAX_TARGET_FORMATS)
+    ? req.target_format_ids
     : req.target_format_id
       ? [req.target_format_id]
       : [];
@@ -7737,8 +7787,13 @@ interface PreviewCreativeArgs {
   account?: unknown;
   request_type: 'single' | 'batch' | 'variant';
   creative_manifest?: { format_id?: FormatID; format_kind?: string; format_option_ref?: Record<string, unknown>; creative_id?: string; assets?: Record<string, unknown> };
+  target_capability_id?: string;
   creative_id?: string;
-  requests?: Array<{ format_id?: FormatID; format_kind?: string; format_option_ref?: Record<string, unknown>; creative_id?: string; assets?: Record<string, unknown> }>;
+  requests?: Array<{
+    target_capability_id?: string;
+    creative_manifest?: { format_id?: FormatID; format_kind?: string; format_option_ref?: Record<string, unknown>; creative_id?: string; assets?: Record<string, unknown> };
+    creative_id?: string;
+  }>;
   variant_id?: string;
   output_format?: 'url' | 'html' | 'both';
   quality?: 'draft' | 'production';
@@ -7755,7 +7810,10 @@ export async function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext
   const outputFormat = req.output_format || 'url';
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
-  function buildPreview(manifest: { format_id?: FormatID; format_kind?: string; format_option_ref?: Record<string, unknown>; creative_id?: string; assets?: Record<string, unknown> }) {
+  function buildPreview(
+    manifest: { format_id?: FormatID; format_kind?: string; format_option_ref?: Record<string, unknown>; creative_id?: string; assets?: Record<string, unknown> },
+    targetCapabilityId?: string,
+  ) {
     // Resolve format
     let formatId = manifest.format_id;
     let formatKind = manifest.format_kind;
@@ -7769,6 +7827,18 @@ export async function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext
         formatKind = creative.formatKind;
         creativeName = creative.name || manifest.creative_id;
       }
+    }
+
+    if (formatKind) {
+      const matches = SUPPORTED_CANONICAL_BUILD_CAPABILITIES.filter(item => item.formatKind === formatKind);
+      if (targetCapabilityId) {
+        const selected = SUPPORTED_CANONICAL_BUILD_CAPABILITIES.find(item => item.capabilityId === targetCapabilityId);
+        if (!selected || selected.formatKind !== formatKind) return null;
+      } else if (matches.length !== 1) {
+        return null;
+      }
+    } else if (targetCapabilityId) {
+      return null;
     }
 
     const fmtId = formatKind || formatId?.id || 'image';
@@ -7812,17 +7882,27 @@ export async function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext
 
   // Batch mode
   if (req.request_type === 'batch' && req.requests?.length) {
+    const results = req.requests.map(item => {
+      const manifest = item.creative_manifest || (item.creative_id ? { creative_id: item.creative_id } : undefined);
+      const targetCapabilityId = item.target_capability_id ?? req.target_capability_id;
+      const preview = manifest ? buildPreview(manifest, targetCapabilityId) : null;
+      if (!preview) {
+        return {
+          success: false,
+          creative_id: item.creative_id || 'unknown',
+          error: { code: 'FORMAT_NOT_SUPPORTED', message: 'No unique advertised preview capability matches this item.' },
+        };
+      }
+      return {
+        success: true,
+        creative_id: item.creative_id || 'unknown',
+        response: { previews: [preview], expires_at: expiresAt },
+      };
+    });
     return {
       response_type: 'batch',
-      results: req.requests.map(c => ({
-        success: true,
-        creative_id: c.creative_id || 'unknown',
-        response: {
-          previews: [buildPreview(c)],
-          expires_at: expiresAt,
-        },
-      })),
-      };
+      results,
+    };
   }
 
   // Single mode
@@ -7833,11 +7913,11 @@ export async function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext
     };
   }
 
-  const preview = buildPreview(manifest);
+  const preview = buildPreview(manifest, req.target_capability_id);
   if (!preview) {
     const fmtId = manifest.format_kind || manifest.format_id?.id || 'unknown';
     return {
-      errors: [{ code: 'UNSUPPORTED_FEATURE', message: `Format "${fmtId}" is not supported. Inspect get_adcp_capabilities creative.supported_formats to discover available capabilities.` }],
+      errors: [{ code: 'FORMAT_NOT_SUPPORTED', message: `Format "${fmtId}" has no unique matching advertised preview capability. Inspect get_adcp_capabilities creative.supported_formats to select target_capability_id.` }],
     };
   }
 

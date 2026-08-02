@@ -1859,7 +1859,7 @@ async function runTests() {
     return true;
   });
 
-  await test('creative build flags require a non-empty supported_formats capability catalog', async () => {
+  await test('creative capability catalogs preserve 3.x compatibility while supporting canonical routes', async () => {
     const schema = loadSchema(path.join(SCHEMA_BASE_DIR, 'protocol/get-adcp-capabilities-response.json'));
     const testAjv = new Ajv({ allErrors: true, verbose: true, strict: false, discriminator: true, loadSchema: loadExternalSchema });
     addFormats(testAjv);
@@ -1870,13 +1870,13 @@ async function runTests() {
       supported_protocols: ['creative']
     };
 
-    if (validate({ ...base, creative: { supports_generation: true } })) {
-      return 'supports_generation:true without supported_formats must be rejected';
+    if (!validate({ ...base, creative: { supports_generation: true } })) {
+      return `legacy build flag without supported_formats rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
     }
-    if (validate({ ...base, creative: { supports_generation: true, supported_formats: [] } })) {
-      return 'advertised build surface with empty supported_formats must be rejected';
+    if (!validate({ ...base, creative: { has_creative_library: true, supported_formats: [] } })) {
+      return `stateful library without build operations rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
     }
-    if (validate({
+    if (!validate({
       ...base,
       creative: {
         supports_generation: true,
@@ -1887,8 +1887,13 @@ async function runTests() {
         }]
       }
     })) {
-      return 'advertised build surface without any build operation entry must be rejected';
+      return `legacy build flag with preview-only catalog rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
     }
+
+    if (!validate({
+      ...base,
+      creative: { supported_formats: [{ format: { format_kind: 'image', params: {} } }] }
+    })) return `legacy catalog entry without capability metadata rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
 
     const canonical = {
       ...base,

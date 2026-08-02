@@ -26,6 +26,7 @@ describe('AgentSnapshotDatabase.filterCreativeAgents', () => {
     expect(sql).toContain("entry->'format'->>'format_kind'");
     expect(sql).toContain("LOWER(entry->'format'->>'publisher_domain')");
     expect(sql).toContain("entry->'format'->>'format_option_id'");
+    expect(sql).toContain("entry ? 'capability_id'");
     expect(sql).toContain("entry->'operations' ?|");
     expect(params).toEqual([
       ['video_hosted'],

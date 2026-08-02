@@ -47,7 +47,7 @@ For hands-on authoring practice, use the [S2 creative specialist module](/docs/l
 | **`since_version` / `migration_target_version`** | Release-precision lifecycle metadata on canonicals — when introduced, when stabilization or breaking revision is expected. |
 | **`validate_input`** | Spec-defined manifest preflight — buyers verify a manifest's structure against canonicals/products without committing to a render or other expensive creative-production step. It is not a rehearsal of the seller's `sync_creatives` mutation. |
 | **`build_creative`** | Creative-agent surface that produces a manifest from inputs (brief, video_brief, brand). Sales agents do NOT expose `build_creative`. |
-| **`creative.supported_formats`** | Capabilities-response field on creative agents declaring canonical build, validation, and preview capabilities. Each entry carries a stable `capability_id`, a full canonical `format` declaration, and required non-empty `operations`. |
+| **`creative.supported_formats`** | Capabilities-response field on creative agents declaring canonical build, validation, and preview capabilities. New 3.2 producers MUST carry a stable `capability_id`, a full canonical `format` declaration, and explicit non-empty `operations`. Consumers accept legacy 3.x entries without an ID and default absent `operations` to `build`. |
 | **`BrandRef`** | `{domain, brand_id?}` reference. Resolves brand context (logos, colors, voice) from `brand.json` automatically. |
 | **`brand_kit_override`** | Inline override on `BrandRef` for per-call brand-kit tweaks (logo, colors, voice, tagline) where `brand.json` is missing, stale, or inappropriate. Same pattern as `industries` and `data_subject_contestation` on BrandRef. |
 | **`fanout_mode`** | On `sponsored_placement`: how items map to delivery — `per_item`, `multi_item_in_creative`, `single_item`. |
@@ -323,7 +323,7 @@ Canonical formats participate in three independent assertions. Pick the surface 
 
 | Surface | Authority | When to use |
 |---|---|---|
-| Publisher-origin `adagents.json` top-level `formats[]` | Publisher | Shared across all sellers of a publisher's inventory — declares the publisher-authoritative shape once. Use `applies_to_property_ids` / `applies_to_property_tags` to scope to a subset of the file's `properties[]`. An AAO community mirror may carry the same shape as an advisory fallback, but never acquires publisher authority. |
+| Publisher-origin `adagents.json` top-level `formats[]` | Publisher | Shared across all sellers of a publisher's inventory — declares the publisher-authoritative shape once. Use `applies_to_property_ids` / `applies_to_property_tags` to scope to a subset of the file's `properties[]`. An AgenticAdvertising.org community mirror may carry the same shape as an advisory fallback, but never acquires publisher authority. |
 | `Product.format_options[]` (inline on a product) | Seller, on a specific product | Seller-specific narrowing, custom format, or one-off pricing variant. Each entry is a full `ProductFormatDeclaration` with `format_kind` + `params`. When it is backed by a publisher catalog entry, include the catalog namespace as sibling fields: `{publisher_domain, format_option_id}`. |
 | `Placement.format_options[]` in `adagents.json` (format_option_id reference OR inline) | Publisher (or seller publishing placements) | Ties a placement to one or more accepted formats. A placement may use a bare `{format_option_id}` reference (recommended; resolves against the same file's top-level `formats[]`) or an inline declaration for placement-local narrowing. Same-file scope — cross-file `format_option_id` lookup is not supported. |
 
@@ -373,12 +373,12 @@ Product declarations, buyer selectors, and placement references are intentionall
 Buyer agents answer “what formats does this publisher accept?” by resolving the publisher catalog, not by asking a sales agent for its global format list:
 
 1. **Publisher-hosted**: fetch `https://<publisher_domain>/.well-known/adagents.json`. If it carries `formats[]`, those declarations are publisher-authoritative.
-2. **AAO community mirror**: on 404 or absence of `formats[]`, query the AAO registry for a community-maintained mirror. Mirror declarations are advisory and preserve their lower-authority provenance.
+2. **AgenticAdvertising.org community mirror**: on 404 or absence of `formats[]`, query the AgenticAdvertising.org registry for a community-maintained mirror. Mirror declarations are advisory and preserve their lower-authority provenance.
 3. **No publisher catalog**: stop. Do not synthesize a publisher declaration from one sales agent's products. Buyers can still discover that agent's sellable formats from `get_products`, but those product declarations are not promoted into publisher facts.
 
-**Publisher-origin fetches MUST follow the same transport contract as `format_schema`** — https-only, SSRF guards (RFC 1918 / loopback / link-local / metadata-endpoint denylist; resolve hostname and pin connection to defeat DNS rebinding), ≤5s timeout, 1 MiB cap, no redirects. See `static/schemas/source/core/product-format-declaration.json#format_schema` for the full normative contract. Adagents.json files carry authorization claims + signing keys; SSRF leakage is higher-value to an attacker than format_schema leakage. The community fallback is a query to AAO's fixed registry API, not a client-directed fetch of an arbitrary mirror URL.
+**Publisher-origin fetches MUST follow the same transport contract as `format_schema`** — https-only, SSRF guards (RFC 1918 / loopback / link-local / metadata-endpoint denylist; resolve hostname and pin connection to defeat DNS rebinding), ≤5s timeout, 1 MiB cap, no redirects. See `static/schemas/source/core/product-format-declaration.json#format_schema` for the full normative contract. Adagents.json files carry authorization claims + signing keys; SSRF leakage is higher-value to an attacker than format_schema leakage. The community fallback is a query to AgenticAdvertising.org's fixed registry API, not a client-directed fetch of an arbitrary mirror URL.
 
-**Community-mirror governance.** The AAO publishes catalog translations for unadopted platforms. Entries are best-effort and derived from public platform specifications. Buyers MUST preserve `aao_mirror` provenance, prefer publisher-hosted declarations, and treat stale mirrors as unavailable rather than relabeling one seller's product catalog as a publisher declaration.
+**Community-mirror governance.** AgenticAdvertising.org publishes catalog translations for unadopted platforms. Entries are best-effort and derived from public platform specifications. Buyers MUST preserve `aao_mirror` provenance, prefer publisher-hosted declarations, and treat stale mirrors as unavailable rather than relabeling one seller's product catalog as a publisher declaration.
 
 **Identity-confusion note (normative).** A mirror URL in `v1_format_ref[].agent_url` declares *format-shape provenance*, NOT seller identity. Buyer allowlists matching on `v1_format_ref[].agent_url` are matching shape namespace; inventory authorization always flows from `authorized_agents[]` + publisher signing keys. A seller pointing `v1_format_ref` at `creative.adcontextprotocol.org/translated/meta` is asserting "this format follows the AAO-mirrored Meta Reels shape," not "I am Meta."
 
@@ -399,9 +399,9 @@ buyer wants: full ProductFormatDeclaration for each format_options entry,
              scoped to meta.example's instagram property
 ```
 
-**Step 1 — Resolve the publisher catalog.** Buyer SDK fetches `https://meta.example/.well-known/adagents.json`. Apply the `format_schema` transport contract (https-only, SSRF guards, ≤5s timeout, 1 MiB cap, no redirects — see `product-format-declaration.json#format_schema`). The platform hasn't adopted AdCP today — fetch returns 404.
+**Step 1 — Resolve the publisher catalog.** Buyer SDK fetches `https://meta.example/.well-known/adagents.json`. Apply the `format_schema` transport contract (https-only, SSRF guards, ≤5s timeout, 1 MiB cap, no redirects — see `product-format-declaration.json#format_schema`). The platform has not adopted AdCP, so the fetch returns 404.
 
-**Step 2 — Fall back to the AAO registry.** On Step 1's 404 (or 200-with-no-`formats[]`), the buyer queries `GET https://agenticadvertising.org/api/registry/publisher?domain=meta.example&include=placements`. A response with `files.adagents_json.status: "community"` carries moderator-maintained, advisory `formats[]` and placement summaries; it is not publisher-origin authority. The buyer preserves that provenance and uses `files.adagents_json.registry_url` only when it needs the complete mirrored document rather than the registry's intentionally lossy summary.
+**Step 2 — Fall back to the AgenticAdvertising.org registry.** On Step 1's 404 (or 200-with-no-`formats[]`), the buyer queries `GET https://agenticadvertising.org/api/registry/publisher?domain=meta.example&include=placements`. A response with `files.adagents_json.status: "community"` carries moderator-maintained, advisory `formats[]` and placement summaries; it is not publisher-origin authority. The buyer preserves that provenance and uses `files.adagents_json.registry_url` only when it needs the complete mirrored document rather than the registry's intentionally lossy summary.
 
 **Step 3 — Respect registry precedence.** The registry prefers a successfully crawled publisher-origin document over its community entry. If the publisher later adopts AdCP, the same query reports the origin-backed source; clients do not merge the old community catalog into the publisher declaration.
 
@@ -453,11 +453,11 @@ result: SDK knows the full ProductFormatDeclaration for the product,
         format_ids[] from v1_format_ref[].
 ```
 
-The resolver records whether the catalog came from the publisher origin or an AAO community mirror. Sales-agent product declarations retain seller provenance and are never reported as a publisher catalog.
+The resolver records whether the catalog came from the publisher origin or an AgenticAdvertising.org community mirror. Sales-agent product declarations retain seller provenance and are never reported as a publisher catalog.
 
 ### Community-registry hosting
 
-When a platform has not adopted AdCP, AAO may maintain an advisory community `adagents.json` translation and expose it through the publisher registry lookup. The mirror can declare Meta Reels once, scoped to Instagram + Facebook (not WhatsApp), for compatibility checks across sellers. Buyers query the registry API first for provenance-aware summaries and follow `files.adagents_json.registry_url` only when they need fields omitted by the lossy projection. When the platform publishes its own origin file, that publisher-hosted declaration takes precedence and the community entry is no longer returned as authority.
+When a platform has not adopted AdCP, AgenticAdvertising.org may maintain an advisory community `adagents.json` translation and expose it through the publisher registry lookup. A mirror for fictional Acme Social can declare its short-form video once, scoped to Acme Feed and Acme Clips, for compatibility checks across sellers. Buyers query the registry API first for provenance-aware summaries and follow `files.adagents_json.registry_url` only when they need fields omitted by the lossy projection. When the platform publishes its own origin file, that publisher-hosted declaration takes precedence and the community entry is no longer returned as authority.
 
 ```json test=false
 // https://creative.adcontextprotocol.org/translated/meta/adagents.json (excerpt)

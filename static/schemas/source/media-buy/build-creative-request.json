@@ -110,6 +110,7 @@
         "$ref": "/schemas/core/format-id.json"
       },
       "minItems": 1,
+      "maxItems": 50,
       "deprecated": true,
       "description": "**DEPRECATED in 3.2.** Legacy named-format selectors. Use `target_capability_ids` with values advertised in `get_adcp_capabilities.creative.supported_formats[].capability_id`."
     },
@@ -125,6 +126,7 @@
         "pattern": "^[a-zA-Z0-9_-]+$"
       },
       "minItems": 1,
+      "maxItems": 50,
       "uniqueItems": true,
       "description": "Canonical 3.2 multi-output selector. Each value matches a `get_adcp_capabilities.creative.supported_formats[].capability_id`. The creative agent produces one canonical manifest per capability in request order. Mutually exclusive with `target_capability_id` and the deprecated target_format_id fields."
     },

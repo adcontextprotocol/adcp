@@ -83,7 +83,7 @@ A capability ID is local to the creative-agent endpoint. It is selected only aft
 ## Buyer migration
 
 1. Discover seller products with `get_products` and read `format_options[]`.
-2. When starting from a publisher, read its `adagents.json.formats[]` or the AAO mirror.
+2. When starting from a publisher, read its `adagents.json.formats[]` or the AgenticAdvertising.org community mirror.
 3. Find candidate creative agents in the registry by exact `{publisher_domain, format_option_id}` or compatible canonical constraints.
 4. Confirm a candidate directly through `get_adcp_capabilities`.
 5. Select its `capability_id`, call `build_creative`, and carry the returned canonical manifest through preview, sync, and delivery.

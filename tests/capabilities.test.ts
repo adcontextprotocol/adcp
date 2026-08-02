@@ -22,11 +22,23 @@ describe('sanitizeCreativeCapabilities', () => {
       });
   });
 
-  it('rejects build claims without an advertised build capability', async () => {
+  it('preserves legacy build flags when the canonical catalog is incomplete', async () => {
     await expect(sanitizeCreativeCapabilities({
       supports_generation: true,
       supported_formats: [{ ...validEntry, operations: ['preview'] }],
-    })).rejects.toThrow('requires at least one entry with the build operation');
+    })).resolves.toMatchObject({
+      can_generate: true,
+      can_preview: true,
+    });
+  });
+
+  it('normalizes legacy entries that omit capability metadata', async () => {
+    await expect(sanitizeCreativeCapabilities({
+      supported_formats: [{ format: validEntry.format }],
+    })).resolves.toMatchObject({
+      supported_formats: [{ format: validEntry.format, operations: ['build'] }],
+      can_generate: true,
+    });
   });
 
   it('rejects incomplete ProductFormatDeclaration objects', async () => {

@@ -201,7 +201,9 @@ When executing a proposal, `proposal_status` on the returned proposal determines
 | `confirmed_at` | ISO 8601 timestamp when the seller committed to the media buy. Stable after it is set. May be `null` in deferred/manual approval flows until seller commitment occurs. |
 | `creative_deadline` | ISO 8601 timestamp for creative upload deadline |
 | `revision` | Initial media-buy revision. Use this value as the `revision` token on the next `update_media_buy` call intended to change state. |
-| `packages` | Array of created packages with complete state. Packages SHOULD echo canonical selectors supplied on create so read surfaces are lossless. |
+| `packages` | Array of created packages with complete state. Packages SHOULD echo canonical selectors supplied on create so read surfaces are lossless. When additional creative coverage is required, each package carries `formats_to_provide[]`: full canonical ProductFormatDeclaration snapshots normalized from the selected product contract. |
+
+Treat `packages[].formats_to_provide[]` as the stable creative checklist established at booking time. Each full declaration can be matched against a creative agent's live `creative.supported_formats[].format`, even when the product option has no `format_option_id`. After uploads or assignments, call `get_media_buys`: `packages[].formats_pending[]` contains the declarations that still lack creative coverage. The deprecated `format_ids_to_provide` / `format_ids_pending` projections exist only for older 3.x peers.
 
 `confirmed_at` is seller commitment time, not a delivery-status timestamp. Do not update it when a buy later pauses, resumes, starts delivery, completes, or reports performance. A committed synchronous create stamps it immediately. Use the `submitted` response branch when no `media_buy_id` is being returned to the buyer. Sellers MAY instead return synchronous success with `media_buy_id`, `packages`, and `confirmed_at: null` for a provisional buy; such buys MUST be retrievable via `get_media_buys` and MUST transition by setting `confirmed_at` exactly once on commitment. A provisional buy with `confirmed_at: null` MUST NOT be `active` and MUST NOT include `packages[].committed_metrics`.
 
@@ -1142,8 +1144,9 @@ When creating a media buy, format specification enables:
                        format_kind/params (direct canonical);
                        omit for all-formats default
    └── Publisher creates placeholders
-   └── Clear creative requirements established
+   └── Response snapshots canonical requirements in packages[].formats_to_provide[]
 4. Creative supply → Upload matching files via `sync_creatives` for library-backed sellers, or inline `packages[].creatives` for inline-only sellers
+   └── Poll get_media_buys; remaining coverage appears in packages[].formats_pending[]
 5. Campaign activation → Replace placeholders with real creatives
 ```
 

@@ -17,6 +17,7 @@ description: "preview_creative renders an existing creative manifest into viewab
 ```json
 {
   "request_type": "single",
+  "target_capability_id": "preview_image_300x250",
   "creative_manifest": { /* includes format_kind, assets */ }
 }
 ```
@@ -58,6 +59,7 @@ For faster rendering without iframe overhead, request HTML directly:
 ```json
 {
   "request_type": "single",
+  "target_capability_id": "preview_image_300x250",
   "creative_manifest": { /* includes format_kind, assets */ },
   "output_format": "html"
 }
@@ -98,8 +100,8 @@ Preview multiple creatives in one API call (5-10x faster):
 {
   "request_type": "batch",
   "requests": [
-    { "creative_manifest": { /* creative 1 */ } },
-    { "creative_manifest": { /* creative 2 */ } }
+    { "target_capability_id": "preview_image_300x250", "creative_manifest": { /* creative 1 */ } },
+    { "target_capability_id": "preview_video_16x9", "creative_manifest": { /* creative 2 */ } }
   ]
 }
 ```
@@ -177,16 +179,19 @@ All modes use a single flat object with `request_type` as the discriminant.
 | `request_type` | string | Yes | `"single"`, `"batch"`, or `"variant"` |
 | `creative_manifest` | object | Single | Complete creative manifest with all required assets for the format. |
 | `creative_manifest.format_kind` | CanonicalFormatKind | Yes for inline manifests | Portable canonical format identity. |
+| `target_capability_id` | string | No | Agent-local renderer route from `get_adcp_capabilities.creative.supported_formats[]`; the selected entry's `operations` must contain `preview`. In batch mode this is the default for items, which may override it. Omit only when exactly one advertised preview capability matches the canonical manifest; zero or multiple matches return `FORMAT_NOT_SUPPORTED`. |
 | `inputs` | array | No | Array of input sets for multiple preview variants. Used in single mode. |
 | `quality` | string | No | `"draft"` (fast, lower-fidelity) or `"production"` (full quality). In batch mode, sets the default for all requests. |
 | `output_format` | string | No | `"url"` (default) or `"html"`. In batch mode, sets the default for all requests. |
 | `item_limit` | integer | No | Maximum catalog items to render per preview variant. Used in single mode. |
 | `template_id` | string | No | Specific template ID for custom format rendering. Used in single mode. |
-| `requests` | array | Batch | Array of 1-50 preview requests. Each item accepts a canonical `creative_manifest`, inputs, quality, output format, item limit, and template ID. |
+| `requests` | array | Batch | Array of 1-50 preview requests. Each item accepts a canonical `creative_manifest`, `target_capability_id`, inputs, quality, output format, item limit, and template ID. |
 | `variant_id` | string | Variant | Platform-assigned variant identifier from `get_creative_delivery`. |
 | `creative_id` | string | No | Creative identifier for context. Used in variant mode. |
 
 **Required** column values: *Single* = required when `request_type` is `"single"`, *Batch* = required when `"batch"`, *Variant* = required when `"variant"`.
+
+Discover renderers from `get_adcp_capabilities.creative.supported_formats[]` by selecting entries whose `operations` contains `preview` and whose canonical `format` satisfies the manifest. `capability_id` is an agent-local renderer route; it never belongs in the portable manifest. If multiple renderers match, the caller must select one explicitly.
 
 ### Input Sets
 
@@ -327,7 +332,7 @@ These formats have the widest gap between pre-flight and post-flight: a pre-flig
 
 ### Quality mismatch
 
-If the requested quality level is not supported, the agent renders at the best quality it can provide. The protocol does not require agents to support both levels. There is no response field echoing the actual quality used, so if quality accuracy matters, verify by inspection and consult the agent's `get_adcp_capabilities` declaration.
+If the requested quality level is not supported, the agent renders at the best quality it can provide. The protocol does not require agents to support both levels, standardize per-capability quality discovery, or echo the actual quality used. Quality is therefore best-effort and not machine-verifiable in 3.x; if exact fidelity matters, verify the render by inspection before approval.
 
 ### Preview expiration and variant retention
 

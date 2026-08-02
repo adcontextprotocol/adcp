@@ -273,10 +273,10 @@ The Creative Protocol defines the following tasks. See task reference pages for 
 Discover canonical creative operations and their format contracts through `creative.supported_formats[]`.
 
 **Requirements:**
-- Every entry MUST carry a stable `capability_id` and canonical `format` declaration
+- Every entry MUST carry a canonical `format` declaration; new 3.2 producers MUST also carry a stable `capability_id`
 - Exact publisher-format claims MUST carry `{publisher_domain, format_option_id}`
 - Generic capabilities MUST declare an honest parameter envelope
-- `operations` distinguishes build, validation, and preview support
+- New 3.2 producers MUST carry explicit `operations` to distinguish build, validation, and preview support. Consumers interpret omission on legacy 3.x entries as `build`.
 
 `list_creative_formats` is deprecated in 3.2 and retained only for legacy named-format compatibility.
 

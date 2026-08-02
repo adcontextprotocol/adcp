@@ -292,12 +292,14 @@ After a multi-format build, preview all results using `preview_creative` batch m
   "request_type": "batch",
   "quality": "draft",
   "requests": [
-    { "creative_manifest": { /* 300x250 manifest from build response */ } },
-    { "creative_manifest": { /* 728x90 manifest from build response */ } },
-    { "creative_manifest": { /* 320x50 manifest from build response */ } }
+    { "target_capability_id": "preview_image_300x250", "creative_manifest": { /* 300x250 manifest from build response */ } },
+    { "target_capability_id": "preview_image_728x90", "creative_manifest": { /* 728x90 manifest from build response */ } },
+    { "target_capability_id": "preview_image_320x50", "creative_manifest": { /* 320x50 manifest from build response */ } }
   ]
 }
 ```
+
+Resolve each preview route from a `creative.supported_formats[]` entry whose `operations` contains `preview` and whose canonical declaration satisfies that manifest. Build and preview capability IDs may differ, even on the same agent.
 
 To refine a single format from a multi-format build, call `build_creative` again with `target_capability_id` (singular) and pass back that format's manifest. You don't need to rebuild all formats — just iterate on the one that needs work.
 

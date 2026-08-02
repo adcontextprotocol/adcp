@@ -81,18 +81,13 @@ The `filters` object supports these optional, composable filters:
 
 `asset_types` matches a creative when at least one direct object value in the top-level `creative.assets` map has an exact `asset_type` value in the requested set. Multiple requested values use **OR logic**. Array-valued slots are not inspected, and matching does not recurse into nested asset fields such as `cards[].media`; broader traversal is deferred.
 
-All active filter fields compose with **AND logic**. For example, the following request returns published-post creatives that also match the requested legacy format identity; a creative satisfying only one condition is excluded:
+All active filter fields compose with **AND logic**. For example, the following request returns published-post creatives that also match the requested canonical format kind; a creative satisfying only one condition is excluded:
 
 ```json
 {
   "filters": {
     "asset_types": ["published_post"],
-    "format_ids": [
-      {
-        "agent_url": "https://creative.example.com",
-        "id": "existing_post"
-      }
-    ]
+    "format_kinds": ["native_in_feed"]
   }
 }
 ```

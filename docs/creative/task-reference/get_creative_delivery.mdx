@@ -7,7 +7,7 @@ description: "get_creative_delivery retrieves variant-level delivery data with m
 
 Retrieve creative delivery data including variant-level breakdowns with manifests and metrics. This task returns what variants were created from your creatives, what they looked like (via manifests), and how they performed.
 
-This is a Creative Protocol task. Call it on any agent that declares `"creative"` in `supported_protocols` and `"delivery"` in its [creative agent capabilities](#capability-declaration) — whether that's a dedicated creative service or a [sales agent implementing the Creative Protocol](/docs/creative/sales-agent-creative-capabilities).
+This is a Creative Protocol task. Call it on any agent that declares `"creative"` in `supported_protocols` and exposes the `get_creative_delivery` tool — whether that's a dedicated creative service or a [sales agent implementing the Creative Protocol](/docs/creative/sales-agent-creative-capabilities).
 
 **Request Schema**: [`/schemas/v3/creative/get-creative-delivery-request.json`](https://adcontextprotocol.org/schemas/v3/creative/get-creative-delivery-request.json)
 **Response Schema**: [`/schemas/v3/creative/get-creative-delivery-response.json`](https://adcontextprotocol.org/schemas/v3/creative/get-creative-delivery-response.json)
@@ -424,8 +424,7 @@ Agents that support this task expose `get_creative_delivery` in their tool surfa
 {
   "supported_protocols": ["creative"],
   "creative": {
-    "has_creative_library": true,
-    "supported_formats": []
+    "has_creative_library": true
   }
 }
 ```

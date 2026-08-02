@@ -31,7 +31,7 @@ export interface StandardOperations {
 
 export interface CreativeCapabilities {
   supported_formats: Array<{
-    capability_id: string;
+    capability_id?: string;
     format: {
       format_kind: string;
       publisher_domain?: string;
@@ -180,14 +180,16 @@ export async function sanitizeCreativeCapabilities(raw: unknown): Promise<Creati
     const entry = rawEntry as Record<string, unknown>;
     const capabilityId = entry.capability_id;
     const format = entry.format;
-    const operations = entry.operations;
-    if (typeof capabilityId !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(capabilityId)) {
-      throw new Error(`creative.supported_formats[${index}].capability_id: required stable identifier`);
+    const operations = entry.operations ?? ['build'];
+    if (capabilityId !== undefined) {
+      if (typeof capabilityId !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(capabilityId)) {
+        throw new Error(`creative.supported_formats[${index}].capability_id: expected stable identifier when present`);
+      }
+      if (capabilityIds.has(capabilityId)) {
+        throw new Error(`creative.supported_formats[${index}].capability_id: duplicate '${capabilityId}'`);
+      }
+      capabilityIds.add(capabilityId);
     }
-    if (capabilityIds.has(capabilityId)) {
-      throw new Error(`creative.supported_formats[${index}].capability_id: duplicate '${capabilityId}'`);
-    }
-    capabilityIds.add(capabilityId);
     if (!validateFormat(format)) {
       throw new Error(`creative.supported_formats[${index}].format: ${schemaErrors(validateFormat)}`);
     }
@@ -199,23 +201,20 @@ export async function sanitizeCreativeCapabilities(raw: unknown): Promise<Creati
     }
     supportedFormats.push({
       ...entry,
-      capability_id: capabilityId,
+      ...(capabilityId === undefined ? {} : { capability_id: capabilityId }),
       format: format as CreativeCapabilities['supported_formats'][number]['format'],
       operations: operations as CreativeCapabilities['supported_formats'][number]['operations'],
     });
   }
 
+  const hasBuildCapability = supportedFormats.some(entry => entry.operations.includes('build'));
   const declaresBuild = ['supports_generation', 'supports_transformation', 'supports_transformers', 'supports_refinement']
     .some(flag => block[flag] === true);
-  const hasBuildCapability = supportedFormats.some(entry => entry.operations.includes('build'));
-  if (declaresBuild && !hasBuildCapability) {
-    throw new Error('creative.supported_formats: a declared build capability requires at least one entry with the build operation');
-  }
 
   const sanitized: CreativeCapabilities = {
     ...block,
     supported_formats: supportedFormats,
-    can_generate: hasBuildCapability,
+    can_generate: hasBuildCapability || declaresBuild,
     can_validate: supportedFormats.some(entry => entry.operations.includes('validate')),
     can_preview: supportedFormats.some(entry => entry.operations.includes('preview')),
   };
@@ -639,7 +638,8 @@ export class CapabilityDiscovery {
     const declared = toolNames.has('get_adcp_capabilities')
       ? await this.fetchCreativeCapabilities(agent, auth)
       : { ok: true as const, capabilities: undefined };
-    const legacyToolFallback = !toolNames.has('get_adcp_capabilities');
+    const legacyToolFallback = !declared.ok
+      || (declared.capabilities?.supported_formats.length ?? 0) === 0;
 
     return {
       probeFailed: !declared.ok,
@@ -679,6 +679,10 @@ export class CapabilityDiscovery {
       }));
       const client = multiClient.agent("discovery");
       const result = await client.getAdcpCapabilities({}, undefined, { timeout: 10_000 });
+      if (!result?.success) {
+        logger.debug({ url: agent.url, error: result?.error }, 'Creative capability probe returned an error result');
+        return { ok: false };
+      }
       const creative = (result?.data as Record<string, unknown> | undefined)?.creative;
       if (creative === undefined || creative === null) return { ok: true };
       return { ok: true, capabilities: await sanitizeCreativeCapabilities(creative) };

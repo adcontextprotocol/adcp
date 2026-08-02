@@ -94,7 +94,7 @@ export interface AgentCapabilities {
   };
   creative_capabilities?: {
     supported_formats: Array<{
-      capability_id: string;
+      capability_id?: string;
       format: {
         format_kind: string;
         publisher_domain?: string;

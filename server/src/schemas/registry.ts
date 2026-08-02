@@ -462,7 +462,7 @@ export const AgentCapabilitiesSchema = z
     creative_capabilities: z
       .object({
         supported_formats: z.array(z.object({
-          capability_id: z.string(),
+          capability_id: z.string().optional(),
           format: z.object({
             format_kind: z.string(),
             publisher_domain: z.string().optional(),
