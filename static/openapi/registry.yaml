@@ -629,7 +629,6 @@ components:
                         - preview
                     minItems: 1
                 required:
-                  - capability_id
                   - format
                   - operations
                 additionalProperties: {}
