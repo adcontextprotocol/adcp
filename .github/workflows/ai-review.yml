@@ -73,7 +73,7 @@ jobs:
 
       - name: Comment and skip when PR modifies review workflow
         if: steps.workflow-mod.outputs.modified == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           MODIFIED_FILES: ${{ steps.workflow-mod.outputs.modified_files }}
         with:
