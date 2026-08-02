@@ -317,7 +317,7 @@ test('products can include publisher-scoped referenced placements', async () => 
   assert.equal(validate(product), true, JSON.stringify(validate.errors, null, 2));
 });
 
-test('adagents.json supports catalog_etag for cache/version validation', async () => {
+test('adagents.json supports catalog_etag and publisher-owned format samples', async () => {
   const validate = await compile('/schemas/adagents.json');
   const adagents = {
     catalog_etag: '2026-05-25T18:30:00Z',
@@ -334,6 +334,16 @@ test('adagents.json supports catalog_etag for cache/version validation', async (
         placement_id: 'homepage_banner',
         name: 'Homepage banner',
         property_ids: ['daily_pulse']
+      }
+    ],
+    formats: [
+      {
+        format_option_id: 'homepage_image',
+        display_name: 'Homepage image',
+        sample_render_url: 'https://samples.publisher.example/formats/homepage-image',
+        format_kind: 'image',
+        params: { width: 300, height: 250 },
+        applies_to_property_ids: ['daily_pulse']
       }
     ],
     authorized_agents: [
@@ -413,7 +423,7 @@ test('format options can be referenced by publisher domain or product-local ID',
     validateDeclaration({
       publisher_domain: 'daily-pulse.example',
       format_option_id: 'homepage_image',
-      sample_render_url: 'https://creative.adcontextprotocol.org/translated/snap/samples/story',
+      sample_render_url: 'https://samples.publisher.example/formats/homepage-image',
       format_kind: 'image',
       params: {
         width: 300,
@@ -427,7 +437,7 @@ test('format options can be referenced by publisher domain or product-local ID',
   assert.equal(
     validateDeclaration({
       format_option_id: 'homepage_image',
-      sample_render_url: 'http://creative.adcontextprotocol.org/translated/snap/samples/story',
+      sample_render_url: 'http://samples.publisher.example/formats/homepage-image',
       format_kind: 'image',
       params: {
         width: 300,

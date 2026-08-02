@@ -238,7 +238,7 @@ function httpsUrlOrUndefined(value: unknown): string | undefined {
   if (!raw) return undefined;
   try {
     const url = new URL(raw);
-    return url.protocol === "https:" ? url.href : undefined;
+    return url.protocol === "https:" && !url.username && !url.password ? url.href : undefined;
   } catch {
     return undefined;
   }

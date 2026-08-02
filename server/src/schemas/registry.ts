@@ -1059,7 +1059,7 @@ const PublisherFormatSummarySchema = z.object({
   format_kind: z.string().openapi({ description: "Canonical format discriminator, such as `image`, `video_hosted`, `native_in_feed`, or `custom`." }),
   sample_render_url: HttpsUrlSchema.optional().openapi({
     description:
-      "Optional HTTPS page where a human can inspect a sample render of this catalog format using publisher- or registry-provided example assets. Informational only; this is not a renderer endpoint, buyer-asset preview, validation result, creative approval, or live delivery guarantee.",
+      "Optional public HTTPS page where a human can inspect a sample render of this catalog format using publisher- or community-mirror-provided example assets. Informational only; this is not a renderer endpoint, buyer-asset preview, validation result, creative approval, proof of publisher acceptance, or live delivery guarantee.",
   }),
   params: z.record(z.string(), z.unknown()).optional().openapi({ description: "Canonical format params from the publisher's adagents.json declaration." }),
   applies_to_property_ids: z.array(z.string()).optional().openapi({ description: "Property IDs this format applies to; absent means all properties." }),

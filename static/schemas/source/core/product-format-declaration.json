@@ -24,7 +24,7 @@
       "type": "string",
       "format": "uri",
       "pattern": "^https://",
-      "description": "Optional human-facing rendered example for this format declaration. Used by registry/catalog UIs to let buyers inspect the unit shape (for example, an AgenticAdvertising.org-translated Snap unit) before constructing a creative manifest. Uses publisher- or registry-provided sample assets, not buyer-submitted creative assets. Informational only: this URL is not a renderer endpoint, validation oracle, creative approval, or guarantee of how submitted creative will render in live delivery. Sellers SHOULD keep the URL stable while the declaration is active."
+      "description": "Optional public HTTPS page where a human can inspect a sample render of this declaration using assets chosen by the party publishing the enclosing declaration. Consumers MUST identify that source correctly: publisher or community mirror for `adagents.json` `formats[]`, seller for product or inline-placement declarations, and creative agent for `creative.supported_formats`. Informational only: this is not a renderer endpoint, buyer-asset preview, validation result, creative approval, proof of publisher acceptance, or guarantee of live delivery. Declaring parties SHOULD keep the URL stable while the declaration is active."
     },
     "applies_to_channels": {
       "type": "array",

@@ -454,6 +454,12 @@
       .format-card:focus {
         border-color: var(--color-brand);
         box-shadow: var(--shadow-sm);
+      }
+      .format-card:focus-visible {
+        outline: 2px solid var(--color-brand);
+        outline-offset: 2px;
+      }
+      .format-card:focus:not(:focus-visible) {
         outline: none;
       }
       .format-preview {
@@ -646,6 +652,11 @@
         margin: 0;
         color: var(--color-text-secondary);
         font-size: var(--text-sm);
+      }
+      .format-dialog__destination {
+        margin: 0;
+        color: var(--color-text-secondary);
+        font-size: var(--text-xs);
       }
       .format-dialog__section {
         margin-top: var(--space-5);
@@ -898,7 +909,7 @@
         if (!raw) return '';
         try {
           const url = new URL(String(raw));
-          return url.protocol === 'https:' ? url.href : '';
+          return url.protocol === 'https:' && !url.username && !url.password ? url.href : '';
         } catch (_) {
           return '';
         }
@@ -1578,6 +1589,7 @@
         closeFormatDialog({ restoreFocus: false });
         formatDialogTrigger = trigger instanceof HTMLElement ? trigger : null;
         const sampleRenderUrl = safeHttpsUrl(format.sample_render_url);
+        const sampleRenderHost = sampleRenderUrl ? new URL(sampleRenderUrl).hostname : '';
         const title = format.display_name || format.format_option_id || compactKind(format.format_kind);
         const chips = formatChips(format);
         const dialog = document.createElement('div');
@@ -1599,7 +1611,8 @@
               }</div>` : ''}
               <div class="format-dialog__actions">
                 ${sampleRenderUrl
-                  ? `<a class="format-dialog__primary" href="${escapeHtml(sampleRenderUrl)}" target="_blank" rel="noopener noreferrer">Open sample render</a>`
+                  ? `<a class="format-dialog__primary" href="${escapeHtml(sampleRenderUrl)}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Open sample render</a>
+                    <p class="format-dialog__destination">External sample hosted at <code>${escapeHtml(sampleRenderHost)}</code></p>`
                   : '<p class="format-dialog__empty">No sample render is published for this format.</p>'}
               </div>
               <div class="format-dialog__section">
