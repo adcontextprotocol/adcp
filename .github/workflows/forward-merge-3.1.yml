@@ -38,7 +38,7 @@ jobs:
       # recursion rule. Closes #3417.
       - name: Mint AgenticAdvertising.org Release Bot installation token
         id: app-token
-        uses: actions/create-github-app-token@v3.2.0
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
