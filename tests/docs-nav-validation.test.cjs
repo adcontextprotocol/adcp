@@ -88,11 +88,11 @@ test('default version is first in the versions array', () => {
   }
 });
 
-test('one latest version owns the live docs tree', () => {
+test('one release-labeled version owns the live docs tree', () => {
   const liveVersions = navigation.versions.filter(versionEntry =>
     collectPages(versionEntry.groups).some(page => page.startsWith('docs/'))
   );
-  const expectedTag = JSON.parse(
+  const expectedVersion = JSON.parse(
     fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8')
   ).version.split('.').slice(0, 2).join('.');
 
@@ -104,13 +104,13 @@ test('one latest version owns the live docs tree', () => {
   if (liveVersion !== navigation.versions[0] || !liveVersion.default) {
     throw new Error('The live docs owner must be the first and default version');
   }
-  if (liveVersion.version !== 'latest') {
-    throw new Error('The live docs owner must use Mintlify version "latest"');
-  }
-  if (liveVersion.tag !== expectedTag) {
+  if (liveVersion.version !== expectedVersion) {
     throw new Error(
-      `Live docs tag "${liveVersion.tag}" must match package release "${expectedTag}"`
+      `Live docs version "${liveVersion.version}" must match package release "${expectedVersion}"`
     );
+  }
+  if (liveVersion.tag !== 'Latest') {
+    throw new Error('The live docs owner must carry the "Latest" tag');
   }
 });
 
@@ -212,6 +212,25 @@ for (const versionEntry of navigation.versions) {
 test('page files belong to only one version', () => {
   if (crossVersionDuplicates.length > 0) {
     throw new Error(`Pages referenced across versions:\n      ${crossVersionDuplicates.join('\n      ')}`);
+  }
+});
+
+test('emergency front-door redirects target published snapshot files', () => {
+  const expectedRedirects = new Map([
+    ['/docs/intro', '/dist/docs/3.1.2/intro'],
+    ['/docs/quickstart', '/dist/docs/3.1.2/quickstart']
+  ]);
+
+  for (const [source, destination] of expectedRedirects) {
+    const matches = docsConfig.redirects.filter(redirect => redirect.source === source);
+    if (matches.length !== 1 || matches[0].destination !== destination) {
+      throw new Error(`${source} must redirect exactly once to ${destination}`);
+    }
+
+    const filePath = path.join(rootDir, destination.slice(1));
+    if (!fs.existsSync(`${filePath}.mdx`) && !fs.existsSync(`${filePath}.md`)) {
+      throw new Error(`Redirect destination file does not exist: ${destination}`);
+    }
   }
 });
 
