@@ -594,7 +594,7 @@
               {
                 "group": "Registry API",
                 "openapi": {
-                  "source": "static/openapi/registry.yaml",
+                  "source": "/static/openapi/registry.yaml",
                   "directory": "dist/docs/3.0.21/registry/api-reference"
                 },
                 "pages": [
@@ -1203,7 +1203,7 @@
               {
                 "group": "Registry API",
                 "openapi": {
-                  "source": "static/openapi/registry.yaml",
+                  "source": "/static/openapi/registry.yaml",
                   "directory": "docs/registry/api-reference"
                 },
                 "pages": [
@@ -1786,7 +1786,7 @@
               {
                 "group": "Registry API",
                 "openapi": {
-                  "source": "static/openapi/registry.yaml",
+                  "source": "/static/openapi/registry.yaml",
                   "directory": "docs/registry/api-reference"
                 },
                 "pages": [
