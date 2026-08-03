@@ -195,6 +195,11 @@
       "description": "Creative identifier for context. Used in variant mode.",
       "x-entity": "creative"
     },
+    "allow_async": {
+      "type": "boolean",
+      "default": false,
+      "description": "Opt in to an asynchronous preview response. When true, the creative agent MAY return status 'submitted' with a task_id and the buyer polls get_task_status for completion. When false or absent, the agent MUST return a synchronous preview response or a terminal protocol error; it MUST NOT return the submitted shape. This field applies to preview_creative only; build_creative already defines its own async lifecycle."
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

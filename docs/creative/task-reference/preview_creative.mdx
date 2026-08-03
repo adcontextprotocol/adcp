@@ -188,8 +188,23 @@ All modes use a single flat object with `request_type` as the discriminant.
 | `requests` | array | Batch | Array of 1-50 preview requests. Each item accepts `creative_manifest` (required), `format_id`, `inputs`, `quality`, `output_format`, `item_limit`, and `template_id`. |
 | `variant_id` | string | Variant | Platform-assigned variant identifier from `get_creative_delivery`. |
 | `creative_id` | string | No | Creative identifier for context. Used in variant mode. |
+| `allow_async` | boolean | No | Opt in to a `status: "submitted"` response for slow rendering. Defaults to `false`; agents MUST stay synchronous or return a terminal error when absent or false. |
 
 **Required** column values: *Single* = required when `request_type` is `"single"`, *Batch* = required when `"batch"`, *Variant* = required when `"variant"`.
+
+### Opt-in asynchronous preview
+
+`preview_creative` is synchronous by default. A buyer that can poll task results MAY set `allow_async: true`. Only then may an agent queue slow rendering and return:
+
+```json
+{
+  "status": "submitted",
+  "task_id": "task_preview_abc123",
+  "message": "Production-quality video preview queued"
+}
+```
+
+The buyer polls `get_task_status` with `task_id`; the completed task result contains the normal single, batch, or variant preview response. When `allow_async` is false or absent, agents MUST NOT return the submitted shape. `build_creative` already has a separate async response contract and is unchanged by this field.
 
 ### Input Sets
 
