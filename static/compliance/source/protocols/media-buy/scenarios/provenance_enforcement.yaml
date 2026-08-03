@@ -102,6 +102,7 @@ phases:
           so the buyer's orchestrator can read both the structural requirement and
           the seller's verifier allowlist before submission.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_provenance_enforcement_discover_requirement_get_products_with_disclosure_policy"
           buying_mode: "brief"
           # Brief intentionally surfaces "Provenance Enforcement" so brief-mode
           # keyword scoring places the seeded fixture product (which carries

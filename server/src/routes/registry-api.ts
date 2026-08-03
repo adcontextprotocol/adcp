@@ -9331,7 +9331,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         stats.product_count = 0;
         stats.publisher_count = 0;
         try {
-          const result = await client.getProducts({ buying_mode: 'wholesale' });
+          const result = await client.getProducts({
+            idempotency_key: randomUUID(),
+            buying_mode: 'wholesale',
+          });
           if (result.data?.products) {
             stats.product_count = result.data.products.length;
           }
@@ -9405,7 +9408,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         protocol: "mcp",
       }, withSdkSafeTransport({}));
 
-      const result = await client.getProducts({ buying_mode: 'wholesale' });
+      const result = await client.getProducts({
+        idempotency_key: randomUUID(),
+        buying_mode: 'wholesale',
+      });
       const products = result.data?.products || [];
 
       return res.json({

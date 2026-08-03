@@ -102,6 +102,7 @@ phases:
           populated. Buyer reads the agent_url for use on its
           verify_agent reference in the next phase.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_provenance_truth_of_claim_discover_verifier_get_products_with_accepted_verifiers"
           buying_mode: "brief"
           brief: "Provenance Truth-of-Claim display inventory — verifier-driven AI detection on accepted verifier allowlist"
           brand:

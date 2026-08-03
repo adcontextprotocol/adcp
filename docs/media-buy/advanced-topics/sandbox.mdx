@@ -125,6 +125,8 @@ This example shows the buyer-declared account path. For account-id namespaces, r
 ```json
 // get_products
 {
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655442066",
+  "buying_mode": "brief",
   "account": {
     "brand": { "domain": "acme-corp.com" },
     "operator": "acme-corp.com",

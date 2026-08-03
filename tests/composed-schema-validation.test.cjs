@@ -1655,6 +1655,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/get-products-request.json',
     {
+      idempotency_key: '550e8400-e29b-41d4-a716-446655440005',
       buying_mode: 'wholesale',
       filters: {
         signal_targeting: [

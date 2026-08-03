@@ -175,7 +175,7 @@ function tenantMcpHandler(holder: RegistryHolder, tenantId: string, storyboardCo
   return async (req: Request, res: Response): Promise<void> => {
     setCORSHeaders(res);
 
-    wrapTenantToolDiscoveryProjection(req, res, storyboardCompat);
+    wrapTenantToolDiscoveryProjection(req, res, tenantId, storyboardCompat);
     wrapSalesCapabilitiesProjection(req, res, tenantId, storyboardCompat);
 
     // Bridge `res.locals.trainingPrincipal` (set by the upstream
@@ -441,6 +441,7 @@ function wrapSalesCapabilitiesProjection(
 function wrapTenantToolDiscoveryProjection(
   req: Request,
   res: Response,
+  tenantId: string,
   storyboardCompat?: TrainingContext['storyboardCompat'],
 ): void {
   if (req.body?.method !== 'tools/list') return;
@@ -459,7 +460,7 @@ function wrapTenantToolDiscoveryProjection(
   (res as unknown as { end: (...args: unknown[]) => Response }).end = (chunk?: unknown, ...rest: unknown[]) => {
     if (chunk !== null && chunk !== undefined) chunks.push(toBuffer(chunk));
     const body = Buffer.concat(chunks);
-    const patched = projectTenantToolDiscovery(body, storyboardCompat);
+    const patched = projectTenantToolDiscovery(body, tenantId, storyboardCompat);
     if (patched !== body && !res.headersSent) {
       res.setHeader('content-length', String(patched.length));
     }
@@ -469,18 +470,56 @@ function wrapTenantToolDiscoveryProjection(
 
 function projectTenantToolDiscovery(
   body: Buffer,
+  tenantId: string,
   storyboardCompat?: TrainingContext['storyboardCompat'],
 ): Buffer {
   try {
     const parsed = JSON.parse(body.toString('utf8')) as {
       result?: {
-        tools?: Array<{ name?: string }>;
+        tools?: Array<{
+          name?: string;
+          inputSchema?: {
+            properties?: Record<string, unknown>;
+            required?: unknown;
+            [key: string]: unknown;
+          };
+          annotations?: Record<string, unknown>;
+        }>;
       };
     };
     const tools = parsed.result?.tools;
     if (!Array.isArray(tools)) return body;
-    if (storyboardCompat?.version !== '3.0') return body;
-    parsed.result!.tools = tools.filter(tool => tool.name !== 'validate_input');
+    if (tenantId === 'sales') {
+      const getProducts = tools.find(tool => tool.name === 'get_products');
+      if (getProducts) {
+        const inputSchema = getProducts.inputSchema ?? {};
+        const required = Array.isArray(inputSchema.required)
+          ? inputSchema.required.filter((value): value is string => typeof value === 'string')
+          : [];
+        getProducts.inputSchema = {
+          ...inputSchema,
+          properties: {
+            ...(inputSchema.properties ?? {}),
+            idempotency_key: {
+              type: 'string',
+              minLength: 16,
+              maxLength: 255,
+              pattern: '^[A-Za-z0-9_.:-]{16,255}$',
+              description: 'Client-generated key for this logical request. Reuse it unchanged for retries.',
+            },
+          },
+          required: [...new Set([...required, 'idempotency_key'])],
+        };
+        getProducts.annotations = {
+          ...(getProducts.annotations ?? {}),
+          readOnlyHint: false,
+          idempotentHint: true,
+        };
+      }
+    }
+    if (storyboardCompat?.version === '3.0') {
+      parsed.result!.tools = tools.filter(tool => tool.name !== 'validate_input');
+    }
     return Buffer.from(JSON.stringify(parsed), 'utf8');
   } catch {
     return body;

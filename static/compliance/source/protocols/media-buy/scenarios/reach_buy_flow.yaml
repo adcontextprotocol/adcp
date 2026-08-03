@@ -145,6 +145,7 @@ phases:
           supported_reach_units. The buyer selects a unit from that list for
           the create_media_buy call below.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_reach_buy_flow_setup_get_products_for_reach"
           buying_mode: "brief"
           brief: "CTV video, US adults 25-54. Q2 brand flight ~$50K, optimizing for unique household reach with a target frequency cap."
           account:

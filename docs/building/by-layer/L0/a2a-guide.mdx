@@ -964,7 +964,16 @@ const result = await a2a.send({
     role: "ROLE_USER",
     parts: [
       { text: "Find luxury car inventory" },
-      { data: { skill: "get_products", parameters: { audience: "luxury car intenders" } } }
+      {
+        data: {
+          skill: "get_products",
+          parameters: {
+            idempotency_key: "550e8400-e29b-41d4-a716-446655442071",
+            buying_mode: "brief",
+            brief: "Luxury car inventory for in-market shoppers"
+          }
+        }
+      }
     ]
   }
 });

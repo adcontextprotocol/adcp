@@ -119,6 +119,7 @@ phases:
           - pricing_options with pricing_option_id
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_state_machine_setup_discover_products"
           buying_mode: "brief"
           brief: "Products for state machine testing"
           brand:

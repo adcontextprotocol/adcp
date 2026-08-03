@@ -122,6 +122,7 @@ phases:
             satisfied in USD must be excluded.
           - Optional signal add-on pricing does not need to be pruned by this filter.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_pricing_currency_filter_discover_usd_products_get_products_usd_pricing"
           buying_mode: "wholesale"
           filters:
             pricing_currencies: ["USD"]

@@ -310,7 +310,8 @@ function ensureDir(dir) {
 // required it, the storyboard lint sees the task as non-mutating and
 // passes).
 //
-// A request schema is considered non-mutating if:
+// A request schema is considered non-mutating if it does not explicitly
+// declare `x-mutates-state: true` and:
 //   1. Its basename matches a read-only verb pattern
 //      (`get-`, `list-`, `check-`, `validate-`, `preview-`, optionally
 //      prefixed by a domain like `si-get-*`), OR
@@ -374,6 +375,8 @@ function hasNaturallyIdempotentMarker(schema) {
 // Used by both lintMutatingRequestsRequireIdempotencyKey and the manifest
 // generator — single source of truth for "is this a mutating tool?".
 function classifyRequestMutating(filePath) {
+  const schema = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  if (schema['x-mutates-state'] === true) return true;
   return !isNonMutatingRequestBasename(path.basename(filePath));
 }
 
@@ -391,10 +394,10 @@ function lintMutatingRequestsRequireIdempotencyKey(sourceDir) {
         continue;
       }
       if (!entry.name.endsWith('-request.json')) continue;
-      if (isNonMutatingRequestBasename(entry.name)) continue;
       let schema;
       try { schema = JSON.parse(fs.readFileSync(p, 'utf8')); }
       catch { continue; }
+      if (schema['x-mutates-state'] !== true && isNonMutatingRequestBasename(entry.name)) continue;
       const required = Array.isArray(schema.required) ? schema.required : [];
       if (required.includes('idempotency_key')) continue;
       if (hasNaturallyIdempotentMarker(schema)) continue;

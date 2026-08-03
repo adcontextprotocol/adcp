@@ -152,6 +152,7 @@ phases:
         expected: |
           Return CTV/video products matching the brief.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_governance_conditions_buy_with_conditions_get_products_brief"
           buying_mode: "brief"
           brief: "CTV and connected TV inventory on outdoor lifestyle content. Q2 flight, $25K budget. Adults 25-54, US."
           account:

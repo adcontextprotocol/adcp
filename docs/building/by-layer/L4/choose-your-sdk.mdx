@@ -48,6 +48,8 @@ const client = createSingleAgentClient({
 });
 
 const products = await client.getProducts({
+  idempotency_key: '550e8400-e29b-41d4-a716-446655442044',
+  buying_mode: 'brief',
   brief: 'Video campaign for pet owners',
 });
 ```
@@ -87,7 +89,11 @@ client = ADCPClient(AgentConfig(
 ))
 
 result = await client.get_products(
-    GetProductsRequest(brief='Video campaign for pet owners'),
+    GetProductsRequest(
+        idempotency_key='550e8400-e29b-41d4-a716-446655442045',
+        buying_mode='brief',
+        brief='Video campaign for pet owners',
+    ),
 )
 ```
 
@@ -127,9 +133,9 @@ Both SDKs share the same positional shape: `adcp <agent> [tool] [payload]`. The 
 ```bash
 npx @adcp/sdk@latest --help
 npx @adcp/sdk@latest --save-auth my-agent https://sales.example.com/mcp
-npx @adcp/sdk@latest my-agent get_products '{"brief":"CTV campaign"}'
+npx @adcp/sdk@latest my-agent get_products '{"idempotency_key":"550e8400-e29b-41d4-a716-446655442062","buying_mode":"brief","brief":"CTV campaign"}'
 # or against the built-in public test agent:
-npx @adcp/sdk@latest test-mcp get_products '{"brief":"CTV campaign"}'
+npx @adcp/sdk@latest test-mcp get_products '{"idempotency_key":"550e8400-e29b-41d4-a716-446655442063","buying_mode":"brief","brief":"CTV campaign"}'
 ```
 
 The CLI also drives storyboards (`adcp storyboard run`), conformance grading (`adcp grade`), and registry diagnostics. See `--help` for the full surface.
@@ -139,7 +145,7 @@ The CLI also drives storyboards (`adcp storyboard run`), conformance grading (`a
 ```bash
 uvx adcp --help
 uvx adcp --save-auth my-agent https://sales.example.com/mcp
-uvx adcp my-agent get_products '{"brief":"CTV campaign"}'
+uvx adcp my-agent get_products '{"idempotency_key":"550e8400-e29b-41d4-a716-446655442064","buying_mode":"brief","brief":"CTV campaign"}'
 ```
 
 ## What's next

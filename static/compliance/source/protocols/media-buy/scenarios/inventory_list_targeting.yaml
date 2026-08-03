@@ -62,6 +62,7 @@ phases:
           collection_list references.
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_inventory_list_targeting_discover_product_get_products_brief"
           buying_mode: "brief"
           brief: "Outdoor lifestyle programming. Q3 flight, $30K budget."
           filters:

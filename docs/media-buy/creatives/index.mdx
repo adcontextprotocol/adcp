@@ -57,6 +57,8 @@ Each format includes an `agent_url` field indicating its authoritative source.
 ```javascript
 // Find products for your campaign
 const products = await get_products({
+  idempotency_key: "550e8400-e29b-41d4-a716-446655442049",
+  buying_mode: "brief",
   brand: {
     domain: "acmecorp.com"
   },
@@ -104,6 +106,8 @@ if (response.creative_agents) {
 
 // Find products supporting your creative capabilities
 const products = await get_products({
+  idempotency_key: "550e8400-e29b-41d4-a716-446655442050",
+  buying_mode: "brief",
   brand: {
     domain: "acmecorp.com"
   },

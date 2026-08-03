@@ -94,9 +94,10 @@ phases:
       - id: get_products_with_idempotency_key
         title: "Product discovery read accepts idempotency_key"
         narrative: |
-          `get_products` is the canonical media-buy read. Sellers that expose
-          it must accept the 3.1 every-request envelope even though the field is
-          not part of the task-specific product-discovery payload.
+          This brief-mode `get_products` probe resolves synchronously as a read,
+          but the tool is polymorphic: other calls may create a task or finalize
+          a proposal. Its request schema therefore declares `idempotency_key`,
+          and sellers must apply the same replay contract to this read result.
         task: get_products
         requires_tool: get_products
         schema_ref: "media-buy/get-products-request.json"

@@ -115,6 +115,7 @@ phases:
           includes "completed_views". Products that don't are silently
           excluded; the seller does NOT return an error for unmet metrics.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_measurement_accountability_discover_with_required_metrics_get_products_required_metrics"
           buying_mode: "brief"
           brief: "CTV inventory with completed-view reporting for a Q2 CPCV campaign."
           filters:

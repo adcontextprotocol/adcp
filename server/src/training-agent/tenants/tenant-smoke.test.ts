@@ -674,4 +674,240 @@ describe('tenant routing smoke', () => {
       await close();
     }
   }, 15000);
+
+  it('enforces and replays idempotency on polymorphic sales get_products', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      await initializeTenant(url);
+      const account = {
+        brand: { domain: 'tenant-products-idempotency.example' },
+        operator: 'tenant-products-idempotency.example',
+      };
+      const payload = {
+        idempotency_key: 'tenant-products-idempotency-0001',
+        buying_mode: 'wholesale',
+        account,
+      };
+
+      const listResponse = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json',
+          authorization: 'Bearer test-token',
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }),
+      });
+      const listBody = await listResponse.json() as {
+        result?: {
+          tools?: Array<{
+            name?: string;
+            inputSchema?: {
+              properties?: Record<string, Record<string, unknown>>;
+              required?: string[];
+            };
+            annotations?: Record<string, unknown>;
+          }>;
+        };
+      };
+      const discovered = listBody.result?.tools?.find(tool => tool.name === 'get_products');
+      expect(discovered?.inputSchema?.required).toContain('idempotency_key');
+      expect(discovered?.inputSchema?.properties?.idempotency_key).toMatchObject({
+        type: 'string',
+        minLength: 16,
+        maxLength: 255,
+        pattern: '^[A-Za-z0-9_.:-]{16,255}$',
+      });
+      expect(discovered?.annotations).toMatchObject({ readOnlyHint: false, idempotentHint: true });
+
+      const missing = await callTenantTool(url, 3, 'get_products', {
+        buying_mode: 'wholesale',
+        account,
+      }) as { result?: { structuredContent?: { adcp_error?: { code?: string; field?: string } } } };
+      expect(missing.result?.structuredContent?.adcp_error?.code).toBe('INVALID_REQUEST');
+      expect(missing.result?.structuredContent?.adcp_error?.field).toBe('idempotency_key');
+
+      const first = await callTenantTool(url, 4, 'get_products', payload) as {
+        result?: { structuredContent?: { products?: unknown[]; replayed?: boolean } };
+      };
+      const replay = await callTenantTool(url, 5, 'get_products', payload) as {
+        result?: { structuredContent?: { products?: unknown[]; replayed?: boolean } };
+      };
+      expect(first.result?.structuredContent?.products?.length).toBeGreaterThan(0);
+      expect(first.result?.structuredContent?.replayed).toBeUndefined();
+      expect(replay.result?.structuredContent?.products).toEqual(first.result?.structuredContent?.products);
+      expect(replay.result?.structuredContent?.replayed).toBe(true);
+
+      const invalid = await callTenantTool(url, 6, 'get_products', {
+        ...payload,
+        buying_mode: 'not-a-mode',
+      }) as { result?: { structuredContent?: { adcp_error?: { code?: string; field?: string } } } };
+      expect(invalid.result?.structuredContent?.adcp_error).toMatchObject({
+        code: 'INVALID_REQUEST',
+        field: 'buying_mode',
+      });
+
+      const mixedFinalize = await callTenantTool(url, 7, 'get_products', {
+        ...payload,
+        buying_mode: 'refine',
+        refine: [
+          { scope: 'proposal', action: 'finalize', proposal_id: 'pinnacle_cross_channel' },
+          { scope: 'proposal', action: 'include', proposal_id: 'pinnacle_cross_channel' },
+        ],
+      }) as { result?: { structuredContent?: { adcp_error?: { code?: string; field?: string } } } };
+      expect(mixedFinalize.result?.structuredContent?.adcp_error).toMatchObject({
+        code: 'INVALID_REQUEST',
+        field: 'refine[1]',
+      });
+
+      const conflict = await callTenantTool(url, 8, 'get_products', {
+        ...payload,
+        buying_mode: 'brief',
+        brief: 'different logical request',
+      }) as { result?: { structuredContent?: { adcp_error?: { code?: string } } } };
+      expect(conflict.result?.structuredContent?.adcp_error?.code).toBe('IDEMPOTENCY_CONFLICT');
+    } finally {
+      await close();
+    }
+  }, 15000);
+
+  it('adapts omitted get_products keys only on the frozen 3.0 compatibility route', async () => {
+    const { baseUrl, close } = await bootServer({ storyboardCompat: { version: '3.0' } });
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      await initializeTenant(url);
+      const account = {
+        brand: { domain: 'tenant-products-legacy.example' },
+        operator: 'tenant-products-legacy.example',
+      };
+      const payload = { buying_mode: 'wholesale', account };
+      const first = await callTenantTool(url, 2, 'get_products', payload) as {
+        result?: { structuredContent?: { products?: unknown[]; replayed?: boolean } };
+      };
+      const replay = await callTenantTool(url, 3, 'get_products', payload) as {
+        result?: { structuredContent?: { products?: unknown[]; replayed?: boolean } };
+      };
+      expect(first.result?.structuredContent?.products?.length).toBeGreaterThan(0);
+      expect(first.result?.structuredContent?.replayed).toBeUndefined();
+      expect(replay.result?.structuredContent?.products).toEqual(first.result?.structuredContent?.products);
+      expect(replay.result?.structuredContent?.replayed).toBe(true);
+
+      const changed = await callTenantTool(url, 4, 'get_products', {
+        buying_mode: 'brief',
+        brief: 'A different frozen 3.0 request',
+        account,
+      }) as { result?: { structuredContent?: { products?: unknown[]; replayed?: boolean } } };
+      expect(changed.result?.structuredContent?.products).toBeDefined();
+      expect(changed.result?.structuredContent?.replayed).toBeUndefined();
+    } finally {
+      await close();
+    }
+  }, 15000);
+
+  it('replays v6 get_products advisory-success responses', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      await initializeTenant(url);
+      const account = {
+        brand: { domain: 'tenant-products-advisory.example' },
+        operator: 'tenant-products-advisory.example',
+        sandbox: true,
+      };
+      const directive = await callTenantTool(url, 2, 'comply_test_controller', {
+        account,
+        scenario: 'force_upstream_unavailable',
+        params: { tool: 'get_products', upstream_name: 'catalog-test' },
+      }) as { result?: { structuredContent?: { success?: boolean } } };
+      expect(directive.result?.structuredContent?.success).toBe(true);
+
+      const key = 'tenant-products-advisory-replay-0001';
+      const first = await callTenantTool(url, 3, 'get_products', {
+        idempotency_key: key,
+        buying_mode: 'wholesale',
+        account,
+        context: { correlation_id: 'tenant-advisory-first' },
+      }) as {
+        result?: { structuredContent?: { products?: unknown[]; errors?: Array<{ code?: string }>; context?: { correlation_id?: string } } };
+      };
+      const replay = await callTenantTool(url, 4, 'get_products', {
+        idempotency_key: key,
+        buying_mode: 'wholesale',
+        account,
+        context: { correlation_id: 'tenant-advisory-retry' },
+      }) as {
+        result?: { structuredContent?: { products?: unknown[]; errors?: Array<{ code?: string }>; replayed?: boolean; context?: { correlation_id?: string } } };
+      };
+      expect(first.result?.structuredContent?.products?.length).toBeGreaterThan(0);
+      expect(first.result?.structuredContent?.errors?.[0]?.code).toBe('STALE_RESPONSE');
+      expect(first.result?.structuredContent?.context?.correlation_id).toBe('tenant-advisory-first');
+      expect(replay.result?.structuredContent?.replayed).toBe(true);
+      expect(replay.result?.structuredContent?.products).toEqual(first.result?.structuredContent?.products);
+      expect(replay.result?.structuredContent?.errors).toEqual(first.result?.structuredContent?.errors);
+      expect(replay.result?.structuredContent?.context?.correlation_id).toBe('tenant-advisory-retry');
+    } finally {
+      await close();
+    }
+  }, 15000);
+
+  it('persists v6 proposal finalization before publishing its replay', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      await initializeTenant(url);
+      const account = {
+        brand: { domain: 'tenant-products-finalize.example' },
+        operator: 'tenant-products-finalize.example',
+      };
+      const brief = await callTenantTool(url, 2, 'get_products', {
+        idempotency_key: 'tenant-products-brief-finalize-0001',
+        buying_mode: 'brief',
+        brief: 'cross-channel news video and display',
+        account,
+      }) as {
+        result?: { structuredContent?: { proposals?: Array<Record<string, unknown>> } };
+      };
+      const draft = brief.result?.structuredContent?.proposals
+        ?.find(proposal => proposal.proposal_status === 'draft');
+      expect(draft?.proposal_id).toBeTruthy();
+
+      const finalizePayload = {
+        idempotency_key: 'tenant-products-finalize-replay-0001',
+        buying_mode: 'refine',
+        account,
+        refine: [{ scope: 'proposal', action: 'finalize', proposal_id: draft!.proposal_id }],
+      };
+      const finalized = await callTenantTool(url, 3, 'get_products', finalizePayload) as {
+        result?: { structuredContent?: { proposals?: Array<Record<string, unknown>>; replayed?: boolean } };
+      };
+      const committed = finalized.result?.structuredContent?.proposals
+        ?.find(proposal => proposal.proposal_id === draft!.proposal_id);
+      expect(committed).toMatchObject({ proposal_status: 'committed' });
+      expect(committed?.expires_at).toBeTruthy();
+      expect((committed?.insertion_order as Record<string, unknown> | undefined)?.io_id).toBeTruthy();
+
+      // A fresh logical request must reload the committed proposal from the
+      // durable session rather than allocating a new hold/insertion order.
+      const reloaded = await callTenantTool(url, 4, 'get_products', {
+        ...finalizePayload,
+        idempotency_key: 'tenant-products-finalize-reload-0001',
+      }) as {
+        result?: { structuredContent?: { proposals?: Array<Record<string, unknown>> } };
+      };
+      const reloadedProposal = reloaded.result?.structuredContent?.proposals
+        ?.find(proposal => proposal.proposal_id === draft!.proposal_id);
+      expect(reloadedProposal).toEqual(committed);
+
+      const replay = await callTenantTool(url, 5, 'get_products', finalizePayload) as {
+        result?: { structuredContent?: { proposals?: Array<Record<string, unknown>>; replayed?: boolean } };
+      };
+      const replayedProposal = replay.result?.structuredContent?.proposals
+        ?.find(proposal => proposal.proposal_id === draft!.proposal_id);
+      expect(replay.result?.structuredContent?.replayed).toBe(true);
+      expect(replayedProposal).toEqual(committed);
+    } finally {
+      await close();
+    }
+  }, 15000);
 });

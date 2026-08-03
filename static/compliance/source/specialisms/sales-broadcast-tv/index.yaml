@@ -186,6 +186,7 @@ phases:
             - c7: live + 7 days DVR playback, available ~8 days after air
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#sales_broadcast_tv_product_discovery_get_products_brief"
           buying_mode: "brief"
           brief: "Primetime and late fringe broadcast spots for an automotive EV launch. Q4 flight, $400K budget. Adults 25-54, national footprint. Need :30 and :15 spot lengths."
           account:
