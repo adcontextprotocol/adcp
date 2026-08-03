@@ -150,7 +150,7 @@
     "@opentelemetry/resources": "^2.10.0",
     "@opentelemetry/sdk-logs": "^0.221.0",
     "@opentelemetry/semantic-conventions": "^1.43.0",
-    "@slack/bolt": "^4.7.3",
+    "@slack/bolt": "^5.0.0",
     "@slack/web-api": "^7.18.0",
     "@types/jsonwebtoken": "^9.0.10",
     "@workos-inc/node": "^10.9.0",
