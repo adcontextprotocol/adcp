@@ -663,7 +663,7 @@ The `by_package` array provides per-package delivery details with these key fiel
 **System State**:
 - **`delivery_status`**: System-reported operational state:
   - `delivering` - Package is actively delivering impressions
-  - `not_delivering` - Package is within its scheduled flight but has delivered zero impressions for at least one full staleness cycle
+  - `not_delivering` - Package recorded zero impressions for the entire reporting window while it was in-flight. Sellers should only report this for a final window; a provisional zero may reflect measurement lag.
   - `completed` - Package finished successfully
   - `budget_exhausted` - Package ran out of budget
   - `flight_ended` - Package reached its end date
