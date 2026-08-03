@@ -224,9 +224,21 @@
   "devEngines": {
     "packageManager": {
       "name": "npm",
-      "version": "^10.9.4",
+      "version": ">=10.9.4 <12",
       "onFail": "error"
     }
+  },
+  "allowScripts": {
+    "@contentauth/c2pa-node@0.6.3": true,
+    "@scarf/scarf": false,
+    "esbuild@0.28.1": true,
+    "fsevents@2.3.3": true,
+    "keytar@7.9.0": true,
+    "msw@2.15.0": true,
+    "protobufjs@7.5.8": true,
+    "puppeteer@24.3.1": true,
+    "puppeteer@25.3.0": true,
+    "sharp@0.33.5": true
   },
   "overrides": {
     "webpack-dev-server": "^5.2.2",
