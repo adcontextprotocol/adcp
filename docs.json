@@ -835,7 +835,8 @@
                   "docs/building/operating/orchestrator-design",
                   "docs/building/operating/transport-errors",
                   "docs/building/operating/seller-integration",
-                  "docs/building/operating/storyboard-troubleshooting"
+                  "docs/building/operating/storyboard-troubleshooting",
+                  "docs/building/operating/support-recovery-runbooks"
                 ]
               },
               {
@@ -936,7 +937,8 @@
                       "docs/creative/sales-agent-creative-capabilities",
                       "docs/creative/multi-agent-orchestration",
                       "docs/creative/creative-manifests",
-                      "docs/creative/private-assets"
+                      "docs/creative/private-assets",
+                      "docs/creative/buyer-attached-inputs"
                     ]
                   },
                   {
@@ -977,6 +979,7 @@
                       "docs/creative/task-reference/preview_creative",
                       "docs/creative/task-reference/preview_creative-advanced",
                       "docs/creative/task-reference/list_creative_formats",
+                      "docs/creative/task-reference/list_transformers",
                       "docs/creative/task-reference/list_creatives",
                       "docs/creative/task-reference/sync_creatives",
                       "docs/creative/task-reference/get_creative_delivery"
@@ -1053,6 +1056,7 @@
                     "group": "Campaign Governance",
                     "pages": [
                       "docs/governance/campaign/index",
+                      "docs/governance/campaign/responsibilities",
                       "docs/governance/campaign/safety-model",
                       "docs/governance/campaign/specification",
                       "docs/governance/campaign/audit-trail",
@@ -1181,6 +1185,16 @@
             ]
           },
           {
+            "group": "Using AAO",
+            "pages": [
+              "docs/aao/connect-addie",
+              "docs/aao/users",
+              "docs/aao/org-admins",
+              "docs/aao/addie-tools",
+              "docs/aao/directory-api"
+            ]
+          },
+          {
             "group": "FAQ",
             "pages": [
               "docs/faq"
@@ -1251,6 +1265,16 @@
                 ]
               },
               {
+                "group": "For decision-makers",
+                "pages": [
+                  "docs/learning/decision-makers/overview",
+                  "docs/learning/decision-makers/l1-agentic-advertising",
+                  "docs/learning/decision-makers/l2-data-brand-governance",
+                  "docs/learning/decision-makers/l3-deciding-and-leading",
+                  "docs/learning/decision-makers/explaining-agentic-advertising"
+                ]
+              },
+              {
                 "group": "Role tracks",
                 "pages": [
                   "docs/learning/tracks/publisher",
@@ -1266,7 +1290,17 @@
                   "docs/learning/specialist/signals",
                   "docs/learning/specialist/governance",
                   "docs/learning/specialist/sponsored-intelligence",
-                  "docs/learning/specialist/security"
+                  "docs/learning/specialist/security",
+                  "docs/learning/specialist/brand"
+                ]
+              },
+              {
+                "group": "Supplements",
+                "expanded": false,
+                "pages": [
+                  "docs/learning/supplements/buyer-briefs-and-get-products",
+                  "docs/learning/supplements/governance-protocol-by-role",
+                  "docs/learning/supplements/creative-agent-workflows"
                 ]
               },
               {
