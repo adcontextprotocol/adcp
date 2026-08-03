@@ -425,8 +425,27 @@ export const GOVERNANCE_TOOLS = [
         governance_context: { type: 'string', description: 'Opaque governance context from the check_governance response that authorized this action.' },
         purchase_type: { type: 'string', enum: ['media_buy', 'rights_license', 'signal_activation', 'creative_services'], description: 'Type of financial commitment. Defaults to media_buy.' },
         outcome: { type: 'string', enum: ['completed', 'failed', 'delivery'] },
-        seller_response: { type: 'object' },
-        delivery: { type: 'object' },
+        seller_response: {
+          type: 'object',
+          properties: {
+            committed_budget: { type: 'number', minimum: 0 },
+            packages: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  budget: { type: 'number', minimum: 0 },
+                },
+              },
+            },
+          },
+        },
+        delivery: {
+          type: 'object',
+          properties: {
+            spend: { type: 'number', minimum: 0 },
+          },
+        },
         error: { type: 'object' },
       },
       required: ['plan_id', 'outcome', 'governance_context'],
@@ -1254,6 +1273,19 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
     return { errors: [{ code: 'VALIDATION_ERROR', message: `Invalid purchase_type: ${req.purchase_type}. Must be one of: ${[...VALID_PURCHASE_TYPES].join(', ')}` }] };
   }
 
+  if (delivery?.spend !== undefined && (
+    typeof delivery.spend !== 'number'
+    || !Number.isFinite(delivery.spend)
+    || delivery.spend < 0
+  )) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: 'delivery.spend must be a finite, non-negative number',
+      }],
+    };
+  }
+
   let plan = session.governancePlans.get(planId);
   if (!plan) {
     // Framework-dispatch request schemas omit `account`, so the session
@@ -1269,25 +1301,77 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
     return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: `Plan not found: ${planId}` }] };
   }
 
+  const validationError = (message: string) => ({
+    errors: [{ code: 'VALIDATION_ERROR', message }],
+  });
+
+  const applyLedgerAddition = (amount: number): boolean => {
+    const currentByType = plan.committedByType?.[purchaseType] ?? 0;
+    const nextTotal = plan.committedBudget + amount;
+    const nextByType = currentByType + amount;
+    if (!Number.isFinite(nextTotal) || !Number.isFinite(nextByType)) {
+      return false;
+    }
+
+    plan.committedBudget = nextTotal;
+    plan.committedByType = plan.committedByType || {};
+    plan.committedByType[purchaseType] = nextByType;
+    return true;
+  };
+
   let committedBudget = 0;
   const findings: GovernanceFinding[] = [];
 
   if (outcome === 'completed' && sellerResponse) {
-    // Prefer committed_budget when present (canonical); fall back to summing packages
-    if (sellerResponse.committed_budget !== undefined) {
-      committedBudget = sellerResponse.committed_budget;
-    } else if (sellerResponse.packages?.length) {
-      committedBudget = sellerResponse.packages.reduce((sum, pkg) => {
+    let packageBudgetTotal = 0;
+    if (sellerResponse.packages !== undefined) {
+      if (!Array.isArray(sellerResponse.packages)) {
+        return validationError('seller_response.packages must be an array');
+      }
+
+      for (const [index, pkg] of sellerResponse.packages.entries()) {
+        if (!pkg || typeof pkg !== 'object' || Array.isArray(pkg)) {
+          return validationError(`seller_response.packages[${index}] must be an object`);
+        }
+
         const b = pkg.budget;
-        if (typeof b === 'number') return sum + b;
-        if (b && typeof b === 'object') return sum + (b.total || 0);
-        return sum;
-      }, 0);
+        let packageBudget = 0;
+        if (typeof b === 'number') {
+          packageBudget = b;
+        } else if (b && typeof b === 'object' && !Array.isArray(b) && b.total !== undefined) {
+          packageBudget = b.total;
+        } else if (b !== undefined) {
+          return validationError(`seller_response.packages[${index}].budget must be a finite, non-negative number`);
+        }
+
+        if (!Number.isFinite(packageBudget) || packageBudget < 0) {
+          return validationError(`seller_response.packages[${index}].budget must be a finite, non-negative number`);
+        }
+
+        const nextPackageBudgetTotal = packageBudgetTotal + packageBudget;
+        if (!Number.isFinite(nextPackageBudgetTotal)) {
+          return validationError('seller_response package budgets exceed numeric ledger limits');
+        }
+        packageBudgetTotal = nextPackageBudgetTotal;
+      }
     }
 
-    plan.committedBudget += committedBudget;
-    plan.committedByType = plan.committedByType || {};
-    plan.committedByType[purchaseType] = (plan.committedByType[purchaseType] || 0) + committedBudget;
+    // Prefer committed_budget when present (canonical), but validate every
+    // reported package budget before falling back to their sum.
+    if (sellerResponse.committed_budget !== undefined) {
+      if (typeof sellerResponse.committed_budget !== 'number'
+        || !Number.isFinite(sellerResponse.committed_budget)
+        || sellerResponse.committed_budget < 0) {
+        return validationError('seller_response.committed_budget must be a finite, non-negative number');
+      }
+      committedBudget = sellerResponse.committed_budget;
+    } else {
+      committedBudget = packageBudgetTotal;
+    }
+
+    if (!applyLedgerAddition(committedBudget)) {
+      return validationError('seller_response committed budget exceeds numeric ledger limits');
+    }
 
     // Check if committed now exceeds authorized
     if (plan.committedBudget > plan.budget.total) {
@@ -1301,11 +1385,11 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
 
   if (outcome === 'delivery' && delivery) {
     const spend = delivery.spend;
-    if (spend) {
+    if (spend !== undefined) {
       committedBudget = spend;
-      plan.committedBudget += spend;
-      plan.committedByType = plan.committedByType || {};
-      plan.committedByType[purchaseType] = (plan.committedByType[purchaseType] || 0) + spend;
+      if (!applyLedgerAddition(spend)) {
+        return validationError('delivery.spend exceeds numeric ledger limits');
+      }
     }
   }
 

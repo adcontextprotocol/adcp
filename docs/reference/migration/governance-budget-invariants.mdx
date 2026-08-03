@@ -1,0 +1,70 @@
+---
+title: Campaign governance budget invariants
+description: "Prepare report_plan_outcome callers for non-negative, finite, overflow-safe budget validation in AdCP 3.2."
+"og:title": "AdCP — Campaign governance budget invariants"
+---
+
+# Campaign governance budget invariants
+
+<Note>
+**Experimental-surface notice.** This breaking validation change was published
+on July 30, 2026 and will not ship before September 10, 2026. It applies only to
+the experimental `governance.campaign` surface in the next AdCP 3.2 release.
+</Note>
+
+AdCP 3.2 governance agents reject invalid monetary inputs to
+`report_plan_outcome` before updating a plan's committed-budget ledger or
+recording an audit outcome. Callers must send finite, non-negative values for:
+
+- `delivery.spend`
+- `seller_response.committed_budget`
+- `seller_response.packages[].budget`
+
+The cumulative plan total and purchase-type subtotal must also remain finite
+after the addition.
+
+## Before
+
+The source schema did not constrain `delivery.spend`, so this request was
+schema-valid and could move the ledger backward:
+
+```json
+{
+  "plan_id": "plan_q1",
+  "governance_context": "gc_q1",
+  "outcome": "delivery",
+  "delivery": {
+    "spend": -2500
+  }
+}
+```
+
+## After
+
+Send the non-negative spend incurred during the reporting period:
+
+```json
+{
+  "plan_id": "plan_q1",
+  "governance_context": "gc_q1",
+  "outcome": "delivery",
+  "delivery": {
+    "spend": 2500
+  }
+}
+```
+
+When correcting a prior report, do not send a negative compensating outcome.
+Reconcile the incorrect report through the governance agent's administrative or
+audit workflow so historical entries remain append-only and explainable.
+
+## Upgrade checklist
+
+1. Validate every reported monetary value as finite and greater than or equal
+   to zero before calling `report_plan_outcome`.
+2. Prevent package sums from overflowing the numeric representation used by
+   your client.
+3. Treat `VALIDATION_ERROR` as a rejected outcome: do not assume any ledger or
+   audit mutation occurred.
+4. Keep the rejected payload and prior accepted outcome identifiers in your
+   operational audit trail.

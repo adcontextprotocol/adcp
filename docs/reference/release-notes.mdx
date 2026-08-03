@@ -9,6 +9,25 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 
 ---
 
+## Upcoming 3.2 — campaign-governance budget validation
+
+**Breaking-change notice published July 30, 2026. Earliest release: September 10, 2026.**
+
+The experimental `governance.campaign` surface will reject negative values for
+`report_plan_outcome.delivery.spend`. Governance agents must also reject
+negative, non-finite, or cumulatively overflowing values from
+`seller_response.committed_budget`, package budgets, and delivery spend before
+updating a plan ledger or recording an outcome.
+
+This closes a budget-integrity flaw where negative delivery spend could reduce
+`total_committed` and restore apparent `budget_remaining`. See the
+[campaign-governance budget-invariant migration note](/docs/reference/migration/governance-budget-invariants)
+for before/after examples and an upgrade checklist. The change is scheduled for
+the next minor release after the experimental surface's six-week notice window;
+published 3.1.x artifacts remain immutable.
+
+---
+
 ## Version 3.1.3 — withdrawn
 
 **Status:** Withdrawn. Do not use 3.1.3 as an implementation target. Use 3.1.2 for the supported 3.1 line.
