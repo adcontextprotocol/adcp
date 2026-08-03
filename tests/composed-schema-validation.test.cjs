@@ -770,6 +770,50 @@ async function runTests() {
   );
 
   await testSchemaRejection(
+    '/schemas/media-buy/update-media-buy-request.json',
+    {
+      idempotency_key: 'ambiguous-new-package-bid-001',
+      account: { account_id: 'acc_test_001' },
+      media_buy_id: 'mb_bidding_001',
+      bidding: { max_bid: 5 },
+      new_packages: [
+        {
+          product_id: 'display_standard',
+          pricing_option_id: 'cpm_auction',
+          budget: 10000,
+          bid_price: 4
+        }
+      ]
+    },
+    'Media-buy bidding rejects an inheriting new package with legacy bid_price'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/update-media-buy-request.json',
+    {
+      idempotency_key: 'ambiguous-new-package-goal-01',
+      account: { account_id: 'acc_test_001' },
+      media_buy_id: 'mb_bidding_002',
+      bidding: { max_bid: 5 },
+      new_packages: [
+        {
+          product_id: 'display_standard',
+          pricing_option_id: 'cpm_auction',
+          budget: 10000,
+          optimization_goals: [
+            {
+              kind: 'event',
+              event_sources: [{ event_source_id: 'purchases', event_type: 'purchase' }],
+              target: { kind: 'cost_per', value: 25 }
+            }
+          ]
+        }
+      ]
+    },
+    'Media-buy bidding rejects an inheriting new package with a legacy monetary goal target'
+  );
+
+  await testSchemaRejection(
     '/schemas/media-buy/create-media-buy-request.json',
     {
       idempotency_key: 'fixed-missing-budget-001',

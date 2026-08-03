@@ -41,6 +41,33 @@
                 ]
               }
             }
+          },
+          "new_packages": {
+            "items": {
+              "not": {
+                "anyOf": [
+                  { "required": ["bid_price"] },
+                  {
+                    "properties": {
+                      "optimization_goals": {
+                        "contains": {
+                          "properties": {
+                            "target": {
+                              "properties": {
+                                "kind": { "enum": ["cost_per", "per_ad_spend"] }
+                              },
+                              "required": ["kind"]
+                            }
+                          },
+                          "required": ["target"]
+                        }
+                      }
+                    },
+                    "required": ["optimization_goals"]
+                  }
+                ]
+              }
+            }
           }
         }
       }
