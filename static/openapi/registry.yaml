@@ -238,6 +238,23 @@ components:
             - sub_brand
             - endorsed
             - independent
+        relationship_trust:
+          type: string
+          enum:
+            - inline
+            - mutual
+            - leaf_only
+            - house_only
+            - standalone
+            - unverifiable
+          description: Trust verdict for the brand-to-house relationship, cached from the last crawler resolution. Absent means not yet computed — absent MUST NOT be interpreted as `standalone`.
+        relationship_verified_at:
+          type: string
+          format: date-time
+          description: When the mutual-assertion edge was last confirmed by both sides. Present only when relationship_trust is `mutual`.
+        claimed_house_domain:
+          type: string
+          description: Unilateral parent claim from the brand's own document. Not trust-extending. Present for `leaf_only` and `unverifiable`.
       required:
         - domain
         - source
@@ -4530,6 +4547,16 @@ components:
         source:
           type: string
           example: community
+        relationship_trust:
+          type: string
+          enum:
+            - inline
+            - mutual
+            - leaf_only
+            - house_only
+            - standalone
+            - unverifiable
+          description: Trust verdict for the brand-to-house relationship. Absent means not yet computed — absent MUST NOT be interpreted as `standalone`.
       required:
         - domain
         - canonical_domain
