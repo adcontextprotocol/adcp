@@ -52,7 +52,8 @@ export type ParseOAuthClientCredentialsCode =
   | 'field_too_long'
   | 'invalid_url'
   | 'invalid_env_reference'
-  | 'invalid_auth_method_value';
+  | 'invalid_auth_method_value'
+  | 'array_too_many';
 
 export type ParseOAuthClientCredentialsResult =
   | { ok: true; creds: OAuthClientCredentials }
@@ -134,7 +135,7 @@ export function parseOAuthClientCredentialsInput(
 
   const scope = parseOptionalString(cc.scope, 1024, 'scope');
   if (scope.error) return scope.error;
-  const resource = parseOptionalString(cc.resource, 2048, 'resource');
+  const resource = parseResourceField(cc.resource);
   if (resource.error) return resource.error;
   const audience = parseOptionalString(cc.audience, 2048, 'audience');
   if (audience.error) return audience.error;
@@ -158,7 +159,7 @@ export function parseOAuthClientCredentialsInput(
       client_id: cc.client_id,
       client_secret: cc.client_secret,
       ...(scope.value && { scope: scope.value }),
-      ...(resource.value && { resource: resource.value }),
+      ...(resource.value != null && { resource: resource.value }),
       ...(audience.value && { audience: audience.value }),
       ...(authMethod && { auth_method: authMethod }),
     },
@@ -169,10 +170,61 @@ type OptionalStringResult =
   | { value: string | null; error?: never }
   | { value?: never; error: ParseOAuthClientCredentialsResult };
 
+type ResourceFieldResult =
+  | { value: string | string[] | null; error?: never }
+  | { value?: never; error: ParseOAuthClientCredentialsResult };
+
+const MAX_RESOURCE_ARRAY_ENTRIES = 8;
+
+/**
+ * Parse the `resource` field which may be a scalar string or an array of
+ * strings per RFC 8707. Absent/empty values are treated as null (not persisted).
+ * Validates each entry against the 2048-char per-entry limit.
+ */
+function parseResourceField(value: unknown): ResourceFieldResult {
+  if (value === undefined || value === null || value === '') return { value: null };
+
+  if (typeof value === 'string') {
+    if (value.length > 2048) {
+      return { error: fail('field_too_long', 'resource', 'oauth_client_credentials.resource exceeds maximum length.') };
+    }
+    return { value };
+  }
+
+  if (Array.isArray(value)) {
+    if (value.length > MAX_RESOURCE_ARRAY_ENTRIES) {
+      return {
+        error: fail(
+          'array_too_many',
+          'resource',
+          `oauth_client_credentials.resource array may have at most ${MAX_RESOURCE_ARRAY_ENTRIES} entries.`,
+        ),
+      };
+    }
+    for (const entry of value) {
+      if (typeof entry !== 'string' || entry === '') {
+        return {
+          error: fail(
+            'invalid_field_type',
+            'resource',
+            'oauth_client_credentials.resource array entries must be non-empty strings.',
+          ),
+        };
+      }
+      if (entry.length > 2048) {
+        return { error: fail('field_too_long', 'resource', 'oauth_client_credentials.resource array entry exceeds maximum length.') };
+      }
+    }
+    return { value };
+  }
+
+  return { error: fail('invalid_field_type', 'resource', 'oauth_client_credentials.resource must be a string or array of strings.') };
+}
+
 function parseOptionalString(
   value: unknown,
   max: number,
-  field: Extract<ParseOAuthClientCredentialsField, 'scope' | 'resource' | 'audience'>,
+  field: Extract<ParseOAuthClientCredentialsField, 'scope' | 'audience'>,
 ): OptionalStringResult {
   if (value === undefined || value === null || value === '') return { value: null };
   if (typeof value !== 'string') {

@@ -42,7 +42,7 @@ export type ResolvedOwnerAuth =
         client_id: string;
         client_secret: string;
         scope?: string;
-        resource?: string;
+        resource?: string | string[];
         audience?: string;
         auth_method?: 'basic' | 'body';
       };
@@ -1351,7 +1351,17 @@ export class ComplianceDatabase {
           client_secret: clientSecret,
         };
         if (row.oauth_cc_scope) credentials.scope = row.oauth_cc_scope;
-        if (row.oauth_cc_resource) credentials.resource = row.oauth_cc_resource;
+        if (row.oauth_cc_resource) {
+          if (row.oauth_cc_resource.startsWith('[')) {
+            try {
+              credentials.resource = JSON.parse(row.oauth_cc_resource);
+            } catch {
+              credentials.resource = row.oauth_cc_resource;
+            }
+          } else {
+            credentials.resource = row.oauth_cc_resource;
+          }
+        }
         if (row.oauth_cc_audience) credentials.audience = row.oauth_cc_audience;
         if (row.oauth_cc_auth_method === 'basic' || row.oauth_cc_auth_method === 'body') {
           credentials.auth_method = row.oauth_cc_auth_method;

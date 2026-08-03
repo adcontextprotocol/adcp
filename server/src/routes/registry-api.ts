@@ -3641,7 +3641,7 @@ registry.registerPath({
             client_id: z.string().max(2048).openapi({ description: "OAuth client ID. May be a `$ENV:VAR_NAME` reference." }),
             client_secret: z.string().max(8192).openapi({ description: "OAuth client secret. May be a `$ENV:VAR_NAME` reference. Stored encrypted at rest." }),
             scope: z.string().max(1024).optional().openapi({ description: "Space-separated OAuth scope values." }),
-            resource: z.string().max(2048).optional().openapi({ description: "RFC 8707 resource indicator." }),
+            resource: z.union([z.string().max(2048), z.array(z.string().max(2048)).max(8)]).optional().openapi({ description: 'RFC 8707 resource indicator. Accepts a single URI string or an array of up to 8 URI strings for multi-resource authorization servers (Keycloak strict, AWS Cognito multi-RS).' }),
             audience: z.string().max(2048).optional().openapi({ description: "Audience parameter for audience-validating authorization servers." }),
             auth_method: z.enum(["basic", "body"]).optional().openapi({ description: "Client-credentials placement: basic (HTTP Basic header, RFC 6749 §2.3.1 preferred) or body (form fields). SDK default is basic." }),
           }),

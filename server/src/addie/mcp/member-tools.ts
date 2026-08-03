@@ -2038,7 +2038,13 @@ export const MEMBER_TOOLS: AddieTool[] = [
             client_id: { type: 'string', description: 'OAuth client ID. May be a `$ENV:VAR_NAME` reference — the SDK resolves at exchange time.' },
             client_secret: { type: 'string', description: 'OAuth client secret. May be a `$ENV:VAR_NAME` reference. Stored encrypted at rest regardless.' },
             scope: { type: 'string', description: 'Space-separated OAuth scope values (optional).' },
-            resource: { type: 'string', description: 'RFC 8707 resource indicator (optional).' },
+            resource: {
+              oneOf: [
+                { type: 'string', description: 'Single resource URI.' },
+                { type: 'array', items: { type: 'string' }, maxItems: 8, description: 'Up to 8 resource URIs for multi-resource authorization servers.' },
+              ],
+              description: 'RFC 8707 resource indicator. Accepts a single URI string or an array of up to 8 for multi-resource authorization servers (Keycloak strict mode, AWS Cognito with multiple resource servers).',
+            },
             audience: { type: 'string', description: 'Audience parameter for audience-validating authorization servers like Auth0, Okta, Azure AD (optional).' },
             auth_method: { type: 'string', enum: ['basic', 'body'], description: 'Where to put client credentials on the token request. "basic" (default, RFC 6749 §2.3.1 preferred): HTTP Basic header. "body": form fields.' },
           },

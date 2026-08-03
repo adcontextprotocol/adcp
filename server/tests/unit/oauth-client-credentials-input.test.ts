@@ -207,6 +207,62 @@ describe('parseOAuthClientCredentialsInput', () => {
     }
   });
 
+  // ── Resource field: array support ─────────────────────
+  describe('resource field — array support', () => {
+    it('accepts a single-element array', () => {
+      const result = parseOAuthClientCredentialsInput(
+        { ...validMinimal, resource: ['https://api.example.com'] },
+        { validateTokenEndpoint: acceptAll },
+      );
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.creds.resource).toEqual(['https://api.example.com']);
+    });
+
+    it('accepts a multi-element array up to the limit', () => {
+      const resources = Array.from({ length: 8 }, (_, i) => `https://api${i}.example.com`);
+      const result = parseOAuthClientCredentialsInput(
+        { ...validMinimal, resource: resources },
+        { validateTokenEndpoint: acceptAll },
+      );
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.creds.resource).toEqual(resources);
+    });
+
+    it('rejects an array exceeding the count limit', () => {
+      const resources = Array.from({ length: 9 }, (_, i) => `https://api${i}.example.com`);
+      const result = parseOAuthClientCredentialsInput(
+        { ...validMinimal, resource: resources },
+        { validateTokenEndpoint: acceptAll },
+      );
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.code).toBe('array_too_many');
+      expect(result.field).toBe('resource');
+    });
+
+    it('rejects an array entry exceeding length limit', () => {
+      const result = parseOAuthClientCredentialsInput(
+        { ...validMinimal, resource: ['a'.repeat(2049)] },
+        { validateTokenEndpoint: acceptAll },
+      );
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.code).toBe('field_too_long');
+    });
+
+    it('rejects an array with a non-string entry', () => {
+      const result = parseOAuthClientCredentialsInput(
+        { ...validMinimal, resource: ['https://api.example.com', 42] },
+        { validateTokenEndpoint: acceptAll },
+      );
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.code).toBe('invalid_field_type');
+    });
+  });
+
   // ── Structured error codes (closes #2810) ───────────────────────────
 
   describe('failure result carries structured { code, field }', () => {
