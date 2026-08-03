@@ -2027,7 +2027,7 @@ function parseStripeInvoice(
   }
 
   const dueDate = invoice.due_date ? new Date(invoice.due_date * 1000) : null;
-  const status = (invoice.status === 'draft' || invoice.status === 'open') ? invoice.status : 'open';
+  const status: 'draft' | 'open' = invoice.status === 'draft' ? 'draft' : 'open';
   return {
     id: invoice.id,
     status,
