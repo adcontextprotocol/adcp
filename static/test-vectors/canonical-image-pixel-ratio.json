@@ -1,6 +1,6 @@
 {
-  "version": "1.1.0",
-  "description": "SDK reference vectors for canonical image pixel-density validation. Format dimensions are logical render pixels; image asset dimensions are intrinsic pixels. When pixel_ratios is absent the accepted set is [1]. One asset satisfying one accepted ratio is sufficient unless an image slot declares required_pixel_ratios, in which case its rendition array must cover every required density exactly once.",
+  "version": "1.2.0",
+  "description": "SDK reference vectors for canonical image pixel-density validation. Format dimensions are logical render pixels; image asset dimensions are intrinsic pixels. When pixel_ratios is absent the accepted set is [1]. When top-level and slot pixel_ratios are both present, the effective set is their intersection and an empty intersection is invalid. One asset satisfying one effective ratio is sufficient unless an image slot declares required_pixel_ratios, in which case its rendition array must cover every required density exactly once.",
   "vectors": [
     {
       "id": "backward-compatible-1x",
@@ -133,6 +133,46 @@
       "params": { "pixel_ratios": [2] },
       "asset": { "width": 600, "height": 500, "pixel_ratio": 2 },
       "expected": { "valid": true, "pixel_ratio": 2, "logical_width": 300, "logical_height": 250 }
+    },
+    {
+      "id": "non-empty-top-level-and-slot-intersection",
+      "params": { "width": 300, "height": 250, "pixel_ratios": [1, 2] },
+      "slot": { "pixel_ratios": [2, 3], "required_pixel_ratios": [2] },
+      "assets": [
+        { "width": 600, "height": 500, "pixel_ratio": 2 }
+      ],
+      "expected": { "valid": true, "pixel_ratios": [2] }
+    },
+    {
+      "id": "empty-top-level-and-slot-intersection-is-invalid",
+      "params": { "width": 300, "height": 250, "pixel_ratios": [1] },
+      "slot": { "pixel_ratios": [2] },
+      "asset": { "width": 600, "height": 500, "pixel_ratio": 2 },
+      "expected": { "valid": false, "violation": "pixel_ratio_intersection_empty" }
+    },
+    {
+      "id": "required-ratio-excluded-by-top-level-acceptance",
+      "params": { "width": 300, "height": 250, "pixel_ratios": [1] },
+      "slot": { "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] },
+      "assets": [
+        { "width": 300, "height": 250, "pixel_ratio": 1 },
+        { "width": 600, "height": 500, "pixel_ratio": 2 }
+      ],
+      "expected": { "valid": false, "violation": "required_pixel_ratio_not_accepted", "pixel_ratio": 2 }
+    },
+    {
+      "id": "single-asset-slot-narrows-acceptance-without-required-ratios",
+      "params": { "width": 300, "height": 250, "pixel_ratios": [1, 2] },
+      "slot": { "pixel_ratios": [2] },
+      "asset": { "width": 600, "height": 500, "pixel_ratio": 2 },
+      "expected": { "valid": true, "pixel_ratio": 2, "logical_width": 300, "logical_height": 250 }
+    },
+    {
+      "id": "single-asset-slot-rejects-top-level-ratio-excluded-by-narrowing",
+      "params": { "width": 300, "height": 250, "pixel_ratios": [1, 2] },
+      "slot": { "pixel_ratios": [2] },
+      "asset": { "width": 300, "height": 250, "pixel_ratio": 1 },
+      "expected": { "valid": false, "violation": "pixel_ratio_not_accepted" }
     },
     {
       "id": "gam-required-1x-and-2x-renditions",

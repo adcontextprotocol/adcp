@@ -23,15 +23,61 @@ type Vector = {
   expected_outcome?: string;
 };
 
+type V1Constraint =
+  | { kind: 'exact'; value: unknown }
+  | { kind: 'range'; min: number | null; max: number | null }
+  | { kind: 'set'; values: unknown[] };
+
+type NarrowingVector = {
+  id: string;
+  v1_baseline: Record<string, V1Constraint>;
+  v2_params: Record<string, unknown>;
+  expected: { narrows: true } | { narrows: false; conflict: string };
+};
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const registry = JSON.parse(fs.readFileSync(
   path.join(root, 'static/schemas/source/registries/v1-canonical-mapping.json'),
   'utf8',
-)) as { version: string; mappings: RegistryMapping[] };
+)) as { version: string; description: string; mappings: RegistryMapping[] };
 const fixture = JSON.parse(fs.readFileSync(
   path.join(root, 'static/test-vectors/v1-canonical-mapping.json'),
   'utf8',
-)) as { registry_version: string; vectors: Vector[] };
+)) as { registry_version: string; vectors: Vector[]; narrowing_vectors: NarrowingVector[] };
+
+function sameValue(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+/** Reference implementation of the normative one-way v2-narrows-v1 relation. */
+function narrowsV1Baseline(
+  v1Baseline: Record<string, V1Constraint>,
+  v2Params: Record<string, unknown>,
+): { narrows: true } | { narrows: false; conflict: string } {
+  for (const [parameter, v2Value] of Object.entries(v2Params)) {
+    const constraint = v1Baseline[parameter];
+    if (!constraint) continue;
+
+    let narrows = false;
+    if (constraint.kind === 'exact') {
+      narrows = sameValue(v2Value, constraint.value);
+    } else if (constraint.kind === 'set') {
+      const values = Array.isArray(v2Value) ? v2Value : [v2Value];
+      narrows = values.every(value => constraint.values.some(allowed => sameValue(value, allowed)));
+    } else if (typeof v2Value === 'number') {
+      narrows = (constraint.min === null || v2Value >= constraint.min) &&
+        (constraint.max === null || v2Value <= constraint.max);
+    } else if (Array.isArray(v2Value) && v2Value.length === 2) {
+      const [lower, upper] = v2Value as [number | null, number | null];
+      narrows = (constraint.min === null || (lower !== null && lower >= constraint.min)) &&
+        (constraint.max === null || (upper !== null && upper <= constraint.max));
+    }
+
+    if (!narrows) return { narrows: false, conflict: parameter };
+  }
+
+  return { narrows: true };
+}
 
 const literalMappings = registry.mappings.filter(
   (mapping): mapping is RegistryMapping & { v1_pattern: { format_id_glob: string } } =>
@@ -122,6 +168,17 @@ describe('v1 canonical literal mapping vectors', () => {
     expect(registry.description).toContain('Image rendition-set exception (normative)');
     expect(registry.description).toContain('MUST NOT');
     expect(registry.description).toContain('generic alias-collision rule');
+  });
+
+  it('applies the documented one-way v2-narrows-v1 relation', () => {
+    expect(fixture.narrowing_vectors.length).toBeGreaterThanOrEqual(2);
+    expect(fixture.narrowing_vectors.some(vector => vector.expected.narrows)).toBe(true);
+    expect(fixture.narrowing_vectors.some(vector => !vector.expected.narrows)).toBe(true);
+
+    for (const vector of fixture.narrowing_vectors) {
+      expect(narrowsV1Baseline(vector.v1_baseline, vector.v2_params), vector.id)
+        .toEqual(vector.expected);
+    }
   });
 
   it('treats small NxN tokens as aspect ratios rather than pixel dimensions', () => {

@@ -12,6 +12,19 @@ function inRange(value, min, max) {
   return (min === undefined || value >= min) && (max === undefined || value <= max);
 }
 
+/** Resolve the normative top-level/slot acceptance intersection once for every validation path. */
+function effectivePixelRatios(params, slot = {}) {
+  const topLevelRatios = params.pixel_ratios;
+  const slotRatios = slot.pixel_ratios;
+  const pixelRatios = topLevelRatios && slotRatios
+    ? topLevelRatios.filter(ratio => slotRatios.includes(ratio))
+    : slotRatios ?? topLevelRatios ?? [1];
+
+  return pixelRatios.length > 0
+    ? { valid: true, pixel_ratios: pixelRatios }
+    : { valid: false, violation: 'pixel_ratio_intersection_empty' };
+}
+
 /** Reference algorithm consumed independently by each SDK's own test suite. */
 function validateImageDensity(params, asset) {
   const acceptedRatios = params.pixel_ratios ?? [1];
@@ -78,8 +91,16 @@ function validateImageDensity(params, asset) {
   return { valid: false, violation: 'image_dimensions_not_accepted' };
 }
 
+function validateImageSlot(params, slot, asset) {
+  const effectiveRatios = effectivePixelRatios(params, slot);
+  if (!effectiveRatios.valid) return effectiveRatios;
+  return validateImageDensity({ ...params, pixel_ratios: effectiveRatios.pixel_ratios }, asset);
+}
+
 function validateImageRenditionSet(params, slot, assets) {
-  const acceptedRatios = slot.pixel_ratios ?? params.pixel_ratios ?? [1];
+  const effectiveRatios = effectivePixelRatios(params, slot);
+  if (!effectiveRatios.valid) return effectiveRatios;
+  const acceptedRatios = effectiveRatios.pixel_ratios;
   const requiredRatios = slot.required_pixel_ratios ?? [];
 
   for (const ratio of requiredRatios) {
@@ -111,7 +132,7 @@ for (const vector of fixture.vectors) {
   test(`canonical image pixel ratio: ${vector.id}`, () => {
     const actual = vector.assets
       ? validateImageRenditionSet(vector.params, vector.slot, vector.assets)
-      : validateImageDensity(vector.params, vector.asset);
+      : validateImageSlot(vector.params, vector.slot, vector.asset);
     assert.deepEqual(actual, vector.expected);
   });
 }

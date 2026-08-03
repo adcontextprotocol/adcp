@@ -1042,7 +1042,7 @@ An image asset MAY carry `pixel_ratio`. When it is omitted, SDKs MUST infer dens
 
 SDK validation MUST follow the reference vectors in `static/test-vectors/canonical-image-pixel-ratio.json`. In particular, size and density are independent axes, declared metadata must agree with intrinsic dimensions, and one matching asset satisfies one required image slot unless that slot declares required rendition coverage.
 
-The same acceptance constraint is available as `slots[].pixel_ratios` on every canonical image-bearing slot, including native images, carousel cards (where it applies to nested image media), responsive-creative image pools, and companion images. The top-level `image.params.pixel_ratios` shorthand applies to the canonical image's `image_main` slot. When both are present, the effective acceptance set is their intersection; an empty intersection is an invalid declaration. Pixel ratio is invalid on slots that cannot carry image media.
+The same acceptance constraint is available as `slots[].pixel_ratios` on every canonical image-bearing slot, including native images, carousel cards (where it applies to nested image media), responsive-creative image pools, and companion images. The top-level `image.params.pixel_ratios` shorthand applies to the canonical image's `image_main` slot. When both are present, SDKs MUST compute the effective acceptance set as their intersection for both single assets and rendition arrays; neither declaration takes precedence. An empty intersection is invalid and fails with `pixel_ratio_intersection_empty`. Pixel ratio is invalid on slots that cannot carry image media.
 
 #### Required rendition sets
 
@@ -1083,7 +1083,7 @@ The matching manifest supplies the slot as a rendition array. Each entry remains
 }
 ```
 
-Every required ratio MUST also be accepted, and the array MUST contain exactly one valid rendition for each required ratio. Accepted ratios not listed as required are optional. All entries in a rendition set represent the same semantic image; only density-specific encoding properties such as URL, intrinsic dimensions, format, and file size may differ. SDKs MUST reject missing required coverage with `required_pixel_ratio_missing`, duplicate density entries with `pixel_ratio_duplicate`, and required ratios outside the accepted set with `required_pixel_ratio_not_accepted`. `min` and `max` SHOULD bound the expected rendition count, but density coverage—not array length alone—is authoritative.
+Every required ratio MUST appear in the effective acceptance intersection, and the array MUST contain exactly one valid rendition for each required ratio. A ratio present on the slot but excluded by top-level `image.params.pixel_ratios` is not accepted. Accepted ratios not listed as required are optional. All entries in a rendition set represent the same semantic image; only density-specific encoding properties such as URL, intrinsic dimensions, format, and file size may differ. SDKs MUST reject missing required coverage with `required_pixel_ratio_missing`, duplicate density entries with `pixel_ratio_duplicate`, and required ratios outside the effective accepted set with `required_pixel_ratio_not_accepted`. `min` and `max` SHOULD bound the expected rendition count, but density coverage—not array length alone—is authoritative.
 
 When `required_pixel_ratios` is absent, the original acceptance behavior remains: one image matching any accepted density satisfies the slot. Card media remains singular, so `required_pixel_ratios` is valid only on an `image` slot; a card slot may use `pixel_ratios` only as an acceptance constraint for each card's image.
 
@@ -1242,6 +1242,8 @@ When the spec says a v2 `format_options` entry MUST refer to the same underlying
 The narrows relation is one-directional: v2 narrows v1 (v2 is the stricter shape). The reverse (v1 narrows v2) is NOT how the dual-emission contract is checked.
 
 SDK authors implementing the narrowing check SHOULD apply parameter-by-parameter subsumption per the rules above. Edge cases (composite parameters, platform_extensions, slot vocabulary changes) are not yet specified; SDKs MAY treat them as "unknown — pass" for 3.1 and surface a structured warning, with the working group tightening them per adopter feedback through 3.x.
+
+SDK conformance for the specified scalar, enum/set, pixel-density, range, inheritance, open-baseline, and conflict cases MUST follow `narrowing_vectors` in `static/test-vectors/v1-canonical-mapping.json`.
 
 ### v1 → v2 projection via `canonical:` annotation (object shape)
 
