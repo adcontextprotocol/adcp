@@ -213,11 +213,11 @@ describe('SI Chat Protocol lifecycle (/si tenant)', () => {
     expect(termResult).toHaveProperty('acp_handoff');
   });
 
-  it('si_send_message after termination returns SESSION_ENDED error (session not deleted)', async () => {
+  it('si_send_message after termination returns SESSION_TERMINATED error (session not deleted)', async () => {
     const ikey = `test-${crypto.randomUUID()}`;
     const initiateBody = await callTool('si_initiate_session', {
       idempotency_key: ikey,
-      intent: 'test session ended path',
+      intent: 'test session terminated path',
       identity: { consent_granted: false, anonymous_session_id: 'anon_test_123' },
     });
     const initResult = parseToolResult(initiateBody);
@@ -226,7 +226,7 @@ describe('SI Chat Protocol lifecycle (/si tenant)', () => {
     // Terminate first
     await callTool('si_terminate_session', { session_id: sessionId, reason: 'user_exit' });
 
-    // Now try to send a message — must get SESSION_ENDED, not NOT_FOUND
+    // Now try to send a message — must get SESSION_TERMINATED, not NOT_FOUND
     const sendKey = `send-${crypto.randomUUID()}`;
     const sendBody = await callTool('si_send_message', {
       idempotency_key: sendKey,
@@ -235,7 +235,7 @@ describe('SI Chat Protocol lifecycle (/si tenant)', () => {
     });
     // The custom tool helper converts errors[] to adcp_error in structuredContent.
     const adcpError = sendBody.result?.structuredContent?.['adcp_error'] as Record<string, unknown> | undefined;
-    expect(adcpError?.['code']).toBe('SESSION_ENDED');
+    expect(adcpError?.['code']).toBe('SESSION_TERMINATED');
   });
 
   it('si_initiate_session without consent_granted returns an error', async () => {

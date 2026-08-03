@@ -34,19 +34,15 @@ const ACCOUNT_REF = z.object({
 }).passthrough();
 
 const SYNC_CATALOGS_SCHEMA = {
+  idempotency_key: z.string().min(16).max(255),
   account: ACCOUNT_REF,
   catalogs: z.array(z.object({
-    catalog_id: z.string(),
-    catalog_type: z.string().optional(),
+    catalog_id: z.string().optional(),
     name: z.string().optional(),
-    feed_url: z.string().optional(),
+    type: z.string().optional(),
+    url: z.string().optional(),
     items: z.array(z.any()).optional(),
   }).passthrough()).optional(),
-  catalog_ids: z.array(z.string()).optional(),
-  delete_missing: z.boolean().optional(),
-  dry_run: z.boolean().optional(),
-  validation_mode: z.enum(['strict', 'lenient']).optional(),
-  idempotency_key: z.string().optional(),
   context: z.any().optional(),
 };
 
@@ -87,7 +83,10 @@ export function buildSalesTenantConfig(host: string, options: { storyboardCompat
             'Push product catalogs (feeds, items, inventory) for catalog-driven campaigns. Supports URL feeds for scheduled re-fetch and inline items for small catalogs. Returns per-item approval status. Omit catalogs to discover existing synced catalogs.',
             SYNC_CATALOGS_SCHEMA,
             handleSyncCatalogs,
-            { annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true } },
+            {
+              annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+              enforceIdempotency: true,
+            },
           ),
           // sync_governance is a 3.1+ account task. The released 3.0.x sales
           // scenarios predate it and gracefully skip the step when the tool is
