@@ -83,6 +83,7 @@ If a request includes `fields` that require authorization the caller does not ha
   "voice_synthesis": {
     "provider": "elevenlabs",
     "voice_id": "janssen_v2",
+    "rights_offering_id": "loti_dj_voice_2026",
     "settings": { "stability": 0.7 }
   },
   "tone": {
@@ -192,7 +193,7 @@ The response mirrors the brand.json brand definition, extended with dynamic data
 | `visual_guidelines` | object | No | Photography, graphic style, colorways, type scale, motion rules, restrictions |
 | `tone` | object | No | Brand voice and messaging guidelines. Sub-fields: `voice` (personality adjectives), `attributes` (prompt guidance traits), `dos` (approved approaches), `donts` (prohibited topics) |
 | `tagline` | string | No | Brand tagline or slogan |
-| `voice_synthesis` | object | No | TTS voice synthesis configuration (`provider`, `voice_id`, `settings`) |
+| `voice_synthesis` | object | No | TTS voice synthesis configuration (`provider`, `voice_id`, `settings`, optional `rights_offering_id`). The offering ID is advisory provenance from `get_rights`, not a buyer-specific grant; resolve it through `acquire_rights` before synthesis. |
 | `assets` | object[] | No | Available brand assets — matches brand.json asset shape (`asset_id`, `asset_type`, `url`, `tags`) |
 | `rights` | object | No | Rights availability summary (for pricing, use `get_rights`) |
 | `available_fields` | string[] | No | Sections available but not returned due to authorization level. Tells the caller what linking their account would unlock. |
