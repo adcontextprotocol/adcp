@@ -31,6 +31,7 @@ vi.mock('../../src/logger.js', () => ({
 
 const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
 const { stopSessionCleanup } = await import('../../src/training-agent/state.js');
+const { stopSiSessionCleanup } = await import('../../src/training-agent/si-handlers.js');
 
 const AUTH = 'Bearer si-lifecycle-test-token';
 const TENANT_URL_PATH = '/api/training-agent/si/mcp';
@@ -92,6 +93,7 @@ describe('SI Chat Protocol lifecycle (/si tenant)', () => {
 
   afterAll(async () => {
     stopSessionCleanup();
+    stopSiSessionCleanup();
     await new Promise<void>(resolve => server.close(() => resolve()));
   });
 
