@@ -9,6 +9,34 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 
 ---
 
+## Version 3.2.0
+
+**Status:** In development — minor release targeting the 3.2.0 milestone. Additive over 3.1 for wire shapes; this section records the creative-format **discovery** deprecation posture (#5779).
+
+### Creative-format discovery deprecation posture (#5779)
+
+`list_creative_formats` is **deprecated for new discovery**. Prefer:
+
+| Role | Preferred 3.2+ discovery | Notes |
+|---|---|---|
+| Sales agents | `get_products.format_options[]` | Product-level accepted formats |
+| Creative agents | `get_adcp_capabilities.creative.supported_formats` | Producible-format catalog |
+
+The v1 task remains **functional through 4.x**. Removal is aligned with the v1 named-format / `format_ids` deprecation calendar in the [canonical formats migration guide](/docs/creative/canonical-formats-migration) (2027-Q4 floor / 2029-Q1 ceiling; adoption-driven 5.0 cut sequence) — not an immediate hard cut in 3.2.
+
+**Not deprecated by this change:**
+
+- [`list_creatives`](/docs/creative/task-reference/list_creatives) remains the creative-library query task.
+- Legacy named-format creatives and v1 `format_id` / `format_ids[]` remain supported through 4.x.
+
+**Consumer conformance:** buyers and other consumers MUST NOT assume `list_creative_formats` is present on 3.2+ agents when equivalent canonical-format discovery is declared.
+
+**Compliance:** current 3.2 sales and creative lifecycle storyboards use canonical product declarations and `creative.supported_formats`. Compatibility-only storyboards that exercise `list_creative_formats` are gated with `requires_tool`, producing an explicit non-failing `missing_tool` skip when an agent does not expose the deprecated task.
+
+See [`list_creative_formats`](/docs/creative/task-reference/list_creative_formats), [Creative Protocol specification § Conformance](/docs/creative/specification#conformance), and [Implementing creative agents](/docs/creative/implementing-creative-agents).
+
+---
+
 ## Version 3.1.3 — withdrawn
 
 **Status:** Withdrawn. Do not use 3.1.3 as an implementation target. Use 3.1.2 for the supported 3.1 line.
