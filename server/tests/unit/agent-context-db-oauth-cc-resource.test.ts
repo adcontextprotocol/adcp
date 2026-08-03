@@ -179,30 +179,24 @@ describe('AgentContextDatabase — oauth_cc_resource save/load (RFC 8707 multi-r
       expect(creds!.resource).toBe('v1a:[1,2,3]');
     });
 
-    // ── backward compat ──────────────────────────────────────────────────
+    // ── untagged / legacy rows ───────────────────────────────────────────
 
-    it('backward compat: decodes json1:-prefixed column into string[]', async () => {
-      mockLoadRow({ oauth_cc_resource: 'json1:["https://api1.example.com","https://api2.example.com"]' });
-      mockedDecrypt.mockReturnValueOnce('secret-plaintext');
-
-      const creds = await db.getOAuthClientCredentialsByOrgAndUrl('org_abc', 'https://agent.example.com');
-      expect(creds!.resource).toEqual(['https://api1.example.com', 'https://api2.example.com']);
-    });
-
-    it('backward compat: falls back to raw string when json1: payload is invalid', async () => {
-      mockLoadRow({ oauth_cc_resource: 'json1:[not-json' });
-      mockedDecrypt.mockReturnValueOnce('secret-plaintext');
-
-      const creds = await db.getOAuthClientCredentialsByOrgAndUrl('org_abc', 'https://agent.example.com');
-      expect(creds!.resource).toBe('json1:[not-json');
-    });
-
-    it('legacy: bare scalar (no codec prefix) passes through unchanged', async () => {
+    it('untagged bare scalar passes through unchanged', async () => {
       mockLoadRow({ oauth_cc_resource: 'https://api.example.com' });
       mockedDecrypt.mockReturnValueOnce('secret-plaintext');
 
       const creds = await db.getOAuthClientCredentialsByOrgAndUrl('org_abc', 'https://agent.example.com');
       expect(creds!.resource).toBe('https://api.example.com');
+    });
+
+    it('untagged json1: row is treated as a bare scalar (not decoded as array)', async () => {
+      // json1: encoding never shipped to main, so no production array rows use it.
+      // A bare "json1:..." value is read back as-is — the same as any other untagged string.
+      mockLoadRow({ oauth_cc_resource: 'json1:["https://api1.example.com","https://api2.example.com"]' });
+      mockedDecrypt.mockReturnValueOnce('secret-plaintext');
+
+      const creds = await db.getOAuthClientCredentialsByOrgAndUrl('org_abc', 'https://agent.example.com');
+      expect(creds!.resource).toBe('json1:["https://api1.example.com","https://api2.example.com"]');
     });
 
     it('omits resource when oauth_cc_resource is null', async () => {

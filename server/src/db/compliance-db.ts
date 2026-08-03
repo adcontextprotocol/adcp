@@ -1365,19 +1365,10 @@ export class ComplianceDatabase {
             }
           } else if (raw.startsWith('v1s:')) {
             credentials.resource = raw.slice(4);
-          } else if (raw.startsWith('json1:')) {
-            // backward compat: rows written before the v1a/v1s codec
-            try {
-              const parsed: unknown = JSON.parse(raw.slice(6));
-              credentials.resource =
-                Array.isArray(parsed) && parsed.every((e): e is string => typeof e === 'string')
-                  ? parsed
-                  : raw;
-            } catch {
-              credentials.resource = raw;
-            }
           } else {
-            // legacy: bare scalar written before any codec
+            // Untagged row (no v1a:/v1s: prefix) — treat as a legacy bare scalar.
+            // json1: rows from an unreleased draft also fall here; that encoding
+            // never reached main so there are no production array rows to preserve.
             credentials.resource = raw;
           }
         }
