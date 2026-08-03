@@ -71,10 +71,10 @@ describe('certification_modules.tenant_ids (migration 464)', () => {
     expect(c3!.tenant_ids).toEqual(['creative', 'si']);
   });
 
-  it('S5 (SI capstone) is pinned to creative, sales, and si tenants (migration 533)', async () => {
+  it('S5 (SI capstone) is pinned to si as primary, then creative and sales (migration 533)', async () => {
     const s5 = await getModule('S5');
     expect(s5).not.toBeNull();
-    expect(s5!.tenant_ids).toEqual(['creative', 'sales', 'si']);
+    expect(s5!.tenant_ids).toEqual(['si', 'creative', 'sales']);
   });
 
   it('B3 (publisher track) does not point at the buy-side signals tenant', async () => {
