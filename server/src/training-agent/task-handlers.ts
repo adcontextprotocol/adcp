@@ -428,6 +428,247 @@ function validateDirectCanonicalPackageSelector(pkg: PackageInput, product: Prod
   };
 }
 
+type CanonicalPackageFormat = Record<string, unknown> & {
+  format_kind?: string;
+  format_option_id?: string;
+  publisher_domain?: string;
+  params?: Record<string, unknown>;
+  v1_format_ref?: FormatID[];
+};
+
+function cloneCanonicalFormat(format: CanonicalPackageFormat): CanonicalPackageFormat {
+  return JSON.parse(JSON.stringify(format)) as CanonicalPackageFormat;
+}
+
+function flattenedManifestAssets(manifest: CreativeManifest): Array<Record<string, unknown>> {
+  return Object.values(manifest.assets ?? {}).flatMap(value => {
+    const values = Array.isArray(value) ? value : [value];
+    return values.filter(isRecord);
+  });
+}
+
+export function canonicalParamsSatisfied(manifest: CreativeManifest, params: Record<string, unknown>): boolean {
+  const assets = flattenedManifestAssets(manifest);
+  const width = typeof params.width === 'number' ? params.width : undefined;
+  const height = typeof params.height === 'number' ? params.height : undefined;
+  if (width !== undefined || height !== undefined) {
+    const matchesDimensions = assets.some(asset =>
+      (width === undefined || asset.width === width)
+      && (height === undefined || asset.height === height)
+    );
+    if (!matchesDimensions) return false;
+  }
+
+  const minWidth = typeof params.min_width === 'number' ? params.min_width : undefined;
+  const maxWidth = typeof params.max_width === 'number' ? params.max_width : undefined;
+  const minHeight = typeof params.min_height === 'number' ? params.min_height : undefined;
+  const maxHeight = typeof params.max_height === 'number' ? params.max_height : undefined;
+  if (minWidth !== undefined || maxWidth !== undefined || minHeight !== undefined || maxHeight !== undefined) {
+    const matchesBounds = assets.some(asset => {
+      if (typeof asset.width !== 'number' || typeof asset.height !== 'number') return false;
+      return (minWidth === undefined || asset.width >= minWidth)
+        && (maxWidth === undefined || asset.width <= maxWidth)
+        && (minHeight === undefined || asset.height >= minHeight)
+        && (maxHeight === undefined || asset.height <= maxHeight);
+    });
+    if (!matchesBounds) return false;
+  }
+
+  const durationExact = typeof params.duration_ms_exact === 'number' ? params.duration_ms_exact : undefined;
+  if (durationExact !== undefined && !assets.some(asset => asset.duration_ms === durationExact)) return false;
+
+  if (Array.isArray(params.duration_ms_range)) {
+    const [minimum, maximum] = params.duration_ms_range;
+    const matchesDuration = assets.some(asset => {
+      const duration = asset.duration_ms;
+      if (typeof duration !== 'number') return false;
+      return (typeof minimum !== 'number' || duration >= minimum)
+        && (typeof maximum !== 'number' || duration <= maximum);
+    });
+    if (!matchesDuration) return false;
+  }
+
+  if (typeof params.aspect_ratio === 'string') {
+    const [ratioWidth, ratioHeight] = params.aspect_ratio.split(':').map(Number);
+    if (!Number.isFinite(ratioWidth) || !Number.isFinite(ratioHeight) || ratioHeight === 0) return false;
+    const expectedRatio = ratioWidth / ratioHeight;
+    if (!assets.some(asset =>
+      typeof asset.width === 'number'
+      && typeof asset.height === 'number'
+      && asset.height > 0
+      && Math.abs(asset.width / asset.height - expectedRatio) < 0.01
+    )) return false;
+  }
+
+  if (params.orientation === 'horizontal' || params.orientation === 'vertical' || params.orientation === 'square') {
+    const matchesOrientation = assets.some(asset => {
+      if (typeof asset.width !== 'number' || typeof asset.height !== 'number') return false;
+      if (params.orientation === 'horizontal') return asset.width > asset.height;
+      if (params.orientation === 'vertical') return asset.height > asset.width;
+      return asset.width === asset.height;
+    });
+    if (!matchesOrientation) return false;
+  }
+
+  for (const [key, value] of Object.entries(params)) {
+    if ((key !== 'sizes' && !key.endsWith('_sizes')) || !Array.isArray(value) || value.length === 0) continue;
+    const allowedSizes = value.filter(isRecord);
+    if (!assets.some(asset => allowedSizes.some(size => asset.width === size.width && asset.height === size.height))) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/** Resolve the package selector to an immutable canonical checklist. */
+function snapshotPackageFormats(
+  pkg: PackageInput,
+  product: Product,
+  packageIndex: number,
+): { formats?: CanonicalPackageFormat[]; error?: TaskError } {
+  const declarations = (Array.isArray(product.format_options) ? product.format_options : [])
+    .filter(isRecord) as CanonicalPackageFormat[];
+  if (declarations.length === 0) return {};
+
+  if (Array.isArray(pkg.format_option_refs) && pkg.format_option_refs.length > 0) {
+    const selected: CanonicalPackageFormat[] = [];
+    for (let i = 0; i < pkg.format_option_refs.length; i++) {
+      const ref = pkg.format_option_refs[i];
+      if (!isRecord(ref) || typeof ref.format_option_id !== 'string') {
+        return {
+          error: {
+            code: 'UNSUPPORTED_FEATURE',
+            message: `Package ${packageIndex}: format_option_refs[${i}] is not a resolvable canonical format option`,
+            field: `packages[${packageIndex}].format_option_refs[${i}]`,
+            recovery: 'correctable',
+          },
+        };
+      }
+      const match = declarations.find(declaration => {
+        if (declaration.format_option_id !== ref.format_option_id) return false;
+        if (ref.scope === 'publisher') {
+          return typeof ref.publisher_domain === 'string'
+            && declaration.publisher_domain === ref.publisher_domain;
+        }
+        if (ref.scope === 'product') return declaration.publisher_domain === undefined;
+        return ref.publisher_domain === undefined
+          || declaration.publisher_domain === ref.publisher_domain;
+      });
+      if (!match) {
+        return {
+          error: {
+            code: 'UNSUPPORTED_FEATURE',
+            message: `Package ${packageIndex}: format option "${ref.format_option_id}" is not declared by product ${pkg.product_id}`,
+            field: `packages[${packageIndex}].format_option_refs[${i}]`,
+            recovery: 'correctable',
+          },
+        };
+      }
+      selected.push(cloneCanonicalFormat(match));
+    }
+    return { formats: selected };
+  }
+
+  if (typeof pkg.format_kind === 'string') {
+    return {
+      formats: [{
+        format_kind: pkg.format_kind,
+        params: isRecord(pkg.params)
+          ? JSON.parse(JSON.stringify(pkg.params)) as Record<string, unknown>
+          : {},
+      }],
+    };
+  }
+
+  if (Array.isArray(pkg.format_ids) && pkg.format_ids.length > 0) {
+    const selected = declarations.filter(declaration => {
+      const legacyRefs = Array.isArray(declaration.v1_format_ref) ? declaration.v1_format_ref : [];
+      return pkg.format_ids!.some(requested => legacyRefs.some(ref =>
+        ref?.id === requested.id
+        && (requested.agent_url === undefined || ref.agent_url === requested.agent_url)
+      ));
+    });
+    if (selected.length === 0) {
+      return {
+        error: {
+          code: 'UNSUPPORTED_FEATURE',
+          message: `Package ${packageIndex}: deprecated format_ids do not resolve to a canonical declaration on product ${pkg.product_id}`,
+          field: `packages[${packageIndex}].format_ids`,
+          recovery: 'correctable',
+        },
+      };
+    }
+    return { formats: selected.map(cloneCanonicalFormat) };
+  }
+
+  // Omitting selectors means every product format option is active.
+  return { formats: declarations.map(cloneCanonicalFormat) };
+}
+
+function creativeCoversPackageFormat(
+  creative: CreativeState | undefined,
+  requirement: CanonicalPackageFormat,
+  sameKindRequirementCount: number,
+): boolean {
+  if (!creative) return false;
+  const creativeKind = creative.formatKind ?? creative.manifest?.format_kind;
+  const requiredKind = requirement.format_kind;
+
+  const legacyRefs = Array.isArray(requirement.v1_format_ref) ? requirement.v1_format_ref : [];
+  if (legacyRefs.some(ref => ref?.id === creative.formatId.id
+    && (!ref.agent_url || !creative.formatId.agent_url || ref.agent_url === creative.formatId.agent_url))) {
+    return true;
+  }
+  if (!requiredKind || creativeKind !== requiredKind) return false;
+
+  const requiredOptionId = requirement.format_option_id;
+  const ref = creative.formatOptionRef ?? creative.manifest?.format_option_ref;
+  if (requiredOptionId && isRecord(ref)) {
+    if (ref.format_option_id !== requiredOptionId) return false;
+    return !requirement.publisher_domain || ref.publisher_domain === requirement.publisher_domain;
+  }
+  if (requiredOptionId && sameKindRequirementCount > 1) return false;
+
+  // An explicit option reference is the strongest coverage proof. Portable
+  // manifests may omit it, so for an unambiguous kind fall back to validating
+  // the actual manifest slots against the frozen package declaration.
+  const manifest = creative.manifest;
+  if (!manifest) return !requiredOptionId && !requirement.params;
+  const params = isRecord(requirement.params) ? requirement.params : {};
+  const slots = normalizeCanonicalSlots(requirement.slots)
+    ?? normalizeCanonicalSlots(params.slots)
+    ?? CANONICAL_FORMAT_SLOTS[requiredKind ?? '']
+    ?? [];
+  return validateManifestSlots(manifest, slots).length === 0
+    && canonicalParamsSatisfied(manifest, params);
+}
+
+function formatsPendingForPackage(pkg: PackageState, session: SessionState): CanonicalPackageFormat[] {
+  const requirements = (pkg.formatsToProvide ?? []) as CanonicalPackageFormat[];
+  if (requirements.length === 0) return [];
+  return requirements.filter(requirement => {
+    const sameKindCount = requirements.filter(other => other.format_kind === requirement.format_kind).length;
+    return !pkg.creativeAssignments.some(creativeId =>
+      creativeCoversPackageFormat(session.creatives.get(creativeId), requirement, sameKindCount)
+    );
+  });
+}
+
+function packageNeedsCreative(pkg: PackageState, session: SessionState): boolean {
+  if (pkg.canceled) return false;
+  if (pkg.formatsToProvide?.length) return formatsPendingForPackage(pkg, session).length > 0;
+  return pkg.creativeAssignments.length === 0;
+}
+
+function packageReadinessFields(pkg: PackageState, session: SessionState): Record<string, unknown> {
+  if (!pkg.formatsToProvide?.length) return {};
+  return {
+    formats_to_provide: pkg.formatsToProvide,
+    formats_pending: formatsPendingForPackage(pkg, session),
+  };
+}
+
 const MAX_URL_LEN = 2048;
 const MAX_ID_LEN = 256;
 const MAX_TOKEN_LEN = 4096;
@@ -1496,16 +1737,14 @@ const SYNONYM_MAP: Record<string, string[]> = {
 };
 
 /** Derive lifecycle status from stored status and flight dates. */
-export function deriveStatus(mb: MediaBuyState): string {
+export function deriveStatus(mb: MediaBuyState, session?: SessionState): string {
   if (mb.canceledAt) return 'canceled';
   if (mb.status === 'rejected') return 'rejected';
-  const hasCreatives = mb.packages.some(pkg => pkg.creativeAssignments.length > 0);
-  if (!hasCreatives && mb.status !== 'completed') {
-    if (mb.complyControllerForced) {
-      mb.complyControllerForced = false;
-    } else {
-      return 'pending_creatives';
-    }
+  const needsCreative = session
+    ? mb.packages.some(pkg => packageNeedsCreative(pkg, session))
+    : mb.packages.some(pkg => pkg.creativeAssignments.length === 0);
+  if (needsCreative && mb.status !== 'completed' && !mb.complyControllerForced) {
+    return 'pending_creatives';
   }
   const now = new Date();
   if (mb.status === 'active' || mb.status === 'paused') {
@@ -2734,7 +2973,7 @@ const TOOLS = [
           items: {
             type: 'object',
             properties: {
-              kind: { type: 'string', enum: ['canonical', 'product', 'third_party_format'] },
+              kind: { type: 'string', enum: ['canonical', 'product', 'third_party_format', 'capability'] },
               id: { type: 'string' },
             },
             required: ['kind', 'id'],
@@ -2962,16 +3201,37 @@ const TOOLS = [
       properties: {
         account: ACCOUNT_REF_SCHEMA,
         request_type: { type: 'string', enum: ['single', 'batch', 'variant'], description: 'Preview mode: single, batch, or variant' },
-        creative_manifest: { type: 'object', description: 'Creative manifest with assets to preview (required for single mode)' },
+        creative_manifest: { type: 'object', description: 'Creative manifest with assets to preview. In single mode, provide this or creative_id.' },
         target_capability_id: { type: 'string', pattern: '^[a-zA-Z0-9_-]+$', description: 'Preview capability ID from creative.supported_formats' },
-        creative_id: { type: 'string', description: 'Creative identifier for context (variant mode)' },
-        requests: { type: 'array', description: 'Array of preview requests for batch mode (1-50 items)', minItems: 1, maxItems: 50, items: { type: 'object', properties: { target_capability_id: { type: 'string', pattern: '^[a-zA-Z0-9_-]+$' }, creative_manifest: { type: 'object' }, creative_id: { type: 'string' } } } },
+        format_id: { ...FORMAT_ID_INPUT_SCHEMA, deprecated: true, description: 'Deprecated 3.x named-format preview route.' },
+        creative_id: { type: 'string', description: 'Creative-library identifier used instead of creative_manifest in single mode.' },
+        requests: {
+          type: 'array', description: 'Array of preview requests for batch mode (1-50 items)', minItems: 1, maxItems: 50,
+          items: {
+            type: 'object',
+            properties: {
+              target_capability_id: { type: 'string', pattern: '^[a-zA-Z0-9_-]+$' },
+              format_id: { ...FORMAT_ID_INPUT_SCHEMA, deprecated: true },
+              creative_manifest: { type: 'object' },
+              creative_id: { type: 'string' },
+              output_format: { type: 'string', enum: ['url', 'html', 'both'] },
+              quality: { type: 'string', enum: ['draft', 'production'] },
+              template_id: { type: 'string' },
+              item_limit: { type: 'integer', minimum: 1 },
+            },
+            oneOf: [{ required: ['creative_manifest'] }, { required: ['creative_id'] }],
+          },
+        },
         variant_id: { type: 'string', description: 'Variant ID from get_creative_delivery (required for variant mode)' },
         output_format: { type: 'string', enum: ['url', 'html', 'both'], description: 'Preview output format' },
         quality: { type: 'string', enum: ['draft', 'production'] },
         template_id: { type: 'string', description: 'Specific template ID for custom format rendering' },
         item_limit: { type: 'integer', minimum: 1, description: 'Max catalog items to render per preview' },
       },
+      allOf: [{
+        if: { properties: { request_type: { const: 'single' } } },
+        then: { oneOf: [{ required: ['creative_manifest'] }, { required: ['creative_id'] }] },
+      }],
       required: ['request_type'] as const,
     },
   },
@@ -4547,6 +4807,25 @@ export async function handleValidateInput(args: ToolArgs, ctx: TrainingContext):
     };
   }
 
+  const unknownCapabilityIndex = targets.findIndex(target =>
+    target.kind === 'capability' && !supportedCanonicalBuildCapability(target.id)
+  );
+  if (unknownCapabilityIndex >= 0) {
+    const target = targets[unknownCapabilityIndex];
+    return {
+      errors: [{
+        code: 'FORMAT_NOT_SUPPORTED',
+        message: `Validation capability "${target.id}" is not advertised by this creative agent.`,
+        field: `targets[${unknownCapabilityIndex}].id`,
+        recovery: 'correctable',
+        details: {
+          capability_id: target.id,
+          supported_capability_ids: SUPPORTED_CANONICAL_BUILD_CAPABILITIES.map(item => item.capabilityId),
+        },
+      }],
+    };
+  }
+
   const schemaViolations = [
     ...validateManifestSchema(req.manifest),
     ...validateAssetUrls(req.manifest),
@@ -5151,6 +5430,11 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       errors.push(directFormatError);
       continue;
     }
+    const formatSnapshot = snapshotPackageFormats(pkg, product, i);
+    if (formatSnapshot.error) {
+      errors.push(formatSnapshot.error);
+      continue;
+    }
 
     // Reject unworkable measurement_terms (TERMS_REJECTED). Checked BEFORE
     // bid_price / other field validation so buyers see the terms-level
@@ -5285,6 +5569,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       formatOptionRefs: pkg.format_option_refs,
       formatKind: pkg.format_kind,
       params: pkg.params,
+      ...(formatSnapshot.formats?.length && { formatsToProvide: formatSnapshot.formats }),
       creativeAssignments,
       targeting: targetingResult.targeting,
       ...(isRecord(pkg.context) && { context: pkg.context }),
@@ -5347,7 +5632,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
 
   session.mediaBuys.set(mediaBuyId, mediaBuy);
 
-  const status = deriveStatus(mediaBuy);
+  const status = deriveStatus(mediaBuy, session);
   const productAvailableActions = deriveAvailableActionsFromProductAllowedActions(productAllowedActions, status);
   if (productAvailableActions !== undefined) mediaBuy.availableActions = productAvailableActions;
   // Emit `media_buy_status` (canonical 3.1 field per #4895). Body-level
@@ -5377,6 +5662,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       ...(pkg.formatOptionRefs && { format_option_refs: pkg.formatOptionRefs }),
       ...(pkg.formatKind && { format_kind: pkg.formatKind }),
       ...(pkg.params && { params: pkg.params }),
+      ...packageReadinessFields(pkg, session),
       ...(pkg.targeting && { targeting_overlay: pkg.targeting }),
       ...(pkg.context && { context: pkg.context }),
       creative_assignments: pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
@@ -5409,9 +5695,9 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
   const statusFilter = req.status_filter;
   if (!filterIds?.length) {
     const effectiveFilter = statusFilter || ['active'];
-    buys = buys.filter(mb => effectiveFilter.includes(deriveStatus(mb)));
+    buys = buys.filter(mb => effectiveFilter.includes(deriveStatus(mb, session)));
   } else if (statusFilter?.length) {
-    buys = buys.filter(mb => statusFilter.includes(deriveStatus(mb)));
+    buys = buys.filter(mb => statusFilter.includes(deriveStatus(mb, session)));
   }
 
   const includeSnapshot = req.include_snapshot === true;
@@ -5453,7 +5739,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
 
   return {
     media_buys: pageBuys.map(mb => {
-      const status = deriveStatus(mb);
+      const status = deriveStatus(mb, session);
       const totalBudget = mb.packages.reduce((sum, pkg) => sum + (pkg.budget || 0), 0);
       const openImpairments = mb.impairments ?? [];
       const buy = {
@@ -5505,6 +5791,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
             ...(pkg.formatOptionRefs && { format_option_refs: pkg.formatOptionRefs }),
             ...(pkg.formatKind && { format_kind: pkg.formatKind }),
             ...(pkg.params && { params: pkg.params }),
+            ...packageReadinessFields(pkg, session),
             creative_approvals: pkg.creativeAssignments.map(cid => ({
               creative_id: cid,
               approval_status: 'approved' as const,
@@ -5811,7 +6098,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     currency: mb.currency,
     media_buy_deliveries: [{
       media_buy_id: mb.mediaBuyId,
-      status: deriveStatus(mb),
+      status: deriveStatus(mb, session),
       ...(includeThreeOneFields(ctx) && simDelivery?.isFinal !== undefined ? { is_final: simDelivery.isFinal } : {}),
       ...(includeThreeOneFields(ctx) && simDelivery?.isFinal === true && simDelivery.finalizedAt ? { finalized_at: simDelivery.finalizedAt } : {}),
       totals: {
@@ -6285,7 +6572,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
 
   // Terminal state check. Double-cancel returns NOT_CANCELLABLE —
   // media_buy_seller/invalid_transitions pins this error code explicitly.
-  const currentStatus = deriveStatus(mb);
+  const currentStatus = deriveStatus(mb, session);
   if (['canceled', 'rejected', 'completed'].includes(currentStatus)) {
     const isRecancel = req.canceled === true && currentStatus === 'canceled';
     const code = isRecancel ? 'NOT_CANCELLABLE' : 'INVALID_STATE';
@@ -6337,7 +6624,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'canceled', summary: reason || 'Media buy canceled by buyer' });
     mb.updatedAt = now;
 
-    const status = deriveStatus(mb);
+    const status = deriveStatus(mb, session);
     // `media_buy_status` is the canonical 3.1 body field (#4895); legacy
     // body `status: MediaBuyStatus` removed in 3.2 (#4906).
     return {
@@ -6389,7 +6676,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       if (assignments === undefined) continue;
       const pkgId = update.package_id || '';
       if (assignments.length === 0) {
-        const currentStatus = deriveStatus(mb);
+        const currentStatus = deriveStatus(mb, session);
         if (['active', 'paused', 'pending_start'].includes(currentStatus)) {
           return {
             errors: [{ code: 'VALIDATION_ERROR', message: `creative_assignments cannot be cleared on a buy in "${currentStatus}" status`, field: `packages[${pkgId}].creative_assignments` }] as TaskError[],
@@ -6529,6 +6816,10 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       if (!product) {
         return { errors: [{ code: 'PACKAGE_NOT_FOUND', message: `Product not found for new package: ${productId}` }] };
       }
+      const directFormatError = validateDirectCanonicalPackageSelector(npkg, product, i);
+      if (directFormatError) return { errors: [directFormatError] };
+      const formatSnapshot = snapshotPackageFormats(npkg, product, i);
+      if (formatSnapshot.error) return { errors: [formatSnapshot.error] };
 
       const pkgId = `pkg-${mb.packages.length + i}`;
       const newTargeting = npkg.targeting_overlay ?? npkg.targeting;
@@ -6547,6 +6838,10 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
         startTime: npkg.start_time || mb.startTime,
         endTime: npkg.end_time || mb.endTime,
         formatIds: npkg.format_ids,
+        formatOptionRefs: npkg.format_option_refs,
+        formatKind: npkg.format_kind,
+        params: npkg.params,
+        ...(formatSnapshot.formats?.length && { formatsToProvide: formatSnapshot.formats }),
         creativeAssignments: [],
         targeting: targetingResult.targeting,
       };
@@ -6564,7 +6859,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
 
   mb.updatedAt = now;
 
-  const status = deriveStatus(mb);
+  const status = deriveStatus(mb, session);
   const updatedPackages = mb.packages.map(pkg => ({
     package_id: pkg.packageId,
     product_id: pkg.productId,
@@ -6573,6 +6868,11 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     paused: pkg.paused,
     start_time: pkg.startTime,
     end_time: pkg.endTime,
+    ...(pkg.formatIds && { format_ids: pkg.formatIds }),
+    ...(pkg.formatOptionRefs && { format_option_refs: pkg.formatOptionRefs }),
+    ...(pkg.formatKind && { format_kind: pkg.formatKind }),
+    ...(pkg.params && { params: pkg.params }),
+    ...packageReadinessFields(pkg, session),
     ...(pkg.targeting && { targeting_overlay: pkg.targeting }),
     ...(pkg.context && { context: pkg.context }),
     creative_assignments: pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
@@ -7788,11 +8088,17 @@ interface PreviewCreativeArgs {
   request_type: 'single' | 'batch' | 'variant';
   creative_manifest?: { format_id?: FormatID; format_kind?: string; format_option_ref?: Record<string, unknown>; creative_id?: string; assets?: Record<string, unknown> };
   target_capability_id?: string;
+  format_id?: FormatID;
   creative_id?: string;
   requests?: Array<{
     target_capability_id?: string;
+    format_id?: FormatID;
     creative_manifest?: { format_id?: FormatID; format_kind?: string; format_option_ref?: Record<string, unknown>; creative_id?: string; assets?: Record<string, unknown> };
     creative_id?: string;
+    output_format?: 'url' | 'html' | 'both';
+    quality?: 'draft' | 'production';
+    template_id?: string;
+    item_limit?: number;
   }>;
   variant_id?: string;
   output_format?: 'url' | 'html' | 'both';
@@ -7807,29 +8113,32 @@ export async function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext
   const agentUrl = getAgentUrl();
   const formats = getFormats();
   const validFormatIds = new Map(formats.map(f => [f.format_id.id, f]));
-  const outputFormat = req.output_format || 'url';
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
   function buildPreview(
     manifest: { format_id?: FormatID; format_kind?: string; format_option_ref?: Record<string, unknown>; creative_id?: string; assets?: Record<string, unknown> },
     targetCapabilityId?: string,
+    requestedOutputFormat: 'url' | 'html' | 'both' = 'url',
+    requestedQuality: 'draft' | 'production' = 'production',
+    legacyFormatId?: FormatID,
   ) {
     // Resolve format
-    let formatId = manifest.format_id;
+    let formatId = legacyFormatId ?? manifest.format_id;
     let formatKind = manifest.format_kind;
     let creativeName = 'Preview';
 
     // If creative_id provided, look up from library
     if (manifest.creative_id) {
       const creative = session.creatives.get(manifest.creative_id);
-      if (creative) {
-        formatId = creative.formatId;
-        formatKind = creative.formatKind;
-        creativeName = creative.name || manifest.creative_id;
-      }
+      if (!creative) return null;
+      formatId = creative.formatId;
+      formatKind = creative.formatKind;
+      creativeName = creative.name || manifest.creative_id;
     }
 
-    if (formatKind) {
+    if (legacyFormatId) {
+      if (!legacyFormatId.id || !validFormatIds.has(legacyFormatId.id)) return null;
+    } else if (formatKind) {
       const matches = SUPPORTED_CANONICAL_BUILD_CAPABILITIES.filter(item => item.formatKind === formatKind);
       if (targetCapabilityId) {
         const selected = SUPPORTED_CANONICAL_BUILD_CAPABILITIES.find(item => item.capabilityId === targetCapabilityId);
@@ -7841,7 +8150,7 @@ export async function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext
       return null;
     }
 
-    const fmtId = formatKind || formatId?.id || 'image';
+    const fmtId = legacyFormatId?.id || formatKind || formatId?.id || 'image';
     const format = validFormatIds.get(fmtId);
     if (!formatKind && !format && formatId?.id && fmtId !== 'native_in_feed') {
       return null; // Signal invalid format to caller
@@ -7849,19 +8158,19 @@ export async function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext
     if (formatKind && !VALID_CANONICAL_FORMAT_KINDS.has(formatKind)) return null;
     const { w, h } = getDimensions(format);
 
-    const previewHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Preview: ${escapeHtmlAttr(fmtId)}</title><style>body{margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#fafafa;font-family:sans-serif;}</style></head><body><div style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:8px;color:#fff;"><div style="font-size:16px;font-weight:600;">${escapeHtmlAttr(creativeName)}</div><div style="font-size:12px;opacity:0.8;margin-top:4px;">${escapeHtmlAttr(fmtId)} (${w}x${h})</div><div style="font-size:10px;opacity:0.6;margin-top:8px;">AdCP Training Agent Preview</div></div></body></html>`;
+    const previewHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Preview: ${escapeHtmlAttr(fmtId)}</title><style>body{margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#fafafa;font-family:sans-serif;}</style></head><body><div data-quality="${requestedQuality}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:8px;color:#fff;"><div style="font-size:16px;font-weight:600;">${escapeHtmlAttr(creativeName)}</div><div style="font-size:12px;opacity:0.8;margin-top:4px;">${escapeHtmlAttr(fmtId)} (${w}x${h})</div><div style="font-size:10px;opacity:0.6;margin-top:8px;">AdCP Training Agent Preview</div></div></body></html>`;
 
     const render: Record<string, unknown> = {
       render_id: `preview_${fmtId}`,
-      output_format: outputFormat,
+      output_format: requestedOutputFormat,
       role: 'primary',
       dimensions: { width: w, height: h },
     };
 
-    if (outputFormat === 'url' || outputFormat === 'both') {
+    if (requestedOutputFormat === 'url' || requestedOutputFormat === 'both') {
       render.preview_url = `data:text/html;base64,${Buffer.from(previewHtml).toString('base64')}`;
     }
-    if (outputFormat === 'html' || outputFormat === 'both') {
+    if (requestedOutputFormat === 'html' || requestedOutputFormat === 'both') {
       render.preview_html = previewHtml;
     }
 
@@ -7882,15 +8191,41 @@ export async function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext
 
   // Batch mode
   if (req.request_type === 'batch' && req.requests?.length) {
+    const usesCanonicalRouting = Boolean(req.target_capability_id)
+      || req.requests.some(item => Boolean(item.target_capability_id));
+    const usesLegacyRouting = Boolean(req.format_id)
+      || req.requests.some(item => Boolean(item.format_id));
+    if (usesCanonicalRouting && usesLegacyRouting) {
+      return { errors: [{ code: 'INVALID_REQUEST', message: 'Use target_capability_id or deprecated format_id routing, not both.' }] };
+    }
     const results = req.requests.map(item => {
+      if (item.creative_manifest && item.creative_id) {
+        return {
+          success: false,
+          creative_id: item.creative_id,
+          errors: [{ code: 'INVALID_REQUEST', message: 'Provide creative_manifest or creative_id, not both.' }],
+        };
+      }
       const manifest = item.creative_manifest || (item.creative_id ? { creative_id: item.creative_id } : undefined);
+      if (item.creative_id && !session.creatives.has(item.creative_id)) {
+        return {
+          success: false,
+          creative_id: item.creative_id,
+          errors: [{ code: 'CREATIVE_NOT_FOUND', message: `Creative "${item.creative_id}" was not found in this agent's creative library.` }],
+        };
+      }
       const targetCapabilityId = item.target_capability_id ?? req.target_capability_id;
-      const preview = manifest ? buildPreview(manifest, targetCapabilityId) : null;
+      const legacyFormatId = targetCapabilityId ? undefined : item.format_id ?? req.format_id;
+      const effectiveOutputFormat = item.output_format ?? req.output_format ?? 'url';
+      const effectiveQuality = item.quality ?? req.quality ?? 'production';
+      const preview = manifest
+        ? buildPreview(manifest, targetCapabilityId, effectiveOutputFormat, effectiveQuality, legacyFormatId)
+        : null;
       if (!preview) {
         return {
           success: false,
           creative_id: item.creative_id || 'unknown',
-          error: { code: 'FORMAT_NOT_SUPPORTED', message: 'No unique advertised preview capability matches this item.' },
+          errors: [{ code: 'FORMAT_NOT_SUPPORTED', message: 'No unique advertised preview capability matches this item.' }],
         };
       }
       return {
@@ -7906,6 +8241,12 @@ export async function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext
   }
 
   // Single mode
+  if (req.creative_manifest && req.creative_id) {
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'Provide creative_manifest or creative_id, not both.' }] };
+  }
+  if (req.target_capability_id && req.format_id) {
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'Use target_capability_id or deprecated format_id routing, not both.' }] };
+  }
   const manifest = req.creative_manifest || (req.creative_id ? { creative_id: req.creative_id } : null);
   if (!manifest) {
     return {
@@ -7913,7 +8254,19 @@ export async function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext
     };
   }
 
-  const preview = buildPreview(manifest, req.target_capability_id);
+  if (req.creative_id && !session.creatives.has(req.creative_id)) {
+    return {
+      errors: [{ code: 'CREATIVE_NOT_FOUND', message: `Creative "${req.creative_id}" was not found in this agent's creative library.` }],
+    };
+  }
+
+  const preview = buildPreview(
+    manifest,
+    req.target_capability_id,
+    req.output_format ?? 'url',
+    req.quality ?? 'production',
+    req.target_capability_id ? undefined : req.format_id,
+  );
   if (!preview) {
     const fmtId = manifest.format_kind || manifest.format_id?.id || 'unknown';
     return {

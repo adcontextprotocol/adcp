@@ -12,8 +12,9 @@ required_tools:
 narrative: |
   Creative agents in 3.2 declare what they can produce via
   `creative.supported_formats` on `get_adcp_capabilities`. Targetable
-  supported-format entries carry an agent-local stable `capability_id` that
-  selects the build path on that creative agent. This is separate from media-buy
+  supported-format entries carry an agent-local stable `capability_id` that is
+  unique within the catalog and selects exactly one build path on that creative
+  agent. This is separate from media-buy
   `format_option_id`, which selects a product or publisher-catalog format
   option.
 
@@ -61,7 +62,7 @@ phases:
         expected: |
           Return a creative capability block with implemented `supported_formats[]`.
           The targetable entry used for build routing has:
-          - `capability_id` at the supported-format entry level
+          - a stable `capability_id`, unique within the full supported-format catalog
           - required non-empty `operations` containing `build`
           - `format.format_kind` and `format.params.slots[]`
           - optional publisher identity when the capability claims exact support

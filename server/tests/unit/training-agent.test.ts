@@ -23,6 +23,7 @@ import {
   executeTrainingAgentTool,
   handleBuildCreative,
   handleListTransformers,
+  canonicalParamsSatisfied,
   invalidateCache,
   clearTaskStore,
 } from '../../src/training-agent/task-handlers.js';
@@ -57,6 +58,28 @@ const TEST_AGENT_URL = 'http://localhost:3000/api/training-agent';
 const CURRENT_ADCP_VERSION = '3.1-rc.15';
 
 const DEFAULT_CTX: TrainingContext = { mode: 'open' };
+
+describe('canonical package readiness parameter matching', () => {
+  const manifest = (width: number, height: number) => ({
+    format_kind: 'image',
+    assets: {
+      image_main: { asset_type: 'image', url: 'https://cdn.example/image.png', width, height },
+    },
+  });
+
+  it('enforces params.sizes as an allowed set', () => {
+    const params = { sizes: [{ width: 300, height: 250 }, { width: 728, height: 90 }] };
+    expect(canonicalParamsSatisfied(manifest(300, 250), params)).toBe(true);
+    expect(canonicalParamsSatisfied(manifest(320, 50), params)).toBe(false);
+  });
+
+  it('enforces responsive min/max dimension bounds', () => {
+    const params = { min_width: 300, max_width: 970, min_height: 90, max_height: 250 };
+    expect(canonicalParamsSatisfied(manifest(728, 90), params)).toBe(true);
+    expect(canonicalParamsSatisfied(manifest(1200, 90), params)).toBe(false);
+    expect(canonicalParamsSatisfied(manifest(728, 60), params)).toBe(false);
+  });
+});
 
 /**
  * Simulate ListTools request on an MCP server.
@@ -1192,6 +1215,7 @@ describe('createTrainingAgentServer', () => {
       'canonical',
       'product',
       'third_party_format',
+      'capability',
     ]);
   });
 
@@ -1866,11 +1890,9 @@ describe('validate_input handler', () => {
       targets: [{ kind: 'capability', id: 'unknown_image_validator' }],
     });
 
-    expect(result.results[0]).toMatchObject({
-      target: { kind: 'capability', id: 'unknown_image_validator' },
-      result_kind: 'validated_fail',
-      violations: [{ rule: 'capability_target_supported', field: 'targets[].id' }],
-    });
+    expect(result.code).toBe('FORMAT_NOT_SUPPORTED');
+    expect(result.field).toBe('targets[0].id');
+    expect(result.details).toMatchObject({ capability_id: 'unknown_image_validator' });
   });
 
   it('caps validate_input targets before third-party fan-out', async () => {
@@ -2625,13 +2647,16 @@ describe('create_media_buy handler', () => {
     clearSessions();
   });
 
-  function getFirstProductAndPricing(): { productId: string; pricingOptionId: string } {
+  function getFirstProductAndPricing(): { productId: string; pricingOptionId: string; formatKind: string; formatOptionId: string } {
     const catalog = buildCatalog();
     const product = catalog[0].product;
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const formatOption = (product.format_options as Array<Record<string, unknown>>)[0];
     return {
       productId: product.product_id as string,
       pricingOptionId: pricingOptions[0].pricing_option_id as string,
+      formatKind: formatOption.format_kind as string,
+      formatOptionId: formatOption.format_option_id as string,
     };
   }
 
@@ -2660,6 +2685,164 @@ describe('create_media_buy handler', () => {
     expect(result.media_buy_status).toBe('pending_creatives');
     // Error field should not be present on success
     expect(result.errors).toBeUndefined();
+  });
+
+  it('snapshots canonical requirements and tracks readiness per package format', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const formatOptions = product.format_options as Array<Record<string, unknown>>;
+    const selected = formatOptions.slice(0, 2);
+    const account = { brand: { domain: 'format-readiness.example' }, operator: 'format-readiness.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'format-readiness.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 50000,
+        format_option_refs: selected.map(option => ({
+          scope: 'product',
+          format_option_id: option.format_option_id,
+        })),
+      }],
+    });
+
+    const createdPackage = (created.packages as Array<Record<string, any>>)[0];
+    expect(createdPackage.formats_to_provide).toEqual(selected);
+    expect(createdPackage.formats_pending).toEqual(selected);
+    expect(created.media_buy_status).toBe('pending_creatives');
+
+    const mediaBuyId = created.media_buy_id as string;
+    const packageId = createdPackage.package_id as string;
+    await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_format_one',
+        format_kind: selected[0].format_kind,
+        format_option_ref: { scope: 'product', format_option_id: selected[0].format_option_id },
+        assets: {},
+      }],
+      assignments: [{ media_buy_id: mediaBuyId, package_id: packageId, creative_id: 'cr_format_one' }],
+    });
+
+    const { result: partiallyReady } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'get_media_buys', {
+      account,
+      media_buy_ids: [mediaBuyId],
+    });
+    const partialBuy = (partiallyReady.media_buys as Array<Record<string, any>>)[0];
+    expect(partialBuy.status).toBe('pending_creatives');
+    expect(partialBuy.packages[0].formats_pending).toEqual([selected[1]]);
+
+    await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_format_two',
+        format_kind: selected[1].format_kind,
+        format_option_ref: { scope: 'product', format_option_id: selected[1].format_option_id },
+        assets: {},
+      }],
+      assignments: [{ media_buy_id: mediaBuyId, package_id: packageId, creative_id: 'cr_format_two' }],
+    });
+
+    const { result: ready } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'get_media_buys', {
+      account,
+      media_buy_ids: [mediaBuyId],
+    });
+    const readyBuy = (ready.media_buys as Array<Record<string, any>>)[0];
+    expect(readyBuy.status).toBe('pending_start');
+    expect(readyBuy.packages[0].formats_to_provide).toEqual(selected);
+    expect(readyBuy.packages[0].formats_pending).toEqual([]);
+  });
+
+  it('keeps a unique-kind package pending for a wrong option ref or fixed dimensions', async () => {
+    const catalog = buildCatalog();
+    const catalogProduct = catalog.find(entry =>
+      (entry.product.format_options as Array<Record<string, any>> | undefined)?.some(option =>
+        typeof option.format_option_id === 'string'
+        && typeof option.params?.width === 'number'
+        && typeof option.params?.height === 'number'
+      )
+    )!;
+    const product = catalogProduct.product;
+    const option = (product.format_options as Array<Record<string, any>>).find(candidate =>
+      typeof candidate.format_option_id === 'string'
+      && typeof candidate.params?.width === 'number'
+      && typeof candidate.params?.height === 'number'
+    )!;
+    const pricingOptionId = product.pricing_options[0].pricing_option_id;
+    const account = { brand: { domain: 'strict-readiness.example' }, operator: 'strict-readiness.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'strict-readiness.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptionId,
+        budget: 50000,
+        format_option_refs: [{ scope: 'product', format_option_id: option.format_option_id }],
+      }],
+    });
+    const mediaBuyId = created.media_buy_id as string;
+    const packageId = (created.packages as Array<Record<string, any>>)[0].package_id as string;
+
+    await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_wrong_option',
+        format_kind: option.format_kind,
+        format_option_ref: { scope: 'product', format_option_id: 'different_option' },
+        assets: {
+          image_main: { asset_type: 'image', url: 'https://cdn.example/wrong-option.png', width: option.params.width, height: option.params.height },
+        },
+      }, {
+        creative_id: 'cr_wrong_dimensions',
+        format_kind: option.format_kind,
+        assets: {
+          image_main: { asset_type: 'image', url: 'https://cdn.example/wrong-size.png', width: option.params.width + 1, height: option.params.height },
+        },
+      }],
+      assignments: [
+        { media_buy_id: mediaBuyId, package_id: packageId, creative_id: 'cr_wrong_option' },
+        { media_buy_id: mediaBuyId, package_id: packageId, creative_id: 'cr_wrong_dimensions' },
+      ],
+    });
+
+    const { result: pending } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'get_media_buys', {
+      account,
+      media_buy_ids: [mediaBuyId],
+    });
+    expect((pending.media_buys as Array<Record<string, any>>)[0].packages[0].formats_pending).toHaveLength(1);
+  });
+
+  it('always includes params in a direct canonical package snapshot', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const declaration = (product.format_options as Array<Record<string, any>>)[0];
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_media_buy', {
+      account: { brand: { domain: 'direct-snapshot.example' }, operator: 'direct-snapshot.example' },
+      brand: { domain: 'direct-snapshot.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: product.pricing_options[0].pricing_option_id,
+        budget: 50000,
+        format_kind: declaration.format_kind,
+        params: declaration.params ?? {},
+      }],
+    });
+
+    const snapshot = (result.packages as Array<Record<string, any>>)[0].formats_to_provide[0];
+    expect(snapshot).toEqual({ format_kind: declaration.format_kind, params: declaration.params ?? {} });
   });
 
   it('rejects a concrete start_time in the past', async () => {
@@ -2743,7 +2926,7 @@ describe('create_media_buy handler', () => {
   });
 
   it('derives status from flight dates', async () => {
-    const { productId, pricingOptionId } = getFirstProductAndPricing();
+    const { productId, pricingOptionId, formatKind, formatOptionId } = getFirstProductAndPricing();
     const account = { brand: { domain: 'status.example' }, operator: 'status.example' };
 
     const now = new Date();
@@ -2757,7 +2940,7 @@ describe('create_media_buy handler', () => {
       brand: { domain: 'status.example' },
       start_time: futureStart,
       end_time: futureEnd,
-      packages: [{ product_id: productId, pricing_option_id: pricingOptionId, budget: 50000 }],
+      packages: [{ product_id: productId, pricing_option_id: pricingOptionId, budget: 50000, format_option_refs: [{ scope: 'product', format_option_id: formatOptionId }] }],
     });
     expect(pendingCreatives.media_buy_status).toBe('pending_creatives');
 
@@ -2768,7 +2951,7 @@ describe('create_media_buy handler', () => {
       brand: { domain: 'status.example' },
       start_time: futureStart,
       end_time: futureEnd,
-      packages: [{ product_id: productId, pricing_option_id: pricingOptionId, budget: 50000 }],
+      packages: [{ product_id: productId, pricing_option_id: pricingOptionId, budget: 50000, format_option_refs: [{ scope: 'product', format_option_id: formatOptionId }] }],
     });
     const mediaBuyId = created.media_buy_id as string;
     const pkgs = (created.packages as Array<Record<string, unknown>>);
@@ -2779,7 +2962,8 @@ describe('create_media_buy handler', () => {
       account,
       creatives: [{
         creative_id: 'cr_status_test',
-        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        format_kind: formatKind,
+        format_option_ref: { scope: 'product', format_option_id: formatOptionId },
         name: 'Status Test Creative',
       }],
       assignments: [{ media_buy_id: mediaBuyId, package_id: packageId, creative_id: 'cr_status_test' }],
@@ -2795,7 +2979,7 @@ describe('create_media_buy handler', () => {
   });
 
   it('creates an active media buy when start_time is asap and creatives are assigned', async () => {
-    const { productId, pricingOptionId } = getFirstProductAndPricing();
+    const { productId, pricingOptionId, formatKind, formatOptionId } = getFirstProductAndPricing();
     const account = { brand: { domain: 'asap-active.example' }, operator: 'asap-active.example' };
     const server = createTrainingAgentServer(DEFAULT_CTX);
 
@@ -2803,7 +2987,8 @@ describe('create_media_buy handler', () => {
       account,
       creatives: [{
         creative_id: 'cr_asap_active',
-        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        format_kind: formatKind,
+        format_option_ref: { scope: 'product', format_option_id: formatOptionId },
         name: 'ASAP Active Creative',
       }],
     });
@@ -2817,6 +3002,7 @@ describe('create_media_buy handler', () => {
         product_id: productId,
         pricing_option_id: pricingOptionId,
         budget: 10000,
+        format_option_refs: [{ scope: 'product', format_option_id: formatOptionId }],
         creative_assignments: [{ creative_id: 'cr_asap_active' }],
       }],
     });
@@ -2833,7 +3019,7 @@ describe('create_media_buy handler', () => {
   });
 
   it('creates a paused media buy when start_time is asap, creatives are assigned, and paused is true', async () => {
-    const { productId, pricingOptionId } = getFirstProductAndPricing();
+    const { productId, pricingOptionId, formatKind, formatOptionId } = getFirstProductAndPricing();
     const account = { brand: { domain: 'asap-paused.example' }, operator: 'asap-paused.example' };
     const server = createTrainingAgentServer(DEFAULT_CTX);
 
@@ -2841,7 +3027,8 @@ describe('create_media_buy handler', () => {
       account,
       creatives: [{
         creative_id: 'cr_asap_paused',
-        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        format_kind: formatKind,
+        format_option_ref: { scope: 'product', format_option_id: formatOptionId },
         name: 'ASAP Paused Creative',
       }],
     });
@@ -2856,6 +3043,7 @@ describe('create_media_buy handler', () => {
         product_id: productId,
         pricing_option_id: pricingOptionId,
         budget: 10000,
+        format_option_refs: [{ scope: 'product', format_option_id: formatOptionId }],
         creative_assignments: [{ creative_id: 'cr_asap_paused' }],
       }],
     });
@@ -2874,7 +3062,7 @@ describe('create_media_buy handler', () => {
   });
 
   it('keeps future start dates visible as pending_start even when create_media_buy paused is true', async () => {
-    const { productId, pricingOptionId } = getFirstProductAndPricing();
+    const { productId, pricingOptionId, formatKind, formatOptionId } = getFirstProductAndPricing();
     const account = { brand: { domain: 'paused-pending-start.example' }, operator: 'paused-pending-start.example' };
     const server = createTrainingAgentServer(DEFAULT_CTX);
 
@@ -2882,7 +3070,8 @@ describe('create_media_buy handler', () => {
       account,
       creatives: [{
         creative_id: 'cr_paused_pending_start',
-        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        format_kind: formatKind,
+        format_option_ref: { scope: 'product', format_option_id: formatOptionId },
         name: 'Paused Pending Start Creative',
       }],
     });
@@ -2897,6 +3086,7 @@ describe('create_media_buy handler', () => {
         product_id: productId,
         pricing_option_id: pricingOptionId,
         budget: 10000,
+        format_option_refs: [{ scope: 'product', format_option_id: formatOptionId }],
         creative_assignments: [{ creative_id: 'cr_paused_pending_start' }],
       }],
     });
@@ -2915,7 +3105,7 @@ describe('create_media_buy handler', () => {
   });
 
   it('keeps missing creatives visible as pending_creatives even when create_media_buy paused is true', async () => {
-    const { productId, pricingOptionId } = getFirstProductAndPricing();
+    const { productId, pricingOptionId, formatKind, formatOptionId } = getFirstProductAndPricing();
     const account = { brand: { domain: 'paused-pending-creatives.example' }, operator: 'paused-pending-creatives.example' };
     const server = createTrainingAgentServer(DEFAULT_CTX);
 
@@ -2929,6 +3119,7 @@ describe('create_media_buy handler', () => {
         product_id: productId,
         pricing_option_id: pricingOptionId,
         budget: 10000,
+        format_option_refs: [{ scope: 'product', format_option_id: formatOptionId }],
       }],
     });
 
@@ -2943,7 +3134,8 @@ describe('create_media_buy handler', () => {
       account,
       creatives: [{
         creative_id: 'cr_pending_then_paused',
-        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        format_kind: formatKind,
+        format_option_ref: { scope: 'product', format_option_id: formatOptionId },
         name: 'Pending Then Paused Creative',
       }],
     });
@@ -2961,7 +3153,7 @@ describe('create_media_buy handler', () => {
   });
 
   it('can clear a create-time pause while a buy is still pending_creatives', async () => {
-    const { productId, pricingOptionId } = getFirstProductAndPricing();
+    const { productId, pricingOptionId, formatKind, formatOptionId } = getFirstProductAndPricing();
     const account = { brand: { domain: 'clear-paused-pending-creatives.example' }, operator: 'clear-paused-pending-creatives.example' };
     const server = createTrainingAgentServer(DEFAULT_CTX);
 
@@ -2975,6 +3167,7 @@ describe('create_media_buy handler', () => {
         product_id: productId,
         pricing_option_id: pricingOptionId,
         budget: 10000,
+        format_option_refs: [{ scope: 'product', format_option_id: formatOptionId }],
       }],
     });
 
@@ -2993,7 +3186,8 @@ describe('create_media_buy handler', () => {
       account,
       creatives: [{
         creative_id: 'cr_cleared_pending_then_active',
-        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        format_kind: formatKind,
+        format_option_ref: { scope: 'product', format_option_id: formatOptionId },
         name: 'Cleared Pending Then Active Creative',
       }],
     });
@@ -3012,7 +3206,7 @@ describe('create_media_buy handler', () => {
   });
 
   it('can pause a buy while it is still pending_creatives', async () => {
-    const { productId, pricingOptionId } = getFirstProductAndPricing();
+    const { productId, pricingOptionId, formatKind, formatOptionId } = getFirstProductAndPricing();
     const account = { brand: { domain: 'pause-pending-creatives.example' }, operator: 'pause-pending-creatives.example' };
     const server = createTrainingAgentServer(DEFAULT_CTX);
 
@@ -3025,6 +3219,7 @@ describe('create_media_buy handler', () => {
         product_id: productId,
         pricing_option_id: pricingOptionId,
         budget: 10000,
+        format_option_refs: [{ scope: 'product', format_option_id: formatOptionId }],
       }],
     });
 
@@ -3044,7 +3239,8 @@ describe('create_media_buy handler', () => {
       account,
       creatives: [{
         creative_id: 'cr_paused_pending_creatives',
-        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        format_kind: formatKind,
+        format_option_ref: { scope: 'product', format_option_id: formatOptionId },
         name: 'Paused Pending Creatives Creative',
       }],
     });
@@ -5436,6 +5632,75 @@ describe('canonical creative build capabilities', () => {
     expect(failure.result.code).toBe('FORMAT_NOT_SUPPORTED');
   });
 
+  it('applies batch preview defaults and lets items override output quality', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const manifest = {
+      format_kind: 'image',
+      assets: {
+        image_main: { asset_type: 'image', url: 'https://cdn.acme.example/mrec.png' },
+      },
+    };
+
+    const { result } = await simulateCallTool(server, 'preview_creative', {
+      request_type: 'batch',
+      target_capability_id: 'training_image_generation',
+      output_format: 'html',
+      quality: 'draft',
+      requests: [
+        { creative_manifest: manifest },
+        { creative_manifest: manifest, output_format: 'both', quality: 'production' },
+      ],
+    });
+
+    const results = result.results as Array<Record<string, any>>;
+    const firstRender = results[0].response.previews[0].renders[0];
+    expect(firstRender.output_format).toBe('html');
+    expect(firstRender.preview_url).toBeUndefined();
+    expect(firstRender.preview_html).toContain('data-quality="draft"');
+
+    const secondRender = results[1].response.previews[0].renders[0];
+    expect(secondRender.output_format).toBe('both');
+    expect(secondRender.preview_url).toBeTruthy();
+    expect(secondRender.preview_html).toContain('data-quality="production"');
+  });
+
+  it('returns schema-shaped errors for failed batch previews', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'preview_creative', {
+      request_type: 'batch',
+      requests: [{
+        creative_id: 'missing_preview_creative',
+      }, {
+        target_capability_id: 'unknown_preview_capability',
+        creative_manifest: { format_kind: 'image', assets: {} },
+      }],
+    });
+
+    const results = result.results as Array<Record<string, any>>;
+    expect(results[0]).toMatchObject({
+      success: false,
+      errors: [{ code: 'CREATIVE_NOT_FOUND' }],
+    });
+    expect(results[1]).toMatchObject({
+      success: false,
+      errors: [{ code: 'FORMAT_NOT_SUPPORTED' }],
+    });
+    expect(results[0].error).toBeUndefined();
+    expect(results[1].error).toBeUndefined();
+  });
+
+  it('routes the deprecated batch-level format_id preview default', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'preview_creative', {
+      request_type: 'batch',
+      format_id: { agent_url: TEST_AGENT_URL, id: 'display_728x90' },
+      requests: [{ creative_manifest: { format_kind: 'image', assets: {} } }],
+    });
+
+    const render = (result.results as Array<Record<string, any>>)[0].response.previews[0].renders[0];
+    expect(render.dimensions).toEqual({ width: 728, height: 90 });
+  });
+
   it('rejects unimplemented canonical capabilities instead of emitting invalid manifests', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'build_creative', {
@@ -5782,6 +6047,7 @@ describe('update_media_buy handler', () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const selectedFormat = (product.format_options as Array<Record<string, unknown>>)[0];
     const account = { brand: { domain: 'assign-update.example' }, operator: 'assign-update.example' };
 
     const server = createTrainingAgentServer(DEFAULT_CTX);
@@ -5794,6 +6060,7 @@ describe('update_media_buy handler', () => {
         product_id: product.product_id,
         pricing_option_id: pricingOptions[0].pricing_option_id,
         budget: 10000,
+        format_option_refs: [{ scope: 'product', format_option_id: selectedFormat.format_option_id }],
       }],
     });
     const mediaBuyId = createResult.media_buy_id as string;
@@ -5809,7 +6076,8 @@ describe('update_media_buy handler', () => {
       account,
       creatives: [{
         creative_id: 'cr_assign_via_update',
-        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        format_kind: selectedFormat.format_kind,
+        format_option_ref: { scope: 'product', format_option_id: selectedFormat.format_option_id },
         name: 'Assign Via Update',
       }],
     });
@@ -5836,6 +6104,7 @@ describe('update_media_buy handler', () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const selectedFormat = (product.format_options as Array<Record<string, unknown>>)[0];
     const account = { brand: { domain: 'assign-clear.example' }, operator: 'assign-clear.example' };
 
     const server = createTrainingAgentServer(DEFAULT_CTX);
@@ -5848,6 +6117,7 @@ describe('update_media_buy handler', () => {
         product_id: product.product_id,
         pricing_option_id: pricingOptions[0].pricing_option_id,
         budget: 10000,
+        format_option_refs: [{ scope: 'product', format_option_id: selectedFormat.format_option_id }],
       }],
     });
     const mediaBuyId = createResult.media_buy_id as string;
@@ -5857,7 +6127,8 @@ describe('update_media_buy handler', () => {
       account,
       creatives: [{
         creative_id: 'cr_clear_test',
-        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        format_kind: selectedFormat.format_kind,
+        format_option_ref: { scope: 'product', format_option_id: selectedFormat.format_option_id },
         name: 'Clear Test',
       }],
       assignments: [{ media_buy_id: mediaBuyId, package_id: pkgId, creative_id: 'cr_clear_test' }],
@@ -5883,6 +6154,7 @@ describe('update_media_buy handler', () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const selectedFormat = (product.format_options as Array<Record<string, unknown>>)[0];
     const account = { brand: { domain: 'assign-clear-active.example' }, operator: 'assign-clear-active.example' };
 
     const server = createTrainingAgentServer(DEFAULT_CTX);
@@ -5895,6 +6167,7 @@ describe('update_media_buy handler', () => {
         product_id: product.product_id,
         pricing_option_id: pricingOptions[0].pricing_option_id,
         budget: 10000,
+        format_option_refs: [{ scope: 'product', format_option_id: selectedFormat.format_option_id }],
       }],
     });
     const mediaBuyId = createResult.media_buy_id as string;
@@ -5904,7 +6177,8 @@ describe('update_media_buy handler', () => {
       account,
       creatives: [{
         creative_id: 'cr_active_clear',
-        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        format_kind: selectedFormat.format_kind,
+        format_option_ref: { scope: 'product', format_option_id: selectedFormat.format_option_id },
         name: 'Active Clear',
       }],
       assignments: [{ media_buy_id: mediaBuyId, package_id: pkgId, creative_id: 'cr_active_clear' }],
@@ -5930,6 +6204,7 @@ describe('update_media_buy handler', () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const selectedFormat = (product.format_options as Array<Record<string, unknown>>)[0];
     const account = { brand: { domain: 'assign-clear-paused.example' }, operator: 'assign-clear-paused.example' };
 
     const server = createTrainingAgentServer(DEFAULT_CTX);
@@ -5942,6 +6217,7 @@ describe('update_media_buy handler', () => {
         product_id: product.product_id,
         pricing_option_id: pricingOptions[0].pricing_option_id,
         budget: 10000,
+        format_option_refs: [{ scope: 'product', format_option_id: selectedFormat.format_option_id }],
       }],
     });
     const mediaBuyId = createResult.media_buy_id as string;
@@ -5951,7 +6227,8 @@ describe('update_media_buy handler', () => {
       account,
       creatives: [{
         creative_id: 'cr_paused_clear',
-        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        format_kind: selectedFormat.format_kind,
+        format_option_ref: { scope: 'product', format_option_id: selectedFormat.format_option_id },
         name: 'Paused Clear',
       }],
       assignments: [{ media_buy_id: mediaBuyId, package_id: pkgId, creative_id: 'cr_paused_clear' }],
@@ -6371,6 +6648,7 @@ describe('paused package delivery', () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const selectedFormat = (product.format_options as Array<Record<string, unknown>>)[0];
     const account = { brand: { domain: 'buy-paused-delivery.example' }, operator: 'buy-paused-delivery.example' };
 
     const server = createTrainingAgentServer(DEFAULT_CTX);
@@ -6378,7 +6656,8 @@ describe('paused package delivery', () => {
       account,
       creatives: [{
         creative_id: 'cr_buy_paused_delivery',
-        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        format_kind: selectedFormat.format_kind,
+        format_option_ref: { scope: 'product', format_option_id: selectedFormat.format_option_id },
         name: 'Buy Paused Delivery Creative',
       }],
     });
@@ -6393,6 +6672,7 @@ describe('paused package delivery', () => {
         product_id: product.product_id,
         pricing_option_id: pricingOptions[0].pricing_option_id,
         budget: 10000,
+        format_option_refs: [{ scope: 'product', format_option_id: selectedFormat.format_option_id }],
         creative_assignments: [{ creative_id: 'cr_buy_paused_delivery' }],
       }],
     });
@@ -6434,6 +6714,7 @@ describe('paused package delivery', () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const selectedFormat = (product.format_options as Array<Record<string, unknown>>)[0];
     const account = { brand: { domain: 'ended-paused-delivery.example' }, operator: 'ended-paused-delivery.example' };
 
     const server = createTrainingAgentServer(DEFAULT_CTX);
@@ -6441,7 +6722,8 @@ describe('paused package delivery', () => {
       account,
       creatives: [{
         creative_id: 'cr_ended_paused_delivery',
-        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        format_kind: selectedFormat.format_kind,
+        format_option_ref: { scope: 'product', format_option_id: selectedFormat.format_option_id },
         name: 'Ended Paused Delivery Creative',
       }],
     });
@@ -6456,6 +6738,7 @@ describe('paused package delivery', () => {
         product_id: product.product_id,
         pricing_option_id: pricingOptions[0].pricing_option_id,
         budget: 10000,
+        format_option_refs: [{ scope: 'product', format_option_id: selectedFormat.format_option_id }],
         creative_assignments: [{ creative_id: 'cr_ended_paused_delivery' }],
       }],
     });

@@ -73,8 +73,8 @@ Discover this creative agent's canonical operations.
 ```
 
 **Response contains:**
-- `creative.supported_formats[]`: entries with stable `capability_id`, canonical `format`, and `operations`
-- capability booleans such as `supports_generation`, `supports_transformers`, and `can_preview`
+- `creative.supported_formats[]`: entries with stable, catalog-unique `capability_id`, canonical `format`, and `operations`; preview support is declared by `operations` containing `preview`
+- capability flags such as `supports_generation` and `supports_transformers`
 
 ---
 

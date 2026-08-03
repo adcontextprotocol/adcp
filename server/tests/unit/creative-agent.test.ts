@@ -312,7 +312,7 @@ describe('handlePreviewCreative', () => {
     }, formats, TEST_BASE_URL);
 
     expect(result.errors).toEqual([expect.objectContaining({
-      code: 'validation_error',
+      code: 'FORMAT_NOT_SUPPORTED',
       message: expect.stringContaining('matches multiple preview capabilities'),
     })]);
   });
@@ -334,7 +334,7 @@ describe('handlePreviewCreative', () => {
     }, formats, TEST_BASE_URL);
 
     expect(result.errors).toEqual([expect.objectContaining({
-      code: 'validation_error',
+      code: 'FORMAT_NOT_SUPPORTED',
       message: expect.stringContaining('matches multiple preview capabilities'),
     })]);
   });
@@ -358,8 +358,69 @@ describe('handlePreviewCreative', () => {
     }, formats, TEST_BASE_URL);
 
     expect(result.errors).toEqual([expect.objectContaining({
-      code: 'validation_error',
+      code: 'FORMAT_NOT_SUPPORTED',
       message: expect.stringContaining('Unknown preview capability_id'),
+    })]);
+  });
+
+  it('rejects mixed canonical and deprecated routing', () => {
+    const manifest = { format_kind: 'image', assets: {} };
+    const single = handlePreviewCreative({
+      request_type: 'single',
+      creative_manifest: manifest,
+      target_capability_id: 'preview_display_300x250_image',
+      format_id: { id: 'display_300x250_image' },
+    }, formats, TEST_BASE_URL);
+    expect(single.errors).toEqual([expect.objectContaining({ code: 'validation_error' })]);
+
+    const batch = handlePreviewCreative({
+      request_type: 'batch',
+      requests: [{
+        creative_manifest: manifest,
+        target_capability_id: 'preview_display_300x250_image',
+      }, {
+        creative_manifest: manifest,
+        format_id: { id: 'display_300x250_image' },
+      }],
+    }, formats, TEST_BASE_URL);
+    expect(batch.errors).toEqual([expect.objectContaining({ code: 'validation_error' })]);
+  });
+
+  it('returns CREATIVE_NOT_FOUND for a library identifier absent from the reference agent', () => {
+    const result = handlePreviewCreative({
+      request_type: 'single',
+      creative_id: 'missing_library_creative',
+      target_capability_id: 'preview_display_300x250_image',
+    }, formats, TEST_BASE_URL);
+
+    expect(result.errors).toEqual([expect.objectContaining({
+      code: 'CREATIVE_NOT_FOUND',
+      message: expect.stringContaining('missing_library_creative'),
+    })]);
+  });
+
+  it('fails closed when no advertised canonical preview capability matches', () => {
+    const result = handlePreviewCreative({
+      request_type: 'single',
+      creative_manifest: { format_kind: 'custom', assets: {} },
+    }, formats, TEST_BASE_URL);
+
+    expect(result.errors).toEqual([expect.objectContaining({
+      code: 'FORMAT_NOT_SUPPORTED',
+      message: expect.stringContaining('No advertised preview capability matches'),
+    })]);
+  });
+
+  it('rejects a capability whose canonical kind does not match the manifest', () => {
+    const result = handlePreviewCreative({
+      request_type: 'single',
+      target_capability_id: 'preview_display_300x250_image',
+      creative_manifest: { format_kind: 'video_hosted', assets: {} },
+    }, formats, TEST_BASE_URL);
+
+    expect(result.errors).toEqual([expect.objectContaining({
+      code: 'FORMAT_NOT_SUPPORTED',
+      message: expect.stringContaining('not "video_hosted"'),
     })]);
   });
 
@@ -458,12 +519,112 @@ describe('handlePreviewCreative', () => {
     expect(results[1].creative_id).toBe('cr_video');
   });
 
+  it('applies batch defaults while preserving per-item overrides', () => {
+    const result = handlePreviewCreative({
+      request_type: 'batch',
+      target_capability_id: 'preview_display_300x250_image',
+      output_format: 'html',
+      quality: 'draft',
+      requests: [
+        {
+          creative_manifest: {
+            creative_id: 'cr_default',
+            format_kind: 'image',
+            assets: {},
+          },
+        },
+        {
+          target_capability_id: 'preview_display_728x90_image',
+          output_format: 'url',
+          inputs: [{ name: 'Item override input' }],
+          creative_manifest: {
+            creative_id: 'cr_override',
+            format_kind: 'image',
+            assets: {},
+          },
+        },
+      ],
+    }, formats, TEST_BASE_URL);
+
+    const results = result.results as Array<{
+      success: boolean;
+      response: { previews: Array<{ input: { name: string }; renders: Array<Record<string, unknown>> }> };
+    }>;
+    expect(results.map(item => item.success)).toEqual([true, true]);
+
+    const defaultPreview = results[0].response.previews[0];
+    expect(defaultPreview.input.name).toBe('Default preview');
+    expect(defaultPreview.renders[0]).toMatchObject({
+      output_format: 'html',
+      dimensions: { width: 300, height: 250 },
+    });
+    expect(defaultPreview.renders[0].preview_url).toBeUndefined();
+
+    const overridePreview = results[1].response.previews[0];
+    expect(overridePreview.input.name).toBe('Item override input');
+    expect(overridePreview.renders[0]).toMatchObject({
+      output_format: 'url',
+      dimensions: { width: 728, height: 90 },
+    });
+    expect(overridePreview.renders[0].preview_html).toBeUndefined();
+  });
+
+  it('returns FORMAT_NOT_SUPPORTED per item for unknown and ambiguous batch routes', () => {
+    const result = handlePreviewCreative({
+      request_type: 'batch',
+      requests: [
+        {
+          target_capability_id: 'preview_not_declared',
+          creative_manifest: { creative_id: 'cr_unknown', format_kind: 'image', assets: {} },
+        },
+        {
+          creative_manifest: { creative_id: 'cr_ambiguous', format_kind: 'image', assets: {} },
+        },
+        {
+          creative_manifest: { creative_id: 'cr_zero', format_kind: 'custom', assets: {} },
+        },
+      ],
+    }, formats, TEST_BASE_URL);
+
+    const results = result.results as Array<{ success: boolean; errors: Array<{ code: string }> }>;
+    expect(results).toHaveLength(3);
+    expect(results.every(item => item.success === false)).toBe(true);
+    expect(results.map(item => item.errors[0].code)).toEqual([
+      'FORMAT_NOT_SUPPORTED',
+      'FORMAT_NOT_SUPPORTED',
+      'FORMAT_NOT_SUPPORTED',
+    ]);
+  });
+
   it('batch returns error for empty requests', () => {
     const result = handlePreviewCreative({
       request_type: 'batch',
       requests: [],
     }, formats, TEST_BASE_URL);
     expect(result.errors).toBeTruthy();
+  });
+
+  it('accepts 50 batch items and rejects 51', () => {
+    const item = {
+      creative_manifest: {
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250_image' },
+        assets: {},
+      },
+    };
+    const accepted = handlePreviewCreative({
+      request_type: 'batch',
+      requests: Array.from({ length: 50 }, () => item),
+    }, formats, TEST_BASE_URL);
+    expect(accepted.results).toHaveLength(50);
+
+    const rejected = handlePreviewCreative({
+      request_type: 'batch',
+      requests: Array.from({ length: 51 }, () => item),
+    }, formats, TEST_BASE_URL);
+    expect(rejected.errors).toEqual([expect.objectContaining({
+      code: 'validation_error',
+      message: expect.stringContaining('50'),
+    })]);
   });
 
   it('rejects variant mode', () => {

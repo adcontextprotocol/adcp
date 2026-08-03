@@ -33,7 +33,7 @@ interface FormatId {
   id: string;
 }
 
-const MAX_BATCH_SIZE = 20;
+const MAX_BATCH_SIZE = 50;
 
 /**
  * Build formats with agent_url rewritten to the local endpoint.
@@ -163,7 +163,6 @@ export function handleGetAdcpCapabilities(formats: Format[]): Record<string, unk
     },
     supported_protocols: ['creative'],
     creative: {
-      can_preview: true,
       supported_formats: buildCreativeCapabilities(formats),
     },
   };
@@ -259,14 +258,24 @@ export function handleListCreativeFormats(args: Record<string, unknown>, formats
 // ── preview_creative ────────────────────────────────────────────────
 
 interface PreviewRequest {
-  creative_manifest: Record<string, unknown> & { format_kind?: string };
+  creative_manifest?: Record<string, unknown> & { format_kind?: string };
+  creative_id?: string;
   capability_id?: string;
   target_capability_id?: string;
   format_id?: { agent_url?: string; id?: string; width?: number; height?: number };
   inputs?: Array<{ name: string; macros?: Record<string, string>; context_description?: string }>;
+  quality?: 'draft' | 'production';
   output_format?: 'url' | 'html' | 'both';
   template_id?: string;
   item_limit?: number;
+}
+
+class PreviewFormatNotSupportedError extends Error {
+  readonly code = 'FORMAT_NOT_SUPPORTED';
+}
+
+class PreviewCreativeNotFoundError extends Error {
+  readonly code = 'CREATIVE_NOT_FOUND';
 }
 
 function manifestDimensions(manifest: Record<string, unknown>): { width?: number; height?: number } {
@@ -301,12 +310,21 @@ function manifestDimensions(manifest: Record<string, unknown>): { width?: number
 }
 
 function resolveCanonicalPreviewFormat(req: PreviewRequest, formats: Format[]): Format | undefined {
+  if (!req.creative_manifest) {
+    throw new PreviewCreativeNotFoundError(`Creative "${req.creative_id ?? 'unknown'}" was not found in this agent's creative library.`);
+  }
   const selector = req.target_capability_id ?? req.capability_id;
   if (selector) {
     const legacyId = selector.startsWith('preview_') ? selector.slice('preview_'.length) : '';
     const selected = formats.find(format => getFormatId(format).id === legacyId);
-    if (!selected || !(selected.canonical as { kind?: string } | undefined)?.kind) {
-      throw new Error(`Unknown preview capability_id "${selector}".`);
+    const selectedKind = (selected?.canonical as { kind?: string } | undefined)?.kind;
+    if (!selected || !selectedKind) {
+      throw new PreviewFormatNotSupportedError(`Unknown preview capability_id "${selector}".`);
+    }
+    if (req.creative_manifest.format_kind && req.creative_manifest.format_kind !== selectedKind) {
+      throw new PreviewFormatNotSupportedError(
+        `Preview capability_id "${selector}" renders format_kind "${selectedKind}", not "${req.creative_manifest.format_kind}".`,
+      );
     }
     return selected;
   }
@@ -319,7 +337,12 @@ function resolveCanonicalPreviewFormat(req: PreviewRequest, formats: Format[]): 
   const candidates = formats.filter(format =>
     (format.canonical as { kind?: string } | undefined)?.kind === manifest.format_kind
   );
-  if (candidates.length <= 1) return candidates[0];
+  if (candidates.length === 0) {
+    throw new PreviewFormatNotSupportedError(
+      `No advertised preview capability matches canonical format_kind "${manifest.format_kind}".`,
+    );
+  }
+  if (candidates.length === 1) return candidates[0];
 
   const dimensions = manifestDimensions(manifest);
   if (dimensions.width !== undefined || dimensions.height !== undefined) {
@@ -337,9 +360,44 @@ function resolveCanonicalPreviewFormat(req: PreviewRequest, formats: Format[]): 
     return declared?.params?.width === undefined && declared?.params?.height === undefined;
   });
   if (generic.length === 1) return generic[0];
-  throw new Error(
+  throw new PreviewFormatNotSupportedError(
     `Canonical format_kind "${manifest.format_kind}" matches multiple preview capabilities; provide target_capability_id.`,
   );
+}
+
+function withBatchDefaults(args: Record<string, unknown>, req: PreviewRequest): PreviewRequest {
+  const batchTarget = args.target_capability_id ?? args.capability_id;
+  const itemTarget = req.target_capability_id ?? req.capability_id;
+  return {
+    creative_manifest: req.creative_manifest,
+    ...(req.creative_id !== undefined && { creative_id: req.creative_id }),
+    ...((itemTarget ?? batchTarget) !== undefined && {
+      target_capability_id: (itemTarget ?? batchTarget) as string,
+    }),
+    ...(req.format_id !== undefined
+      ? { format_id: req.format_id }
+      : itemTarget === undefined && batchTarget === undefined && args.format_id !== undefined
+        ? { format_id: args.format_id as PreviewRequest['format_id'] }
+        : {}),
+    ...((req.quality ?? args.quality) !== undefined && {
+      quality: (req.quality ?? args.quality) as PreviewRequest['quality'],
+    }),
+    ...((req.output_format ?? args.output_format) !== undefined && {
+      output_format: (req.output_format ?? args.output_format) as PreviewRequest['output_format'],
+    }),
+    ...(req.inputs !== undefined && { inputs: req.inputs }),
+    ...(req.template_id !== undefined && { template_id: req.template_id }),
+    ...(req.item_limit !== undefined && { item_limit: req.item_limit }),
+  };
+}
+
+function previewResolutionError(err: unknown, fallback: string): { code: string; message: string } {
+  return {
+    code: err instanceof PreviewFormatNotSupportedError || err instanceof PreviewCreativeNotFoundError
+      ? err.code
+      : 'render_error',
+    message: err instanceof Error ? err.message : fallback,
+  };
 }
 
 function renderSinglePreview(
@@ -347,6 +405,9 @@ function renderSinglePreview(
   formats: Format[],
   baseUrl: string,
 ): { previews: unknown[]; expires_at: string } {
+  if (!req.creative_manifest) {
+    throw new PreviewCreativeNotFoundError(`Creative "${req.creative_id ?? 'unknown'}" was not found in this agent's creative library.`);
+  }
   const manifest = req.creative_manifest;
   const format = resolveCanonicalPreviewFormat(req, formats);
 
@@ -405,6 +466,13 @@ function renderSinglePreview(
 export function handlePreviewCreative(args: Record<string, unknown>, formats: Format[], baseUrl: string): Record<string, unknown> {
   const requestType = args.request_type as string;
 
+  if (args.creative_manifest && args.creative_id) {
+    return { errors: [{ code: 'validation_error', message: 'Provide creative_manifest or creative_id, not both.' }] };
+  }
+  if ((args.target_capability_id || args.capability_id) && args.format_id) {
+    return { errors: [{ code: 'validation_error', message: 'Use target_capability_id or deprecated format_id routing, not both.' }] };
+  }
+
   if (requestType === 'batch') {
     const requests = args.requests as PreviewRequest[];
     if (!requests?.length) {
@@ -413,20 +481,34 @@ export function handlePreviewCreative(args: Record<string, unknown>, formats: Fo
     if (requests.length > MAX_BATCH_SIZE) {
       return { errors: [{ code: 'validation_error', message: `Batch limited to ${MAX_BATCH_SIZE} requests.` }] };
     }
+    const usesCanonicalRouting = Boolean(args.target_capability_id || args.capability_id)
+      || requests.some(req => Boolean(req.target_capability_id || req.capability_id));
+    const usesLegacyRouting = Boolean(args.format_id)
+      || requests.some(req => Boolean(req.format_id));
+    if (usesCanonicalRouting && usesLegacyRouting) {
+      return { errors: [{ code: 'validation_error', message: 'Use one routing generation across the batch: target_capability_id or deprecated format_id.' }] };
+    }
 
     const results = requests.map((req, i) => {
+      if (req.creative_manifest && req.creative_id) {
+        return {
+          success: false,
+          creative_id: req.creative_id,
+          errors: [{ code: 'validation_error', message: 'Provide creative_manifest or creative_id, not both.' }],
+        };
+      }
       try {
-        const result = renderSinglePreview(req, formats, baseUrl);
+        const result = renderSinglePreview(withBatchDefaults(args, req), formats, baseUrl);
         return {
           success: true,
-          creative_id: (req.creative_manifest?.creative_id as string) || `batch_${i}`,
+          creative_id: (req.creative_manifest?.creative_id as string) || req.creative_id || `batch_${i}`,
           response: result,
         };
       } catch (err) {
         return {
           success: false,
-          creative_id: (req.creative_manifest?.creative_id as string) || `batch_${i}`,
-          errors: [{ code: 'render_error', message: err instanceof Error ? err.message : 'Preview rendering failed' }],
+          creative_id: (req.creative_manifest?.creative_id as string) || req.creative_id || `batch_${i}`,
+          errors: [previewResolutionError(err, 'Preview rendering failed')],
         };
       }
     });
@@ -444,7 +526,7 @@ export function handlePreviewCreative(args: Record<string, unknown>, formats: Fo
   }
 
   // Single preview (default)
-  if (!args.creative_manifest) {
+  if (!args.creative_manifest && !args.creative_id) {
     return { errors: [{ code: 'validation_error', message: 'creative_manifest is required.' }] };
   }
 
@@ -453,10 +535,7 @@ export function handlePreviewCreative(args: Record<string, unknown>, formats: Fo
     return { response_type: 'single', ...result };
   } catch (err) {
     return {
-      errors: [{
-        code: 'validation_error',
-        message: err instanceof Error ? err.message : 'Preview capability could not be resolved.',
-      }],
+      errors: [previewResolutionError(err, 'Preview capability could not be resolved.')],
     };
   }
 }
@@ -539,6 +618,7 @@ const TOOLS = [
         adcp_major_version: ADCP_MAJOR_VERSION_PROP,
         request_type: { type: 'string', enum: ['single', 'batch', 'variant'], description: 'Request type. Defaults to single.' },
         creative_manifest: { type: 'object', description: 'Canonical creative manifest with format_kind and typed assets (required for single mode)', additionalProperties: true },
+        creative_id: { type: 'string', description: 'Creative-library identifier used instead of creative_manifest.' },
         target_capability_id: { type: 'string', pattern: '^[a-zA-Z0-9_-]+$', description: 'Exact preview capability advertised by get_adcp_capabilities.' },
         capability_id: { type: 'string', pattern: '^[a-zA-Z0-9_-]+$', description: 'Alias for target_capability_id.' },
         format_id: { ...FORMAT_ID_SCHEMA, deprecated: true, description: 'Deprecated named-format override for older 3.x peers.' },
@@ -551,25 +631,56 @@ const TOOLS = [
           },
         },
         output_format: { type: 'string', enum: ['url', 'html', 'both'], description: 'Output format. Defaults to url.' },
+        quality: { type: 'string', enum: ['draft', 'production'], description: 'Render quality. In batch mode, defaults items that omit quality.' },
         requests: {
           type: 'array', description: 'Array of preview requests (batch mode, max 50)', minItems: 1, maxItems: 50,
           items: {
             type: 'object',
             properties: {
               creative_manifest: { type: 'object', additionalProperties: true },
+              creative_id: { type: 'string' },
               target_capability_id: { type: 'string', pattern: '^[a-zA-Z0-9_-]+$' },
               capability_id: { type: 'string', pattern: '^[a-zA-Z0-9_-]+$' },
               format_id: { ...FORMAT_ID_SCHEMA, deprecated: true },
               output_format: { type: 'string', enum: ['url', 'html', 'both'] },
+              quality: { type: 'string', enum: ['draft', 'production'] },
               inputs: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] } },
+              template_id: { type: 'string' },
+              item_limit: { type: 'integer', minimum: 1 },
             },
-            required: ['creative_manifest'], additionalProperties: true,
+            oneOf: [{ required: ['creative_manifest'] }, { required: ['creative_id'] }], additionalProperties: true,
           },
         },
         variant_id: { type: 'string', description: 'Variant ID (variant mode)' },
         template_id: { type: 'string', description: 'Specific template ID for custom format rendering' },
         item_limit: { type: 'integer', minimum: 1, description: 'Max catalog items to render' },
       },
+      allOf: [{
+        if: { properties: { request_type: { const: 'single' } } },
+        then: { oneOf: [{ required: ['creative_manifest'] }, { required: ['creative_id'] }] },
+      }, {
+        not: { required: ['target_capability_id', 'format_id'] },
+      }, {
+        not: {
+          anyOf: [{
+            allOf: [
+              { required: ['target_capability_id', 'requests'] },
+              { properties: { requests: { contains: { required: ['format_id'] } } } },
+            ],
+          }, {
+            allOf: [
+              { required: ['format_id', 'requests'] },
+              { properties: { requests: { contains: { required: ['target_capability_id'] } } } },
+            ],
+          }, {
+            allOf: [
+              { required: ['requests'] },
+              { properties: { requests: { contains: { required: ['target_capability_id'] } } } },
+              { properties: { requests: { contains: { required: ['format_id'] } } } },
+            ],
+          }],
+        },
+      }],
       additionalProperties: true,
     },
     outputSchema: {

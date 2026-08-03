@@ -1811,16 +1811,34 @@ async function runTests() {
       return 'preview request mixing target_capability_id and format_id must be rejected';
     }
 
+    const libraryCreative = {
+      request_type: 'single',
+      creative_id: 'stored_image_creative',
+      target_capability_id: 'image_preview'
+    };
+    if (!validate(libraryCreative)) {
+      return `single library creative preview rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+    if (validate({ ...canonical, creative_id: 'conflicting_library_creative' })) {
+      return 'single preview must select exactly one of creative_manifest or creative_id';
+    }
+
     const batch = {
       request_type: 'batch',
       target_capability_id: 'default_preview',
       requests: [
         { creative_manifest: manifest },
-        { creative_manifest: manifest, target_capability_id: 'square_preview' }
+        { creative_id: 'stored_square_creative', target_capability_id: 'square_preview' }
       ]
     };
     if (!validate(batch)) {
       return `canonical batch preview selectors rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+    if (validate({
+      request_type: 'batch',
+      requests: [{ creative_manifest: manifest, creative_id: 'conflicting_library_creative' }]
+    })) {
+      return 'batch preview items must select exactly one of creative_manifest or creative_id';
     }
     if (validate({
       request_type: 'batch',

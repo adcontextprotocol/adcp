@@ -52,6 +52,12 @@
       }
     },
     {
+      "$comment": "A single request selects either an inline manifest or a library creative, never both.",
+      "not": {
+        "required": ["creative_manifest", "creative_id"]
+      }
+    },
+    {
       "$comment": "Canonical and deprecated preview route selectors are mutually exclusive at the request level.",
       "not": {
         "required": ["target_capability_id", "format_id"]
@@ -96,7 +102,7 @@
     },
     "creative_manifest": {
       "$ref": "/schemas/core/creative-manifest.json",
-      "description": "Complete creative manifest with all required assets for the format. Required when request_type is 'single'. Also accepted per item in batch mode."
+      "description": "Complete creative manifest with all required assets for the format. In single mode, provide exactly one of creative_manifest or creative_id. Also accepted per item in batch mode."
     },
     "target_capability_id": {
       "type": "string",
@@ -175,6 +181,11 @@
             "$ref": "/schemas/core/creative-manifest.json",
             "description": "Complete creative manifest with all required assets."
           },
+          "creative_id": {
+            "type": "string",
+            "description": "Creative-library identifier. Use instead of creative_manifest to preview a stored canonical creative.",
+            "x-entity": "creative"
+          },
           "inputs": {
             "type": "array",
             "description": "Array of input sets for generating multiple preview variants",
@@ -230,6 +241,13 @@
         "not": {
           "required": ["target_capability_id", "format_id"]
         },
+        "allOf": [
+          {
+            "not": {
+              "required": ["creative_manifest", "creative_id"]
+            }
+          }
+        ],
         "additionalProperties": true
       },
       "minItems": 1,

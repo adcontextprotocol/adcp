@@ -236,7 +236,7 @@ Every supported-format entry uses a stable agent-local `capability_id` for task 
 }
 ```
 
-Keep capability IDs stable. They are scoped to your agent and passed as `target_capability_id`; they are not format identities and never appear on products or manifests.
+Keep capability IDs stable and unique within your agent's `supported_formats[]` catalog. They are scoped to your agent and passed as `target_capability_id`; they are not format identities and never appear on products or manifests.
 
 ### 2. Format validation
 

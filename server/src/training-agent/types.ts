@@ -408,9 +408,9 @@ export interface MediaBuyState {
   createdAt: string;
   updatedAt: string;
   history: MediaBuyHistoryEntry[];
-  /** Set by comply_test_controller after a forced status write. Consumed and
-   * cleared on the first deriveStatus read so subsequent real-workflow reads
-   * see the normal pending_creatives guard. Never set by production code paths. */
+  /** Set by comply_test_controller after a forced status write so repeated
+   * reads preserve the requested harness state even when creative readiness
+   * would normally derive pending_creatives. Never set by production paths. */
   complyControllerForced?: boolean;
   /** Open impairments — upstream dependency state changes affecting at least one
    * package on this buy. health derives from impairments.length: empty → 'ok',
@@ -450,6 +450,10 @@ export interface PackageState {
   formatOptionRefs?: unknown[];
   formatKind?: string;
   params?: Record<string, unknown>;
+  /** Canonical package-time creative requirements captured from the selected
+   * product declarations. This remains stable even when the live product
+   * catalog changes; formats_pending is derived from it at read time. */
+  formatsToProvide?: Array<Record<string, unknown>>;
   creativeAssignments: string[];
   targeting?: PackageTargeting;
   context?: Record<string, unknown>;
