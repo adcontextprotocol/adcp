@@ -1296,11 +1296,11 @@ registry.registerPath({
       properties: z.enum(["true"]).optional(),
       compliance: z.enum(["true"]).optional(),
       metric_id: z.union([z.string(), z.array(z.string())]).optional().openapi({
-        description: "Measurement-vendor filter: exact match on `measurement.metrics[].metric_id`. Repeatable; multiple values are AND'd (vendor must carry all named metrics). When combined with `accreditation`, a cross-product AND applies — each (metric_id, accreditation) pair must be covered by the same metrics element. Implies `type=measurement`.",
+        description: "Measurement-vendor filter: exact match on `measurement.metrics[].metric_id`. Repeatable; multiple values are AND'd (vendor must carry all named metrics). When combined with `accreditation`, a cross-product AND applies — each (metric_id, accreditation) pair must be covered by the same metrics element. Duplicate values are ignored. Maximum 20 unique values; maximum 100 cross-product pairs. Implies `type=measurement`.",
         example: "attention_units",
       }),
       accreditation: z.union([z.string(), z.array(z.string())]).optional().openapi({
-        description: "Measurement-vendor filter: exact match on `measurement.metrics[].accreditations[].accrediting_body` (e.g. `MRC`, `JIC`, `ARF`). Repeatable; multiple values are AND'd. When combined with `metric_id`, a cross-product AND applies — see `metric_id` description. Implies `type=measurement`. Accreditation claims are vendor-asserted; AAO does not independently verify (`verified_by_aao` is always `false` in the response).",
+        description: "Measurement-vendor filter: exact match on `measurement.metrics[].accreditations[].accrediting_body` (e.g. `MRC`, `JIC`, `ARF`). Repeatable; multiple values are AND'd. When combined with `metric_id`, a cross-product AND applies — see `metric_id` description. Duplicate values are ignored. Maximum 20 unique values; maximum 100 cross-product pairs. Implies `type=measurement`. Accreditation claims are vendor-asserted; AAO does not independently verify (`verified_by_aao` is always `false` in the response).",
         example: "MRC",
       }),
       q: z.string().max(64).optional().openapi({
@@ -5605,10 +5605,37 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         if (Array.isArray(v)) return v.filter((x): x is string => typeof x === "string" && x.length > 0);
         return [];
       };
-      const metricIds = toArray(req.query.metric_id);
-      const accreditations = toArray(req.query.accreditation);
+      // Deduplicate before limit checks so repeated values don't inflate counts.
+      const metricIds = [...new Set(toArray(req.query.metric_id))];
+      const accreditations = [...new Set(toArray(req.query.accreditation))];
       const qParam = typeof req.query.q === "string" ? req.query.q : undefined;
       const hasMeasurementFilter = metricIds.length > 0 || accreditations.length > 0 || (qParam !== undefined && qParam.length > 0);
+
+      // Per-filter and cross-product limits. No route rate-limiter exists on this
+      // endpoint, so we bound the M×N @> predicate count here to prevent
+      // inadvertent (or adversarial) query cost spikes and to stay well below
+      // PostgreSQL's 65 535 bind-parameter ceiling.
+      const METRIC_ID_LIMIT = 20;
+      const ACCREDITATION_LIMIT = 20;
+      const FILTER_PAIR_LIMIT = 100;
+      if (metricIds.length > METRIC_ID_LIMIT) {
+        return res.status(400).json({
+          error: `metric_id: too many values (${metricIds.length}); maximum is ${METRIC_ID_LIMIT}`,
+        });
+      }
+      if (accreditations.length > ACCREDITATION_LIMIT) {
+        return res.status(400).json({
+          error: `accreditation: too many values (${accreditations.length}); maximum is ${ACCREDITATION_LIMIT}`,
+        });
+      }
+      if (metricIds.length > 0 && accreditations.length > 0) {
+        const pairCount = metricIds.length * accreditations.length;
+        if (pairCount > FILTER_PAIR_LIMIT) {
+          return res.status(400).json({
+            error: `metric_id × accreditation cross-product (${metricIds.length} × ${accreditations.length} = ${pairCount}) exceeds the ${FILTER_PAIR_LIMIT}-pair limit`,
+          });
+        }
+      }
 
       if (hasMeasurementFilter) {
         if (type && type !== "measurement") {
