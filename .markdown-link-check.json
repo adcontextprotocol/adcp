@@ -20,6 +20,9 @@
     },
     {
       "pattern": "^https://agenticadvertising.org"
+    },
+    {
+      "pattern": "^https://docs.adcontextprotocol.org"
     }
   ],
   "timeout": "30s",
