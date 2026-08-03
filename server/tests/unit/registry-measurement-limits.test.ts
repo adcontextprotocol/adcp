@@ -8,11 +8,11 @@ vi.hoisted(() => {
 });
 
 vi.mock('../../src/db/agent-snapshot-db.js', () => ({
-  AgentSnapshotDatabase: vi.fn().mockImplementation(() => ({
-    filterMeasurementAgents: vi.fn().mockResolvedValue(new Set()),
-    bulkGetHealth: vi.fn().mockResolvedValue(null),
-    bulkGetCapabilities: vi.fn().mockResolvedValue(null),
-  })),
+  AgentSnapshotDatabase: class {
+    filterMeasurementAgents() { return Promise.resolve(new Set()); }
+    bulkGetHealth() { return Promise.resolve(null); }
+    bulkGetCapabilities() { return Promise.resolve(null); }
+  },
 }));
 
 import { createRegistryApiRouter, type RegistryApiConfig } from '../../src/routes/registry-api.js';
