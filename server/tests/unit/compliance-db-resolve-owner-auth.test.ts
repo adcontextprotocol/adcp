@@ -334,6 +334,76 @@ describe('ComplianceDatabase.resolveOwnerAuth', () => {
     expect(auth).toBeUndefined();
   });
 
+  it('decodes a json1:-prefixed array resource into string[]', async () => {
+    mockRow({
+      oauth_cc_token_endpoint: 'https://auth.example.com/oauth/token',
+      oauth_cc_client_id: 'client_abc',
+      oauth_cc_client_secret_encrypted: 'enc_cc_secret',
+      oauth_cc_client_secret_iv: 'iv_cc_secret',
+      oauth_cc_resource: 'json1:["https://api1.example.com","https://api2.example.com"]',
+    });
+    mockedDecrypt.mockReturnValueOnce('cc-secret-plaintext');
+
+    const auth = await db.resolveOwnerAuth('https://agent.example.com');
+    expect(auth).toMatchObject({
+      type: 'oauth_client_credentials',
+      credentials: {
+        resource: ['https://api1.example.com', 'https://api2.example.com'],
+      },
+    });
+  });
+
+  it('falls back to scalar when stored value starts with json1: but JSON is malformed', async () => {
+    mockRow({
+      oauth_cc_token_endpoint: 'https://auth.example.com/oauth/token',
+      oauth_cc_client_id: 'client_abc',
+      oauth_cc_client_secret_encrypted: 'enc_cc_secret',
+      oauth_cc_client_secret_iv: 'iv_cc_secret',
+      oauth_cc_resource: 'json1:{not-valid-json}',
+    });
+    mockedDecrypt.mockReturnValueOnce('cc-secret-plaintext');
+
+    const auth = await db.resolveOwnerAuth('https://agent.example.com');
+    expect(auth).toMatchObject({
+      type: 'oauth_client_credentials',
+      credentials: { resource: 'json1:{not-valid-json}' },
+    });
+  });
+
+  it('falls back to scalar when stored json1: parse result is not string[]', async () => {
+    mockRow({
+      oauth_cc_token_endpoint: 'https://auth.example.com/oauth/token',
+      oauth_cc_client_id: 'client_abc',
+      oauth_cc_client_secret_encrypted: 'enc_cc_secret',
+      oauth_cc_client_secret_iv: 'iv_cc_secret',
+      oauth_cc_resource: 'json1:[null,42]',
+    });
+    mockedDecrypt.mockReturnValueOnce('cc-secret-plaintext');
+
+    const auth = await db.resolveOwnerAuth('https://agent.example.com');
+    expect(auth).toMatchObject({
+      type: 'oauth_client_credentials',
+      credentials: { resource: 'json1:[null,42]' },
+    });
+  });
+
+  it('reads legacy scalar resource (no json1: prefix) as a plain string', async () => {
+    mockRow({
+      oauth_cc_token_endpoint: 'https://auth.example.com/oauth/token',
+      oauth_cc_client_id: 'client_abc',
+      oauth_cc_client_secret_encrypted: 'enc_cc_secret',
+      oauth_cc_client_secret_iv: 'iv_cc_secret',
+      oauth_cc_resource: 'https://api.example.com',
+    });
+    mockedDecrypt.mockReturnValueOnce('cc-secret-plaintext');
+
+    const auth = await db.resolveOwnerAuth('https://agent.example.com');
+    expect(auth).toMatchObject({
+      type: 'oauth_client_credentials',
+      credentials: { resource: 'https://api.example.com' },
+    });
+  });
+
   it('prefers auth-code OAuth over client-credentials when both are present', async () => {
     mockRow({
       oauth_access_token_encrypted: 'enc_access',

@@ -1352,9 +1352,9 @@ export class ComplianceDatabase {
         };
         if (row.oauth_cc_scope) credentials.scope = row.oauth_cc_scope;
         if (row.oauth_cc_resource) {
-          if (row.oauth_cc_resource.startsWith('[')) {
+          if (row.oauth_cc_resource.startsWith('json1:')) {
             try {
-              const parsed: unknown = JSON.parse(row.oauth_cc_resource);
+              const parsed: unknown = JSON.parse(row.oauth_cc_resource.slice(6));
               credentials.resource =
                 Array.isArray(parsed) && parsed.every((e): e is string => typeof e === 'string')
                   ? parsed

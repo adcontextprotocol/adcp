@@ -329,6 +329,21 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
       expect(res.body.error).toMatch(/client_id/);
     });
 
+    it('saves an array resource and stores it with the json1: storage prefix', async () => {
+      const resources = ['https://api1.example.com', 'https://api2.example.com'];
+      await request(app)
+        .put(url)
+        .send({ ...validBody, resource: resources })
+        .expect(200);
+
+      const r = await pool.query(
+        `SELECT oauth_cc_resource FROM agent_contexts WHERE organization_id = $1 AND agent_url = $2`,
+        [TEST_ORG_ID, TEST_AGENT_URL],
+      );
+      // Verify the unambiguous tagged-encoding is written to the TEXT column
+      expect(r.rows[0].oauth_cc_resource).toBe(`json1:${JSON.stringify(resources)}`);
+    });
+
     it('returns 403 for an agent the user does not own', async () => {
       const res = await request(app)
         .put(`/api/registry/agents/${encodeURIComponent(OTHER_AGENT_URL)}/oauth-client-credentials`)
@@ -399,6 +414,22 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
         oauth_error: 'invalid_client',
         http_status: 401,
       });
+    });
+
+    it('passes a decoded resource array to the exchange mock after save/load round-trip', async () => {
+      const resources = ['https://api1.example.com', 'https://api2.example.com'];
+      await request(app).put(saveUrl).send({ ...validBody, resource: resources }).expect(200);
+      exchangeMock.mockResolvedValueOnce({ access_token: 'tok', token_type: 'Bearer' });
+
+      const res = await request(app).post(testUrl).send({});
+      expect(res.status).toBe(200);
+      expect(res.body.ok).toBe(true);
+
+      // The credentials passed to the SDK exchange must carry the decoded array
+      expect(exchangeMock).toHaveBeenCalledWith(
+        expect.objectContaining({ resource: resources }),
+        expect.anything(),
+      );
     });
 
     it('returns 403 when the user does not own the agent', async () => {

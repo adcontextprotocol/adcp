@@ -10785,7 +10785,7 @@ paths:
                   maxLength: 1024
                   description: Space-separated OAuth scope values.
                 resource:
-                  oneOf:
+                  anyOf:
                     - type: string
                       maxLength: 2048
                     - type: array
@@ -10794,7 +10794,7 @@ paths:
                         maxLength: 2048
                       minItems: 1
                       maxItems: 8
-                  description: RFC 8707 resource indicator. Accepts a single URI string or an array of up to 8 URI strings for multi-resource authorization servers (Keycloak strict, AWS Cognito multi-RS).
+                  description: RFC 8707 resource indicator. Accepts a single URI string or an array of 1–8 URI strings for multi-resource authorization servers (Keycloak strict, AWS Cognito multi-RS).
                 audience:
                   type: string
                   maxLength: 2048
