@@ -235,6 +235,16 @@
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
       "note": "From sync_accounts polymorphic-key refactor (#2261). Returned per-entry when the seller does not implement the entry's `sync_accounts` mode — settings-update sellers (explicit-account platforms) reject natural-key entries; provisioning-only sellers reject AccountRef-keyed entries. Wire change — held for 3.1."
+    },
+    "INVALID_PRICING_OPTION": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.2",
+      "note": "Canonical pricing-option rejection for report_usage and create_media_buy (#5892). Additive standard vocabulary; held for 3.2."
+    },
+    "INVALID_USAGE_DATA": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.2",
+      "note": "Per-record usage validation rejection for report_usage (#5892). Additive standard vocabulary; held for 3.2."
     }
   }
 }
