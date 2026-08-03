@@ -2,7 +2,7 @@
   "$schema": "/schemas/core/product.json",
   "product_id": "acme_homepage_retina_mrec",
   "name": "Acme homepage high-density medium rectangle",
-  "description": "A logical 300×250 image placement requiring both standard 300×250 and 600×500 2x renditions, with an optional 450×375 1.5x rendition for device-density selection. The legacy 3.1 IDs remain separate concrete formats; the canonical rendition-set semantics begin in 3.2.",
+  "description": "A logical 300×250 image placement requiring both standard 300×250 and 600×500 2x renditions, with an optional 450×375 1.5x rendition for device-density selection. The unversioned legacy catalog IDs remain separate concrete formats; canonical rendition-set semantics begin in 3.2.",
   "publisher_properties": [
     {
       "publisher_domain": "acme.example",

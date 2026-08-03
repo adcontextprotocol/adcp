@@ -152,7 +152,7 @@ test('parameterized legacy display_image ids project without retina-specific nam
   }
 });
 
-test('3.1 legacy catalog distinguishes 2x-only from paired 1x/2x contracts', () => {
+test('legacy catalog distinguishes 2x-only from paired 1x/2x contracts', () => {
   const catalog = JSON.parse(fs.readFileSync(
     path.resolve(__dirname, '../server/src/creative-agent/reference-formats.json'),
     'utf8',

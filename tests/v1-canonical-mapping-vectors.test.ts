@@ -128,7 +128,7 @@ describe('v1 canonical literal mapping vectors', () => {
     expect(mapping).not.toHaveProperty('parameters.height');
   });
 
-  it('projects 3.1 reference-catalog 2x-only ids to canonical 2x acceptance', () => {
+  it('projects legacy reference-catalog 2x-only ids to canonical 2x acceptance', () => {
     const retinaMappings = literalMappings.filter(mapping =>
       mapping.v1_pattern.format_id_glob.endsWith('_image_2x'),
     );

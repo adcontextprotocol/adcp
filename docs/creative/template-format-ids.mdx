@@ -25,7 +25,7 @@ Without template formats, each dimension variant requires a separate format defi
 
 A single template format definition (`display_image`) accepts logical dimension and pixel-density fields in the format_id object, allowing creatives to specify an exact 1x, 2x, or other density variant without a retina-specific format name.
 
-AdCP 3.1 did not standardize `format_id.pixel_ratio` or canonical pixel-density fields. Its reference catalog therefore provides distinct concrete contracts for the seven standard fixed display sizes: the existing `_image` ID is 1x-only, `_image_2x` is 2x-only, and `_image_1x_2x` requires both assets for systems such as GAM. Their density and required-coverage values under `canonical_parameters` are opaque forward-projection metadata for 3.2-aware SDKs, not canonical 3.1 semantics. The parameterized examples below are the 3.2 replacement and avoid adding another concrete ID for every future size.
+The legacy format model did not standardize `format_id.pixel_ratio` or canonical pixel-density fields. The unversioned reference catalog therefore provides distinct concrete contracts for the seven standard fixed display sizes: the existing `_image` ID is 1x-only, `_image_2x` is 2x-only, and `_image_1x_2x` requires both assets for systems such as GAM. Additive IDs become discoverable to dynamically querying clients across 3.x when the catalog deploys; no 3.0.x or 3.1.x protocol backport is required. Their density and required-coverage values under `canonical_parameters` are opaque forward-projection metadata for 3.2-aware SDKs, not pre-3.2 canonical semantics. The parameterized examples below are the 3.2 replacement and avoid adding another concrete ID for every future size.
 
 ## Format Types and Format IDs
 

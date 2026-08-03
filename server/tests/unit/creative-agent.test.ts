@@ -141,7 +141,7 @@ describe('reference formats', () => {
     expect(displayImage?.renders).toEqual([{ role: 'primary', parameters_from_format_id: true }]);
   });
 
-  it('publishes 3.1-compatible 2x-only formats with lossless canonical projections', () => {
+  it('publishes legacy 2x-only formats with lossless canonical projections', () => {
     const formats = buildReferenceFormats(TEST_AGENT_URL);
     const retinaFormats = formats.filter(f =>
       ((f.format_id as { id: string }).id).endsWith('_image_2x'),
@@ -448,7 +448,7 @@ describe('handlePreviewCreative', () => {
     expect(renders[0].dimensions).toEqual({ width: 300, height: 250 });
   });
 
-  it('renders a concrete 3.1 2x catalog format at logical dimensions', () => {
+  it('renders a concrete legacy 2x catalog format at logical dimensions', () => {
     const result = handlePreviewCreative({
       request_type: 'single',
       creative_manifest: {
