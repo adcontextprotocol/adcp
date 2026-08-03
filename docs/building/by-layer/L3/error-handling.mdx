@@ -132,7 +132,7 @@ These fields are defined by the [`error.json`](https://adcontextprotocol.org/sch
 | `code` | string | Yes | Machine-readable error code from the [standard vocabulary](#standard-error-codes) or a seller-specific code |
 | `message` | string | Yes | Human-readable error description |
 | `recovery` | string | No | Agent recovery classification: `transient`, `correctable`, or `terminal` |
-| `retry_after` | number | No | Seconds to wait before retrying (transient errors) |
+| `retry_after` | integer | No | Whole seconds to wait before retrying (transient errors), from 1 through 3600 |
 | `field` | string | No | Field path in JSONPath-lite format (e.g., `packages[0].targeting`). When `issues` is present, sellers MUST set this to `issues[0].pointer` translated from RFC 6901 to JSONPath-lite (e.g., `/packages/0/targeting` → `packages[0].targeting`). Will be deprecated in a future major version. |
 | `issues` | array | No | Structured list of validation failures. Each entry carries `pointer` (RFC 6901), `message`, `keyword` (JSON Schema keyword that rejected — `required` / `type` / `format` / etc.), and optionally `schema_id`, `schemaPath`, `discriminator`. See [Validator-internals fields](#validator-internals-fields-on-issues) for the `schema_id` / `schemaPath` / `discriminator` semantics, the production-emit rules, and the resolution path for `schema_id`. |
 | `suggestion` | string | No | Suggested fix for the error |
@@ -557,7 +557,7 @@ The rules in this section bound every `transient`-classified error a caller may 
 
 These rules apply when a caller receives a throttling-category error (`RATE_LIMITED`, or any error whose `recovery` is `transient` and whose `details` conform to the [`rate-limited`](https://adcontextprotocol.org/schemas/v3/error-details/rate-limited.json) detail shape):
 
-- Callers **MUST** honor `retry_after` when present and **MUST NOT** retry the same request sooner than the indicated number of seconds.
+- Callers **MUST** honor integer `retry_after` when present and **MUST NOT** retry the same request sooner than the indicated number of seconds. During migration, a caller that accepts a legacy finite fractional value **SHOULD** round it up before clamping to `[1, 3600]`.
 - Callers **SHOULD** use exponential backoff with jitter when `retry_after` is absent. A base of 2 seconds, a cap of 60 seconds, and ±25% jitter is a safe default.
 - Callers **MUST NOT** treat non-throttling errors (e.g., `INVALID_REQUEST`, `CREATIVE_REJECTED`) as if they were throttled. Retrying a rejected-for-other-reasons response at backoff cadence is a bug, not a defensive posture.
 - Callers **SHOULD** surface repeated throttling to their operator rather than retrying indefinitely; a persistent `RATE_LIMITED` response is a capacity or policy signal, not a transient blip.
