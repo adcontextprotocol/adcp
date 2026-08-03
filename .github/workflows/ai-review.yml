@@ -30,7 +30,7 @@ jobs:
       # Trusted base-SHA checkout. Never check out or execute PR-head code.
       # The PR head is never fetched: setup derives the diff/delta and changed
       # files entirely from the GitHub API.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 0
