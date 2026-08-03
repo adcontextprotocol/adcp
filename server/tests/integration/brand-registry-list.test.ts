@@ -427,7 +427,9 @@ describe('BrandDatabase.getAllBrandsForRegistry', () => {
       const row = result.find((b) => b.domain === 'mutual-trust.example.com');
       expect(row).toBeDefined();
       expect(row!.relationship_trust).toBe('mutual');
-      expect(row!.relationship_verified_at).toBeDefined();
+      // Verify the timestamp round-trips correctly, not just that some value is present.
+      expect(row!.relationship_verified_at instanceof Date).toBe(true);
+      expect(row!.relationship_verified_at!.toISOString()).toBe('2026-01-15T12:00:00.000Z');
     });
 
     it('returns undefined relationship_trust when not yet computed', async () => {
@@ -462,8 +464,40 @@ describe('BrandDatabase.getAllBrandsForRegistry', () => {
       const result = await brandDb.getAllBrandsForRegistry({ search: 'update-trust' });
       const row = result.find((b) => b.domain === 'update-trust.example.com');
       expect(row!.relationship_trust).toBe('mutual');
-      expect(row!.relationship_verified_at).toBeDefined();
+      expect(row!.relationship_verified_at instanceof Date).toBe(true);
       expect(row!.claimed_house_domain).toBeUndefined();
+    });
+
+    it('findCompany returns relationship_trust when present', async () => {
+      await insertBrand({
+        domain: 'findco-trust.example.com',
+        brand_name: 'FindCo Brand',
+        is_public: true,
+        source_type: 'brand_json',
+      });
+      await pool.query(
+        `UPDATE brands SET relationship_trust = 'standalone', relationship_trust_computed_at = NOW()
+         WHERE domain = 'findco-trust.example.com'`,
+      );
+
+      const result = await brandDb.findCompany('FindCo Brand');
+      const row = result.find((b) => b.domain === 'findco-trust.example.com');
+      expect(row).toBeDefined();
+      expect(row!.relationship_trust).toBe('standalone');
+    });
+
+    it('findCompany returns undefined relationship_trust when not computed', async () => {
+      await insertBrand({
+        domain: 'findco-notrust.example.com',
+        brand_name: 'FindCo NoTrust',
+        is_public: true,
+        source_type: 'brand_json',
+      });
+
+      const result = await brandDb.findCompany('FindCo NoTrust');
+      const row = result.find((b) => b.domain === 'findco-notrust.example.com');
+      expect(row).toBeDefined();
+      expect(row!.relationship_trust).toBeUndefined();
     });
   });
 });

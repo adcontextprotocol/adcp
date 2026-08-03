@@ -419,16 +419,22 @@ export class CrawlerService {
       try {
         const resolved = await this.brandManager.resolveBrand(domain, { skipCache: true });
         if (resolved?.relationship_trust) {
+          // Only set claimed_house_domain for one-sided states; for mutual/inline
+          // the relationship is fully verified and there is no unverified "claim".
+          const isMutualOrInline = resolved.relationship_trust === 'mutual' || resolved.relationship_trust === 'inline';
           await this.brandDb.updateRelationshipTrust(domain, {
             relationship_trust: resolved.relationship_trust,
             relationship_verified_at: resolved.relationship_verified_at
               ? new Date(resolved.relationship_verified_at)
               : null,
-            claimed_house_domain: resolved.claimed_house_domain ?? null,
+            claimed_house_domain: isMutualOrInline ? null : (resolved.claimed_house_domain ?? null),
           });
         }
+        // If resolved but trust is absent, leave stale trust and computed_at
+        // in place — it is better to serve a stale verified verdict than to
+        // silently clear it on an inconclusive resolution pass.
       } catch (err) {
-        log.warn({ domain, err: err instanceof Error ? err.message : err }, 'Trust computation failed during brand scan');
+        log.warn({ domain, err }, 'Trust computation failed during brand scan');
       }
     }
   }

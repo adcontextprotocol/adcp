@@ -8,7 +8,9 @@ import type {
   RegistryRevision,
   MemberBrandInfo,
   BrandLogo,
+  RelationshipTrust,
 } from '../types.js';
+import { isValidRelationshipTrust } from '../types.js';
 
 /**
  * Brand-manifest keys that must not be accepted from caller-supplied
@@ -278,7 +280,7 @@ export interface UpsertDiscoveredBrandInput {
   classification?: TrustedBrandClassification;
   source_type: 'brand_json' | 'community' | 'enriched' | 'stub';
   expires_at?: Date;
-  relationship_trust?: 'inline' | 'mutual' | 'leaf_only' | 'house_only' | 'standalone' | 'unverifiable';
+  relationship_trust?: RelationshipTrust;
   relationship_verified_at?: Date | null;
   claimed_house_domain?: string | null;
 }
@@ -732,7 +734,7 @@ export class BrandDatabase {
         last_validated = NOW(),
         expires_at = EXCLUDED.expires_at,
         relationship_trust = COALESCE(EXCLUDED.relationship_trust, brands.relationship_trust),
-        relationship_verified_at = COALESCE(EXCLUDED.relationship_verified_at, brands.relationship_verified_at),
+        relationship_verified_at = CASE WHEN EXCLUDED.relationship_trust IS NOT NULL THEN EXCLUDED.relationship_verified_at ELSE brands.relationship_verified_at END,
         claimed_house_domain = COALESCE(EXCLUDED.claimed_house_domain, brands.claimed_house_domain),
         relationship_trust_computed_at = CASE
           WHEN EXCLUDED.relationship_trust IS NOT NULL THEN NOW()
@@ -770,7 +772,7 @@ export class BrandDatabase {
   async updateRelationshipTrust(
     domain: string,
     trust: {
-      relationship_trust: 'inline' | 'mutual' | 'leaf_only' | 'house_only' | 'standalone' | 'unverifiable';
+      relationship_trust: RelationshipTrust;
       relationship_verified_at?: Date | null;
       claimed_house_domain?: string | null;
     },
@@ -930,7 +932,7 @@ export class BrandDatabase {
     parent_brand?: string;
     brand_agent_url?: string;
     source: string;
-    relationship_trust?: 'inline' | 'mutual' | 'leaf_only' | 'house_only' | 'standalone' | 'unverifiable';
+    relationship_trust?: RelationshipTrust;
   }>> {
     const limit = options.limit ?? 10;
     const escaped = rawQuery.trim().replace(/[%_\\]/g, '\\$&');
@@ -983,7 +985,7 @@ export class BrandDatabase {
       parent_brand: row.parent_brand ?? undefined,
       brand_agent_url: row.brand_agent_url ?? undefined,
       source: row.source_type,
-      relationship_trust: (row.relationship_trust ?? undefined) as 'inline' | 'mutual' | 'leaf_only' | 'house_only' | 'standalone' | 'unverifiable' | undefined,
+      relationship_trust: isValidRelationshipTrust(row.relationship_trust) ? row.relationship_trust : undefined,
     }));
   }
 
@@ -1011,7 +1013,7 @@ export class BrandDatabase {
     industries: string[];
     sub_brand_count: number;
     employee_count: number;
-    relationship_trust?: 'inline' | 'mutual' | 'leaf_only' | 'house_only' | 'standalone' | 'unverifiable';
+    relationship_trust?: RelationshipTrust;
     relationship_verified_at?: Date;
     claimed_house_domain?: string;
   }>> {
@@ -1066,9 +1068,9 @@ export class BrandDatabase {
       industries: string[];
       sub_brand_count: number;
       employee_count: number;
-      relationship_trust?: 'inline' | 'mutual' | 'leaf_only' | 'house_only' | 'standalone' | 'unverifiable';
-      relationship_verified_at?: Date;
-      claimed_house_domain?: string;
+      relationship_trust: string | null;
+      relationship_verified_at: Date | null;
+      claimed_house_domain: string | null;
     }>(
       `
       SELECT
@@ -1097,7 +1099,12 @@ export class BrandDatabase {
       params
     );
 
-    return result.rows;
+    return result.rows.map(row => ({
+      ...row,
+      relationship_trust: isValidRelationshipTrust(row.relationship_trust) ? row.relationship_trust : undefined,
+      relationship_verified_at: row.relationship_verified_at ?? undefined,
+      claimed_house_domain: row.claimed_house_domain ?? undefined,
+    }));
   }
 
   /**

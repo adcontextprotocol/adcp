@@ -15,6 +15,16 @@ export function isValidAgentType(value: unknown): value is AgentType {
   return typeof value === 'string' && VALID_AGENT_TYPES.includes(value as AgentType);
 }
 
+export type RelationshipTrust = 'inline' | 'mutual' | 'leaf_only' | 'house_only' | 'standalone' | 'unverifiable';
+
+const VALID_RELATIONSHIP_TRUST: ReadonlyArray<RelationshipTrust> = [
+  'inline', 'mutual', 'leaf_only', 'house_only', 'standalone', 'unverifiable',
+];
+
+export function isValidRelationshipTrust(value: unknown): value is RelationshipTrust {
+  return typeof value === 'string' && VALID_RELATIONSHIP_TRUST.includes(value as RelationshipTrust);
+}
+
 export interface FormatInfo {
   name: string;
   dimensions?: string;
@@ -585,7 +595,7 @@ export interface DiscoveredBrand {
   /** WorkOS organization id that previously owned this brand (set when manifest_orphaned). */
   prior_owner_org_id?: string;
   /** Cached trust verdict from the last crawler resolution. NULL means not yet computed, not standalone. */
-  relationship_trust?: 'inline' | 'mutual' | 'leaf_only' | 'house_only' | 'standalone' | 'unverifiable';
+  relationship_trust?: RelationshipTrust;
   /** When the mutual-assertion edge was last confirmed. Only set when relationship_trust = 'mutual'. */
   relationship_verified_at?: Date;
   /** Unilateral parent claim from the brand's own document. Not trust-extending. */

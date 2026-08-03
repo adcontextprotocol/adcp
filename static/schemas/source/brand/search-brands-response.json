@@ -16,11 +16,11 @@
         },
         "house": {
           "type": "object",
-          "description": "The house (corporate entity) this brand self-declares affiliation with. Present when the brand claims a parent. The relationship_trust field reports whether this affiliation has been reciprocally verified.",
+          "description": "The house (corporate entity) associated with this brand. Present when a house affiliation is on record. Use relationship_trust to determine whether this association has been reciprocally confirmed by the house.",
           "properties": {
             "domain": {
               "type": "string",
-              "description": "Self-declared house domain (e.g., acme-corp.com). For verified relationships (mutual, inline) this is the trusted house_domain; for one-sided claims (leaf_only, unverifiable) see also claimed_house_domain."
+              "description": "House domain (e.g., acme-corp.com). For mutually confirmed relationships (relationship_trust = mutual or inline) this domain is trust-extending. For one-sided or unconfirmed claims see also claimed_house_domain."
             },
             "name": {
               "type": "string",
