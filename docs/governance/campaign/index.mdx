@@ -195,8 +195,11 @@ Each phase builds on context from earlier phases. During **purchase**, the gover
 | `regulatory_compliance` | Jurisdiction-specific regulations resolved from the brand's compliance configuration and the plan's authorized countries/regions |
 | `seller_verification` | Configuration accuracy, undisclosed changes, delivery plausibility |
 | `brand_policy` | Brand-level compliance policies resolved from the brand configuration and policy registry -- competitor separation, category adjacency, custom brand rules |
+| `accessibility_compliance` | Brand- or plan-required accessibility posture, including whether selected formats and creative assets satisfy the required WCAG level and accessible-asset declarations |
 
 Governance agents declare which categories they evaluate via `get_adcp_capabilities`.
+
+`accessibility_compliance` is a governance category, not a Content Standards category. Content Standards evaluates the suitability of creative content; accessibility compliance evaluates technical and policy obligations already declared by the selected format (`format.accessibility.wcag_level` and `requires_accessible_assets`) and the brand or campaign plan. A governance agent may return findings when the requested format or supplied creative cannot meet that posture. Structured per-asset creative build failures are defined separately from this category.
 
 ## Statuses
 
