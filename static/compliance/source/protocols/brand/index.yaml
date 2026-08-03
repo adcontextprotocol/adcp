@@ -158,3 +158,39 @@ phases:
           - check: error_code
             value: "REFERENCE_NOT_FOUND"
             description: "Error code indicates brand-not-found. REFERENCE_NOT_FOUND is the canonical fallback per error-handling.mdx (brands lack a dedicated *_NOT_FOUND code)."
+
+  - id: brand_discovery
+    title: "Optional brand discovery"
+    narrative: |
+      Agents that implement the experimental `search_brands` task expose a
+      schema-valid discovery surface without making that task part of the
+      baseline brand protocol requirement.
+
+    steps:
+      - id: search_brands
+        title: "Search the agent's brand roster"
+        task: search_brands
+        schema_ref: "brand/search-brands-request.json"
+        response_schema_ref: "brand/search-brands-response.json"
+        doc_ref: "/brand-protocol/tasks/search_brands"
+        comply_scenario: brand_discovery
+        requires_tool: search_brands
+        stateful: false
+        expected: |
+          Return a schema-valid ranked array of brand stubs. An empty array is
+          valid when the agent has no matching roster entry.
+        sample_request:
+          query: "automotive brands with electric vehicles"
+          countries: ["US"]
+          context:
+            correlation_id: "brand_baseline--search_brands"
+        validations:
+          - check: response_schema
+            description: "Response matches search-brands-response.json schema"
+          - check: field_present
+            path: "brands"
+            description: "Discovery response includes the brands array"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "brand_baseline--search_brands"
+            description: "Context correlation_id returned unchanged"
