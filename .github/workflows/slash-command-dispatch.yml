@@ -50,6 +50,8 @@ jobs:
           private-key: ${{ secrets.SECRETARIAT_APP_PRIVATE_KEY }}
           owner: adcontextprotocol
           repositories: adcp
+          permission-contents: write
+          permission-pull-requests: read
 
       - name: Resolve caller repository permission
         id: caller
