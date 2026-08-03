@@ -141,7 +141,7 @@ describe('reference formats', () => {
     expect(displayImage?.renders).toEqual([{ role: 'primary', parameters_from_format_id: true }]);
   });
 
-  it('publishes 3.1-compatible 2x formats with lossless canonical projections', () => {
+  it('publishes 3.1-compatible paired 1x/2x formats with lossless canonical projections', () => {
     const formats = buildReferenceFormats(TEST_AGENT_URL);
     const retinaFormats = formats.filter(f =>
       ((f.format_id as { id: string }).id).endsWith('_image_2x'),
@@ -154,7 +154,7 @@ describe('reference formats', () => {
       expect(match, id).not.toBeNull();
       const logicalWidth = Number(match![1]);
       const logicalHeight = Number(match![2]);
-      const image = (format.assets as any[]).find(asset => asset.asset_type === 'image');
+      const images = (format.assets as any[]).filter(asset => asset.asset_type === 'image');
       const projection = format.canonical_parameters as any;
 
       expect((format.canonical as any).kind, id).toBe('image');
@@ -162,13 +162,26 @@ describe('reference formats', () => {
         width: logicalWidth,
         height: logicalHeight,
       });
-      expect(image.requirements, id).toMatchObject({
-        width: logicalWidth * 2,
-        height: logicalHeight * 2,
-      });
+      expect(images.map(image => image.requirements), id).toMatchObject([
+        { width: logicalWidth, height: logicalHeight },
+        { width: logicalWidth * 2, height: logicalHeight * 2 },
+      ]);
       expect(projection, id).toEqual({
         format_kind: 'image',
-        params: { width: logicalWidth, height: logicalHeight, pixel_ratios: [2] },
+        params: {
+          width: logicalWidth,
+          height: logicalHeight,
+          pixel_ratios: [1, 2],
+          slots: [{
+            asset_group_id: 'image_main',
+            asset_type: 'image',
+            required: true,
+            min: 2,
+            max: 2,
+            pixel_ratios: [1, 2],
+            required_pixel_ratios: [1, 2],
+          }],
+        },
       });
     }
   });

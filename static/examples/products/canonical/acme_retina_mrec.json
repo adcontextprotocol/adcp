@@ -2,7 +2,7 @@
   "$schema": "/schemas/core/product.json",
   "product_id": "acme_homepage_retina_mrec",
   "name": "Acme homepage high-density medium rectangle",
-  "description": "A logical 300×250 image placement accepting either a standard 300×250 asset or a 600×500 asset rendered at 2x density. Both canonical and parameterized legacy declarations identify one placement size; density does not create a logical 600×500 placement.",
+  "description": "A logical 300×250 image placement requiring both standard 300×250 and 600×500 2x renditions, with an optional 450×375 1.5x rendition for device-density selection. The legacy 3.1 IDs remain separate concrete formats; the canonical rendition-set semantics begin in 3.2.",
   "publisher_properties": [
     {
       "publisher_domain": "acme.example",
@@ -42,7 +42,7 @@
     {
       "format_kind": "image",
       "format_option_id": "acme_homepage_mrec_image",
-      "display_name": "Acme homepage image — 1x or 2x",
+      "display_name": "Acme homepage image rendition set — 1x and 2x required",
       "v1_format_ref": [
         {
           "agent_url": "https://creative.adcontextprotocol.org",
@@ -56,7 +56,18 @@
       "params": {
         "width": 300,
         "height": 250,
-        "pixel_ratios": [1, 2],
+        "pixel_ratios": [1, 1.5, 2],
+        "slots": [
+          {
+            "asset_group_id": "image_main",
+            "asset_type": "image",
+            "required": true,
+            "min": 2,
+            "max": 3,
+            "pixel_ratios": [1, 1.5, 2],
+            "required_pixel_ratios": [1, 2]
+          }
+        ],
         "max_file_size_kb": 400,
         "image_formats": ["jpg", "png", "webp"],
         "ssl_required": true

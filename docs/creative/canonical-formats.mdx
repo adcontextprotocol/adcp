@@ -1040,9 +1040,52 @@ This declaration accepts one 300×250 image at 1x or one 600×500 image at 2x. I
 
 An image asset MAY carry `pixel_ratio`. When it is omitted, SDKs MUST infer density when the logical dimensions produce exactly one matching size/ratio pair. The intrinsic width and height must scale by the same accepted ratio. If multiple pairs match (for example, 600×500 could be 600×500@1x or 300×250@2x), validation MUST fail with `pixel_ratio_ambiguous` until the asset declares its ratio. If the declaration has no size constraint, omitted `pixel_ratios` remains an inferable 1x; a declared non-1x acceptance set requires `asset.pixel_ratio`.
 
-SDK validation MUST follow the reference vectors in `static/test-vectors/canonical-image-pixel-ratio.json`. In particular, size and density are independent axes, declared metadata must agree with intrinsic dimensions, and one matching asset satisfies one required image slot.
+SDK validation MUST follow the reference vectors in `static/test-vectors/canonical-image-pixel-ratio.json`. In particular, size and density are independent axes, declared metadata must agree with intrinsic dimensions, and one matching asset satisfies one required image slot unless that slot declares required rendition coverage.
 
-The same constraint is available as `slots[].pixel_ratios` on every canonical image-bearing slot, including native images, carousel cards (where it applies to nested image media), responsive-creative image pools, and companion images. The top-level `image.params.pixel_ratios` shorthand applies to the canonical image's `image_main` slot. When both are present, the effective acceptance set is their intersection; an empty intersection is an invalid declaration. Pixel ratio is invalid on slots that cannot carry image media.
+The same acceptance constraint is available as `slots[].pixel_ratios` on every canonical image-bearing slot, including native images, carousel cards (where it applies to nested image media), responsive-creative image pools, and companion images. The top-level `image.params.pixel_ratios` shorthand applies to the canonical image's `image_main` slot. When both are present, the effective acceptance set is their intersection; an empty intersection is an invalid declaration. Pixel ratio is invalid on slots that cannot carry image media.
+
+#### Required rendition sets
+
+Some delivery systems select among multiple renditions of the same logical image at serve time. A slot declares that requirement with `required_pixel_ratios`, which is a required-coverage subset of its accepted `pixel_ratios`:
+
+```json
+{
+  "format_kind": "image",
+  "params": {
+    "width": 300,
+    "height": 250,
+    "slots": [
+      {
+        "asset_group_id": "image_main",
+        "asset_type": "image",
+        "required": true,
+        "min": 2,
+        "max": 3,
+        "pixel_ratios": [1, 1.5, 2],
+        "required_pixel_ratios": [1, 2]
+      }
+    ]
+  }
+}
+```
+
+The matching manifest supplies the slot as a rendition array. Each entry remains an ordinary image asset with intrinsic dimensions and optional explicit density:
+
+```json
+{
+  "format_kind": "image",
+  "assets": {
+    "image_main": [
+      { "asset_type": "image", "url": "https://cdn.example/mrec.png", "width": 300, "height": 250, "pixel_ratio": 1 },
+      { "asset_type": "image", "url": "https://cdn.example/mrec@2x.png", "width": 600, "height": 500, "pixel_ratio": 2 }
+    ]
+  }
+}
+```
+
+Every required ratio MUST also be accepted, and the array MUST contain exactly one valid rendition for each required ratio. Accepted ratios not listed as required are optional. All entries in a rendition set represent the same semantic image; only density-specific encoding properties such as URL, intrinsic dimensions, format, and file size may differ. SDKs MUST reject missing required coverage with `required_pixel_ratio_missing`, duplicate density entries with `pixel_ratio_duplicate`, and required ratios outside the accepted set with `required_pixel_ratio_not_accepted`. `min` and `max` SHOULD bound the expected rendition count, but density coverage—not array length alone—is authoritative.
+
+When `required_pixel_ratios` is absent, the original acceptance behavior remains: one image matching any accepted density satisfies the slot. Card media remains singular, so `required_pixel_ratios` is valid only on an `image` slot; a card slot may use `pixel_ratios` only as an acceptance constraint for each card's image.
 
 ### Format matching vs product satisfaction
 
@@ -1255,7 +1298,7 @@ When the seller asserts fewer refs than sizes (`v1_format_ref[].length < sizes[]
 
 #### Pixel-density projection (normative)
 
-**AdCP 3.1 reference-catalog bridge.** The 3.1 reference catalog publishes concrete 2x companions for its seven fixed image formats: `display_300x250_image_2x`, `display_728x90_image_2x`, `display_320x50_image_2x`, `display_160x600_image_2x`, `display_336x280_image_2x`, `display_300x600_image_2x`, and `display_970x250_image_2x`. Each v1 definition keeps the original logical `renders[].dimensions`, requires an image exactly twice that width and height, and carries explicit `canonical_parameters` projecting to the logical canonical size plus `pixel_ratios: [2]`. SDKs supporting this bridge MUST honor `canonical_parameters` before inferring dimensions from the larger v1 asset. These aliases let 3.1 products use shared AAO format IDs instead of seller-custom formats.
+**AdCP 3.1 reference-catalog bridge.** The 3.1 reference catalog publishes concrete 2x companions for its seven fixed image formats: `display_300x250_image_2x`, `display_728x90_image_2x`, `display_320x50_image_2x`, `display_160x600_image_2x`, `display_336x280_image_2x`, `display_300x600_image_2x`, and `display_970x250_image_2x`. Each v1 definition keeps the original logical `renders[].dimensions` and requires two ordinary legacy image assets: one at the logical 1x dimensions and one at exactly twice the width and height. A Retina-only submission is invalid. This is legacy-format support only: AdCP 3.1 does not define canonical pixel-density or rendition-set fields, and permissive JSON acceptance does not give unknown properties protocol meaning. The entries' density and coverage values under `canonical_parameters` are opaque forward-projection metadata that 3.2-aware SDKs may use when projecting the legacy ID into the 3.2 canonical model; they are not canonical 3.1 support. These aliases let 3.1 products use shared AAO format IDs instead of seller-custom formats.
 
 **AdCP 3.2 authoring path.** Pixel density uses the parameterized `display_image` legacy template; new publishers SHOULD NOT mint `image_retina` or one hard-coded legacy format definition per size/density combination. A v1 placement advertises each accepted density as a parameterized reference:
 

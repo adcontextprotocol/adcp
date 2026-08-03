@@ -173,38 +173,38 @@
     },
     {
       "v1_pattern": { "format_id_glob": "display_300x250_image_2x" },
-      "v2": { "canonical": "image", "parameters": { "width": 300, "height": 250, "pixel_ratios": [2] } },
-      "notes": "AdCP 3.1 reference-catalog compatibility format. The v1 asset is 600x500 but the canonical logical render remains 300x250 at 2x density."
+      "v2": { "canonical": "image", "parameters": { "width": 300, "height": 250, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] } },
+      "notes": "AdCP 3.1 legacy reference-catalog compatibility format. Its required v1 assets are 300x250 and 600x500 renditions of one logical 300x250 image. Density and required-coverage values are opaque forward-projection metadata interpreted only by a 3.2-aware SDK; they are not canonical 3.1 support."
     },
     {
       "v1_pattern": { "format_id_glob": "display_728x90_image_2x" },
-      "v2": { "canonical": "image", "parameters": { "width": 728, "height": 90, "pixel_ratios": [2] } },
-      "notes": "AdCP 3.1 reference-catalog compatibility format. The v1 asset is 1456x180 but the canonical logical render remains 728x90 at 2x density."
+      "v2": { "canonical": "image", "parameters": { "width": 728, "height": 90, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] } },
+      "notes": "AdCP 3.1 legacy reference-catalog compatibility format. Its required v1 assets are 728x90 and 1456x180 renditions of one logical 728x90 image. Density and required-coverage values are opaque forward-projection metadata interpreted only by a 3.2-aware SDK; they are not canonical 3.1 support."
     },
     {
       "v1_pattern": { "format_id_glob": "display_320x50_image_2x" },
-      "v2": { "canonical": "image", "parameters": { "width": 320, "height": 50, "pixel_ratios": [2] } },
-      "notes": "AdCP 3.1 reference-catalog compatibility format. The v1 asset is 640x100 but the canonical logical render remains 320x50 at 2x density."
+      "v2": { "canonical": "image", "parameters": { "width": 320, "height": 50, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] } },
+      "notes": "AdCP 3.1 legacy reference-catalog compatibility format. Its required v1 assets are 320x50 and 640x100 renditions of one logical 320x50 image. Density and required-coverage values are opaque forward-projection metadata interpreted only by a 3.2-aware SDK; they are not canonical 3.1 support."
     },
     {
       "v1_pattern": { "format_id_glob": "display_160x600_image_2x" },
-      "v2": { "canonical": "image", "parameters": { "width": 160, "height": 600, "pixel_ratios": [2] } },
-      "notes": "AdCP 3.1 reference-catalog compatibility format. The v1 asset is 320x1200 but the canonical logical render remains 160x600 at 2x density."
+      "v2": { "canonical": "image", "parameters": { "width": 160, "height": 600, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] } },
+      "notes": "AdCP 3.1 legacy reference-catalog compatibility format. Its required v1 assets are 160x600 and 320x1200 renditions of one logical 160x600 image. Density and required-coverage values are opaque forward-projection metadata interpreted only by a 3.2-aware SDK; they are not canonical 3.1 support."
     },
     {
       "v1_pattern": { "format_id_glob": "display_336x280_image_2x" },
-      "v2": { "canonical": "image", "parameters": { "width": 336, "height": 280, "pixel_ratios": [2] } },
-      "notes": "AdCP 3.1 reference-catalog compatibility format. The v1 asset is 672x560 but the canonical logical render remains 336x280 at 2x density."
+      "v2": { "canonical": "image", "parameters": { "width": 336, "height": 280, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] } },
+      "notes": "AdCP 3.1 legacy reference-catalog compatibility format. Its required v1 assets are 336x280 and 672x560 renditions of one logical 336x280 image. Density and required-coverage values are opaque forward-projection metadata interpreted only by a 3.2-aware SDK; they are not canonical 3.1 support."
     },
     {
       "v1_pattern": { "format_id_glob": "display_300x600_image_2x" },
-      "v2": { "canonical": "image", "parameters": { "width": 300, "height": 600, "pixel_ratios": [2] } },
-      "notes": "AdCP 3.1 reference-catalog compatibility format. The v1 asset is 600x1200 but the canonical logical render remains 300x600 at 2x density."
+      "v2": { "canonical": "image", "parameters": { "width": 300, "height": 600, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] } },
+      "notes": "AdCP 3.1 legacy reference-catalog compatibility format. Its required v1 assets are 300x600 and 600x1200 renditions of one logical 300x600 image. Density and required-coverage values are opaque forward-projection metadata interpreted only by a 3.2-aware SDK; they are not canonical 3.1 support."
     },
     {
       "v1_pattern": { "format_id_glob": "display_970x250_image_2x" },
-      "v2": { "canonical": "image", "parameters": { "width": 970, "height": 250, "pixel_ratios": [2] } },
-      "notes": "AdCP 3.1 reference-catalog compatibility format. The v1 asset is 1940x500 but the canonical logical render remains 970x250 at 2x density."
+      "v2": { "canonical": "image", "parameters": { "width": 970, "height": 250, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] } },
+      "notes": "AdCP 3.1 legacy reference-catalog compatibility format. Its required v1 assets are 970x250 and 1940x500 renditions of one logical 970x250 image. Density and required-coverage values are opaque forward-projection metadata interpreted only by a 3.2-aware SDK; they are not canonical 3.1 support."
     },
     {
       "v1_pattern": { "format_id_glob": "video_30s" },

@@ -344,6 +344,62 @@ const NEGATIVE_CASES = {
         ],
       },
     },
+    {
+      label: 'image slots accept required rendition coverage',
+      expected: true,
+      doc: {
+        slots: [
+          {
+            asset_group_id: 'main_image',
+            asset_type: 'image',
+            required: true,
+            min: 2,
+            max: 3,
+            pixel_ratios: [1, 1.5, 2],
+            required_pixel_ratios: [1, 2],
+          },
+        ],
+      },
+    },
+    {
+      label: 'required rendition coverage requires an accepted density set',
+      expected: false,
+      doc: {
+        slots: [
+          { asset_group_id: 'main_image', asset_type: 'image', required: true, required_pixel_ratios: [1, 2] },
+        ],
+      },
+    },
+    {
+      label: 'required rendition coverage rejects duplicate densities',
+      expected: false,
+      doc: {
+        slots: [
+          {
+            asset_group_id: 'main_image',
+            asset_type: 'image',
+            required: true,
+            pixel_ratios: [1, 2],
+            required_pixel_ratios: [1, 1],
+          },
+        ],
+      },
+    },
+    {
+      label: 'card slots cannot require a multi-rendition image set',
+      expected: false,
+      doc: {
+        slots: [
+          {
+            asset_group_id: 'cards',
+            asset_type: 'card',
+            required: true,
+            pixel_ratios: [1, 2],
+            required_pixel_ratios: [1, 2],
+          },
+        ],
+      },
+    },
   ],
   '/schemas/core/assets/pixel-tracker-asset.json': [
     {

@@ -130,6 +130,7 @@ Static image assets for banners, logos, and visual content.
 
 **Use Cases:**
 - High-density delivery in any canonical: declare accepted densities with `slots[].pixel_ratios`; use top-level `params.pixel_ratios` for the `image` canonical's `image_main` slot.
+- Multi-rendition delivery: add `slots[].required_pixel_ratios` and provide that image slot as an array with one rendition per required density. Accepted densities outside the required subset remain optional.
 - Fixed layout: provide `width` and `height`. Do not include `min_width`, `min_height`, or `aspect_ratio`.
 - Responsive (fixed image aspect ratio): provide `min_width`, `min_height` and `aspect_ratio`. Do not include `width` or `height`.
 - Responsive (any image aspect ratio): provide `min_width` and `min_height` only. Do not include `width`, `height`, or `aspect_ratio`.

@@ -113,7 +113,7 @@
         "type": "number",
         "exclusiveMinimum": 0
       },
-      "description": "Accepted intrinsic-pixel densities for image assets, expressed as intrinsic pixels per logical render pixel (for example `[1, 2]` accepts both standard and Retina renditions). Absence means `[1]` for backward compatibility. This is an acceptance set, not a requirement to submit every rendition: one `image_main` asset satisfying any listed ratio is sufficient unless the product overrides the slot with separate required assets. SDKs determine the effective ratio from `asset.pixel_ratio` when supplied, otherwise infer it from intrinsic asset dimensions divided by the matched logical size. Width and height ratios MUST agree."
+      "description": "Accepted intrinsic-pixel densities for image assets, expressed as intrinsic pixels per logical render pixel (for example `[1, 2]` accepts both standard and Retina renditions). Absence means `[1]` for backward compatibility. This is an acceptance set, not a requirement to submit every rendition: one `image_main` asset satisfying any listed ratio is sufficient unless the effective `image_main` slot declares `required_pixel_ratios`. SDKs determine the effective ratio from `asset.pixel_ratio` when supplied, otherwise infer it from intrinsic asset dimensions divided by the matched logical size. Width and height ratios MUST agree."
     },
     "min_width": {
       "type": "integer",

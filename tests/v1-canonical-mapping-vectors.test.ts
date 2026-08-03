@@ -82,7 +82,7 @@ describe('v1 canonical literal mapping vectors', () => {
     expect(mapping).not.toHaveProperty('parameters.height');
   });
 
-  it('projects 3.1 reference-catalog 2x images to logical canonical dimensions', () => {
+  it('projects 3.1 reference-catalog 2x ids to required 1x and 2x canonical rendition sets', () => {
     const retinaMappings = literalMappings.filter(mapping =>
       mapping.v1_pattern.format_id_glob.endsWith('_image_2x'),
     );
@@ -90,7 +90,16 @@ describe('v1 canonical literal mapping vectors', () => {
     for (const mapping of retinaMappings) {
       expect(mapping.v2.canonical, mapping.v1_pattern.format_id_glob).toBe('image');
       expect(mapping.v2.parameters, mapping.v1_pattern.format_id_glob).toMatchObject({
-        pixel_ratios: [2],
+        pixel_ratios: [1, 2],
+        slots: [{
+          asset_group_id: 'image_main',
+          asset_type: 'image',
+          required: true,
+          min: 2,
+          max: 2,
+          pixel_ratios: [1, 2],
+          required_pixel_ratios: [1, 2],
+        }],
       });
     }
   });
