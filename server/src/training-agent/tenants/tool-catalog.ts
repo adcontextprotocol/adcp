@@ -70,6 +70,7 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   activate_signal: ['signals'],
 
   // sponsored intelligence
+  sync_catalogs: ['si'],
   si_get_offering: ['si'],
   si_initiate_session: ['si'],
   si_send_message: ['si'],

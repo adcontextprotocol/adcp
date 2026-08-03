@@ -22,6 +22,7 @@ import {
   handleSiInitiateSession,
   handleSiSendMessage,
   handleSiTerminateSession,
+  handleSyncCatalogs,
 } from '../si-handlers.js';
 import type { TrainingContext } from '../types.js';
 
@@ -51,10 +52,18 @@ const SI_INITIATE_SESSION_SCHEMA = {
   idempotency_key: z.string().min(16).max(255),
   intent: z.string(),
   identity: z.object({
-    consent_granted: z.boolean().optional(),
-    email: z.string().optional(),
-    name: z.string().optional(),
-    anonymous_id: z.string().optional(),
+    consent_granted: z.boolean(),
+    consent_scope: z.array(z.string()).optional(),
+    consent_timestamp: z.string().optional(),
+    anonymous_session_id: z.string().optional(),
+    user: z.object({
+      email: z.string().optional(),
+      name: z.string().optional(),
+      locale: z.string().optional(),
+      phone: z.string().optional(),
+      shipping_address: z.object({}).passthrough().optional(),
+    }).passthrough().optional(),
+    privacy_policy_acknowledged: z.object({}).passthrough().optional(),
   }).passthrough(),
   offering_id: z.string().optional(),
   offering_token: z.string().optional(),
@@ -77,6 +86,15 @@ const SI_SEND_MESSAGE_SCHEMA = {
     payload: z.object({}).passthrough().optional(),
   }).passthrough().optional(),
   sponsored_context_receipt: z.object({}).passthrough().optional(),
+  context: CONTEXT_REF,
+  ext: EXT_REF,
+};
+
+// sync_catalogs — push a product catalog to the SI platform
+const SYNC_CATALOGS_SCHEMA = {
+  catalog_id: z.string(),
+  operation_type: z.enum(['upsert', 'replace', 'delete']).optional(),
+  items: z.array(z.object({}).passthrough()).optional(),
   context: CONTEXT_REF,
   ext: EXT_REF,
 };
@@ -110,6 +128,14 @@ export function buildSiTenantConfig(
       serverOptions: {
         customTools: {
           list_accounts: listAccountsTool(options.storyboardCompat),
+
+          sync_catalogs: customToolFor(
+            'sync_catalogs',
+            'Sync a product catalog to the Sponsored Intelligence platform. Enables brand agents to serve context-aware product recommendations during SI Chat Protocol sessions. Call this before creating SI media buys to ensure catalog richness for creative generation.',
+            SYNC_CATALOGS_SCHEMA,
+            handleSyncCatalogs,
+            { annotations: { readOnlyHint: false, idempotentHint: false } },
+          ),
 
           si_get_offering: customToolFor(
             'si_get_offering',
