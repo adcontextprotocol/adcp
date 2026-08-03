@@ -23,15 +23,7 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
-      "correctness": {
-        "useExhaustiveDependencies": {
-          "level": "error",
-          "options": {
-            "reportUnnecessaryDependencies": true
-          }
-        }
-      }
+      "recommended": true
     }
   },
   "javascript": {
