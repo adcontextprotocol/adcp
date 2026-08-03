@@ -3,7 +3,7 @@ name: Slash Command Dispatch
 # Routes `/<command>` comments on issues and PRs to dedicated handler
 # workflows via repository_dispatch events. Uses peter-evans/slash-command-
 # dispatch so we get:
-#   - Event-level permission checks (only OWNER / MEMBER / COLLABORATOR trigger)
+#   - Event association plus repository-write permission checks
 #   - Reactions on the triggering comment (eyes on ack, +1 on success, -1 on fail)
 #   - Clean separation: this workflow routes, downstream handlers do the work
 #
@@ -31,9 +31,8 @@ jobs:
     name: Dispatch slash command
     runs-on: ubuntu-latest
     timeout-minutes: 2
-    # Trust GitHub's signed author_association value instead of asking the
-    # dispatch PAT to resolve repository permissions. Fine-grained PATs without
-    # org membership read access resolve even owners as permission "none".
+    # Reject outsiders before spending a runner. The first step below then
+    # preserves the stricter write-or-higher repository permission boundary.
     if: >-
       github.event.comment.user.type != 'Bot' &&
       !endsWith(github.event.comment.user.login, '[bot]') &&
@@ -43,14 +42,33 @@ jobs:
         github.event.comment.author_association == 'COLLABORATOR'
       )
     steps:
+      - name: Resolve caller repository permission
+        id: caller
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          COMMENTER: ${{ github.event.comment.user.login }}
+        run: |
+          set -euo pipefail
+          permission=$(gh api \
+            "repos/${REPOSITORY}/collaborators/${COMMENTER}/permission" \
+            --jq '.permission')
+          echo "permission=${permission}" >> "$GITHUB_OUTPUT"
+          case "$permission" in
+            write|maintain|admin) echo "allowed=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "allowed=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+
       - name: Slash command dispatch
+        if: steps.caller.outputs.allowed == 'true'
         uses: peter-evans/slash-command-dispatch@v5
         with:
           token: ${{ secrets.TRIAGE_DISPATCH_PAT }}
           reaction-token: ${{ github.token }}
           commands: |
             triage
-          # Caller authorization is enforced by the job-level association gate.
+          # Caller authorization is enforced before the action. The PAT is used
+          # only for repository_dispatch, not permission lookup or reactions.
           permission: none
           reactions: true
           issue-type: both
