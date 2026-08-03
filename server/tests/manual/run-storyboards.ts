@@ -114,10 +114,10 @@ async function startLocalAgent(): Promise<{ url: string; baseUrl: string; close:
       // (/api/training-agent/<tenant>/mcp). Required — there's no
       // single-URL fallback after the v5 monolith was retired.
       // Common values: signals, sales, governance, creative,
-      // creative-builder, brand.
+      // creative-builder, brand, si.
       const tenantPath = process.env.TENANT_PATH;
       if (!tenantPath) {
-        throw new Error('TENANT_PATH env required (one of: signals, sales, governance, creative, creative-builder, brand)');
+        throw new Error('TENANT_PATH env required (one of: signals, sales, governance, creative, creative-builder, brand, si)');
       }
       const localAgentBaseUrl = `http://127.0.0.1:${addr.port}/api/training-agent`;
       resolve({

@@ -1,25 +1,26 @@
 /**
  * v6 platform for the `/si` (Sponsored Intelligence) tenant.
  *
- * SI Chat Protocol tools (si_get_offering, si_initiate_session,
- * si_send_message, si_terminate_session) are not yet a first-class specialism
- * field on `DecisioningPlatform`. All four tools ride the `customTools` merge
- * seam via the tenant config until the SDK adds a `sponsoredIntelligence`
- * field (tracked as a follow-up to issue #3961 where the `sponsored-intelligence`
- * specialism graduated from PREVIEW).
- *
- * This platform claims no specialisms so the SDK does not attempt to enforce
- * `RequiredPlatformsFor<'sponsored-intelligence'>` interface compliance before
- * the interface exists.
+ * The SDK exposes SI as a first-class SponsoredIntelligencePlatform. Keeping
+ * these handlers on that surface gives the tenant canonical request validation,
+ * tool metadata, capability projection, and session hydration.
  */
 
 import {
+  AdcpError,
   type DecisioningPlatform,
+  type SponsoredIntelligencePlatform,
   type AccountStore,
 } from '@adcp/sdk/server';
+import {
+  handleSiGetOffering,
+  handleSiInitiateSession,
+  handleSiSendMessage,
+  handleSiTerminateSession,
+} from './si-handlers.js';
 import { syncAccountsUpsert } from './v6-account-helpers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
-import type { TrainingContext } from './types.js';
+import type { ToolArgs, TrainingContext } from './types.js';
 
 interface TrainingSiMeta {
   brand_domain?: string;
@@ -28,6 +29,48 @@ interface TrainingSiMeta {
 
 interface TrainingSiConfig {
   strict: boolean;
+}
+
+function buildTrainingCtx(
+  account: { authInfo?: { principal?: string } } | undefined,
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): TrainingContext {
+  return {
+    mode: 'open',
+    tenantId: 'si',
+    principal: account?.authInfo?.principal ?? 'anonymous',
+    ...(storyboardCompat && { storyboardCompat }),
+  };
+}
+
+function translateV5Result<T extends object>(result: unknown): T {
+  const errs = (result as {
+    errors?: Array<{
+      code: string;
+      message: string;
+      field?: string;
+      details?: unknown;
+      recovery?: string;
+    }>;
+  } | undefined)?.errors;
+  if (Array.isArray(errs) && errs.length > 0) {
+    const first = errs[0]!;
+    const recovery =
+      first.recovery === 'transient' ||
+      first.recovery === 'correctable' ||
+      first.recovery === 'terminal'
+        ? first.recovery
+        : 'correctable';
+    throw new AdcpError(first.code, {
+      recovery,
+      message: first.message,
+      ...(first.field !== undefined && { field: first.field }),
+      ...(first.details !== undefined && {
+        details: first.details as Record<string, unknown>,
+      }),
+    });
+  }
+  return result as T;
 }
 
 const trainingSiAccounts: AccountStore<TrainingSiMeta> = {
@@ -79,7 +122,7 @@ export class TrainingSiPlatform
 
   get capabilities() {
     return {
-      specialisms: [] as const,
+      specialisms: ['sponsored-intelligence'] as const,
       creative_agents: [],
       channels: [] as const,
       pricingModels: ['cpm', 'cpa', 'cpc'] as const,
@@ -92,4 +135,35 @@ export class TrainingSiPlatform
   statusMappers = {};
   accounts: AccountStore<TrainingSiMeta> = trainingSiAccounts;
   agentRegistry = trainingBuyerAgentRegistry;
+
+  sponsoredIntelligence: SponsoredIntelligencePlatform<TrainingSiMeta> = {
+    getOffering: async (req, ctx) => {
+      const result = await handleSiGetOffering(
+        req as ToolArgs,
+        buildTrainingCtx(ctx.account, this.storyboardCompat),
+      );
+      return translateV5Result(result);
+    },
+    initiateSession: async (req, ctx) => {
+      const result = await handleSiInitiateSession(
+        req as ToolArgs,
+        buildTrainingCtx(ctx.account, this.storyboardCompat),
+      );
+      return translateV5Result(result);
+    },
+    sendMessage: async (req, ctx) => {
+      const result = await handleSiSendMessage(
+        req as ToolArgs,
+        buildTrainingCtx(ctx.account, this.storyboardCompat),
+      );
+      return translateV5Result(result);
+    },
+    terminateSession: async (req, ctx) => {
+      const result = await handleSiTerminateSession(
+        req as ToolArgs,
+        buildTrainingCtx(ctx.account, this.storyboardCompat),
+      );
+      return translateV5Result(result);
+    },
+  };
 }

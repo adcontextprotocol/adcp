@@ -95,8 +95,16 @@ describe('SI Chat Protocol lifecycle (/si tenant)', () => {
     await new Promise<void>(resolve => server.close(() => resolve()));
   });
 
+  it('advertises the native sponsored-intelligence surface', async () => {
+    const body = await callTool('get_adcp_capabilities', {});
+    const result = parseToolResult(body);
+
+    expect(result['specialisms']).toEqual(expect.arrayContaining(['sponsored-intelligence']));
+    expect(result['supported_protocols']).toEqual(expect.arrayContaining(['sponsored_intelligence']));
+  });
+
   it('si_get_offering returns available, offering_token, ttl_seconds, checked_at', async () => {
-    const body = await callTool('si_get_offering', { offering_id: 'offer_sandbox_001' });
+    const body = await callTool('si_get_offering', { offering_id: 'novamotors_conversational_v1' });
     expect(body.error).toBeUndefined();
     const result = parseToolResult(body);
 
@@ -108,11 +116,12 @@ describe('SI Chat Protocol lifecycle (/si tenant)', () => {
     expect(result).toHaveProperty('checked_at');
     expect(typeof result['checked_at']).toBe('string');
     expect(result).toHaveProperty('offering');
+    expect(result).toHaveProperty('sponsored_context');
   });
 
   it('si_get_offering for unknown offering_id returns correctable error', async () => {
     const body = await callTool('si_get_offering', { offering_id: 'offer_does_not_exist' });
-    // The custom tool helper converts errors[] to adcp_error in structuredContent.
+    // Native platform errors are projected as adcp_error in structuredContent.
     const adcpError = body.result?.structuredContent?.['adcp_error'] as Record<string, unknown> | undefined;
     expect(adcpError?.['code']).toBe('NOT_FOUND');
     expect(adcpError?.['recovery']).toBe('correctable');
@@ -134,11 +143,36 @@ describe('SI Chat Protocol lifecycle (/si tenant)', () => {
     expect(initResult).toHaveProperty('session_id');
     expect(initResult).toHaveProperty('session_status', 'active');
     expect(initResult).toHaveProperty('response');
+    expect(initResult).toHaveProperty('sponsored_context');
     const initResponse = initResult['response'] as Record<string, unknown>;
     expect(typeof initResponse['message']).toBe('string');
     expect(Array.isArray(initResponse['ui_elements'])).toBe(true);
 
     const sessionId = initResult['session_id'] as string;
+
+    // Accepted receipts cannot silently downgrade the declared context use.
+    const downgradeBody = await callTool('si_send_message', {
+      idempotency_key: `send-${crypto.randomUUID()}`,
+      session_id: sessionId,
+      message: 'This request must be rejected before advancing the transcript.',
+      sponsored_context_receipt: {
+        sponsored_context: {
+          paying_principal: { brand: { domain: 'acmeoutdoor.example' } },
+          context_use: 'presentation_only',
+          disclosure_obligation: { required: false },
+        },
+        host_receipt: {
+          status: 'accepted',
+          accepted_context_use: 'reasoning_context',
+          received_at: '2026-06-15T10:00:07Z',
+          disclosure_commitment: { status: 'not_required' },
+        },
+      },
+    });
+    const downgradeError = downgradeBody.result?.structuredContent?.['adcp_error'] as
+      | Record<string, unknown>
+      | undefined;
+    expect(['INVALID_REQUEST', 'VALIDATION_ERROR']).toContain(downgradeError?.['code']);
 
     // Step 2: send a conversational message
     const sendKey1 = `send-${crypto.randomUUID()}`;
@@ -153,6 +187,7 @@ describe('SI Chat Protocol lifecycle (/si tenant)', () => {
     expect(sendResult1).toHaveProperty('session_id', sessionId);
     expect(sendResult1).toHaveProperty('session_status', 'active');
     expect(sendResult1).toHaveProperty('response');
+    expect(sendResult1).toHaveProperty('sponsored_context');
     const sendResponse1 = sendResult1['response'] as Record<string, unknown>;
     expect(typeof sendResponse1['message']).toBe('string');
     expect(Array.isArray(sendResponse1['ui_elements'])).toBe(true);
@@ -233,7 +268,7 @@ describe('SI Chat Protocol lifecycle (/si tenant)', () => {
       session_id: sessionId,
       message: 'hello?',
     });
-    // The custom tool helper converts errors[] to adcp_error in structuredContent.
+    // Native platform errors are projected as adcp_error in structuredContent.
     const adcpError = sendBody.result?.structuredContent?.['adcp_error'] as Record<string, unknown> | undefined;
     expect(adcpError?.['code']).toBe('SESSION_TERMINATED');
   });
