@@ -7,7 +7,7 @@
 --      sandbox_actions (dropped in migration 298, not restored in 303).
 --      Add stable {id, text} criterion objects (plain-string criteria cannot
 --      be targeted by the recertification delta engine).
---   3. Pin C3 tenant_ids = ['creative', 'si']; S5 tenant_ids = ['si'].
+--   3. Pin C3 tenant_ids = ['creative', 'si']; S5 tenant_ids = ['creative', 'sales', 'si'].
 --      A3 stays NULL — it is a tour module with no per-tenant lab exercises.
 --
 -- Prerequisite: the /si tenant must be registered before Sage uses these
@@ -88,7 +88,7 @@ WHERE id = 'C3';
 
 -- ========================================================================
 -- S5: restore full SI lifecycle to sandbox_actions; stable criterion IDs;
---     pin to si tenant
+--     pin to creative, sales, and si tenants
 -- ========================================================================
 
 -- Full replacement of s5_ex1. Adds si_get_offering (pre-session offering

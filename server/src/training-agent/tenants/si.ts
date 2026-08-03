@@ -53,8 +53,8 @@ const SI_INITIATE_SESSION_SCHEMA = {
   intent: z.string(),
   identity: z.object({
     consent_granted: z.boolean(),
-    consent_scope: z.array(z.string()).optional(),
     consent_timestamp: z.string().optional(),
+    consent_scope: z.array(z.string()).optional(),
     anonymous_session_id: z.string().optional(),
     user: z.object({
       email: z.string().optional(),
