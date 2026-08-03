@@ -932,7 +932,11 @@ export class AgentContextDatabase {
     if (row.oauth_cc_resource) {
       if (row.oauth_cc_resource.startsWith('[')) {
         try {
-          creds.resource = JSON.parse(row.oauth_cc_resource);
+          const parsed: unknown = JSON.parse(row.oauth_cc_resource);
+          creds.resource =
+            Array.isArray(parsed) && parsed.every((e): e is string => typeof e === 'string')
+              ? parsed
+              : row.oauth_cc_resource;
         } catch {
           creds.resource = row.oauth_cc_resource;
         }

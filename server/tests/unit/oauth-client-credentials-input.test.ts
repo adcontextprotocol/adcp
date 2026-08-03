@@ -209,6 +209,16 @@ describe('parseOAuthClientCredentialsInput', () => {
 
   // ── Resource field: array support ─────────────────────
   describe('resource field — array support', () => {
+    it('treats an empty array as absent (does not persist)', () => {
+      const result = parseOAuthClientCredentialsInput(
+        { ...validMinimal, resource: [] },
+        { validateTokenEndpoint: acceptAll },
+      );
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.creds.resource).toBeUndefined();
+    });
+
     it('accepts a single-element array', () => {
       const result = parseOAuthClientCredentialsInput(
         { ...validMinimal, resource: ['https://api.example.com'] },

@@ -192,6 +192,7 @@ function parseResourceField(value: unknown): ResourceFieldResult {
   }
 
   if (Array.isArray(value)) {
+    if (value.length === 0) return { value: null };
     if (value.length > MAX_RESOURCE_ARRAY_ENTRIES) {
       return {
         error: fail(

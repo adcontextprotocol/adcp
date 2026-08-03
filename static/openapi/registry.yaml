@@ -4172,6 +4172,7 @@ components:
             - invalid_url
             - invalid_env_reference
             - invalid_auth_method_value
+            - array_too_many
           description: Stable rejection tag. UI maps this to operator-friendly prose.
         field:
           type: string
@@ -10784,9 +10785,16 @@ paths:
                   maxLength: 1024
                   description: Space-separated OAuth scope values.
                 resource:
-                  type: string
-                  maxLength: 2048
-                  description: RFC 8707 resource indicator.
+                  oneOf:
+                    - type: string
+                      maxLength: 2048
+                    - type: array
+                      items:
+                        type: string
+                        maxLength: 2048
+                      minItems: 1
+                      maxItems: 8
+                  description: RFC 8707 resource indicator. Accepts a single URI string or an array of up to 8 URI strings for multi-resource authorization servers (Keycloak strict, AWS Cognito multi-RS).
                 audience:
                   type: string
                   maxLength: 2048

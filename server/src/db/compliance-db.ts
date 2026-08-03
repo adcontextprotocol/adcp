@@ -1354,7 +1354,11 @@ export class ComplianceDatabase {
         if (row.oauth_cc_resource) {
           if (row.oauth_cc_resource.startsWith('[')) {
             try {
-              credentials.resource = JSON.parse(row.oauth_cc_resource);
+              const parsed: unknown = JSON.parse(row.oauth_cc_resource);
+              credentials.resource =
+                Array.isArray(parsed) && parsed.every((e): e is string => typeof e === 'string')
+                  ? parsed
+                  : row.oauth_cc_resource;
             } catch {
               credentials.resource = row.oauth_cc_resource;
             }
