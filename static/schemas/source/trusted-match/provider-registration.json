@@ -8,7 +8,7 @@
   "properties": {
     "provider_id": {
       "type": "string",
-      "description": "Stable identifier for this provider registration. Used in logs, metrics, cache keys, and as the key in `tmpx_providers` on the identity-match response so the publisher can route each provider's TMPX chunks to that provider's pre-configured ad-server destinations via the publisher's `tmpx_macro_mapping` deployment configuration (see publisher-tmpx-config.json). Publishers assign this — it is not the provider's agent_url. Charset is constrained to a safe alphanumeric/underscore set so the value can appear in operational surfaces (logs, metrics, dashboards) without quoting.",
+      "description": "Stable identifier for this provider registration. Used in logs, metrics, cache keys, and as the key in `tmpx_providers` on the identity-match response so the publisher can route each provider's TMPX `macros[]` to that provider's pre-configured ad-server slots (names registered in `tmpx_macros` below — macro names MUST NOT be derived from `provider_id` at runtime). Publishers assign this — it is not the provider's agent_url. Charset is constrained to a safe alphanumeric/underscore set so the value can appear in operational surfaces (logs, metrics, dashboards) without quoting.",
       "pattern": "^[A-Za-z0-9_]+$",
       "minLength": 1,
       "maxLength": 64
@@ -65,18 +65,17 @@
       "minimum": 0,
       "default": 0
     },
-    "tmpx_slots": {
+    "tmpx_macros": {
       "type": "array",
-      "description": "Stable provider-local slot identifiers for the ordered TMPX chunks this provider mints. Slot IDs are opaque provider-namespaced tokens (e.g. `[\"primary\",\"secondary\"]`), NOT ad-server macro names — publishers map `(provider_id, slot_id)` → local destination via `tmpx_macro_mapping` in publisher-tmpx-config.json, so the destination namespace stays publisher-owned and the router never accepts a destination name from an untrusted provider. Distinct providers MAY reuse the same slot_id without collision because publisher lookup is keyed on `(provider_id, slot_id)`. Publishers use this list at startup to validate `tmpx_macro_mapping` covers every slot the provider mints and to detect config drift when the provider's slot contract changes. Ordering carries the ordered-prefix invariant: a provider that emits fewer chunks than it registered MUST emit an ordered prefix of this list — chunks map to slots in registration order and MUST NOT be shifted, sparse, or reordered. Cap of 2 slots in v1 aligned with the GAM macro-slot budget; the cap MAY rise without a shape change. A provider that emits TMPX (populates `tmpx_chunks` on its identity-match response) MUST register this list; a provider that does not emit TMPX omits it. Schema cannot enforce that predicate because \"emits TMPX\" is not schema-visible.",
+      "description": "Stable, provider-namespaced ad-server macro names this provider's TMPX response fills, ordered. Publishers traffic these exact names in their ad server (GAM key-values, VAST URL macros, DOOH play-log fields); the router places each provider's TMPX chunks into the matching slots on the identity-match response (`tmpx_providers[provider_id].macros[]`). Names MUST be provider-namespaced so publishers can configure distinct macros per provider (e.g. `PIN_TMPX_1`, `PIN_TMPX_2` for one provider; `NOVA_TMPX_1` for another). Ordered so multi-chunk TMPX values (when the opaque token exceeds one macro slot) are placed deterministically. Capped at 2 entries in v1; the cap MAY be raised in a later version without a shape change. A provider that emits TMPX on its identity-match response (populates `tmpx_macros[]` there) MUST also register this list — otherwise the router has no slot names to forward — but the schema cannot enforce this because \"emits TMPX\" is not a schema-visible predicate. Providers that do not emit TMPX omit this field.",
       "items": {
         "type": "string",
-        "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$",
+        "pattern": "^[A-Z][A-Z0-9_]*$",
         "minLength": 1,
         "maxLength": 64
       },
       "minItems": 1,
-      "maxItems": 2,
-      "uniqueItems": true
+      "maxItems": 2
     },
     "status": {
       "type": "string",

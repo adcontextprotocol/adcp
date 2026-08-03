@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/trusted-match/identity-match-response.json",
-  "title": "Identity Match Response (Router → Publisher)",
-  "description": "Router-to-publisher shape of the Identity Match response. The router collects each identity agent's ordered TMPX chunks (see provider-identity-match-response.json) and forwards them under the emitting `provider_id`, preserving provider attribution and chunk order. Each chunk is a provider-declared `{slot_id, value}` pair; the publisher's deployment configuration (see publisher-tmpx-config.json) maps `(provider_id, slot_id)` to the local ad-server macro name, targeting key, VAST substitution, or play-log field. The provider→router boundary never carries a publisher-local destination name, so no cross-provider name-hijack surface exists. Provider-hop fields (`tmpx_chunks` at the root) MUST NOT appear on this shape — a router that leaks them alongside `tmpx_providers` corrupts per-provider accounting. Envelope extension fields (`context`, `ext`) are intentionally omitted to prevent data leakage across the identity privacy boundary; they are forbidden by this schema. The serve_window_sec field defines a per-package single-shot fcap: after serving the user one impression on each eligible package, the publisher MUST re-query Identity Match before serving from those packages again.",
+  "title": "Identity Match Response",
+  "description": "Response indicating which packages the user is eligible for. The serve_window_sec field defines a per-package single-shot fcap: after serving the user one impression on each eligible package, the publisher MUST re-query Identity Match before serving from those packages again. Extension fields (ext, context) are intentionally omitted to prevent data leakage across the identity privacy boundary.",
   "type": "object",
   "allOf": [
     {
@@ -40,31 +40,57 @@
       "type": "string",
       "description": "DEPRECATED in favor of tmpx_providers. Routers MAY continue to populate this field for back-compat with consumers that only know the single-token shape; when both fields are present, tmpx_providers is authoritative. Single HPKE-encrypted exposure token containing the resolved user identity tokens. Wire format: kid.base64url_nopad(ciphertext) — unpadded base64url per RFC 4648 section 5 (no = characters). Publishers MUST treat this value as opaque pass-through data. Removed in 4.0."
     },
+    "tmpx_macros": {
+      "type": "array",
+      "description": "Provider-emitted: the identity agent's ordered TMPX chunks paired with the macro name each chunk fills. Macro names MUST be drawn from the provider's registered `tmpx_macros` list (provider-registration.json) and appear in the same order — names are part of operational setup, not protocol-synthesized. Capped at 2 chunks in v1; the cap MAY rise without a shape change. Each `value` is an opaque URL-safe wire string the publisher substitutes verbatim into the matching ad-server macro slot — publishers MUST NOT parse, decode, transform, or choose an encoding. The router collects entries from every provider that emits them into `tmpx_providers`, keyed by provider_id; consumers reading the merged response SHOULD consume `tmpx_providers` and ignore `tmpx_macros` at the root.",
+      "items": {
+        "$ref": "#/$defs/TmpxMacro"
+      },
+      "minItems": 1,
+      "maxItems": 2
+    },
     "tmpx_providers": {
       "type": "object",
-      "description": "Router-populated: ordered TMPX chunk/value pairs grouped by the originating identity provider's `provider_id`. Each entry's `chunks[]` is a copy of the provider's emitted `tmpx_chunks` list, in the same order. Each chunk carries a provider-local `slot_id` (from the provider's registered `tmpx_slots`) and an opaque URL-safe `value`; the publisher's deployment configuration (see publisher-tmpx-config.json) resolves each `(provider_id, slot_id)` pair to the ad-server macro name, targeting key, VAST substitution, or play-log field for that surface. The protocol carries values and attribution only. Required by router conformance when any identity provider emitted TMPX in this request; collapsing per-provider tokens into a single string loses attribution and breaks per-provider impression accounting. Map keys MUST match the provider_id charset registered in provider-registration.json (enforced by `propertyNames`). Publishers MUST NOT parse, decode, or transform any chunk's `value` — each is an opaque URL-safe wire string substituted verbatim into the mapped destination.",
-      "propertyNames": {
-        "type": "string",
-        "pattern": "^[A-Za-z0-9_]+$",
-        "minLength": 1,
-        "maxLength": 64
-      },
+      "description": "Router-populated: TMPX macro/value pairs grouped by the originating identity provider's provider_id, so the publisher fires each provider's tokens through that provider's specific ad-server macros (configured per provider in GAM / VAST URL / DOOH play log). Each entry's `macros[]` is a copy of the provider's emitted `tmpx_macros` ordered list. SHAPE CHANGE: was `Map<provider_id, string>` in the experimental surface that shipped in #5689; now `Map<provider_id, {macros: [TmpxMacro]}>` to carry exact macro/value pairs and support multi-chunk TMPX. Sanctioned by the experimental contract (`x-status: experimental` on this schema). Required by router conformance when any identity provider emitted TMPX in this request; collapsing per-provider tokens into a single string loses attribution and breaks per-provider impression accounting. Map keys MUST be valid provider_ids registered for this fan-out. Publishers MUST traffic only the macro names the response advertises; macro names MUST NOT be derived from provider_id at runtime.",
       "additionalProperties": {
         "type": "object",
         "properties": {
-          "chunks": {
+          "macros": {
             "type": "array",
-            "description": "Ordered TMPX chunks for this provider. Each entry is a `{slot_id, value}` pair copied verbatim from the provider's `tmpx_chunks`. Ordered-prefix invariant: the sequence of `slot_id`s MUST equal an ordered prefix of the provider's registered `tmpx_slots` — publishers MAY reject responses whose slot_ids or ordering diverge. Cap of 2 chunks in v1; the cap MAY rise without a shape change.",
+            "description": "Ordered TMPX macro/value pairs for this provider. Names MUST match the provider's registered `tmpx_macros`.",
             "items": {
-              "$ref": "/schemas/trusted-match/tmpx-chunk.json"
+              "$ref": "#/$defs/TmpxMacro"
             },
             "minItems": 1,
             "maxItems": 2
           }
         },
-        "required": ["chunks"],
+        "required": ["macros"],
         "additionalProperties": false
       }
+    }
+  },
+  "$defs": {
+    "TmpxMacro": {
+      "type": "object",
+      "description": "A single ad-server macro slot and the URL-safe value the publisher substitutes into it.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "Macro name as configured in the publisher's ad server (e.g. `PIN_TMPX_1`). MUST appear in the emitting provider's registered `tmpx_macros` list. Provider-namespaced so the publisher can target distinct slots per provider."
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "description": "Opaque, URL-safe wire string the publisher substitutes verbatim into the named macro slot. Publishers MUST NOT parse, decode, or transform this value. The protocol fixes the wire format so platforms interoperate; a platform that can carry raw bytes MAY optimize privately but the wire contract remains the URL-safe string."
+        }
+      },
+      "required": ["name", "value"],
+      "additionalProperties": false
     }
   },
   "required": [
@@ -73,14 +99,5 @@
     "eligible_package_ids",
     "serve_window_sec"
   ],
-  "not": {
-    "anyOf": [
-      { "required": ["tmpx_chunks"] },
-      { "required": ["tmpx_values"] },
-      { "required": ["tmpx_macros"] },
-      { "required": ["context"] },
-      { "required": ["ext"] }
-    ]
-  },
   "additionalProperties": true
 }
