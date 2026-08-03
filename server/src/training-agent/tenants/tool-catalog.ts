@@ -28,8 +28,8 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   // training-agent pagination envelope. Do not also wire `accounts.list`;
   // the SDK treats list_accounts as first-class and rejects duplicate
   // customTools registration.
-  sync_accounts: ['sales', 'signals', 'governance', 'creative', 'creative-builder', 'brand'],
-  list_accounts: ['sales', 'signals', 'governance', 'creative', 'creative-builder', 'brand'],
+  sync_accounts: ['sales', 'signals', 'governance', 'creative', 'creative-builder', 'brand', 'si'],
+  list_accounts: ['sales', 'signals', 'governance', 'creative', 'creative-builder', 'brand', 'si'],
 
   // sales
   get_products: ['sales'],
@@ -68,6 +68,12 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   sync_governance: ['sales', 'signals'],
   get_signals: ['signals'],
   activate_signal: ['signals'],
+
+  // sponsored intelligence
+  si_get_offering: ['si'],
+  si_initiate_session: ['si'],
+  si_send_message: ['si'],
+  si_terminate_session: ['si'],
 
   // governance — campaign
   sync_plans: ['governance'],
