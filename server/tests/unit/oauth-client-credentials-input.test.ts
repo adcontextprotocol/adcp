@@ -209,14 +209,14 @@ describe('parseOAuthClientCredentialsInput', () => {
 
   // ── Resource field: array support ─────────────────────
   describe('resource field — array support', () => {
-    it('rejects an empty array (must have at least one entry)', () => {
+    it('rejects an explicit empty array (array_too_few)', () => {
       const result = parseOAuthClientCredentialsInput(
         { ...validMinimal, resource: [] },
         { validateTokenEndpoint: acceptAll },
       );
       expect(result.ok).toBe(false);
       if (result.ok) return;
-      expect(result.code).toBe('invalid_field_type');
+      expect(result.code).toBe('array_too_few');
       expect(result.field).toBe('resource');
     });
 
@@ -256,22 +256,19 @@ describe('parseOAuthClientCredentialsInput', () => {
       expect(result.field).toBe('resource');
     });
 
-    it('rejects an array within per-entry limit but over aggregate limit', () => {
-      // 8 entries × 2048 chars = exactly at the per-entry limit but under aggregate
-      // Create scenario where aggregate limit would be the binding constraint
-      // by using a URL-like value just under per-entry limit but many of them
-      // Aggregate = 8 * 2048 = 16384; use 8 * 2047 = 16376 → fine
-      // Not easily constructable without per-entry violation — aggregate limit
-      // is not independently reachable with current config (max 8 entries × 2048 = exact limit).
-      // This test documents the limit constant is enforced.
-      const resources = Array.from({ length: 8 }, () => 'a'.repeat(2048));
-      const totalLength = resources.reduce((s, e) => s + e.length, 0); // 16384
-      expect(totalLength).toBe(16384);
+    it('rejects an array within per-entry limit but over the aggregate limit (8192 chars)', () => {
+      // 5 entries × 1700 chars each = 8500 > 8192 aggregate limit.
+      // Per-entry check passes (1700 < 2048), count check passes (5 ≤ 8).
+      const entry = 'https://api.example.com/' + 'a'.repeat(1676); // 24 + 1676 = 1700 chars
+      const resources = Array.from({ length: 5 }, () => entry);
+      expect(resources.reduce((s, e) => s + e.length, 0)).toBe(8500);
       const result = parseOAuthClientCredentialsInput(
         { ...validMinimal, resource: resources },
         { validateTokenEndpoint: acceptAll },
       );
-      expect(result.ok).toBe(true); // exactly at limit — accepted
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.code).toBe('aggregate_too_long');
     });
 
     it('rejects an array exceeding the count limit', () => {
@@ -305,6 +302,41 @@ describe('parseOAuthClientCredentialsInput', () => {
       if (result.ok) return;
       expect(result.code).toBe('invalid_field_type');
     });
+
+    it('rejects when aggregate character length exceeds 8192 (entries individually valid)', () => {
+      // 5 entries × 1700 chars each = 8500, all under per-entry limit of 2048 and count ≤ 8
+      const longUri = 'https://api.example.com/' + 'a'.repeat(1675); // 1700 chars total
+      const resources = Array.from({ length: 5 }, () => longUri);
+      const result = parseOAuthClientCredentialsInput(
+        { ...validMinimal, resource: resources },
+        { validateTokenEndpoint: acceptAll },
+      );
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.code).toBe('aggregate_too_long');
+      expect(result.field).toBe('resource');
+    });
+
+    it('accepts arrays whose aggregate length is exactly at the limit', () => {
+      // 4 entries × 2048 = 8192 — exactly at the boundary
+      const resources = Array.from({ length: 4 }, () => 'https://api.example.com/' + 'a'.repeat(2024));
+      const result = parseOAuthClientCredentialsInput(
+        { ...validMinimal, resource: resources },
+        { validateTokenEndpoint: acceptAll },
+      );
+      expect(result.ok).toBe(true);
+    });
+  });
+
+  // ── Scalar collision: DB encoding makes any scalar safe ─────
+  // The DB layer uses a "json1:" prefix when storing arrays (not startsWith('['))
+  // so scalar values starting with "[" are stored and decoded as scalars correctly.
+  it('accepts a scalar resource that starts with a scheme letter', () => {
+    const result = parseOAuthClientCredentialsInput(
+      { ...validMinimal, resource: 'https://api.example.com' },
+      { validateTokenEndpoint: acceptAll },
+    );
+    expect(result.ok).toBe(true);
   });
 
   // ── Structured error codes (closes #2810) ───────────────────────────
@@ -332,8 +364,9 @@ describe('parseOAuthClientCredentialsInput', () => {
       { name: 'bad $ENV ref in client_secret', input: { ...validMinimal, client_secret: '$ENV:DATABASE_URL' }, code: 'invalid_env_reference', field: 'client_secret' },
       { name: 'non-string scope', input: { ...validMinimal, scope: 42 }, code: 'invalid_field_type', field: 'scope' },
       { name: 'non-string resource', input: { ...validMinimal, resource: {} }, code: 'invalid_field_type', field: 'resource' },
-      { name: 'empty array resource', input: { ...validMinimal, resource: [] }, code: 'invalid_field_type', field: 'resource' },
+      { name: 'empty array resource', input: { ...validMinimal, resource: [] }, code: 'array_too_few', field: 'resource' },
       { name: 'resource array too many', input: { ...validMinimal, resource: Array.from({ length: 9 }, (_, i) => `https://api${i}.example.com`) }, code: 'array_too_many', field: 'resource' },
+      { name: 'resource aggregate too long', input: { ...validMinimal, resource: Array.from({ length: 5 }, () => 'https://x.example/' + 'a'.repeat(1680)) }, code: 'aggregate_too_long', field: 'resource' },
       { name: 'non-string audience', input: { ...validMinimal, audience: false }, code: 'invalid_field_type', field: 'audience' },
       { name: 'over-long scope', input: { ...validMinimal, scope: 'x'.repeat(1025) }, code: 'field_too_long', field: 'scope' },
       { name: 'over-long resource', input: { ...validMinimal, resource: 'x'.repeat(2049) }, code: 'field_too_long', field: 'resource' },

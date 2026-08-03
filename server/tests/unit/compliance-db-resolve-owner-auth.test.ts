@@ -435,4 +435,5 @@ describe('ComplianceDatabase.resolveOwnerAuth', () => {
     const auth = await db.resolveOwnerAuth('https://agent.example.com');
     expect(auth).toBeUndefined();
   });
+
 });

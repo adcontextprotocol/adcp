@@ -53,7 +53,9 @@ export type ParseOAuthClientCredentialsCode =
   | 'invalid_url'
   | 'invalid_env_reference'
   | 'invalid_auth_method_value'
-  | 'array_too_many';
+  | 'array_too_many'
+  | 'array_too_few'
+  | 'aggregate_too_long';
 
 export type ParseOAuthClientCredentialsResult =
   | { ok: true; creds: OAuthClientCredentials }
@@ -176,7 +178,8 @@ type ResourceFieldResult =
 
 const MAX_RESOURCE_ARRAY_ENTRIES = 8;
 const MAX_RESOURCE_ENTRY_LENGTH = 2048;
-const MAX_RESOURCE_AGGREGATE_LENGTH = MAX_RESOURCE_ARRAY_ENTRIES * MAX_RESOURCE_ENTRY_LENGTH; // 16 384
+/** Tighter aggregate bound — independently reachable: 5 × 1700 chars = 8500 > 8192. */
+const MAX_RESOURCE_AGGREGATE_CHARS = 8192;
 
 /**
  * Parse the `resource` field which may be a scalar string or an array of
@@ -184,7 +187,7 @@ const MAX_RESOURCE_AGGREGATE_LENGTH = MAX_RESOURCE_ARRAY_ENTRIES * MAX_RESOURCE_
  * persisted). An empty array is rejected — callers must pass at least one
  * entry or omit the field entirely.
  *
- * Limits enforced: max 8 entries, max 2048 chars per entry, max 16 384 chars
+ * Limits enforced: max 8 entries, max 2048 chars per entry, max 8192 chars
  * aggregate. Arrays are stored with a `json1:` prefix to prevent collisions
  * with scalar strings that begin with `[`.
  */
@@ -202,9 +205,9 @@ function parseResourceField(value: unknown): ResourceFieldResult {
     if (value.length === 0) {
       return {
         error: fail(
-          'invalid_field_type',
+          'array_too_few',
           'resource',
-          'oauth_client_credentials.resource array must not be empty. Omit the field or provide at least one URI.',
+          'oauth_client_credentials.resource array must contain at least one entry; omit the field to leave it unset.',
         ),
       };
     }
@@ -217,7 +220,7 @@ function parseResourceField(value: unknown): ResourceFieldResult {
         ),
       };
     }
-    let totalLength = 0;
+    let aggregateChars = 0;
     for (const entry of value) {
       if (typeof entry !== 'string' || entry === '') {
         return {
@@ -231,10 +234,16 @@ function parseResourceField(value: unknown): ResourceFieldResult {
       if (entry.length > MAX_RESOURCE_ENTRY_LENGTH) {
         return { error: fail('field_too_long', 'resource', 'oauth_client_credentials.resource array entry exceeds maximum length.') };
       }
-      totalLength += entry.length;
+      aggregateChars += entry.length;
     }
-    if (totalLength > MAX_RESOURCE_AGGREGATE_LENGTH) {
-      return { error: fail('field_too_long', 'resource', 'oauth_client_credentials.resource array exceeds aggregate length limit.') };
+    if (aggregateChars > MAX_RESOURCE_AGGREGATE_CHARS) {
+      return {
+        error: fail(
+          'aggregate_too_long',
+          'resource',
+          `oauth_client_credentials.resource total character length across all entries must not exceed ${MAX_RESOURCE_AGGREGATE_CHARS}.`,
+        ),
+      };
     }
     return { value };
   }
