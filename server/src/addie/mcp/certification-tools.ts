@@ -112,11 +112,11 @@ const MIN_PLACEMENT_TURNS = 3;
 const MIN_MODULE_TIME_MS = 5 * 60 * 1000; // 5 minutes
 const MIN_CAPSTONE_TIME_MS = 10 * 60 * 1000; // 10 minutes
 
-const UNAVAILABLE_SPECIALIST_MODULES = new Set(['S5']);
+const UNAVAILABLE_SPECIALIST_MODULES = new Set<string>();
 
 function unavailableSpecialistMessage(moduleId: string): string | null {
   if (!UNAVAILABLE_SPECIALIST_MODULES.has(moduleId)) return null;
-  return `Module ${moduleId} (Sponsored Intelligence) is not currently available for assessment because the sandbox does not yet expose the required si_* lab tools. No module progress or capstone attempt was changed.`;
+  return `Module ${moduleId} is not currently available for assessment. No module progress or capstone attempt was changed.`;
 }
 
 export const PRIOR_TURN_RESTATEMENT_NO_RAW_JSON_RULE = 'for prior-turn re-statements, no raw JSON';
@@ -980,7 +980,7 @@ export const CERTIFICATION_TOOLS: AddieTool[] = [
   },
   {
     name: 'start_certification_exam',
-    description: 'Begin an available specialist deep dive module (S1: Media Buy, S2: Creative, S3: Signals, S4: Governance, S6: Security). S5 Sponsored Intelligence is listed in the curriculum but is not assessable until its sandbox labs exist. The learner must hold the Practitioner credential. Returns the capstone format, lab exercises, and assessment criteria. You (Sage) will conduct the combined hands-on lab and adaptive exam — technically assess the learner against the spec.',
+    description: 'Begin an available specialist deep dive module (S1: Media Buy, S2: Creative, S3: Signals, S4: Governance, S5: Sponsored Intelligence, S6: Security). The learner must hold the Practitioner credential. Returns the capstone format, lab exercises, and assessment criteria. You (Sage) will conduct the combined hands-on lab and adaptive exam — technically assess the learner against the spec.',
     usage_hints: 'use for "take the exam", "start capstone", "specialist exam", "ready for certification", "start S1", "media buy specialist", "security specialist"',
     input_schema: {
       type: 'object',
@@ -988,7 +988,7 @@ export const CERTIFICATION_TOOLS: AddieTool[] = [
         module_id: {
           type: 'string',
           enum: ['S1', 'S2', 'S3', 'S4', 'S5', 'S6'],
-          description: 'Specialist module ID: S1 (Media Buy), S2 (Creative), S3 (Signals), S4 (Governance), S5 (Sponsored Intelligence — currently unavailable), S6 (Security)',
+          description: 'Specialist module ID: S1 (Media Buy), S2 (Creative), S3 (Signals), S4 (Governance), S5 (Sponsored Intelligence), S6 (Security)',
         },
       },
       required: ['module_id'],
@@ -1682,7 +1682,7 @@ export function createCertificationToolHandlers(
       lines.push('---');
       lines.push('Modules A1, A2, A2B, and A3 are free for everyone. Other modules require AgenticAdvertising.org membership.');
       lines.push('To start a module, say "start module [ID]" (e.g., "start module A1").');
-      lines.push('To start a specialist deep dive, say "start capstone S1" (S1–S4, S6 Security, or S7 Brand are available; S5 is pending sandbox labs).');
+      lines.push('To start a specialist deep dive, say "start capstone S1" (S1–S6 and S7 Brand are available).');
       lines.push('Already familiar with AdCP? Say "assess my level" to take a placement assessment and skip modules you already know.');
 
       return lines.join('\n');
@@ -2301,7 +2301,7 @@ export function createCertificationToolHandlers(
       // Validate it's a capstone module
       const mod = await certDb.getModule(moduleId);
       if (!mod || mod.format !== 'capstone') {
-        return `"${moduleId}" is not a capstone module. Valid specialist modules: S1 (Media Buy), S2 (Creative), S3 (Signals), S4 (Governance), S5 (Generative Advertising).`;
+        return `"${moduleId}" is not a capstone module. Valid specialist modules: S1 (Media Buy), S2 (Creative), S3 (Signals), S4 (Governance), S5 (Sponsored Intelligence), S6 (Security).`;
       }
 
       if (!(await ensureMembership())) {
