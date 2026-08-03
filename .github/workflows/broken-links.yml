@@ -44,8 +44,6 @@ jobs:
       with:
         # Ensure we get latest changes including synced docs
         ref: ${{ github.event.workflow_run.head_branch || github.ref }}
-        # Pull-request owned-link checks compare only URLs in changed files.
-        fetch-depth: 0
 
     - name: Use Node.js
       uses: actions/setup-node@v7
@@ -61,16 +59,15 @@ jobs:
     - name: Schema link convention (autofix with `npm run fix:schema-links`)
       run: npm run lint:schema-links
 
-    - name: Mintlify broken links (fix any links printed below)
-      run: npx --no-install mintlify broken-links
+    - name: Validate Mintlify navigation
+      run: node tests/docs-nav-validation.test.cjs
 
     - name: Check browser-facing Agentic Advertising links
-      run: |
-        if [ "${{ github.event_name }}" = "pull_request" ]; then
-          npm run check:owned-links -- --changed-since "origin/${{ github.base_ref }}"
-        else
-          npm run check:owned-links
-        fi
+      # Pull requests are not deployed to the production domains. Checking
+      # production here makes a docs outage impossible to repair because the
+      # fix cannot pass CI until after it merges and deploys.
+      if: ${{ github.event_name != 'pull_request' }}
+      run: npm run check:owned-links
       timeout-minutes: 10
 
     - name: Check README links

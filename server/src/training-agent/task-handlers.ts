@@ -7978,8 +7978,12 @@ export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
   const sessionScopeReq = withUsageAccountScope(req as unknown as Record<string, unknown>) as unknown as ToolArgs;
   const session = await getSession(sessionKeyFromArgs(sessionScopeReq, ctx.mode, ctx.userId, ctx.moduleId));
 
-  if (!req.reporting_period || !req.usage?.length) {
-    return { errors: [{ code: 'INVALID_USAGE_DATA', message: 'reporting_period and at least one usage record are required.' }] };
+  if (!req.reporting_period) {
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'reporting_period is required.', field: 'reporting_period' }] };
+  }
+
+  if (!req.usage?.length) {
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'At least one usage record is required.', field: 'usage' }] };
   }
 
   if (session.usageRecords.length + req.usage.length > MAX_USAGE_RECORDS_PER_SESSION) {

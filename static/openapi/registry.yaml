@@ -4172,6 +4172,9 @@ components:
             - invalid_url
             - invalid_env_reference
             - invalid_auth_method_value
+            - array_too_many
+            - array_too_few
+            - aggregate_too_long
           description: Stable rejection tag. UI maps this to operator-friendly prose.
         field:
           type: string
@@ -6249,10 +6252,10 @@ paths:
               - type: array
                 items:
                   type: string
-            description: "Measurement-vendor filter: exact match on `measurement.metrics[].metric_id`. Repeatable (each value is OR'd within the param, AND'd with other filters). Implies `type=measurement`."
+            description: "Measurement-vendor filter: exact match on `measurement.metrics[].metric_id`. Repeatable; multiple values are AND'd (vendor must carry all named metrics). When combined with `accreditation`, a cross-product AND applies — each (metric_id, accreditation) pair must be covered by the same metrics element. Duplicate values are ignored. Maximum 20 unique values; maximum 100 cross-product pairs. Implies `type=measurement`."
             example: attention_units
           required: false
-          description: "Measurement-vendor filter: exact match on `measurement.metrics[].metric_id`. Repeatable (each value is OR'd within the param, AND'd with other filters). Implies `type=measurement`."
+          description: "Measurement-vendor filter: exact match on `measurement.metrics[].metric_id`. Repeatable; multiple values are AND'd (vendor must carry all named metrics). When combined with `accreditation`, a cross-product AND applies — each (metric_id, accreditation) pair must be covered by the same metrics element. Duplicate values are ignored. Maximum 20 unique values; maximum 100 cross-product pairs. Implies `type=measurement`."
           name: metric_id
           in: query
         - schema:
@@ -6261,10 +6264,10 @@ paths:
               - type: array
                 items:
                   type: string
-            description: "Measurement-vendor filter: exact match on `measurement.metrics[].accreditations[].accrediting_body` (e.g. `MRC`, `JIC`, `ARF`). Repeatable. Implies `type=measurement`. Accreditation claims are vendor-asserted; AAO does not independently verify (`verified_by_aao` is always `false` in the response)."
+            description: "Measurement-vendor filter: exact match on `measurement.metrics[].accreditations[].accrediting_body` (e.g. `MRC`, `JIC`, `ARF`). Repeatable; multiple values are AND'd. When combined with `metric_id`, a cross-product AND applies — see `metric_id` description. Duplicate values are ignored. Maximum 20 unique values; maximum 100 cross-product pairs. Implies `type=measurement`. Accreditation claims are vendor-asserted; AAO does not independently verify (`verified_by_aao` is always `false` in the response)."
             example: MRC
           required: false
-          description: "Measurement-vendor filter: exact match on `measurement.metrics[].accreditations[].accrediting_body` (e.g. `MRC`, `JIC`, `ARF`). Repeatable. Implies `type=measurement`. Accreditation claims are vendor-asserted; AAO does not independently verify (`verified_by_aao` is always `false` in the response)."
+          description: "Measurement-vendor filter: exact match on `measurement.metrics[].accreditations[].accrediting_body` (e.g. `MRC`, `JIC`, `ARF`). Repeatable; multiple values are AND'd. When combined with `metric_id`, a cross-product AND applies — see `metric_id` description. Duplicate values are ignored. Maximum 20 unique values; maximum 100 cross-product pairs. Implies `type=measurement`. Accreditation claims are vendor-asserted; AAO does not independently verify (`verified_by_aao` is always `false` in the response)."
           name: accreditation
           in: query
         - schema:
@@ -10784,9 +10787,16 @@ paths:
                   maxLength: 1024
                   description: Space-separated OAuth scope values.
                 resource:
-                  type: string
-                  maxLength: 2048
-                  description: RFC 8707 resource indicator.
+                  anyOf:
+                    - type: string
+                      maxLength: 2048
+                    - type: array
+                      items:
+                        type: string
+                        maxLength: 2048
+                      minItems: 1
+                      maxItems: 8
+                  description: RFC 8707 resource indicator. Accepts a single URI string or an array of 1–8 URI strings for multi-resource authorization servers (Keycloak strict, AWS Cognito multi-RS).
                 audience:
                   type: string
                   maxLength: 2048

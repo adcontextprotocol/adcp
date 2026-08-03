@@ -76,6 +76,8 @@ if (!navigation || !navigation.versions) {
 
 const rootDir = path.join(__dirname, '..');
 const defaultVersion = (navigation.versions.find(v => v.default) || navigation.versions[0]).version;
+const pageOwners = new Map();
+const crossVersionDuplicates = [];
 
 for (const versionEntry of navigation.versions) {
   const { version, groups } = versionEntry;
@@ -83,6 +85,15 @@ for (const versionEntry of navigation.versions) {
 
   const allPages = collectPages(groups);
   const allGroups = collectGroups(groups);
+
+  for (const page of allPages) {
+    const owner = pageOwners.get(page);
+    if (owner) {
+      crossVersionDuplicates.push(`${page} (${owner}, ${version})`);
+    } else {
+      pageOwners.set(page, version);
+    }
+  }
 
   // Test 1: All page references resolve to files on disk
   test(`all ${allPages.length} page files exist`, () => {
@@ -162,6 +173,12 @@ for (const versionEntry of navigation.versions) {
 
   log('');
 }
+
+test('page files belong to only one version', () => {
+  if (crossVersionDuplicates.length > 0) {
+    throw new Error(`Pages referenced across versions:\n      ${crossVersionDuplicates.join('\n      ')}`);
+  }
+});
 
 // --- Summary ---
 log('====================================');

@@ -1,7 +1,6 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { globSync } from 'glob';
-import { execFileSync } from 'child_process';
 
 const LINK_HOSTS = new Set(['agenticadvertising.org', 'docs.adcontextprotocol.org']);
 const SKIPPED_PATH_PREFIXES = ['/api/'];
@@ -9,16 +8,8 @@ const ROOT = process.cwd();
 const FETCH_TIMEOUT_MS = 10_000;
 const CONCURRENCY = 8;
 
-function changedFilesSince(ref) {
-  const output = execFileSync('git', ['diff', '--name-only', `${ref}...HEAD`], {
-    cwd: ROOT,
-    encoding: 'utf8',
-  });
-  return new Set(output.split('\n').filter(Boolean));
-}
-
-function getCandidateFiles(changedSince) {
-  const files = globSync(
+function getCandidateFiles() {
+  return globSync(
     [
       'docs/**/*.{md,mdx}',
       'dist/docs/**/*.{md,mdx}',
@@ -28,10 +19,6 @@ function getCandidateFiles(changedSince) {
     ],
     { cwd: ROOT, nodir: true },
   );
-
-  if (!changedSince) return files;
-  const changed = changedFilesSince(changedSince);
-  return files.filter((file) => changed.has(file));
 }
 
 // Match http(s) URLs but stop at characters that typically wrap them in source:
@@ -113,17 +100,9 @@ async function checkUrl(url) {
 }
 
 async function main() {
-  const changedSinceIndex = process.argv.indexOf('--changed-since');
-  const changedSince = changedSinceIndex === -1
-    ? undefined
-    : process.argv[changedSinceIndex + 1];
-  if (changedSinceIndex !== -1 && !changedSince) {
-    throw new Error('--changed-since requires a git ref');
-  }
-
   const urlSources = new Map();
 
-  for (const file of getCandidateFiles(changedSince)) {
+  for (const file of getCandidateFiles()) {
     for (const url of extractUrls(file)) {
       if (!shouldCheck(url)) {
         continue;
@@ -159,8 +138,7 @@ async function main() {
 
   if (broken.length === 0) {
     const hosts = [...LINK_HOSTS].join(', ');
-    const scope = changedSince ? ` in files changed since ${changedSince}` : '';
-    console.log(`All browser-facing links${scope} are reachable (${hosts}).`);
+    console.log(`All browser-facing links are reachable (${hosts}).`);
     return;
   }
 

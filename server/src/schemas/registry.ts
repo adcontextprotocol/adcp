@@ -381,6 +381,9 @@ export const CredentialSaveValidationErrorSchema = z
         "invalid_url",
         "invalid_env_reference",
         "invalid_auth_method_value",
+        "array_too_many",
+        "array_too_few",
+        "aggregate_too_long",
       ])
       .openapi({ description: "Stable rejection tag. UI maps this to operator-friendly prose." }),
     field: z

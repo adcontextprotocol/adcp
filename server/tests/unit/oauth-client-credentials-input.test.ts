@@ -207,6 +207,123 @@ describe('parseOAuthClientCredentialsInput', () => {
     }
   });
 
+  // ── Resource field: array support ─────────────────────
+  describe('resource field — array support', () => {
+    it('rejects an explicit empty array (array_too_few)', () => {
+      const result = parseOAuthClientCredentialsInput(
+        { ...validMinimal, resource: [] },
+        { validateTokenEndpoint: acceptAll },
+      );
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.code).toBe('array_too_few');
+      expect(result.field).toBe('resource');
+    });
+
+    it('accepts a single-element array', () => {
+      const result = parseOAuthClientCredentialsInput(
+        { ...validMinimal, resource: ['https://api.example.com'] },
+        { validateTokenEndpoint: acceptAll },
+      );
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.creds.resource).toEqual(['https://api.example.com']);
+    });
+
+    it('accepts a multi-element array up to the limit', () => {
+      const resources = Array.from({ length: 8 }, (_, i) => `https://api${i}.example.com`);
+      const result = parseOAuthClientCredentialsInput(
+        { ...validMinimal, resource: resources },
+        { validateTokenEndpoint: acceptAll },
+      );
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.creds.resource).toEqual(resources);
+    });
+
+    it('rejects an array whose entries each exceed the per-entry limit', () => {
+      // per-entry check fires before the aggregate check
+      const resources = Array.from({ length: 8 }, () => 'a'.repeat(2049));
+      const result = parseOAuthClientCredentialsInput(
+        { ...validMinimal, resource: resources },
+        { validateTokenEndpoint: acceptAll },
+      );
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.code).toBe('field_too_long');
+      expect(result.field).toBe('resource');
+    });
+
+    it('rejects an array within per-entry limit but over the aggregate limit (8192 chars)', () => {
+      // 5 entries × 1700 chars each = 8500 > 8192 aggregate limit.
+      // Per-entry check passes (1700 < 2048), count check passes (5 ≤ 8).
+      const entry = 'https://api.example.com/' + 'a'.repeat(1676); // 24 + 1676 = 1700 chars
+      const resources = Array.from({ length: 5 }, () => entry);
+      expect(resources.reduce((s, e) => s + e.length, 0)).toBe(8500);
+      const result = parseOAuthClientCredentialsInput(
+        { ...validMinimal, resource: resources },
+        { validateTokenEndpoint: acceptAll },
+      );
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.code).toBe('aggregate_too_long');
+      expect(result.field).toBe('resource');
+    });
+
+    it('accepts an array exactly at the aggregate limit (8192 chars)', () => {
+      // 4 entries × 2048 chars = 8192 — exactly at the limit, should pass
+      const resources = Array.from({ length: 4 }, () => 'a'.repeat(2048));
+      expect(resources.reduce((s, e) => s + e.length, 0)).toBe(8192);
+      const result = parseOAuthClientCredentialsInput(
+        { ...validMinimal, resource: resources },
+        { validateTokenEndpoint: acceptAll },
+      );
+      expect(result.ok).toBe(true);
+    });
+
+    it('rejects an array exceeding the count limit', () => {
+      const resources = Array.from({ length: 9 }, (_, i) => `https://api${i}.example.com`);
+      const result = parseOAuthClientCredentialsInput(
+        { ...validMinimal, resource: resources },
+        { validateTokenEndpoint: acceptAll },
+      );
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.code).toBe('array_too_many');
+      expect(result.field).toBe('resource');
+    });
+
+    it('rejects an array entry exceeding length limit', () => {
+      const result = parseOAuthClientCredentialsInput(
+        { ...validMinimal, resource: ['a'.repeat(2049)] },
+        { validateTokenEndpoint: acceptAll },
+      );
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.code).toBe('field_too_long');
+    });
+
+    it('rejects an array with a non-string entry', () => {
+      const result = parseOAuthClientCredentialsInput(
+        { ...validMinimal, resource: ['https://api.example.com', 42] },
+        { validateTokenEndpoint: acceptAll },
+      );
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.code).toBe('invalid_field_type');
+    });
+
+  });
+
+  // ── Scalar round-trip ────────────────────────────────────────
+  it('accepts a scalar resource that starts with a scheme letter', () => {
+    const result = parseOAuthClientCredentialsInput(
+      { ...validMinimal, resource: 'https://api.example.com' },
+      { validateTokenEndpoint: acceptAll },
+    );
+    expect(result.ok).toBe(true);
+  });
+
   // ── Structured error codes (closes #2810) ───────────────────────────
 
   describe('failure result carries structured { code, field }', () => {
@@ -232,6 +349,9 @@ describe('parseOAuthClientCredentialsInput', () => {
       { name: 'bad $ENV ref in client_secret', input: { ...validMinimal, client_secret: '$ENV:DATABASE_URL' }, code: 'invalid_env_reference', field: 'client_secret' },
       { name: 'non-string scope', input: { ...validMinimal, scope: 42 }, code: 'invalid_field_type', field: 'scope' },
       { name: 'non-string resource', input: { ...validMinimal, resource: {} }, code: 'invalid_field_type', field: 'resource' },
+      { name: 'empty array resource', input: { ...validMinimal, resource: [] }, code: 'array_too_few', field: 'resource' },
+      { name: 'resource array too many', input: { ...validMinimal, resource: Array.from({ length: 9 }, (_, i) => `https://api${i}.example.com`) }, code: 'array_too_many', field: 'resource' },
+      { name: 'resource aggregate too long', input: { ...validMinimal, resource: Array.from({ length: 5 }, () => 'https://x.example/' + 'a'.repeat(1680)) }, code: 'aggregate_too_long', field: 'resource' },
       { name: 'non-string audience', input: { ...validMinimal, audience: false }, code: 'invalid_field_type', field: 'audience' },
       { name: 'over-long scope', input: { ...validMinimal, scope: 'x'.repeat(1025) }, code: 'field_too_long', field: 'scope' },
       { name: 'over-long resource', input: { ...validMinimal, resource: 'x'.repeat(2049) }, code: 'field_too_long', field: 'resource' },
