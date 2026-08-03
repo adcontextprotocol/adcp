@@ -281,8 +281,9 @@ assignment may serve. If one placement fails, the assignment is rejected unless
 the buyer narrows its placement scope to compatible placements.
 
 Accepted localized results include a top-level `platform_id` as the single
-provider creative identity and `localization` as a complete source-plus-target
-variant list. The response preserves the request's exact source ID/locale,
+creative ID assigned by the seller's execution platform (for example, its ad
+server or decisioning platform) and `localization` as a complete
+source-plus-target variant list. The response preserves the request's exact source ID/locale,
 target ID/locale set, fallback-rule set, default ID, and unmatched action. Each
 variant returns complete resolved assets and `provider_variant_id`. The enclosing creative's
 single `status` governs the complete set. If the provider cannot read back any

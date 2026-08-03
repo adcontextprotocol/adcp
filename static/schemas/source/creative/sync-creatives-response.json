@@ -48,7 +48,7 @@
               "platform_id": {
                 "type": "string",
                 "minLength": 1,
-                "description": "Platform-specific ID assigned to the creative. This is the single provider creative identity for localized results; localization carries only per-variant provider IDs."
+                "description": "Stable creative ID assigned by the seller's execution platform, such as its ad server or decisioning platform. This is the single execution-platform creative ID for localized results; localization carries only per-variant execution-platform IDs in provider_variant_id."
               },
               "localization": {
                 "$ref": "/schemas/core/creative-localization-readback.json",

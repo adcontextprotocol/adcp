@@ -225,7 +225,7 @@ localized sync and every later `list_creatives` read MUST preserve the exact
 source ID/locale, target ID/locale set, default ID, and unmatched action from
 the request, plus the exact optional fallback-rule set. Readback adds a
 `provider_variant_id` to each variant. The single
-provider creative identity is the enclosing creative's top-level `platform_id`;
+execution-platform creative identity is the enclosing creative's top-level `platform_id`;
 it is never duplicated inside `localization`.
 
 Localized readback is atomic. The seller returns complete resolved assets,
