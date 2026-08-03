@@ -123,5 +123,5 @@ UPDATE certification_modules SET
       ]
     }
   ]',
-  tenant_ids = ARRAY['si']
+  tenant_ids = ARRAY['creative', 'sales', 'si']
 WHERE id = 'S5';
