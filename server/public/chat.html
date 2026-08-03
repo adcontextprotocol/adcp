@@ -2888,6 +2888,69 @@
   <footer style="display:none"></footer>
 
   <script src="/nav.js"></script>
+  <script src="/external-url.js"></script>
+  <script>
+    window.siBranding = (() => {
+      'use strict';
+
+      const BRAND_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
+      const BRAND_LOGO_URL_MAX_LENGTH = 2048;
+
+      function nonEmptyText(value) {
+        return typeof value === 'string' && value.trim() ? value : '';
+      }
+
+      function safeLogoUrl(value) {
+        if (typeof value !== 'string' || value.length === 0 || value.length > BRAND_LOGO_URL_MAX_LENGTH) {
+          return null;
+        }
+        if (['"', "'", '<', '>', '`', '\\'].some(char => value.includes(char))) {
+          return null;
+        }
+
+        try {
+          const parsed = new URL(value);
+          if (parsed.protocol !== 'https:' || parsed.username || parsed.password || !parsed.hostname) {
+            return null;
+          }
+          return parsed.toString();
+        } catch {
+          return null;
+        }
+      }
+
+      function safeBrandColor(value) {
+        return typeof value === 'string' && BRAND_COLOR_PATTERN.test(value) ? value : null;
+      }
+
+      function renderHeader(elements, brand, fallbackName) {
+        const name = nonEmptyText(brand?.name) || nonEmptyText(fallbackName) || 'Brand agent';
+        const tagline = nonEmptyText(brand?.tagline);
+        const color = safeBrandColor(brand?.brand_color);
+        const logoUrl = safeLogoUrl(brand?.logo_url);
+
+        elements.title.textContent = name;
+        elements.tagline.textContent = tagline;
+        if (color) {
+          elements.header.style.setProperty('--si-brand-color', color);
+        } else {
+          elements.header.style.removeProperty('--si-brand-color');
+        }
+
+        elements.icon.replaceChildren();
+        if (logoUrl) {
+          const image = document.createElement('img');
+          image.src = logoUrl;
+          image.alt = name;
+          elements.icon.appendChild(image);
+        } else {
+          elements.icon.textContent = name.trim().charAt(0).toUpperCase() || 'B';
+        }
+      }
+
+      return Object.freeze({ renderHeader, safeLogoUrl, safeBrandColor });
+    })();
+  </script>
   <script>
     (function() {
       'use strict';
@@ -2932,6 +2995,12 @@
       const siModalMessages = document.getElementById('siModalMessages');
       const siModalInput = document.getElementById('siModalInput');
       const siModalSend = document.getElementById('siModalSend');
+      const siBrandHeaderElements = {
+        header: siModalHeader,
+        icon: siModalIconEmoji,
+        title: siModalTitle,
+        tagline: siModalTagline,
+      };
 
       // Dark mode toggle
       const darkModeToggle = document.getElementById('darkModeToggle');
@@ -3030,6 +3099,7 @@
 
       // SI (Sponsored Intelligence) Modal State
       let siSessionId = null;
+      let siSessionCapability = null;
       let siBrandName = null;
       let siBrandInfo = null;
       let siIsLoading = false;
@@ -3067,6 +3137,13 @@
         const headers = { ...options.headers };
         if (nativeAuthToken) {
           headers['Authorization'] = `Bearer ${nativeAuthToken}`;
+        }
+        if (
+          siSessionCapability &&
+          siSessionId &&
+          url.startsWith(`/api/si/sessions/${encodeURIComponent(siSessionId)}`)
+        ) {
+          headers['X-SI-Session-Capability'] = siSessionCapability;
         }
         return fetch(url, { ...options, headers, credentials: 'include' });
       }
@@ -3392,8 +3469,8 @@
         historyList.innerHTML = allItems.map(item => {
           if (item.type === 'si_session') {
             // Branded SI session item
-            const brandColor = item.brand_color || '#667eea';
-            const logoUrl = item.brand_logo_url;
+            const brandColor = window.siBranding.safeBrandColor(item.brand_color) || 'var(--color-brand)';
+            const logoUrl = window.siBranding.safeLogoUrl(item.brand_logo_url);
             const initial = (item.brand_name || 'B').charAt(0).toUpperCase();
             return `
               <div class="history-item si-branded"
@@ -3401,7 +3478,7 @@
                    data-brand-name="${escapeHtml(item.brand_name)}"
                    style="--si-item-color: ${brandColor}">
                 <div class="si-brand-avatar">
-                  ${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(item.brand_name)}">` : initial}
+                  ${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(item.brand_name)}">` : escapeHtml(initial)}
                 </div>
                 <div class="history-item-content">
                   <div class="history-item-title">
@@ -4914,7 +4991,7 @@
 
                   // Store SI session data - will open modal after stream is completely done
                   if (data.si_session && data.si_session.session_id) {
-                    console.log('SI session detected, will open modal after stream completes:', data.si_session);
+                    console.log('SI session detected, will open modal after stream completes:', data.si_session.session_id);
                     pendingSiSession = data.si_session;
                   }
 
@@ -4970,7 +5047,7 @@
           // Open SI modal if a brand agent session was created
           // This must happen AFTER the stream is completely done to avoid race conditions
           if (pendingSiSession) {
-            console.log('Stream complete, opening SI modal:', pendingSiSession);
+            console.log('Stream complete, opening SI modal:', pendingSiSession.session_id);
             // Small delay to ensure DOM is fully settled
             setTimeout(async () => {
               try {
@@ -5152,24 +5229,11 @@
 
           // Set up modal state
           siSessionId = sessionId;
+          siSessionCapability = null;
           siBrandName = brandName;
           siBrandInfo = data.brand || null;
 
-          // Update modal header
-          siModalTitle.textContent = data.brand?.name || brandName;
-          siModalTagline.textContent = data.brand?.tagline || '';
-
-          // Apply brand color if available
-          if (data.brand?.brand_color) {
-            siModalHeader.style.setProperty('--si-brand-color', data.brand.brand_color);
-          }
-
-          // Update icon
-          if (data.brand?.logo_url) {
-            siModalIconEmoji.innerHTML = `<img src="${data.brand.logo_url}" alt="${data.brand.name}" style="width:100%;height:100%;object-fit:contain;border-radius:inherit;">`;
-          } else {
-            siModalIconEmoji.textContent = (brandName || 'B').charAt(0).toUpperCase();
-          }
+          window.siBranding.renderHeader(siBrandHeaderElements, data.brand, brandName);
 
           // Clear and populate messages
           siModalMessages.innerHTML = '';
@@ -5235,11 +5299,11 @@
       // Open SI modal with brand info and initial response
       async function siOpenModal(sessionData) {
         siSessionId = sessionData.session_id;
+        siSessionCapability = sessionData.anonymous_access_token || null;
         siBrandName = sessionData.brand_name;
 
-        // Update modal header
-        siModalTitle.textContent = siBrandName || 'Brand Agent';
-        siModalTagline.textContent = '';
+        // Update modal header and clear any styling left by the previous brand.
+        window.siBranding.renderHeader(siBrandHeaderElements, null, siBrandName);
 
         // Clear previous messages
         siModalMessages.innerHTML = '';
@@ -5254,20 +5318,7 @@
             // Apply brand styling
             if (data.brand) {
               siBrandInfo = data.brand;
-              siModalTitle.textContent = data.brand.name || siBrandName;
-              if (data.brand.tagline) {
-                siModalTagline.textContent = data.brand.tagline;
-              }
-              // Apply brand color if available
-              if (data.brand.brand_color) {
-                siModalHeader.style.setProperty('--si-brand-color', data.brand.brand_color);
-              }
-              // Update icon with logo or first letter
-              if (data.brand.logo_url) {
-                siModalIconEmoji.innerHTML = `<img src="${data.brand.logo_url}" alt="${data.brand.name}" style="width:100%;height:100%;object-fit:contain;border-radius:inherit;">`;
-              } else {
-                siModalIconEmoji.textContent = (data.brand.name || siBrandName || 'B').charAt(0).toUpperCase();
-              }
+              window.siBranding.renderHeader(siBrandHeaderElements, data.brand, siBrandName);
             }
 
             // Load messages from API (includes UI elements and surfaces)
@@ -5322,6 +5373,7 @@
 
         // Reset state
         siSessionId = null;
+        siSessionCapability = null;
         siBrandName = null;
         siBrandInfo = null;
         siIsLoading = false;
@@ -5397,7 +5449,8 @@
               } else if (data.action === 'checkout' || data.action === 'acp_checkout') {
                 siHandleCheckout(data);
               } else if (data.url) {
-                window.open(data.url, '_blank');
+                const safeUrl = safeExternalHttpUrl(data.url);
+                if (safeUrl) window.open(safeUrl, '_blank', 'noopener,noreferrer');
               } else if (data.action) {
                 // Generic action - send to SI agent
                 siSendAction(data.action, data.payload);
@@ -5407,22 +5460,24 @@
           } else if (type === 'link') {
             const link = document.createElement('a');
             link.className = 'si-ui-link';
-            link.href = data.url || '#';
+            link.href = safeExternalHttpUrl(data.url) || '#';
             link.target = '_blank';
+            link.rel = 'noopener noreferrer';
             link.textContent = data.text || data.label || data.url;
             container.appendChild(link);
           } else if (type === 'image') {
             const imageDiv = document.createElement('div');
             imageDiv.className = 'si-image';
+            const imageUrl = safeExternalHttpUrl(data.url || data.image_url);
             imageDiv.innerHTML = `
-              <img src="${escapeHtml(data.url || data.image_url)}" alt="${escapeHtml(data.alt || '')}">
+              ${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(data.alt || '')}">` : ''}
               ${data.caption ? `<div class="si-image-caption">${escapeHtml(data.caption)}</div>` : ''}
             `;
             container.appendChild(imageDiv);
           } else if (type === 'product_card') {
             const card = document.createElement('div');
             card.className = 'si-product-card';
-            const imageUrl = data.image || data.image_url;
+            const imageUrl = safeExternalHttpUrl(data.image || data.image_url);
             const hasAction = data.cta && data.cta.action;
             card.innerHTML = `
               ${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(data.title || '')}" class="si-product-image">` : ''}
@@ -5465,7 +5520,7 @@
             for (const item of items) {
               const itemDiv = document.createElement('div');
               itemDiv.className = 'si-carousel-item';
-              const itemImageUrl = item.image || item.image_url;
+              const itemImageUrl = safeExternalHttpUrl(item.image || item.image_url);
               itemDiv.innerHTML = `
                 ${itemImageUrl ? `<img src="${escapeHtml(itemImageUrl)}" alt="${escapeHtml(item.title || '')}" class="si-carousel-item-image">` : '<div class="si-carousel-item-image"></div>'}
                 <div class="si-carousel-item-content">
@@ -5478,7 +5533,8 @@
                 if (item.action) {
                   siSendAction(item.action, { item });
                 } else if (item.url) {
-                  window.open(item.url, '_blank');
+                  const safeUrl = safeExternalHttpUrl(item.url);
+                  if (safeUrl) window.open(safeUrl, '_blank', 'noopener,noreferrer');
                 } else {
                   // Default: select this item
                   siSendAction('select_item', { item });
@@ -5685,8 +5741,11 @@
       function siRenderA2UILink(props, dataModel, itemContext) {
         const link = document.createElement('a');
         link.className = 'si-ui-link';
-        link.href = siResolveBoundValue(props.url, dataModel, itemContext) || '#';
-        if (props.external !== false) link.target = '_blank';
+        link.href = safeExternalHttpUrl(siResolveBoundValue(props.url, dataModel, itemContext)) || '#';
+        if (props.external !== false) {
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+        }
         link.textContent = siResolveBoundValue(props.label, dataModel, itemContext) || link.href;
         return link;
       }
@@ -5696,7 +5755,7 @@
         container.className = 'si-image';
 
         const img = document.createElement('img');
-        img.src = siResolveBoundValue(props.url, dataModel, itemContext) || '';
+        img.src = safeExternalHttpUrl(siResolveBoundValue(props.url, dataModel, itemContext)) || '';
         img.alt = siResolveBoundValue(props.alt, dataModel, itemContext) || '';
         container.appendChild(img);
 
@@ -5715,7 +5774,7 @@
         const card = document.createElement('div');
         card.className = 'si-product-card';
 
-        const imageUrl = siResolveBoundValue(props.image, dataModel, itemContext);
+        const imageUrl = safeExternalHttpUrl(siResolveBoundValue(props.image, dataModel, itemContext));
         const title = siResolveBoundValue(props.title, dataModel, itemContext);
         const price = siResolveBoundValue(props.price, dataModel, itemContext);
         const description = siResolveBoundValue(props.description, dataModel, itemContext);
@@ -5842,7 +5901,7 @@
 
         const title = siResolveBoundValue(props.title, dataModel, itemContext);
         const subtitle = siResolveBoundValue(props.subtitle, dataModel, itemContext);
-        const image = siResolveBoundValue(props.image, dataModel, itemContext);
+        const image = safeExternalHttpUrl(siResolveBoundValue(props.image, dataModel, itemContext));
 
         card.innerHTML = `
           ${image ? `<img src="${escapeHtml(image)}" alt="${escapeHtml(title || '')}" class="si-product-image">` : ''}
@@ -6029,16 +6088,9 @@
         let hasHandoff = false;
 
         try {
-          // Get auth headers
-          const headers = { 'Content-Type': 'application/json' };
-          const token = localStorage.getItem('jwt');
-          if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-          }
-
-          const response = await fetch(`/api/si/sessions/${siSessionId}/messages/stream`, {
+          const response = await authFetch(`/api/si/sessions/${siSessionId}/messages/stream`, {
             method: 'POST',
-            headers,
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ message })
           });
 
@@ -6280,6 +6332,10 @@
 
       videoCallBtn.addEventListener('click', startVideoCall);
       videoEndBtn.addEventListener('click', endVideoCall);
+
+      if (window.__ENABLE_SI_CHAT_TEST_HOOKS__) {
+        window.__siChatTestHooks = Object.freeze({ openSession: siOpenModal });
+      }
 
       // Initialize
       extractNativeToken(); // Check for native app auth token in URL hash

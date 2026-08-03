@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.4/protocol/get-task-status-request.json",
+  "title": "Get Task Status Request",
+  "description": "Request parameters for the get_task_status AdCP tool. This is a 3.x protocol-namespace alias for the legacy AdCP tasks/get polling surface, not a transport-native MCP/A2A tasks/* method. It retrieves a specific AdCP application-layer async task by ID with optional conversation history and terminal result payload.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/3.1.4/core/version-envelope.json"
+    }
+  ],
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "description": "Unique identifier of the task to retrieve",
+      "x-entity": "task"
+    },
+    "account": {
+      "$ref": "/schemas/3.1.4/core/account-ref.json",
+      "description": "Account scope for the task lookup. Sellers MUST return REFERENCE_NOT_FOUND for a task_id that exists only under a different account or principal. When omitted, the seller MAY use the credential-bound singleton account, but multi-account credentials SHOULD require an explicit account."
+    },
+    "include_history": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include full conversation history for this task (may increase response size)"
+    },
+    "include_result": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include the task's result payload when status is completed. Defaults to false for lightweight status-only polls. When true, sellers MUST include result on the response when status is completed."
+    },
+    "context": {
+      "$ref": "/schemas/3.1.4/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.4/core/ext.json"
+    }
+  },
+  "required": [
+    "task_id"
+  ],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Check task status",
+      "data": {
+        "task_id": "task_456",
+        "account": {
+          "brand": {
+            "domain": "acme-corp.example"
+          },
+          "operator": "acme-corp.example",
+          "sandbox": true
+        }
+      }
+    },
+    {
+      "description": "Get task with full conversation history",
+      "data": {
+        "task_id": "task_123",
+        "include_history": true
+      }
+    },
+    {
+      "description": "Poll for task completion including result payload",
+      "data": {
+        "task_id": "task_456",
+        "include_result": true
+      }
+    }
+  ]
+}

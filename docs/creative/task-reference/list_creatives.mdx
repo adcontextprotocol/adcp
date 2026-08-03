@@ -1,11 +1,11 @@
 ---
 title: list_creatives
-description: "list_creatives browses and filters creatives in an AdCP library by format, status, concept, and tags with cursor-based pagination."
+description: "list_creatives browses and filters creatives in an AdCP library by asset type, format, status, concept, and tags with cursor-based pagination."
 "og:title": "AdCP — list_creatives"
 ---
 
 
-Browse and filter creatives in a creative library. Supports filtering by format, status, concept, tags, date range, and dynamic variables, with pagination and optional field enrichment.
+Browse and filter creatives in a creative library. Supports filtering by asset type, format, status, concept, tags, date range, and dynamic variables, with pagination and optional field enrichment.
 
 Implemented by any agent that hosts a creative library — creative agents (ad servers, creative management platforms) and sales agents that manage creatives.
 
@@ -14,7 +14,7 @@ Implemented by any agent that hosts a creative library — creative agents (ad s
 ## Overview
 
 **Key features:**
-- Filter by format, status, tags, dates, assignments, concepts, and variables
+- Filter by asset type, format, status, tags, dates, assignments, concepts, and variables
 - Sort by creation date, update date, name, status, or assignment count
 - Cursor-based pagination for large libraries
 - Optionally include assignments, delivery snapshots, items, and dynamic creative optimization (DCO) variables
@@ -48,8 +48,8 @@ Implemented by any agent that hosts a creative library — creative agents (ad s
 | `include_purged` | boolean | No | Include soft-purged creative tombstones (default: false). See [Purged tombstones](#purged-tombstones). |
 | `include_webhook_activity` | boolean | No | Include recent webhook fires per creative (default: false). See [Webhook activity](#webhook-activity). |
 | `webhook_activity_limit` | integer | No | Maximum `webhook_activity[]` records per creative when `include_webhook_activity: true` (default: 50, range 1–200). |
-| `account` | [AccountRef](/docs/building/integration/accounts-and-agents#account-references) | No | Account reference for pricing. When provided with `include_pricing`, the agent returns `pricing_options` from this account's rate card on each creative. |
-| `fields` | array | No | Specific fields to return (omit for all fields). Includes `"pricing_options"` for sparse selection. |
+| `account` | [AccountRef](/docs/building/by-layer/L2/accounts-and-agents#account-references) | No | Account reference for pricing. When provided with `include_pricing`, the agent returns `pricing_options` from this account's rate card on each creative. |
+| `fields` | array | No | Specific fields to return (omit for all fields). Includes `"assets"` for local fallback filtering and `"pricing_options"` for sparse selection. |
 
 ## Filtering options
 
@@ -57,8 +57,9 @@ The `filters` object supports these optional, composable filters:
 
 | Filter | Type | Description |
 |--------|------|-------------|
-| `accounts` | [AccountRef](/docs/building/integration/accounts-and-agents#account-references)[] | Filter by owning accounts |
+| `accounts` | [AccountRef](/docs/building/by-layer/L2/accounts-and-agents#account-references)[] | Filter by owning accounts |
 | `format_ids` | FormatID[] | Filter by structured format IDs |
+| `asset_types` | AssetContentType[] | Filter by asset types directly assigned to top-level creative asset slots; values within the array use OR logic |
 | `statuses` | [CreativeStatus](/docs/creative/specification#creative-status-lifecycle)[] | Filter by approval status |
 | `tags` | string[] | Filter by tags (all must match) |
 | `tags_any` | string[] | Filter by tags (any must match) |
@@ -74,6 +75,30 @@ The `filters` object supports these optional, composable filters:
 | `has_served` | boolean | Filter for creatives that have served at least one impression * |
 
 \* Assignment-related filters are specific to sales agents. Standalone creative agents ignore these.
+
+### Asset-type matching
+
+`asset_types` matches a creative when at least one direct object value in the top-level `creative.assets` map has an exact `asset_type` value in the requested set. Multiple requested values use **OR logic**. Array-valued slots are not inspected, and matching does not recurse into nested asset fields such as `cards[].media`; broader traversal is deferred.
+
+All active filter fields compose with **AND logic**. For example, the following request returns published-post creatives that also match the requested legacy format identity; a creative satisfying only one condition is excluded:
+
+```json
+{
+  "filters": {
+    "asset_types": ["published_post"],
+    "format_ids": [
+      {
+        "agent_url": "https://creative.example.com",
+        "id": "existing_post"
+      }
+    ]
+  }
+}
+```
+
+Use `asset_types: ["published_post"]` to find existing-published-post reference creatives across sellers without enumerating publisher-specific format options, or `asset_types: ["zip"]` to find HTML5 bundle archives. Values such as `url`, `text`, and `image` are common companion assets, so they often produce broad result sets when used alone.
+
+Agents that do not implement `asset_types` MUST ignore that field and apply all other active filters. They must not reject the request solely because the filter is unsupported. Because unsupported agents deliberately over-return, buyers that require an exact filtered result MUST retain a local fallback: request `assets` (or omit sparse `fields`), traverse every page until `pagination.has_more` is false, and locally inspect the returned top-level asset objects. When a seller returns `query_summary.filters_applied`, buyers can verify that it includes `asset_types`; absence means the local fallback is required.
 
 <Note>
 **Archived creatives are excluded by default.** To include archived creatives in results, explicitly include `"archived"` in the `statuses` array. Suspended creatives are not archived; include `"suspended"` when you specifically want recoverably offline creatives such as published-post references with expired authorization.

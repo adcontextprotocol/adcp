@@ -81,6 +81,14 @@ describe('send_invoice / confirm_send_invoice tools', () => {
 });
 
 describe('send_payment_request admin tool', () => {
+  it('accepts company or individual customer types without making the field required', () => {
+    const schema = getToolSchema('send_payment_request', ADMIN_TOOLS);
+    const customerType = schema.properties.customer_type as { enum?: string[] };
+
+    expect(customerType.enum).toEqual(['company', 'individual']);
+    expect(schema.required).not.toContain('customer_type');
+  });
+
   it('exposes only the safe action enum (no direct-issue actions)', () => {
     const schema = getToolSchema('send_payment_request', ADMIN_TOOLS);
     const action = schema.properties.action as { enum?: string[] };
@@ -96,5 +104,15 @@ describe('send_payment_request admin tool', () => {
   it('does not accept the legacy billing_address parameter', () => {
     const schema = getToolSchema('send_payment_request', ADMIN_TOOLS);
     expect(schema.properties).not.toHaveProperty('billing_address');
+  });
+});
+
+describe('resend_invite admin tool', () => {
+  it('accepts an optional customer type consistency check', () => {
+    const schema = getToolSchema('resend_invite', ADMIN_TOOLS);
+    const customerType = schema.properties.customer_type as { enum?: string[] };
+
+    expect(customerType.enum).toEqual(['company', 'individual']);
+    expect(schema.required).not.toContain('customer_type');
   });
 });

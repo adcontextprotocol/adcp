@@ -65,7 +65,7 @@ Every signal request involves two roles:
   same response as "agent does not exist." Distinguishing "exists but unauthorized"
   from "does not exist" would enable cross-tenant enumeration of private agents.
   See the uniform-response MUST in
-  [error-handling.mdx](/docs/building/implementation/error-handling) for the full
+  [error-handling.mdx](/docs/building/by-layer/L3/error-handling) for the full
   set of observable channels that MUST match on both paths.
 - Signal agents MUST NOT expose private signals across accounts
 
@@ -82,6 +82,8 @@ Every signal request involves two roles:
 ### Governance metadata
 
 Signal definitions MAY include `restricted_attributes` and `policy_categories` fields to enable structural governance matching. Data providers SHOULD declare these so governance agents can deterministically evaluate compliance rather than inferring sensitivity from signal names.
+
+Age-defined signals MAY include `demographic_predicate` with canonical inclusive age bounds and explicit unknown-age membership. This field is authoritative for demographic compilation; names, descriptions, and taxonomy labels are not. Any signal carrying an age predicate MUST also declare `restricted_attributes` containing `age`.
 
 - **`restricted_attributes`**: Array of GDPR Article 9 special category values this signal touches. Governance agents SHOULD prefer declared attributes over semantic inference.
 - **`policy_categories`**: Array of policy category IDs this signal is sensitive for. Governance agents match these against a plan's `policy_categories` to flag sensitive data usage.
@@ -164,9 +166,9 @@ Activate a signal for use on a decisioning platform. `activate_signal` is requir
 
 ## Error Handling
 
-Signal agents MUST return errors using the [standard AdCP error schema](/docs/building/implementation/error-handling).
+Signal agents MUST return errors using the [standard AdCP error schema](/docs/building/by-layer/L3/error-handling).
 
-Signal agents MUST use Signals Protocol error codes as defined in the [Error Handling Reference](/docs/building/implementation/error-handling).
+Signal agents MUST use Signals Protocol error codes as defined in the [Error Handling Reference](/docs/building/by-layer/L3/error-handling).
 
 ## Security Considerations
 

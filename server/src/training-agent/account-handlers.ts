@@ -12,7 +12,11 @@ import { getAgentUrl } from './config.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import { getCommercialRelationship } from './commercial-relationships.js';
 import { isPerAccountBillingRestricted } from './account-billing-relationships.js';
-import { assertPublicTarget, SsrfRefusedError } from './webhook-fetch.js';
+import {
+  assertPublicTarget,
+  isWebhookTestOrDevelopment,
+  SsrfRefusedError,
+} from './webhook-fetch.js';
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -323,6 +327,15 @@ async function normalizeNotificationConfigs(input: SyncAccountInput): Promise<No
       return { error: validationFailure(input, `${field}.subscriber_id`, 'subscriber_id must be unique within an account') };
     }
     seen.add(config.subscriber_id);
+    if (config.active !== false) {
+      return {
+        error: validationFailure(
+          input,
+          `${field}.active`,
+          'active must be false until the training sandbox implements a signed proof-of-control challenge for the webhook target',
+        ),
+      };
+    }
     if (!config.url) {
       return { error: validationFailure(input, `${field}.url`, 'url is required') };
     }
@@ -333,7 +346,7 @@ async function normalizeNotificationConfigs(input: SyncAccountInput): Promise<No
       return { error: validationFailure(input, `${field}.url`, 'url must be a valid URL') };
     }
     const isLocalWebhook = ['localhost', '127.0.0.1', '::1'].includes(parsed.hostname);
-    if (parsed.protocol !== 'https:' && !(process.env.NODE_ENV !== 'production' && isLocalWebhook)) {
+    if (parsed.protocol !== 'https:' && !(isWebhookTestOrDevelopment(process.env.NODE_ENV) && isLocalWebhook)) {
       return { error: validationFailure(input, `${field}.url`, 'url must use HTTPS') };
     }
     if (parsed.username || parsed.password) {
@@ -392,7 +405,7 @@ async function normalizeNotificationConfigs(input: SyncAccountInput): Promise<No
             credentials: config.authentication.credentials,
           }
         : undefined,
-      active: config.active !== false,
+      active: false,
     });
   }
   return out;
@@ -690,9 +703,13 @@ export const ACCOUNT_TOOLS = [
                       },
                       required: ['schemes', 'credentials'],
                     },
-                    active: { type: 'boolean' },
+                    active: {
+                      type: 'boolean',
+                      enum: [false],
+                      description: 'Must be false in the training sandbox until a signed proof-of-control challenge can activate the webhook target.',
+                    },
                   },
-                  required: ['subscriber_id', 'url', 'event_types'],
+                  required: ['subscriber_id', 'url', 'event_types', 'active'],
                 },
               },
             },

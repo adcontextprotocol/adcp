@@ -541,7 +541,9 @@ async function loadJourneyContext(workosUserId: string): Promise<JourneyContext 
       query<{ name: string }>(
         `SELECT wg.name FROM working_groups wg
          JOIN working_group_memberships wgm ON wgm.working_group_id = wg.id
-         WHERE wgm.workos_user_id = $1 AND wgm.status = 'active'`,
+         WHERE wgm.workos_user_id = $1
+           AND wgm.status = 'active'
+           AND wg.status = 'active'`,
         [workosUserId]
       ),
       query<{ name: string }>(
@@ -566,7 +568,9 @@ async function loadJourneyContext(workosUserId: string): Promise<JourneyContext 
            (SELECT string_agg(DISTINCT wg.name, ', ')
             FROM working_group_memberships wgm
             JOIN working_groups wg ON wg.id = wgm.working_group_id
-            WHERE wgm.workos_user_id = om2.workos_user_id AND wgm.status = 'active') as groups,
+            WHERE wgm.workos_user_id = om2.workos_user_id
+              AND wgm.status = 'active'
+              AND wg.status = 'active') as groups,
            (SELECT COUNT(*) FROM perspectives p
             WHERE (p.author_user_id = om2.workos_user_id OR p.proposer_user_id = om2.workos_user_id)
               AND p.status = 'published') as contribution_count

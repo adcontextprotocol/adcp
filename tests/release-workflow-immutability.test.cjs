@@ -7,6 +7,13 @@ const assert = require('assert');
 const repoRoot = path.join(__dirname, '..');
 const workflowPath = path.join(repoRoot, '.github/workflows/release.yml');
 const workflow = fs.readFileSync(workflowPath, 'utf8');
+const forwardMergeWorkflows = ['3.0', '3.1'].map((line) => ({
+  line,
+  source: fs.readFileSync(
+    path.join(repoRoot, `.github/workflows/forward-merge-${line}.yml`),
+    'utf8'
+  ),
+}));
 
 function extractStep(name) {
   const start = workflow.indexOf(`- name: ${name}`);
@@ -51,4 +58,34 @@ assert(
   'Release upload must use asset name existence, not digest presence, before deciding whether to upload.'
 );
 
-console.log('Release workflow immutability checks passed.');
+for (const { line, source } of forwardMergeWorkflows) {
+  const head = `forward-merge/${line}.x`;
+  const pushIndex = source.indexOf(`git push --force origin "HEAD:refs/heads/${head}"`);
+  // The conflict-recovery instructions also mention `gh pr create`; the last
+  // occurrence is the executable PR-creation step after the branch push.
+  const createIndex = source.lastIndexOf('gh pr create');
+
+  assert.strictEqual(
+    source.includes('peter-evans/create-pull-request'),
+    false,
+    `${line}.x forward merge must not pass its pushed merge commit to an action that rewrites the branch.`
+  );
+  assert.notStrictEqual(pushIndex, -1, `${line}.x forward merge must push the reviewed merge ref.`);
+  assert.notStrictEqual(createIndex, -1, `${line}.x forward merge must create a PR for the pushed ref.`);
+  assert(
+    pushIndex < createIndex,
+    `${line}.x forward merge must push its merge commit before creating the PR.`
+  );
+  assert(
+    source.includes('GH_TOKEN: ${{ steps.app-token.outputs.token }}'),
+    `${line}.x forward merge must create the PR with the release App token.`
+  );
+  assert(
+    source.includes('--state open') &&
+      source.includes('--base main') &&
+      source.includes('--head "$PR_HEAD"'),
+    `${line}.x forward merge must reuse an existing open PR for the maintenance head.`
+  );
+}
+
+console.log('Release and forward-merge workflow checks passed.');

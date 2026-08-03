@@ -90,7 +90,7 @@ describe('org auto-provisioning toggles', () => {
     await seedSubsidiary(pool, SUB_DOMAIN_A, TEST_DOMAIN, 'Subsidiary A');
     await seedSubsidiary(pool, SUB_DOMAIN_B, TEST_DOMAIN, 'Subsidiary B');
     workosMocks.listOrganizationMemberships.mockResolvedValue({
-      data: [{ role: { slug: 'owner' }, status: 'active' }],
+      data: [{ organizationId: TEST_ORG, role: { slug: 'owner' }, status: 'active' }],
     });
 
     const res = await request(app).get(`/api/organizations/${TEST_ORG}/domains`);
@@ -121,7 +121,7 @@ describe('org auto-provisioning toggles', () => {
       ['parent-of-apt.test', JSON.stringify({ classification: { confidence: 'high' } })]
     );
     workosMocks.listOrganizationMemberships.mockResolvedValue({
-      data: [{ role: { slug: 'owner' }, status: 'active' }],
+      data: [{ organizationId: TEST_ORG, role: { slug: 'owner' }, status: 'active' }],
     });
 
     const res = await request(app).get(`/api/organizations/${TEST_ORG}/domains`);
@@ -151,7 +151,7 @@ describe('org auto-provisioning toggles', () => {
       [TEST_DOMAIN, JSON.stringify({ classification: { confidence: 'high' } })]
     );
     workosMocks.listOrganizationMemberships.mockResolvedValue({
-      data: [{ role: { slug: 'owner' }, status: 'active' }],
+      data: [{ organizationId: TEST_ORG, role: { slug: 'owner' }, status: 'active' }],
     });
 
     const res = await request(app).get(`/api/organizations/${TEST_ORG}/domains`);
@@ -174,7 +174,7 @@ describe('org auto-provisioning toggles', () => {
       [TEST_DOMAIN, JSON.stringify({ classification: { confidence: 'high' } })]
     );
     workosMocks.listOrganizationMemberships.mockResolvedValue({
-      data: [{ role: { slug: 'owner' }, status: 'active' }],
+      data: [{ organizationId: TEST_ORG, role: { slug: 'owner' }, status: 'active' }],
     });
 
     const res = await request(app).get(`/api/organizations/${TEST_ORG}/domains`);
@@ -197,7 +197,7 @@ describe('org auto-provisioning toggles', () => {
       [TEST_DOMAIN, JSON.stringify({ classification: { confidence: 'high' } })]
     );
     workosMocks.listOrganizationMemberships.mockResolvedValue({
-      data: [{ role: { slug: 'owner' }, status: 'active' }],
+      data: [{ organizationId: TEST_ORG, role: { slug: 'owner' }, status: 'active' }],
     });
 
     const res = await request(app).get(`/api/organizations/${TEST_ORG}/domains`);
@@ -225,7 +225,7 @@ describe('org auto-provisioning toggles', () => {
       [JSON.stringify({ classification: { confidence: 'high' } })]
     );
     workosMocks.listOrganizationMemberships.mockResolvedValue({
-      data: [{ role: { slug: 'owner' }, status: 'active' }],
+      data: [{ organizationId: TEST_ORG, role: { slug: 'owner' }, status: 'active' }],
     });
 
     const res = await request(app).get(`/api/organizations/${TEST_ORG}/domains`);
@@ -240,7 +240,7 @@ describe('org auto-provisioning toggles', () => {
     await seedTestOrg(pool);
     // No brands row for TEST_DOMAIN.
     workosMocks.listOrganizationMemberships.mockResolvedValue({
-      data: [{ role: { slug: 'owner' }, status: 'active' }],
+      data: [{ organizationId: TEST_ORG, role: { slug: 'owner' }, status: 'active' }],
     });
 
     const res = await request(app).get(`/api/organizations/${TEST_ORG}/domains`);
@@ -256,7 +256,7 @@ describe('org auto-provisioning toggles', () => {
     const stale = new Date(Date.now() - 200 * 24 * 60 * 60 * 1000);
     await seedSubsidiary(pool, SUB_DOMAIN_B, TEST_DOMAIN, 'Stale Sub', { last_validated: stale });
     workosMocks.listOrganizationMemberships.mockResolvedValue({
-      data: [{ role: { slug: 'owner' }, status: 'active' }],
+      data: [{ organizationId: TEST_ORG, role: { slug: 'owner' }, status: 'active' }],
     });
 
     const res = await request(app).get(`/api/organizations/${TEST_ORG}/domains`);
@@ -266,7 +266,7 @@ describe('org auto-provisioning toggles', () => {
   it('owner PATCH /settings flips auto_provision_brand_hierarchy_children, trigger sets enabled_at', async () => {
     await seedTestOrg(pool, { hierarchyOptIn: false });
     workosMocks.listOrganizationMemberships.mockResolvedValue({
-      data: [{ role: { slug: 'owner' }, status: 'active' }],
+      data: [{ organizationId: TEST_ORG, role: { slug: 'owner' }, status: 'active' }],
     });
 
     const res = await request(app)
@@ -295,7 +295,7 @@ describe('org auto-provisioning toggles', () => {
     currentMockUser = ADMIN_USER;
     currentMockEmail = 'admin@apt-co.test';
     workosMocks.listOrganizationMemberships.mockResolvedValue({
-      data: [{ role: { slug: 'admin' }, status: 'active' }],
+      data: [{ organizationId: TEST_ORG, role: { slug: 'admin' }, status: 'active' }],
     });
 
     const res = await request(app)
@@ -320,7 +320,7 @@ describe('org auto-provisioning toggles', () => {
   it('flipping the flag back to false sets disabled_at and preserves enabled_at', async () => {
     await seedTestOrg(pool, { hierarchyOptIn: true });
     workosMocks.listOrganizationMemberships.mockResolvedValue({
-      data: [{ role: { slug: 'owner' }, status: 'active' }],
+      data: [{ organizationId: TEST_ORG, role: { slug: 'owner' }, status: 'active' }],
     });
 
     // Confirm enabled_at is set on the seeded row.
@@ -357,7 +357,7 @@ describe('org auto-provisioning toggles', () => {
   it('enable → disable → re-enable cycle preserves full timestamp history', async () => {
     await seedTestOrg(pool, { hierarchyOptIn: false });
     workosMocks.listOrganizationMemberships.mockResolvedValue({
-      data: [{ role: { slug: 'owner' }, status: 'active' }],
+      data: [{ organizationId: TEST_ORG, role: { slug: 'owner' }, status: 'active' }],
     });
 
     // Enable.
@@ -420,7 +420,7 @@ describe('org auto-provisioning toggles', () => {
   it('member POST /brand-classification-report records audit row, validates kind', async () => {
     await seedTestOrg(pool);
     workosMocks.listOrganizationMemberships.mockResolvedValue({
-      data: [{ role: { slug: 'member' }, status: 'active' }],
+      data: [{ organizationId: TEST_ORG, role: { slug: 'member' }, status: 'active' }],
     });
 
     // Happy path: parent kind, valid domain
@@ -465,7 +465,7 @@ describe('org auto-provisioning toggles', () => {
   it('rejects non-boolean auto_provision_brand_hierarchy_children', async () => {
     await seedTestOrg(pool);
     workosMocks.listOrganizationMemberships.mockResolvedValue({
-      data: [{ role: { slug: 'owner' }, status: 'active' }],
+      data: [{ organizationId: TEST_ORG, role: { slug: 'owner' }, status: 'active' }],
     });
 
     const res = await request(app)

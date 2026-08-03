@@ -270,6 +270,10 @@
                   "$ref": "/schemas/core/targeting.json",
                   "description": "Targeting overlay applied to this package, echoed from the most recent create_media_buy or update_media_buy. Sellers SHOULD echo any persisted targeting so buyers can verify what was stored without replaying their own request. Sellers claiming the property-lists or collection-lists specialisms MUST include, within this targeting_overlay, the PropertyListReference / CollectionListReference they persisted."
                 },
+                "demographic_targeting_resolution": {
+                  "$ref": "/schemas/core/demographic-targeting-resolution.json",
+                  "description": "Lossless requested-versus-applied demographic readback. Sellers MUST include this whenever demographic targeting was requested or applied. targeting_overlay.demographics preserves the buyer predicate and determination constraints; this object's applied predicate and applied_bases report the effective booked state."
+                },
                 "start_time": {
                   "type": "string",
                   "format": "date-time",

@@ -1,0 +1,435 @@
+---
+title: list_creatives
+description: "list_creatives browses and filters creatives in an AdCP library by format, status, concept, and tags with cursor-based pagination."
+"og:title": "AdCP — list_creatives"
+---
+
+
+Browse and filter creatives in a creative library. Supports filtering by format, status, concept, tags, date range, and dynamic variables, with pagination and optional field enrichment.
+
+Implemented by any agent that hosts a creative library — creative agents (ad servers, creative management platforms) and sales agents that manage creatives.
+
+**Response time**: ~1 second (simple database lookup)
+
+## Overview
+
+**Key features:**
+- Filter by format, status, tags, dates, assignments, concepts, and variables
+- Sort by creation date, update date, name, status, or assignment count
+- Cursor-based pagination for large libraries
+- Optionally include assignments, delivery snapshots, items, and dynamic creative optimization (DCO) variables
+- Return only specific fields to reduce response size
+- Filter by creative concept (groups of related creatives across sizes/formats)
+- Find DCO creatives and inspect their dynamic content slots
+
+## Request parameters
+
+{/* Using latest because these schemas are not yet released in any version.
+     Update to correct version alias after the next release. */}
+**Schema**: [`creative/list-creatives-request.json`](https://adcontextprotocol.org/schemas/3.1.2/creative/list-creatives-request.json)
+
+### Core parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `filters` | object | No | Filter criteria — see [filtering options](#filtering-options) below |
+| `sort` | object | No | Sorting parameters |
+| `pagination` | object | No | Pagination controls |
+
+### Data inclusion options
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `include_assignments` | boolean | No | Include package assignment information (default: true) |
+| `include_snapshot` | boolean | No | Include a lightweight delivery snapshot — lifetime impressions and last-served date (default: false). For detailed analytics, use [`get_creative_delivery`](/dist/docs/3.1.2/creative/task-reference/get_creative_delivery). |
+| `include_items` | boolean | No | Include items for multi-asset formats like carousels and native ads (default: false) |
+| `include_variables` | boolean | No | Include dynamic content variable definitions (default: false) |
+| `include_pricing` | boolean | No | Include `pricing_options` on each creative (default: false). Requires `account`. |
+| `include_purged` | boolean | No | Include soft-purged creative tombstones (default: false). See [Purged tombstones](#purged-tombstones). |
+| `include_webhook_activity` | boolean | No | Include recent webhook fires per creative (default: false). See [Webhook activity](#webhook-activity). |
+| `webhook_activity_limit` | integer | No | Maximum `webhook_activity[]` records per creative when `include_webhook_activity: true` (default: 50, range 1–200). |
+| `account` | [AccountRef](/dist/docs/3.1.2/building/by-layer/L2/accounts-and-agents#account-references) | No | Account reference for pricing. When provided with `include_pricing`, the agent returns `pricing_options` from this account's rate card on each creative. |
+| `fields` | array | No | Specific fields to return (omit for all fields). Includes `"pricing_options"` for sparse selection. |
+
+## Filtering options
+
+The `filters` object supports these optional, composable filters:
+
+| Filter | Type | Description |
+|--------|------|-------------|
+| `accounts` | [AccountRef](/dist/docs/3.1.2/building/by-layer/L2/accounts-and-agents#account-references)[] | Filter by owning accounts |
+| `format_ids` | FormatID[] | Filter by structured format IDs |
+| `statuses` | [CreativeStatus](/dist/docs/3.1.2/creative/specification#creative-status-lifecycle)[] | Filter by approval status |
+| `tags` | string[] | Filter by tags (all must match) |
+| `tags_any` | string[] | Filter by tags (any must match) |
+| `name_contains` | string | Case-insensitive name search |
+| `creative_ids` | string[] | Filter by specific creative IDs (max 100) |
+| `concept_ids` | string[] | Filter by concept groupings |
+| `has_variables` | boolean | Filter for DCO creatives with dynamic variables |
+| `created_after` / `created_before` | date-time | Filter by creation date range |
+| `updated_after` / `updated_before` | date-time | Filter by last-modified date range |
+| `assigned_to_packages` | string[] | Filter by package assignments * |
+| `media_buy_ids` | string[] | Filter by media buy assignments * |
+| `unassigned` | boolean | Filter for unassigned creatives * |
+| `has_served` | boolean | Filter for creatives that have served at least one impression * |
+
+\* Assignment-related filters are specific to sales agents. Standalone creative agents ignore these.
+
+<Note>
+**Archived creatives are excluded by default.** To include archived creatives in results, explicitly include `"archived"` in the `statuses` array. Suspended creatives are not archived; include `"suspended"` when you specifically want recoverably offline creatives such as published-post references with expired authorization.
+</Note>
+
+<Note>
+For published-post reference products, `list_creatives` is limited to the downstream publisher identities the seller is authorized to inspect. If a product requires a second platform connection such as `publisher_identity` and it is missing, the seller should return `AUTHORIZATION_REQUIRED` with `error.details.missing_connections[]`. It should not present `list_creatives` as global platform post search.
+</Note>
+
+
+## Sorting options
+
+Sort results by various fields with ascending or descending order:
+
+```json
+{
+  "sort": {
+    "field": "created_date",
+    "direction": "desc"
+  }
+}
+```
+
+**Available sort fields:**
+- `created_date` - When the creative was created (default)
+- `updated_date` - When creative was last modified
+- `name` - Creative name (alphabetical)
+- `status` - Approval status
+- `assignment_count` - Number of package assignments
+
+## Pagination
+
+Control result set size with cursor-based pagination:
+
+```json
+{
+  "pagination": {
+    "max_results": 50,
+    "cursor": "eyJjcmVhdGVkX2RhdGUiOi4uLn0"
+  }
+}
+```
+
+## Response format
+
+{/* Using latest because these schemas are not yet released in any version.
+     Update to correct version alias after the next release. */}
+**Schema**: [`creative/list-creatives-response.json`](https://adcontextprotocol.org/schemas/3.1.2/creative/list-creatives-response.json)
+
+The response provides creative data with optional enrichment:
+
+```json
+{
+  "query_summary": {
+    "total_matching": 1,
+    "returned": 1,
+    "filters_applied": ["status=approved"]
+  },
+  "pagination": {
+    "has_more": false,
+    "total_count": 1
+  },
+  "creatives": [
+    {
+      "creative_id": "ft_88201",
+      "name": "Holiday Sale - Medium Rectangle",
+      "format_id": {
+        "agent_url": "https://creative.example.com",
+        "id": "display_static",
+        "width": 300,
+        "height": 250
+      },
+      "status": "approved",
+      "created_date": "2026-01-15T10:30:00Z",
+      "updated_date": "2026-01-15T14:20:00Z",
+      "concept_id": "concept_holiday_2026",
+      "concept_name": "Holiday 2026 Campaign",
+      "variables": [
+        {
+          "variable_id": "headline_text",
+          "name": "Headline",
+          "variable_type": "text",
+          "default_value": "Holiday Sale - 50% Off",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "format_summary": {
+    "display_static_300x250": 1
+  },
+  "status_summary": {
+    "approved": 1
+  }
+}
+```
+
+### Per-creative fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `creative_id` | string | Unique creative identifier |
+| `name` | string | Human-readable name |
+| `format_id` | object | Structured format reference |
+| `status` | string | Approval status |
+| `created_date` | string | Creation timestamp |
+| `updated_date` | string | Last modified timestamp |
+| `assets` | object | Creative assets (images, text, URLs, etc.) |
+| `tags` | string[] | Tags for categorization |
+| `concept_id` | string | Creative concept ID |
+| `concept_name` | string | Human-readable concept name |
+| `variables` | array | DCO variable definitions (when `include_variables=true`) |
+| `assignments` | object | Package assignments (when `include_assignments=true`) |
+| `snapshot` | object | Delivery snapshot (when `include_snapshot=true`) |
+| `snapshot_unavailable_reason` | string | Why snapshot is missing — `SNAPSHOT_UNSUPPORTED`, `SNAPSHOT_TEMPORARILY_UNAVAILABLE`, or `SNAPSHOT_PERMISSION_DENIED` |
+| `items` | array | Items for multi-asset formats (when `include_items=true`) |
+| `pricing_options` | [VendorPricingOption](/dist/docs/3.1.2/creative/specification#pricing)[] | Pricing options for this creative (when `include_pricing=true` and `account` provided). Vendors may offer multiple options (volume tiers, context-specific rates, different models per product line). Same pattern as `get_signals` and `list_content_standards`. |
+
+### Pricing
+
+When `include_pricing=true` and `account` is provided, each creative includes `pricing_options` from the account's rate card:
+
+```json
+{
+  "pricing_options": [
+    {
+      "pricing_option_id": "po_video_cpm",
+      "model": "cpm",
+      "cpm": 0.50,
+      "currency": "USD"
+    }
+  ]
+}
+```
+
+The buyer passes the applied `pricing_option_id` (from the `build_creative` response) in `report_usage` for billing verification. Vendors may offer multiple options — volume/commitment tiers, context-specific rates (premium vs. standard placements), or entirely different pricing models for different product lines. This is the same pattern used by [signals](/dist/docs/3.1.2/signals/tasks/get_signals) and [content standards](/dist/docs/3.1.2/governance/content-standards/index).
+
+### Delivery snapshot
+
+When `include_snapshot=true`, each creative includes a lightweight delivery snapshot for operational questions like "is this creative active?" or "when did it last serve?" This is not analytics — for detailed performance data, use [`get_creative_delivery`](/dist/docs/3.1.2/creative/task-reference/get_creative_delivery).
+
+```json
+{
+  "snapshot": {
+    "as_of": "2026-03-08T14:30:00Z",
+    "staleness_seconds": 3600,
+    "impressions": 145200,
+    "last_served": "2026-03-07T22:15:00Z"
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `as_of` | date-time | Yes | When this snapshot was captured |
+| `staleness_seconds` | integer | Yes | Maximum age of data in seconds |
+| `impressions` | integer | Yes | Lifetime impressions (not scoped to any date range) |
+| `last_served` | date-time | No | Last time this creative served. Absent when it has never served. |
+
+### Purged tombstones
+
+When a creative is destroyed via [`creative.purged`](https://adcontextprotocol.org/schemas/3.1.2/creative/creative-purged-webhook.json) with `purge_kind: soft`, the seller retains a tombstone for 30 days from the purge timestamp. The tombstone surfaces on `list_creatives` only when the request sets `include_purged: true`:
+
+```json
+{
+  "creative_id": "ft_87100",
+  "name": "Holiday Sale - Leaderboard (purged)",
+  "status": "approved",
+  "purge": {
+    "kind": "soft",
+    "at": "2026-05-18T02:59:48Z",
+    "reason_code": "retention_expired"
+  }
+}
+```
+
+The `status` field on a tombstone is **frozen at its pre-purge value** (in the example above, `"approved"` is what the creative was right before purge — not a current claim). Buyers MUST treat the creative as gone: assignments, serving operations, and delivery reads no longer apply. The presence of the `purge` block is the unambiguous signal.
+
+Hard-purged creatives (`purge_kind: hard`, used for legal erasure under GDPR Article 17 / CCPA / equivalent) retain no tombstone; the [`creative.purged`](https://adcontextprotocol.org/schemas/3.1.2/creative/creative-purged-webhook.json) webhook is the only signal. See [snapshot-and-log § Rule 4 carve-out](/dist/docs/3.1.2/protocol/snapshot-and-log#account-level-adopters-3-1) for the rationale.
+
+### Webhook activity
+
+When `include_webhook_activity: true`, each returned creative carries a `webhook_activity[]` array of the most recent fires scoped to that creative — `creative.status_changed` and `creative.purged` deliveries. This is the buyer's debug surface for "did the publisher fire? did my endpoint receive it? was the retry trail clean?" — the same shape and contract as `webhook_activity[]` on `get_media_buys`. See [Webhook activity log pattern](/dist/docs/3.1.2/protocol/snapshot-and-log#webhook-activity-log-pattern) for the full normative contract (retention, three-state presence, request-field conventions).
+
+**To subscribe** to these fires, register a [`notification_configs[]`](/dist/docs/3.1.2/accounts/tasks/sync_accounts#account-level-webhook-subscriptions) entry on the account via `sync_accounts`. The seller fires per-subscriber against each entry whose `event_types[]` includes the type. `webhook_activity[]` on this read is the buyer-side debug log of what actually fired.
+
+Three-state presence applies:
+
+- **Field omitted** — seller does not surface webhook activity on this read.
+- **`[]`** — seller surfaces the field but no fires fall in the retention window for this creative.
+- **Non-empty** — actual records, most recent first, capped at `webhook_activity_limit` (max 200).
+
+Correlate to your endpoint logs by `idempotency_key`. Each record's `notification_type` discriminates the fire kind:
+
+```json
+{
+  "webhook_activity": [
+    {
+      "idempotency_key": "whk_01HW9D2T3VXQ5M7K9N1P3R5S7U",
+      "subscriber_id": "buyer-primary",
+      "fired_at": "2026-05-18T14:20:00Z",
+      "completed_at": "2026-05-18T14:20:00Z",
+      "notification_type": "creative.status_changed",
+      "attempt": 1,
+      "status": "success",
+      "url": "https://buyer.example/webhooks/adcp/creative",
+      "http_status_code": 200,
+      "response_time_ms": 142,
+      "payload_size_bytes": 612,
+      "error_message": null
+    }
+  ]
+}
+```
+
+Buyers diagnose "no fires arrived" by combining: (a) subscriber registration state on `list_accounts.accounts[].notification_configs[]` — is the right URL active with the right `event_types[]`? — and (b) seller capability declaration via `get_adcp_capabilities` — does the seller support the event types I subscribed to? Field omission on `webhook_activity` alone does not distinguish "seller doesn't surface the log" from "no fires occurred."
+
+### Buyer handler (end-to-end)
+
+A buyer's webhook handler for `creative.status_changed` correlates each fire with library state via `creative_id`, dedupes on `idempotency_key`, and re-reads `list_creatives` for the authoritative snapshot (per [snapshot-and-log Rule 3](/dist/docs/3.1.2/protocol/snapshot-and-log#the-five-rules)):
+
+```javascript
+// POST /webhooks/adcp/creative
+async function handleCreativeWebhook(req, res) {
+  // 1. Verify signature per the registered scheme (RFC 9421 by default).
+  if (!verifyWebhookSignature(req)) return res.status(401).end();
+
+  const fire = req.body; // creative-status-changed-webhook or creative-purged-webhook
+  const { notification_type, idempotency_key, creative_id, account_id } = fire;
+
+  // 2. Dedupe at-least-once delivery.
+  if (await alreadyProcessed(idempotency_key)) return res.status(200).end();
+
+  // 3. Re-read snapshot for authoritative state. Push is signal; snapshot is truth.
+  const snapshot = await testAgent.listCreatives({
+    filters: { creative_ids: [creative_id] },
+    include_purged: notification_type === "creative.purged"
+  });
+
+  // 4. Apply local effects from the snapshot, not the webhook payload.
+  await reconcileCreative(snapshot.creatives[0]);
+
+  await markProcessed(idempotency_key);
+  return res.status(200).end();
+}
+```
+
+Two pitfalls this handler avoids: (1) applying state from the webhook payload directly (ordering and re-emission make the payload non-authoritative); (2) skipping dedup (sellers retry on non-2xx and re-emit on missed-events warnings).
+
+## Account requirements
+
+<Note>
+Creative agents that host a library should implement the [accounts protocol](/dist/docs/3.1.2/accounts/overview) (`sync_accounts` / `list_accounts`) so buyers can establish access before querying creatives. This is the same accounts protocol used by sales agents for media buys — there is no separate version. Sales agents that already implement the accounts protocol for media buys do not need to do anything additional.
+</Note>
+
+## Examples
+
+### Concept-scoped query with variables
+
+List all approved creatives in a specific concept, including DCO variable definitions:
+
+```json
+{
+  "filters": {
+    "concept_ids": ["concept_holiday_2026"],
+    "statuses": ["approved"]
+  },
+  "include_variables": true,
+  "sort": {
+    "field": "created_date",
+    "direction": "desc"
+  }
+}
+```
+
+### Format-specific query
+
+Find creatives matching specific format IDs across concepts:
+
+```json
+{
+  "filters": {
+    "format_ids": [
+      {
+        "agent_url": "https://creative.example.com",
+        "id": "display_static",
+        "width": 300,
+        "height": 250
+      },
+      {
+        "agent_url": "https://creative.example.com",
+        "id": "display_static",
+        "width": 728,
+        "height": 90
+      }
+    ],
+    "statuses": ["approved"]
+  }
+}
+```
+
+### Find DCO creatives
+
+Find creatives with dynamic content variables for personalized campaigns:
+
+```json
+{
+  "filters": {
+    "has_variables": true,
+    "statuses": ["approved"]
+  },
+  "include_variables": true
+}
+```
+
+### Field-limited query
+
+Get minimal creative data for a selection dropdown:
+
+```json
+{
+  "fields": ["creative_id", "name", "format_id", "status"],
+  "include_assignments": false,
+  "filters": {
+    "statuses": ["approved"]
+  },
+  "sort": {
+    "field": "name",
+    "direction": "asc"
+  }
+}
+```
+
+### Library health check
+
+Find active creatives with delivery snapshots to identify stale or dormant assets:
+
+```json
+{
+  "filters": {
+    "media_buy_ids": ["mb_summer_2026", "mb_spring_2026"],
+    "statuses": ["approved"]
+  },
+  "include_assignments": true,
+  "include_snapshot": true,
+  "sort": {
+    "field": "updated_date",
+    "direction": "desc"
+  }
+}
+```
+
+## Related tasks
+
+- [`get_creative_delivery`](/dist/docs/3.1.2/creative/task-reference/get_creative_delivery) - Detailed performance analytics with date ranges, variant breakdowns, and full delivery metrics
+- [`build_creative`](/dist/docs/3.1.2/creative/task-reference/build_creative) - Build manifests from library creatives or generate from scratch
+- [`sync_creatives`](/dist/docs/3.1.2/creative/task-reference/sync_creatives) - Upload and manage creative assets on any agent hosting a creative library
+- [`list_creative_formats`](/dist/docs/3.1.2/creative/task-reference/list_creative_formats) - Discover supported creative formats
+- [`preview_creative`](/dist/docs/3.1.2/creative/task-reference/preview_creative) - Generate previews of creative manifests

@@ -297,6 +297,8 @@ A community mirror:
 - MUST carry at least one non-empty catalog array (`formats`/`properties`/`placements`/`collections`/`signals`) and SHOULD carry a **`catalog_etag`** cache validator (the validator enforces the array, not `catalog_etag`). A file with neither sales authorization nor catalog content is invalid.
 - Sets **`superseded_by`** once the platform publishes its own authoritative `adagents.json`. Buyer SDKs encountering `superseded_by` SHOULD re-fetch from the named URL rather than serving the stale mirror. The mirror SHOULD continue serving with `superseded_by` set for at least one minor release so buyer caches keyed on the mirror URL get an explicit migration signal.
 
+Community contributions use a review-before-publication workflow. Any authenticated organization can submit a conforming catalog with `PUT /api/registry/mirrors/{platform}`. Registry moderators and AgenticAdvertising.org administrators publish immediately; other callers receive `202 Accepted` with an opaque proposal ID, status URL, and content digest. Contributors can follow their proposals through `/api/registry/mirror-proposals`, while moderators approve or reject the exact reviewed digest from the same review surface. Approval returns `409 Conflict` if either the proposal content or its base public mirror changed after review. Pending proposals are stored separately and never appear at `/translated/<platform>/adagents.json` or in derived publisher records before approval.
+
 See the worked example at [`static/examples/adagents/community/meta.json`](https://github.com/adcontextprotocol/adcp/blob/main/static/examples/adagents/community/meta.json).
 
 ## URL Reference Pattern

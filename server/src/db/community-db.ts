@@ -1,5 +1,6 @@
 import { query } from './client.js';
 import { createLogger } from '../logger.js';
+import { validateMemberProfileUrlFields } from '../utils/member-profile-url.js';
 
 const logger = createLogger('community-db');
 
@@ -156,6 +157,13 @@ export class CommunityDatabase {
   // =====================================================
 
   async updateProfile(userId: string, updates: UpdateCommunityProfileInput): Promise<CommunityProfile | null> {
+    const invalidUrlField = validateMemberProfileUrlFields(
+      updates as unknown as Record<string, unknown>,
+    );
+    if (invalidUrlField) {
+      throw new TypeError(`${invalidUrlField} must be an HTTPS URL without credentials`);
+    }
+
     const COLUMN_MAP: Record<keyof UpdateCommunityProfileInput, string> = {
       slug: 'slug',
       headline: 'headline',
@@ -384,7 +392,9 @@ export class CommunityDatabase {
       `SELECT wg.id, wg.name, wg.slug
        FROM working_groups wg
        JOIN working_group_memberships wgm ON wgm.working_group_id = wg.id
-       WHERE wgm.workos_user_id = $1 AND wgm.status = 'active'
+       WHERE wgm.workos_user_id = $1
+         AND wgm.status = 'active'
+         AND wg.status = 'active'
        ORDER BY wg.name`,
       [userId]
     );
@@ -838,8 +848,12 @@ export class CommunityDatabase {
         FROM users WHERE workos_user_id = $1
       ),
       user_wgs AS (
-        SELECT working_group_id FROM working_group_memberships
-        WHERE workos_user_id = $1 AND status = 'active'
+        SELECT wgm.working_group_id
+        FROM working_group_memberships wgm
+        JOIN working_groups wg ON wg.id = wgm.working_group_id
+        WHERE wgm.workos_user_id = $1
+          AND wgm.status = 'active'
+          AND wg.status = 'active'
       ),
       user_events AS (
         SELECT event_id FROM event_registrations WHERE workos_user_id = $1
@@ -984,7 +998,9 @@ export class CommunityDatabase {
                WHERE wgm2.working_group_id = wg.id AND wgm2.status = 'active') as member_count
        FROM working_groups wg
        JOIN working_group_memberships wgm ON wgm.working_group_id = wg.id
-       WHERE wgm.workos_user_id = $1 AND wgm.status = 'active'
+       WHERE wgm.workos_user_id = $1
+         AND wgm.status = 'active'
+         AND wg.status = 'active'
        ORDER BY wg.name`,
       [userId]
     );

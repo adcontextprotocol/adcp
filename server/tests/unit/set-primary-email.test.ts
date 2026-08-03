@@ -142,3 +142,22 @@ describe('Set primary email UI', () => {
     expect(html).toMatch(/loadLinkedEmails\(\)/);
   });
 });
+
+describe('Link email recovery UI', () => {
+  const html = fs.readFileSync(DASHBOARD_SETTINGS_FILE, 'utf-8');
+
+  it('prefers the server recovery message over the generic error', () => {
+    expect(html).toMatch(/data\.message \|\| data\.error \|\| 'Failed to send verification'/);
+  });
+
+  it('shows the recovery message safely with an actionable support link', () => {
+    expect(html).toContain('href="mailto:support@agenticadvertising.org"');
+    expect(html).toMatch(/linkEmailWarningMessage'\)\.textContent = message/);
+    expect(html).toMatch(/linkEmailWarning'\)\.style\.display = 'block'/);
+  });
+
+  it('does not promise to merge existing accounts through self-service', () => {
+    expect(html).toContain("Existing accounts can't be combined through this form");
+    expect(html).not.toContain('your accounts will be merged');
+  });
+});

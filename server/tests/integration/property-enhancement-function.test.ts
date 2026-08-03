@@ -128,6 +128,7 @@ describe('enhanceProperty — analyzeProperty tool_use output → hosted_propert
     expect(aiAnalysis?.is_publisher).toBe(true);
     expect(aiAnalysis?.likely_inventory_types).toEqual(['display', 'video']);
     expect(aiAnalysis?.confidence).toBe('high');
+    expect(row.rows[0].adagents_json.authorized_agents).toEqual([]);
   });
 
   it('writes is_publisher=false correctly when the model classifies a non-publisher domain', async () => {

@@ -31,9 +31,68 @@ const {
   versionInlineSchemaIds,
   dedupBundledSchemaIds,
   stripIdsFromSubtreesWithLocalRefs,
+  canonicalPublishedSchemaUri,
+  canonicalizePublishedSchemaUris,
+  generateExtensionRegistry,
 } = require('../scripts/build-schemas.cjs');
 
 function clone(o) { return JSON.parse(JSON.stringify(o)); }
+
+test('published schema URIs are absolute, exact-version identities', () => {
+  assert.equal(
+    canonicalPublishedSchemaUri('/schemas/core/product.json', '3.2.1'),
+    'https://adcontextprotocol.org/schemas/3.2.1/core/product.json',
+  );
+  assert.equal(
+    canonicalPublishedSchemaUri('/schemas/3.2.1/core/product.json', '3.2.1'),
+    'https://adcontextprotocol.org/schemas/3.2.1/core/product.json',
+  );
+  assert.equal(canonicalPublishedSchemaUri('#/$defs/Product', '3.2.1'), '#/$defs/Product');
+  assert.equal(
+    canonicalPublishedSchemaUri('http://json-schema.org/draft-07/schema#', '3.2.1'),
+    'http://json-schema.org/draft-07/schema#',
+  );
+});
+
+test('published schema URI pass rewrites nested ids and external refs but preserves fragments', () => {
+  const schema = {
+    $id: '/schemas/media-buy/get-products-response.json',
+    properties: {
+      product: { $ref: '/schemas/core/product.json' },
+      local: { $ref: '#/$defs/Local' },
+    },
+    $defs: {
+      Local: { $id: '/schemas/core/local.json', type: 'string' },
+    },
+  };
+
+  canonicalizePublishedSchemaUris(schema, 'latest');
+
+  assert.equal(schema.$id, 'https://adcontextprotocol.org/schemas/latest/media-buy/get-products-response.json');
+  assert.equal(schema.properties.product.$ref, 'https://adcontextprotocol.org/schemas/latest/core/product.json');
+  assert.equal(schema.properties.local.$ref, '#/$defs/Local');
+  assert.equal(schema.$defs.Local.$id, 'https://adcontextprotocol.org/schemas/latest/core/local.json');
+});
+
+test('generated extension registry publishes canonical id and extension refs', () => {
+  const registry = generateExtensionRegistry([{
+    namespace: 'example_extension',
+    schema: {
+      title: 'Example extension',
+      description: 'Synthetic extension used to verify registry URI publication.',
+      valid_from: '3.2',
+    },
+  }], '3.2.0');
+
+  assert.equal(
+    registry.$id,
+    'https://adcontextprotocol.org/schemas/3.2.0/extensions/index.json',
+  );
+  assert.equal(
+    registry.extensions.example_extension.$ref,
+    'https://adcontextprotocol.org/schemas/3.2.0/extensions/example_extension.json',
+  );
+});
 
 function withSourceTree(files, fn) {
   // Materialize a synthetic source tree so resolveRefs can read $refs from

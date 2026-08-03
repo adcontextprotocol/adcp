@@ -119,7 +119,7 @@
     "IDEMPOTENCY_IN_FLIGHT": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
-      "note": "Pairs with security.mdx#idempotency rule 9 (first-insert-wins / concurrent-retry resolution). Lets sellers reject-and-redirect on concurrent retry instead of blocking; buyers retry with the same key after error.details.retry_after. Wire change — held for 3.1."
+      "note": "Pairs with security.mdx#idempotency rule 9 (first-insert-wins / concurrent-retry resolution). Lets sellers reject-and-redirect on concurrent retry instead of blocking; buyers retry with the same key after the top-level error.retry_after. Wire change — held for 3.1."
     },
     "PAYMENT_TERMS_NOT_SUPPORTED": {
       "disposition": "held-for-next-minor",
@@ -235,6 +235,16 @@
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
       "note": "From sync_accounts polymorphic-key refactor (#2261). Returned per-entry when the seller does not implement the entry's `sync_accounts` mode — settings-update sellers (explicit-account platforms) reject natural-key entries; provisioning-only sellers reject AccountRef-keyed entries. Wire change — held for 3.1."
+    },
+    "INVALID_PRICING_OPTION": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.2",
+      "note": "Canonical pricing-option rejection for report_usage and create_media_buy (#5892). Additive standard vocabulary; held for 3.2."
+    },
+    "INVALID_USAGE_DATA": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.2",
+      "note": "Per-record usage validation rejection for report_usage (#5892). Additive standard vocabulary; held for 3.2."
     }
   }
 }

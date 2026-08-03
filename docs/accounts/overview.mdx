@@ -41,7 +41,7 @@ The Accounts Protocol applies across all vendor protocols. An orchestrator estab
 | Governance | Content standards billing |
 | Creative | Creative service billing |
 
-The account reference may be a seller-assigned `account_id` (seller-owned namespaces, usually `require_operator_auth: true`) or a natural key — `brand` + `operator` (buyer-declared accounts, `require_operator_auth: false`). For buyer-declared accounts, the natural-key `AccountRef` MUST remain valid on subsequent calls even if the seller also echoes an internal `account_id`. For sandbox, account-id namespaces use pre-existing test accounts discovered via `list_accounts` or supplied out-of-band, while buyer-declared accounts declare sandbox via `sync_accounts` with `sandbox: true`. See [Account references](/docs/building/integration/accounts-and-agents#account-references) for details.
+The account reference may be a seller-assigned `account_id` (seller-owned namespaces, usually `require_operator_auth: true`) or a natural key — `brand` + `operator` (buyer-declared accounts, `require_operator_auth: false`). For buyer-declared accounts, the natural-key `AccountRef` MUST remain valid on subsequent calls even if the seller also echoes an internal `account_id`. For sandbox, account-id namespaces use pre-existing test accounts discovered via `list_accounts` or supplied out-of-band, while buyer-declared accounts declare sandbox via `sync_accounts` with `sandbox: true`. See [Account references](/docs/building/by-layer/L2/accounts-and-agents#account-references) for details.
 
 ## Account Status Lifecycle
 
@@ -182,7 +182,7 @@ A single `SCOPE_INSUFFICIENT` response is observationally indistinguishable betw
 
 `FIELD_NOT_PERMITTED` does not follow this pattern. The agent-autonomous recovery path — strip the disallowed field and resubmit — supersedes the retry consideration. Buyers MUST NOT retry the identical failing request for `FIELD_NOT_PERMITTED`; they SHOULD correct and resubmit immediately.
 
-See [Authorization (RBAC)](/docs/building/implementation/error-handling#authorization-rbac) for the normative retry exception clause on these codes.
+See [Authorization (RBAC)](/docs/building/by-layer/L3/error-handling#authorization-rbac) for the normative retry exception clause on these codes.
 
 ### Standard named scope: `attestation_verifier`
 
@@ -258,7 +258,7 @@ The introspection model — "the caller asks the authorization-enforcing party w
 
 ## Parties
 
-The Accounts Protocol operates with four party types. See [Accounts and agents](/docs/building/integration/accounts-and-agents) for full details on billing hierarchy, trust models, and authorized operators.
+The Accounts Protocol operates with four party types. See [Accounts and agents](/docs/building/by-layer/L2/accounts-and-agents) for full details on billing hierarchy, trust models, and authorized operators.
 
 | Party | Role | Identified by |
 |-----------|------|---------------|

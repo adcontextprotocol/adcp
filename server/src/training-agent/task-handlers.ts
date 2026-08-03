@@ -7,6 +7,7 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
   CallToolRequestSchema,
@@ -20,7 +21,7 @@ import { PostgresTaskStore } from '@adcp/sdk';
 import { mergeSeedProduct } from '@adcp/sdk/testing';
 import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
-import { isPrivateHostname, safeFetchAxiosLike } from '../utils/url-security.js';
+import { isPrivateHostname, normalizeExternalHostname, safeFetchAxiosLike } from '../utils/url-security.js';
 import type { TrainingContext, CatalogProduct, MediaBuyState, MediaBuyAvailableActionState, MediaBuyProductAllowedActionState, PackageState, SignalActivationState, CreativeState, CreativeManifest, ToolArgs, ListReference, PackageTargeting, AccountRef, SessionState } from './types.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import type {
@@ -74,6 +75,7 @@ type InlineCreativeInput = {
   name?: string;
   format_id?: FormatID;
   format_kind?: string;
+  format_option_ref?: Record<string, unknown>;
   assets?: Record<string, unknown>;
   manifest?: CreativeManifest;
 };
@@ -344,11 +346,18 @@ function persistInlineCreatives(
       accountId: accountId ?? existing?.accountId,
       accountRef: accountRef ?? existing?.accountRef,
       formatId,
+      formatKind: creative.format_kind,
+      formatOptionRef: creative.format_option_ref,
       name: creative.name ?? existing?.name,
       status: existing?.status ?? 'approved',
       syncedAt,
       manifest: creative.manifest ?? (creative.assets ? {
-        format_id: formatId,
+        ...(creative.format_kind
+          ? {
+            format_kind: creative.format_kind,
+            ...(creative.format_option_ref && { format_option_ref: creative.format_option_ref }),
+          }
+          : { format_id: formatId }),
         assets: creative.assets as CreativeManifest['assets'],
       } : existing?.manifest),
       pricingOptionId: existing?.pricingOptionId,
@@ -608,6 +617,184 @@ interface ProposalLifecycle {
 }
 function proposalLifecycle(proposal: Proposal): ProposalLifecycle {
   return proposal as unknown as ProposalLifecycle;
+}
+
+type ConcreteCpmAsk = {
+  currency?: string;
+  budget?: { amount: number; currency: string };
+};
+
+const ISO_CURRENCY_CODES = new Set(Intl.supportedValuesOf('currency'));
+
+/**
+ * Recognize the training agent's deterministic CPM-pricing refinement.
+ * Other natural-language asks intentionally remain partial so buyers can test
+ * both successful and honest incomplete refinement outcomes.
+ */
+function parseConcreteCpmAsk(ask?: string): ConcreteCpmAsk | undefined {
+  if (!ask) return undefined;
+  const normalized = ask.toLowerCase();
+  if (!/\bcpm\b/.test(normalized)) return undefined;
+  if (!/\b(?:concrete|firm|fixed|price|pricing|rate|per[ -]unit)\b/.test(normalized)) return undefined;
+
+  const contextualCurrency = ask.match(/\b(?:in|currency(?:\s+of)?)\s+([a-z]{3})\b/i)?.[1]?.toUpperCase();
+  const explicitCurrency = contextualCurrency && ISO_CURRENCY_CODES.has(contextualCurrency)
+    ? contextualCurrency
+    : ask.includes('$') ? 'USD' : undefined;
+  const budgetClause = ask.match(/\b(?:budget|total)\b[^.!?]{0,120}/i)?.[0];
+  const containsExplicitCpmAmount = /(?:\$\s*\d[\d,.]*|\b\d[\d,.]*\s*[a-z]{3})\s*(?:per[- ]unit\s+)?cpm\b/i.test(ask);
+  if (containsExplicitCpmAmount) return undefined;
+  if (!budgetClause) {
+    return { ...(explicitCurrency && { currency: explicitCurrency }) };
+  }
+
+  const amountPattern = '([0-9][0-9,]*(?:\\.[0-9]{1,2})?)\\s*([km])?';
+  const currencyBefore = budgetClause.match(new RegExp(`\\b([A-Z]{3})\\s*\\$?\\s*${amountPattern}\\b`, 'i'));
+  const currencyAfter = budgetClause.match(new RegExp(`\\b${amountPattern}\\s*([A-Z]{3})\\b`, 'i'));
+  const dollarAmount = budgetClause.match(new RegExp(`\\$\\s*${amountPattern}\\b`, 'i'));
+
+  let amountText: string | undefined;
+  let scale: string | undefined;
+  let currency: string | undefined;
+  if (currencyAfter) {
+    [, amountText, scale, currency] = currencyAfter;
+  } else if (currencyBefore) {
+    [, currency, amountText, scale] = currencyBefore;
+  } else if (dollarAmount) {
+    [, amountText, scale] = dollarAmount;
+    currency = 'USD';
+  }
+
+  if (!amountText || !currency) {
+    return { ...(explicitCurrency && { currency: explicitCurrency }) };
+  }
+  const multiplier = scale?.toLowerCase() === 'm' ? 1_000_000 : scale?.toLowerCase() === 'k' ? 1_000 : 1;
+  const amount = Number(amountText.replaceAll(',', '')) * multiplier;
+  if (!Number.isFinite(amount) || amount <= 0) return undefined;
+  const normalizedCurrency = currency.toUpperCase();
+  if (!ISO_CURRENCY_CODES.has(normalizedCurrency)) return undefined;
+  return {
+    currency: normalizedCurrency,
+    budget: { amount, currency: normalizedCurrency },
+  };
+}
+
+/**
+ * Recognize the request-level selection refinement that the training agent
+ * can apply deterministically. Keeping this grammar deliberately narrow
+ * leaves compound or arbitrary natural-language constraints on the honest
+ * partial path.
+ */
+function requestsGuaranteedOnlyProducts(ask?: string): boolean {
+  if (!ask) return false;
+  const normalized = ask.trim().toLowerCase().replace(/[.!?]+$/, '').trim();
+  return /^(?:(?:show|return|include|select|keep)\s+)?only\s+guaranteed\s+(?:products|packages)$/.test(normalized)
+    || /^limit\s+(?:the\s+)?(?:results|selection)\s+to\s+guaranteed\s+(?:products|packages)$/.test(normalized);
+}
+
+function concreteCpmPricing(
+  product: Product,
+  requestedCurrency?: string,
+): {
+  product: Product;
+  pricingOption: PricingOption;
+  pricingOptionId: string;
+  fixedPrice: number;
+  currency: string;
+} | undefined {
+  const optionIndex = product.pricing_options.findIndex(option =>
+    option.pricing_model === 'cpm'
+    && (!requestedCurrency || option.currency === requestedCurrency),
+  );
+  if (optionIndex < 0) return undefined;
+
+  const option = product.pricing_options[optionIndex] as Extract<PricingOption, { pricing_model: 'cpm' }>;
+  const fixedPrice = option.fixed_price
+    ?? option.price_guidance?.p50
+    ?? option.floor_price;
+  if (fixedPrice === undefined) return undefined;
+
+  const {
+    floor_price: _floorPrice,
+    price_guidance: _priceGuidance,
+    max_bid: _maxBid,
+    min_spend_per_package: _minSpendPerPackage,
+    ...concreteOptionBase
+  } = option;
+  const fingerprint = createHash('sha256')
+    .update(`${product.product_id}|${option.pricing_option_id}|${option.currency}|${fixedPrice}`)
+    .digest('hex')
+    .slice(0, 32);
+  const pricingOptionId = `${option.pricing_option_id}_concrete_${fingerprint}`;
+  const pricingOptions = [...product.pricing_options];
+  const negotiatedOption = { ...concreteOptionBase, pricing_option_id: pricingOptionId, fixed_price: fixedPrice } as PricingOption;
+  const negotiatedIndex = pricingOptions.findIndex(candidate => candidate.pricing_option_id === pricingOptionId);
+  let effectiveOption = negotiatedOption;
+  if (negotiatedIndex >= 0) {
+    const existing = pricingOptions[negotiatedIndex] as PricingOption;
+    if (!isDeepStrictEqual(existing, negotiatedOption)) return undefined;
+    effectiveOption = existing;
+  } else {
+    pricingOptions.push(negotiatedOption);
+  }
+
+  return {
+    product: { ...product, pricing_options: pricingOptions },
+    pricingOption: effectiveOption,
+    pricingOptionId,
+    fixedPrice,
+    currency: option.currency,
+  };
+}
+
+function withProposalBudgetGuidance(
+  proposal: Proposal,
+  budget: { amount: number; currency: string },
+): Proposal {
+  const guidance = {
+    ...proposal.total_budget_guidance,
+    min: Math.min(proposal.total_budget_guidance?.min ?? budget.amount, budget.amount),
+    recommended: budget.amount,
+    currency: budget.currency,
+  };
+  const ext = proposal.ext as unknown as Record<string, unknown> | undefined;
+  const updateCard = (card: unknown): unknown => {
+    if (!card || typeof card !== 'object' || Array.isArray(card)) return card;
+    const typedCard = card as Record<string, unknown>;
+    const manifest = typedCard.manifest;
+    if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) return card;
+    const typedManifest = manifest as Record<string, unknown>;
+    const assets = typedManifest.assets;
+    if (!assets || typeof assets !== 'object' || Array.isArray(assets)) return card;
+    const {
+      estimated_delivery: _staleEstimatedDelivery,
+      ...currentAssets
+    } = assets as Record<string, unknown>;
+    return {
+      ...typedCard,
+      manifest: {
+        ...typedManifest,
+        assets: {
+          ...currentAssets,
+          budget_min: { content: String(guidance.min) },
+          budget_recommended: { content: String(guidance.recommended) },
+          budget_currency: { content: guidance.currency },
+        },
+      },
+    };
+  };
+
+  return {
+    ...proposal,
+    total_budget_guidance: guidance,
+    ...(ext && {
+      ext: {
+        ...ext,
+        proposal_card: updateCard(ext.proposal_card),
+        proposal_card_detailed: updateCard(ext.proposal_card_detailed),
+      },
+    }),
+  } as Proposal;
 }
 
 const THREE_ZERO_LEGACY_PROPOSAL_ID = 'balanced_reach_q2';
@@ -2020,6 +2207,27 @@ function overlaySeededProducts(
   }
 }
 
+/** Overlay proposal-specific pricing created by successful refine asks. */
+function overlayNegotiatedPricingOptions(
+  session: import('./types.js').SessionState,
+  productMap: Map<string, Product>,
+): void {
+  for (const { productId, option } of session.negotiatedPricingOptions.values()) {
+    const product = productMap.get(productId);
+    if (!product) continue;
+    const pricingOptions = [...product.pricing_options];
+    const existingIndex = pricingOptions.findIndex(
+      candidate => candidate.pricing_option_id === option.pricing_option_id,
+    );
+    if (existingIndex >= 0) {
+      pricingOptions[existingIndex] = option;
+    } else {
+      pricingOptions.push(option);
+    }
+    productMap.set(productId, { ...product, pricing_options: pricingOptions });
+  }
+}
+
 function seededProductIds(session: import('./types.js').SessionState): Set<string> {
   const ids = new Set<string>(session.complyExtensions.seededProducts.keys());
   for (const key of session.complyExtensions.seededPricingOptions.keys()) {
@@ -2204,6 +2412,22 @@ const ACCOUNT_REF_SCHEMA = {
   ],
 } as const;
 
+const FORMAT_ID_INPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    agent_url: { type: 'string', format: 'uri' },
+    id: { type: 'string', pattern: '^[a-zA-Z0-9_-]+$' },
+    width: { type: 'integer', minimum: 1 },
+    height: { type: 'integer', minimum: 1 },
+    duration_ms: { type: 'number', minimum: 1 },
+  },
+  required: ['agent_url', 'id'],
+  dependencies: {
+    width: ['height'],
+    height: ['width'],
+  },
+} as const;
+
 // Tools whose response schema defines an Error variant at top level
 // (oneOf success | {errors: [...]}). Handler-returned errors are placed
 // in the response body rather than wrapped in an MCP isError envelope,
@@ -2249,18 +2473,26 @@ function stableMapDigest(map: Map<string, Record<string, unknown>>): string {
 function productWholesaleFeedMeta(req: WholesaleFeedRequest, session: SessionState): WholesaleFeedMeta {
   const seededProductsRevision = stableMapDigest(session.complyExtensions.seededProducts);
   const seededPricingRevision = stableMapDigest(session.complyExtensions.seededPricingOptions);
+  const cacheScope = cacheScopeForWholesaleRequest(req);
+  // Tokens are scope-keyed: the same feed state yields a distinct token per
+  // cache_scope so a token minted under one scope never short-circuits a probe
+  // the seller resolves to another. See media-buy/get-products-response.json#unchanged.
   return {
-    wholesale_feed_version: `${PRODUCT_WHOLESALE_FEED_VERSION}.${seededProductsRevision}`,
-    pricing_version: `${PRODUCT_WHOLESALE_PRICING_VERSION}.${seededPricingRevision}`,
-    cache_scope: cacheScopeForWholesaleRequest(req),
+    wholesale_feed_version: `${PRODUCT_WHOLESALE_FEED_VERSION}.${cacheScope}.${seededProductsRevision}`,
+    pricing_version: `${PRODUCT_WHOLESALE_PRICING_VERSION}.${cacheScope}.${seededPricingRevision}`,
+    cache_scope: cacheScope,
   };
 }
 
 function signalWholesaleFeedMeta(req: WholesaleFeedRequest): WholesaleFeedMeta {
+  const cacheScope = cacheScopeForWholesaleRequest(req);
+  // Tokens are scope-keyed: the same feed state yields a distinct token per
+  // cache_scope so a token minted under one scope never short-circuits a probe
+  // the agent resolves to another. See signals/get-signals-response.json#unchanged.
   return {
-    wholesale_feed_version: SIGNAL_WHOLESALE_FEED_VERSION,
-    pricing_version: SIGNAL_WHOLESALE_PRICING_VERSION,
-    cache_scope: cacheScopeForWholesaleRequest(req),
+    wholesale_feed_version: `${SIGNAL_WHOLESALE_FEED_VERSION}.${cacheScope}`,
+    pricing_version: `${SIGNAL_WHOLESALE_PRICING_VERSION}.${cacheScope}`,
+    cache_scope: cacheScope,
   };
 }
 
@@ -2589,7 +2821,7 @@ const TOOLS = [
   },
   {
     name: 'list_creatives',
-    description: 'List creative assets for the current session. Filter by creative_ids or media_buy_id to narrow results. When include_pricing is true and account is provided, returns per-creative pricing from the account rate card. Not for uploading or updating creatives (use sync_creatives).',
+    description: 'List creative assets for the current session. Filter by creative_ids, format_ids, asset_types, status, or media_buy_id to narrow results. When include_pricing is true and account is provided, returns per-creative pricing from the account rate card. Not for uploading or updating creatives (use sync_creatives).',
     annotations: { readOnlyHint: true, idempotentHint: true },
     execution: { taskSupport: 'forbidden' as const },
     inputSchema: {
@@ -2610,7 +2842,33 @@ const TOOLS = [
         include_purged: { type: 'boolean', description: 'Include soft-purged creative tombstones' },
         include_webhook_activity: { type: 'boolean', description: 'Include recent lifecycle webhook activity per creative' },
         webhook_activity_limit: { type: 'integer', minimum: 1, maximum: 200 },
-        filters: { type: 'object', properties: { creative_ids: { type: 'array', items: { type: 'string' } }, statuses: { type: 'array', items: { type: 'string' } } } },
+        fields: {
+          type: 'array',
+          description: 'Optional sparse field selection. Response-required identity and lifecycle fields are always retained.',
+          items: {
+            type: 'string',
+            enum: ['creative_id', 'name', 'format_id', 'assets', 'status', 'created_date', 'updated_date', 'tags', 'assignments', 'snapshot', 'items', 'variables', 'concept', 'pricing_options'],
+          },
+          minItems: 1,
+        },
+        filters: {
+          type: 'object',
+          properties: {
+            creative_ids: { type: 'array', items: { type: 'string' } },
+            statuses: { type: 'array', items: { type: 'string' } },
+            format_ids: { type: 'array', items: FORMAT_ID_INPUT_SCHEMA, minItems: 1 },
+            asset_types: {
+              type: 'array',
+              description: 'Filter creatives by exact asset_type values on direct object values in the top-level assets map (OR within this field; no array or nested traversal).',
+              items: {
+                type: 'string',
+                enum: ['image', 'video', 'audio', 'text', 'markdown', 'html', 'css', 'javascript', 'zip', 'vast', 'daast', 'url', 'webhook', 'brief', 'catalog', 'published_post'],
+              },
+              minItems: 1,
+              uniqueItems: true,
+            },
+          },
+        },
         // See list_creative_formats above — declared so legacy dispatch keeps
         // `pagination` on the wire.
         pagination: {
@@ -2899,7 +3157,9 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
   // to repeat boilerplate. Catalog products are not touched.
   const productMap = new Map(products.map(p => [p.product_id, p]));
   overlaySeededProducts(session, productMap);
+  if (buyingMode !== 'wholesale') overlayNegotiatedPricingOptions(session, productMap);
   products = Array.from(productMap.values());
+  const registryProducts = products;
 
   // Apply filters
   if (req.filters) {
@@ -3007,25 +3267,52 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
 
   const refinementApplied: RefinementAppliedEntry[] = [];
   const proposalOmitIds = new Set<string>();
+  const refinedProposalOverrides = new Map<string, Proposal>();
+  const explicitlySelectedProposals = new Map<string, Proposal>();
+  let guaranteedOnlyRequested = false;
   if (buyingMode === 'refine' && req.refine) {
     const refineOps = req.refine as unknown as RefineEntry[];
-    const previousProducts = session.lastGetProductsContext?.products || products;
     const previousProposals = session.lastGetProductsContext?.proposals || getProposals();
+    const registryProposals = getProposals();
+    const resolveProposal = (proposalId: string): Proposal | undefined => {
+      const proposal = previousProposals.find(candidate => candidate.proposal_id === proposalId)
+        ?? registryProposals.find(candidate => candidate.proposal_id === proposalId);
+      if (proposal) return proposal;
+      if (isThreeZeroStoryboardCompat(ctx) && proposalId === THREE_ZERO_LEGACY_PROPOSAL_ID) {
+        return resolveThreeZeroProposalAlias([...previousProposals, ...registryProposals]);
+      }
+      return undefined;
+    };
     const omitIds = new Set<string>();
     const includeIds = new Set<string>();
+    const knownProductIds = new Set(
+      registryProducts
+        .filter(product => !product.expires_at || new Date(product.expires_at) >= new Date())
+        .map(product => product.product_id),
+    );
 
     const askAckNotes = (ask?: string) =>
       ask ? { notes: `Ask acknowledged but not applied by training agent: ${ask}` } : {};
 
-    // Validate proposal references before applying any refinements. This keeps
+    // Validate entity references before applying any refinements. This keeps
     // failed multi-entry refine calls from partially finalizing earlier entries.
     for (let opIndex = 0; opIndex < refineOps.length; opIndex++) {
       const op = refineOps[opIndex];
-      if (op.scope !== 'proposal') continue;
-      let proposal = previousProposals.find(p => p.proposal_id === op.proposal_id);
-      if (!proposal && isThreeZeroStoryboardCompat(ctx) && op.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_ID) {
-        proposal = resolveThreeZeroProposalAlias([...previousProposals, ...getProposals()]);
+      if (op.scope === 'product') {
+        if (!knownProductIds.has(op.product_id)) {
+          return {
+            errors: [{
+              code: 'PRODUCT_NOT_FOUND',
+              message: `Product not found: ${op.product_id}`,
+              field: `refine[${opIndex}].product_id`,
+              recovery: 'correctable',
+            }] as TaskError[],
+          };
+        }
+        continue;
       }
+      if (op.scope !== 'proposal') continue;
+      const proposal = resolveProposal(op.proposal_id);
       if (!proposal) {
         return {
           errors: [{
@@ -3042,15 +3329,60 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
       const op = refineOps[opIndex];
       if (op.scope === 'product') {
         const action = op.action ?? 'include';
+        const passesFilters = filteredProducts.some(product => product.product_id === op.product_id);
         if (action === 'omit') {
           omitIds.add(op.product_id);
           refinementApplied.push({ scope: 'product', product_id: op.product_id, status: 'applied' });
         } else if (action === 'include') {
           includeIds.add(op.product_id);
-          refinementApplied.push({ scope: 'product', product_id: op.product_id, status: op.ask ? 'partial' : 'applied', ...askAckNotes(op.ask) });
+          if (!passesFilters) {
+            refinementApplied.push({
+              scope: 'product',
+              product_id: op.product_id,
+              status: 'partial',
+              notes: 'Product is excluded by the request filters',
+            });
+          } else {
+            const concreteCpmAsk = parseConcreteCpmAsk(op.ask);
+            if (concreteCpmAsk) {
+              const product = products.find(candidate => candidate.product_id === op.product_id);
+              const concretePricing = product && concreteCpmPricing(product, concreteCpmAsk.currency);
+              if (concretePricing) {
+                products = products.map(candidate =>
+                  candidate.product_id === op.product_id ? concretePricing.product : candidate,
+                );
+                session.negotiatedPricingOptions.set(`${op.product_id}:${concretePricing.pricingOptionId}`, {
+                  productId: op.product_id,
+                  option: concretePricing.pricingOption,
+                });
+                refinementApplied.push({
+                  scope: 'product',
+                  product_id: op.product_id,
+                  status: 'applied',
+                  notes: `Concrete fixed CPM pricing applied (${concretePricing.currency} ${concretePricing.fixedPrice} CPM).`,
+                });
+              } else {
+                refinementApplied.push({
+                  scope: 'product',
+                  product_id: op.product_id,
+                  status: 'unable',
+                  notes: concreteCpmAsk.currency
+                    ? `No CPM pricing option is available in ${concreteCpmAsk.currency}.`
+                    : 'No CPM pricing option can be converted to concrete fixed pricing.',
+                });
+              }
+            } else {
+              refinementApplied.push({
+                scope: 'product',
+                product_id: op.product_id,
+                status: op.ask ? 'partial' : 'applied',
+                ...askAckNotes(op.ask),
+              });
+            }
+          }
         } else if (action === 'more_like_this') {
           includeIds.add(op.product_id);
-          const source = previousProducts.find(p => p.product_id === op.product_id);
+          const source = registryProducts.find(p => p.product_id === op.product_id);
           if (source) {
             const sourceChannels = source.channels;
             for (const p of filteredProducts) {
@@ -3059,20 +3391,71 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
               }
             }
           }
-          refinementApplied.push({ scope: 'product', product_id: op.product_id, status: 'applied' });
+          refinementApplied.push(passesFilters
+            ? { scope: 'product', product_id: op.product_id, status: 'applied' }
+            : { scope: 'product', product_id: op.product_id, status: 'partial', notes: 'Source product is excluded by the request filters' });
         }
       } else if (op.scope === 'proposal') {
         const action = op.action ?? 'include';
-        let proposal = previousProposals.find(p => p.proposal_id === op.proposal_id);
-        if (!proposal && isThreeZeroStoryboardCompat(ctx) && op.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_ID) {
-          proposal = resolveThreeZeroProposalAlias([...previousProposals, ...getProposals()]);
-        }
+        let proposal = refinedProposalOverrides.get(op.proposal_id)
+          ?? resolveProposal(op.proposal_id);
         if (!proposal) continue;
         if (action === 'omit') {
-          proposalOmitIds.add(op.proposal_id);
+          proposalOmitIds.add(proposal.proposal_id);
           refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'applied' });
         } else if (action === 'include') {
-          refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: op.ask ? 'partial' : 'applied', ...askAckNotes(op.ask) });
+          explicitlySelectedProposals.set(proposal.proposal_id, proposal);
+          for (const allocation of proposal.allocations) includeIds.add(allocation.product_id);
+          const concreteCpmAsk = parseConcreteCpmAsk(op.ask);
+          if (concreteCpmAsk) {
+            const stagedProducts = new Map<string, ReturnType<typeof concreteCpmPricing>>();
+            let allAllocationsPriced = true;
+            for (const allocation of proposal.allocations) {
+              const product = products.find(p => p.product_id === allocation.product_id);
+              const concretePricing = product && concreteCpmPricing(product, concreteCpmAsk.currency);
+              if (!concretePricing) {
+                allAllocationsPriced = false;
+                break;
+              }
+              stagedProducts.set(allocation.product_id, concretePricing);
+            }
+
+            if (allAllocationsPriced) {
+              products = products.map(product => stagedProducts.get(product.product_id)?.product ?? product);
+              const budget = concreteCpmAsk.budget;
+              let refinedProposal = {
+                ...proposal,
+                allocations: proposal.allocations.map(allocation => ({
+                  ...allocation,
+                  pricing_option_id: stagedProducts.get(allocation.product_id)!.pricingOptionId,
+                })),
+              } as Proposal;
+              if (budget) refinedProposal = withProposalBudgetGuidance(refinedProposal, budget);
+              refinedProposalOverrides.set(proposal.proposal_id, refinedProposal);
+              explicitlySelectedProposals.set(proposal.proposal_id, refinedProposal);
+              for (const [productId, pricing] of stagedProducts) {
+                session.negotiatedPricingOptions.set(`${productId}:${pricing!.pricingOptionId}`, {
+                  productId,
+                  option: pricing!.pricingOption,
+                });
+              }
+              const rates = proposal.allocations.map(allocation => {
+                const pricing = stagedProducts.get(allocation.product_id)!;
+                return `${allocation.product_id}: ${pricing.currency} ${pricing.fixedPrice} CPM`;
+              }).join('; ');
+              const budgetNote = budget ? ` Recommended total set to ${budget.currency} ${budget.amount}.` : '';
+              refinementApplied.push({
+                scope: 'proposal',
+                proposal_id: op.proposal_id,
+                status: 'applied',
+                notes: `Concrete fixed CPM pricing applied (${rates}).${budgetNote}`,
+              });
+            } else {
+              refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'partial', ...askAckNotes(op.ask) });
+            }
+          } else {
+            refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: op.ask ? 'partial' : 'applied', ...askAckNotes(op.ask) });
+          }
         } else if (action === 'finalize') {
           const status = proposalLifecycle(proposal).proposal_status;
           if (status === 'committed') {
@@ -3126,18 +3509,40 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
           }
         }
       } else if (op.scope === 'request') {
-        refinementApplied.push({ scope: 'request', status: 'partial', notes: 'Request-level refinement acknowledged but not applied by training agent' });
+        if (requestsGuaranteedOnlyProducts(op.ask)) {
+          const guaranteedProducts = products.filter(product => product.delivery_type === 'guaranteed');
+          if (guaranteedProducts.length === 0) {
+            refinementApplied.push({
+              scope: 'request',
+              status: 'unable',
+              notes: 'No guaranteed products are available in the current selection.',
+            });
+          } else {
+            guaranteedOnlyRequested = true;
+            refinementApplied.push({
+              scope: 'request',
+              status: 'applied',
+              notes: 'Selection limited to guaranteed products.',
+            });
+          }
+        } else {
+          refinementApplied.push({ scope: 'request', status: 'partial', notes: 'Request-level refinement acknowledged but not applied by training agent' });
+        }
       }
     }
 
     // Apply includes first (expand), then omits (filter) for products
     if (includeIds.size > 0) {
+      const currentProductsById = new Map(products.map(product => [product.product_id, product]));
       products = filteredProducts
         .filter(p => includeIds.has(p.product_id))
-        .map(p => ({ ...p }));
+        .map(p => currentProductsById.get(p.product_id) ?? { ...p });
     }
     if (omitIds.size > 0) {
       products = products.filter(p => !omitIds.has(p.product_id));
+    }
+    if (guaranteedOnlyRequested) {
+      products = products.filter(product => product.delivery_type === 'guaranteed');
     }
   }
 
@@ -3162,12 +3567,19 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
   }
 
   // In refine mode, use session proposals (which may include finalized versions)
-  const sourceProposals = (buyingMode === 'refine' && session.lastGetProductsContext?.proposals)
+  const contextualProposals = (buyingMode === 'refine' && session.lastGetProductsContext?.proposals)
     ? session.lastGetProductsContext.proposals
     : getProposals();
+  const sourceProposals = [
+    ...contextualProposals,
+    ...Array.from(explicitlySelectedProposals.values()).filter(selected =>
+      !contextualProposals.some(contextual => contextual.proposal_id === selected.proposal_id),
+    ),
+  ];
 
   const productsById = new Map(products.map(p => [p.product_id, p]));
   const proposals = sourceProposals
+    .map(proposal => refinedProposalOverrides.get(proposal.proposal_id) ?? proposal)
     .filter(proposal =>
       proposal.allocations.every(a => productIds.has(a.product_id)) &&
       !proposalOmitIds.has(proposal.proposal_id),
@@ -3175,7 +3587,10 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
     .map(proposal => ({
       ...proposal,
       allocations: proposal.allocations.map(alloc => {
-        const selectedPricing = productsById.get(alloc.product_id)?.pricing_options[0];
+        const pricingOptions = productsById.get(alloc.product_id)?.pricing_options;
+        const selectedPricing = pricingOptions?.find(
+          option => option.pricing_option_id === alloc.pricing_option_id,
+        ) ?? pricingOptions?.[0];
         return selectedPricing
           ? { ...alloc, pricing_option_id: selectedPricing.pricing_option_id }
           : alloc;
@@ -3603,7 +4018,8 @@ function validateExternalUrlValue(field: string, raw: unknown): ValidateInputVio
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     return { rule: 'url_scheme', field, expected: 'http or https', predicted: parsed.protocol };
   }
-  if (isPrivateHostname(parsed.hostname)) {
+  const hostname = normalizeExternalHostname(parsed.hostname);
+  if (!hostname || isPrivateHostname(hostname)) {
     return { rule: 'url_host_public', field, expected: 'public hostname', predicted: parsed.hostname };
   }
   return null;
@@ -3815,7 +4231,8 @@ function parseThirdPartyFormatTarget(target: ValidateInputTarget): { url: string
     if (parsed.protocol !== 'https:') {
       return thirdPartyResolutionViolation(target, 'https URI', parsed.protocol);
     }
-    if (isPrivateHostname(parsed.hostname)) {
+    const hostname = normalizeExternalHostname(parsed.hostname);
+    if (!hostname || isPrivateHostname(hostname)) {
       return thirdPartyResolutionViolation(target, 'public hostname', parsed.hostname);
     }
   } catch {
@@ -4263,6 +4680,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   const catalog = getCatalog();
   const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
   overlaySeededProducts(session, productMap);
+  overlayNegotiatedPricingOptions(session, productMap);
 
   // Validate metric-kind optimization_goals against the package's product
   // metric_optimization declarations. reach goals must declare a reach_unit
@@ -5360,7 +5778,15 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
       };
     }
     const creativeId = creative.creative_id;
-    const formatId = creative.format_id as FormatID;
+    const formatId = creative.format_id as FormatID | undefined;
+    const formatKind = typeof creative.format_kind === 'string' ? creative.format_kind : undefined;
+    const formatOptionRef = (creative as unknown as { format_option_ref?: Record<string, unknown> }).format_option_ref;
+
+    if (!formatId && !formatKind) {
+      return {
+        errors: [{ code: 'INVALID_REQUEST', message: 'Each creative requires either format_id or format_kind.' }] as TaskError[],
+      };
+    }
 
     // Enforce creative_policy.provenance_required / provenance_requirements /
     // accepted_verifiers BEFORE persisting the creative. Per-creative failure
@@ -5410,16 +5836,33 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     const existingCreative = session.creatives.get(creativeId);
 
     if (!isDryRun) {
+      const internalFormatId = formatId ?? {
+        agent_url: getAgentUrl(),
+        id: formatKind!,
+      };
       session.creatives.set(creativeId, {
         creativeId,
         accountId: accountId ?? existingCreative?.accountId,
         accountRef: req.account ?? existingCreative?.accountRef,
-        formatId,
+        formatId: internalFormatId,
+        formatKind,
+        formatOptionRef,
         name: creative.name,
         status: existingCreative?.status ?? 'approved',
         syncedAt: new Date().toISOString(),
-        // manifest is a training-agent extension, not in SDK CreativeAsset type
-        manifest: (creative as unknown as { manifest?: CreativeManifest }).manifest,
+        // manifest is a training-agent extension, not in SDK CreativeAsset type.
+        // Preserve direct assets too: list_creatives asset-type filtering must
+        // inspect the same library payload accepted by sync_creatives.
+        manifest: (creative as unknown as { manifest?: CreativeManifest }).manifest
+          ?? ((creative as unknown as { assets?: Record<string, unknown> }).assets ? {
+            ...(formatKind
+              ? {
+                format_kind: formatKind,
+                ...(formatOptionRef && { format_option_ref: formatOptionRef }),
+              }
+              : { format_id: internalFormatId }),
+            assets: (creative as unknown as { assets: Record<string, unknown> }).assets as CreativeManifest['assets'],
+          } : existingCreative?.manifest),
         pricingOptionId: existingCreative?.pricingOptionId,
         purge: existingCreative?.purge,
         webhookActivity: existingCreative?.webhookActivity,
@@ -5490,6 +5933,40 @@ function accountRefsOverlap(stored: AccountRef | undefined, requested: AccountRe
   return Boolean(requested.brand?.domain && stored.brand?.domain && requested.brand.domain === stored.brand.domain);
 }
 
+type CreativeListFilters = {
+  creative_ids?: string[];
+  statuses?: string[];
+  format_ids?: FormatID[];
+  asset_types?: string[];
+};
+
+function creativeMatchesAnyFormatId(creative: CreativeState, requested: FormatID[]): boolean {
+  if (creative.formatKind) return false;
+  const actual = creative.formatId;
+  if (!actual?.id) return false;
+  const actualAgentUrl = actual.agent_url ?? getAgentUrl();
+  return requested.some(wanted => {
+    if (!wanted?.id || wanted.id !== actual.id) return false;
+    if (!wanted.agent_url
+      || canonicalizeAgentUrl(wanted.agent_url) !== canonicalizeAgentUrl(actualAgentUrl)) return false;
+    for (const parameter of ['width', 'height', 'duration_ms'] as const) {
+      if (wanted[parameter] !== actual[parameter]) return false;
+    }
+    return true;
+  });
+}
+
+function creativeHasAnyTopLevelAssetType(creative: CreativeState, requested: Set<string>): boolean {
+  const assets = creative.manifest?.assets as Record<string, unknown> | undefined;
+  if (!assets) return false;
+  for (const slotValue of Object.values(assets)) {
+    if (!slotValue || typeof slotValue !== 'object' || Array.isArray(slotValue)) continue;
+    const assetType = (slotValue as { asset_type?: unknown }).asset_type;
+    if (typeof assetType === 'string' && requested.has(assetType)) return true;
+  }
+  return false;
+}
+
 export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as ListCreativesRequest & ToolArgs & {
     creative_ids?: string[];
@@ -5498,10 +5975,12 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
     include_purged?: boolean;
     include_webhook_activity?: boolean;
     webhook_activity_limit?: number;
+    fields?: string[];
   };
+  const filters = (req.filters ?? {}) as CreativeListFilters;
   const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
   const session = await getSession(sessionKey);
-  const filterIds = req.creative_ids || req.filters?.creative_ids;
+  const filterIds = req.creative_ids || filters.creative_ids;
   const requestedAccountId = resolveAccountIdForRef(sessionKey, ctx.principal, req.account);
 
   let creatives = Array.from(session.creatives.values());
@@ -5535,9 +6014,16 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
   if (!req.include_purged) {
     creatives = creatives.filter(c => !c.purge);
   }
-  if (req.filters?.statuses?.length) {
-    const statuses = new Set<string>(req.filters.statuses as string[]);
+  if (filters.statuses?.length) {
+    const statuses = new Set(filters.statuses);
     creatives = creatives.filter(c => statuses.has(c.status));
+  }
+  if (filters.format_ids?.length) {
+    creatives = creatives.filter(c => creativeMatchesAnyFormatId(c, filters.format_ids!));
+  }
+  if (filters.asset_types?.length) {
+    const assetTypes = new Set(filters.asset_types);
+    creatives = creatives.filter(c => creativeHasAnyTopLevelAssetType(c, assetTypes));
   }
 
   const totalMatching = creatives.length;
@@ -5566,6 +6052,7 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
   // gate in #2847 and tracks the spec-side clarification referenced there.
   const emitPricing = creativeBillsThroughAdcp(ctx) && Boolean(req.account) && req.include_pricing !== false;
   const agentUrl = getAgentUrl();
+  const selectedFields = req.fields?.length ? new Set(req.fields) : undefined;
 
   return {
     query_summary: {
@@ -5589,18 +6076,24 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
       // in for format_id.agent_url. Keeps list_creatives response-schema
       // valid regardless of what was synced.
       const formatId = {
-        ...(c.formatId ?? { id: 'unknown' }),
-        agent_url: c.formatId?.agent_url ?? agentUrl,
+        ...c.formatId,
+        agent_url: c.formatId.agent_url ?? agentUrl,
       };
       const base: Record<string, unknown> = {
         creative_id: c.creativeId,
-        format_id: formatId,
+        ...(c.formatKind
+          ? {
+            format_kind: c.formatKind,
+            ...(c.formatOptionRef && { format_option_ref: c.formatOptionRef }),
+          }
+          : { format_id: formatId }),
         name: c.name ?? c.creativeId,
         status: c.status,
         created_date: c.syncedAt,
         updated_date: c.syncedAt,
+        ...(c.manifest?.assets && (!selectedFields || selectedFields.has('assets')) && { assets: c.manifest.assets }),
       };
-      if (emitPricing && c.formatId?.id) {
+      if (emitPricing && c.formatId?.id && (!selectedFields || selectedFields.has('pricing_options'))) {
         base.pricing_options = [getCreativePricing(req.account!, c)];
       }
       if (req.include_snapshot) {
@@ -7189,7 +7682,7 @@ export async function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext
   if (!preview) {
     const fmtId = manifest.format_id?.id || 'unknown';
     return {
-      errors: [{ code: 'INVALID_FORMAT', message: `Format "${fmtId}" is not supported. Use list_creative_formats to discover available formats.` }],
+      errors: [{ code: 'UNSUPPORTED_FEATURE', message: `Format "${fmtId}" is not supported. Use list_creative_formats to discover available formats.` }],
     };
   }
 

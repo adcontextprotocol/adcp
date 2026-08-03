@@ -39,6 +39,7 @@ const agentContextDbMocks = vi.hoisted(() => ({
     getOAuthClient: vi.fn(),
     clearOAuthClient: vi.fn(),
     removeOAuthTokens: vi.fn(),
+    hasValidOAuthTokens: vi.fn(),
   },
 }));
 const adapterMocks = vi.hoisted(() => ({
@@ -106,14 +107,21 @@ import {
   createAgentOAuthRouter,
   createMembershipGuardedPendingFlowStore,
 } from '../../src/routes/agent-oauth.js';
+import { oauthSafeFetch } from '../../src/utils/oauth-safe-fetch.js';
 
 const TEST_USER_ID = 'user_123';
 const TEST_ORG_ID = 'org_123';
 const AGENT_CONTEXT_ID = '11111111-1111-4111-8111-111111111111';
 const TEST_AGENT_URL = 'https://agent.example.com/mcp';
 
-function makeApp() {
+function makeApp(stateCookie?: string) {
   const app = express();
+  if (stateCookie) {
+    app.use((req, _res, next) => {
+      req.cookies = { adcp_oauth_state: stateCookie };
+      next();
+    });
+  }
   app.use('/api/oauth/agent', createAgentOAuthRouter());
   return app;
 }
@@ -130,6 +138,7 @@ beforeEach(() => {
   agentContextDbMocks.instance.getOAuthClient.mockReset();
   agentContextDbMocks.instance.clearOAuthClient.mockReset();
   agentContextDbMocks.instance.removeOAuthTokens.mockReset();
+  agentContextDbMocks.instance.hasValidOAuthTokens.mockReset();
   adapterMocks.pendingFlowStore.put.mockReset();
   adapterMocks.pendingFlowStore.consume.mockReset();
   adapterMocks.agentStorage.loadAgent.mockReset();
@@ -144,6 +153,7 @@ beforeEach(() => {
     agent_url: TEST_AGENT_URL,
   });
   agentContextDbMocks.instance.getOAuthClient.mockResolvedValue(null);
+  agentContextDbMocks.instance.hasValidOAuthTokens.mockReturnValue(false);
   adapterMocks.createWebOAuthAdapters.mockReturnValue({
     pendingFlowStore: adapterMocks.pendingFlowStore,
     agentStorage: adapterMocks.agentStorage,
@@ -242,10 +252,18 @@ describe('GET /api/oauth/agent/start durable scope hint', () => {
 
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('https://auth.example.com/authorize');
-    expect(mcpAuthMocks.discoverOAuthProtectedResourceMetadata).toHaveBeenCalledWith(TEST_AGENT_URL);
-    expect(mcpAuthMocks.discoverAuthorizationServerMetadata).toHaveBeenCalledWith('https://auth.example.com');
+    expect(mcpAuthMocks.discoverOAuthProtectedResourceMetadata).toHaveBeenCalledWith(
+      TEST_AGENT_URL,
+      undefined,
+      oauthSafeFetch,
+    );
+    expect(mcpAuthMocks.discoverAuthorizationServerMetadata).toHaveBeenCalledWith(
+      'https://auth.example.com',
+      { fetchFn: oauthSafeFetch },
+    );
     expect(sdkMocks.startWebOAuthFlow).toHaveBeenCalledWith(expect.objectContaining({
       agent: expect.objectContaining({ id: AGENT_CONTEXT_ID, agent_uri: TEST_AGENT_URL }),
+      fetch: oauthSafeFetch,
       scopeHint: 'openid profile offline_access',
       clientMetadata: { scope: 'openid profile offline_access' },
       carry: expect.objectContaining({
@@ -289,7 +307,10 @@ describe('GET /api/oauth/agent/start durable scope hint', () => {
       .query({ agent_context_id: AGENT_CONTEXT_ID })
       .expect(302);
 
-    expect(mcpAuthMocks.discoverAuthorizationServerMetadata).toHaveBeenCalledWith(TEST_AGENT_URL);
+    expect(mcpAuthMocks.discoverAuthorizationServerMetadata).toHaveBeenCalledWith(
+      TEST_AGENT_URL,
+      { fetchFn: oauthSafeFetch },
+    );
     expect(sdkMocks.startWebOAuthFlow).toHaveBeenCalledWith(expect.objectContaining({
       scopeHint: 'offline_access',
       clientMetadata: { scope: 'offline_access' },
@@ -312,6 +333,45 @@ describe('GET /api/oauth/agent/start durable scope hint', () => {
     const opts = sdkMocks.startWebOAuthFlow.mock.calls[0][0];
     expect(opts).not.toHaveProperty('scopeHint');
     expect(opts).not.toHaveProperty('clientMetadata');
+  });
+});
+
+describe('agent OAuth safe fetch injection', () => {
+  it('passes the scoped fetcher to callback token exchange', async () => {
+    sdkMocks.completeWebOAuthFlow.mockResolvedValueOnce({
+      agentId: AGENT_CONTEXT_ID,
+      agentUrl: TEST_AGENT_URL,
+      tokens: { access_token: 'token', token_type: 'bearer' },
+      carry: { organization_id: TEST_ORG_ID },
+      persisted: true,
+    });
+
+    await request(makeApp('state_123'))
+      .get('/api/oauth/agent/callback')
+      .query({ code: 'code_123', state: 'state_123' })
+      .expect(302);
+
+    expect(sdkMocks.completeWebOAuthFlow).toHaveBeenCalledWith(expect.objectContaining({
+      state: 'state_123',
+      code: 'code_123',
+      expectedState: 'state_123',
+      fetch: oauthSafeFetch,
+    }));
+  });
+
+  it('passes the scoped fetcher to status discovery', async () => {
+    sdkMocks.discoverOAuthMetadata.mockResolvedValueOnce({
+      authorization_endpoint: 'https://auth.example.com/authorize',
+      token_endpoint: 'https://auth.example.com/token',
+    });
+
+    await request(makeApp())
+      .get(`/api/oauth/agent/${AGENT_CONTEXT_ID}/status`)
+      .expect(200);
+
+    expect(sdkMocks.discoverOAuthMetadata).toHaveBeenCalledWith(TEST_AGENT_URL, {
+      fetch: oauthSafeFetch,
+    });
   });
 });
 

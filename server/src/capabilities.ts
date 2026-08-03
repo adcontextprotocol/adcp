@@ -5,6 +5,7 @@ import { is401Error, AuthenticationRequiredError } from "@adcp/sdk";
 import { AAO_UA_DISCOVERY } from "./config/user-agents.js";
 import { logOutboundRequest } from "./db/outbound-log-db.js";
 import { agentConfigAuthFields, type SdkAuth } from "./services/sdk-auth-adapter.js";
+import { withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
 
 const logger = createLogger('capabilities');
 
@@ -266,11 +267,15 @@ export class CapabilityDiscovery {
     this.formatsService = new FormatsService();
   }
 
-  async discoverCapabilities(agent: Agent, auth?: SdkAuth): Promise<AgentCapabilityProfile> {
+  async discoverCapabilities(agent: Agent, auth?: SdkAuth, forceRefresh = false): Promise<AgentCapabilityProfile> {
     // Skip cache when auth is provided — manual owner-triggered refresh
     // wants fresh data and may previously have cached an unauthed
     // discovery_error result. Periodic crawls (no auth) keep the cache.
-    if (!auth) {
+    // `forceRefresh` covers the same manual-refresh intent for agents with
+    // no saved auth (e.g. the "Recheck Status" button on an unowned/public
+    // agent) — without it, a fresh probe would still be shadowed by a stale
+    // unauthed cache entry for up to CACHE_TTL_MS.
+    if (!auth && !forceRefresh) {
       const cached = this.cache.get(agent.url);
       if (cached && Date.now() - new Date(cached.last_discovered).getTime() < this.CACHE_TTL_MS) {
         return cached;
@@ -304,7 +309,7 @@ export class CapabilityDiscovery {
         profile.standard_operations = this.analyzeSalesCapabilities(tools);
       }
       if (CapabilityDiscovery.CREATIVE_TOOLS.some(t => toolNames.has(t))) {
-        profile.creative_capabilities = await this.analyzeCreativeCapabilities(agent, tools, auth);
+        profile.creative_capabilities = await this.analyzeCreativeCapabilities(agent, tools, auth, forceRefresh);
       }
       if (CapabilityDiscovery.SIGNALS_TOOLS.some(t => toolNames.has(t))) {
         profile.signals_capabilities = this.analyzeSignalsCapabilities(tools);
@@ -372,7 +377,10 @@ export class CapabilityDiscovery {
       // TODO(adcp-client#1799): maxResponseBytes is currently dormant on
       // getAgentInfo/listTools — the SDK doesn't yet wrap that path in
       // withResponseSizeLimit. Re-verify when upstream lands.
-      }], { userAgent: AAO_UA_DISCOVERY, transport: { maxResponseBytes: 4 * 1024 * 1024 } });
+      }], withSdkSafeTransport({
+        userAgent: AAO_UA_DISCOVERY,
+        transport: { maxResponseBytes: 4 * 1024 * 1024 },
+      }));
       const client = multiClient.agent("discovery");
 
       const agentInfo = await client.getAgentInfo();
@@ -413,7 +421,10 @@ export class CapabilityDiscovery {
         protocol: "a2a",
         ...agentConfigAuthFields(auth),
       // TODO(adcp-client#1799): cap dormant on A2AClient.fromCardUrl until upstream wraps it.
-      }], { userAgent: AAO_UA_DISCOVERY, transport: { maxResponseBytes: 4 * 1024 * 1024 } });
+      }], withSdkSafeTransport({
+        userAgent: AAO_UA_DISCOVERY,
+        transport: { maxResponseBytes: 4 * 1024 * 1024 },
+      }));
       const client = multiClient.agent("discovery");
 
       const agentInfo = await client.getAgentInfo();
@@ -487,14 +498,14 @@ export class CapabilityDiscovery {
     };
   }
 
-  private async analyzeCreativeCapabilities(agent: Agent, tools: ToolCapability[], auth?: SdkAuth): Promise<CreativeCapabilities> {
+  private async analyzeCreativeCapabilities(agent: Agent, tools: ToolCapability[], auth?: SdkAuth, forceRefresh = false): Promise<CreativeCapabilities> {
     const toolNames = new Set(tools.map((t) => t.name.toLowerCase()));
     const hasFormatTool = toolNames.has("list_creative_formats");
 
     let formats: string[] = [];
     if (hasFormatTool) {
       try {
-        const formatsProfile = await this.formatsService.getFormatsForAgent(agent, auth);
+        const formatsProfile = await this.formatsService.getFormatsForAgent(agent, auth, forceRefresh);
         formats = formatsProfile.formats.map(f => f.name);
       } catch (error: any) {
         logger.debug({ url: agent.url, error: error.message }, 'Format discovery failed');
@@ -540,7 +551,10 @@ export class CapabilityDiscovery {
         agent_uri: agent.url,
         protocol: agent.protocol || "mcp",
         ...agentConfigAuthFields(auth),
-      }], { userAgent: AAO_UA_DISCOVERY, transport: { maxResponseBytes: 1024 * 1024 } });
+      }], withSdkSafeTransport({
+        userAgent: AAO_UA_DISCOVERY,
+        transport: { maxResponseBytes: 1024 * 1024 },
+      }));
       const client = multiClient.agent("discovery");
 
       // 10s timeout matches the existing tools/list discovery budget.

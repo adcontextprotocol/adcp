@@ -1,0 +1,225 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.3/media-buy/package-request.json",
+  "title": "Package Request",
+  "description": "Package configuration for media buy creation",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/3.1.3/core/version-envelope.json"
+    }
+  ],
+  "not": {
+    "required": ["capability_ids"]
+  },
+  "properties": {
+    "product_id": {
+      "type": "string",
+      "description": "Product ID for this package. Sellers MUST echo this value on every response package object that represents this requested package.",
+      "x-entity": "product"
+    },
+    "format_ids": {
+      "type": "array",
+      "description": "Legacy named-format selector. Array of format IDs that will be used for this package - must be supported by the product. If omitted (and no 3.1+ format-option selector or direct canonical selector is present), defaults to all formats supported by the product.\n\nSellers comparing this selector to a product's `format_options[]` MUST first normalize each legacy `format_id` through the canonical mapping path (`canonical`, `v1_format_ref`, or registry projection). Exact `(agent_url, id)` comparison after projection is insufficient: a legacy fixed-size display ID can satisfy a canonical `image` product declaration with matching `width`/`height`. Product gating remains directional: if the product declares fixed dimensions or duration, the selected format must declare and match those constraints; an under-specified canonical request is not a wildcard for a fixed-size or fixed-duration product. Range constraints use containment, not overlap: a range-based request satisfies the product only when every value it permits falls within the product's accepted range.",
+      "items": {
+        "$ref": "/schemas/3.1.3/core/format-id.json"
+      },
+      "minItems": 1
+    },
+    "format_option_refs": {
+      "type": "array",
+      "description": "3.1+ format-option selector. Array of structured format option references, each matching one of the target product's `format_options[]` entries. Publisher-catalog-backed options match by `{ scope: \"publisher\", publisher_domain, format_option_id }`; product-local options match by `{ scope: \"product\", format_option_id }`. If omitted along with `format_ids` and direct `format_kind`, all product formats are active.\n\n**Resolution rules (normative).**\n- **Both `format_option_refs` and `format_ids` present.** `format_option_refs` wins; the seller routes by structured references and MUST NOT validate `format_ids` for consistency with the resolved declarations. The `format_ids` value is a legacy-compat hint for intermediaries on the wire path; the resolving seller ignores it.\n- **`format_option_refs` only.** Seller looks up each entry against the package's target product `format_options[]` and uses the matching declaration (and that declaration's `v1_format_ref[]` when projecting to legacy named-format surfaces). This is the 3.1+ format-option authoring path. `scope: \"product\"` is scoped only by this target product; it is not a seller-wide identifier.\n- **`format_ids` only.** Existing named-format behavior; unchanged.\n- **`format_kind` only.** Direct canonical selector behavior; seller compares `{ format_kind, params }` against the product's `format_options[]` declarations using directional product satisfaction.\n- **None of `format_option_refs`, `format_ids`, or `format_kind`.** Default — all formats supported by the product are active.\n\n**Failure modes (normative).** Sellers MUST reject with `UNSUPPORTED_FEATURE` (with `field` pointing at the failing package and entry, e.g. `packages[0].format_option_refs[1]`) when:\n- Any entry references a format option not present in the target product's `format_options[]`, OR\n- The target product carries `format_ids` but no `format_options[]` (legacy-format-only product — there is no closed set to resolve against), OR\n- The target product carries `format_options[]` but none of the entries publish selectable `format_option_id` values. Sellers SHOULD set `error.details.reason` to `format_option_refs_not_published` in this case so buyers can distinguish it from an outright mismatch and fall back to `format_ids[]`.\n\n**Seller obligation.** For buyers to use the 3.1+ format-option path against a product, the seller MUST publish a selectable `format_option_id` on each `format_options[]` entry it expects buyers to select; if the option is publisher-catalog backed, include `publisher_domain` on the product declaration and require buyers to use `scope: \"publisher\"` in `FormatOptionRef`.\n\n**No legacy capability selector.** `capability_ids` was removed before GA; schemas reject it instead of treating it as an extension.\n\n**Dual emission.** Format-option-aware buyer SDKs targeting a heterogeneous seller population SHOULD emit `format_ids` alongside `format_option_refs` so legacy-format-only sellers — which ignore unknown fields per `additionalProperties: true` — still receive an explicit format set rather than silently defaulting to all formats supported by the product.",
+      "items": {
+        "$ref": "/schemas/3.1.3/core/format-option-ref.json"
+      },
+      "minItems": 1
+    },
+    "format_kind": {
+      "$ref": "/schemas/3.1.3/core/canonical-format-kind.json",
+      "description": "3.1+ direct canonical selector. Names the canonical format shape this package targets when the buyer is authoring by canonical kind rather than by a product-local `format_option_ref` or legacy `format_id`. Pair with `params` when the product declaration requires dimensions, duration, sizes, codecs, or other canonical parameters. If `format_option_refs` is present, it wins over this direct selector. If `format_ids` is present without `format_option_refs`, sellers MUST normalize and validate the legacy selector; buyers SHOULD NOT also send `format_kind` unless it is an informational echo of the same normalized shape.\n\nProduct satisfaction is directional: a broad selector such as `{ format_kind: \"image\" }` does not satisfy a product whose `format_options[]` fixes `params.width` and `params.height`. Sellers MUST reject under-specified direct selectors with `UNSUPPORTED_FEATURE` or an equivalent format-selector validation error."
+    },
+    "params": {
+      "type": "object",
+      "description": "Parameters for the direct canonical selector in `format_kind`. Shape follows the selected canonical's parameter vocabulary: dimensions (`width`, `height`, `sizes`), duration (`duration_ms_exact`, `duration_ms_range`), codecs, asset-source and slot narrowing, or other canonical-specific constraints. Omit when selecting by `format_option_refs` or `format_ids`; those selectors resolve their parameters from the product declaration or legacy catalog projection.",
+      "additionalProperties": true
+    },
+    "budget": {
+      "type": "number",
+      "description": "Budget allocation for this package in the media buy's currency",
+      "minimum": 0
+    },
+    "pacing": {
+      "$ref": "/schemas/3.1.3/enums/pacing.json"
+    },
+    "pricing_option_id": {
+      "type": "string",
+      "description": "ID of the selected pricing option from the product's pricing_options array",
+      "x-entity": "product_pricing_option"
+    },
+    "bid_price": {
+      "type": "number",
+      "description": "Bid price for auction-based pricing options. This is the exact bid/price to honor unless selected pricing_option has max_bid=true, in which case bid_price is the buyer's maximum willingness to pay (ceiling).",
+      "minimum": 0
+    },
+    "impressions": {
+      "type": "number",
+      "description": "Impression goal for this package",
+      "minimum": 0
+    },
+    "start_time": {
+      "type": "string",
+      "format": "date-time",
+      "not": {
+        "const": "asap"
+      },
+      "description": "Flight start date/time for this package in ISO 8601 format. When omitted, the package inherits the media buy's start_time. Must fall within the media buy's date range."
+    },
+    "end_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Flight end date/time for this package in ISO 8601 format. When omitted, the package inherits the media buy's end_time. Must fall within the media buy's date range."
+    },
+    "paused": {
+      "type": "boolean",
+      "description": "Whether this package should be created in a paused state. Paused packages do not deliver impressions. Defaults to false.",
+      "default": false
+    },
+    "catalogs": {
+      "type": "array",
+      "description": "Catalogs this package promotes. Each catalog MUST have a distinct type (e.g., one product catalog, one store catalog). This constraint is enforced at the application level — sellers MUST reject requests containing multiple catalogs of the same type with a validation_error. Makes the package catalog-driven: one budget envelope, platform optimizes across items.",
+      "items": {
+        "$ref": "/schemas/3.1.3/core/catalog.json"
+      }
+    },
+    "optimization_goals": {
+      "type": "array",
+      "description": "Optimization targets for this package. The seller optimizes delivery toward these goals in priority order. Common pattern: event goals (purchase, install) as primary targets at priority 1; metric goals (clicks, views) as secondary proxy signals at priority 2+.",
+      "items": {
+        "$ref": "/schemas/3.1.3/core/optimization-goal.json"
+      },
+      "minItems": 1
+    },
+    "targeting_overlay": {
+      "$ref": "/schemas/3.1.3/core/targeting.json"
+    },
+    "measurement_terms": {
+      "$ref": "/schemas/3.1.3/core/measurement-terms.json",
+      "description": "Buyer's proposed billing measurement and makegood terms. Overrides product defaults. Seller accepts (echoed on confirmed package), rejects with TERMS_REJECTED, or adjusts. When absent, product's measurement_terms apply."
+    },
+    "performance_standards": {
+      "type": "array",
+      "description": "Buyer's proposed performance standards for this package. Overrides product defaults. Seller accepts, rejects with TERMS_REJECTED, or adjusts. When absent, product's performance_standards apply.",
+      "items": {
+        "$ref": "/schemas/3.1.3/core/performance-standard.json"
+      },
+      "minItems": 1
+    },
+    "committed_metrics": {
+      "type": "array",
+      "description": "Buyer's proposed reporting contract for this package — the metrics the buyer wants the seller to commit to populating in delivery reports. Same negotiation pattern as `measurement_terms` and `performance_standards`: seller accepts (echoes on confirmed package with `committed_at` stamped), rejects with `TERMS_REJECTED` (with explanation of which entries were unworkable), or normalizes (echoes a different but compatible list — buyer can accept by retrying with the normalized terms). When absent, the seller decides what to commit based on the product's `available_metrics` and the buyer's `required_metrics` filter on `get_products`. Each entry uses an explicit `scope` discriminator (`standard` or `vendor`) and identifies the metric — request-side entries do NOT carry `committed_at`; that timestamp is stamped by the seller on accept. Constraints on what the buyer MAY propose: each `scope: standard` entry's `metric_id` MUST be in the product's `available_metrics`, and each `scope: vendor` entry's `(vendor, metric_id)` MUST appear in the product's `vendor_metrics` — sellers SHOULD reject with `TERMS_REJECTED` and reference the offending entry when the proposal exceeds product capability.",
+      "items": {
+        "type": "object",
+        "discriminator": {
+          "propertyName": "scope"
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "scope": {
+                "type": "string",
+                "const": "standard",
+                "description": "Standard metric from the closed `available-metric.json` enum."
+              },
+              "metric_id": {
+                "$ref": "/schemas/3.1.3/enums/available-metric.json",
+                "description": "Identifier for the standard metric. MUST be present in the product's `reporting_capabilities.available_metrics`."
+              },
+              "qualifier": {
+                "type": "object",
+                "description": "Disambiguator — same shape as on the response-side `committed_metrics`. Required when the buyer wants to pin a specific measurement path: `viewability_standard` for MRC vs GroupM viewability; `completion_source` for seller- vs vendor-attested `completion_rate`; `attribution_methodology` for how attribution was computed (deterministic_purchase, probabilistic, panel_based, modeled); `attribution_window` for the time window over which outcomes are attributed. See response-side description for full semantics.",
+                "properties": {
+                  "viewability_standard": {
+                    "$ref": "/schemas/3.1.3/enums/viewability-standard.json"
+                  },
+                  "completion_source": {
+                    "$ref": "/schemas/3.1.3/enums/completion-source.json"
+                  },
+                  "attribution_methodology": {
+                    "$ref": "/schemas/3.1.3/enums/attribution-methodology.json"
+                  },
+                  "attribution_window": {
+                    "$ref": "/schemas/3.1.3/core/duration.json"
+                  },
+                  "lift_dimension": {
+                    "$ref": "/schemas/3.1.3/enums/lift-dimension.json"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "required": ["scope", "metric_id"],
+            "additionalProperties": false
+          },
+          {
+            "properties": {
+              "scope": {
+                "type": "string",
+                "const": "vendor",
+                "description": "Vendor-defined metric, identified by the tuple `(vendor, metric_id)`."
+              },
+              "vendor": {
+                "$ref": "/schemas/3.1.3/core/brand-ref.json",
+                "description": "Vendor that defines and computes this metric. The vendor's `brand.json` `agents[type='measurement']` is the canonical anchor."
+              },
+              "metric_id": {
+                "$ref": "/schemas/3.1.3/core/vendor-metric-id.json",
+                "description": "Identifier for the metric within the vendor's vocabulary. MUST be present in the product's `reporting_capabilities.vendor_metrics` for the same vendor."
+              }
+            },
+            "required": ["scope", "vendor", "metric_id"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "minItems": 1
+    },
+    "creative_assignments": {
+      "type": "array",
+      "description": "Assign existing library creatives to this package with optional weights and placement targeting",
+      "items": {
+        "$ref": "/schemas/3.1.3/core/creative-assignment.json"
+      },
+      "minItems": 1
+    },
+    "creatives": {
+      "type": "array",
+      "description": "Upload creative assets inline and assign to this package. When the seller also advertises creative.has_creative_library: true, these creatives enter the seller's creative library and can be reused by creative_id while retained; inline-only sellers may store them as package-scoped assets. Use creative_assignments instead for existing library creatives.",
+      "items": {
+        "$ref": "/schemas/3.1.3/core/creative-asset.json"
+      },
+      "minItems": 1,
+      "maxItems": 100
+    },
+    "agency_estimate_number": {
+      "type": "string",
+      "maxLength": 100,
+      "description": "Agency estimate or authorization number for this package. Overrides the media buy-level estimate number when different packages correspond to different agency estimates (e.g., different stations or flights within the same buy)."
+    },
+    "context": {
+      "$ref": "/schemas/3.1.3/core/context.json",
+      "description": "Opaque package-level correlation data echoed unchanged in the package response, webhooks, and read surfaces. Buyers targeting mixed seller populations SHOULD include a per-package correlation value here, commonly context.buyer_ref, so responses from legacy sellers that do not echo product_id can still be mapped back to the requested product or line item. Do not use deprecated top-level buyer_ref for v3 correlation."
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.3/core/ext.json"
+    }
+  },
+  "required": [
+    "product_id",
+    "budget",
+    "pricing_option_id"
+  ],
+  "dependencies": {
+    "params": ["format_kind"]
+  },
+  "additionalProperties": true
+}

@@ -25,6 +25,8 @@ import { AdAgentsManager } from "./adagents-manager.js";
 import { mountSchemasRoutes, mountComplianceRoutes, mountProtocolRoutes } from "./schemas-middleware.js";
 import { closeDatabase, getPool, healthCheck } from "./db/client.js";
 import { AuthenticationRequiredError, CreativeAgentClient, SingleAgentClient } from "@adcp/sdk";
+import { sdkSafeFetch, withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
+import { jsonBodyLimitForPath } from './utils/json-body-limit.js';
 import type { Agent, AgentType, AgentWithStats, Company } from "./types.js";
 import { isValidAgentType, VALID_MEMBER_OFFERINGS, VALID_LEGAL_DOCUMENT_TYPES } from "./types.js";
 import type { Server } from "http";
@@ -54,6 +56,8 @@ import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain, getGoogleEmailAliases } from "./utils/email-domain.js";
 import { isUuid } from "./utils/uuid.js";
 import { resolveUserNameWithFallbacks, sanitizeName } from "./utils/resolve-user-name.js";
+import { scrubCommunityAuthorizedAgents } from "./utils/community-adagents.js";
+import { formatPerspectiveUrlAsMarkdownDestination, normalizePerspectiveExternalUrl } from "./utils/perspective-url.js";
 import { requireAuth, requireAdmin, requireGlobalAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, encodeDevSessionCookie, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter, newsletterSubscribeRateLimiter, newsletterConfirmRateLimiter } from "./middleware/rate-limit.js";
 import { findOrCreateUserByEmail } from "./auth/workos-client.js";
@@ -73,6 +77,7 @@ import {
 import { createAdminRouter } from "./routes/admin.js";
 import { createAdminInsightsRouter } from "./routes/admin-insights.js";
 import { createAddieAdminRouter } from "./routes/addie-admin.js";
+import { createSecretariatAdminRouter } from "./routes/secretariat-admin.js";
 import { createAddieChatRouter } from "./routes/addie-chat.js";
 import { createTavusRouter } from "./routes/tavus.js";
 import { createSiChatRoutes } from "./routes/si-chat.js";
@@ -241,9 +246,10 @@ function buildPerspectiveUrl(slug: string): string {
 }
 
 function getPerspectiveCrawlerUrl(item: PublicPerspectiveCrawlerItem): string {
-  return item.content_type === 'link' && item.external_url
-    ? item.external_url
-    : buildPerspectiveUrl(item.slug);
+  const externalUrl = item.content_type === 'link'
+    ? normalizePerspectiveExternalUrl(item.external_url)
+    : null;
+  return externalUrl ?? buildPerspectiveUrl(item.slug);
 }
 
 async function getPublicPerspectiveCrawlerItems(limit = PERSPECTIVES_CRAWLER_LIMIT): Promise<PublicPerspectiveCrawlerItem[]> {
@@ -271,6 +277,10 @@ async function getPublicPerspectiveCrawlerItems(limit = PERSPECTIVES_CRAWLER_LIM
 }
 
 function buildLlmsTxt(items: PublicPerspectiveCrawlerItem[]): string {
+  const markdownDestination = (url: string): string => (
+    formatPerspectiveUrlAsMarkdownDestination(url)
+    ?? formatPerspectiveUrlAsMarkdownDestination(PUBLIC_SITE_URL)!
+  );
   const lines = [
     '# AgenticAdvertising.org',
     '',
@@ -278,20 +288,21 @@ function buildLlmsTxt(items: PublicPerspectiveCrawlerItem[]): string {
     '',
     '## Discoverability',
     '',
-    `- [Sitemap](${PUBLIC_SITE_URL}/sitemap.xml)`,
-    `- [Perspectives RSS feed](${PUBLIC_SITE_URL}/perspectives/feed.xml)`,
+    `- [Sitemap](${markdownDestination(`${PUBLIC_SITE_URL}/sitemap.xml`)})`,
+    `- [Perspectives RSS feed](${markdownDestination(`${PUBLIC_SITE_URL}/perspectives/feed.xml`)})`,
     '',
     '## Perspectives',
     '',
   ];
 
   if (items.length === 0) {
-    lines.push(`- [Latest perspectives](${PUBLIC_SITE_URL}/latest/perspectives)`);
+    lines.push(`- [Latest perspectives](${markdownDestination(`${PUBLIC_SITE_URL}/latest/perspectives`)})`);
   } else {
     for (const item of items) {
       const title = escapeMarkdownText(item.title);
       const excerpt = escapeMarkdownText(item.excerpt);
-      lines.push(`- [${title}](${getPerspectiveCrawlerUrl(item)})${excerpt ? `: ${excerpt}` : ''}`);
+      const destination = markdownDestination(getPerspectiveCrawlerUrl(item));
+      lines.push(`- [${title}](${destination})${excerpt ? `: ${excerpt}` : ''}`);
     }
   }
 
@@ -928,7 +939,10 @@ export class HTTPServer {
         // `/mcp` endpoint, which rehashes the exact bytes the signer signed.
         // Cheap (one utf-8 decode per request) and unused elsewhere.
         express.json({
-          limit: '10mb',
+          // The 10MB default carries base64-encoded logo uploads in member
+          // profiles. Unauthenticated endpoints that only take a short list get
+          // a tight cap so a caller cannot make the parser the expensive part.
+          limit: jsonBodyLimitForPath(req.path),
           verify: (req, _res, buf) => {
             (req as unknown as { rawBody?: string }).rawBody = buf.toString('utf8');
           },
@@ -949,7 +963,11 @@ export class HTTPServer {
     // AAO domain redirects to the DB-managed hosted brand.
     this.app.get('/.well-known/brand.json', (req, res) => {
       res.setHeader('Cache-Control', 'public, max-age=3600');
-      if (this.isAdcpDomain(req)) {
+      // The training-agent hostname publishes the same operator record as the
+      // AdCP site. Its capabilities point at this exact origin, so returning
+      // the AAO authoritative-location stub here would break the required
+      // capabilities -> brand.json -> agents[] -> JWKS discovery chain.
+      if (this.isAdcpDomain(req) || TRAINING_AGENT_HOSTNAMES.has(req.hostname)) {
         return res.json({
           "$schema": "https://adcontextprotocol.org/schemas/latest/brand.json",
           "agents": [
@@ -1305,6 +1323,11 @@ export class HTTPServer {
     const { pageRouter: addiePageRouter, apiRouter: addieApiRouter } = createAddieAdminRouter();
     this.app.use('/admin/addie', addiePageRouter);      // Page routes: /admin/addie
     this.app.use('/api/admin/addie', addieApiRouter);   // API routes: /api/admin/addie/*
+
+    // Mount Secretariat console routes (human-approved action queue)
+    const { pageRouter: secretariatPageRouter, apiRouter: secretariatApiRouter } = createSecretariatAdminRouter();
+    this.app.use('/admin/secretariat', secretariatPageRouter);      // Page routes: /admin/secretariat
+    this.app.use('/api/admin/secretariat', secretariatApiRouter);   // API routes: /api/admin/secretariat/*
 
 
     // Mount Addie chat routes (public chat interface)
@@ -3621,14 +3644,19 @@ export class HTTPServer {
     // POST /api/properties/hosted - Create a hosted property (authenticated)
     this.app.post('/api/properties/hosted', requireAuth, async (req, res) => {
       try {
-        const { publisher_domain, adagents_json, source_type } = req.body;
-        if (!publisher_domain || !adagents_json) {
+        // Establish the identity-only write invariant before any validation
+        // branch derived from caller input. Only this scrubbed value may reach
+        // the database boundary below.
+        const requestedAdagentsJson = req.body?.adagents_json;
+        const adagentsJsonForStorage = scrubCommunityAuthorizedAgents(requestedAdagentsJson);
+        const { publisher_domain, source_type } = req.body;
+        if (!publisher_domain || !requestedAdagentsJson) {
           return res.status(400).json({ error: 'publisher_domain and adagents_json required' });
         }
 
         const property = await this.propertyDb.createHostedProperty({
           publisher_domain: publisher_domain.toLowerCase(),
-          adagents_json,
+          adagents_json: adagentsJsonForStorage,
           source_type: source_type || 'community',
           created_by_user_id: req.user?.id,
           created_by_email: req.user?.email,
@@ -3644,13 +3672,18 @@ export class HTTPServer {
     // POST /api/properties/hosted/community - Create a new community property (member-authenticated, pending review)
     this.app.post('/api/properties/hosted/community', requireAuth, async (req, res) => {
       try {
+        // Scrub unconditionally, before membership and payload validation can
+        // branch on request-derived values.
+        const requestedAdagentsJson = req.body?.adagents_json;
+        const adagentsJsonForStorage = scrubCommunityAuthorizedAgents(requestedAdagentsJson);
+
         await enrichUserWithMembership(req.user as any);
         if (!(req.user as any)?.isMember) {
           return res.status(403).json({ error: 'Membership required to create properties' });
         }
 
-        const { publisher_domain, adagents_json } = req.body;
-        if (!publisher_domain || !adagents_json) {
+        const { publisher_domain } = req.body;
+        if (!publisher_domain || !requestedAdagentsJson) {
           return res.status(400).json({ error: 'publisher_domain and adagents_json required' });
         }
 
@@ -3662,7 +3695,7 @@ export class HTTPServer {
 
         const property = await this.propertyDb.createCommunityProperty({
           publisher_domain: publisher_domain.toLowerCase(),
-          adagents_json,
+          adagents_json: adagentsJsonForStorage,
           source_type: 'community',
           created_by_user_id: req.user!.id,
           created_by_email: req.user!.email,
@@ -3728,6 +3761,15 @@ export class HTTPServer {
     // PUT /api/properties/hosted/:domain - Edit a community property with revision tracking
     this.app.put('/api/properties/hosted/:domain', requireAuth, async (req, res) => {
       try {
+        // Always scrub before request-dependent branching. Preserve the
+        // existing optional-update behavior by selecting undefined only after
+        // the scrub has established the safe storage value.
+        const requestedAdagentsJson = req.body?.adagents_json;
+        const adagentsJsonForStorage = scrubCommunityAuthorizedAgents(requestedAdagentsJson);
+        const adagentsJsonUpdate = requestedAdagentsJson === undefined
+          ? undefined
+          : adagentsJsonForStorage;
+
         await enrichUserWithMembership(req.user as any);
         if (!(req.user as any)?.isMember) {
           return res.status(403).json({ error: 'Membership required to edit properties' });
@@ -3735,7 +3777,7 @@ export class HTTPServer {
 
         const domain = decodeURIComponent(req.params.domain).toLowerCase();
 
-        const { edit_summary, adagents_json } = req.body;
+        const { edit_summary } = req.body;
         if (!edit_summary || typeof edit_summary !== 'string') {
           return res.status(400).json({ error: 'edit_summary required' });
         }
@@ -3747,7 +3789,7 @@ export class HTTPServer {
         }
 
         const { property, revision_number } = await this.propertyDb.editCommunityProperty(domain, {
-          adagents_json,
+          adagents_json: adagentsJsonUpdate,
           edit_summary,
           editor_user_id: req.user!.id,
           editor_email: req.user!.email,
@@ -5350,6 +5392,8 @@ export class HTTPServer {
     // queue with a "not authorized" message rather than a hard 404.
     this.app.get('/admin/brand-logos', requireAuth, (req, res) =>
       this.serveHtmlWithConfig(req, res, 'admin-brand-logos.html'));
+    this.app.get('/admin/community-mirrors', requireAuth, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'admin-community-mirrors.html'));
 
     // Redirects from old /manage paths (preserve query strings)
     const manageRedirect = (target: string) => (req: express.Request, res: express.Response) => {
@@ -9251,7 +9295,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           name: 'discovery-client',
           agent_uri: url,
           protocol: 'mcp', // Library handles protocol detection internally
-        });
+        }, withSdkSafeTransport({}));
 
         // getAgentInfo() handles all the protocol detection and tool discovery
         const agentInfo = await client.getAgentInfo();
@@ -9277,7 +9321,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           // Check for A2A agent card if we detected MCP
           if (agentInfo.protocol === 'mcp') {
             const a2aUrl = new URL('/.well-known/agent.json', url).toString();
-            const a2aResponse = await fetch(a2aUrl, {
+            const a2aResponse = await sdkSafeFetch(a2aUrl, {
               headers: { 'Accept': 'application/json' },
               signal: AbortSignal.timeout(3000),
             });
@@ -9298,7 +9342,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
         if (agentType === 'creative') {
           try {
-            const creativeClient = new CreativeAgentClient({ agentUrl: url });
+            const creativeClient = new CreativeAgentClient(withSdkSafeTransport({ agentUrl: url }));
             const formats = await creativeClient.listFormats();
             stats.format_count = formats.length;
           } catch (statsError) {

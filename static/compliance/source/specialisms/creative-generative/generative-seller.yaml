@@ -12,7 +12,7 @@ required_tools:
   - get_media_buy_delivery
 # list_creative_formats omitted from required_tools (AdCP #5779): 3.2 agents may
 # declare equivalent canonical-format discovery instead. Steps that call the tool
-# are gated with requires_tool so absence grades not_applicable.
+# are gated with requires_tool so absence produces an explicit non-failing missing_tool skip.
 requires_scenarios:
   - media_buy_seller/refine_products
   - media_buy_seller/delivery_reporting

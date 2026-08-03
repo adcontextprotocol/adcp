@@ -334,7 +334,11 @@ export async function sendDigest(digest: DigestRecord): Promise<{ sent: number }
     await markSent(digest.id, stats);
 
     // Publish as perspective for SEO/discoverability (non-blocking)
-    publishDigestAsPerspective(digest.id, content, editionDate, subject).catch((err) => {
+    void (async () => {
+      const { thePromptConfig } = await import('../../newsletters/the-prompt/index.js');
+      const markdown = thePromptConfig.buildMarkdown(content);
+      await publishDigestAsPerspective(digest.id, content, editionDate, subject, markdown);
+    })().catch((err) => {
       logger.error({ error: err, digestId: digest.id }, 'Failed to publish digest as perspective');
     });
   } else {

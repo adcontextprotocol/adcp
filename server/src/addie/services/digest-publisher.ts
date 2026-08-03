@@ -30,13 +30,14 @@ export async function publishDigestAsPerspective(
   content: DigestContent,
   editionDate: string,
   subject: string,
+  markdown: string,
 ): Promise<string | null> {
   try {
     // Create the perspective
     const result = await proposeContentForUser(ADDIE_USER, {
       title: subject,
       content_type: 'article',
-      content: buildFullMarkdown(content),
+      content: markdown,
       excerpt: content.openingTake,
       category: 'The Prompt',
       tags: extractTags(content),
@@ -72,79 +73,6 @@ export async function publishDigestAsPerspective(
     logger.error({ error: err, editionDate }, 'Failed to publish digest as perspective');
     return null;
   }
-}
-
-/**
- * Build the full markdown content of a digest edition (for the perspective body).
- * This is the member-accessible version with all sections.
- */
-function buildFullMarkdown(content: DigestContent): string {
-  const sections: string[] = [];
-
-  // Opening take
-  sections.push(content.openingTake);
-
-  // Editor's note
-  if (content.editorsNote) {
-    sections.push(`> ${content.editorsNote.split('\n').join('\n> ')}`);
-  }
-
-  // New members welcome
-  if (content.newMembers.length > 0) {
-    const names = content.newMembers.map((m) => `**${m.name}**`).join(', ');
-    sections.push(`Welcome to ${names} who joined this week.`);
-  }
-
-  // Worth your time
-  if (content.whatToWatch.length > 0) {
-    sections.push('## Industry intel');
-    for (const item of content.whatToWatch) {
-      sections.push(`### [${item.title}](${item.url})\n\n${item.summary}\n\n*${item.whyItMatters}*`);
-    }
-  }
-
-  // What shipped
-  if (content.whatShipped && content.whatShipped.length > 0) {
-    sections.push('## What shipped');
-    for (const item of content.whatShipped) {
-      sections.push(`- [${item.title}](${item.url})${item.summary ? ` — ${item.summary}` : ''}`);
-    }
-  }
-
-  // From the inside
-  if (content.fromTheInside.length > 0) {
-    sections.push('## From the inside');
-    for (const group of content.fromTheInside) {
-      sections.push(`### ${group.name}\n\n${group.summary}`);
-      if (group.nextMeeting) {
-        sections.push(`*Next: ${group.nextMeeting}*`);
-      }
-      for (const recap of group.meetingRecaps) {
-        sections.push(`- **${recap.title}** (${recap.date})${recap.summary ? `: ${recap.summary}` : ''}`);
-      }
-      for (const thread of group.activeThreads) {
-        sections.push(`- ${thread.starter ? `${thread.starter}: ` : ''}"${thread.summary}" — ${thread.replyCount} replies`);
-      }
-    }
-  }
-
-  // Voices
-  if (content.voices.length > 0) {
-    sections.push('## Voices');
-    for (const item of content.voices) {
-      sections.push(`### [${item.title}](${item.url})\n\nby ${item.authorName}${item.excerpt ? `\n\n${item.excerpt}` : ''}`);
-    }
-  }
-
-  // Shareable take
-  if (content.shareableTake) {
-    sections.push(`> *"${content.shareableTake}"*\n>\n> — Share this take`);
-  }
-
-  // Sign-off
-  sections.push("---\n\nThat's the week. If one thing stuck, share it — this stuff moves faster when more people are paying attention.\n\n— Addie\\\nAgenticAdvertising.org");
-
-  return sections.join('\n\n');
 }
 
 /**

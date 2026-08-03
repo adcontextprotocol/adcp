@@ -991,6 +991,11 @@ export function buildCatalog(): CatalogProduct[] {
       pricingAliases: ['cpm_guaranteed_fixed'],
     },
     {
+      id: 'sports_preroll_q2',
+      name: 'Sports Preroll Q2 (legacy refinement storyboard fixture)',
+      source: catalog.find(cp => cp.publisherId === guaranteedCtvPublisher.id && (cp.product.channels ?? []).includes('ctv')),
+    },
+    {
       id: 'outdoor_ctv_q2_guaranteed',
       name: 'Outdoor CTV Q2 Guaranteed (storyboard fixture)',
       source: catalog.find(cp => cp.publisherId === guaranteedCtvPublisher.id && (cp.product.channels ?? []).includes('ctv')),

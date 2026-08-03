@@ -45,6 +45,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { AgentContextDatabase } from '../db/agent-context-db.js';
 import { getWorkos } from '../auth/workos-client.js';
 import { createWebOAuthAdapters, AgentOAuthPendingFlowStore } from './helpers/web-oauth-stores.js';
+import { oauthSafeFetch } from '../utils/oauth-safe-fetch.js';
 import { validateExternalUrl } from '../utils/url-security.js';
 
 const logger = createLogger('agent-oauth');
@@ -72,7 +73,11 @@ async function durableOAuthScopeHintForAgent(agentUrl: string): Promise<string |
   let resourceScopes: readonly string[] | undefined;
   let authorizationServerUrl: string | undefined;
   try {
-    const metadata = await discoverOAuthProtectedResourceMetadata(agentUrl);
+    const metadata = await discoverOAuthProtectedResourceMetadata(
+      agentUrl,
+      undefined,
+      oauthSafeFetch,
+    );
     if (
       metadata.resource &&
       !checkResourceAllowed({
@@ -94,7 +99,10 @@ async function durableOAuthScopeHintForAgent(agentUrl: string): Promise<string |
   if (authorizationServerUrl && !validateExternalUrl(authorizationServerUrl)) {
     return undefined;
   }
-  const asMetadata = await discoverAuthorizationServerMetadata(authorizationServerUrl ?? agentUrl);
+  const asMetadata = await discoverAuthorizationServerMetadata(
+    authorizationServerUrl ?? agentUrl,
+    { fetchFn: oauthSafeFetch },
+  );
   const supportedScopes = asMetadata?.scopes_supported;
   const allowOfflineAccess = !supportedScopes || supportedScopes.includes(OFFLINE_ACCESS_SCOPE);
   return buildDurableOAuthScopeHint(resourceScopes, allowOfflineAccess);
@@ -301,6 +309,7 @@ export function createAgentOAuthRouter(): Router {
         redirectUri,
         pendingFlowStore,
         agentStorage,
+        fetch: oauthSafeFetch,
         carry,
         ...(scopeHint && { scopeHint }),
         ...(scopeHint && { clientMetadata: { scope: scopeHint } }),
@@ -405,6 +414,7 @@ export function createAgentOAuthRouter(): Router {
         code,
         pendingFlowStore: guardedPendingFlowStore,
         agentStorage,
+        fetch: oauthSafeFetch,
         expectedState,
       });
 
@@ -519,7 +529,9 @@ export function createAgentOAuthRouter(): Router {
       }
       const agentContext = access.agentContext;
 
-      const metadata = await discoverOAuthMetadata(agentContext.agent_url);
+      const metadata = await discoverOAuthMetadata(agentContext.agent_url, {
+        fetch: oauthSafeFetch,
+      });
       const agentSupportsOAuth = !!metadata;
       const hasValidTokens = agentContextDb.hasValidOAuthTokens(agentContext);
 

@@ -38,6 +38,7 @@ import {
 import { getPool } from '../../db/client.js';
 import { getIdempotencyStore, scopedPrincipal } from '../idempotency.js';
 import { emitFrameworkTaskWebhook, getWebhookSigningMaterial } from '../webhooks.js';
+import { isWebhookTestOrDevelopment } from '../webhook-fetch.js';
 import { buildSignalsTenantConfig } from './signals.js';
 import { buildSalesTenantConfig } from './sales.js';
 import { buildGovernanceTenantConfig } from './governance.js';
@@ -205,13 +206,14 @@ function buildDefaultServerOptions(storyboardCompat?: TrainingContext['storyboar
     stateStore: pickStateStore(),
     mergeSeam: 'log-once',
     validation: { requests: 'off', responses: 'off' },
-    // F11 — accept loopback push_notification_config.url in non-production.
+    // F11 — accept loopback push_notification_config.url only in explicit
+    // test/development environments.
     // Conformance storyboards bind a loopback HTTP receiver and supply
-    // `http://127.0.0.1:<port>/webhook`; production deployments
-    // (NODE_ENV=production) keep the SSRF-safe rejection. The framework
-    // emits a footgun warning if this is set in production without an
-    // ack env, which we tolerate (the warning surfaces operator misconfig).
-    allowPrivateWebhookUrls: process.env.NODE_ENV !== 'production',
+    // `http://127.0.0.1:<port>/webhook`; production and unknown runtimes keep
+    // the SSRF-safe rejection. The framework emits a footgun warning if this
+    // is set in production without an ack env, which we tolerate (the warning
+    // surfaces operator misconfig).
+    allowPrivateWebhookUrls: isWebhookTestOrDevelopment(process.env.NODE_ENV),
     resolveIdempotencyPrincipal: (
       ctx: { authInfo?: { clientId?: string } },
       params: Record<string, unknown>,

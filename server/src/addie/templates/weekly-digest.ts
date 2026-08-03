@@ -145,9 +145,23 @@ function markdownToSlackMrkdwn(md: string): string {
   return escapeSlackMrkdwnPreserveLinks(htmlToSlackMrkdwn(renderMarkdownToEmailHtml(md)));
 }
 
-function renderCustomSectionsEmail(content: DigestContent, trackingId: string): string {
+type CustomSectionPlacement = 'all' | 'before' | 'after';
+
+function matchesCustomSectionPlacement(position: number, placement: CustomSectionPlacement): boolean {
+  if (placement === 'all') return true;
+  if (placement === 'before') return position === 0;
+  return position > 0;
+}
+
+function renderCustomSectionsEmail(
+  content: DigestContent,
+  trackingId: string,
+  placement: CustomSectionPlacement = 'all',
+): string {
   return getCustomSections(content)
-    .map((section, index) => `
+    .map((section, index) => ({ section, index }))
+    .filter(({ section }) => matchesCustomSectionPlacement(section.position, placement))
+    .map(({ section, index }) => `
     <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
     ${section.title ? `<h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 12px;">${escapeHtml(section.title)}</h2>` : ''}
     <div style="font-size: 14px; color: #333; line-height: 1.6;">${markdownToTrackedEmailHtml(section.body, trackingId, `custom_${index + 1}`)}</div>
@@ -155,15 +169,25 @@ function renderCustomSectionsEmail(content: DigestContent, trackingId: string): 
     .join('');
 }
 
-function appendCustomSectionsText(lines: string[], content: DigestContent) {
+function appendCustomSectionsText(
+  lines: string[],
+  content: DigestContent,
+  placement: CustomSectionPlacement = 'all',
+) {
   for (const section of getCustomSections(content)) {
+    if (!matchesCustomSectionPlacement(section.position, placement)) continue;
     if (section.title) lines.push(section.title, '');
     lines.push(markdownToPlainText(section.body), '');
   }
 }
 
-function appendCustomSectionsSlack(blocks: SlackBlock[], content: DigestContent) {
+function appendCustomSectionsSlack(
+  blocks: SlackBlock[],
+  content: DigestContent,
+  placement: CustomSectionPlacement = 'all',
+) {
   for (const section of getCustomSections(content)) {
+    if (!matchesCustomSectionPlacement(section.position, placement)) continue;
     blocks.push({ type: 'divider' });
     const title = section.title ? `*${escapeSlackMrkdwn(section.title)}*\n\n` : '';
     appendSlackMrkdwnSections(blocks, `${title}${markdownToSlackMrkdwn(section.body)}`);
@@ -400,6 +424,8 @@ export function renderDigestEmail(
 
     <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
 
+    ${renderCustomSectionsEmail(content, trackingId, 'before')}
+
     <!-- This Edition (official AAO content — no section header, flows from opening take) -->
     ${(() => {
       const official = content.whatToWatch.filter((item) => item.tags?.includes('official'));
@@ -509,6 +535,8 @@ export function renderDigestEmail(
     `).join('')}
     <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
     ` : ''}
+
+    ${renderCustomSectionsEmail(content, trackingId, 'after')}
 
     <!-- Sign-off -->
     <p style="font-size: 15px; color: #333; line-height: 1.6; margin-bottom: 4px;">
@@ -679,6 +707,8 @@ function renderDigestText(
     return lines.join('\n');
   }
 
+  appendCustomSectionsText(lines, content, 'before');
+
   if (content.newMembers.length > 0) {
     lines.push(`Welcome to ${content.newMembers.map((m) => m.name).join(', ')} who joined this week.`, '');
   }
@@ -761,6 +791,8 @@ function renderDigestText(
     }
   }
 
+  appendCustomSectionsText(lines, content, 'after');
+
   lines.push('---', '');
   lines.push("We're building this together. If something here resonated, pass it along.", '');
   lines.push("Let's keep building,");
@@ -833,6 +865,8 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
   // Official content (with takeaways)
   const officialSlack = content.whatToWatch.filter((item) => item.tags?.includes('official'));
   const externalSlack = content.whatToWatch.filter((item) => !item.tags?.includes('official'));
+
+  appendCustomSectionsSlack(blocks, content, 'before');
 
   if (officialSlack.length > 0) {
     const officialText = officialSlack
@@ -912,6 +946,8 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
       text: { type: 'mrkdwn', text: `*Take action*\n\n${actionText}` },
     });
   }
+
+  appendCustomSectionsSlack(blocks, content, 'after');
 
   // Read more
   blocks.push({ type: 'divider' });

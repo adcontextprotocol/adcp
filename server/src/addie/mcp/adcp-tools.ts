@@ -22,6 +22,8 @@ import { AgentContextDatabase } from '../../db/agent-context-db.js';
 import { AuthenticationRequiredError } from '@adcp/sdk';
 import { buildAgentOAuthAuthorizeUrl } from '../../routes/helpers/agent-oauth-prompt.js';
 import { TRAINING_AGENT_HOSTNAMES } from '../../training-agent/config.js';
+import { agentConfigAuthFields, type SdkAuth } from '../../services/sdk-auth-adapter.js';
+import { withSdkSafeTransport } from '../../utils/sdk-safe-fetch.js';
 
 // Tool handler type (matches claude-client.ts internal type)
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
@@ -679,46 +681,70 @@ export const ADCP_TOOLS: AddieTool[] = [
  * These wrap the AdCPClient to execute tasks with proper parameter mapping.
  */
 export function createAdcpToolHandlers(
-  memberContext: MemberContext | null
+  memberContext: MemberContext | null,
+  trainingModuleContext?: { moduleId?: string },
 ): Map<string, ToolHandler> {
   const handlers = new Map<string, ToolHandler>();
   const agentContextDb = new AgentContextDatabase();
 
   // Helper to get auth credentials for an agent (checks OAuth first, then static token)
-  async function getAuthInfo(agentUrl: string): Promise<{ token: string; authType: 'bearer' | 'basic' } | undefined> {
+  async function getAuthInfo(agentUrl: string): Promise<SdkAuth | undefined> {
     const organizationId = memberContext?.organization?.workos_organization_id;
     if (!organizationId) return undefined;
 
     try {
-      // First check for OAuth tokens (always bearer)
-      const oauthTokens = await agentContextDb.getOAuthTokensByOrgAndUrl(organizationId, agentUrl);
-      if (oauthTokens) {
-        // Check if token is expired
-        if (oauthTokens.expires_at) {
-          const expiresAt = new Date(oauthTokens.expires_at);
-          if (expiresAt.getTime() - Date.now() > 5 * 60 * 1000) {
-            logger.debug({ agentUrl }, 'Using OAuth access token for agent');
-            return { token: oauthTokens.access_token, authType: 'bearer' };
+      // Preserve this tool's established OAuth-first precedence while passing
+      // the full refresh shape to the SDK. A saved static token remains the
+      // fallback when no usable OAuth grant exists.
+      const context = await agentContextDb.getByOrgAndUrl(organizationId, agentUrl);
+      if (context?.has_oauth_token) {
+        const tokens = await agentContextDb.getOAuthTokensByOrgAndUrl(organizationId, agentUrl);
+        if (tokens?.access_token) {
+          const refreshToken = tokens.refresh_token;
+          const unexpired = !tokens.expires_at || tokens.expires_at.getTime() - Date.now() > 5 * 60 * 1000;
+          if (refreshToken) {
+            const client = await agentContextDb.getOAuthClient(context.id);
+            return {
+              type: 'oauth',
+              tokens: {
+                access_token: tokens.access_token,
+                refresh_token: refreshToken,
+                ...(tokens.expires_at && { expires_at: tokens.expires_at.toISOString() }),
+              },
+              ...(client && {
+                client: {
+                  client_id: client.client_id,
+                  ...(client.client_secret && { client_secret: client.client_secret }),
+                },
+              }),
+            };
           }
-          // Token expired or expiring soon - could refresh here in future
-          logger.debug({ agentUrl, expiresAt }, 'OAuth token expired or expiring soon');
-        } else {
-          // No expiration, use the token
-          logger.debug({ agentUrl }, 'Using OAuth access token for agent (no expiration)');
-          return { token: oauthTokens.access_token, authType: 'bearer' };
+          if (unexpired) return { type: 'bearer', token: tokens.access_token };
         }
       }
 
-      // Fall back to static auth token (may be bearer or basic)
-      const authInfo = await agentContextDb.getAuthInfoByOrgAndUrl(organizationId, agentUrl);
-      if (authInfo) {
-        logger.debug({ agentUrl, authType: authInfo.authType }, 'Using static auth token for agent');
-        return authInfo;
+      if (context?.has_oauth_client_credentials) {
+        const credentials = await agentContextDb.getOAuthClientCredentialsByOrgAndUrl(organizationId, agentUrl);
+        if (credentials) return { type: 'oauth_client_credentials', credentials };
       }
+
+      const staticAuth = await agentContextDb.getAuthInfoByOrgAndUrl(organizationId, agentUrl);
+      if (!staticAuth) return undefined;
+      if (staticAuth.authType === 'basic') {
+        const decoded = Buffer.from(staticAuth.token, 'base64').toString();
+        const separator = decoded.indexOf(':');
+        if (separator <= 0) return undefined;
+        return {
+          type: 'basic',
+          username: decoded.slice(0, separator),
+          password: decoded.slice(separator + 1),
+        };
+      }
+      return { type: 'bearer', token: staticAuth.token };
     } catch (error) {
       logger.debug({ error, agentUrl }, 'Failed to get auth info for agent');
+      return undefined;
     }
-    return undefined;
   }
 
   // The training agent is served at multiple hostnames and as an internal path
@@ -782,7 +808,14 @@ export function createAdcpToolHandlers(
       if (isTrainingAgentUrl(parsedUrl)) {
         const { executeTrainingAgentTool } = await import('../../training-agent/task-handlers.js');
         const userId = memberContext?.workos_user?.workos_user_id;
-        const ctx = { mode: 'training' as const, userId };
+        const memberModuleId = memberContext?.certification?.status === 'in_progress'
+          ? memberContext.certification.module_id ?? undefined
+          : undefined;
+        const ctx = {
+          mode: 'training' as const,
+          userId,
+          moduleId: trainingModuleContext?.moduleId ?? memberModuleId,
+        };
         const result = await executeTrainingAgentTool(task, params, ctx);
         if (!result.success) {
           return [
@@ -803,7 +836,7 @@ export function createAdcpToolHandlers(
 
     const authInfo = await getAuthInfo(agentUrl);
 
-    logger.info({ agentUrl, task, hasAuth: !!authInfo, authType: authInfo?.authType, debug }, `AdCP: executing ${task}`);
+    logger.info({ agentUrl, task, hasAuth: !!authInfo, authType: authInfo?.type, debug }, `AdCP: executing ${task}`);
 
     try {
       const { AdCPClient } = await import('@adcp/sdk');
@@ -832,9 +865,7 @@ export function createAdcpToolHandlers(
         name: 'target',
         agent_uri: agentUrl,
         protocol: 'mcp' as const,
-        ...(authInfo?.authType === 'basic'
-          ? { headers: { 'Authorization': `Basic ${authInfo.token}` } }
-          : authInfo ? { auth_token: authInfo.token } : {}),
+        ...agentConfigAuthFields(authInfo),
         ...(signingProvider
           ? {
               request_signing: {
@@ -848,7 +879,7 @@ export function createAdcpToolHandlers(
 
       const multiClient = new AdCPClient(
         [agentConfig],
-        { debug }
+        withSdkSafeTransport({ debug }),
       );
       const client = multiClient.agent('target');
 

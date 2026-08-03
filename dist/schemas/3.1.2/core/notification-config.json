@@ -1,0 +1,129 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.2/core/notification-config.json",
+  "title": "Notification Config",
+  "description": "Account-level webhook subscription for notifications whose lifecycle outlives any single media buy — creative state changes, library purges, wholesale feed change webhooks, and future account-anchored resource events after those event types are added to notification-type.json. This surface does not currently carry lifecycle events for the account object itself (for example, there is no `account.status_changed` event type); account status changes are observed through `list_accounts` polling or the one-shot `sync_accounts.push_notification_config` async result channel. Distinct from `push-notification-config.json`, which anchors at a per-resource operation (a single task or media buy). An account MAY register multiple notification configs to fan a single seller's events out to multiple buyer-side endpoints; each entry filters by `event_types`. As with push-notification-config, the default signing scheme is the AdCP RFC 9421 webhook profile against the seller's brand.json `agents[]` JWKS; the optional `authentication` block opts into the deprecated Bearer / HMAC-SHA256 fallback for compatibility. Credentials and shared secrets in `authentication.credentials` are write-only — sellers MUST NOT echo them back in `list_accounts` responses. Sellers MUST verify endpoint control before activating a new or changed active account-level notification config; delivery-time SSRF validation still applies to every fire.",
+  "type": "object",
+  "properties": {
+    "subscriber_id": {
+      "type": "string",
+      "description": "Buyer-supplied identifier for this subscription endpoint. This is the stable logical key within one account's notification_configs[] set: re-sending the same subscriber_id for the same account replaces that subscriber's URL, event_types, authentication selector, and active flag rather than creating a duplicate. Echoed on every webhook payload and on every `webhook_activity[]` record fired against this config so the buyer can attribute fires across multiple endpoints. MUST be unique within the account's `notification_configs[]`. Sending two entries with the same `subscriber_id` in a single `sync_accounts` request array is rejected as a per-account validation failure with `INVALID_REQUEST` or `VALIDATION_ERROR`, and `error.field` MUST point at the duplicate entry. `subscriber_id` is the stable match key for the per-account declarative-replace diff. Always required (even with a single subscriber) so the SDK contract is uniform — no conditional required-when-multiple rules to trip up implementations. Format is opaque — recommended values are short kebab-case slugs (`buyer-primary`, `audit-bus`, `dx-team`).",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Webhook endpoint URL. Same wire contract as `push-notification-config.url` — `format: \"uri\"`, no destination-port allowlist enforced by the protocol, SSRF protection via the IP-range check defined in docs/building/by-layer/L1/security.mdx#webhook-url-validation-ssrf. Sellers MUST validate URL syntax, HTTPS usage, hostname normalization, and reserved-range rejection when writing any config, including `active: false` configs. Sellers MUST complete an activation challenge or equivalent proof-of-control before treating a new or changed active subscriber as active."
+    },
+    "event_types": {
+      "type": "array",
+      "description": "Notification types this subscriber wishes to receive on the registered `url`. The seller MUST NOT fire other types against this endpoint, and MUST NOT silently widen the filter when new types are added to `notification-type.json`. When omitted, the seller MUST default to a no-fire policy and surface an `errors[]` entry on `sync_accounts` so the buyer notices the missing filter. Values are drawn from `notification-type.json`, but only types whose contract anchors at the account scope are valid here — creative lifecycle events and wholesale feed change payloads are valid; media-buy-anchored types (`scheduled`, `final`, `delayed`, `adjusted`, `impairment`) and account-lifecycle names not present in the enum (for example, `account.status_changed`) are invalid on this surface; sellers MUST reject those entries as per-account validation failures with `INVALID_REQUEST` or `VALIDATION_ERROR` and `error.field` pointing at the invalid `event_types` entry rather than silently dropping them.",
+      "items": {
+        "$ref": "/schemas/3.1.2/enums/notification-type.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "authentication": {
+      "type": "object",
+      "description": "Legacy authentication selector. Same precedence and semantics as `push-notification-config.authentication` — presence opts the seller into Bearer or HMAC-SHA256 signing; absence selects the default RFC 9421 webhook profile keyed off the seller's brand.json `agents[]` JWKS. The same signed-registration downgrade-resistance rules apply to accounts[].notification_configs[].authentication. Deprecated; removed in AdCP 4.0. Credentials are write-only and MUST NOT be echoed on `list_accounts` reads.",
+      "properties": {
+        "schemes": {
+          "type": "array",
+          "items": {
+            "$ref": "/schemas/3.1.2/enums/auth-scheme.json"
+          },
+          "minItems": 1,
+          "maxItems": 1
+        },
+        "credentials": {
+          "type": "string",
+          "description": "Credentials for the legacy scheme. Bearer: token. HMAC-SHA256: shared secret. Minimum 32 characters. Exchanged out-of-band during onboarding. Write-only.",
+          "minLength": 32
+        }
+      },
+      "required": [
+        "schemes"
+      ],
+      "additionalProperties": false
+    },
+    "active": {
+      "type": "boolean",
+      "default": true,
+      "description": "When false, the seller persists the configuration but suppresses fires. Use to pause a noisy subscriber without losing the registration. Sellers MUST NOT skip persisting the entry when `active: false` — the buyer's next `sync_accounts` MUST observe the same array, otherwise the buyer cannot distinguish pause from drop. Paused configs may skip only the outbound proof challenge while inactive; sellers MUST still enforce URL parsing, HTTPS, hostname normalization, and reserved-range rejection at write time. Reactivation requires full SSRF validation with connect pinning plus proof-of-control for any tuple without current valid proof."
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.2/core/ext.json"
+    }
+  },
+  "required": [
+    "subscriber_id",
+    "url",
+    "event_types"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "Single subscriber receiving creative lifecycle events",
+      "data": {
+        "subscriber_id": "buyer-primary",
+        "url": "https://buyer.example/webhooks/adcp/creative",
+        "event_types": [
+          "creative.status_changed",
+          "creative.purged"
+        ],
+        "active": true
+      }
+    },
+    {
+      "description": "Audit bus subscriber (one of multiple entries on the same account; the array lives on the account, this is a single item)",
+      "data": {
+        "subscriber_id": "audit-bus",
+        "url": "https://audit.buyer.example/adcp/ingest",
+        "event_types": [
+          "creative.status_changed",
+          "creative.purged"
+        ],
+        "active": true
+      }
+    },
+    {
+      "description": "Wholesale feed mirror subscriber receiving product and signal change payloads",
+      "data": {
+        "subscriber_id": "wholesale-feed-sync",
+        "url": "https://buyer.example/webhooks/adcp/wholesale-feed",
+        "event_types": [
+          "product.created",
+          "product.updated",
+          "product.priced",
+          "product.removed",
+          "signal.created",
+          "signal.updated",
+          "signal.priced",
+          "signal.removed",
+          "wholesale_feed.bulk_change"
+        ],
+        "active": true
+      }
+    },
+    {
+      "description": "Legacy Bearer authentication (deprecated, 4.0 removal)",
+      "data": {
+        "subscriber_id": "buyer-primary",
+        "url": "https://buyer.example/webhooks/adcp",
+        "event_types": [
+          "creative.status_changed"
+        ],
+        "authentication": {
+          "schemes": [
+            "Bearer"
+          ],
+          "credentials": "AbCdEf0123456789AbCdEf0123456789"
+        },
+        "active": true
+      }
+    }
+  ]
+}

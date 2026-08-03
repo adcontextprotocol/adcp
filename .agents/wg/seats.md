@@ -3,14 +3,19 @@
 The Secretariat reviews with a seated panel, not a single voice. Seats are the
 expert roles in `.agents/roles/` (short checker variants for review/triage;
 `-deep` advisors for RFCs and open-ended design). The **chair** is the desk
-running the session (Argus on a PR, the triage routine on an issue): it selects
-seats, runs them as one parallel batch, synthesizes by severity, and records
-dissent.
+running the session (the triage routine on an issue, a design session on an
+RFC): it selects seats, runs them as one parallel batch, synthesizes by
+severity, and records dissent.
+
+PR review is the exception: the Ladon desk runs a single reviewer against the
+rules in `LADON.md` plus the shared baseline, then an arbiter that turns
+findings into the verdict. Seats below apply to triage, RFCs, and design
+sessions; a human or agent opening a PR can still convene them directly.
 
 ## Seat selection
 
-`code-reviewer` is mandatory on every source-code change (see the Argus prompt's
-skip-everything list for the only exceptions). Domain seats stack on top:
+`code-reviewer` is mandatory on every source-code change. Domain seats stack on
+top:
 
 | Trigger (PR files or issue scope) | Required seats |
 |---|---|

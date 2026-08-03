@@ -379,7 +379,7 @@ describe('resolveEffectiveMembership coherence with findPayingOrgForDomain', () 
     expect(result.membership_tier).toBe('individual_professional');
   });
 
-  it('resolves past_due direct membership during the Stripe dunning window', async () => {
+  it('does not treat past_due as global organization membership', async () => {
     await seedPayingOrg(pool, TEST_DIRECT_ORG, CHILD_DOMAIN, {
       subscription_status: 'past_due',
       membership_tier: 'company_icl',
@@ -390,9 +390,9 @@ describe('resolveEffectiveMembership coherence with findPayingOrgForDomain', () 
 
     const result = await resolveEffectiveMembership(TEST_DIRECT_ORG);
 
-    expect(result.is_member).toBe(true);
+    expect(result.is_member).toBe(false);
     expect(result.is_inherited).toBe(false);
-    expect(result.membership_tier).toBe('company_icl');
+    expect(result.membership_tier).toBeNull();
   });
 
   it('resolves direct membership tier through amount fallback when lookup key is absent', async () => {

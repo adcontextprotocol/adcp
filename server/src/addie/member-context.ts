@@ -347,9 +347,11 @@ async function computeTeamWgCoverage(orgMemberUserIds: string[]): Promise<number
   if (orgMemberUserIds.length === 0) return 0;
   const result = await query<{ count: string }>(
     `SELECT COUNT(DISTINCT workos_user_id)::text as count
-       FROM working_group_memberships
-       WHERE workos_user_id = ANY($1::text[])
-         AND status = 'active'`,
+       FROM working_group_memberships wgm
+       JOIN working_groups wg ON wg.id = wgm.working_group_id
+       WHERE wgm.workos_user_id = ANY($1::text[])
+         AND wgm.status = 'active'
+         AND wg.status = 'active'`,
     [orgMemberUserIds]
   );
   const inWgs = parseInt(result.rows[0]?.count || '0', 10);

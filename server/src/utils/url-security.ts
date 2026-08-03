@@ -7,6 +7,18 @@ import { createLogger } from '../logger.js';
 
 const logger = createLogger('url-security');
 
+export const SSRF_CONNECT_TIMEOUT_MS = 5_000;
+
+/**
+ * Private network access is a local test/development affordance only.
+ * Unknown, unset, staging, and misspelled runtime names must fail closed.
+ */
+export function isTestOrDevelopmentRuntime(
+  environment: string | undefined,
+): boolean {
+  return environment === 'test' || environment === 'development';
+}
+
 const TRANSIENT_DNS_CODES = new Set(['EAI_AGAIN', 'ESERVFAIL', 'ETIMEOUT', 'ECONNREFUSED']);
 const PERMANENT_DNS_CODES = new Set(['ENOTFOUND', 'EAI_NONAME', 'ENODATA', 'ENONAME', 'EAI_NODATA']);
 const DNS_CODE_RE = /\b(EAI_AGAIN|ESERVFAIL|ETIMEOUT|ECONNREFUSED|ENOTFOUND|EAI_NONAME|ENODATA|ENONAME|EAI_NODATA)\b/i;
@@ -168,6 +180,29 @@ export function isPrivateHostname(hostname: string): boolean {
   return false;
 }
 
+/**
+ * Normalize a URL parser hostname for security classification.
+ *
+ * A single terminal dot is the canonical DNS root label. Empty labels in any
+ * other position are malformed and must fail closed rather than reaching a
+ * resolver or proxy that may interpret them differently. WHATWG URL parsing
+ * maps the IDNA dot variants to ASCII dots before this helper is called.
+ */
+export function normalizeExternalHostname(hostname: string): string | null {
+  const lowerHostname = hostname.toLowerCase();
+  const hostnameWithoutIpv6Brackets = lowerHostname.startsWith('[') && lowerHostname.endsWith(']')
+    ? lowerHostname.slice(1, -1)
+    : lowerHostname;
+  const normalizedHostname = hostnameWithoutIpv6Brackets.endsWith('.')
+    ? hostnameWithoutIpv6Brackets.slice(0, -1)
+    : hostnameWithoutIpv6Brackets;
+
+  if (!normalizedHostname || normalizedHostname.split('.').some(label => label.length === 0)) {
+    return null;
+  }
+  return normalizedHostname;
+}
+
 function extractDnsErrorCode(reason: unknown): string | undefined {
   if (!reason || typeof reason !== 'object') return undefined;
   const err = reason as { code?: unknown; message?: unknown };
@@ -307,31 +342,28 @@ export async function validateCrawlDomain(domain: string): Promise<string> {
  * - Must parse as a URL.
  * - Protocol must be http or https.
  * - Cloud metadata hosts are always blocked, every environment (AWS/GCP).
- * - In production only: localhost/loopback and RFC1918 private IPv4 ranges
- *   are blocked. Development keeps them allowed so local agents and local
- *   auth servers are reachable.
+ * - Private/internal hosts are allowed only in explicit test or development
+ *   runtimes so local agents and auth servers remain reachable. Unknown,
+ *   unset, staging, and misspelled runtime names fail closed.
  *
- * For stronger SSRF guarantees (DNS rebind defence, redirect-hop validation,
- * IPv6, CGNAT, link-local), prefer `safeFetch` at fetch time.
+ * For stronger SSRF guarantees (DNS resolution/rebind defence, redirect-hop
+ * validation, and connect-time enforcement), prefer `safeFetch` at fetch time.
  */
 export function validateExternalUrl(raw: string): string | null {
   try {
     const url = new URL(raw);
     if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
 
-    const hostname = url.hostname.toLowerCase();
+    const normalizedHostname = normalizeExternalHostname(url.hostname);
+    if (!normalizedHostname) return null;
 
-    if (hostname === '169.254.169.254' || hostname === 'metadata.google.internal') return null;
+    if (normalizedHostname === '169.254.169.254' || normalizedHostname === 'metadata.google.internal') return null;
 
-    if (process.env.NODE_ENV === 'production') {
-      if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '0.0.0.0') {
-        return null;
-      }
-      const ipMatch = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
-      if (ipMatch) {
-        const [, a, b] = ipMatch.map(Number);
-        if (a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) return null;
-      }
+    if (
+      !isTestOrDevelopmentRuntime(process.env.NODE_ENV) &&
+      isPrivateHostname(normalizedHostname)
+    ) {
+      return null;
     }
 
     return raw;
@@ -401,6 +433,7 @@ export function buildSsrfSafeDispatcher(): Dispatcher {
   return new Agent({
     connect: {
       lookup: ssrfSafeLookup,
+      timeout: SSRF_CONNECT_TIMEOUT_MS,
     },
   });
 }

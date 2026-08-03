@@ -16,6 +16,7 @@ import { sendChannelMessage } from '../../slack/client.js';
 import type { SlackBlock } from '../../slack/types.js';
 import { query } from '../../db/client.js';
 import { recordPerspectiveAlert } from '../../db/industry-feeds-db.js';
+import { escapeSlackText } from '../../utils/slack-escape.js';
 import {
   getActiveChannels,
   isWebsiteOnlyChannel,
@@ -136,7 +137,7 @@ function buildAlertBlocks(article: ArticleToAlert): SlackBlock[] {
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: article.addie_notes,
+        text: escapeSlackText(article.addie_notes, 1_000),
       },
     });
   }

@@ -28,7 +28,7 @@ For hands-on authoring practice, use the [S2 creative specialist module](/docs/l
 | **Canonical format** | One of 12 AdCP-defined format archetypes that products narrow (e.g., `image`, `video_vast`, `audio_hosted`, `native_in_feed`). The buyer's stable validation target. |
 | **`format_kind`** | Discriminator value naming a canonical format (e.g., `"image"`). Selects which canonical's parameter schema applies. |
 | **`format_options`** | On a product, an array of full `ProductFormatDeclaration`s. The 90% case is single-element; multi-element declares "accepts any of." Product entries are declarations, not bare references. |
-| **`ProductFormatDeclaration`** | Inline format declaration: required `format_kind` + required `params` + optional `format_option_id` (REQUIRED when entries share `format_kind`; SHOULD be set on every entry per 3.1 so V2 buyers can author against the product via `PackageRequest.format_option_refs[]`) + optional `publisher_domain` for publisher-catalog-backed options + optional `applies_to_channels` + optional `experimental` + optional `v1_format_ref[]` (always array — see below). Even when catalog-backed, the product still carries the full declaration. |
+| **`ProductFormatDeclaration`** | Inline format declaration: required `format_kind` + required `params` + optional `format_option_id` (REQUIRED when entries share `format_kind`; SHOULD be set on every entry per 3.1 so V2 buyers can author against the product via `PackageRequest.format_option_refs[]`) + optional `publisher_domain` for publisher-catalog-backed options + optional human-facing `sample_render_url` + optional `applies_to_channels` + optional `experimental` + optional `v1_format_ref[]` (always array — see below). Even when catalog-backed, the product still carries the full declaration. |
 | **`v1_format_ref`** | Array of `{agent_url, id}` references linking a v2 declaration to one or more v1 named formats. Always array; single-ref is `[{...}]`. Multi-size declarations carry one ref per size (see "Multi-size fan-out" below). |
 | **`canonical:` annotation** | The v1 catalog entry's projection annotation. Always object form — `{ kind: "image" }` minimum, `{ kind, asset_source, slots_override }` rich form for entries whose v1 shape doesn't follow the canonical's defaults (generative, brief-driven). Never bare-string. |
 | **Sibling refinement principle** | Before reaching for a new canonical, check whether `asset_source` + `slots_override` + `applies_to_channels` + event_log surface covers the case. Applied to: generative (image + asset_source: agent_synthesized), published-post references (video_hosted/image/native_in_feed + asset_source: publisher_owned_reference + published_post slot), broadcast TV (video_hosted + applies_to_channels: ["tv"]), DOOH (image + applies_to_channels: ["dooh"]), native (image + slots_override). No new canonical for any of them. |
@@ -336,6 +336,26 @@ Product declarations, buyer selectors, and placement references are intentionall
 `applies_to_property_ids` and `Placement.format_options[]` answer different questions: the first scopes a FORMAT to a subset of properties ("Reels applies to Instagram + Facebook but not WhatsApp"); the second binds a PLACEMENT to one or more formats ("Instagram Reels accepts the `meta_reels` format option"). Property-level format support → `applies_to_property_ids`. Placement-level binding → `placements[].format_options[]`.
 
 **Naming boundary:** `format_option_id` selects a buyable product or publisher-catalog format contract. Creative-agent `capability_id` remains separate: it selects a build path on `creative.supported_formats` when calling `build_creative`. Do not use `capability_id` on media-buy products, placements, package requests, creative manifests, or creative assets.
+
+### Sample renders and declaration authority
+
+Starting in 3.2, `sample_render_url` restores the human-preview path that publisher-owned canonical formats otherwise lose when there is no creative agent owning the format. It answers “what does this declared format look like?” using example assets selected by the declaring party. It does not render buyer assets.
+
+Authority follows the enclosing declaration rather than the shared `ProductFormatDeclaration` type:
+
+| Enclosing surface | Who asserts the sample |
+|---|---|
+| Publisher-hosted `adagents.json` top-level `formats[]` | Publisher |
+| AgenticAdvertising.org community-mirror `adagents.json` top-level `formats[]` | Community mirror, clearly labeled as such |
+| Inline `Placement.format_options[]` declaration | Party publishing that placement catalog |
+| `Product.format_options[]` | Seller publishing the product |
+| `creative.supported_formats[]` | Creative agent demonstrating its production capability; not evidence that a publisher accepts the format |
+
+A bare `{format_option_id}` in `Placement.format_options[]` resolves to the same file's top-level declaration and therefore inherits its `sample_render_url`. A product entry is always a full declaration and does not implicitly inherit presentation metadata. When a product entry carries `{publisher_domain, format_option_id}`, a UI MAY resolve the catalog. A tier-1 publisher-hosted sample SHOULD be preferred when presenting a preview as publisher-authored. A community-mirror result MUST be labeled community-maintained and MUST NOT be presented as publisher-authored. A sample copied directly onto the product remains seller-supplied unless it was verified against the publisher-hosted catalog.
+
+Sample URLs are untrusted external navigation. They SHOULD be public and unauthenticated. Consumers MUST NOT auto-fetch or iframe a sample solely because it appears in a declaration, and MUST NOT attach buyer assets, authorization credentials, source-origin or account context, or user-specific query parameters. Ordinary browser state belonging to the destination origin is outside AdCP's control. Human-facing clients SHOULD open the URL only after explicit user action in a new browsing context with opener and referrer information suppressed.
+
+Dynamic preview is a separate capability. Rendering a buyer's creative manifest requires an authorized renderer and canonical format context for `preview_creative`; `sample_render_url` is neither renderer discovery nor a substitute for that task.
 
 ### Format discovery (resolution order)
 
@@ -1298,7 +1318,7 @@ This is a doc concern, not a schema concern. The schema is more strict than the 
 
 ### Realistic 3.1 coverage
 
-`v1-canonical-mapping.json` ships with ~15 unambiguous entries at 3.1 (IAB display sizes, VAST 4.x, DAAST 1.x). The full v1 audit catalogued 86 formats across 12 platforms; ~76% of those (≈65 formats) fit existing canonicals structurally but **only project automatically when either (a) the seller adds an explicit `canonical` field to their v1 format file, or (b) someone files a registry PR adding the `format_id_glob` or structural match.** Out of the gate at 3.1, 71+ of the audited formats are v1-only — they don't lose support, but a v2-only buyer agent doesn't see them on `format_options` until a seller or AAO contributor closes the gap. Through 3.x, expect most product traffic to remain v1 wire shape with opt-in `format_options` from early-adopter sellers (Meta, NYTimes, AudioStack, generative-DSP, retail-media). Buyer agents planning v2-only consumption in 3.x will see meaningfully thinner inventory than v1-aware agents; planning the codepath as dual-read through at least 3.3 is realistic. The 5.0 sunset for v1 is the floor on dual-emission, not the expected switchover date — anyone planning v2-only should pencil that in for 4.x at the earliest.
+`v1-canonical-mapping.json` carries 7 structural fallbacks from 3.1 plus 22 non-wildcarded literals for observed legacy duration-, dimension-, VAST-token, and AAO-namespace static-display ids. The full v1 audit catalogued 86 formats across 12 platforms; ~76% of those (≈65 formats) fit existing canonicals structurally but **only project automatically when either (a) the seller adds an explicit `canonical` field to their v1 format file, or (b) someone files a registry PR adding the `format_id_glob` or structural match.** Through 3.x, expect most product traffic to remain v1 wire shape with opt-in `format_options` from early-adopter sellers. Buyer agents planning v2-only consumption in 3.x will see meaningfully thinner inventory than v1-aware agents; planning the codepath as dual-read through at least 3.3 is realistic. The 5.0 sunset for v1 is the floor on dual-emission, not the expected switchover date — anyone planning v2-only should pencil that in for 4.x at the earliest.
 
 ## Phase status
 

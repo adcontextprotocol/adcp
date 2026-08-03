@@ -10,7 +10,13 @@ import { WorkOS } from "@workos-inc/node";
 import { getPool, query } from "../db/client.js";
 import { createLogger } from "../logger.js";
 import { isUuid } from "../utils/uuid.js";
-import { requireAuth, requireAdmin, optionalAuth, createRequireWorkingGroupLeader, createRequireWorkingGroupMember } from "../middleware/auth.js";
+import {
+  requireAuth,
+  requireGlobalAdmin,
+  optionalAuth,
+  createRequireWorkingGroupLeader,
+  createRequireWorkingGroupMember,
+} from "../middleware/auth.js";
 import { WorkingGroupDatabase } from "../db/working-group-db.js";
 import { eventsDb } from "../db/events-db.js";
 import { invalidateMemberContextCache } from "../addie/index.js";
@@ -20,6 +26,7 @@ import { notifyPublishedPost } from "../notifications/slack.js";
 import { notifyUser } from "../notifications/notification-service.js";
 import { decodeHtmlEntities } from "../utils/html-entities.js";
 import { validateFetchUrl, validateRedirectTarget, sanitizeUrl } from "../utils/url-security.js";
+import { normalizePerspectiveExternalUrl } from "../utils/perspective-url.js";
 import { reindexDocument } from "../addie/jobs/committee-document-indexer.js";
 import { refreshWorkingGroupDocs } from "../addie/mcp/docs-indexer.js";
 import { createChannel, setChannelPurpose, sendChannelMessage, inviteToChannel, isSlackConfigured } from "../slack/client.js";
@@ -42,6 +49,7 @@ import {
   deleteCommitteeDocument as deleteCommitteeDocumentService,
   WorkingGroupContentError,
 } from "../services/working-group-content-service.js";
+import type { WorkingGroup } from "../types.js";
 
 const logger = createLogger("committee-routes");
 
@@ -218,16 +226,55 @@ export function createCommitteeRouters(): {
   const publicApiRouter = Router();
   const userApiRouter = Router();
 
+  // Working-group administration is global state, including the aao-admin
+  // group that grants SSO platform-admin authority. Refuse tenant-scoped
+  // WorkOS keys once at the router boundary and keep future admin routes under
+  // the same global-admin policy automatically.
+  adminApiRouter.use(...requireGlobalAdmin);
+
   const workingGroupDb = new WorkingGroupDatabase();
   const requireWorkingGroupLeader = createRequireWorkingGroupLeader(workingGroupDb);
   const requireWorkingGroupMember = createRequireWorkingGroupMember(workingGroupDb);
+
+  /**
+   * Document-derived content follows the same visibility boundary as the
+   * working group itself. As with the private group detail and posts routes,
+   * private content is visible only to direct members; leadership, parent-
+   * group membership, and site-admin status do not bypass that boundary.
+   * Callers outside it receive the same 404 as they would for a missing group
+   * so private group existence is not disclosed.
+   */
+  const canViewWorkingGroupContent = async (req: Request, group: WorkingGroup): Promise<boolean> => {
+    if (!group.is_private) return true;
+
+    const user = req.user;
+    if (!user?.id) return false;
+
+    return workingGroupDb.isMember(group.id, user.id);
+  };
+
+  const findVisibleActiveWorkingGroup = async (
+    req: Request,
+    res: Response,
+    slug: string,
+  ): Promise<WorkingGroup | null> => {
+    const group = await workingGroupDb.getWorkingGroupBySlug(slug);
+    if (!group || group.status !== 'active' || !(await canViewWorkingGroupContent(req, group))) {
+      res.status(404).json({
+        error: 'Working group not found',
+        message: `No working group found with slug: ${slug}`,
+      });
+      return null;
+    }
+    return group;
+  };
 
   // =========================================================================
   // ADMIN API ROUTES (/api/admin/working-groups)
   // =========================================================================
 
   // GET /api/admin/working-groups - List all working groups
-  adminApiRouter.get('/', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  adminApiRouter.get('/', async (req: Request, res: Response) => {
     try {
       const typeParam = req.query.type as string | undefined;
       let committeeType: CommitteeType | undefined;
@@ -249,7 +296,7 @@ export function createCommitteeRouters(): {
   });
 
   // GET /api/admin/working-groups/search-users - Search users for leadership selection
-  adminApiRouter.get('/search-users', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  adminApiRouter.get('/search-users', async (req: Request, res: Response) => {
     try {
       const { q } = req.query;
       if (!q || typeof q !== 'string' || q.length < 2) {
@@ -277,7 +324,7 @@ export function createCommitteeRouters(): {
   });
 
   // POST /api/admin/working-groups/sync-all-from-slack - Sync all working groups with Slack channels
-  adminApiRouter.post('/sync-all-from-slack', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  adminApiRouter.post('/sync-all-from-slack', async (req: Request, res: Response) => {
     try {
       const results = await syncAllWorkingGroupMembersFromSlack();
 
@@ -302,7 +349,7 @@ export function createCommitteeRouters(): {
   });
 
   // GET /api/admin/working-groups/:id - Get single working group with details
-  adminApiRouter.get('/:id', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  adminApiRouter.get('/:id', async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const group = await workingGroupDb.getWorkingGroupWithDetails(id);
@@ -324,7 +371,7 @@ export function createCommitteeRouters(): {
   });
 
   // POST /api/admin/working-groups - Create working group
-  adminApiRouter.post('/', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  adminApiRouter.post('/', async (req: Request, res: Response) => {
     try {
       const { name, slug, description, slack_channel_url, is_private, status, display_order,
               leader_user_ids, committee_type, region, parent_id } = req.body;
@@ -442,7 +489,7 @@ export function createCommitteeRouters(): {
   });
 
   // PUT /api/admin/working-groups/:id - Update working group
-  adminApiRouter.put('/:id', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  adminApiRouter.put('/:id', async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const updates = req.body;
@@ -552,7 +599,7 @@ export function createCommitteeRouters(): {
   });
 
   // POST /api/admin/working-groups/:id/deactivate - Deactivate working group
-  adminApiRouter.post('/:id/deactivate', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  adminApiRouter.post('/:id/deactivate', async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       if (!isUuid(id)) {
@@ -578,7 +625,7 @@ export function createCommitteeRouters(): {
   });
 
   // POST /api/admin/working-groups/:id/reactivate - Reactivate working group
-  adminApiRouter.post('/:id/reactivate', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  adminApiRouter.post('/:id/reactivate', async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       if (!isUuid(id)) {
@@ -604,7 +651,7 @@ export function createCommitteeRouters(): {
   });
 
   // GET /api/admin/working-groups/:id/members - List working group members
-  adminApiRouter.get('/:id/members', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  adminApiRouter.get('/:id/members', async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const members = await workingGroupDb.getMembershipsByWorkingGroup(id);
@@ -618,7 +665,7 @@ export function createCommitteeRouters(): {
   });
 
   // POST /api/admin/working-groups/:id/members - Add member to working group
-  adminApiRouter.post('/:id/members', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  adminApiRouter.post('/:id/members', async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const { workos_user_id, user_email, user_name, user_org_name, workos_organization_id } = req.body;
@@ -667,7 +714,7 @@ export function createCommitteeRouters(): {
   });
 
   // DELETE /api/admin/working-groups/:id/members/:userId - Remove member from working group
-  adminApiRouter.delete('/:id/members/:userId', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  adminApiRouter.delete('/:id/members/:userId', async (req: Request, res: Response) => {
     try {
       const { id, userId } = req.params;
       const deleted = await workingGroupDb.deleteMembership(id, userId);
@@ -694,7 +741,7 @@ export function createCommitteeRouters(): {
   // POST /api/admin/working-groups/:slug/topics/:topicSlug/graduate
   // Promote a topic on the given working group into a full subgroup.
   const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{0,99}$/;
-  adminApiRouter.post('/:slug/topics/:topicSlug/graduate', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  adminApiRouter.post('/:slug/topics/:topicSlug/graduate', async (req: Request, res: Response) => {
     try {
       const { slug, topicSlug } = req.params;
       if (!SLUG_PATTERN.test(slug) || !SLUG_PATTERN.test(topicSlug)) {
@@ -719,7 +766,7 @@ export function createCommitteeRouters(): {
 
   // GET /api/admin/working-groups/:id/interest - Get users who expressed interest in a committee
 
-  adminApiRouter.get('/:id/interest', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  adminApiRouter.get('/:id/interest', async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
 
@@ -751,7 +798,7 @@ export function createCommitteeRouters(): {
   });
 
   // POST /api/admin/working-groups/:id/sync-from-slack - Sync members from Slack channel
-  adminApiRouter.post('/:id/sync-from-slack', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  adminApiRouter.post('/:id/sync-from-slack', async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
 
@@ -790,7 +837,7 @@ export function createCommitteeRouters(): {
   });
 
   // GET /api/admin/working-groups/:id/posts - List all posts for a working group
-  adminApiRouter.get('/:id/posts', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  adminApiRouter.get('/:id/posts', async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const pool = getPool();
@@ -1385,6 +1432,12 @@ export function createCommitteeRouters(): {
             message: 'Slug must contain only lowercase letters, numbers, and hyphens',
           });
         }
+        if (error.is('invalid_external_url')) {
+          return res.status(400).json({
+            error: 'Invalid external URL',
+            message: 'Link posts require an HTTPS external URL without credentials',
+          });
+        }
         if (error.is('duplicate_post_slug')) {
           return res.status(409).json({
             error: 'Slug already exists',
@@ -1457,6 +1510,27 @@ export function createCommitteeRouters(): {
         }
       }
 
+      const normalizedIncomingExternalUrl = external_url == null
+        ? external_url
+        : normalizePerspectiveExternalUrl(external_url);
+      const effectiveContentType = content_type ?? post.content_type;
+      const effectiveExternalUrl = external_url === undefined
+        ? normalizePerspectiveExternalUrl(post.external_url)
+        : normalizedIncomingExternalUrl;
+      const persistedExternalUrl = external_url === undefined
+        ? normalizePerspectiveExternalUrl(post.external_url)
+        : normalizedIncomingExternalUrl;
+      if (
+        (external_url != null && !normalizedIncomingExternalUrl) ||
+        (external_url === undefined && post.external_url != null && !persistedExternalUrl) ||
+        (effectiveContentType === 'link' && !effectiveExternalUrl)
+      ) {
+        return res.status(400).json({
+          error: 'Invalid external URL',
+          message: 'Link posts require an HTTPS external URL without credentials',
+        });
+      }
+
       const result = await pool.query(
         `UPDATE perspectives SET
           slug = COALESCE($1, slug),
@@ -1478,7 +1552,7 @@ export function createCommitteeRouters(): {
           content ?? post.content,
           category ?? post.category,
           excerpt ?? post.excerpt,
-          external_url ?? post.external_url,
+          persistedExternalUrl,
           external_site_name ?? post.external_site_name,
           finalMembersOnly,
           postId,
@@ -1607,18 +1681,13 @@ export function createCommitteeRouters(): {
   // COMMITTEE DOCUMENT ROUTES (/api/working-groups/:slug/documents)
   // =========================================================================
 
-  // GET /api/working-groups/:slug/documents - Get documents for a committee (public)
+  // GET /api/working-groups/:slug/documents - Get visible documents for a committee
   publicApiRouter.get('/:slug/documents', optionalAuth, async (req: Request, res: Response) => {
     try {
       const { slug } = req.params;
 
-      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
-      if (!group || group.status !== 'active') {
-        return res.status(404).json({
-          error: 'Committee not found',
-          message: `No committee found with slug: ${slug}`,
-        });
-      }
+      const group = await findVisibleActiveWorkingGroup(req, res, slug);
+      if (!group) return;
 
       const documents = await workingGroupDb.getDocumentsByWorkingGroup(group.id);
 
@@ -1660,13 +1729,8 @@ export function createCommitteeRouters(): {
     try {
       const { slug } = req.params;
 
-      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
-      if (!group || group.status !== 'active') {
-        return res.status(404).json({
-          error: 'Committee not found',
-          message: `No committee found with slug: ${slug}`,
-        });
-      }
+      const group = await findVisibleActiveWorkingGroup(req, res, slug);
+      if (!group) return;
 
       const activity = await workingGroupDb.getRecentActivity(group.id);
       res.json({ activity });
@@ -1684,13 +1748,8 @@ export function createCommitteeRouters(): {
       const { slug } = req.params;
       const summaryType = (req.query.type as string) || 'activity';
 
-      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
-      if (!group || group.status !== 'active') {
-        return res.status(404).json({
-          error: 'Committee not found',
-          message: `No committee found with slug: ${slug}`,
-        });
-      }
+      const group = await findVisibleActiveWorkingGroup(req, res, slug);
+      if (!group) return;
 
       if (!['activity', 'overview', 'changes'].includes(summaryType)) {
         return res.status(400).json({
@@ -1874,7 +1933,7 @@ export function createCommitteeRouters(): {
   });
 
   // GET /api/working-groups/:slug/documents/:documentId/file - Download uploaded file
-  publicApiRouter.get('/:slug/documents/:documentId/file', async (req: Request, res: Response) => {
+  publicApiRouter.get('/:slug/documents/:documentId/file', optionalAuth, async (req: Request, res: Response) => {
     try {
       const { slug, documentId } = req.params;
 
@@ -1882,10 +1941,8 @@ export function createCommitteeRouters(): {
         return res.status(400).json({ error: 'Invalid document ID' });
       }
 
-      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
-      if (!group) {
-        return res.status(404).json({ error: 'Committee not found' });
-      }
+      const group = await findVisibleActiveWorkingGroup(req, res, slug);
+      if (!group) return;
 
       const fileData = await workingGroupDb.getDocumentFileData(documentId, group.id);
       if (!fileData) {
@@ -2062,7 +2119,7 @@ export function createCommitteeRouters(): {
   });
 
   // GET /api/working-groups/assets/:assetId — Serve an extracted document asset (image)
-  publicApiRouter.get('/assets/:assetId', async (req: Request, res: Response) => {
+  publicApiRouter.get('/assets/:assetId', optionalAuth, async (req: Request, res: Response) => {
     try {
       const { assetId } = req.params;
 
@@ -2070,12 +2127,26 @@ export function createCommitteeRouters(): {
         return res.status(400).send('Invalid asset ID');
       }
 
-      const asset = await workingGroupDb.getDocumentAssetData(assetId);
-      if (!asset) {
+      const assetMetadata = await workingGroupDb.getDocumentAssetMetadata(assetId);
+      if (!assetMetadata) {
+        return res.status(404).send('Asset not found');
+      }
+
+      const group = await workingGroupDb.getWorkingGroupById(assetMetadata.working_group_id);
+      if (!group || group.status !== 'active' || !(await canViewWorkingGroupContent(req, group))) {
         return res.status(404).send('Asset not found');
       }
 
       const SAFE_SERVE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+      if (!SAFE_SERVE_TYPES.has(assetMetadata.mime_type)) {
+        return res.status(415).send('Unsupported media type');
+      }
+
+      const asset = await workingGroupDb.getDocumentAssetData(assetId, group.id);
+      if (!asset) {
+        return res.status(404).send('Asset not found');
+      }
+
       if (!SAFE_SERVE_TYPES.has(asset.mime_type)) {
         return res.status(415).send('Unsupported media type');
       }
@@ -2085,7 +2156,7 @@ export function createCommitteeRouters(): {
         'X-Content-Type-Options': 'nosniff',
         'Content-Security-Policy': "default-src 'none'",
         'Content-Disposition': 'inline',
-        'Cache-Control': 'public, max-age=86400',
+        'Cache-Control': group.is_private ? 'private, no-cache' : 'public, max-age=86400',
       });
       return res.send(asset.asset_data);
     } catch (error) {
@@ -2097,13 +2168,21 @@ export function createCommitteeRouters(): {
   // GET /api/working-groups/:slug/documents/:documentId/assets — List assets for a document
   publicApiRouter.get('/:slug/documents/:documentId/assets', optionalAuth, async (req: Request, res: Response) => {
     try {
-      const { documentId } = req.params;
+      const { slug, documentId } = req.params;
 
       if (!isUuid(documentId)) {
         return res.status(400).json({ error: 'Invalid document ID' });
       }
 
-      const assets = await workingGroupDb.getDocumentAssets(documentId);
+      const group = await findVisibleActiveWorkingGroup(req, res, slug);
+      if (!group) return;
+
+      const document = await workingGroupDb.getDocumentById(documentId);
+      if (!document || document.working_group_id !== group.id) {
+        return res.status(404).json({ error: 'Document not found' });
+      }
+
+      const assets = await workingGroupDb.getDocumentAssets(documentId, group.id);
 
       res.json(assets.map(a => ({
         ...a,
@@ -2230,6 +2309,16 @@ export function createCommitteeRouters(): {
         });
       }
 
+      const normalizedExternalUrl = external_url == null
+        ? null
+        : normalizePerspectiveExternalUrl(external_url);
+      if (external_url != null && !normalizedExternalUrl) {
+        return res.status(400).json({
+          error: 'Invalid external URL',
+          message: 'Link posts require an HTTPS external URL without credentials',
+        });
+      }
+
       const authorNameFinal = author_name || (user.firstName && user.lastName
         ? `${user.firstName} ${user.lastName}`
         : user.email);
@@ -2250,7 +2339,7 @@ export function createCommitteeRouters(): {
           category || null,
           excerpt || null,
           content || null,
-          external_url || null,
+          normalizedExternalUrl,
           external_site_name || null,
           authorNameFinal,
           author_title || null,
@@ -2277,7 +2366,7 @@ export function createCommitteeRouters(): {
           authorName: authorNameFinal,
           contentType: content_type || 'article',
           excerpt: excerpt || undefined,
-          externalUrl: external_url || undefined,
+          externalUrl: normalizedExternalUrl || undefined,
           category: category || undefined,
           isMembersOnly: is_members_only || false,
         }).catch(err => {
@@ -2341,11 +2430,31 @@ export function createCommitteeRouters(): {
         }
       }
 
-      const wasPublished = existing.rows[0].status === 'published';
+
+      const existingPost = existing.rows[0];
+      const normalizedIncomingExternalUrl = external_url == null
+        ? external_url
+        : normalizePerspectiveExternalUrl(external_url);
+      const effectiveContentType = content_type ?? existingPost.content_type;
+      const effectiveExternalUrl = external_url === undefined
+        ? normalizePerspectiveExternalUrl(existingPost.external_url)
+        : normalizedIncomingExternalUrl;
+      if (
+        (external_url != null && !normalizedIncomingExternalUrl) ||
+        (external_url === undefined && existingPost.external_url != null && !effectiveExternalUrl) ||
+        (effectiveContentType === 'link' && !effectiveExternalUrl)
+      ) {
+        return res.status(400).json({
+          error: 'Invalid external URL',
+          message: 'Link posts require an HTTPS external URL without credentials',
+        });
+      }
+
+      const wasPublished = existingPost.status === 'published';
       const willBePublished = status === 'published';
       const publishedAt = willBePublished && !wasPublished
         ? new Date()
-        : existing.rows[0].published_at;
+        : existingPost.published_at;
 
       const result = await pool.query(
         `UPDATE perspectives SET
@@ -2377,7 +2486,7 @@ export function createCommitteeRouters(): {
           category || null,
           excerpt || null,
           content || null,
-          external_url || null,
+          effectiveExternalUrl,
           external_site_name || null,
           author_name || null,
           author_title || null,

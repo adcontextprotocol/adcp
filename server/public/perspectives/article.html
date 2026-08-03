@@ -28,6 +28,7 @@
   <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
   <script src="/perspectives/utils.js"></script>
+  <script src="/perspective-url.js"></script>
   <style>
     /* Page-specific: nav offset */
     body { padding-top: 60px; }
@@ -1007,7 +1008,12 @@
 
         // If it's a link type, redirect to external URL
         if (article.content_type === 'link' && article.external_url) {
-          window.location.href = article.external_url;
+          const externalUrl = getSafePerspectiveExternalUrl(article.external_url);
+          if (!externalUrl) {
+            showError();
+            return;
+          }
+          window.location.href = externalUrl;
           return;
         }
 

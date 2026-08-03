@@ -40,7 +40,7 @@ The table below maps familiar retail media concepts to their AdCP equivalents.
 | Retail media concept | AdCP equivalent | Reference |
 |---|---|---|
 | Retailer / retail media network | Sales agent (MCP server) | [`adagents.json`](/docs/media-buy/advanced-topics/accounts-and-security) |
-| Advertiser account with retailer | `account_id` + `list_accounts` | [Accounts & Agents](/docs/building/integration/accounts-and-agents) |
+| Advertiser account with retailer | `account_id` + `list_accounts` | [Accounts & Agents](/docs/building/by-layer/L2/accounts-and-agents) |
 | Brand's product catalog | `brand.product_catalog` | [Brand identity](/docs/brand-protocol/brand-json) |
 | GTIN / SKU selection for promotion | Catalog selectors (`ids`, `gtins`, `tags`) on `Catalog` | [Catalogs](/docs/creative/catalogs) |
 | Sponsored product listing | Product with catalog-rendered creative | [Creative Formats](/docs/creative/formats) |
@@ -55,7 +55,7 @@ The table below maps familiar retail media concepts to their AdCP equivalents.
 | Real-time inventory / in-stock | Inventory catalog via `sync_catalogs` | [Catalogs](/docs/creative/catalogs) |
 | Proximity / catchment targeting | Store catchment areas (isochrone, radius, GeoJSON) | [Catalogs — Catchment areas](/docs/creative/catalogs#catchment-areas) |
 
-Each retailer is a separate sales agent. Their media offerings are modeled as products. The buyer's brand identity carries the product catalog for SKU-level creative rendering. Account relationships between brands and retailers are managed via `list_accounts` and `account` on media buys — see [Accounts & Agents](/docs/building/integration/accounts-and-agents).
+Each retailer is a separate sales agent. Their media offerings are modeled as products. The buyer's brand identity carries the product catalog for SKU-level creative rendering. Account relationships between brands and retailers are managed via `list_accounts` and `account` on media buys — see [Accounts & Agents](/docs/building/by-layer/L2/accounts-and-agents).
 
 ## The product spectrum
 
@@ -397,7 +397,7 @@ The feed contains GTINs, titles, prices, and images — everything needed to ren
 
 ### Sync catalogs to the account
 
-Before creating media buys, sync the brand's data feeds to the retailer's account via `sync_catalogs`. This builds account state that creatives and targeting reference at serve time. See [Account state](/docs/building/integration/account-state) for how this fits the broader setup sequence.
+Before creating media buys, sync the brand's data feeds to the retailer's account via `sync_catalogs`. This builds account state that creatives and targeting reference at serve time. See [Account state](/docs/building/by-layer/L2/account-state) for how this fits the broader setup sequence.
 
 ```json
 {
@@ -684,8 +684,8 @@ An agentic storefront changes the economics. Instead of building a platform that
 
 ## Related documentation
 
-- [Account state](/docs/building/integration/account-state) — How catalogs, event sources, and campaigns build on the account
-- [Accounts & Agents](/docs/building/integration/accounts-and-agents) — Account setup and billing relationships
+- [Account state](/docs/building/by-layer/L2/account-state) — How catalogs, event sources, and campaigns build on the account
+- [Accounts & Agents](/docs/building/by-layer/L2/accounts-and-agents) — Account setup and billing relationships
 - [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy) — `retail_media` channel definition
 - [Media Products](/docs/media-buy/product-discovery/media-products) — Product model reference
 - [Catalogs](/docs/creative/catalogs) — Product, inventory, store, and promotion feeds

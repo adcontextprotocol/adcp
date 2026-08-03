@@ -356,6 +356,7 @@ Returns an array of `products` and optionally `proposals`.
 | `signal_targeting_allowed` | boolean | (Optional, default: false) Whether this product has a package-level signal targeting surface. Editability is controlled by `signal_targeting_rules`; fixed/default-only products still set this to true when applied signal groups are echoed. |
 | `signal_targeting_options` | ProductSignalTargetingOption[] | (Optional) Inline product-scoped signal options the buyer may select, or the seller may apply when fixed/default, through `packages[].targeting_overlay.signal_targeting_groups`. May include per-signal `pricing_options`; product-scoped prices are authoritative for this product. Data-provider and signal-source refs may be reference-only; product-local refs include inline `name` and `value_type`. |
 | `signal_targeting_rules` | SignalTargetingRules | (Optional) Product-scoped composition rules for selectable signals, such as direct vs seller-planned resolution, optional, required, maximum, mutually exclusive, fixed selections, and group size limits. These limits belong on the product, not seller-wide `get_adcp_capabilities`, because products may be backed by different ad servers or seller planning layers. Fixed/default selections are applied by the seller and echoed on the resulting package state. |
+| `demographic_targeting` | DemographicTargetingCapability | (Optional) Product-scoped exact execution for canonical demographic intent. `age.execution_modes` declares continuous bounds, enumerated seller intervals, and/or signal-backed resolution; continuous mode explicitly declares `supports_unbounded_min` and `supports_unbounded_max`, while `unknown_handling` states whether unknown age is selectable, always excluded, or always included. Buyers must inspect this field before sending `targeting_overlay.demographics`. |
 | `brief_relevance` | string | Why this product matches the brief (when brief provided) |
 | `measurement_readiness` | [MeasurementReadiness](/docs/media-buy/conversion-tracking/#measurement-readiness) | (Optional) Whether the buyer's event setup is sufficient for this product's optimization. Only present when the seller can evaluate the buyer's account context. |
 | `measurement_terms` | [MeasurementTerms](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | (Optional) Seller's default billing measurement and makegood terms. Buyers may propose different terms at `create_media_buy`. |
@@ -1309,7 +1310,7 @@ asyncio.run(compare_auth())
 - **Without credentials**: Returns limited public product results, no pricing, no custom offerings
 - **With credentials**: Returns complete product results with pricing and custom products
 
-See [Authentication Guide](/docs/building/integration/authentication) for details.
+See [Authentication Guide](/docs/building/by-layer/L2/authentication) for details.
 
 ## Asynchronous Operations
 
@@ -1646,7 +1647,7 @@ Response (200 OK):
 | `submitted` | Custom curation queued | Poll `get_task_status` (legacy `tasks/get`) with `task_id`; also wait for webhook notification if `push_notification_config` / A2A `configuration.pushNotificationConfig` was accepted |
 | `failed` | Search couldn't complete | Check error message, adjust brief |
 
-**Note:** For the complete status list see [Task Lifecycle](/docs/building/implementation/task-lifecycle).
+**Note:** For the complete status list see [Task Lifecycle](/docs/building/by-layer/L3/task-lifecycle).
 
 **Most searches complete immediately.** Async processing is only needed for complex scenarios or when the system needs your input.
 

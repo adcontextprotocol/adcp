@@ -1,0 +1,83 @@
+id: wholesale_feed_signal_webhooks
+version: "1.0.0"
+title: "Wholesale signals feed webhook registration"
+category: account_lifecycle
+summary: "Validates account-level notification_configs[] registration for agents that advertise signal wholesale feed webhook events."
+track: signals
+introduced_in: "3.1"
+
+requires_capability:
+  path: wholesale_feed_webhooks.event_types
+  contains: "signal.priced"
+
+required_tools:
+  - sync_accounts
+
+narrative: |
+  Agents that advertise signal wholesale feed webhook events must accept those
+  account-level event types through `sync_accounts.accounts[].notification_configs[]`.
+  Delivery semantics are covered by webhook-emission; this storyboard checks the
+  durable registration surface.
+
+agent:
+  interaction_model: signals_agent
+  capabilities:
+    - wholesale_feed_webhooks
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness"
+
+prerequisites:
+  description: |
+    The agent advertises `signal.priced` in
+    `wholesale_feed_webhooks.event_types`.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: register
+    title: "Register signals feed webhook"
+    steps:
+      - id: register_signal_pricing_webhook
+        title: "Register signal.priced subscriber"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              payment_terms: "net_60"
+              sandbox: true
+              notification_configs:
+                - subscriber_id: "signal-feed-sync"
+                  url: "https://example.com/webhooks/adcp/signal-feed"
+                  event_types:
+                    - "signal.priced"
+                  active: false
+          idempotency_key: "$generate:uuid_v4#wholesale_feed_signal_webhooks"
+          context:
+            correlation_id: "wholesale_feed_signal_webhooks--register"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_value
+            path: "accounts[0].notification_configs[0].subscriber_id"
+            value: "signal-feed-sync"
+            description: "Subscriber key is echoed"
+          - check: field_value
+            path: "accounts[0].notification_configs[0].event_types[0]"
+            value: "signal.priced"
+            description: "Signal pricing event is persisted"
+          - check: field_value
+            path: "accounts[0].notification_configs[0].active"
+            value: false
+            description: "Paused subscriber can be persisted without activation proof"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "wholesale_feed_signal_webhooks--register"
+            description: "Context correlation_id returned unchanged"

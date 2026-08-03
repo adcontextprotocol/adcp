@@ -113,7 +113,7 @@ export interface CertificationAttempt {
   status: 'in_progress' | 'passed' | 'failed';
   started_at: string;
   completed_at: string | null;
-  scores: Record<string, number> | null;
+  scores: Record<string, number | boolean> | null;
   overall_score: number | null;
   passing: boolean | null;
   addie_thread_id: string | null;
@@ -469,7 +469,7 @@ export async function createAttempt(
 
 export async function completeAttempt(
   attemptId: string,
-  scores: Record<string, number>,
+  scores: Record<string, number | boolean>,
   overallScore: number,
   passing: boolean,
   certifierCredentialId?: string,
@@ -480,13 +480,13 @@ export async function completeAttempt(
     `UPDATE certification_attempts
      SET status = $2, completed_at = NOW(), scores = $3, overall_score = $4,
          passing = $5, certifier_credential_id = $6, certifier_public_id = $7
-     WHERE id = $1
+     WHERE id = $1 AND status = 'in_progress'
      RETURNING *`,
     [attemptId, status, JSON.stringify(scores), overallScore, passing,
      certifierCredentialId || null, certifierPublicId || null]
   );
   if (!result.rows[0]) {
-    throw new Error(`Certification attempt ${attemptId} not found`);
+    throw new Error(`Certification attempt ${attemptId} not found or not in_progress`);
   }
   return result.rows[0];
 }
@@ -495,6 +495,17 @@ export async function getAttempt(attemptId: string): Promise<CertificationAttemp
   const result = await query<CertificationAttempt>(
     'SELECT * FROM certification_attempts WHERE id = $1',
     [attemptId]
+  );
+  return result.rows[0] || null;
+}
+
+export async function getAttemptForUser(
+  attemptId: string,
+  userId: string,
+): Promise<CertificationAttempt | null> {
+  const result = await query<CertificationAttempt>(
+    'SELECT * FROM certification_attempts WHERE id = $1 AND workos_user_id = $2',
+    [attemptId, userId]
   );
   return result.rows[0] || null;
 }
@@ -855,7 +866,7 @@ export async function completeDeltaAttempt(
   def: DeltaDefinition,
   attemptId: string,
   userId: string,
-  scores: Record<string, number>,
+  scores: Record<string, number | boolean>,
   overallScore: number,
   evidenceByCriterionId: Record<string, string>,
 ): Promise<CertificationAttempt> {
@@ -1068,6 +1079,32 @@ export async function awardCredential(
     [userId, credentialId, certifierCredentialId || null, certifierPublicId || null, certifierBadgeUrl || null]
   );
   return result.rows[0];
+}
+
+/** Append one immutable event to an admin credential-recovery audit trail. */
+export async function recordAdminCredentialReissueEvent(input: {
+  operationId: string;
+  userId: string;
+  credentialId: string;
+  adminUserId: string;
+  reason: string;
+  eventType: 'started' | 'succeeded' | 'failed';
+  details: Record<string, unknown>;
+}): Promise<void> {
+  await query(
+    `INSERT INTO admin_credential_reissue_events
+       (operation_id, workos_user_id, credential_id, admin_user_id, reason, event_type, details)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [
+      input.operationId,
+      input.userId,
+      input.credentialId,
+      input.adminUserId,
+      input.reason,
+      input.eventType,
+      JSON.stringify(input.details),
+    ],
+  );
 }
 
 /**
@@ -1947,7 +1984,18 @@ export interface AdminLearnerDetail {
     score: Record<string, number> | null;
     attempts: number;
   }>;
-  credentials: Array<{ name: string; tier: number; awarded_at: string; certifier_credential_id: string | null }>;
+  credentials: Array<{
+    credential_id: string;
+    name: string;
+    tier: number;
+    awarded_at: string;
+    certifier_credential_id: string | null;
+    certifier_public_id: string | null;
+    certifier_badge_url: string | null;
+    certifier_configured: boolean;
+    certifier_issuance_state: string;
+    certifier_delivery_state: string;
+  }>;
   checkpoints: Array<{
     id: string;
     module_id: string;
@@ -1983,8 +2031,16 @@ export async function getAdminLearnerDetail(userId: string): Promise<AdminLearne
        ORDER BY m.track_id, m.sort_order`,
       [userId]
     ),
-    query<{ name: string; tier: number; awarded_at: string; certifier_credential_id: string | null }>(
-      `SELECT cc.name, cc.tier, uc.awarded_at, uc.certifier_credential_id
+    query<{
+      credential_id: string; name: string; tier: number; awarded_at: string;
+      certifier_credential_id: string | null; certifier_public_id: string | null;
+      certifier_badge_url: string | null; certifier_configured: boolean;
+      certifier_issuance_state: string; certifier_delivery_state: string;
+    }>(
+      `SELECT cc.id AS credential_id, cc.name, cc.tier, uc.awarded_at,
+              uc.certifier_credential_id, uc.certifier_public_id, uc.certifier_badge_url,
+              uc.certifier_issuance_state, uc.certifier_delivery_state,
+              (cc.certifier_group_id IS NOT NULL) AS certifier_configured
        FROM user_credentials uc
        JOIN certification_credentials cc ON cc.id = uc.credential_id
        WHERE uc.workos_user_id = $1

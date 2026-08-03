@@ -89,8 +89,49 @@ components:
           type: string
         house_domain:
           type: string
+        claimed_house_domain:
+          type: string
+          description: House the requested domain claims. This field never extends trust on its own; `relationship_trust` reports whether the reciprocal declaration is current enough to do so.
         house_name:
           type: string
+        relationship_trust:
+          type: string
+          enum:
+            - inline
+            - mutual
+            - leaf_only
+            - house_only
+            - standalone
+            - unverifiable
+          description: "How the brand-to-house relationship was established. `inline`: the house's own document defines the brand. `mutual`: both sides publish the relationship — the trust-extending edge. `leaf_only`: the brand claims a house whose reciprocal declaration is missing, not yet active, or too old to extend trust. `house_only`: a house claims the brand, which has not reciprocated. `standalone`: the brand claims no house. `unverifiable`: a claimed house could not be checked."
+        relationship_verified_at:
+          type: string
+          format: date-time
+          description: When both sides of a mutual relationship were last seen agreeing. Present only for `mutual`, and it does not advance while the house side is unreachable, so callers can apply their own edge-aging policy.
+          example: 2026-07-28T12:00:00Z
+        relationship_declared_at:
+          type: string
+          format: date-time
+          description: When the house declared the relationship in `brand_refs[].effective_at`, or the resolver's durable first observation if the publisher omitted that field. Callers can apply a declaration-age ceiling independently of `relationship_verified_at`.
+          example: 2026-01-29T12:00:00Z
+        promoted_from_schema:
+          type: string
+          description: Set when a pre-v3 document was promoted to a canonical v3 document for this response. Identity only — legacy relationship data is preserved opaquely, never promoted to a trust claim.
+        migration_warnings:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+              suggestion:
+                type: string
+            required:
+              - field
+              - message
+          description: Loss or ambiguity encountered while promoting a pre-v3 document. A `house` warning means the legacy house object was preserved only as opaque metadata and did not establish a trusted relationship.
         brand_agent_url:
           type: string
         brand_manifest:
@@ -99,9 +140,57 @@ components:
         source:
           type: string
           enum:
+            - hosted
             - brand_json
             - community
             - enriched
+          description: "Provenance of the selected record, not relationship authorization. Deterministic precedence is `hosted` > `brand_json` > `community` > `enriched`; normal reads prefer the durable stored winner on a source tie, while `fresh=true` lets a successful live origin read win a tie. `brand_json`: the domain's own /.well-known/brand.json. `hosted`: registered by an owner whose control of the domain was verified. `community`: contributed by a member. `enriched`: third-party enrichment."
+        live_brand_json:
+          type: object
+          properties:
+            valid:
+              type: boolean
+            url:
+              type: string
+            status_code:
+              type: integer
+            errors:
+              type: array
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                  message:
+                    type: string
+                  severity:
+                    type: string
+                    enum:
+                      - error
+                required:
+                  - field
+                  - message
+                  - severity
+            warnings:
+              type: array
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                  message:
+                    type: string
+                  suggestion:
+                    type: string
+                required:
+                  - field
+                  - message
+          required:
+            - valid
+            - url
+            - errors
+            - warnings
+          description: This request's origin-validation diagnostics when `fresh=true` falls back to a stored registry record. Presence means the response is stored evidence, not a successful live-origin read.
       required:
         - canonical_id
         - canonical_domain
@@ -1078,6 +1167,10 @@ components:
               format_kind:
                 type: string
                 description: Canonical format discriminator, such as `image`, `video_hosted`, `native_in_feed`, or `custom`.
+              sample_render_url:
+                type: string
+                pattern: ^https:\/\/
+                description: Optional public HTTPS page where a human can inspect a sample render of this catalog format using publisher- or community-mirror-provided example assets. Informational only; this is not a renderer endpoint, buyer-asset preview, validation result, creative approval, proof of publisher acceptance, or live delivery guarantee.
               params:
                 type: object
                 additionalProperties: {}
@@ -1386,22 +1479,27 @@ components:
       required:
         - url
       additionalProperties: {}
-    CommunityMirrorListResponse:
+    CommunityMirrorProposalListResponse:
       type: object
       properties:
-        mirrors:
+        proposals:
           type: array
           items:
-            $ref: "#/components/schemas/CommunityMirrorSummary"
+            $ref: "#/components/schemas/CommunityMirrorProposalSummary"
         total:
           type: integer
           minimum: 0
       required:
-        - mirrors
+        - proposals
         - total
-    CommunityMirrorSummary:
+    CommunityMirrorProposalSummary:
       type: object
       properties:
+        id:
+          type: string
+          format: uuid
+          description: Opaque identifier for the proposal.
+          example: 4ec8bc86-6180-4d0e-aa72-9cbf402d3638
         platform:
           type: string
           pattern: ^[a-z0-9_-]{1,64}$
@@ -1416,14 +1514,50 @@ components:
             - string
             - "null"
           pattern: ^https:\/\/
-          description: HTTPS successor document URL, when this mirror has been superseded.
+          description: HTTPS URL.
+        proposal_digest:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+          description: SHA-256 digest that reviewers must echo when approving or rejecting this exact revision.
+        base_mirror_digest:
+          type:
+            - string
+            - "null"
+          pattern: ^[a-f0-9]{64}$
+          description: Digest of the public mirror state this proposal was reviewed against, or null when none existed.
+        status:
+          type: string
+          enum:
+            - pending
+            - approved
+            - rejected
+        proposed_at:
+          type: string
+          format: date-time
+        reviewed_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        published_at:
+          type:
+            - string
+            - "null"
+          format: date-time
         updated_at:
           type: string
           format: date-time
       required:
+        - id
         - platform
         - catalog_etag
         - superseded_by
+        - proposal_digest
+        - base_mirror_digest
+        - status
+        - proposed_at
+        - reviewed_at
+        - published_at
         - updated_at
     RateLimitError:
       type: object
@@ -1437,14 +1571,28 @@ components:
           description: Seconds to wait before retrying.
       required:
         - error
-    CommunityMirrorGetResponse:
+    CommunityMirrorProposalGetResponse:
       type: object
       properties:
+        proposal:
+          $ref: "#/components/schemas/CommunityMirrorProposal"
+      required:
+        - proposal
+    CommunityMirrorProposal:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Opaque identifier for the proposal.
+          example: 4ec8bc86-6180-4d0e-aa72-9cbf402d3638
         platform:
           type: string
           pattern: ^[a-z0-9_-]{1,64}$
           description: Lowercase platform identifier, normalized by the service.
           example: example_platform
+        adagents_json:
+          $ref: "#/components/schemas/CommunityMirrorAdagentsJson"
         catalog_etag:
           type:
             - string
@@ -1454,9 +1602,50 @@ components:
             - string
             - "null"
           pattern: ^https:\/\/
-          description: HTTPS successor document URL, when this mirror has been superseded.
-        adagents_json:
-          $ref: "#/components/schemas/CommunityMirrorAdagentsJson"
+          description: HTTPS URL.
+        proposal_digest:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+          description: SHA-256 digest that reviewers must echo when approving or rejecting this exact revision.
+        base_mirror_digest:
+          type:
+            - string
+            - "null"
+          pattern: ^[a-f0-9]{64}$
+          description: Digest of the public mirror state this proposal was reviewed against, or null when none existed.
+        status:
+          type: string
+          enum:
+            - pending
+            - approved
+            - rejected
+        proposed_by_organization_id:
+          type:
+            - string
+            - "null"
+        proposed_by_email:
+          type:
+            - string
+            - "null"
+          format: email
+          description: Contributor email, returned only to registry moderators and AgenticAdvertising.org administrators.
+        proposed_at:
+          type: string
+          format: date-time
+        reviewed_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        review_notes:
+          type:
+            - string
+            - "null"
+        published_at:
+          type:
+            - string
+            - "null"
+          format: date-time
         created_at:
           type: string
           format: date-time
@@ -1464,10 +1653,19 @@ components:
           type: string
           format: date-time
       required:
+        - id
         - platform
+        - adagents_json
         - catalog_etag
         - superseded_by
-        - adagents_json
+        - proposal_digest
+        - base_mirror_digest
+        - status
+        - proposed_by_organization_id
+        - proposed_at
+        - reviewed_at
+        - review_notes
+        - published_at
         - created_at
         - updated_at
     CommunityMirrorAdagentsJson:
@@ -1531,6 +1729,18 @@ components:
       required:
         - authorized_agents
       additionalProperties: {}
+    CommunityMirrorProposalApprovalResponse:
+      allOf:
+        - $ref: "#/components/schemas/CommunityMirrorPublishResponse"
+        - type: object
+          properties:
+            proposal_id:
+              type: string
+              format: uuid
+              description: Opaque identifier for the proposal.
+              example: 4ec8bc86-6180-4d0e-aa72-9cbf402d3638
+          required:
+            - proposal_id
     CommunityMirrorPublishResponse:
       type: object
       properties:
@@ -1579,6 +1789,155 @@ components:
           description: Validation details for request-body parse failures or adagents.json conformance errors.
       required:
         - error
+    CommunityMirrorProposalReviewRequest:
+      type: object
+      properties:
+        proposal_digest:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+          description: SHA-256 digest that reviewers must echo when approving or rejecting this exact revision.
+        review_notes:
+          type: string
+          maxLength: 2000
+      required:
+        - proposal_digest
+    CommunityMirrorProposalDecisionResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        proposal:
+          $ref: "#/components/schemas/CommunityMirrorProposal"
+      required:
+        - success
+        - proposal
+    CommunityMirrorProposalRejectRequest:
+      type: object
+      properties:
+        proposal_digest:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+          description: SHA-256 digest that reviewers must echo when approving or rejecting this exact revision.
+        review_notes:
+          type: string
+          minLength: 1
+          maxLength: 2000
+      required:
+        - proposal_digest
+        - review_notes
+    CommunityMirrorListResponse:
+      type: object
+      properties:
+        mirrors:
+          type: array
+          items:
+            $ref: "#/components/schemas/CommunityMirrorSummary"
+        total:
+          type: integer
+          minimum: 0
+      required:
+        - mirrors
+        - total
+    CommunityMirrorSummary:
+      type: object
+      properties:
+        platform:
+          type: string
+          pattern: ^[a-z0-9_-]{1,64}$
+          description: Lowercase platform identifier, normalized by the service.
+          example: example_platform
+        catalog_etag:
+          type:
+            - string
+            - "null"
+        superseded_by:
+          type:
+            - string
+            - "null"
+          pattern: ^https:\/\/
+          description: HTTPS successor document URL, when this mirror has been superseded.
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - platform
+        - catalog_etag
+        - superseded_by
+        - updated_at
+    CommunityMirrorGetResponse:
+      type: object
+      properties:
+        platform:
+          type: string
+          pattern: ^[a-z0-9_-]{1,64}$
+          description: Lowercase platform identifier, normalized by the service.
+          example: example_platform
+        catalog_etag:
+          type:
+            - string
+            - "null"
+        superseded_by:
+          type:
+            - string
+            - "null"
+          pattern: ^https:\/\/
+          description: HTTPS successor document URL, when this mirror has been superseded.
+        adagents_json:
+          $ref: "#/components/schemas/CommunityMirrorAdagentsJson"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - platform
+        - catalog_etag
+        - superseded_by
+        - adagents_json
+        - created_at
+        - updated_at
+    CommunityMirrorProposalSubmissionResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        status:
+          type: string
+          enum:
+            - pending
+        proposal_id:
+          type: string
+          format: uuid
+          description: Opaque identifier for the proposal.
+          example: 4ec8bc86-6180-4d0e-aa72-9cbf402d3638
+        proposal_digest:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+          description: SHA-256 digest that reviewers must echo when approving or rejecting this exact revision.
+        platform:
+          type: string
+          pattern: ^[a-z0-9_-]{1,64}$
+          description: Lowercase platform identifier, normalized by the service.
+          example: example_platform
+        status_url:
+          type: string
+          description: Authenticated API path for fetching proposal status and content.
+        submitted_at:
+          type: string
+          format: date-time
+      required:
+        - success
+        - status
+        - proposal_id
+        - proposal_digest
+        - platform
+        - status_url
+        - submitted_at
     CommunityMirrorPublishRequest:
       anyOf:
         - type: object
@@ -4591,7 +4950,14 @@ paths:
     get:
       operationId: resolveBrand
       summary: Resolve brand
-      description: Resolve a domain to its canonical brand identity. Follows brand.json redirects and returns the resolved brand with its house, architecture type, and optional manifest.
+      description: |-
+        Resolve a domain to its canonical brand identity. Follows brand.json redirects and returns the resolved brand with its house, architecture type, and optional manifest. The domain must be a bare DNS hostname.
+
+        A domain is authoritative for its own identity, so `source` tells you who published the record and `relationship_trust` tells you whether a brand-to-house relationship was confirmed by both sides. Only `mutual` and `inline` are reciprocated; treat everything else as a claim.
+        Record selection is deterministic: `hosted` > `brand_json` > `community` > `enriched`. `source` reports provenance only and must not be used as a substitute for `relationship_trust`.
+        The v3 hierarchy is one level deep. There is no ordered-chain endpoint: third-party verifiers use the reciprocated `house_domain` edge returned here. `claimed_house_domain` is unilateral and never extends trust.
+
+        **Rate limit:** 60 requests per minute per IP address.
       tags:
         - Brand Resolution
       parameters:
@@ -4606,7 +4972,9 @@ paths:
             enum:
               - "true"
               - "false"
+            description: Bypass the resolution cache and refetch from the origin. When a fresh fetch fails and a stored record is returned instead, `live_brand_json` carries that fetch's diagnostics.
           required: false
+          description: Bypass the resolution cache and refetch from the origin. When a fresh fetch fails and a stored record is returned instead, `live_brand_json` carries that fetch's diagnostics.
           name: fresh
           in: query
       responses:
@@ -4616,6 +4984,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ResolvedBrand"
+        "400":
+          description: Invalid or missing domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Brand not found
           content:
@@ -4633,14 +5007,20 @@ paths:
                 required:
                   - error
                   - domain
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/brands/resolve/bulk:
     post:
       operationId: resolveBrandsBulk
       summary: Bulk resolve brands
       description: |-
-        Resolve up to 100 domains to their canonical brand identities in a single request.
+        Resolve up to 25 domains to their canonical brand identities in a single request. Unresolvable domains map to `null`.
 
-        **Rate limit:** 20 requests per minute per IP address.
+        **Rate limits:** 20 requests and 100 unique domain resolutions per minute per IP address. Request bodies are capped at 16 KB.
       tags:
         - Brand Resolution
       requestBody:
@@ -4653,7 +5033,7 @@ paths:
                   type: array
                   items:
                     type: string
-                  maxItems: 100
+                  maxItems: 25
               required:
                 - domains
       responses:
@@ -4674,8 +5054,26 @@ paths:
                             - "null"
                 required:
                   - results
+        "400":
+          description: Invalid domain list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "413":
+          description: Request body over 16 KB
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "429":
           description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Too much resolution work is already queued
           content:
             application/json:
               schema:
@@ -4684,7 +5082,10 @@ paths:
     get:
       operationId: getBrandJson
       summary: Get brand.json
-      description: Fetch the raw brand.json file for a domain.
+      description: |-
+        Fetch the raw brand.json file for a bare DNS hostname.
+
+        **Rate limit:** 60 requests per minute per IP address.
       tags:
         - Brand Resolution
       parameters:
@@ -4722,13 +5123,82 @@ paths:
                   warnings:
                     type: array
                     items:
-                      type: string
+                      type: object
+                      properties:
+                        field:
+                          type: string
+                        message:
+                          type: string
+                        suggestion:
+                          type: string
+                      required:
+                        - field
+                        - message
+                  promoted_from_schema:
+                    type: string
+                  live_brand_json:
+                    type: object
+                    properties:
+                      valid:
+                        type: boolean
+                      url:
+                        type: string
+                      status_code:
+                        type: integer
+                      errors:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            field:
+                              type: string
+                            message:
+                              type: string
+                            severity:
+                              type: string
+                              enum:
+                                - error
+                          required:
+                            - field
+                            - message
+                            - severity
+                      warnings:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            field:
+                              type: string
+                            message:
+                              type: string
+                            suggestion:
+                              type: string
+                          required:
+                            - field
+                            - message
+                    required:
+                      - valid
+                      - url
+                      - errors
+                      - warnings
                 required:
                   - domain
                   - url
                   - data
+        "400":
+          description: Invalid or missing domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: Brand not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
           content:
             application/json:
               schema:
@@ -6868,6 +7338,282 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CreateAdagentsResponse"
+  /api/registry/mirror-proposals:
+    get:
+      operationId: listCommunityMirrorProposals
+      summary: List community mirror proposals
+      description: List the caller's own community-mirror proposals. Registry moderators and AgenticAdvertising.org administrators see the review queue and may filter by status; their default is `pending`.
+      tags:
+        - Community Mirrors
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      parameters:
+        - schema:
+            type: string
+            enum:
+              - pending
+              - approved
+              - rejected
+          required: false
+          name: status
+          in: query
+        - schema:
+            type: string
+            enum:
+              - "true"
+              - "false"
+            description: Set to `true` for the cross-organization moderator queue; non-moderators receive 403.
+          required: false
+          description: Set to `true` for the cross-organization moderator queue; non-moderators receive 403.
+          name: review_queue
+          in: query
+        - schema:
+            type: integer
+            maximum: 50
+          required: false
+          name: limit
+          in: query
+        - schema:
+            type: integer
+          required: false
+          name: offset
+          in: query
+      responses:
+        "200":
+          description: Community mirror proposal list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommunityMirrorProposalListResponse"
+        "400":
+          description: Invalid status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Moderator access required for the review queue
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitError"
+        "500":
+          description: Failed to list proposals
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/mirror-proposals/{id}:
+    get:
+      operationId: getCommunityMirrorProposal
+      summary: Get community mirror proposal
+      description: Fetch a proposal owned by the caller. Registry moderators and AgenticAdvertising.org administrators may fetch any proposal.
+      tags:
+        - Community Mirrors
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          required: true
+          name: id
+          in: path
+      responses:
+        "200":
+          description: Community mirror proposal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommunityMirrorProposalGetResponse"
+        "400":
+          description: Invalid proposal identifier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Proposal not found or not visible to the caller
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitError"
+        "500":
+          description: Failed to read proposal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/mirror-proposals/{id}/approve:
+    post:
+      operationId: approveCommunityMirrorProposal
+      summary: Approve community mirror proposal
+      description: Approve and atomically publish a pending proposal. Requires a registry moderator or AgenticAdvertising.org administrator.
+      tags:
+        - Community Mirrors
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          required: true
+          name: id
+          in: path
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommunityMirrorProposalReviewRequest"
+      responses:
+        "200":
+          description: Proposal approved and mirror published
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommunityMirrorProposalApprovalResponse"
+        "400":
+          description: Invalid identifier, review body, or stale schema conformance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommunityMirrorPublishError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Reviewer role required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Proposal not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Proposal changed after review, its base mirror is stale, or it was already reviewed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitError"
+        "500":
+          description: Failed to approve proposal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/mirror-proposals/{id}/reject:
+    post:
+      operationId: rejectCommunityMirrorProposal
+      summary: Reject community mirror proposal
+      description: Reject a pending proposal with reviewer notes. Requires a registry moderator or AgenticAdvertising.org administrator.
+      tags:
+        - Community Mirrors
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          required: true
+          name: id
+          in: path
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommunityMirrorProposalRejectRequest"
+      responses:
+        "200":
+          description: Proposal rejected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommunityMirrorProposalDecisionResponse"
+        "400":
+          description: Invalid identifier or review body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommunityMirrorPublishError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Reviewer role required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Proposal not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Proposal changed after review or was already reviewed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitError"
+        "500":
+          description: Failed to reject proposal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/registry/mirrors:
     get:
       operationId: listCommunityMirrors
@@ -6959,8 +7705,8 @@ paths:
                 $ref: "#/components/schemas/Error"
     put:
       operationId: publishCommunityMirror
-      summary: Publish community mirror
-      description: "Publish or update a catalog-only adagents.json community mirror. Requires a registry moderator or AgenticAdvertising.org admin. The service validates the assembled document against adagents.json, forces `authorized_agents: []`, regenerates `$schema` and `last_updated`, and updates derived publisher-domain catalog rows."
+      summary: Publish or propose community mirror
+      description: "Submit a catalog-only adagents.json community mirror. Registry moderators and AgenticAdvertising.org administrators publish immediately; other authenticated organization callers create or refresh a pending proposal and receive HTTP 202. Contributor proposals are limited to 1 MiB and 2,000 catalog items. The service validates the assembled document against adagents.json, forces `authorized_agents: []`, and regenerates `$schema` and `last_updated`."
       tags:
         - Community Mirrors
       security:
@@ -6989,6 +7735,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CommunityMirrorPublishResponse"
+        "202":
+          description: Community mirror proposal accepted for review
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommunityMirrorProposalSubmissionResponse"
         "400":
           description: Invalid platform, request body, or adagents.json conformance failure
           content:
@@ -7002,7 +7754,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "403":
-          description: Only registry moderators or AgenticAdvertising.org admins can manage community mirrors
+          description: Organization context required for community proposals
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "413":
+          description: Proposal body or catalog item count exceeds the contributor limit
           content:
             application/json:
               schema:
@@ -10554,11 +11312,16 @@ paths:
                 brand_json:
                   type: object
                   additionalProperties: {}
-                  description: Optional full brand.json draft to host in the registry
+                  description: "Optional full brand.json draft to host in the registry. Every recognized logo URL must be an absolute HTTPS URL of at most 2048 characters without userinfo credentials, backslashes, or markup-significant characters. The primary brand color must use #RRGGBB format."
                 logo_url:
                   type: string
+                  maxLength: 2048
+                  format: uri
+                  description: Absolute HTTPS URL for the brand logo. Userinfo credentials, backslashes, and markup-significant characters are not allowed.
+                  example: https://cdn.example.com/brand/logo.svg
                 brand_color:
                   type: string
+                  pattern: ^#[0-9a-fA-F]{6}$
               required:
                 - domain
                 - brand_name
@@ -11823,7 +12586,7 @@ tags:
   - name: Validation Tools
     description: Validate publisher adagents.json files and generate compliant configurations.
   - name: Community Mirrors
-    description: Publish, fetch, list, and retire catalog-only adagents.json mirrors for platforms that have not adopted AdCP.
+    description: Propose, review, publish, fetch, list, and retire catalog-only adagents.json mirrors for platforms that have not adopted AdCP.
   - name: Search
     description: Cross-entity search across brands, publishers, agents, and properties.
   - name: Agent Probing

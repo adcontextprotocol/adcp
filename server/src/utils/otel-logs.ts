@@ -88,7 +88,8 @@ export function initOtelLogs(): boolean {
   });
 
   // Create batch processor for performance
-  const processor = new BatchLogRecordProcessor(exporter, {
+  const processor = new BatchLogRecordProcessor({
+    exporter,
     maxQueueSize: 2048,
     maxExportBatchSize: 512,
     scheduledDelayMillis: 5000,

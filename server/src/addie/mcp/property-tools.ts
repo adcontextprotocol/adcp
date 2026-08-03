@@ -18,6 +18,7 @@ import { syncHostedPropertyToFederatedIndex } from '../../services/hosted-proper
 import { fileDispute } from '../../services/catalog-governance.js';
 import type { DisputeType } from '../../db/catalog-disputes-db.js';
 import { AAO_HOST } from '../../config/aao.js';
+import { scrubCommunityAuthorizedAgents } from '../../utils/community-adagents.js';
 
 const adagentsManager = new AdAgentsManager();
 const propertyDb = new PropertyDatabase();
@@ -69,17 +70,6 @@ export const PROPERTY_TOOLS: AddieTool[] = [
         publisher_domain: {
           type: 'string',
           description: 'Publisher domain',
-        },
-        authorized_agents: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              url: { type: 'string' },
-              authorized_for: { type: 'string' },
-            },
-          },
-          description: 'Array of authorized agents with their URLs and scopes',
         },
         properties: {
           type: 'array',
@@ -398,7 +388,6 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
       return JSON.stringify({ error: 'publisher_domain is required' });
     }
 
-    const authorizedAgents = args.authorized_agents as Array<{ url: string; authorized_for?: string }> || [];
     const properties = args.properties as Array<{ type: string; name: string }> || [];
     const catalogEtag = args.catalog_etag as string | undefined;
     const formats = args.formats as Array<Record<string, unknown>> | undefined;
@@ -406,11 +395,10 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
     const contact = args.contact as { name?: string; email?: string } | undefined;
     const sourceType = (args.source_type as string) || 'community';
 
-    const adagentsJson: Record<string, unknown> = {
+    const adagentsJson = scrubCommunityAuthorizedAgents({
       $schema: 'https://adcontextprotocol.org/schemas/latest/adagents.json',
-      authorized_agents: authorizedAgents,
       properties: properties,
-    };
+    });
 
     if (catalogEtag) {
       adagentsJson.catalog_etag = catalogEtag;
@@ -445,10 +433,9 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
           ...existingAdagents,
           ...adagentsJson,
         };
-        // Preserve existing data when caller didn't provide replacements
-        if (!args.authorized_agents && existingAdagents.authorized_agents) {
-          mergedAdagents.authorized_agents = existingAdagents.authorized_agents;
-        }
+        // Community rows never preserve or accept sales authorization. Only
+        // the publisher's origin adagents.json can assert authorized agents.
+        mergedAdagents.authorized_agents = [];
         if (!args.properties && existingAdagents.properties) {
           mergedAdagents.properties = existingAdagents.properties;
         }

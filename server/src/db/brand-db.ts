@@ -36,6 +36,19 @@ import type {
 const DISALLOWED_MANIFEST_KEYS: ReadonlySet<string> = new Set(['classification', 'brand_context']);
 
 /**
+ * Stable precedence for selecting a registry fact when legacy or partially
+ * migrated databases contain more than one row for a domain. `hosted` is
+ * derived from verified ownership columns rather than stored in source_type.
+ */
+const BRAND_RESOLUTION_SOURCE_PRIORITY_SQL = `CASE
+  WHEN workos_organization_id IS NOT NULL AND domain_verified IS TRUE THEN 1
+  WHEN source_type = 'brand_json' THEN 2
+  WHEN source_type = 'community' THEN 3
+  WHEN source_type = 'enriched' THEN 4
+  ELSE 5
+END`;
+
+/**
  * Strip auth-relevant keys from a caller-supplied brand_manifest. Returns
  * undefined when the input is undefined so caller checks for "provided"
  * still work. Mutates a shallow copy — does not touch the caller's object.
@@ -274,10 +287,9 @@ export interface ListBrandsOptions {
   source_type?: 'brand_json' | 'community' | 'enriched' | 'stub';
   // Response-label filter for getAllBrandsForRegistry. Maps to the same
   // values the registry response exposes in `source`, so filter and
-  // response round-trip: ?source=hosted returns rows the response labels
-  // hosted (is_public=true), ?source=brand_json returns crawler-discovered
-  // rows with a live /.well-known/brand.json (source_type='brand_json' and
-  // is_public IS NOT TRUE), etc.
+  // response round-trip: ?source=hosted returns rows a verified owner
+  // registered, ?source=brand_json returns crawler-discovered rows with a
+  // live /.well-known/brand.json, etc.
   source?: 'hosted' | 'brand_json' | 'community' | 'enriched';
   has_manifest?: boolean;
   house_domain?: string;
@@ -285,6 +297,23 @@ export interface ListBrandsOptions {
   limit?: number;
   offset?: number;
 }
+
+/**
+ * Provenance predicates for the brand registry. Defined once so the response
+ * label, the `?source=` filter, and the stats buckets cannot drift apart.
+ *
+ * `is_public` is not a provenance signal — it defaults to TRUE, so every
+ * crawler-discovered row carries it. Owner-hosted means a verified
+ * organization registered the row.
+ */
+const OWNER_HOSTED_SQL =
+  `(brands.workos_organization_id IS NOT NULL AND brands.domain_verified = true)`;
+/** Control of the domain was demonstrated, by owner verification or by serving a valid brand.json from it. */
+const DOMAIN_CONTROL_VERIFIED_SQL =
+  `(${OWNER_HOSTED_SQL} OR brands.source_type = 'brand_json')`;
+/** The row carries manifest content, rather than an empty placeholder. */
+const HAS_MANIFEST_SQL =
+  `(brands.brand_manifest IS NOT NULL AND brands.brand_manifest <> '{}'::jsonb)`;
 
 // Column list for queries returning HostedBrand (aliases brands columns to match the interface)
 const HOSTED_BRAND_COLUMNS = `id, workos_organization_id, created_by_user_id, created_by_email,
@@ -722,7 +751,14 @@ export class BrandDatabase {
    */
   async getDiscoveredBrandByDomain(domain: string): Promise<DiscoveredBrand | null> {
     const result = await query<DiscoveredBrand>(
-      'SELECT * FROM brands WHERE domain = $1',
+      `SELECT *
+       FROM brands
+       WHERE domain = $1
+       ORDER BY ${BRAND_RESOLUTION_SOURCE_PRIORITY_SQL},
+                last_validated DESC NULLS LAST,
+                discovered_at DESC NULLS LAST,
+                id ASC
+       LIMIT 1`,
       [domain.toLowerCase()]
     );
     return result.rows[0] ? this.deserializeDiscoveredBrand(result.rows[0]) : null;
@@ -737,12 +773,19 @@ export class BrandDatabase {
     const lower = domains.map(d => d.toLowerCase());
     const placeholders = lower.map((_, i) => `$${i + 1}`).join(', ');
     const result = await query<DiscoveredBrand>(
-      `SELECT * FROM brands WHERE domain IN (${placeholders})`,
+      `SELECT DISTINCT ON (domain) *
+       FROM brands
+       WHERE domain IN (${placeholders})
+       ORDER BY domain,
+                ${BRAND_RESOLUTION_SOURCE_PRIORITY_SQL},
+                last_validated DESC NULLS LAST,
+                discovered_at DESC NULLS LAST,
+                id ASC`,
       lower
     );
     const map = new Map<string, DiscoveredBrand>();
     for (const row of result.rows) {
-      map.set(row.domain, this.deserializeDiscoveredBrand(row));
+      map.set(row.domain.toLowerCase(), this.deserializeDiscoveredBrand(row));
     }
     return map;
   }
@@ -899,6 +942,12 @@ export class BrandDatabase {
 
   /**
    * Get all brands (hosted + discovered) for registry view
+   *
+   * Provenance labels use the same definitions as `/api/brands/resolve`:
+   * `hosted` means a verified owner registered the row, `verified` means
+   * control of the domain was demonstrated (owner verification, or a valid
+   * brand.json served from the domain itself), and `has_manifest` means the
+   * row actually carries manifest content.
    */
   async getAllBrandsForRegistry(options: ListBrandsOptions = {}): Promise<Array<{
     domain: string;
@@ -932,14 +981,11 @@ export class BrandDatabase {
     }
 
     if (options.source) {
-      // Match the response-label CASE in the SELECT below: is_public=true
-      // rows are exposed as 'hosted' regardless of source_type, so the
-      // remaining buckets must exclude is_public=true to round-trip.
       if (options.source === 'hosted') {
-        conditions.push(`brands.is_public = true`);
+        conditions.push(OWNER_HOSTED_SQL);
       } else {
         conditions.push(
-          `brands.is_public IS NOT TRUE AND brands.source_type = $${paramIndex++}`
+          `NOT ${OWNER_HOSTED_SQL} AND brands.source_type = $${paramIndex++}`
         );
         params.push(options.source);
       }
@@ -973,9 +1019,9 @@ export class BrandDatabase {
       SELECT
         brands.domain,
         COALESCE(brands.brand_name, brands.brand_manifest->>'name', brands.brand_manifest->'house'->>'name', brands.domain) as brand_name,
-        CASE WHEN brands.is_public = true THEN 'hosted' ELSE brands.source_type END as source,
-        CASE WHEN brands.is_public = true THEN true ELSE brands.has_brand_manifest END as has_manifest,
-        CASE WHEN brands.is_public = true THEN brands.domain_verified ELSE true END as verified,
+        CASE WHEN ${OWNER_HOSTED_SQL} THEN 'hosted' ELSE brands.source_type END as source,
+        ${HAS_MANIFEST_SQL} as has_manifest,
+        ${DOMAIN_CONTROL_VERIFIED_SQL} as verified,
         brands.house_domain,
         COALESCE(brands.keller_type, 'master') as keller_type,
         COALESCE(brands.brand_manifest->'logos'->0->>'url', brands.brand_manifest->'brands'->0->'logos'->0->>'url') as logo_url,
@@ -1040,21 +1086,19 @@ export class BrandDatabase {
       sub_brands: string;
       with_manifest: string;
     }>(
-      // Bucket counts mirror the response-label CASE in
-      // getAllBrandsForRegistry: is_public=true rows count once as 'hosted'
-      // and are excluded from the source_type buckets, so stats round-trip
-      // with the four ?source filter values (hosted/brand_json/community/
-      // enriched). hosted+brand_json+community+enriched (excluding 'stub')
-      // reconciles to total.
+      // Bucket counts use the same predicates as the response labels in
+      // getAllBrandsForRegistry, so stats round-trip with the four ?source
+      // filter values. hosted+brand_json+community+enriched (excluding
+      // 'stub') reconciles to total.
       `SELECT
         COUNT(*) AS total,
-        COUNT(*) FILTER (WHERE is_public = true) AS hosted,
-        COUNT(*) FILTER (WHERE source_type = 'brand_json' AND is_public IS NOT TRUE) AS brand_json,
-        COUNT(*) FILTER (WHERE source_type = 'community' AND is_public IS NOT TRUE) AS community,
-        COUNT(*) FILTER (WHERE source_type = 'enriched' AND is_public IS NOT TRUE) AS enriched,
+        COUNT(*) FILTER (WHERE ${OWNER_HOSTED_SQL}) AS hosted,
+        COUNT(*) FILTER (WHERE brands.source_type = 'brand_json' AND NOT ${OWNER_HOSTED_SQL}) AS brand_json,
+        COUNT(*) FILTER (WHERE brands.source_type = 'community' AND NOT ${OWNER_HOSTED_SQL}) AS community,
+        COUNT(*) FILTER (WHERE brands.source_type = 'enriched' AND NOT ${OWNER_HOSTED_SQL}) AS enriched,
         COUNT(*) FILTER (WHERE keller_type IN ('master', 'independent') OR keller_type IS NULL) AS houses,
         COUNT(*) FILTER (WHERE keller_type IN ('sub_brand', 'endorsed')) AS sub_brands,
-        COUNT(*) FILTER (WHERE is_public = true OR has_brand_manifest = true) AS with_manifest
+        COUNT(*) FILTER (WHERE ${HAS_MANIFEST_SQL}) AS with_manifest
       FROM brands
       ${whereClause}`,
       params

@@ -1,0 +1,10 @@
+"$schema" = "https://conductor.build/schemas/settings.repo.schema.json"
+
+[scripts]
+setup = "git config core.hooksPath .husky && npm install && uv sync && if [ -f \"$CONDUCTOR_ROOT_PATH/.env.local\" ]; then cp \"$CONDUCTOR_ROOT_PATH/.env.local\" .env.local; fi && if [ -f \"$CONDUCTOR_ROOT_PATH/.env\" ]; then cat \"$CONDUCTOR_ROOT_PATH/.env\" >> .env.local; fi"
+
+[scripts.run.run]
+available_in = "local"
+command = "if ! docker info > /dev/null 2>&1; then echo 'Starting Docker...' && open -a Docker && TRIES=0 && until docker info > /dev/null 2>&1; do TRIES=$((TRIES+1)); if [ $TRIES -gt 30 ]; then echo 'ERROR: Docker failed to start' && exit 1; fi; sleep 1; done; fi && echo \"Rebuilding and starting containers on port $CONDUCTOR_PORT...\" && docker compose up --build -d && echo 'Waiting for app to be ready...' && TRIES=0 && until curl -s http://localhost:$CONDUCTOR_PORT/health > /dev/null 2>&1; do TRIES=$((TRIES+1)); if [ $TRIES -gt 60 ]; then echo 'App ready check timed out, but containers are running' && break; fi; sleep 1; done && echo \"App running at http://localhost:$CONDUCTOR_PORT\" && echo 'Starting Stripe webhook listener...' && open \"http://localhost:$CONDUCTOR_PORT/dashboard\" && stripe listen --forward-to localhost:$CONDUCTOR_PORT/api/webhooks/stripe"
+default = true
+icon = "play"

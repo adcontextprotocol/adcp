@@ -35,7 +35,7 @@ How buyer agents orchestrate across multiple sales agents simultaneously: discov
   <Card title="create_media_buy task" icon="receipt" href="/docs/media-buy/task-reference/create_media_buy">
     Campaign creation: manual mode, proposal mode, validation, and approval lifecycle.
   </Card>
-  <Card title="Orchestrator design" icon="diagram-project" href="/docs/building/implementation/orchestrator-design">
+  <Card title="Orchestrator design" icon="diagram-project" href="/docs/building/operating/orchestrator-design">
     Architecture patterns for agents that coordinate across multiple sellers.
   </Card>
   <Card title="Pricing models" icon="tag" href="/docs/media-buy/advanced-topics/pricing-models">
@@ -50,7 +50,7 @@ How buyer agents orchestrate across multiple sales agents simultaneously: discov
   <Card title="Version negotiation" icon="code-branch" href="/docs/reference/versioning#version-negotiation">
     Declare `adcp_major_version` on requests; sellers respond with `VERSION_UNSUPPORTED` when incompatible.
   </Card>
-  <Card title="Error handling" icon="triangle-exclamation" href="/docs/building/implementation/error-handling">
+  <Card title="Error handling" icon="triangle-exclamation" href="/docs/building/by-layer/L3/error-handling">
     Error taxonomy: transient, correctable, terminal. Includes `GOVERNANCE_DENIED`, `TERMS_REJECTED`, `VERSION_UNSUPPORTED`.
   </Card>
   <Card title="Trusted Match Protocol" icon="microchip" href="/docs/trusted-match">
@@ -272,7 +272,7 @@ See [Build a caller](/docs/building/by-layer/L4/build-a-caller) for client setup
 
 Buyer agents don't claim specialisms — specialisms describe what sellers offer. But your buyer agent should handle every specialism it expects to transact against. The storyboards a seller passes (declared via `supported_protocols` and `specialisms` in their `get_adcp_capabilities`) tell you what behaviors to expect.
 
-Review the [Compliance Catalog](/docs/building/compliance-catalog) and note which specialisms your target sellers claim — that's your test matrix.
+Review the [Compliance Catalog](/docs/building/verification/compliance-catalog) and note which specialisms your target sellers claim — that's your test matrix.
 
 ### Assessment rubric
 

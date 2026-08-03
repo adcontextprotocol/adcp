@@ -72,6 +72,8 @@ the authenticated caller. Use `account` when re-reading one known account by
 | `account` | object | No | Exact account filter. Pass `{ "account_id": "..." }` after discovery, or a natural key with `brand`, `operator`, and optional `sandbox` for buyer-declared account sellers. The seller returns only matching accounts visible to the authenticated caller. |
 | `status` | string | No | Filter by account status: `active`, `pending_approval`, `rejected`, `payment_required`, `suspended`, or `closed`. |
 | `sandbox` | boolean | No | When true, return only sandbox accounts. When false, return only production accounts. Omit to return both. Primarily used with account-id namespaces where sandbox accounts are pre-existing test accounts on the platform. |
+| `include_webhook_activity` | boolean | No | When true, request recent webhook delivery attempts for each returned account in `webhook_activity[]`. |
+| `webhook_activity_limit` | integer | No | Maximum number of `webhook_activity[]` records to return per account when `include_webhook_activity` is true. Default 50, max 200. |
 | `pagination` | object | No | Pagination cursor for large account sets. |
 
 ## Response
@@ -92,12 +94,13 @@ the authenticated caller. Use `account` when re-reading one known account by
 | `operator` | Operator domain. Always present — when the brand operates directly, `operator` equals the brand's domain. |
 | `status` | Current account state: `active`, `pending_approval`, `rejected`, `payment_required`, `suspended`, or `closed` |
 | `billing` | Billing model in effect: `operator` or `agent` |
-| `account_scope` | How the seller scoped this account: `operator`, `brand`, `operator_brand`, or `agent`. See [account scope](/docs/building/integration/accounts-and-agents#account-scope). |
+| `account_scope` | How the seller scoped this account: `operator`, `brand`, `operator_brand`, or `agent`. See [account scope](/docs/building/by-layer/L2/accounts-and-agents#account-scope). |
 | `payment_terms` | Payment terms agreed for this account: `net_15`, `net_30`, `net_45`, `net_60`, `net_90`, or `prepay`. Binding for all invoices when the account is active. |
 | `governance_agents` | Governance agent endpoints registered on this account. Present when governance agents have been configured via [`sync_governance`](/docs/accounts/tasks/sync_governance). |
 | `setup` | Present when `status: "pending_approval"`. Contains `url` for completing setup and `message` explaining what's needed. |
 | `authorization` | Optional. The calling agent's scope grant for this account — `allowed_tasks`, `field_scopes`, `scope_name`, `read_only`. Applies to every vendor agent type (media-buy, signals, governance, creative, brand) — the Accounts Protocol surface is shared. Vendor agents that support scope introspection SHOULD populate this; media-buy sales agents claiming the `attestation_verifier` standard scope MUST populate it. Absence means the vendor agent does not advertise introspectable scope for this account; callers MUST NOT infer access from absence and fall back to error-driven discovery via the RBAC error codes. See [Caller authorization](/docs/accounts/overview#caller-authorization) for the full shape and semantics. |
-| `notification_configs` | Account-level webhook subscribers registered via [`sync_accounts`](/docs/accounts/tasks/sync_accounts#account-level-webhook-subscriptions). Each entry carries `subscriber_id`, `url`, `event_types[]`, and `active`. Present when the account has any persisted subscribers. `subscriber_id` is the account-scoped logical key; re-registering the same subscriber replaces that subscriber's config. `authentication.credentials` is omitted on every entry (write-only). Use this surface to verify what's active after a sync, audit fan-out across multiple subscribers, and detect drift between buyer-side expectations and seller-side persisted state. This is not an account lifecycle feed; account status changes are read from the account's `status` field or from the one-shot `sync_accounts.push_notification_config` async result channel. |
+| `notification_configs` | Account-level webhook subscribers registered via [`sync_accounts`](/docs/accounts/tasks/sync_accounts#account-level-webhook-subscriptions). Each entry carries `subscriber_id`, `url`, `event_types[]`, and `active`. Present when the account has any persisted subscribers. `subscriber_id` is the account-scoped logical key; re-registering the same subscriber replaces that subscriber's config. `authentication.credentials` is omitted on every entry (write-only). Use this surface to verify what's active after a sync, audit fan-out across multiple subscribers, and detect drift between buyer-side expectations and seller-side persisted state. `account.status_changed` subscribers receive status invalidation fires and repair by re-reading this `status` field. |
+| `webhook_activity` | Optional recent webhook delivery attempts for this account, returned when `include_webhook_activity: true` and the seller exposes the debug log. Omitted means unsupported or not requested; `[]` means supported but no retained fires; non-empty records are most recent first. |
 
 ### Single-publisher cardinality
 
@@ -178,6 +181,30 @@ async def wait_for_account(target_account_id: str, max_attempts: int = 20):
 
 </CodeGroup>
 
+### Reconcile account status webhooks
+
+After receiving `account.status_changed`, re-read the account snapshot. The webhook tells you which account changed; `list_accounts` is the source of truth for the current status, setup hints, billing terms, and authorization.
+
+```javascript
+async function handleAccountStatusWebhook(req, res) {
+  if (!verifyWebhookSignature(req)) return res.status(401).end();
+
+  const fire = req.body; // account-status-changed-webhook
+  if (await alreadyProcessed(fire.idempotency_key)) return res.status(200).end();
+
+  const result = await testAgent.listAccounts({
+    account: { account_id: fire.account_id },
+    include_webhook_activity: true,
+    webhook_activity_limit: 20
+  });
+
+  const account = result.accounts[0];
+  await reconcileAccount(account);
+  await markProcessed(fire.idempotency_key);
+  return res.status(200).end();
+}
+```
+
 ### Filter active accounts only
 
 <CodeGroup>
@@ -229,5 +256,5 @@ asyncio.run(main())
 
 - [sync_accounts](/docs/accounts/tasks/sync_accounts) — Sync advertiser accounts with a seller
 - [sync_governance](/docs/accounts/tasks/sync_governance) — Sync governance agents to accounts
-- [Accounts and agents](/docs/building/integration/accounts-and-agents) — Billing models, trust models, and authorized operators
+- [Accounts and agents](/docs/building/by-layer/L2/accounts-and-agents) — Billing models, trust models, and authorized operators
 - [Brand protocol](/docs/brand-protocol/brand-json) — How vendor agents resolve brand identity from the brand's `domain`

@@ -27,21 +27,26 @@ vi.mock('undici', async (importOriginal) => {
   return { ...actual, Agent: agentSpy };
 });
 
-import { buildSsrfSafeDispatcher, ssrfSafeLookup } from '../../src/utils/url-security.js';
+import {
+  buildSsrfSafeDispatcher,
+  SSRF_CONNECT_TIMEOUT_MS,
+  ssrfSafeLookup,
+} from '../../src/utils/url-security.js';
 
 describe('buildSsrfSafeDispatcher', () => {
-  it('constructs an undici Agent with ssrfSafeLookup as the connect.lookup', () => {
+  it('constructs an undici Agent with bounded ssrfSafeLookup connect wiring', () => {
     agentSpy.mockClear();
     buildSsrfSafeDispatcher();
     expect(agentSpy).toHaveBeenCalledOnce();
 
     const opts = agentSpy.mock.calls[0][0] as {
-      connect?: { lookup?: typeof ssrfSafeLookup };
+      connect?: { lookup?: typeof ssrfSafeLookup; timeout?: number };
     };
     expect(opts.connect).toBeDefined();
     // Identity check — the dispatcher must wire OUR lookup, not Node's default.
     // If someone refactors the option name (e.g. `connect.dns.lookup`), this
     // assertion fails before the SSRF gap can ship.
     expect(opts.connect!.lookup).toBe(ssrfSafeLookup);
+    expect(opts.connect!.timeout).toBe(SSRF_CONNECT_TIMEOUT_MS);
   });
 });

@@ -292,6 +292,13 @@ export interface SessionState {
   collectionLists: Map<string, CollectionListState>;
   contentStandards: Map<string, ContentStandardsState>;
   rightsGrants: Map<string, RightsGrantState>;
+  /** Proposal-specific pricing options created by successful refine asks.
+   * Keyed by product_id + pricing_option_id and overlaid onto the deterministic
+   * catalog on later get_products/create_media_buy requests. */
+  negotiatedPricingOptions: Map<string, {
+    productId: string;
+    option: Product['pricing_options'][number];
+  }>;
   usageRecords: UsageRecord[];
   /** Data set by comply_test_controller. Persisted so scenarios survive the
    * serialize/deserialize round trip that every request does, even in the
@@ -315,6 +322,8 @@ export interface CollectionListState {
   filters?: Record<string, unknown>;
   brand?: { domain: string };
   account?: AccountRef;
+  /** Stored target only. Delivery must use createTrainingWebhookFetch so the
+   * address is revalidated and pinned at connection time. */
   webhook_url?: string;
   collection_count: number;
   created_at: string;
@@ -471,19 +480,25 @@ export interface ManifestAsset {
   url?: string;
   width?: number;
   height?: number;
+  [key: string]: unknown;
 }
 
 /** Creative manifest with format and named asset slots. */
 export interface CreativeManifest {
-  format_id: FormatID;
-  assets: Record<string, ManifestAsset>;
+  format_id?: FormatID;
+  format_kind?: string;
+  format_option_ref?: Record<string, unknown>;
+  assets: Record<string, ManifestAsset | ManifestAsset[]>;
 }
 
 export interface CreativeState {
   creativeId: string;
   accountId?: string;
   accountRef?: AccountRef;
+  /** Internal legacy-shaped lookup key. Canonical rows emit formatKind instead. */
   formatId: FormatID;
+  formatKind?: string;
+  formatOptionRef?: Record<string, unknown>;
   name?: string;
   status: string;
   syncedAt: string;
@@ -666,6 +681,8 @@ export interface PropertyListState {
   baseProperties: unknown[];
   filters?: unknown;
   brand?: unknown;
+  /** Stored target only. Delivery must use createTrainingWebhookFetch so the
+   * address is revalidated and pinned at connection time. */
   webhookUrl?: string;
   cacheDurationHours: number;
   propertyCount: number;

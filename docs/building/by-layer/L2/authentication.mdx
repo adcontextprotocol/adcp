@@ -53,6 +53,19 @@ AdCP supports three authentication mechanisms for authenticated operations. The 
   **3.0 mutating-operation floor.** Until 3.1 lands, static Authorization-header credentials over TLS are the effective floor for mutating operations. Operators handling spend commitments SHOULD ship RFC 9421 request signing before the 3.1 deprecation date to avoid a forced cutover.
 </Warning>
 
+### Why bearer tokens are prohibited for financial operations
+
+A bearer token authenticates whoever presents it. Any party that obtains the token (a leaked log line, a compromised proxy, a captured request, a misconfigured relay) can originate spend commitments indistinguishable from the legitimate agent's, and the seller cannot tell the difference after the fact. For read and discovery operations that risk is bounded; for operations that move money it is not.
+
+Signed requests replace possession of a string with proof of possession of a private key:
+
+- **Proof of possession.** The signature proves the caller holds the signing key. The key never travels on the wire, so the theft surface shrinks from every system a token passes through to the signer's key storage.
+- **Payload integrity.** The signature binds `@method`, `@target-uri`, `@authority`, `content-type`, and `content-digest`, so tampering with a budget figure, account reference, or target endpoint invalidates the request. TLS protects bytes in transit but not through intermediaries, relays, or logs; the signature protects the transaction end to end.
+- **Replay resistance.** The ±60 s timestamp window and nonce prevent a captured request from being resubmitted as a new transaction.
+- **Accountability.** Both parties can prove after the fact who originated a transaction and exactly what was requested. That audit anchor is what lowers fraud and dispute cost in financial workflows; with a shared secret, origination is unprovable once the token may have leaked.
+
+This is why the 3.1+ conformance floor prohibits static credentials for mutating and financial operations while continuing to permit them for read and discovery. Key discovery, covered components, and the full verifier checklist are defined in the [implementation security reference](/docs/building/by-layer/L1/security#request-signing); build on those (or a reference SDK) rather than hand-rolling the cryptography.
+
 ### Static Authorization credentials (3.0 baseline)
 
 ```

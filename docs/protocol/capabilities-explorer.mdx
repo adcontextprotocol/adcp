@@ -32,6 +32,7 @@ Version negotiation, idempotency contract, build identifier.
 - **`major_versions`** — DEPRECATED in favor of `supported_versions`; sellers MUST keep emitting through 3.x.
 - **`build_version`** — full semver build identifier; advisory metadata for buyer-side incident triage.
 - **`idempotency`** — discriminated union (`IdempotencySupported` / `IdempotencyUnsupported`) declaring replay semantics. **A declaration here is a commitment** — sellers that declare `supported: true` are probed by the conformance runner.
+- **`capability_changes`** — freshness metadata and optional `capabilities.changed` invalidation webhooks for cached capability documents.
 
 [Propose an extension to `adcp`](https://github.com/adcontextprotocol/adcp/issues/new?title=Extend+adcp+capability:+%3Cflag%3E&body=Schema+location:+%60.adcp%60%0AExisting+keys:+supported_versions,+major_versions,+build_version,+idempotency%0A%0A%23%23+Proposal%0A%0A...%0A%0A%23%23+Why+this+belongs+under+%60adcp%60+and+not+a+new+top-level+key%0A%0A...&labels=rfc,capabilities)
 

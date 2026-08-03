@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <title>Community mirror review - AgenticAdvertising.org</title>
+  <link rel="stylesheet" href="/design-system.css">
+  <script src="/nav.js"></script>
+  <script src="/admin-sidebar.js"></script>
+  <style>
+    body { background: var(--color-bg-page); min-height: 100vh; }
+    .container { max-width: var(--container-xl); margin: var(--space-8) auto; padding: 0 var(--space-5); }
+    .card { background: var(--color-bg-card); border-radius: var(--radius-md); padding: var(--space-6); box-shadow: var(--shadow-xs); }
+    .header-bar { display: flex; justify-content: space-between; gap: var(--space-4); align-items: center; margin-bottom: var(--space-5); }
+    h1 { margin: 0 0 var(--space-2); color: var(--color-text-heading); }
+    .subtitle, .meta { color: var(--color-text-secondary); font-size: var(--text-sm); }
+    .count-badge { display: inline-flex; min-width: 24px; justify-content: center; padding: var(--space-0_5) var(--space-2); border-radius: var(--radius-full); background: var(--color-bg-button-secondary); font-size: var(--text-xs); }
+    .queue { display: grid; gap: var(--space-4); }
+    .queue-row { border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-5); background: var(--color-bg-card); }
+    .queue-row.acting { opacity: 0.55; pointer-events: none; }
+    .row-header { display: flex; justify-content: space-between; gap: var(--space-4); align-items: flex-start; }
+    .platform { font-size: var(--text-lg); font-weight: var(--font-semibold); color: var(--color-text-heading); }
+    .status { padding: var(--space-1) var(--space-2); border-radius: var(--radius-full); background: var(--color-warning-100); color: var(--color-warning-700); font-size: var(--text-xs); font-weight: var(--font-semibold); }
+    .counts { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-4) 0; }
+    .count { padding: var(--space-1_5) var(--space-3); border-radius: var(--radius-md); background: var(--color-bg-subtle); font-size: var(--text-sm); }
+    .changed { color: var(--color-warning-700); font-weight: var(--font-semibold); }
+    details { margin-top: var(--space-3); }
+    summary { cursor: pointer; color: var(--color-brand); font-size: var(--text-sm); }
+    pre { max-height: 420px; overflow: auto; padding: var(--space-4); border-radius: var(--radius-md); background: var(--color-bg-subtle); color: var(--color-text); font-size: var(--text-xs); white-space: pre-wrap; word-break: break-word; }
+    .actions { display: flex; gap: var(--space-2); margin-top: var(--space-4); }
+    button { border: 0; border-radius: var(--radius-md); padding: var(--space-2) var(--space-4); cursor: pointer; font: inherit; font-weight: var(--font-medium); }
+    .approve { background: var(--color-success-600); color: var(--color-text-on-dark); }
+    .reject { background: var(--color-error-600); color: var(--color-text-on-dark); }
+    .refresh { background: var(--color-bg-button-secondary); color: var(--color-text-heading); }
+    .message { display: none; padding: var(--space-3); border-radius: var(--radius-md); margin-bottom: var(--space-4); }
+    .message.success { display: block; background: var(--color-success-100); color: var(--color-success-700); }
+    .message.error { display: block; background: var(--color-error-100); color: var(--color-error-700); }
+    .empty, .loading { text-align: center; padding: var(--space-10); color: var(--color-text-secondary); }
+    @media (max-width: 720px) { .row-header, .header-bar { flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <div id="loading" class="loading">Loading…</div>
+  <div id="content" style="display:none">
+    <div class="container">
+      <div class="header-bar">
+        <div>
+          <h1>Community mirror review <span class="count-badge" id="queueCount">0</span></h1>
+          <div class="subtitle">Review expert-contributed catalog mirrors before they become public.</div>
+        </div>
+        <button class="refresh" id="refreshButton" type="button">Refresh</button>
+      </div>
+      <div id="message" class="message" role="status"></div>
+      <div class="card">
+        <div id="queue" class="queue"></div>
+        <div id="empty" class="empty" style="display:none">No community mirrors are waiting for review.</div>
+      </div>
+    </div>
+  </div>
+  <script>
+    const proposals = new Map();
+    const catalogFields = ['formats', 'properties', 'placements', 'collections', 'signals'];
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function showMessage(text, kind) {
+      const message = document.getElementById('message');
+      message.textContent = text;
+      message.className = `message ${kind}`;
+    }
+
+    function count(document, field) {
+      return Array.isArray(document?.[field]) ? document[field].length : 0;
+    }
+
+    function renderCounts(proposed, current) {
+      return catalogFields.map((field) => {
+        const next = count(proposed, field);
+        const previous = count(current, field);
+        const changed = next !== previous;
+        return `<span class="count${changed ? ' changed' : ''}">${escapeHtml(field)}: ${previous} → ${next}</span>`;
+      }).join('');
+    }
+
+    function renderProposal(entry) {
+      const proposal = entry.proposal;
+      const submitted = new Date(proposal.proposed_at).toLocaleString();
+      const contributor = proposal.proposed_by_email
+        || proposal.proposed_by_organization_id
+        || 'Authenticated contributor';
+      const json = escapeHtml(JSON.stringify(proposal.adagents_json, null, 2));
+      const currentJson = entry.current
+        ? escapeHtml(JSON.stringify(entry.current, null, 2))
+        : 'No public mirror exists for this platform.';
+      return `
+        <article class="queue-row" data-id="${escapeHtml(proposal.id)}">
+          <div class="row-header">
+            <div>
+              <div class="platform">${escapeHtml(proposal.platform)}</div>
+              <div class="meta">Submitted ${escapeHtml(submitted)} by ${escapeHtml(contributor)}</div>
+            </div>
+            <span class="status">Pending</span>
+          </div>
+          <div class="counts">${renderCounts(proposal.adagents_json, entry.current)}</div>
+          <details>
+            <summary>Review proposed document</summary>
+            <pre>${json}</pre>
+          </details>
+          <details>
+            <summary>Compare with current public document</summary>
+            <pre>${currentJson}</pre>
+          </details>
+          <div class="actions">
+            <button class="approve" type="button" data-action="approve">Approve and publish</button>
+            <button class="reject" type="button" data-action="reject">Reject</button>
+          </div>
+        </article>`;
+    }
+
+    function renderSummary(summary) {
+      const submitted = new Date(summary.proposed_at).toLocaleString();
+      return `
+        <article class="queue-row" data-id="${escapeHtml(summary.id)}">
+          <div class="row-header">
+            <div>
+              <div class="platform">${escapeHtml(summary.platform)}</div>
+              <div class="meta">Submitted ${escapeHtml(submitted)}</div>
+            </div>
+            <span class="status">Pending</span>
+          </div>
+          <div class="actions">
+            <button class="refresh" type="button" data-action="load">Load comparison</button>
+          </div>
+        </article>`;
+    }
+
+    function attachRowActions(row) {
+      row.querySelector('button[data-action="load"]')
+        ?.addEventListener('click', (event) => loadComparison(event.currentTarget));
+      row.querySelectorAll('button[data-action="approve"], button[data-action="reject"]')
+        .forEach((button) => button.addEventListener('click', () => review(button)));
+    }
+
+    async function loadComparison(button) {
+      const row = button.closest('.queue-row');
+      const entry = proposals.get(row?.dataset.id);
+      if (!row || !entry?.summary) return;
+      row.classList.add('acting');
+      try {
+        const [detail, current] = await Promise.all([
+          fetchJson(`/api/registry/mirror-proposals/${encodeURIComponent(entry.summary.id)}`),
+          fetchJson(`/api/registry/mirrors/${encodeURIComponent(entry.summary.platform)}`)
+            .then((body) => body.adagents_json)
+            .catch((error) => error.status === 404 ? null : Promise.reject(error)),
+        ]);
+        const loaded = { summary: entry.summary, proposal: detail.proposal, current };
+        proposals.set(entry.summary.id, loaded);
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = renderProposal(loaded);
+        const replacement = wrapper.firstElementChild;
+        row.replaceWith(replacement);
+        attachRowActions(replacement);
+      } catch (error) {
+        row.classList.remove('acting');
+        showMessage(`Failed to load proposal: ${error.message}`, 'error');
+      }
+    }
+
+    async function fetchJson(url) {
+      const response = await fetch(url, { credentials: 'include' });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        const error = new Error(body.error || `HTTP ${response.status}`);
+        error.status = response.status;
+        throw error;
+      }
+      return response.json();
+    }
+
+    async function loadQueue() {
+      const queue = document.getElementById('queue');
+      const empty = document.getElementById('empty');
+      queue.innerHTML = '<div class="loading">Loading review queue…</div>';
+      empty.style.display = 'none';
+      proposals.clear();
+      try {
+        const list = await fetchJson('/api/registry/mirror-proposals?status=pending&review_queue=true&limit=50');
+        for (const summary of list.proposals) proposals.set(summary.id, { summary });
+        document.getElementById('queueCount').textContent = String(list.total);
+        queue.innerHTML = list.proposals.map(renderSummary).join('');
+        empty.style.display = list.proposals.length ? 'none' : 'block';
+        queue.querySelectorAll('.queue-row').forEach(attachRowActions);
+      } catch (error) {
+        queue.innerHTML = '';
+        if (error.status === 403) {
+          empty.textContent = 'You must belong to the registry moderator working group to review community mirrors.';
+          empty.style.display = 'block';
+        } else {
+          showMessage(`Failed to load proposals: ${error.message}`, 'error');
+        }
+      }
+    }
+
+    async function review(button) {
+      const row = button.closest('.queue-row');
+      const entry = proposals.get(row?.dataset.id);
+      const action = button.dataset.action;
+      if (!row || !entry || !['approve', 'reject'].includes(action)) return;
+      let notes = '';
+      if (action === 'reject') {
+        notes = window.prompt('Why is this proposal being rejected?')?.trim() || '';
+        if (!notes) return;
+      } else {
+        notes = window.prompt('Optional approval note:')?.trim() || '';
+        if (!window.confirm(`Publish the ${entry.proposal.platform} community mirror now?`)) return;
+      }
+      row.classList.add('acting');
+      try {
+        const response = await fetch(
+          `/api/registry/mirror-proposals/${encodeURIComponent(entry.proposal.id)}/${action}`,
+          {
+            method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ proposal_digest: entry.proposal.proposal_digest, review_notes: notes || undefined }),
+          },
+        );
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          throw new Error(body.error || `HTTP ${response.status}`);
+        }
+        showMessage(
+          action === 'approve'
+            ? `${entry.proposal.platform} was approved and published.`
+            : `${entry.proposal.platform} was rejected.`,
+          'success',
+        );
+        await loadQueue();
+      } catch (error) {
+        row.classList.remove('acting');
+        showMessage(`Failed to ${action}: ${error.message}`, 'error');
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('content').style.display = 'block';
+      document.getElementById('refreshButton').addEventListener('click', loadQueue);
+      loadQueue();
+    });
+  </script>
+</body>
+</html>

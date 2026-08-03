@@ -16,16 +16,29 @@ describe('BrandDatabase.getAllBrandsForRegistry', () => {
     brandDb = new BrandDatabase();
   });
 
+  const OWNER_ORG_ID = 'org_brand_registry_list_test';
+
   afterAll(async () => {
     await pool.query("DELETE FROM brands WHERE domain LIKE '%.example.com'");
+    await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [OWNER_ORG_ID]);
     await closeDatabase();
   });
 
   beforeEach(async () => {
     await pool.query("DELETE FROM brands WHERE domain LIKE '%.example.com'");
+    await pool.query(
+      `INSERT INTO organizations (workos_organization_id, name, created_at, updated_at)
+       VALUES ($1, 'Brand Registry List Test Org', NOW(), NOW())
+       ON CONFLICT (workos_organization_id) DO NOTHING`,
+      [OWNER_ORG_ID]
+    );
   });
 
-  async function insertBrand(overrides: Record<string, unknown>) {
+  /**
+   * `owner_verified: true` is the shape the registry labels `hosted`: an
+   * organization owns the row and control of the domain was verified.
+   */
+  async function insertBrand(overrides: Record<string, unknown> & { owner_verified?: boolean }) {
     const defaults = {
       domain: 'test.example.com',
       brand_name: 'Test Brand',
@@ -35,10 +48,12 @@ describe('BrandDatabase.getAllBrandsForRegistry', () => {
       domain_verified: false,
       review_status: 'approved',
     };
-    const row = { ...defaults, ...overrides };
+    const { owner_verified, ...rest } = overrides;
+    const row = { ...defaults, ...rest };
+    if (owner_verified) row.domain_verified = true;
     await pool.query(
-      `INSERT INTO brands (domain, brand_name, source_type, is_public, has_brand_manifest, domain_verified, review_status, brand_manifest, house_domain)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `INSERT INTO brands (domain, brand_name, source_type, is_public, has_brand_manifest, domain_verified, review_status, brand_manifest, house_domain, workos_organization_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        ON CONFLICT (domain) DO UPDATE SET
          brand_name = EXCLUDED.brand_name,
          source_type = EXCLUDED.source_type,
@@ -47,7 +62,8 @@ describe('BrandDatabase.getAllBrandsForRegistry', () => {
          domain_verified = EXCLUDED.domain_verified,
          review_status = EXCLUDED.review_status,
          brand_manifest = EXCLUDED.brand_manifest,
-         house_domain = EXCLUDED.house_domain`,
+         house_domain = EXCLUDED.house_domain,
+         workos_organization_id = EXCLUDED.workos_organization_id`,
       [
         row.domain,
         row.brand_name,
@@ -58,6 +74,9 @@ describe('BrandDatabase.getAllBrandsForRegistry', () => {
         row.review_status,
         row.brand_manifest ? JSON.stringify(row.brand_manifest) : null,
         row.house_domain || null,
+        owner_verified || (overrides as Record<string, unknown>).workos_organization_id
+          ? (overrides as Record<string, unknown>).workos_organization_id ?? OWNER_ORG_ID
+          : null,
       ]
     );
   }
@@ -68,13 +87,14 @@ describe('BrandDatabase.getAllBrandsForRegistry', () => {
     expect(result).toBeInstanceOf(Array);
   });
 
-  it('returns hosted brands with source=hosted', async () => {
+  it('returns owner-verified brands with source=hosted', async () => {
     await insertBrand({
       domain: 'hosted-brand.example.com',
       brand_name: 'Hosted Brand',
       is_public: true,
       source_type: 'community',
-      domain_verified: true,
+      owner_verified: true,
+      brand_manifest: { name: 'Hosted Brand' },
     });
     const result = await brandDb.getAllBrandsForRegistry({});
     const hosted = result.find((b) => b.domain === 'hosted-brand.example.com');
@@ -82,6 +102,52 @@ describe('BrandDatabase.getAllBrandsForRegistry', () => {
     expect(hosted!.source).toBe('hosted');
     expect(hosted!.has_manifest).toBe(true);
     expect(hosted!.verified).toBe(true);
+  });
+
+  // is_public defaults to TRUE on every crawler-discovered row, so it cannot
+  // stand in for "an owner registered this".
+  it('does not label a public crawler-discovered row as hosted', async () => {
+    await insertBrand({
+      domain: 'crawled-brand.example.com',
+      brand_name: 'Crawled Brand',
+      is_public: true,
+      source_type: 'brand_json',
+    });
+    const result = await brandDb.getAllBrandsForRegistry({});
+    const crawled = result.find((b) => b.domain === 'crawled-brand.example.com');
+    expect(crawled!.source).toBe('brand_json');
+    // A document served from the domain's own origin proves control of it.
+    expect(crawled!.verified).toBe(true);
+  });
+
+  it('does not label an unverified owner claim as hosted', async () => {
+    await insertBrand({
+      domain: 'unverified-owner.example.com',
+      brand_name: 'Unverified Owner',
+      is_public: true,
+      source_type: 'community',
+      workos_organization_id: OWNER_ORG_ID,
+      domain_verified: false,
+    });
+    const result = await brandDb.getAllBrandsForRegistry({});
+    const row = result.find((b) => b.domain === 'unverified-owner.example.com');
+    expect(row!.source).toBe('community');
+    expect(row!.verified).toBe(false);
+  });
+
+  it('reports has_manifest from actual manifest content', async () => {
+    await insertBrand({
+      domain: 'empty-manifest.example.com',
+      brand_name: 'Empty Manifest',
+      is_public: true,
+      source_type: 'community',
+      owner_verified: true,
+      brand_manifest: {},
+    });
+    const result = await brandDb.getAllBrandsForRegistry({});
+    const row = result.find((b) => b.domain === 'empty-manifest.example.com');
+    expect(row!.source).toBe('hosted');
+    expect(row!.has_manifest).toBe(false);
   });
 
   it('returns community brands with their actual source_type', async () => {
@@ -159,12 +225,13 @@ describe('BrandDatabase.getAllBrandsForRegistry', () => {
     // bug (#3521) was that the filter was ignored entirely.
 
     async function seedAllSources(prefix = 'src') {
-      // Owner-registered: source_type='community' AND is_public=true → response label 'hosted'
+      // Owner-registered and domain-verified → response label 'hosted'
       await insertBrand({
         domain: `${prefix}-hosted.example.com`,
         brand_name: 'Hosted Owner',
         is_public: true,
         source_type: 'community',
+        owner_verified: true,
       });
       // Crawler-discovered with live brand.json → response label 'brand_json'
       await insertBrand({
@@ -189,7 +256,7 @@ describe('BrandDatabase.getAllBrandsForRegistry', () => {
       });
     }
 
-    it('?source=hosted returns only is_public=true rows', async () => {
+    it('?source=hosted returns only owner-verified rows', async () => {
       await seedAllSources('hosted');
       const result = await brandDb.getAllBrandsForRegistry({ search: 'hosted-', source: 'hosted' });
       expect(result.length).toBe(1);
@@ -198,13 +265,14 @@ describe('BrandDatabase.getAllBrandsForRegistry', () => {
     });
 
     it('?source=brand_json excludes hosted rows even if source_type would match', async () => {
-      // A pathological row: source_type='brand_json' AND is_public=true.
-      // Response labels it 'hosted', so ?source=brand_json must NOT return it.
+      // A row an owner claimed that also has a live brand.json. The response
+      // labels it 'hosted', so ?source=brand_json must NOT return it.
       await insertBrand({
         domain: 'mixed.example.com',
         brand_name: 'Mixed',
         is_public: true,
         source_type: 'brand_json',
+        owner_verified: true,
       });
       await insertBrand({
         domain: 'pure-bj.example.com',
@@ -260,7 +328,7 @@ describe('BrandDatabase.getAllBrandsForRegistry', () => {
 
   describe('getBrandRegistryStats', () => {
     it('hosted, brand_json, community, enriched are disjoint and reconcile with filter results', async () => {
-      // is_public=true is counted ONLY as hosted; the source_type buckets
+      // An owner-verified row counts ONLY as hosted; the source_type buckets
       // exclude it. Otherwise the dashboard double-counts owner-registered
       // brands and the filter+stats pair becomes inconsistent.
       await insertBrand({
@@ -268,6 +336,7 @@ describe('BrandDatabase.getAllBrandsForRegistry', () => {
         brand_name: 'Stats Hosted',
         is_public: true,
         source_type: 'community',
+        owner_verified: true,
       });
       await insertBrand({
         domain: 'stats-bj.example.com',

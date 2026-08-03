@@ -30,6 +30,7 @@ import { createIllustration, approveIllustration } from '../db/illustration-db.j
 import { resolveEscalationsForPerspective } from '../db/escalation-db.js';
 import { listMyContent as listMyContentService, MyContentError } from '../services/my-content-service.js';
 import { checkContentSubmissionTier } from '../services/membership-tiers.js';
+import { normalizePerspectiveExternalUrl } from '../utils/perspective-url.js';
 
 const logger = createLogger('content-routes');
 
@@ -449,6 +450,12 @@ export async function proposeContentForUser(
   if (content_type === 'link' && !external_url) {
     return { success: false, error: 'external_url is required for link type content' };
   }
+  const normalizedExternalUrl = external_url == null
+    ? null
+    : normalizePerspectiveExternalUrl(external_url);
+  if (external_url != null && !normalizedExternalUrl) {
+    return { success: false, error: 'external_url must be an HTTPS URL without credentials' };
+  }
 
   if (content_type === 'article' && !content) {
     return { success: false, error: 'content is required for article type content' };
@@ -458,7 +465,9 @@ export async function proposeContentForUser(
 
   // Resolve the collection (working group)
   const committeeResult = await pool.query(
-    `SELECT id, name, accepts_public_submissions, slack_channel_id FROM working_groups WHERE slug = $1`,
+    `SELECT id, name, accepts_public_submissions, slack_channel_id
+     FROM working_groups
+     WHERE slug = $1 AND status = 'active'`,
     [committeeSlug]
   );
 
@@ -480,7 +489,8 @@ export async function proposeContentForUser(
   // For non-public collections, user must be a member
   if (!acceptsPublicSubmissions && !userIsLead && !userIsAdmin) {
     const membershipResult = await pool.query(
-      `SELECT 1 FROM working_group_memberships WHERE working_group_id = $1 AND workos_user_id = $2`,
+      `SELECT 1 FROM working_group_memberships
+       WHERE working_group_id = $1 AND workos_user_id = $2 AND status = 'active'`,
       [committeeId, user.id]
     );
     if (membershipResult.rows.length === 0) {
@@ -544,7 +554,7 @@ export async function proposeContentForUser(
     RETURNING *`,
     [
       slug, content_type, title, subtitle || null, content, excerpt,
-      external_url, external_site_name, category, tags,
+      normalizedExternalUrl, external_site_name, category, tags,
       authorName, requestAuthorTitle || null, user.id,
       featured_image_url || null, effectiveOrigin,
       user.id, proposedAt,
@@ -635,7 +645,7 @@ export async function proposeContentForUser(
       authorName,
       contentType: content_type,
       excerpt: excerpt || undefined,
-      externalUrl: external_url || undefined,
+      externalUrl: normalizedExternalUrl || undefined,
       category: category || undefined,
       isMembersOnly: false,
     }).catch(err => {
@@ -1145,6 +1155,7 @@ export function createContentRouter(): Router {
         `SELECT id, slug, name, description
          FROM working_groups
          WHERE accepts_public_submissions = TRUE
+           AND status = 'active'
          ORDER BY name`
       );
 
@@ -1160,7 +1171,9 @@ export function createContentRouter(): Router {
          FROM working_group_memberships wgm
          JOIN working_groups wg ON wg.id = wgm.working_group_id
          WHERE wgm.workos_user_id = $1
+           AND wgm.status = 'active'
            AND wg.accepts_public_submissions = FALSE
+           AND wg.status = 'active'
          ORDER BY wg.name`,
         [user.id]
       );
@@ -1679,6 +1692,54 @@ export function createMyContentRouter(): Router {
         });
       }
 
+      const normalizedExternalUrl = external_url == null
+        ? external_url
+        : normalizePerspectiveExternalUrl(external_url);
+      if (external_url != null && !normalizedExternalUrl) {
+        return res.status(400).json({
+          error: 'Invalid external URL',
+          message: 'external_url must be an HTTPS URL without credentials',
+        });
+      }
+      const effectiveContentType = content_type ?? contentItem.content_type;
+      const effectiveExternalUrl = external_url === undefined
+        ? normalizePerspectiveExternalUrl(contentItem.external_url)
+        : normalizedExternalUrl;
+      if (effectiveContentType === 'link' && !effectiveExternalUrl) {
+        return res.status(400).json({
+          error: 'Invalid external URL',
+          message: 'Link content requires an HTTPS external_url without credentials',
+        });
+      }
+
+      // Published content has already passed editorial review. Any actual
+      // content change by a non-admin must go through that review again,
+      // regardless of whether the caller omits status or asks to keep it
+      // published. Compare values rather than field presence because the web
+      // editor submits the complete form on every save.
+      const changed = (incoming: unknown, current: unknown): boolean => {
+        if (incoming === undefined) return false;
+        if (Array.isArray(incoming) || Array.isArray(current)) {
+          return JSON.stringify(incoming ?? []) !== JSON.stringify(current ?? []);
+        }
+        return incoming !== current;
+      };
+      const authorNameCanChange = isProposer || contentItem.author_user_id === user.id || userIsAdmin;
+      const hasSubstantiveEdit = [
+        changed(title, contentItem.title),
+        changed(content, contentItem.content),
+        changed(content_type, contentItem.content_type),
+        changed(excerpt, contentItem.excerpt),
+        changed(normalizedExternalUrl, contentItem.external_url),
+        changed(external_site_name, contentItem.external_site_name),
+        changed(category, contentItem.category),
+        changed(tags, contentItem.tags),
+        authorNameCanChange && changed(author_name, contentItem.author_name),
+      ].some(Boolean);
+      const requiresRenewedReview = contentItem.status === 'published'
+        && !userIsAdmin
+        && hasSubstantiveEdit;
+
       // Build update query
       const updates: string[] = [];
       const values: (string | string[] | null)[] = [];
@@ -1702,7 +1763,7 @@ export function createMyContentRouter(): Router {
       }
       if (external_url !== undefined) {
         updates.push(`external_url = $${paramIndex++}`);
-        values.push(external_url);
+        values.push(normalizedExternalUrl ?? null);
       }
       if (external_site_name !== undefined) {
         updates.push(`external_site_name = $${paramIndex++}`);
@@ -1716,7 +1777,7 @@ export function createMyContentRouter(): Router {
         updates.push(`tags = $${paramIndex++}`);
         values.push(tags);
       }
-      const authorNameUpdated = author_name !== undefined && (isProposer || contentItem.author_user_id === user.id || userIsAdmin);
+      const authorNameUpdated = author_name !== undefined && authorNameCanChange;
       if (authorNameUpdated) {
         updates.push(`author_name = $${paramIndex++}`);
         values.push(author_name);
@@ -1733,7 +1794,16 @@ export function createMyContentRouter(): Router {
       // or archived) is gated to admins or the lead of the item's own
       // committee — otherwise an unrelated co-author could resurrect a
       // rejected item without going through the rejecter (see #2713).
-      if (requestedStatus !== undefined) {
+      if (requiresRenewedReview) {
+        updates.push(`status = 'pending_review'`);
+        updates.push(`published_at = NULL`);
+        updates.push(`proposed_at = NOW()`);
+        updates.push(`reviewed_by_user_id = NULL`);
+        updates.push(`reviewed_at = NULL`);
+        updates.push(`revision_notes = NULL`);
+        updates.push(`revision_requested_at = NULL`);
+        updates.push(`rejection_reason = NULL`);
+      } else if (requestedStatus !== undefined) {
         const allowedStatuses = ['draft', 'pending_review', 'published', 'archived', 'needs_revisions'];
         if (allowedStatuses.includes(requestedStatus)) {
           // Non-admins can only set draft or pending_review
@@ -1804,6 +1874,26 @@ export function createMyContentRouter(): Router {
       }
 
       logger.info({ contentId: id, userId: user.id }, 'Content updated');
+
+      if (requiresRenewedReview && result.rows[0].working_group_id) {
+        const updated = result.rows[0];
+        notifyPendingReview(
+          updated.working_group_id,
+          {
+            id: updated.id,
+            title: updated.title,
+            slug: updated.slug,
+            excerpt: updated.excerpt ?? null,
+            content_type: updated.content_type,
+            content: updated.content ?? null,
+            proposed_at: updated.proposed_at,
+          },
+          updated.author_name || 'Unknown',
+          updated.proposer_user_id || user.id
+        ).catch(err => {
+          logger.error({ err, perspectiveId: id }, 'Failed to send renewed content review notification');
+        });
+      }
 
       res.json(result.rows[0]);
     } catch (error) {

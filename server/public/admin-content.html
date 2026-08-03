@@ -241,6 +241,7 @@
   <div id="adcp-nav"></div>
   <script src="/nav.js"></script>
   <script src="/dashboard-nav.js"></script>
+  <script src="/external-url.js"></script>
 
   <div id="loading" style="text-align: center; padding: var(--space-12); color: var(--color-text-secondary);">Loading...</div>
 
@@ -476,11 +477,18 @@
           <div class="form-group" id="statusGroup">
             <label>Status</label>
             <select id="statusSelect">
-              <option value="pending_review">Submit for Review</option>
-              <option value="draft">Save as Draft</option>
-              <option value="published">Publish Now</option>
+              <option value="pending_review">Submit for review</option>
+              <option value="draft">Save as draft</option>
+              <option value="published">Publish now</option>
             </select>
             <small id="statusHint"></small>
+          </div>
+        </div>
+
+        <div id="publishedEditWarning" class="alert-banner hidden">
+          <div class="alert-banner-content">
+            <h3>Published edits require review</h3>
+            <p>Your changes will be removed from the live site and submitted for review before they are published again.</p>
           </div>
         </div>
 
@@ -1467,9 +1475,13 @@
           if (currentTab === 'all') await loadAdminContent();
         } else {
           const d = await res.json().catch(() => ({}));
-          alert(d.message || d.error || 'Failed to delete');
+          if (res.status === 403) {
+            alert(d.message || 'You do not have permission to delete this content.');
+          } else {
+            alert(d.message || d.error || 'Failed to delete content. Please try again.');
+          }
         }
-      } catch (e) { alert('Failed to delete'); }
+      } catch (e) { alert(e.message || 'Failed to delete content. Please try again.'); }
     }
 
     function closeModal() { document.getElementById('contentModal').style.display = 'none'; editingContent = null; }
@@ -1597,8 +1609,15 @@
       const sel = document.getElementById('statusSelect');
       const colHint = document.getElementById('collectionHint');
       const col = collections.find(c => c.slug === slug);
+      const publishedEditRequiresReview = editingContent?.status === 'published' && !isAdmin;
+      document.getElementById('publishedEditWarning').classList.toggle('hidden', !publishedEditRequiresReview);
 
-      if (col?.canPublishDirectly || isAdmin) {
+      if (publishedEditRequiresReview) {
+        hint.textContent = 'Published changes must be reviewed before they go live again.';
+        sel.value = 'pending_review';
+        sel.disabled = true;
+        colHint.textContent = 'Where this perspective will appear on the site';
+      } else if (col?.canPublishDirectly || isAdmin) {
         hint.textContent = col?.type === 'committee' ? 'As a lead, you can publish directly.' : '';
         sel.disabled = false;
         colHint.textContent = 'Where this perspective will appear on the site';
@@ -1621,13 +1640,15 @@
       const isEditing = !!document.getElementById('contentId').value;
 
       if (isEditing) {
-        btn.textContent = 'Save Changes';
+        btn.textContent = editingContent?.status === 'published' && !isAdmin
+          ? 'Submit edits for review'
+          : 'Save changes';
       } else if (statusVal === 'published') {
         btn.textContent = 'Publish';
       } else if (statusVal === 'pending_review') {
-        btn.textContent = 'Submit for Review';
+        btn.textContent = 'Submit for review';
       } else {
-        btn.textContent = 'Save as Draft';
+        btn.textContent = 'Save as draft';
       }
     }
 
@@ -1885,10 +1906,11 @@
         <p><strong>Proposed by:</strong> ${esc(item.proposer?.name || 'Unknown')} on ${esc(formatDate(item.proposed_at))}</p>
       `);
       const linkEl = document.getElementById('reviewExternalLink');
-      if (item.external_url) {
+      const externalUrl = safeExternalHttpUrl(item.external_url);
+      if (externalUrl) {
         const site = item.external_site_name ? ` (${esc(item.external_site_name)})` : '';
         linkEl.innerHTML = DOMPurify.sanitize(
-          `<strong>External link:</strong> <a href="${esc(item.external_url)}" target="_blank" rel="noopener noreferrer">${esc(item.external_url)}</a>${site}`
+          `<strong>External link:</strong> <a href="${esc(externalUrl)}" target="_blank" rel="noopener noreferrer">${esc(externalUrl)}</a>${site}`
         );
         linkEl.style.display = '';
       } else {

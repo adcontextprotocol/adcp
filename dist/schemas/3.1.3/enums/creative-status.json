@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.3/enums/creative-status.json",
+  "title": "Creative Status",
+  "description": "Lifecycle status of a creative asset in a creative library. See the Creative Protocol specification for transition rules.",
+  "type": "string",
+  "enum": [
+    "processing",
+    "pending_review",
+    "approved",
+    "suspended",
+    "rejected",
+    "archived"
+  ],
+  "enumDescriptions": {
+    "processing": "Creative is being ingested, transcoded, or validated. Automatically transitions to pending_review when processing completes, or to rejected if processing fails (e.g., corrupt file, unsupported codec).",
+    "pending_review": "Creative has passed processing and is awaiting platform content policy review. Transitions to approved or rejected after review.",
+    "approved": "Creative has been approved and is eligible for delivery. May be archived by the buyer, or transitioned by the seller to 'pending_review' (re-review), 'suspended' (recoverable dependency/authorization loss), or 'rejected' (post-approval revocation) when policy enforcement, takedown requests, or content drift require it. Sellers MUST surface a corresponding impairment on any active media buy that references this creative when transitioning 'approved' → 'suspended' or 'approved' → 'rejected'.",
+    "suspended": "Creative was approved but is temporarily ineligible for delivery due to a recoverable dependency state, such as an expired/revoked authorization for a `published_post` reference or a source post becoming private. Sellers MAY transition `suspended` back to `approved` after the dependency is restored and any required re-review passes, or to `rejected` when the seller determines the dependency cannot be restored for this creative and replacement/resubmission is required. Sellers MUST surface a corresponding impairment on any active media buy that references this creative while it is suspended.",
+    "rejected": "Creative was rejected due to content policy, technical issues, or terminal dependency/authorization loss. Reached from 'pending_review' (initial review failure), from 'approved' (post-approval revocation by the seller — policy change, takedown request, content drift), or from 'suspended' when a previously recoverable dependency is determined unrecoverable for this creative. Not terminal — the buyer may fix the issue and resubmit via sync_creatives, which returns the creative to processing.",
+    "archived": "Creative has been archived and is excluded from default queries. Archive MAY be buyer-initiated (explicit cleanup) or seller-initiated (inactivity, post-flight expiry, storage policy, account suspension) — seller-initiated archive is only valid when no active package assignments reference the creative. Archived creatives retain their data and may be unarchived back to approved by the buyer. Buyer-initiated archive is acknowledged on the `sync_creatives` response path. Seller-initiated archive (`approved → archived`) fires `creative.status_changed` against the account's `notification_configs[]` subscribers (see `notification-type.json` and `sync_accounts`); buyers MUST observe the new status on the next `list_creatives` read regardless of whether the webhook was delivered. Destruction is a distinct event (`creative.purged`); purged creatives do not appear in default `list_creatives` results and MAY surface as tombstones when `include_purged: true` is supplied — see `list_creatives` for the tombstone shape."
+  }
+}

@@ -39,8 +39,11 @@ import { autoLinkUnmappedSlackUsers, autoAddVerifiedDomainUsersAsMembers } from 
 import { runCredentialDigestJob } from './credential-digest.js';
 import { runCertificationRecoveryJob } from './certification-recovery.js';
 import { runBrandLogoDigestJob } from './brand-logo-digest.js';
+import { runCommunityMirrorDigestJob } from './community-mirror-digest.js';
 import { runWgDigestJob, runWgDigestPrepJob } from './wg-digest.js';
 import { runWgSlackContextJob } from './wg-slack-context.js';
+import { runSecretariatExecutorJob } from './secretariat-executor.js';
+import { runSecretariatPrShepherdJob } from './secretariat-pr-shepherd.js';
 import { runComplianceHeartbeatJob } from './compliance-heartbeat.js';
 import { runShadowEvaluatorJob } from './shadow-evaluator.js';
 import { runAddieCorrectedCaptureJob } from './shadow-corrected-capture.js';
@@ -401,6 +404,33 @@ export function registerAllJobs(): void {
     shouldLogResult: (r) => !!r.prUrl || r.skipped === 'pr-failed',
   });
 
+  // Secretariat executor - carries out human-approved actions from the
+  // Secretariat console. No businessHours gate: approvals should execute
+  // promptly regardless of when the admin clicked Approve. Never approves
+  // or auto-generates actions itself — see secretariat-executor.ts's hard
+  // safety rules.
+  jobScheduler.register({
+    name: 'secretariat-executor',
+    description: 'Execute human-approved Secretariat actions',
+    interval: { value: 2, unit: 'minutes' },
+    initialDelay: { value: 1, unit: 'minutes' },
+    runner: runSecretariatExecutorJob,
+    options: { limit: 10 },
+    shouldLogResult: (r) => r.executed > 0 || r.failed > 0,
+  });
+
+  // Secretariat PR shepherd - proposes IPR-signature nudges for stale
+  // open PRs. Only proposes; a human approves in the Secretariat console
+  // before anything posts.
+  jobScheduler.register({
+    name: 'secretariat-pr-shepherd',
+    description: 'Propose IPR-signature nudges for stale open PRs',
+    interval: { value: 1, unit: 'hours' },
+    initialDelay: { value: 16, unit: 'minutes' },
+    runner: runSecretariatPrShepherdJob,
+    shouldLogResult: (r) => r.proposed > 0,
+  });
+
   // Credential digest - weekly summary of certification awards to Slack
   jobScheduler.register({
     name: 'credential-digest',
@@ -439,6 +469,16 @@ export function registerAllJobs(): void {
     interval: { value: 24, unit: 'hours' },
     initialDelay: { value: 25, unit: 'minutes' },
     runner: runBrandLogoDigestJob,
+    businessHours: { startHour: 9, endHour: 10 },
+    shouldLogResult: (r) => r.posted || r.staleCount > 0,
+  });
+
+  jobScheduler.register({
+    name: 'community-mirror-digest',
+    description: 'Daily digest of community mirror proposals pending review',
+    interval: { value: 24, unit: 'hours' },
+    initialDelay: { value: 27, unit: 'minutes' },
+    runner: runCommunityMirrorDigestJob,
     businessHours: { startHour: 9, endHour: 10 },
     shouldLogResult: (r) => r.posted || r.staleCount > 0,
   });
@@ -948,6 +988,7 @@ export const JOB_NAMES = {
   CREDENTIAL_DIGEST: 'credential-digest',
   CERTIFICATION_RECOVERY: 'certification-recovery',
   BRAND_LOGO_DIGEST: 'brand-logo-digest',
+  COMMUNITY_MIRROR_DIGEST: 'community-mirror-digest',
   SOCIAL_POST_IDEAS: 'social-post-ideas',
   CONVERSATION_INSIGHTS: 'conversation-insights',
   SLACK_AUTO_LINK: 'slack-auto-link',
@@ -968,4 +1009,6 @@ export const JOB_NAMES = {
   NETWORK_CONSISTENCY_REPORTER: 'network-consistency-reporter',
   ESCALATION_TRIAGE: 'escalation-triage',
   ESCALATION_SLA: 'escalation-sla',
+  SECRETARIAT_EXECUTOR: 'secretariat-executor',
+  SECRETARIAT_PR_SHEPHERD: 'secretariat-pr-shepherd',
 } as const;

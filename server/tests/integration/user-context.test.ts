@@ -155,6 +155,8 @@ describe('User Context API Tests', () => {
   const TEST_SINGLE_ORG_WORKOS_USER_ID = 'user_test_single_context';
   const TEST_STALE_WORKOS_USER_ID = 'user_test_stale_context';
   const TEST_SLACK_USER_ID = 'U_test_context';
+  const TEST_ACTIVE_WG_ID = '59300000-0000-4000-8000-000000000003';
+  const TEST_ARCHIVED_WG_ID = '59300000-0000-4000-8000-000000000004';
 
   beforeAll(async () => {
     // Initialize test database
@@ -251,6 +253,31 @@ describe('User Context API Tests', () => {
     );
 
     await pool.query(
+      `INSERT INTO working_groups (id, name, slug, status)
+       VALUES
+         ($1, 'Active Coverage Group', 'active-coverage-group', 'active'),
+         ($2, 'Archived Coverage Group', 'archived-coverage-group', 'archived')
+       ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status`,
+      [TEST_ACTIVE_WG_ID, TEST_ARCHIVED_WG_ID]
+    );
+    await pool.query(
+      `INSERT INTO working_group_memberships (
+         working_group_id, workos_user_id, workos_organization_id, status
+       ) VALUES
+         ($1, $3, $5, 'active'),
+         ($2, $4, $5, 'active')
+       ON CONFLICT (working_group_id, workos_user_id)
+       DO UPDATE SET status = EXCLUDED.status`,
+      [
+        TEST_ACTIVE_WG_ID,
+        TEST_ARCHIVED_WG_ID,
+        TEST_WORKOS_USER_ID,
+        'user_test_2',
+        TEST_ORG_ID,
+      ]
+    );
+
+    await pool.query(
       `INSERT INTO person_relationships (
         slack_user_id, workos_user_id, email, display_name, stage,
         interaction_count, sentiment_trend, unreplied_outreach_count
@@ -277,6 +304,7 @@ describe('User Context API Tests', () => {
     await pool.query('DELETE FROM member_profiles WHERE workos_organization_id = ANY($1)', [[TEST_ORG_ID, TEST_OTHER_ORG_ID]]);
     await pool.query('DELETE FROM person_relationships WHERE slack_user_id = $1 OR workos_user_id = $2', [TEST_SLACK_USER_ID, TEST_WORKOS_USER_ID]);
     await pool.query('DELETE FROM slack_user_mappings WHERE slack_user_id = $1', [TEST_SLACK_USER_ID]);
+    await pool.query('DELETE FROM working_groups WHERE id = ANY($1::uuid[])', [[TEST_ACTIVE_WG_ID, TEST_ARCHIVED_WG_ID]]);
     await pool.query('DELETE FROM organization_memberships WHERE workos_user_id = ANY($1)', [[TEST_WORKOS_USER_ID, TEST_SINGLE_ORG_WORKOS_USER_ID, TEST_STALE_WORKOS_USER_ID]]);
     await pool.query('DELETE FROM users WHERE workos_user_id = ANY($1)', [[TEST_WORKOS_USER_ID, TEST_SINGLE_ORG_WORKOS_USER_ID, TEST_STALE_WORKOS_USER_ID]]);
     await pool.query('DELETE FROM organizations WHERE workos_organization_id = ANY($1)', [[TEST_ORG_ID, TEST_OTHER_ORG_ID]]);
@@ -420,6 +448,16 @@ describe('User Context API Tests', () => {
       expect(response.body.org_membership).toBeDefined();
       expect(response.body.org_membership.role).toBe('admin');
       expect(response.body.org_membership.member_count).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should count team working-group coverage only for active parent groups', async () => {
+      const response = await request(app)
+        .get(`/api/admin/users/${TEST_WORKOS_USER_ID}/context?type=workos&org=${TEST_ORG_ID}`)
+        .expect(200);
+
+      // The WorkOS fixture has three org members. One belongs to an active
+      // group and another has a retained membership in an archived group.
+      expect(response.body.adoption.team_wg_coverage).toBeCloseTo(1 / 3);
     });
 
     it('should indicate slack_linked status correctly', async () => {
