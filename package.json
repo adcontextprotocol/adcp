@@ -233,7 +233,7 @@
     "fsevents@2.3.3": true,
     "keytar@7.9.0": true,
     "msw@2.15.0": true,
-    "protobufjs@7.5.8": true,
+    "protobufjs@7.6.5": true,
     "puppeteer@24.3.1": true,
     "puppeteer@25.4.0": true,
     "sharp@0.33.5": true
