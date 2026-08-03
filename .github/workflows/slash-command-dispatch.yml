@@ -7,11 +7,10 @@ name: Slash Command Dispatch
 #   - Reactions on the triggering comment (eyes on ack, +1 on success, -1 on fail)
 #   - Clean separation: this workflow routes, downstream handlers do the work
 #
-# Required repo secret:
-#   TRIAGE_DISPATCH_PAT  — Personal Access Token with `repo` scope (or fine-
-#                         grained contents:write on this repo). It is used only
-#                         to fire repository_dispatch events; the signed event
-#                         payload gates callers and GITHUB_TOKEN adds reactions.
+# Required repo secrets:
+#   SECRETARIAT_APP_ID / SECRETARIAT_APP_PRIVATE_KEY — mint a short-lived App
+#                         token for repository_dispatch. GITHUB_TOKEN resolves
+#                         caller permissions and adds reactions.
 #
 # Current commands:
 #   /triage [modifier]  — fire the triage routine on this issue. Modifiers
@@ -43,6 +42,15 @@ jobs:
         github.event.comment.author_association == 'COLLABORATOR'
       )
     steps:
+      - name: Mint Secretariat App token
+        id: app-token
+        uses: actions/create-github-app-token@v3.2.0
+        with:
+          app-id: ${{ secrets.SECRETARIAT_APP_ID }}
+          private-key: ${{ secrets.SECRETARIAT_APP_PRIVATE_KEY }}
+          owner: adcontextprotocol
+          repositories: adcp
+
       - name: Resolve caller repository permission
         id: caller
         env:
@@ -64,12 +72,12 @@ jobs:
         if: steps.caller.outputs.allowed == 'true'
         uses: peter-evans/slash-command-dispatch@v5
         with:
-          token: ${{ secrets.TRIAGE_DISPATCH_PAT }}
+          token: ${{ steps.app-token.outputs.token }}
           reaction-token: ${{ github.token }}
           commands: |
             triage
-          # Caller authorization is enforced before the action. The PAT is used
-          # only for repository_dispatch, not permission lookup or reactions.
+          # Caller authorization is enforced before the action. The App token
+          # is used only for dispatch, not permission lookup or reactions.
           permission: none
           reactions: true
           issue-type: both
