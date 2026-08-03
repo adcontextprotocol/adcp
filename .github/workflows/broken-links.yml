@@ -60,7 +60,7 @@ jobs:
       run: npm run lint:schema-links
 
     - name: Mintlify broken links (fix any links printed below)
-      run: npx --no-install mintlify broken-links
+      run: npx --no-install mint broken-links
 
     - name: Check browser-facing Agentic Advertising links
       # Pull requests are not deployed to the production domains. Checking

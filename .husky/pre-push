@@ -93,7 +93,7 @@ if echo "$CHANGED" | grep -Eq "$DOC_PATHS"; then
   }
   trap restore_moved EXIT INT TERM
 
-  npx --no-install mintlify broken-links
+  npx --no-install mint broken-links
   EXIT=$?
 
   restore_moved
