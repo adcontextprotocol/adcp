@@ -3,15 +3,15 @@ name: Slash Command Dispatch
 # Routes `/<command>` comments on issues and PRs to dedicated handler
 # workflows via repository_dispatch events. Uses peter-evans/slash-command-
 # dispatch so we get:
-#   - Built-in permission checks (only OWNER / MEMBER / COLLABORATOR trigger)
+#   - Event-level permission checks (only OWNER / MEMBER / COLLABORATOR trigger)
 #   - Reactions on the triggering comment (eyes on ack, +1 on success, -1 on fail)
 #   - Clean separation: this workflow routes, downstream handlers do the work
 #
 # Required repo secret:
 #   TRIAGE_DISPATCH_PAT  — Personal Access Token with `repo` scope (or fine-
-#                         grained: contents:write, issues:write, pull-requests:write
-#                         on this repo). GITHUB_TOKEN cannot fire
-#                         repository_dispatch events.
+#                         grained contents:write on this repo). It is used only
+#                         to fire repository_dispatch events; the signed event
+#                         payload gates callers and GITHUB_TOKEN adds reactions.
 #
 # Current commands:
 #   /triage [modifier]  — fire the triage routine on this issue. Modifiers
@@ -23,23 +23,33 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   dispatch:
     name: Dispatch slash command
     runs-on: ubuntu-latest
     timeout-minutes: 2
-    # Skip bot-authored comments always.
+    # Trust GitHub's signed author_association value instead of asking the
+    # dispatch PAT to resolve repository permissions. Fine-grained PATs without
+    # org membership read access resolve even owners as permission "none".
     if: >-
       github.event.comment.user.type != 'Bot' &&
-      !endsWith(github.event.comment.user.login, '[bot]')
+      !endsWith(github.event.comment.user.login, '[bot]') &&
+      (
+        github.event.comment.author_association == 'OWNER' ||
+        github.event.comment.author_association == 'MEMBER' ||
+        github.event.comment.author_association == 'COLLABORATOR'
+      )
     steps:
       - name: Slash command dispatch
         uses: peter-evans/slash-command-dispatch@v5
         with:
           token: ${{ secrets.TRIAGE_DISPATCH_PAT }}
+          reaction-token: ${{ github.token }}
           commands: |
             triage
-          permission: write
+          # Caller authorization is enforced by the job-level association gate.
+          permission: none
           reactions: true
           issue-type: both
