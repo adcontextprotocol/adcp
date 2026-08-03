@@ -300,6 +300,11 @@ export interface SessionState {
     option: Product['pricing_options'][number];
   }>;
   usageRecords: UsageRecord[];
+  /** Maps build_variant_id → the FormatID target used to produce it.
+   * Populated when build_creative returns a build_variant_id so that a
+   * subsequent refine_from_build_variant_id request can inherit the parent
+   * leaf's format target rather than falling back to the audio_vo default. */
+  buildVariantTargets: Map<string, FormatID>;
   /** Data set by comply_test_controller. Persisted so scenarios survive the
    * serialize/deserialize round trip that every request does, even in the
    * single-request case with the InMemoryStateStore. */

@@ -437,20 +437,34 @@ export class CapabilityDiscovery {
       if (CapabilityDiscovery.SALES_TOOLS.some(t => toolNames.has(t))) {
         profile.standard_operations = this.analyzeSalesCapabilities(tools);
       }
+      // Pre-fetch get_adcp_capabilities once when the agent exposes the tool.
+      // Both creative analysis and measurement extraction read from the same
+      // response; two sequential 10-second calls inside a 10-second discovery
+      // deadline can cause the probe to time out on a healthy but slow endpoint.
+      const hasGetAdcpCaps = toolNames.has('get_adcp_capabilities');
+      const rawAdcpCaps: Record<string, unknown> | undefined = hasGetAdcpCaps
+        ? await this.fetchRawAdcpCapabilities(agent, auth)
+        : undefined;
+
       if (CapabilityDiscovery.CREATIVE_TOOLS.some(t => toolNames.has(t))) {
-        const creativeResult = await this.analyzeCreativeCapabilities(agent, tools, auth);
+        const creativeResult = await this.analyzeCreativeCapabilities(agent, tools, auth, rawAdcpCaps);
         profile.creative_capabilities = creativeResult.capabilities;
         if (creativeResult.probeFailed) profile.creative_capabilities_probe_failed = true;
       }
       if (CapabilityDiscovery.SIGNALS_TOOLS.some(t => toolNames.has(t))) {
         profile.signals_capabilities = this.analyzeSignalsCapabilities(tools);
       }
-      // Measurement comes from get_adcp_capabilities, not from inferring on
-      // tool names — only fetch when the agent actually exposes the tool, so
-      // sales/creative/signals agents don't incur an extra round-trip.
-      if (toolNames.has('get_adcp_capabilities')) {
-        const measurement = await this.fetchMeasurementCapabilities(agent, auth);
-        if (measurement) profile.measurement_capabilities = measurement;
+      // Measurement comes from get_adcp_capabilities — reuse the pre-fetched
+      // rawAdcpCaps to avoid a second round-trip to the agent.
+      if (hasGetAdcpCaps && rawAdcpCaps !== undefined) {
+        const measurementRaw = rawAdcpCaps.measurement;
+        if (measurementRaw !== undefined && measurementRaw !== null) {
+          try {
+            profile.measurement_capabilities = sanitizeMeasurementCapabilities(measurementRaw);
+          } catch (err: any) {
+            logger.debug({ url: agent.url, err: err?.message }, 'Measurement capability sanitization failed');
+          }
+        }
       }
 
       // Don't cache authed-discovery results in the shared cache — the
@@ -633,11 +647,29 @@ export class CapabilityDiscovery {
     agent: Agent,
     tools: ToolCapability[],
     auth?: SdkAuth,
+    rawAdcpCaps?: Record<string, unknown>,
   ): Promise<{ capabilities: CreativeCapabilities; probeFailed: boolean }> {
     const toolNames = new Set(tools.map((t) => t.name.toLowerCase()));
-    const declared = toolNames.has('get_adcp_capabilities')
-      ? await this.fetchCreativeCapabilities(agent, auth)
-      : { ok: true as const, capabilities: undefined };
+    let declared: { ok: true; capabilities?: CreativeCapabilities } | { ok: false };
+    if (toolNames.has('get_adcp_capabilities')) {
+      if (rawAdcpCaps !== undefined) {
+        const creative = rawAdcpCaps.creative;
+        if (creative === undefined || creative === null) {
+          declared = { ok: true };
+        } else {
+          try {
+            declared = { ok: true, capabilities: await sanitizeCreativeCapabilities(creative) };
+          } catch (err: any) {
+            logger.debug({ url: agent.url, err: err?.message }, 'Creative capability sanitization failed');
+            declared = { ok: false };
+          }
+        }
+      } else {
+        declared = await this.fetchCreativeCapabilities(agent, auth);
+      }
+    } else {
+      declared = { ok: true, capabilities: undefined };
+    }
     const legacyToolFallback = !declared.ok
       || (declared.capabilities?.supported_formats.length ?? 0) === 0;
 
@@ -701,6 +733,32 @@ export class CapabilityDiscovery {
       can_activate: toolNames.has("activate_signal") || toolNames.has("activate_audience"),
       can_get_signals: toolNames.has("get_signals") || toolNames.has("list_signals"),
     };
+  }
+
+  private async fetchRawAdcpCapabilities(
+    agent: Agent,
+    auth?: SdkAuth,
+  ): Promise<Record<string, unknown> | undefined> {
+    try {
+      const { AdCPClient } = await import("@adcp/sdk");
+      const multiClient = new AdCPClient([{
+        id: "discovery",
+        name: "Discovery Client",
+        agent_uri: agent.url,
+        protocol: agent.protocol || "mcp",
+        ...agentConfigAuthFields(auth),
+      }], withSdkSafeTransport({
+        userAgent: AAO_UA_DISCOVERY,
+        transport: { maxResponseBytes: 1024 * 1024 },
+      }));
+      const client = multiClient.agent("discovery");
+      const result = await client.getAdcpCapabilities({}, undefined, { timeout: 10_000 });
+      if (!result?.success) return undefined;
+      return result.data as Record<string, unknown> | undefined;
+    } catch (err: any) {
+      logger.debug({ url: agent.url, err: err?.message }, 'get_adcp_capabilities fetch failed');
+      return undefined;
+    }
   }
 
   /**

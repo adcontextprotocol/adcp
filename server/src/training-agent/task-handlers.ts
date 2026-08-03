@@ -518,6 +518,43 @@ export function canonicalParamsSatisfied(manifest: CreativeManifest, params: Rec
     }
   }
 
+  // title_max_chars: the manifest's title asset content must not exceed the limit.
+  if (typeof params.title_max_chars === 'number') {
+    const rawTitle = (manifest.assets as Record<string, unknown>).title;
+    const titleAsset = Array.isArray(rawTitle) ? rawTitle[0] : rawTitle;
+    if (isRecord(titleAsset) && typeof titleAsset.content === 'string') {
+      if (titleAsset.content.length > params.title_max_chars) return false;
+    }
+  }
+
+  // min_cards / max_cards: count card assets in the manifest (carousel formats).
+  if (typeof params.min_cards === 'number' || typeof params.max_cards === 'number') {
+    const rawCards = (manifest.assets as Record<string, unknown>).cards;
+    const cardCount = Array.isArray(rawCards) ? rawCards.length : (rawCards != null ? 1 : 0);
+    if (typeof params.min_cards === 'number' && cardCount < params.min_cards) return false;
+    if (typeof params.max_cards === 'number' && cardCount > params.max_cards) return false;
+  }
+
+  // image_formats: primary image asset url extension must match the allowed list.
+  if (Array.isArray(params.image_formats) && params.image_formats.length > 0) {
+    const allowedFmts = params.image_formats as string[];
+    const rawImage = (manifest.assets as Record<string, unknown>).image;
+    const imageAsset = Array.isArray(rawImage) ? rawImage[0] : rawImage;
+    if (isRecord(imageAsset) && typeof imageAsset.url === 'string') {
+      const ext = imageAsset.url.split('.').pop()?.toLowerCase() ?? '';
+      if (ext && !allowedFmts.includes(ext)) return false;
+    }
+  }
+
+  // min_resolution_dpi: image asset must meet the minimum DPI when declared.
+  if (typeof params.min_resolution_dpi === 'number') {
+    const rawImage = (manifest.assets as Record<string, unknown>).image;
+    const imageAsset = Array.isArray(rawImage) ? rawImage[0] : rawImage;
+    if (isRecord(imageAsset) && typeof imageAsset.dpi === 'number') {
+      if (imageAsset.dpi < params.min_resolution_dpi) return false;
+    }
+  }
+
   return true;
 }
 
@@ -7900,7 +7937,16 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
       return buildCreativeCompleted({ errors: [{ code: 'UNSUPPORTED_FEATURE', message: 'This agent does not retain prior builds for refinement. Drop refine_from_build_variant_id and resend, or use the transform path (creative_manifest + message).', field: 'refine_from_build_variant_id', recovery: 'correctable' }] });
     }
 
-    const target: FormatID = targetIds[0]
+    // For refinements, inherit the parent leaf's target from session state.
+    // The schema forbids a new selector on refinement — the only valid source
+    // of truth is what was stored when the parent variant was produced.
+    if (req.refine_from_build_variant_id && !session.buildVariantTargets.has(req.refine_from_build_variant_id)) {
+      return buildCreativeCompleted({ errors: [{ code: 'REFERENCE_NOT_FOUND', message: `Build variant "${req.refine_from_build_variant_id}" is not retained by this agent. Only variants produced in the current session are refinable.`, field: 'refine_from_build_variant_id', recovery: 'correctable' }] });
+    }
+
+    const target: FormatID = (req.refine_from_build_variant_id
+      ? session.buildVariantTargets.get(req.refine_from_build_variant_id)!
+      : targetIds[0])
       ?? req.target_format_id
       ?? transformer?.output_format_ids?.[0]
       ?? { agent_url: agentUrl, id: 'audio_vo' };
@@ -7908,9 +7954,11 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
     // Single-format, non-variant transformer build → BuildCreativeSuccess,
     // carrying a build_variant_id so the result is itself refinable.
     if (!wantsVariantShape && req.transformer_id) {
+      const singleVariantId = `bv_${idemSeed}_0`;
+      session.buildVariantTargets.set(singleVariantId, target);
       return buildCreativeCompleted({
         creative_manifest: transformerManifest(target, `<!-- AdCP Training Agent transformer ${escapeHtmlAttr(req.transformer_id)} -->`, usesCanonicalTargets || !usesLegacyTargets),
-        build_variant_id: `bv_${idemSeed}_0`,
+        build_variant_id: singleVariantId,
         ...(governanceContext && { governance_context: governanceContext }),
       });
     }
@@ -7929,8 +7977,10 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
     const keepMode = req.keep_mode;
 
     const variants = Array.from({ length: variantCount }, (_unused, i) => {
+      const variantId = `bv_${idemSeed}_${i}`;
+      session.buildVariantTargets.set(variantId, target);
       const leaf: Record<string, unknown> = {
-        build_variant_id: `bv_${idemSeed}_${i}`,
+        build_variant_id: variantId,
         creative_manifest: transformerManifest(target, `<!-- AdCP Training Agent variant ${i} -->`, usesCanonicalTargets || !usesLegacyTargets),
       };
       if (Array.isArray(axisValues) && axisValues[i] !== undefined) {
