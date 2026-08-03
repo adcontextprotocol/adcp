@@ -347,6 +347,11 @@
       "type": "object",
       "description": "Async task envelope returned only when the preview_creative request set allow_async to true and rendering cannot complete inline. The buyer polls get_task_status with task_id; the completed preview response is the task result.",
       "properties": {
+        "response_type": {
+          "type": "string",
+          "const": "submitted",
+          "description": "Preview-response discriminator for the asynchronous arm."
+        },
         "status": {
           "type": "string",
           "const": "submitted",
@@ -370,15 +375,11 @@
         }
       },
       "required": [
+        "response_type",
         "status",
         "task_id"
       ],
-      "additionalProperties": true,
-      "not": {
-        "required": [
-          "response_type"
-        ]
-      }
+      "additionalProperties": true
     }
   ],
   "properties": {}
