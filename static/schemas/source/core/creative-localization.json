@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/creative-localization.json",
   "title": "Creative Localization",
-  "description": "Materialized localization for one creative. The creative's top-level `assets` are the source variant and every target carries buyer-supplied asset overrides; this contract never asks the receiving seller to generate or translate creative. Optional locale_fallbacks declare buyer-approved language-family substitutions, while default_locale_variant_id selects the final fallback after matching misses. Locale and locale_variant_id values MUST be unique within the creative, and no target locale may equal the source locale. A replacement is atomic: failure leaves the prior source assets and complete localization topology unchanged.",
+  "description": "Materialized locale topology for one creative. The creative's top-level `assets` are the source variant and every target carries buyer-supplied asset overrides; a source-only topology declares the locale of a monolingual creative without inventing a target. This contract never asks the receiving seller to generate or translate creative. Optional locale_fallbacks declare buyer-approved language-family substitutions, while default_locale_variant_id selects the final fallback after matching misses. Locale and locale_variant_id values MUST be unique within the creative, and no target locale may equal the source locale. A replacement is atomic: failure leaves the prior source assets and complete localization topology unchanged.",
   "x-adcp-validation": {
     "verifier_constraints": {
       "unique_target_properties": ["locale_variant_id", "locale"],
@@ -51,7 +51,7 @@
     },
     "target_variants": {
       "type": "array",
-      "description": "Complete desired target-locale set for this creative. Every target contains materialized locale-specific asset overrides. Missing slots inherit source assets; after inheritance every resolved variant MUST satisfy the selected creative format.",
+      "description": "Complete desired target-locale set for this creative. May be empty for a monolingual source-only creative. Every target contains materialized locale-specific asset overrides. Missing slots inherit source assets; after inheritance every resolved variant MUST satisfy the selected creative format.",
       "items": {
         "type": "object",
         "properties": {
@@ -88,7 +88,7 @@
         "not": { "required": ["translation_mode"] },
         "additionalProperties": true
       },
-      "minItems": 1,
+      "minItems": 0,
       "maxItems": 50,
       "uniqueItems": true
     },

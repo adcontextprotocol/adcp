@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/creative-localization-readback.json",
   "title": "Creative Localization Readback",
-  "description": "Exact provider-backed materialized localization state for one creative. Review and serving eligibility remain creative-wide on the enclosing creative; locale variants do not have independent lifecycle states. Presence means every source/target variant was read back completely. Sellers MUST return localization_unavailable on list_creatives rather than a partial or lossy localization object.",
+  "description": "Exact provider-backed materialized locale state for one creative, including source-only monolingual topology. Review and serving eligibility remain creative-wide on the enclosing creative; locale variants do not have independent lifecycle states. Presence means every source/target variant was read back completely. Sellers MUST return localization_unavailable on list_creatives rather than a partial or lossy localization object.",
   "x-adcp-validation": {
     "verifier_constraints": {
       "unique_variant_properties": [
@@ -65,7 +65,7 @@
     },
     "variants": {
       "type": "array",
-      "description": "The source variant followed by every target variant. Assets are fully resolved after source inheritance. The enclosing creative status applies to the set as a whole.",
+      "description": "The source variant followed by every target variant, or only the source for monolingual topology. Assets are fully resolved after source inheritance. The enclosing creative status applies to the set as a whole.",
       "items": {
         "discriminator": {
           "propertyName": "role"
@@ -159,7 +159,7 @@
           }
         ]
       },
-      "minItems": 2,
+      "minItems": 1,
       "maxItems": 51,
       "uniqueItems": true
     }

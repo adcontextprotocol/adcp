@@ -248,6 +248,10 @@ localized library creative here, then assign it by `creative_id`.
 
 Source identifies production provenance, not the serving default. Every target
 contains materialized locale-specific overrides; missing slots inherit source.
+`target_variants` may be empty to declare the canonical locale of a monolingual
+source-only creative, such as a single `fr-CA` creative for French-only Québec
+inventory. Do not invent a second locale variant merely to declare source
+language.
 `default_locale_variant_id` may select source or target. This task never asks
 the seller to translate: use buyer tooling, `build_creative`, or a separate
 translation/transformation agent first, then sync the resulting assets.
@@ -261,6 +265,20 @@ rule lets an `es-ES` preference use `loc_es_mx`; without that rule, no regional
 substitution is inferred. After every preference misses both paths, the seller
 follows `unmatched_locale_action`: serve `default_locale_variant_id` or make the
 creative ineligible. It never silently assumes the source is the default.
+
+Standalone library sync has no product context and does not apply product locale
+policy. When `assignments[]` binds a creative to a package whose effective
+format option has `locale_policy`, the
+seller uses RFC 4647 Basic Filtering to derive the eligible source/target
+variant set before running the buyer algorithm above. For example, seller range
+`fr` accepts `fr-CA` and `fr-FR`. The assignment fails with
+`CREATIVE_LOCALE_NOT_ACCEPTED` if no materialized variant matches. If
+`unmatched_locale_action` is `serve_default`, the default variant must also be
+seller-eligible. Buyer fallback and default rules never override the product or
+placement constraint; nonmatching variants remain stored for other products.
+The seller runs this check independently for every placement where the
+assignment may serve. If one placement fails, the assignment is rejected unless
+the buyer narrows its placement scope to compatible placements.
 
 Accepted localized results include a top-level `platform_id` as the single
 provider creative identity and `localization` as a complete source-plus-target
@@ -951,6 +969,7 @@ Poll `tasks/get` or wait for the webhook. The completion artifact carries the `c
 | `VALIDATION_ERROR`        | Manifest failed format validation: an asset file is corrupt or invalid, or assets don't match the format's requirements (codec, dimensions, duration). `error.field` identifies the offending asset path | Verify asset types and specifications match the format definition |
 | `PACKAGE_NOT_FOUND`       | Package ID doesn't exist in media buy             | Verify `package_id`; for legacy package correlation use `get_media_buys` + package `context.buyer_ref` |
 | `CREATIVE_REJECTED`       | Creative failed content policy or brand safety review | Review content against the seller's advertising policies         |
+| `CREATIVE_LOCALE_NOT_ACCEPTED` | Assigned creative has no materialized variant accepted by the package's effective format `locale_policy`, lacks locale topology, or uses an ineligible `serve_default` | Supply a matching source/target variant, choose a compatible format option, or change the default policy |
 | `INVALID_STATE`           | Creative is assigned to an active, non-paused package (blocks updates and `delete_missing` deletions) | Pause the package first, or create a new creative version        |
 
 ## Best practices

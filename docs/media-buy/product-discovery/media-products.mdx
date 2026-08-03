@@ -24,7 +24,7 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `sponsored_placement_types` (list[string], optional): Declared sponsored-placement types for catalog-driven retail-media products: `sponsored_search`, `sponsored_display`, and `sponsored_native`. Aggregate products and ad-network products may include multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.
 - `social_placement_surfaces` (list[string], optional): Declared social-placement surfaces for social products: `feed`, `stories`, `short_video`, `explore`, and `search`. Aggregate products and ad-network products may include multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.
 - `format_ids` (list[FormatID], conditional): Legacy named-format references. Products must include `format_ids`, `format_options`, or both. See [Creative Formats](/docs/creative/formats).
-- `format_options` (list[ProductFormatDeclaration], conditional): 3.1+ canonical format-option declarations accepted by this product. Buyers prefer `format_options` when both format fields are present. Product-level formats are the upper bound for the sellable product; placement-level formats can narrow this set but cannot add formats the product does not accept. Buyer `FormatOptionRef` selectors use `{scope: "publisher", publisher_domain, format_option_id}` for publisher-declared options and `{scope: "product", format_option_id}` for product-local options.
+- `format_options` (list[ProductFormatDeclaration], conditional): 3.1+ canonical format-option declarations accepted by this product. Buyers prefer `format_options` when both format fields are present. Product-level formats are the upper bound for the sellable product; placement-level formats can narrow this set but cannot add formats or locale-policy ranges the product does not accept. A declaration's optional `locale_policy.accepted_language_ranges` exposes seller-enforced creative-language eligibility before purchase. Buyer `FormatOptionRef` selectors use `{scope: "publisher", publisher_domain, format_option_id}` for publisher-declared options and `{scope: "product", format_option_id}` for product-local options.
 - `placements` (list[Placement], optional): Specific public ad placements within this product. Each placement declares `kind` (`publisher_ref` or `seller_inline`) and `mode` (`targetable` or `included`); seller-private delivery objects are not exposed here. See [Placements](#placements).
 - `shows` (list[CollectionSelector], optional): Shows covered by this product, grouped by publisher. Each entry has `publisher_domain` and `collection_ids` referencing shows in the publisher's `adagents.json`. See [Collections and installments](/docs/media-buy/product-discovery/collections-and-installments).
 - `episodes` (list[Episode], optional): Specific episodes available within this product. See [Collections and installments](/docs/media-buy/product-discovery/collections-and-installments).
@@ -286,6 +286,44 @@ If both product and placement format declarations are present, buyers compute th
 Product gating is stricter than equivalence matching. When the product or placement declares fixed constraints such as `width`, `height`, `duration_ms_exact`, or a duration range, the buyer's selected format or creative manifest must declare and satisfy those constraints. A broad request (`format_kind: "image"` with no dimensions, or `video_hosted` with no duration) does not satisfy a fixed-size or fixed-duration product. For ranges, satisfaction means containment: a range-based request satisfies a product only when every value it permits falls within the product's accepted range; overlap alone is insufficient. An exact duration satisfies a range when the exact value falls inside it. The reverse is allowed: a broad product declaration can accept a specific 300x250 image or 30-second video unless another product constraint excludes it. See [format matching vs product satisfaction](/docs/creative/canonical-formats#format-matching-vs-product-satisfaction).
 
 If a placement has no format declaration, it inherits the product-level formats. A placement-only format that is absent from the product-level declaration is a seller conformance error, not an expansion of the product's creative contract; buyers should fail closed for that format and not treat it as accepted.
+
+#### Creative locale constraints
+
+A format option may carry `locale_policy.accepted_language_ranges` when the
+seller can execute only particular creative languages. The policy narrows the
+same base format; it does not create a locale-specific `format_kind` or a
+synthetic ID such as `display_image_fr_only`.
+
+Ranges use RFC 4647 Basic Filtering. Seller range `fr` accepts materialized
+creative variants tagged `fr`, `fr-CA`, or `fr-FR`; seller range `fr-CA` does
+not accept bare `fr` or `fr-FR`. Buyers SHOULD compare planned or existing
+creative locale topology during discovery and discard incompatible products
+before `create_media_buy`. A source-only locale topology is sufficient for a
+monolingual creative.
+
+At assignment, the seller computes the effective product-and-placement format
+declaration and rejects with `CREATIVE_LOCALE_NOT_ACCEPTED` when no materialized
+variant matches. The check runs independently for every placement where the
+assignment may serve. A placement may introduce a locale policy when the
+product option is unconstrained; when both carry policies, placement ranges may
+narrow product ranges (`fr-CA` under `fr`) but cannot broaden them. The seller filters eligible variants before
+buyer Lookup, explicit fallback, or default behavior; `serve_default` is valid
+only when the default is eligible. Nonmatching variants remain reusable on
+other products.
+
+The effective locale policy is snapshotted when the seller accepts an
+assignment. Later product-catalog changes apply only to new or changed
+assignments; they do not silently rewrite or remove an existing assignment.
+
+Sellers exposing a locale-constrained product or placement MUST advertise
+`creative.localization` and `creative.has_creative_library: true`; buyers sync
+the locale topology before assigning because inline media-buy creatives cannot
+carry it. Locale-constrained effective options are canonical-only. No product
+or placement `format_id` may project to one, including when only a placement
+introduces the policy. Buyers use a format-options-aware canonical path:
+`format_option_refs` when published or required for disambiguation, otherwise a
+direct `format_kind`/`params` selector. They never rely on `format_ids` for the
+constrained route.
 
 #### Placement Object Structure
 

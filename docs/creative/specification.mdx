@@ -169,7 +169,8 @@ sync the localized library creative and then assign it to a package.
 - The creative's top-level `assets` are the source variant.
 - `localization.source` binds those assets to a canonical BCP 47 tag and a
   buyer-assigned `locale_variant_id`.
-- Every `target_variants[]` entry has a unique locale and stable
+- `target_variants[]` may be empty for a monolingual source-only creative.
+  Every target entry has a unique locale and stable
   `locale_variant_id` plus locale-specific materialized asset overrides;
   missing slots inherit source assets.
 - `default_locale_variant_id` explicitly identifies the serving fallback. It
@@ -187,8 +188,19 @@ unsupported, or lossily mapped locales before any provider or library mutation.
 After source inheritance, each fully resolved variant MUST satisfy the selected
 creative format.
 
+A selected product `format_options[]` declaration may additionally carry
+`locale_policy.accepted_language_ranges`. Seller ranges use RFC 4647 Basic
+Filtering, so `fr` accepts `fr-CA` and `fr-FR`; this is intentionally different
+from the buyer's strict delivery Lookup. The seller first filters the creative
+to variants eligible for each effective product-and-placement format option
+where the assignment may serve,
+then applies the buyer's matching rules only within that set. Assignment fails
+with `CREATIVE_LOCALE_NOT_ACCEPTED` when no variant is eligible, or when
+`serve_default` references an ineligible default. Nonmatching variants remain
+part of the reusable creative but cannot serve on that assignment.
+
 At delivery, sellers apply RFC 4647 Lookup to the opportunity's ordered locale
-preferences and the creative's available locale tags. Lookup progressively
+preferences and the creative's seller-eligible locale tags. Lookup progressively
 truncates the requested range until it finds an available canonical tag equal
 to that range. Matching is equality, not prefix/subordination: `es-MX` does not
 match an available `es-ES` after truncation to `es`.
@@ -234,12 +246,18 @@ locale topology. Omission preserves existing localization only when top-level
 source assets exactly equal the prior source assets. `delete_missing` still
 operates only at creative scope.
 
-Capabilities govern new writes, not stored-data readability. If a seller later
-withdraws localization support or stops accepting a locale/format pair, it
-MUST keep existing localized creatives readable. A dependency loss that makes
-an approved creative unsafe to serve moves the whole creative to `suspended`
-and uses the normal lifecycle webhook. Sellers may reject new or replacement
-localization, but MUST still allow explicit `localization: null` cleanup.
+Capabilities govern new writes, not stored-data readability or already accepted
+assignment terms. The seller snapshots the effective product-and-placement
+locale policy when it accepts an assignment. Later catalog policy changes apply
+only to new or changed assignments; the seller MUST NOT silently rewrite or
+remove an existing buyer-managed assignment. If a seller later withdraws
+localization support, it MUST keep existing localized creatives readable and
+honor each accepted assignment policy until that assignment changes or its
+media buy terminates. A creative-wide dependency loss that makes the approved
+creative unsafe everywhere moves the whole creative to `suspended` and uses
+the normal lifecycle webhook. Sellers may reject new or replacement
+localization, but MUST still allow explicit `localization: null` cleanup when it
+does not violate an active assignment.
 
 ### Universal macros
 

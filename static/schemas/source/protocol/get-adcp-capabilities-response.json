@@ -1282,13 +1282,13 @@
         },
         "localization": {
           "type": "object",
-          "description": "Materialized creative-localization support for sync_creatives/list_creatives. Presence opts the agent into exact locale-variant round-trip, strict RFC 4647 Lookup, optional buyer-declared language-family fallback rules, explicit final default/unmatched behavior, creative-wide review, transactional replacement, and delivery attribution. This is a coarse structural capability, not a promise that every locale/format/account combination is accepted; sellers validate each write before mutation. Omit this object when localization is unsupported.",
+          "description": "Materialized creative-localization support for sync_creatives/list_creatives, including source-only monolingual topology. Presence opts the agent into exact locale-variant round-trip, strict RFC 4647 Lookup, optional buyer-declared language-family fallback rules, explicit final default/unmatched behavior, creative-wide review, transactional replacement, seller product-format locale-policy enforcement, and delivery attribution. This is a coarse structural capability, not a promise that every locale/format/account combination is accepted; sellers publish accepted ranges on product format declarations and validate each write before mutation. Omit this object when localization is unsupported.",
           "properties": {
             "max_target_variants": {
               "type": "integer",
-              "minimum": 1,
+              "minimum": 0,
               "maximum": 50,
-              "description": "Maximum target locale variants accepted on one creative. Omit to inherit the protocol ceiling of 50."
+              "description": "Maximum target locale variants accepted on one creative. Zero advertises source-only monolingual locale topology. Omit to inherit the protocol ceiling of 50."
             },
             "locale_matching": {
               "type": "string",

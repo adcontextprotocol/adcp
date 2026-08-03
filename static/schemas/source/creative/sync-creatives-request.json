@@ -107,7 +107,21 @@
           "creative_id",
           "package_id"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "x-adcp-validation": {
+          "verifier_constraints": {
+            "product_format_locale_policy": {
+              "scope": "every_effective_product_and_placement_format_option_where_assignment_may_serve",
+              "range_matching": "rfc4647_basic_filtering",
+              "eligible_variant_set": "filter_before_buyer_lookup_fallback_or_default",
+              "minimum_eligible_variants_per_scope": 1,
+              "serve_default": "default_locale_variant_id_must_be_eligible",
+              "policy_lifecycle": "snapshot_effective_policy_at_assignment_acceptance",
+              "on_violation": "CREATIVE_LOCALE_NOT_ACCEPTED"
+            }
+          },
+          "spec": "docs/creative/task-reference/sync_creatives.mdx#native-localization"
+        }
       },
       "minItems": 1
     },

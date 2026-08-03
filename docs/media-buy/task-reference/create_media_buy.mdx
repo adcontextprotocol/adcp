@@ -1023,6 +1023,7 @@ Common errors and resolutions:
 | `TARGETING_TOO_NARROW` | Targeting yields zero inventory | Broaden geographic or audience criteria |
 | `POLICY_VIOLATION` | Brand/product violates policy | Review publisher's content policies |
 | `INVALID_PRICING_OPTION` | pricing_option_id not found | Use ID from product's `pricing_options` |
+| `CREATIVE_LOCALE_NOT_ACCEPTED` | An assigned library creative has no materialized locale variant accepted by an in-scope format option, or its `serve_default` points outside that option's eligible set | Read `format_options[].locale_policy`, supply a matching source/target variant, narrow placement scope, choose another option, or change the default policy |
 | `CREATIVE_ID_EXISTS` | Creative ID already exists in the seller's creative namespace | For library-backed sellers, assign existing creatives via `creative_assignments` or update via `sync_creatives`; for inline-only sellers, use a different package-scoped `creative_id` |
 
 Example error response:
@@ -1050,6 +1051,19 @@ Each package SHOULD specify the formats it will use, via `format_ids[]` (legacy 
 - Track which assets are missing
 
 Selector precedence is deterministic: `format_option_refs[]` wins when present; otherwise `format_ids[]` wins when present; otherwise direct `format_kind`/`params` is used; otherwise the package defaults to all product formats. Use `format_option_refs[]` when the buyer's codebase reads `Product.format_options[]` and the product publishes selectable `format_option_id` values; use `format_ids[]` when integrating with legacy-format-only sellers or libraries. Use direct `format_kind` only when the buyer has enough canonical parameters to satisfy the target product declaration without a product-local reference. Dual-emission of `format_option_refs[]` and `format_ids[]` is allowed and recommended for buyer SDKs targeting a mixed seller population — see the `format_ids` row above.
+
+Before purchase, buyers SHOULD also inspect the selected declaration's optional
+`locale_policy.accepted_language_ranges`. These seller ranges use RFC 4647
+Basic Filtering and let the buyer determine whether a planned or existing
+creative has at least one eligible materialized locale variant. A constrained
+option is canonical-only and must use a format-options-aware canonical path:
+`format_option_refs` when published or needed for disambiguation, otherwise
+direct `format_kind` with satisfying `params`. Legacy `format_ids` cannot
+preserve the policy. Media buys may be created
+before creatives exist, so discovery prevents incompatible planning while hard
+enforcement occurs when a creative is assigned. When one assignment can serve
+across several placements, the creative must satisfy each effective placement
+locale policy independently or the buyer must narrow its placement scope.
 
 3.1+ format-option example (buyer authoring against a publisher-scoped `Product.format_options[]` entry):
 

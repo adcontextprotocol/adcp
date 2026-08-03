@@ -14,8 +14,9 @@ narrative: |
   Native localization is a trafficking contract for already-materialized
   locale assets. It does not ask the seller to translate or generate creative.
   The buyer discovers structural support, syncs one source and one target with
-  an explicit Spanish language-family fallback, default, and unmatched action,
-  then verifies exact creative-wide readback. Delivery attribution is schema-required on localized executions and
+  an explicit Spanish language-family fallback, then syncs a source-only
+  monolingual French creative, and verifies exact creative-wide readback.
+  Delivery attribution is schema-required on localized executions and
   is exercised by delivery-capable creative specialisms.
 
 agent:
@@ -145,6 +146,62 @@ phases:
             value: "es"
             description: "Buyer-approved Spanish family fallback round-trips"
 
+      - id: sync_source_only_french
+        title: "Sync a monolingual French source"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives#native-localization"
+        comply_scenario: creative_flow
+        stateful: true
+        expected: |
+          Accept a source-only locale topology without requiring the buyer to
+          invent a second language variant. Return exactly one source variant.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          creatives:
+            - creative_id: "trail_sale_fr_ca"
+              name: "Vente de plein air — Québec"
+              format_kind: "image"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://cdn.pinnacle-agency.example/trail-sale-fr-ca.png"
+                  width: 1080
+                  height: 1080
+                headline:
+                  asset_type: "text"
+                  content: "Trouvez votre prochain sentier"
+                  language: "fr-CA"
+              localization:
+                source:
+                  locale_variant_id: "loc_fr_ca"
+                  locale: "fr-CA"
+                target_variants: []
+                default_locale_variant_id: "loc_fr_ca"
+                unmatched_locale_action: "serve_default"
+          idempotency_key: "$generate:uuid_v4#creative_native_localization_source_only"
+          context:
+            correlation_id: "creative_native_localization--source-only"
+        validations:
+          - check: response_schema
+            description: "Source-only sync response is schema-valid"
+          - check: field_value
+            path: "creatives[0].creative_id"
+            value: "trail_sale_fr_ca"
+            description: "Response identifies the monolingual creative"
+          - check: field_value
+            path: "creatives[0].localization.variants[0].locale_variant_id"
+            value: "loc_fr_ca"
+            description: "Source-only locale identity round-trips"
+          - check: field_absent
+            path: "creatives[0].localization.variants[1]"
+            description: "No target variant was invented"
+
   - id: exact_readback
     title: "Read the authoritative locale topology"
     steps:
@@ -270,3 +327,37 @@ phases:
           - check: field_absent
             path: "creatives[0].localization_unavailable"
             description: "Complete readback does not also report unavailable state"
+
+      - id: list_source_only_french
+        title: "List the monolingual French creative"
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives#localized-creative-readback"
+        comply_scenario: creative_flow
+        stateful: true
+        expected: |
+          Return one source variant and no target variants for the source-only
+          creative while preserving its locale identity and resolved assets.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          creative_ids:
+            - "trail_sale_fr_ca"
+          fields:
+            - "localization"
+          context:
+            correlation_id: "creative_native_localization--list-source-only"
+        validations:
+          - check: response_schema
+            description: "Source-only list response is schema-valid"
+          - check: field_value
+            path: "creatives[0].localization.variants[0].locale"
+            value: "fr-CA"
+            description: "Source locale is preserved"
+          - check: field_absent
+            path: "creatives[0].localization.variants[1]"
+            description: "Readback remains source-only"

@@ -203,7 +203,7 @@ Each returned placement may carry:
 | `audio_distribution_types` | Declared audio distribution types for radio, streaming-audio, podcast, gaming, and other audio inventory, using the IAB Tech Lab/OpenRTB 2.6 `audio.feed` definitions with AdCP-native names. Concrete placements usually declare one value; aggregate placements may declare multiple. |
 | `sponsored_placement_types` | Declared sponsored-placement types for catalog-driven retail-media inventory. Concrete placements usually declare one value; aggregate placements may declare multiple. |
 | `social_placement_surfaces` | Declared social-placement surfaces for social inventory. Concrete placements usually declare one value; aggregate placements may declare multiple. |
-| `format_ids` / `format_options` | Placement-specific creative support. Product-level formats are the upper bound; placement-level formats narrow the effective accepted set for that placement and must not add formats the product does not accept. |
+| `format_ids` / `format_options` | Placement-specific creative support. Product-level formats are the upper bound; placement-level formats narrow the effective accepted set for that placement and must not add formats or `locale_policy` language ranges the product does not accept. |
 
 Publishers can authorize sales agents for specific publisher placements using `authorized_agents[].placement_ids` or `authorized_agents[].placement_tags` in `adagents.json`. Sellers should only return publisher-referenced placements they are authorized to sell.
 
@@ -345,7 +345,8 @@ Returns an array of `products` and optionally `proposals`.
 | `name` | string | Human-readable product name |
 | `description` | string | Detailed product description |
 | `publisher_properties` | PublisherProperty[] | Array of publisher entries, each with `publisher_domain` and either `property_ids` or `property_tags` |
-| `format_ids` | FormatID[] | Supported creative format IDs |
+| `format_ids` | FormatID[] | Legacy supported creative format IDs. Locale-constrained options cannot be represented on this path. |
+| `format_options` | ProductFormatDeclaration[] | Canonical format options, including optional seller-enforced `locale_policy.accepted_language_ranges`. Buyers use these ranges to preflight planned creative languages before purchase. |
 | `delivery_type` | string | `"guaranteed"` or `"non_guaranteed"` |
 | `delivery_measurement` | DeliveryMeasurement | (Optional) How delivery is measured (impressions, views, etc.) |
 | `pricing_options` | PricingOption[] | Available pricing models (CPM, CPCV, etc.). Auction options may include `floor_price` and optional `price_guidance`. Bid-based auction models (CPM, vCPM, CPC, CPCV, CPV) may also include optional `max_bid` (boolean). |

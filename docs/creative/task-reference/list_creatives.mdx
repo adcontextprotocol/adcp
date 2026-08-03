@@ -225,7 +225,8 @@ The response provides creative data with optional enrichment:
 For a localized creative, top-level `platform_id` plus `localization` are the
 authoritative round trip. `platform_id` is the single provider creative ID;
 `localization` never duplicates it. The localization object lists exactly one
-source plus every materialized target variant. It preserves the originating
+source plus every materialized target variant; source-only monolingual topology
+therefore contains one variant. It preserves the originating
 request's exact source ID/locale, target ID/locale set, default ID, unmatched
 action, and any explicit locale fallback rules. Each entry returns complete
 resolved assets and provider variant identity. The top-level creative `status`
@@ -249,7 +250,10 @@ creative ID, platform ID, status, assets, format identity, and unavailable state
 needed to interpret this result.
 
 At delivery, sellers apply strict RFC 4647 Lookup: progressively truncate the
-requested range and match only an equal available canonical tag. When no
+requested range and match only an equal seller-eligible canonical tag. A
+selected product or placement `locale_policy` first filters this readback with
+RFC 4647 Basic Filtering; it never mutates or removes the globally stored
+variants. When no
 variant matches for a preference, sellers apply the most-specific explicit
 `locale_fallbacks` rule for that preference before moving to the next one. When
 all preferences miss both paths, they follow `unmatched_locale_action`: serve

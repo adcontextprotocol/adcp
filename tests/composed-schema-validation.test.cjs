@@ -191,13 +191,58 @@ function rfc4647Lookup(preferences, variants) {
   return undefined;
 }
 
-function selectLocalizedVariant(localization, preferences) {
-  const variants = localization.variants || [];
+function rfc4647BasicFilter(languageRange, locale) {
+  const range = languageRange.toLowerCase();
+  const tag = locale.toLowerCase();
+  return tag === range || tag.startsWith(`${range}-`);
+}
+
+function localePolicyEligibleVariants(localization, localePolicy) {
+  const variants = localization?.variants || [];
+  if (!localePolicy) return variants;
+  const ranges = localePolicy.accepted_language_ranges || [];
+  return variants.filter((variant) =>
+    ranges.some((range) => rfc4647BasicFilter(range, variant.locale))
+  );
+}
+
+function validateLocalePolicyAssignment(localization, localePolicy) {
+  const errors = [];
+  const eligible = localePolicyEligibleVariants(localization, localePolicy);
+  if (eligible.length === 0) {
+    errors.push('at least one materialized variant must match accepted language ranges');
+    return errors;
+  }
+  if (
+    localization.unmatched_locale_action === 'serve_default' &&
+    !eligible.some(
+      (variant) => variant.locale_variant_id === localization.default_locale_variant_id
+    )
+  ) {
+    errors.push('serve_default must reference a seller-eligible locale variant');
+  }
+  return errors;
+}
+
+function localePolicyNarrows(productPolicy, placementPolicy) {
+  if (!productPolicy) return true;
+  return placementPolicy.accepted_language_ranges.every((placementRange) =>
+    productPolicy.accepted_language_ranges.some((productRange) =>
+      rfc4647BasicFilter(productRange, placementRange)
+    )
+  );
+}
+
+function selectLocalizedVariant(localization, preferences, localePolicy) {
+  const variants = localePolicyEligibleVariants(localization, localePolicy);
+  const eligibleIds = new Set(variants.map((variant) => variant.locale_variant_id));
   const fallbackByRange = new Map(
-    (localization.locale_fallbacks || []).map((fallback) => [
-      fallback.language_range.toLowerCase(),
-      fallback.locale_variant_id
-    ])
+    (localization.locale_fallbacks || [])
+      .filter((fallback) => eligibleIds.has(fallback.locale_variant_id))
+      .map((fallback) => [
+        fallback.language_range.toLowerCase(),
+        fallback.locale_variant_id
+      ])
   );
   for (const preference of preferences) {
     const matched = rfc4647Lookup([preference], variants);
@@ -206,7 +251,8 @@ function selectLocalizedVariant(localization, preferences) {
       if (fallbackByRange.has(candidate)) return fallbackByRange.get(candidate);
     }
   }
-  return localization.unmatched_locale_action === 'serve_default'
+  return localization.unmatched_locale_action === 'serve_default' &&
+    eligibleIds.has(localization.default_locale_variant_id)
     ? localization.default_locale_variant_id
     : undefined;
 }
@@ -653,6 +699,141 @@ async function runTests() {
     '/schemas/core/product.json',
     unboundedBothSidesProduct,
     'Product rejects hosted duration_ms_range with both endpoints null'
+  );
+
+  const frenchOnlyImageFormat = {
+    format_kind: 'image',
+    format_option_id: 'quebec_display_image',
+    canonical_formats_only: true,
+    locale_policy: {
+      accepted_language_ranges: ['fr']
+    },
+    params: {
+      width: 300,
+      height: 250
+    }
+  };
+  await testSchemaValidation(
+    '/schemas/core/product-format-declaration.json',
+    frenchOnlyImageFormat,
+    'Product format accepts a canonical-only French creative locale policy'
+  );
+  await testSchemaRejection(
+    '/schemas/core/product-format-declaration.json',
+    { ...frenchOnlyImageFormat, canonical_formats_only: false },
+    'Locale-constrained product format rejects legacy projection'
+  );
+  const localePolicyWithLegacyRef = structuredClone(frenchOnlyImageFormat);
+  localePolicyWithLegacyRef.v1_format_ref = [
+    {
+      agent_url: 'https://creative.adcontextprotocol.org',
+      id: 'display_300x250_image'
+    }
+  ];
+  await testSchemaRejection(
+    '/schemas/core/product-format-declaration.json',
+    localePolicyWithLegacyRef,
+    'Locale-constrained product format rejects v1_format_ref'
+  );
+  await testSchemaRejection(
+    '/schemas/core/creative-locale-policy.json',
+    { accepted_language_ranges: ['FR'] },
+    'Creative locale policy rejects a non-canonical language range'
+  );
+  await testSchemaValidation(
+    '/schemas/core/placement-definition.json',
+    {
+      placement_id: 'quebec_homepage',
+      name: 'Québec homepage',
+      property_ids: ['quebec_news'],
+      format_options: [
+        {
+          format_option_id: 'quebec_display_image',
+          locale_policy: { accepted_language_ranges: ['fr-CA'] }
+        }
+      ]
+    },
+    'Placement format reference accepts a narrower locale policy override'
+  );
+  testValidationAnnotation(
+    '/schemas/core/creative-locale-policy.json',
+    {
+      range_matching: 'rfc4647_basic_filtering',
+      wildcards: 'not_supported',
+      assignment_eligibility: 'at_least_one_materialized_variant_must_match',
+      selection_precedence:
+        'filter_seller_eligible_variants_before_buyer_lookup_fallback_or_default',
+      serve_default:
+        'when_unmatched_locale_action_is_serve_default_default_locale_variant_id_must_reference_an_eligible_variant',
+      placement_narrowing:
+        'product_policy_absent_allows_any_placement_policy_else_every_placement_range_must_be_contained_by_a_product_range',
+      legacy_projection:
+        'no_product_or_placement_format_id_may_project_to_a_locale_constrained_option',
+      capability_gate:
+        'seller_must_advertise_creative.localization_and_creative.has_creative_library',
+      assignment_policy_lifecycle:
+        'snapshot_effective_policy_at_acceptance_catalog_changes_apply_only_to_new_or_changed_assignments'
+    },
+    'Creative locale policy exposes machine-readable eligibility semantics'
+  );
+  testNestedValidationAnnotation(
+    '/schemas/core/product.json',
+    ['properties', 'format_options'],
+    {
+      locale_policy_legacy_projection:
+        'no_product_or_placement_format_id_may_project_to_a_locale_constrained_option',
+      placement_locale_policy:
+        'product_policy_absent_allows_any_narrowing_else_ranges_must_be_contained',
+      assignment_locale_eligibility:
+        'validate_every_effective_placement_format_option_in_delivery_scope',
+      locale_policy_capability_gate:
+        'creative.localization_and_creative.has_creative_library_must_be_advertised',
+      locale_policy_assignment_lifecycle: 'snapshot_effective_policy_at_acceptance'
+    },
+    'Product format options expose locale capability and legacy projection rules'
+  );
+  testNestedValidationAnnotation(
+    '/schemas/core/placement-definition.json',
+    ['properties', 'format_options'],
+    {
+      locale_policy_override_resolution:
+        'resolved_catalog_and_matching_product_declarations_must_be_canonical_only_without_v1_projection'
+    },
+    'Placement format options expose canonical-only locale override resolution'
+  );
+  testSemanticValidation(
+    rfc4647BasicFilter('fr', 'fr-CA') && !rfc4647BasicFilter('fr-CA', 'fr-FR')
+      ? []
+      : ['RFC 4647 Basic Filtering was not directional'],
+    undefined,
+    'Creative locale policy uses directional RFC 4647 Basic Filtering'
+  );
+  testSemanticValidation(
+    localePolicyNarrows(
+      { accepted_language_ranges: ['fr'] },
+      { accepted_language_ranges: ['fr-CA'] }
+    )
+      ? []
+      : ['fr-CA did not narrow product range fr'],
+    undefined,
+    'Placement locale policy may narrow product range fr to fr-CA'
+  );
+  testSemanticValidation(
+    localePolicyNarrows(undefined, { accepted_language_ranges: ['fr-CA'] })
+      ? []
+      : ['Placement could not narrow an unconstrained product locale policy'],
+    undefined,
+    'Placement may introduce a locale policy when the product has none'
+  );
+  testSemanticValidation(
+    !localePolicyNarrows(
+      { accepted_language_ranges: ['fr-CA'] },
+      { accepted_language_ranges: ['fr'] }
+    )
+      ? []
+      : ['placement range fr broadened product range fr-CA'],
+    undefined,
+    'Placement locale policy cannot broaden product range fr-CA to fr'
   );
 
   log('');
@@ -2972,6 +3153,36 @@ async function runTests() {
     'sync_creatives accepts explicit buyer-supplied locale variants'
   );
 
+  const frenchSourceOnlyCreative = {
+    ...structuredClone(localizedCreative),
+    creative_id: 'quebec_image_fr_ca',
+    name: 'Québec image — French',
+    assets: {
+      ...structuredClone(localizedCreative.assets),
+      headline: {
+        asset_type: 'text',
+        content: 'L’été commence ici',
+        language: 'fr-CA'
+      }
+    },
+    localization: {
+      source: { locale_variant_id: 'loc_fr_ca', locale: 'fr-CA' },
+      target_variants: [],
+      default_locale_variant_id: 'loc_fr_ca',
+      unmatched_locale_action: 'serve_default'
+    }
+  };
+  await testSchemaValidation(
+    '/schemas/creative/sync-creatives-request.json',
+    localizedSyncRequest(frenchSourceOnlyCreative),
+    'sync_creatives accepts source-only locale topology for a monolingual creative'
+  );
+  testSemanticValidation(
+    validateLocalizationRequestSemantics(frenchSourceOnlyCreative.localization),
+    undefined,
+    'Source-only localization semantic verifier accepts an empty target set'
+  );
+
   testValidationAnnotation(
     '/schemas/core/locale-tag.json',
     {
@@ -3075,6 +3286,23 @@ async function runTests() {
       }
     },
     'sync_creatives exposes machine-readable fail-closed localized source upsert rules'
+  );
+  testNestedValidationAnnotation(
+    '/schemas/creative/sync-creatives-request.json',
+    ['properties', 'assignments', 'items'],
+    {
+      product_format_locale_policy: {
+        scope:
+          'every_effective_product_and_placement_format_option_where_assignment_may_serve',
+        range_matching: 'rfc4647_basic_filtering',
+        eligible_variant_set: 'filter_before_buyer_lookup_fallback_or_default',
+        minimum_eligible_variants_per_scope: 1,
+        serve_default: 'default_locale_variant_id_must_be_eligible',
+        policy_lifecycle: 'snapshot_effective_policy_at_assignment_acceptance',
+        on_violation: 'CREATIVE_LOCALE_NOT_ACCEPTED'
+      }
+    },
+    'sync_creatives assignments expose per-placement locale eligibility rules'
   );
 
   testSemanticValidation(
@@ -3231,6 +3459,84 @@ async function runTests() {
     '/schemas/core/creative-localization-readback.json',
     localizationReadback,
     'Exact source and target localization readback validates'
+  );
+
+  const frenchSourceOnlyReadback = {
+    default_locale_variant_id: 'loc_fr_ca',
+    unmatched_locale_action: 'serve_default',
+    locale_matching: 'rfc4647_lookup',
+    variants: [
+      {
+        locale_variant_id: 'loc_fr_ca',
+        locale: 'fr-CA',
+        role: 'source',
+        assets: frenchSourceOnlyCreative.assets,
+        provider_variant_id: 'provider_variant_fr_ca'
+      }
+    ]
+  };
+  await testSchemaValidation(
+    '/schemas/core/creative-localization-readback.json',
+    frenchSourceOnlyReadback,
+    'Localization readback accepts one source-only monolingual variant'
+  );
+  testSemanticValidation(
+    validateLocalizationReadbackSemantics(
+      frenchSourceOnlyReadback,
+      frenchSourceOnlyCreative.assets
+    ),
+    undefined,
+    'Source-only localization readback verifier accepts one source role'
+  );
+  const frenchLocalePolicy = { accepted_language_ranges: ['fr'] };
+  testSemanticValidation(
+    validateLocalePolicyAssignment(frenchSourceOnlyReadback, frenchLocalePolicy),
+    undefined,
+    'French-only format accepts a source-only fr-CA creative'
+  );
+  testSemanticValidation(
+    validateLocalePolicyAssignment(localizationReadback, frenchLocalePolicy),
+    'at least one materialized variant must match accepted language ranges',
+    'French-only format rejects a creative with no French variant'
+  );
+  const spanishLocalePolicy = { accepted_language_ranges: ['es'] };
+  testSemanticValidation(
+    validateLocalePolicyAssignment(localizationReadback, spanishLocalePolicy),
+    undefined,
+    'Spanish-only format accepts a mixed creative with an eligible Spanish variant'
+  );
+  const ineligibleDefaultReadback = {
+    ...structuredClone(localizationReadback),
+    unmatched_locale_action: 'serve_default'
+  };
+  testSemanticValidation(
+    validateLocalePolicyAssignment(ineligibleDefaultReadback, spanishLocalePolicy),
+    'serve_default must reference a seller-eligible locale variant',
+    'Locale-constrained format rejects serve_default outside its eligible variant set'
+  );
+  testSemanticValidation(
+    selectLocalizedVariant(
+      localizationReadback,
+      ['en-US', 'es-ES'],
+      spanishLocalePolicy
+    ) === 'loc_es_es'
+      ? []
+      : ['Seller locale policy did not mask the ineligible English variant'],
+    undefined,
+    'Seller locale policy filters variants before buyer locale selection'
+  );
+  const fallbackOutsideSellerPolicy = structuredClone(localizationReadback);
+  fallbackOutsideSellerPolicy.locale_fallbacks[0].locale_variant_id = 'loc_en_us';
+  testSemanticValidation(
+    selectLocalizedVariant(
+      fallbackOutsideSellerPolicy,
+      ['es-MX'],
+      spanishLocalePolicy
+    ) === undefined
+      ? []
+      : ['Buyer fallback escaped the seller-eligible variant set'],
+    undefined,
+    'Buyer locale fallback cannot select a seller-ineligible variant'
   );
 
   testValidationAnnotation(
@@ -3676,6 +3982,13 @@ async function runTests() {
     '/schemas/protocol/get-adcp-capabilities-response.json',
     localizedCapabilitiesResponse,
     'Capabilities advertise coarse materialized localization support'
+  );
+  const sourceOnlyCapabilities = structuredClone(localizedCapabilitiesResponse);
+  sourceOnlyCapabilities.creative.localization.max_target_variants = 0;
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    sourceOnlyCapabilities,
+    'Localization capability can advertise source-only topology'
   );
 
   for (const [libraryValue, description] of [

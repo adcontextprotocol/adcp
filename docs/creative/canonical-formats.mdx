@@ -28,13 +28,14 @@ For hands-on authoring practice, use the [S2 creative specialist module](/docs/l
 | **Canonical format** | One of 12 AdCP-defined format archetypes that products narrow (e.g., `image`, `video_vast`, `audio_hosted`, `native_in_feed`). The buyer's stable validation target. |
 | **`format_kind`** | Discriminator value naming a canonical format (e.g., `"image"`). Selects which canonical's parameter schema applies. |
 | **`format_options`** | On a product, an array of full `ProductFormatDeclaration`s. The 90% case is single-element; multi-element declares "accepts any of." Product entries are declarations, not bare references. |
-| **`ProductFormatDeclaration`** | Inline format declaration: required `format_kind` + required `params` + optional `format_option_id` (REQUIRED when entries share `format_kind`; SHOULD be set on every entry per 3.1 so V2 buyers can author against the product via `PackageRequest.format_option_refs[]`) + optional `publisher_domain` for publisher-catalog-backed options + optional `applies_to_channels` + optional `experimental` + optional `v1_format_ref[]` (always array — see below). Even when catalog-backed, the product still carries the full declaration. |
+| **`ProductFormatDeclaration`** | Inline format declaration: required `format_kind` + required `params` + optional `format_option_id` (REQUIRED when entries share `format_kind`; SHOULD be set on every entry per 3.1 so V2 buyers can author against the product via `PackageRequest.format_option_refs[]`) + optional `publisher_domain` for publisher-catalog-backed options + optional `applies_to_channels` + optional `locale_policy` + optional `experimental` + optional `v1_format_ref[]` (always array — see below). Even when catalog-backed, the product still carries the full declaration. |
 | **`v1_format_ref`** | Array of `{agent_url, id}` references linking a v2 declaration to one or more v1 named formats. Always array; single-ref is `[{...}]`. Multi-size declarations carry one ref per size (see "Multi-size fan-out" below). |
 | **`canonical:` annotation** | The v1 catalog entry's projection annotation. Always object form — `{ kind: "image" }` minimum, `{ kind, asset_source, slots_override }` rich form for entries whose v1 shape doesn't follow the canonical's defaults (generative, brief-driven). Never bare-string. |
 | **Sibling refinement principle** | Before reaching for a new canonical, check whether `asset_source` + `slots_override` + `applies_to_channels` + event_log surface covers the case. Applied to: generative (image + asset_source: agent_synthesized), published-post references (video_hosted/image/native_in_feed + asset_source: publisher_owned_reference + published_post slot), broadcast TV (video_hosted + applies_to_channels: ["tv"]), DOOH (image + applies_to_channels: ["dooh"]), native (image + slots_override). No new canonical for any of them. |
 | **`format_option_id`** | Stable identifier for a format declaration within its namespace. REQUIRED when `format_options` carries multiple declarations sharing the same `format_kind` (to disambiguate). SHOULD be set on every `format_options[]` entry — not just when forced by collision — so V2-mental-model buyers can author against the product via `PackageRequest.format_option_refs[]` and `creative-manifest.format_option_ref`. Publisher-catalog-backed declarations carry `publisher_domain`; product-local declarations omit it. Without selectable `format_option_id` values, products are still 3.1-conformant but the V2 authoring path is unreachable and buyers fall back to v1 `format_ids[]`. |
 | **`FormatOptionRef`** | Discriminated buyer-facing selector for a product format option, used in requests such as `PackageRequest.format_option_refs[]` and manifests. Use `{scope: "publisher", publisher_domain, format_option_id}` for publisher-catalog-backed options; use `{scope: "product", format_option_id}` for product-local options. Product-scoped refs resolve only inside the target product/package, not a seller-wide, cross-product, or cross-publisher namespace. This is the request-side reference shape; it is not the product declaration shape. |
 | **`applies_to_channels`** | Subset of the product's declared channels this format declaration applies to. Lets multi-channel products carry per-channel format options. |
+| **`locale_policy`** | Optional seller-enforced creative-locale eligibility on a product format declaration. `accepted_language_ranges` use RFC 4647 Basic Filtering and constrain which materialized variants may serve. This is not a new `format_kind` or locale-specific format ID. |
 | **`experimental`** | Boolean on canonical (`_base.json`) and on `ProductFormatDeclaration`. `true` = may not work as declared; have a v1 fallback ready. Replaces the earlier `status` + `runtime_status` enums (single binary flag rather than two stability axes). |
 | **`slots`** | Programmatic declaration on a format of which `asset_group_id` slots a manifest must (or may) populate, each paired with an `asset_type`. |
 | **`asset_group_id`** | Canonical slot-name vocabulary (e.g., `image_main`, `script`, `landing_page_url`). Replaces v1's free-text `asset_role`. |
@@ -613,6 +614,94 @@ The example below is the NYTimes Homepage above-the-fold slot: accepts image, HT
 **Responsive variant.** A responsive slot replaces `sizes[]` with min/max ranges — `min_width: 300, max_width: 970, min_height: 50, max_height: 250` — and accepts any dimensions within the box. Same multi-format pattern; different size declaration. Exactly one size mode (fixed `width`+`height` / multi-size `sizes[]` / responsive ranges) per format_options entry, enforced at the schema layer.
 
 **Seller preference.** When a multi-format product has several `format_options` at the same price, sellers MAY set `seller_preference: "preferred" | "accepted" | "discouraged"` on each entry to hint which the seller would prefer the buyer ship (often because of viewability / measurement / render-quality differences). Soft routing signal — buyer agents respect it when their own constraints don't override.
+
+## Creative locale policy
+
+`locale_policy` lets a seller narrow a product format by the creative languages
+it can execute without inventing a new format kind or an identifier such as
+`display_image_fr_only`:
+
+```json test=false
+{
+  "format_kind": "image",
+  "format_option_id": "quebec_display_image",
+  "display_name": "Québec display image — French creative",
+  "canonical_formats_only": true,
+  "locale_policy": {
+    "accepted_language_ranges": ["fr"]
+  },
+  "params": {
+    "width": 300,
+    "height": 250
+  }
+}
+```
+
+Seller ranges use RFC 4647 section 3.3.1 Basic Filtering. The range `fr`
+accepts materialized variants tagged `fr`, `fr-CA`, and `fr-FR`; the narrower
+range `fr-CA` does not accept `fr` or `fr-FR`. Ranges are ORed, must be
+canonical concrete BCP 47 tags, and do not support `*`. Use `zxx` explicitly
+for creative with no linguistic content. `und` means unknown and is not a
+wildcard.
+
+Presence is a hard constraint. A creative is assignable to the format option
+only when its materialized locale topology contains at least one matching
+source or target variant. Source-only topology is valid for a monolingual
+creative. A mixed English/French creative remains one creative with one review
+lifecycle; the French policy creates an eligibility mask for this assignment
+without deleting or changing its English variant.
+
+Each locale tag asserts that the fully resolved variant—including inherited
+copy, disclaimers, and audio—is suitable for that locale. Sellers may reject a
+mislabeled or mixed-language variant during normal creative review; optional
+language metadata on individual text assets is not a substitute for creative
+locale topology.
+
+Sellers publishing any locale-constrained product or placement option MUST
+advertise both `creative.localization` and `creative.has_creative_library: true`
+from `get_adcp_capabilities`. Inline media-buy creatives cannot carry locale
+topology; buyers sync the library creative first and then assign it.
+
+The seller applies that mask before the buyer's delivery policy:
+
+1. Filter source and target variants through `accepted_language_ranges`.
+2. Reject assignment with `CREATIVE_LOCALE_NOT_ACCEPTED` if none remain.
+3. Apply strict RFC 4647 Lookup, explicit `locale_fallbacks`, and then
+   `unmatched_locale_action` only within the eligible set.
+4. When `unmatched_locale_action` is `serve_default`, reject assignment unless
+   `default_locale_variant_id` is eligible. A buyer fallback or default never
+   overrides seller eligibility.
+
+These checks run independently for every effective placement format option
+where the assignment may serve. An assignment spanning several placements is
+rejected if any in-scope placement has no eligible variant or cannot honor
+`serve_default`; the buyer may instead narrow the assignment's placement scope.
+To reuse one mixed creative across products with disjoint locale policies, use
+`do_not_serve` or separate creative topology rather than asking one global
+default to promise different product-specific defaults.
+
+The seller snapshots the effective policy when it accepts the assignment.
+Later catalog changes affect only new or changed assignments and never silently
+rewrite or remove an existing buyer-managed assignment.
+
+Product and placement declarations intersect. When the product has no locale
+policy, a placement may introduce one as a narrowing of the otherwise
+unconstrained option. When both declare policies, a placement may narrow
+product range `fr` to `fr-CA`, but may not broaden product range `fr-CA` to
+`fr`. A placement without a locale policy inherits the matching product format
+option's policy.
+
+Locale-constrained declarations are canonical-only: they MUST set
+`canonical_formats_only: true` and MUST NOT carry `v1_format_ref`. Legacy
+`format_ids` cannot preserve locale eligibility, and projecting this option
+would recreate the non-executable-buy problem the field prevents. When a
+placement introduces the policy, its resolved catalog declaration and the
+matching product declaration are also canonical-only, and no product or
+placement `format_id` may project to that effective option. Buyers use a
+format-options-aware canonical selector: `format_option_refs` when a published
+option ID is available or needed for disambiguation, otherwise direct
+`format_kind` plus satisfying `params`; they never rely on `format_ids` for the
+constrained route.
 
 ## Worked example — Podcast 30s host-read
 
@@ -1224,6 +1313,10 @@ This replaces the earlier `canonical_parameters` field on v1 `format.json` files
 ### v2-only declarations on the wire
 
 A buyer reading a product on the v1 wire path sees `format_options` entries with `canonical_formats_only: true` absent from `format_ids`. This is intentional and not a producer error. v2-aware buyers reading `format_options` see them. v1-only buyers see fewer options on `format_ids` than a v2-aware buyer sees on `format_options` for the same product — the v1 surface is a strict subset on these products until v1 sunset (5.0).
+
+A declaration carrying `locale_policy` is always in this category. Sellers MUST
+NOT synthesize a v1 ID for it: the legacy shape would preserve dimensions and
+assets while silently dropping the hard locale constraint.
 
 ### v2-native sellers emitting to v1 buyers
 

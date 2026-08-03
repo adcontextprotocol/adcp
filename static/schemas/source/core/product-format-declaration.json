@@ -31,6 +31,10 @@
       "enum": ["preferred", "accepted", "discouraged"],
       "description": "Optional soft routing hint *within* a product's accepted set of formats — NOT an enforcement axis. `preferred` — seller actively recommends this format (often because of measurement, viewability, or render-quality differences); `accepted` — supported on equal footing with other format_options (default when omitted); `discouraged` — supported but suboptimal (e.g., legacy 3p-tag where the seller would prefer html5 for OM-SDK coverage). Buyer agents picking between format_options SHOULD respect seller preferences when their own constraints don't override.\n\n**Not an enforcement axis (normative).** `seller_preference` does NOT carry the meaning of 'this format won't work / required-only'. That case is structural: `format_options[]` IS the closed set of accepted formats; anything outside the list is rejected at `create_media_buy` regardless of preference. A seller that accepts only one format lists exactly that one entry — the structural fact does the enforcement work, no enum value needed. There is intentionally no `required` value; preference is bounded to *ranking within the already-accepted set*, not gating into it."
     },
+    "locale_policy": {
+      "$ref": "/schemas/core/creative-locale-policy.json",
+      "description": "Optional seller-enforced creative-locale constraint for this format option. This is product/placement eligibility, not a new format kind or synthetic locale-specific format ID. Because legacy format_ids cannot preserve this constraint, declarations carrying locale_policy MUST set canonical_formats_only to true and MUST NOT carry v1_format_ref."
+    },
     "canonical_formats_only": {
       "type": "boolean",
       "default": false,
@@ -95,6 +99,18 @@
       "$comment": "Canonical-format product declarations use format_option_id; capability_id belongs only to creative-agent build capabilities.",
       "not": {
         "required": ["capability_id"]
+      }
+    },
+    {
+      "$comment": "Locale policy is a v2-only hard constraint. Legacy format_ids cannot preserve it without allowing non-executable buys.",
+      "if": {
+        "required": ["locale_policy"]
+      },
+      "then": {
+        "properties": {
+          "canonical_formats_only": { "const": true }
+        },
+        "required": ["canonical_formats_only"]
       }
     }
   ],
@@ -246,6 +262,24 @@
           "ssl_required": true,
           "composition_model": "deterministic",
           "cta_values": ["LEARN_MORE", "SHOP_NOW", "GET_OFFER"]
+        }
+      }
+    },
+    {
+      "description": "Québec French-only display image — same image shape with a seller-enforced creative locale constraint",
+      "data": {
+        "format_kind": "image",
+        "format_option_id": "quebec_display_image",
+        "display_name": "Québec display image — French creative",
+        "canonical_formats_only": true,
+        "locale_policy": {
+          "accepted_language_ranges": ["fr"]
+        },
+        "params": {
+          "width": 300,
+          "height": 250,
+          "max_file_size_kb": 200,
+          "image_formats": ["jpg", "png"]
         }
       }
     },
