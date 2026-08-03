@@ -214,7 +214,7 @@
             "properties": {
               "item_type": { "type": "string", "const": "individual", "description": "Discriminator indicating this is an individual asset" }
             },
-            "required": ["item_type"],
+            "required": ["item_type", "asset_type"],
             "discriminator": { "propertyName": "asset_type" },
             "oneOf": [
               {
