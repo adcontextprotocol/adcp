@@ -36,15 +36,47 @@ interface SiSandboxSession {
   principal: string;
   // Stored on first termination so repeated calls return the identical result.
   terminalResult?: unknown;
+  // Set when first terminated; used by the cleanup sweep.
+  terminated_at?: number;
 }
 
 // Sessions are marked terminated but retained so the SESSION_TERMINATED error
 // path in si_send_message is reachable (si_terminate_session must not delete).
 const sessions = new Map<string, SiSandboxSession>();
 
+// Sweep terminated sessions older than 30 minutes every 5 minutes.
+// Active sessions are untouched; only completed/terminated entries are evicted.
+const TERMINATED_TTL_MS = 30 * 60 * 1000;
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+
+let cleanupTimer: ReturnType<typeof setInterval> | null = null;
+
+function startSiSessionCleanup(): void {
+  if (cleanupTimer !== null) return;
+  cleanupTimer = setInterval(() => {
+    const cutoff = Date.now() - TERMINATED_TTL_MS;
+    for (const [id, session] of sessions) {
+      if (session.status === 'terminated' && session.terminated_at !== undefined && session.terminated_at < cutoff) {
+        sessions.delete(id);
+      }
+    }
+  }, CLEANUP_INTERVAL_MS);
+  // Don't hold the event loop open in test/short-lived processes.
+  if (typeof cleanupTimer.unref === 'function') cleanupTimer.unref();
+}
+
+export function stopSiSessionCleanup(): void {
+  if (cleanupTimer !== null) {
+    clearInterval(cleanupTimer);
+    cleanupTimer = null;
+  }
+}
+
 export function clearSiSessions(): void {
   sessions.clear();
 }
+
+startSiSessionCleanup();
 
 function makeSessionId(): string {
   return `si_sandbox_${randomUUID()}`;
@@ -60,6 +92,8 @@ function offeringIdFromToken(token: string): string | undefined {
 // si_get_offering
 // ---------------------------------------------------------------------------
 
+// expires_at is omitted here and stamped fresh on each handleSiGetOffering call
+// so it never goes stale regardless of process uptime.
 const SANDBOX_OFFERINGS: Record<string, Record<string, unknown>> = {
   'novamotors_conversational_v1': {
     offering_id: 'novamotors_conversational_v1',
@@ -91,7 +125,6 @@ const SANDBOX_OFFERINGS: Record<string, Record<string, unknown>> = {
       action_buttons: true,
       commerce_handoff: true,
     },
-    expires_at: new Date(Date.now() + 3600_000).toISOString(),
   },
   'offer_sandbox_001': {
     offering_id: 'offer_sandbox_001',
@@ -111,7 +144,6 @@ const SANDBOX_OFFERINGS: Record<string, Record<string, unknown>> = {
       action_buttons: true,
       commerce_handoff: true,
     },
-    expires_at: new Date(Date.now() + 3600_000).toISOString(),
   },
   'offer_sandbox_002': {
     offering_id: 'offer_sandbox_002',
@@ -131,7 +163,6 @@ const SANDBOX_OFFERINGS: Record<string, Record<string, unknown>> = {
       action_buttons: true,
       commerce_handoff: false,
     },
-    expires_at: new Date(Date.now() + 3600_000).toISOString(),
   },
 };
 
@@ -158,7 +189,7 @@ export async function handleSiGetOffering(args: ToolArgs, _ctx: TrainingContext)
   const includeProducts = a.include_products === true;
   const productLimit = typeof a.product_limit === 'number' ? Math.min(a.product_limit, 50) : 5;
 
-  const offering = { ...offeringData } as Record<string, unknown>;
+  const offering = { ...offeringData, expires_at: new Date(Date.now() + 3600_000).toISOString() } as Record<string, unknown>;
   if (!includeProducts) {
     delete offering['products'];
   } else if (Array.isArray(offering['products'])) {
@@ -520,6 +551,7 @@ export async function handleSiTerminateSession(args: ToolArgs, _ctx: TrainingCon
 
   // Persist before returning so a concurrent second call sees the stored result.
   session.status = 'terminated';
+  session.terminated_at = Date.now();
   session.terminalResult = result;
 
   return result;
