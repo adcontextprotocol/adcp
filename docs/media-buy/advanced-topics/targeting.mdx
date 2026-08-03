@@ -485,9 +485,12 @@ Use for **technical requirements**:
 ```json
 {
   "$schema": "/schemas/core/targeting.json",
-  "device_platform": ["ios", "android"]
+  "device_platform": ["ios", "android"],
+  "device_platform_exclude": ["fire_os"]
 }
 ```
+
+Use `device_platform_exclude` when a campaign supports most platforms with a small deny-list. Exclusion wins if a value appears in both arrays. Device-platform inclusion and exclusion support are implied by `media_buy`; a seller that cannot enforce a requested platform constraint must reject it rather than broaden delivery.
 
 **Available platforms** (defined in [`device-platform.json`](https://adcontextprotocol.org/schemas/v3/enums/device-platform.json), based on Sec-CH-UA-Platform standard extended for CTV):
 - Browser: `ios`, `android`, `windows`, `macos`, `linux`, `chromeos`
@@ -830,6 +833,14 @@ For products where inventory and audience planning are inseparable, such as line
 - **Examples**: `["ios"]`, `["ios", "android"]`, `["tvos", "fire_os"]`
 - **Use cases**: App install campaigns (iOS-only app), CTV-specific campaigns
 - **Values**: `ios`, `android`, `windows`, `macos`, `linux`, `chromeos`, `tvos`, `tizen`, `webos`, `fire_os`, `roku_os`
+
+### device_platform_exclude
+- **Description**: Exclude specific operating-system platforms from delivery
+- **Format**: Array of device platform identifiers
+- **Examples**: `["fire_os"]`, `["tvos", "roku_os"]`
+- **Use cases**: Exclude platforms incompatible with an app, landing experience, or creative runtime
+- **Conflict rule**: Exclusion wins when a platform is present in both `device_platform` and `device_platform_exclude`
+- **Note**: Support is implied by `media_buy`; sellers reject constraints they cannot enforce
 
 ### device_type
 - **Description**: Restrict to specific device form factors

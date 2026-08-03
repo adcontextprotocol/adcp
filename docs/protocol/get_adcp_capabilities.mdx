@@ -244,7 +244,7 @@ The following fields have been removed from the capabilities response:
 - `features.content_standards` — Replaced by `media_buy.content_standards` object. Presence of the object indicates support.
 - `features.audience_targeting` — Replaced by `media_buy.audience_targeting` object. Presence of the object indicates support.
 - `features.conversion_tracking` — Replaced by `media_buy.conversion_tracking` object. Presence of the object indicates support.
-- `execution.targeting.device_platform`, `device_type` — Implied by `media_buy` support.
+- `execution.targeting.device_platform`, `device_platform_exclude`, `device_type`, `device_type_exclude` — Implied by `media_buy` support.
 - `execution.targeting.audience_include`, `audience_exclude` — Implied by `audience_targeting` object presence.
 - `execution.trusted_match.supported` — Object presence indicates support.
 - `brand.identity` — Implied by `brand` in `supported_protocols`. `get_brand_identity` is always available.

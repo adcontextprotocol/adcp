@@ -210,6 +210,14 @@
       },
       "minItems": 1
     },
+    "device_platform_exclude": {
+      "type": "array",
+      "description": "Exclude specific operating-system platforms from delivery. Uses the same canonical device-platform vocabulary as device_platform. Exclusion wins when a platform appears in both include and exclude arrays. Support is implied by media_buy support; sellers MUST reject an exclusion they cannot enforce rather than silently dropping it.",
+      "items": {
+        "$ref": "/schemas/enums/device-platform.json"
+      },
+      "minItems": 1
+    },
     "device_type": {
       "type": "array",
       "description": "Restrict to specific device form factors. Use for campaigns targeting hardware categories rather than operating systems (e.g., mobile-only promotions, CTV campaigns).",
