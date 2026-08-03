@@ -67,8 +67,8 @@
   "navigation": {
     "versions": [
       {
-        "version": "3.1",
-        "tag": "Latest",
+        "version": "latest",
+        "tag": "3.1",
         "groups": [
           {
             "group": "Getting Started",

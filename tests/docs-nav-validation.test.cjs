@@ -88,6 +88,32 @@ test('default version is first in the versions array', () => {
   }
 });
 
+test('one latest version owns the live docs tree', () => {
+  const liveVersions = navigation.versions.filter(versionEntry =>
+    collectPages(versionEntry.groups).some(page => page.startsWith('docs/'))
+  );
+  const expectedTag = JSON.parse(
+    fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8')
+  ).version.split('.').slice(0, 2).join('.');
+
+  if (liveVersions.length !== 1) {
+    throw new Error(`Expected one live docs owner, found ${liveVersions.length}`);
+  }
+
+  const [liveVersion] = liveVersions;
+  if (liveVersion !== navigation.versions[0] || !liveVersion.default) {
+    throw new Error('The live docs owner must be the first and default version');
+  }
+  if (liveVersion.version !== 'latest') {
+    throw new Error('The live docs owner must use Mintlify version "latest"');
+  }
+  if (liveVersion.tag !== expectedTag) {
+    throw new Error(
+      `Live docs tag "${liveVersion.tag}" must match package release "${expectedTag}"`
+    );
+  }
+});
+
 for (const versionEntry of navigation.versions) {
   const { version, groups } = versionEntry;
   log(`Version: ${version}`);
