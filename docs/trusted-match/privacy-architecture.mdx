@@ -126,13 +126,14 @@ Temporal decorrelation is defense in depth. It is not the primary separation mec
 
 ## TEE Attestation Details
 
-TMP's reference architecture targets AWS Nitro Enclaves, though the protocol is TEE-agnostic. Any TEE that produces verifiable attestation documents is compatible.
+TMP is TEE-agnostic; the experimental [Router Attestation](/docs/trusted-match/router-attestation) surface (`trusted_match.router_attestation`) defines the normative wire shape (endpoint, envelope schema, nonce policy, signing-key binding rule, verification flow, `X-TMP-Attestation` per-request carrier, and provider-side `attestation_requirement` opt-in). The treatment in this section is informative — what attestation does and does not prove, and how it relates to TMP's regulatory and audit posture. See the normative page for the format-version enum, the verification flow, and the failure modes.
 
 ### What attestation proves
 
-- The router binary running inside the enclave matches the published, audited source code.
-- The code paths for context and identity are structurally separate, with no shared state.
+- The router binary running inside the enclave matches the published, audited source code (subject to the verifier's local measurement allowlist).
+- The code paths for context and identity are structurally separate, with no shared state, on the running binary — not only on the published source.
 - The binary has not been modified by the operator, the hosting provider, or any runtime process.
+- The signing key the provider already verifies request signatures against is held by the attested binary — see the [binding rule](/docs/trusted-match/router-attestation#binding-rule). Without this binding, attestation proves that *some* binary is attested but says nothing about whether that binary is what produced the signatures the provider trusts.
 
 ### What attestation does not prove
 
@@ -140,18 +141,9 @@ TMP's reference architecture targets AWS Nitro Enclaves, though the protocol is 
 - That the publisher's join logic is correct. The publisher is the first party and is not constrained by TMP's separation model.
 - That the code is free of bugs. Attestation proves the code matches the published source. Whether that source is correct is a separate question, addressed by open-source audit.
 
-### Attestation measurements
+### Attestation measurements (informative)
 
-Each attestation document includes cryptographic hashes of the running environment:
-
-| Measurement | What it covers |
-|---|---|
-| **Image hash** | Hash of the enclave image. Confirms the binary matches the expected build. |
-| **Kernel hash** | Hash of the operating environment. |
-| **Application hash** | Hash of the application-level code. |
-| **Role hash** | Confirms the enclave's permissions match expectations (e.g., no access to external databases). |
-
-A publisher or auditor can verify these measurements against the published build artifacts. This verification can be automated and performed continuously.
+Platform attestation documents carry cryptographic hashes of the running environment — image hash, kernel hash, application hash, and role/permissions measurements. The exact set, names, and semantics are format-specific and live in each verifier kit; the normative envelope is opaque to AdCP. A publisher or auditor verifies these measurements against the published build artifacts; this verification can be automated and performed continuously. AdCP does not maintain a normative measurement allowlist — see the rationale's "[No measurement allowlist in the spec](https://github.com/adcontextprotocol/adcp/blob/main/specs/tmp-router-attestation.md)" section for why this is a deploy-side decision.
 
 ## Comparison to OpenRTB
 

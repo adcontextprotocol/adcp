@@ -140,6 +140,27 @@ const ENUM_VALUE_ALLOWLIST = [
   // enums/metro-system.json — Nielsen DMA is the industry-standard geographic
   // division (same justification as FIELD_ALLOWLIST entry).
   { value: 'nielsen_dma', pathContains: 'enums/metro-system.json' },
+
+  // trusted-match/router-attestation.json — `attestation_format` enum members
+  // each name a single externally-defined attestation document format and
+  // version (canonical-external-identifier pattern, parallel to
+  // google_merchant_center in enums/feed-format.json). The verifier kit for
+  // each value parses the format-specific user-data slot; AdCP itself does
+  // not parse the document. Listed here for path-qualified discoverability
+  // and forward-compatibility against any vendor-token check.
+  { value: 'aws_nitro_cose_sign1_v1', pathContains: 'trusted-match/router-attestation.json' }, // AWS Nitro Enclaves attestation document, COSE_Sign1, v1 — canonical externally-defined format.
+  { value: 'intel_tdx_quote_v4', pathContains: 'trusted-match/router-attestation.json' }, // Intel Trust Domain Extensions quote, v4 — canonical externally-defined format.
+  { value: 'amd_sev_snp_attestation_v1', pathContains: 'trusted-match/router-attestation.json' }, // AMD SEV-SNP attestation report, v1 — canonical externally-defined format.
+  { value: 'gcp_confidential_space_v1', pathContains: 'trusted-match/router-attestation.json' }, // GCP Confidential Space attestation token, v1 — canonical externally-defined format.
+
+  // trusted-match/provider-registration.json — `attestation_requirement.acceptable_formats`
+  // mirrors the router-attestation.json enum (the provider declares which
+  // formats it accepts from a calling router). Same canonical-external-identifier
+  // justification applies; entries duplicated for path-qualification.
+  { value: 'aws_nitro_cose_sign1_v1', pathContains: 'trusted-match/provider-registration.json' },
+  { value: 'intel_tdx_quote_v4', pathContains: 'trusted-match/provider-registration.json' },
+  { value: 'amd_sev_snp_attestation_v1', pathContains: 'trusted-match/provider-registration.json' },
+  { value: 'gcp_confidential_space_v1', pathContains: 'trusted-match/provider-registration.json' },
 ];
 
 function findJSONFiles(dir) {

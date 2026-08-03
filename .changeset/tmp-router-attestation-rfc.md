@@ -1,0 +1,13 @@
+---
+"adcontextprotocol": minor
+---
+
+spec: TMP router attestation (experimental, `trusted_match.router_attestation`)
+
+Promotes the existing one-paragraph "TEE upgrade path" mention in router-architecture into a normative, experimentally-gated feature with a wire shape: a `GET /.well-known/tmp-router-attestation?nonce=<base64url, 16-32 raw bytes>` endpoint, a JSON envelope schema (`/schemas/trusted-match/router-attestation.json`), a per-request `X-TMP-Attestation` header carrier, and a new optional `attestation_requirement` block on `provider-registration.json` so providers can declare they require an attested router. Experimental gate `trusted_match.router_attestation` is separate from `trusted_match.core` and `trusted_match.verified_identity`, so participants can support core TMP without committing to attestation.
+
+The load-bearing invariant is the **binding rule**: the JWK in `signing_key` MUST appear bound in the platform user-data slot of `attestation_document` alongside the nonce, and verifiers MUST reject when the bound key doesn't byte-match the envelope's `signing_key` (RFC 7638 thumbprint comparison is the acceptable form). This rule is what makes the router's existing per-provider `X-AdCP-Signature`/`X-AdCP-Key-Id` signature path cryptographically anchored to the attested binary instead of to an out-of-band-deployed key.
+
+Scope is wire shape only. Out of scope: reproducible-build pipeline, KMS provisioning, `adcp-go` implementation, conformance scenarios, verifier-kit implementations, measurement allowlists. The `attestation_format` enum starts with four canonical externally-defined formats (`aws_nitro_cose_sign1_v1`, `intel_tdx_quote_v4`, `amd_sev_snp_attestation_v1`, `gcp_confidential_space_v1`) — same canonical-external-identifier pattern as `enums/feed-format.json`; entries added to the platform-agnostic lint allowlist with path-qualified justifications. Extension is via `ext` plus future enum additions through the normal change process.
+
+Additive change to an experimental surface: existing TMP behavior is unchanged for participants that do not opt in (no `attestation_requirement` block on a provider's registration means routers do not attach `X-TMP-Attestation` and providers do not require it). Schemas: new `router-attestation.json`; `provider-registration.json` gains optional `attestation_requirement` (additive, not in `required`). Docs: new `docs/trusted-match/router-attestation.mdx` normative page; `router-architecture.mdx` and `privacy-architecture.mdx` keep their informative framing and point at the normative page for the wire shape. Design rationale in `specs/tmp-router-attestation.md`.
