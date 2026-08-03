@@ -167,7 +167,7 @@ async function main() {
   console.log(`🚀 starting mintlify dev on port ${MINTLIFY_PORT}...`);
   const child = spawn(
     'npx',
-    ['--yes', 'mint@latest', 'dev', '--port', String(MINTLIFY_PORT), '--no-open'],
+    ['--no-install', 'mint', 'dev', '--port', String(MINTLIFY_PORT), '--no-open'],
     {
       cwd: STAGING,
       env: { ...process.env, NODE_PATH: '', NODE_ENV: 'production' },

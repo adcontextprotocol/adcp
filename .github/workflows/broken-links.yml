@@ -59,8 +59,8 @@ jobs:
     - name: Schema link convention (autofix with `npm run fix:schema-links`)
       run: npm run lint:schema-links
 
-    - name: Mintlify broken links (fix any links printed below)
-      run: npx --no-install mint broken-links
+    - name: Validate Mintlify navigation
+      run: node tests/docs-nav-validation.test.cjs
 
     - name: Check browser-facing Agentic Advertising links
       # Pull requests are not deployed to the production domains. Checking

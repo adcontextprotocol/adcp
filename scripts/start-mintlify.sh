@@ -7,4 +7,4 @@ PORT=$((HTTP_PORT + 1))
 # Workaround: Local node_modules contains MDX/frontmatter packages that conflict
 # with Mintlify's internal dependencies. Clear NODE_PATH to prevent Node from
 # resolving modules from local node_modules when Mintlify runs.
-NODE_PATH="" NODE_ENV=production npx --yes mint@latest dev --port "$PORT"
+NODE_PATH="" NODE_ENV=production npx --no-install mint dev --port "$PORT"
