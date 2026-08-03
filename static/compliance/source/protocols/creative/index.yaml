@@ -4,8 +4,13 @@ title: "Creative lifecycle"
 category: creative_lifecycle
 summary: "Baseline creative lifecycle on a stateful platform: sync display creatives, list with filtering, and preview renderings."
 track: creative
-required_tools:
-  - list_creative_formats
+# list_creative_formats is intentionally omitted from required_tools (AdCP #5779).
+# 3.2 agents may declare equivalent canonical-format discovery instead. The
+# branch-set gate below requires non-empty creative.supported_formats, product
+# format_options, or a passing list_creative_formats call; absence of an optional
+# tool grades its branch missing_tool without failing an agent whose alternative
+# discovery branch passes.
+required_tools: []
 
 narrative: |
   You run a creative platform with a persistent library — an ad server, creative management
@@ -76,8 +81,52 @@ phases:
             path: "context.correlation_id"
             value: "creative_lifecycle--get_capabilities"
             description: "Context correlation_id returned unchanged"
-  - id: discover_formats
-    title: "Discover accepted formats"
+  - id: discover_formats_canonical
+    title: "Discover accepted formats through canonical capabilities"
+    optional: true
+    requires_capability:
+      path: "creative.supported_formats"
+      present: true
+    branch_set:
+      id: creative_format_discovery_available
+      semantics: any_of
+    narrative: |
+      Preferred 3.2+ creative-agent discovery is the non-empty
+      creative.supported_formats catalog returned by get_adcp_capabilities.
+
+    steps:
+      - id: verify_supported_formats
+        title: "Verify canonical supported formats"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        contributes_to: creative_format_discovery_available
+        expected: |
+          Return a non-empty creative.supported_formats catalog with canonical
+          format declarations the agent can produce.
+        sample_request:
+          context:
+            correlation_id: "creative_lifecycle--verify_supported_formats"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "creative.supported_formats[0].format.format_kind"
+            description: "Canonical discovery includes at least one producible format"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_lifecycle--verify_supported_formats"
+            description: "Context correlation_id returned unchanged"
+
+  - id: discover_formats_v1
+    title: "Discover accepted formats through the v1 compatibility task"
+    optional: true
+    branch_set:
+      id: creative_format_discovery_available
+      semantics: any_of
     narrative: |
       Before pushing any creatives, the buyer discovers what formats your platform accepts.
       This determines which assets to prepare and what dimensions and specs to target.
@@ -88,13 +137,17 @@ phases:
         narrative: |
           The buyer calls list_creative_formats to discover what your platform accepts.
           The response defines format specs: dimensions, asset requirements, mime types,
-          and any platform-specific constraints.
+          and any platform-specific constraints. Preferred 3.2+ discovery is canonical
+          (creative.supported_formats / product format_options[]); this step exercises
+          the v1 compatibility path when the tool is still advertised.
         task: list_creative_formats
+        requires_tool: list_creative_formats
         schema_ref: "creative/list-creative-formats-request.json"
         response_schema_ref: "creative/list-creative-formats-response.json"
         doc_ref: "/creative/task-reference/list_creative_formats"
         comply_scenario: creative_lifecycle
         stateful: false
+        contributes_to: creative_format_discovery_available
         expected: |
           Return the first page of creative formats your platform accepts:
           - format_id with your agent_url and unique id
@@ -128,6 +181,70 @@ phases:
           - check: field_present
             path: "formats[0].format_id.id"
             description: "Format IDs include id — must match those in get_products"
+
+  - id: discover_formats_from_products
+    title: "Discover accepted formats through product declarations"
+    optional: true
+    branch_set:
+      id: creative_format_discovery_available
+      semantics: any_of
+    narrative: |
+      Sales agents may publish the accepted canonical formats inline on products
+      instead of exposing a creative-agent capabilities catalog. This branch
+      verifies the get_products.format_options[] discovery path.
+
+    steps:
+      - id: verify_product_format_options
+        title: "Verify canonical product format options"
+        task: get_products
+        requires_tool: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        contributes_to: creative_format_discovery_available
+        expected: |
+          Return at least one matching product with a non-empty format_options[]
+          array containing canonical format declarations accepted by that product.
+        sample_request:
+          buying_mode: "brief"
+          brief: "Show one product suitable for a standard display creative."
+          pagination:
+            max_results: 1
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          context:
+            correlation_id: "creative_lifecycle--verify_product_format_options"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products[0].format_options[0].format_kind"
+            description: "Product discovery includes at least one canonical format option"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_lifecycle--verify_product_format_options"
+            description: "Context correlation_id returned unchanged"
+
+  - id: enforce_format_discovery
+    title: "Require an available format discovery path"
+    steps:
+      - id: assert_format_discovery
+        title: "Assert that one discovery path passed"
+        task: assert_contribution
+        comply_scenario: creative_lifecycle
+        stateful: false
+        expected: |
+          At least one of canonical supported_formats discovery, canonical product
+          format_options discovery, or the v1 list_creative_formats compatibility
+          path contributed.
+        validations:
+          - check: any_of
+            allowed_values: ["creative_format_discovery_available"]
+            description: "Agent must expose supported_formats, product format_options, or the v1 list_creative_formats compatibility path"
   - id: sync_multiple
     title: "Sync display creative"
     narrative: |

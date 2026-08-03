@@ -125,6 +125,7 @@ phases:
           you support. Each format describes the output type, dimensions, and what
           inputs it needs (brief text, brand reference, seed images, etc.).
         task: list_creative_formats
+        requires_tool: list_creative_formats
         schema_ref: "creative/list-creative-formats-request.json"
         response_schema_ref: "creative/list-creative-formats-response.json"
         doc_ref: "/creative/task-reference/list_creative_formats"
