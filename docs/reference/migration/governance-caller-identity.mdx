@@ -1,0 +1,94 @@
+---
+title: Governance caller identity binding
+description: "Prepare check_governance integrations to bind caller assertions to authenticated agent identities in AdCP 3.2."
+"og:title": "AdCP — Governance caller identity binding"
+---
+
+# Governance caller identity binding
+
+<Note>
+**Experimental-surface notice.** This caller-authorization hardening was
+published on July 30, 2026 and will not ship before September 10, 2026. It
+applies to the experimental `governance.campaign` surface in AdCP 3.2.
+</Note>
+
+In AdCP 3.2, `check_governance.caller` remains required for audit and signed
+context continuity, but it does not establish identity. A governance agent
+resolves the requesting agent URL from the authenticated transport credential
+and verifies that it exactly matches the request assertion before making an
+authorization decision.
+
+For bearer, API-key, and OAuth transports, the URL comes from the server's
+credential-to-agent onboarding record. For signed requests, it comes from the
+verified signer-to-agent mapping. An opaque principal, token ID, key ID, or
+request field is not an agent URL.
+
+## Behavior changes
+
+- A request with an authenticated agent URL that differs from `caller` is
+  rejected with `PERMISSION_DENIED` before a check, audit entry, or signed
+  `governance_context` is created.
+- A plan with non-empty `delegations` or non-null `approved_sellers` fails
+  closed when the credential cannot be mapped to an agent URL.
+- Delegation and approved-seller comparisons, audit attribution, and the JWS
+  `caller` claim use the authenticated URL.
+- Unrestricted legacy plans can continue accepting an asserted caller when no
+  credential-to-agent URL mapping exists, but implementations should migrate
+  those credentials to durable agent records.
+
+## Before
+
+A restricted plan could authorize the body assertion even when the presented
+credential belonged to a different agent:
+
+```json
+{
+  "credential_mapping": {
+    "key_id": "key_attacker",
+    "agent_url": "https://attacker.example"
+  },
+  "check_governance": {
+    "plan_id": "plan_q1",
+    "caller": "https://delegated.example",
+    "tool": "create_media_buy",
+    "payload": { "budget": 10000 }
+  }
+}
+```
+
+The `caller` value matched the plan's delegation even though the authenticated
+credential did not.
+
+## After
+
+The credential mapping and request assertion must identify the same agent:
+
+```json
+{
+  "credential_mapping": {
+    "key_id": "key_delegated",
+    "agent_url": "https://delegated.example"
+  },
+  "check_governance": {
+    "plan_id": "plan_q1",
+    "caller": "https://delegated.example",
+    "tool": "create_media_buy",
+    "payload": { "budget": 10000 }
+  }
+}
+```
+
+The first example now returns `PERMISSION_DENIED` before creating a governance
+check, audit entry, or signed context.
+
+## Upgrade checklist
+
+1. Map every credential allowed to call restricted campaign-governance plans
+   to one canonical agent URL in the governance agent's onboarding registry.
+2. Send that exact URL in `check_governance.caller` on every request.
+3. Do not derive the URL from an opaque API-key principal or copy it from the
+   request into the authenticated context.
+4. Verify that delegation and approved-seller rejections create no audit check
+   and no signed governance context.
+5. Test buyer-side intent and seller-side execution credentials separately;
+   they normally resolve to different agent URLs.

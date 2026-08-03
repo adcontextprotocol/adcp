@@ -19,7 +19,7 @@
     "caller": {
       "type": "string",
       "format": "uri",
-      "description": "URL of the agent making the request."
+      "description": "Claimed URL of the agent making the request. When the transport credential resolves to an agent URL, the governance agent MUST require an exact match and use the resolved URL for authorization, audit, and signed context issuance. Plans with delegations or non-null approved_sellers MUST reject when no authenticated agent URL is available. On unrestricted legacy plans only, an unresolved assertion MAY be retained for audit and signed-context continuity but MUST NOT grant authorization."
     },
     "purchase_type": {
       "$ref": "/schemas/enums/purchase-type.json",

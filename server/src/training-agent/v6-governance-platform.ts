@@ -62,10 +62,17 @@ interface TrainingGovernanceConfig {
   strict: boolean;
 }
 
-function buildTrainingCtx(account: { authInfo?: { principal?: string } } | undefined): TrainingContext {
+function buildTrainingCtx(ctx: {
+  account?: { authInfo?: { principal?: string } };
+  agent?: { agent_url: string };
+} | undefined): TrainingContext {
   return {
     mode: 'open',
-    principal: account?.authInfo?.principal ?? 'anonymous',
+    principal: ctx?.account?.authInfo?.principal ?? 'anonymous',
+    // The framework resolves this from the authenticated credential through
+    // BuyerAgentRegistry. It is the only agent URL trusted by governance
+    // authorization; request `caller` remains an assertion to cross-check.
+    ...(ctx?.agent?.agent_url && { authenticatedAgentUrl: ctx.agent.agent_url }),
   };
 }
 
@@ -160,92 +167,92 @@ export class TrainingGovernancePlatform
 
   campaignGovernance: CampaignGovernancePlatform<TrainingGovernanceMeta> = {
     syncPlans: async (req, ctx) => {
-      const result = await handleSyncPlans(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleSyncPlans(req as ToolArgs, buildTrainingCtx(ctx));
       return translateV5Result(result);
     },
     checkGovernance: async (req, ctx) => {
-      const result = await handleCheckGovernance(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleCheckGovernance(req as ToolArgs, buildTrainingCtx(ctx));
       return translateV5Result(result);
     },
     reportPlanOutcome: async (req, ctx) => {
-      const result = await handleReportPlanOutcome(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleReportPlanOutcome(req as ToolArgs, buildTrainingCtx(ctx));
       return translateV5Result(result);
     },
     getPlanAuditLogs: async (req, ctx) => {
-      const result = await handleGetPlanAuditLogs(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleGetPlanAuditLogs(req as ToolArgs, buildTrainingCtx(ctx));
       return translateV5Result(result);
     },
   };
 
   propertyLists: PropertyListsPlatform<TrainingGovernanceMeta> = {
     createPropertyList: async (req, ctx) => {
-      const result = await handleCreatePropertyList(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleCreatePropertyList(req as ToolArgs, buildTrainingCtx(ctx));
       return translateV5Result(result);
     },
     updatePropertyList: async (req, ctx) => {
-      const result = await handleUpdatePropertyList(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleUpdatePropertyList(req as ToolArgs, buildTrainingCtx(ctx));
       return translateV5Result(result);
     },
     getPropertyList: async (req, ctx) => {
-      const result = await handleGetPropertyList(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleGetPropertyList(req as ToolArgs, buildTrainingCtx(ctx));
       return translateV5Result(result);
     },
     listPropertyLists: async (req, ctx) => {
-      const result = await handleListPropertyLists(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleListPropertyLists(req as ToolArgs, buildTrainingCtx(ctx));
       return translateV5Result(result);
     },
     deletePropertyList: async (req, ctx) => {
-      const result = await handleDeletePropertyList(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleDeletePropertyList(req as ToolArgs, buildTrainingCtx(ctx));
       return translateV5Result(result);
     },
   };
 
   collectionLists: CollectionListsPlatform<TrainingGovernanceMeta> = {
     createCollectionList: async (req, ctx) => {
-      const result = await handleCreateCollectionList(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleCreateCollectionList(req as ToolArgs, buildTrainingCtx(ctx));
       return translateV5Result(result);
     },
     updateCollectionList: async (req, ctx) => {
-      const result = await handleUpdateCollectionList(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleUpdateCollectionList(req as ToolArgs, buildTrainingCtx(ctx));
       return translateV5Result(result);
     },
     getCollectionList: async (req, ctx) => {
-      const result = await handleGetCollectionList(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleGetCollectionList(req as ToolArgs, buildTrainingCtx(ctx));
       return translateV5Result(result);
     },
     listCollectionLists: async (req, ctx) => {
-      const result = await handleListCollectionLists(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleListCollectionLists(req as ToolArgs, buildTrainingCtx(ctx));
       return translateV5Result(result);
     },
     deleteCollectionList: async (req, ctx) => {
-      const result = await handleDeleteCollectionList(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleDeleteCollectionList(req as ToolArgs, buildTrainingCtx(ctx));
       return translateV5Result(result);
     },
   };
 
   contentStandards: ContentStandardsPlatform<TrainingGovernanceMeta> = {
     listContentStandards: async (req, ctx) => {
-      const result = await handleListContentStandards(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleListContentStandards(req as ToolArgs, buildTrainingCtx(ctx));
       return translateV5Result(result);
     },
     getContentStandards: async (req, ctx) => {
-      const result = await handleGetContentStandards(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleGetContentStandards(req as ToolArgs, buildTrainingCtx(ctx));
       return translateV5Result(result);
     },
     createContentStandards: async (req, ctx) => {
-      const result = await handleCreateContentStandards(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleCreateContentStandards(req as ToolArgs, buildTrainingCtx(ctx));
       return translateV5Result(result);
     },
     updateContentStandards: async (req, ctx) => {
-      const result = await handleUpdateContentStandards(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleUpdateContentStandards(req as ToolArgs, buildTrainingCtx(ctx));
       return translateV5Result(result);
     },
     calibrateContent: async (req, ctx) => {
-      const result = await handleCalibrateContent(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleCalibrateContent(req as ToolArgs, buildTrainingCtx(ctx));
       return translateV5Result(result);
     },
     validateContentDelivery: async (req, ctx) => {
-      const result = await handleValidateContentDelivery(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleValidateContentDelivery(req as ToolArgs, buildTrainingCtx(ctx));
       return translateV5Result(result);
     },
   };

@@ -26,6 +26,12 @@ export interface TrainingContext {
    *  Derived from the bearer token in the MCP route; defaults to `anonymous`
    *  when no auth is configured (dev / test). */
   principal?: string;
+  /**
+   * Authenticated agent URL resolved by the server's credential-to-agent
+   * mapping. Security-sensitive handlers may use this as caller identity.
+   * Never populate it from request arguments or from `principal`.
+   */
+  authenticatedAgentUrl?: string;
   /** Route is the grader-targeted `/mcp-strict` endpoint. Advertises
    *  `required_for: ['create_media_buy']` in capabilities and enforces
    *  presence-gated signing at the auth layer. Default `/mcp` does not

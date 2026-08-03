@@ -9,6 +9,24 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 
 ---
 
+## Upcoming 3.2 — authenticated governance caller binding
+
+**Notice published:** July 30, 2026. **Earliest release:** September 10, 2026.
+
+The experimental campaign-governance surface now treats
+`check_governance.caller` as a checked assertion rather than an authentication
+source. Governance agents bind it to the agent URL resolved from the transport
+credential, reject mismatches before authorization or audit mutation, and fail
+closed when restricted plans cannot resolve an authenticated agent URL.
+
+This closes an authorization path where a caller could claim the URL of a more
+privileged delegated agent or approved seller. Implementers should map bearer,
+API-key, OAuth, or signed-request credentials to durable agent URLs and send
+that exact URL in `caller`. See [Governance caller identity
+binding](/docs/reference/migration/governance-caller-identity).
+
+---
+
 ## Version 3.1.3 — withdrawn
 
 **Status:** Withdrawn. Do not use 3.1.3 as an implementation target. Use 3.1.2 for the supported 3.1 line.

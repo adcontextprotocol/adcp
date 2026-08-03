@@ -222,9 +222,9 @@ Authority levels:
 | `execute_only` | Can execute pre-approved actions but cannot initiate new campaigns or reallocate budget |
 | `propose_only` | Can propose actions for governance review but cannot execute without explicit approval |
 
-When delegations are present, the governance agent validates that the `caller` URL in `check_governance` matches a delegation's `agent_url` before approving actions. Matching is by exact URI comparison (case-sensitive, after normalization per RFC 3986). An agent requesting a media buy in France must have a delegation that includes France in its `markets`. An agent with `execute_only` authority cannot reallocate budget between channels.
+When delegations are present, the governance agent first resolves the requesting agent URL from the authenticated transport credential. It rejects the check when that identity is unavailable or does not exactly match the request's `caller` assertion. Only then does it match the authenticated agent URL to a delegation's `agent_url`. A request body cannot establish or switch agent identity. An agent requesting a media buy in France must have a delegation that includes France in its `markets`. An agent with `execute_only` authority cannot reallocate budget between channels.
 
-When delegations are absent, the governance agent does not restrict which agents can act on the plan.
+When delegations are absent, the governance agent does not restrict which agents can act on the plan. If an authenticated agent URL is available, it still MUST match `caller` so audit records and signed contexts cannot attribute the check to a different agent. The same authenticated-identity rule applies before evaluating `approved_sellers`; a non-null list is a restricted plan and fails closed when the agent URL cannot be resolved from the credential.
 
 <Note>
 `delegations.authority` governs what a delegated executor-agent can do on behalf of the plan. It is unrelated to the plan's budget autonomy (`budget.reallocation_threshold` / `budget.reallocation_unlimited`) and unrelated to `plan.human_review_required`. Three separate concerns: per-agent scope, budget ops, and per-decision review.
