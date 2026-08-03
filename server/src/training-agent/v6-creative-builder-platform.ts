@@ -40,10 +40,14 @@ interface TrainingCreativeBuilderConfig {
   strict: boolean;
 }
 
-function buildTrainingCtx(account: { authInfo?: { principal?: string } } | undefined): TrainingContext {
+function buildTrainingCtx(
+  account: { authInfo?: { principal?: string } } | undefined,
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): TrainingContext {
   return {
     mode: 'open',
     principal: account?.authInfo?.principal ?? 'anonymous',
+    ...(storyboardCompat && { storyboardCompat }),
   };
 }
 
@@ -132,7 +136,7 @@ export class TrainingCreativeBuilderPlatform
 
   creative: CreativeBuilderPlatform<TrainingCreativeBuilderMeta> = {
     buildCreative: async (req, ctx) => {
-      const result = await handleBuildCreative(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleBuildCreative(req as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
       // F16 (`bca20dfb`) — framework's discriminator detects the
       // envelope shape: bare CreativeManifest wraps as
       // { creative_manifest }; bare CreativeManifest[] wraps as
@@ -143,17 +147,20 @@ export class TrainingCreativeBuilderPlatform
       return translateV5Result(result) as any;
     },
     previewCreative: async (req, ctx) => {
-      const result = await handlePreviewCreative(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handlePreviewCreative(req as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
       return translateV5Result(result);
     },
     listCreativeFormats: async (req, ctx) => {
-      const result = await handleListCreativeFormats(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleListCreativeFormats(req as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
       return translateV5Result(result);
     },
     syncCreatives: async (creatives, ctx) => {
       // Lift `dry_run` and `assignments[]` off ctx.input (adcp-client#1842).
       const fromInput = pickFromInput(ctx.input, ['assignments', 'dry_run'] as const);
-      const result = await handleSyncCreatives({ creatives, ...fromInput } as unknown as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleSyncCreatives(
+        { creatives, ...fromInput } as unknown as ToolArgs,
+        buildTrainingCtx(ctx.account, this.storyboardCompat),
+      );
       const wrapped = translateV5Result<{ creatives?: unknown[] }>(result);
       return (wrapped.creatives ?? []) as SyncCreativesRow[];
     },

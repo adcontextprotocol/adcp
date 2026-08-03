@@ -5569,7 +5569,9 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       formatOptionRefs: pkg.format_option_refs,
       formatKind: pkg.format_kind,
       params: pkg.params,
-      ...(formatSnapshot.formats?.length && { formatsToProvide: formatSnapshot.formats }),
+      ...(!isThreeZeroStoryboardCompat(ctx) && formatSnapshot.formats?.length && {
+        formatsToProvide: formatSnapshot.formats,
+      }),
       creativeAssignments,
       targeting: targetingResult.targeting,
       ...(isRecord(pkg.context) && { context: pkg.context }),
@@ -6841,7 +6843,9 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
         formatOptionRefs: npkg.format_option_refs,
         formatKind: npkg.format_kind,
         params: npkg.params,
-        ...(formatSnapshot.formats?.length && { formatsToProvide: formatSnapshot.formats }),
+        ...(!isThreeZeroStoryboardCompat(ctx) && formatSnapshot.formats?.length && {
+          formatsToProvide: formatSnapshot.formats,
+        }),
         creativeAssignments: [],
         targeting: targetingResult.targeting,
       };
@@ -8127,13 +8131,35 @@ export async function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext
     let formatKind = manifest.format_kind;
     let creativeName = 'Preview';
 
-    // If creative_id provided, look up from library
-    if (manifest.creative_id) {
+    // A top-level creative_id is normalized to a manifest containing only
+    // that ID. An inline manifest may also carry creative_id as identity; its
+    // supplied assets and format remain authoritative and must not trigger a
+    // library lookup.
+    const isLibraryReference = Boolean(
+      manifest.creative_id
+      && manifest.assets === undefined
+      && manifest.format_id === undefined
+      && manifest.format_kind === undefined,
+    );
+    if (isLibraryReference && manifest.creative_id) {
       const creative = session.creatives.get(manifest.creative_id);
       if (!creative) return null;
       formatId = creative.formatId;
       formatKind = creative.formatKind;
       creativeName = creative.name || manifest.creative_id;
+    }
+
+    // The frozen 3.0 surface stored named format IDs in the later
+    // `format_kind` slot when the SDK projected a synced creative. Treat that
+    // value as legacy routing only inside the storyboard compatibility shim.
+    if (
+      isThreeZeroStoryboardCompat(ctx)
+      && formatKind
+      && !VALID_CANONICAL_FORMAT_KINDS.has(formatKind)
+      && formatId?.id
+      && validFormatIds.has(formatId.id)
+    ) {
+      formatKind = undefined;
     }
 
     if (legacyFormatId) {
@@ -8143,7 +8169,7 @@ export async function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext
       if (targetCapabilityId) {
         const selected = SUPPORTED_CANONICAL_BUILD_CAPABILITIES.find(item => item.capabilityId === targetCapabilityId);
         if (!selected || selected.formatKind !== formatKind) return null;
-      } else if (matches.length !== 1) {
+      } else if (matches.length !== 1 && !isThreeZeroStoryboardCompat(ctx)) {
         return null;
       }
     } else if (targetCapabilityId) {

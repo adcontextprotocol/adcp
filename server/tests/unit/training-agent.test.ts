@@ -41,6 +41,8 @@ import {
 } from '../../src/training-agent/governance-handlers.js';
 import { clearAccountStore } from '../../src/training-agent/account-handlers.js';
 import { TrainingSalesPlatform } from '../../src/training-agent/v6-sales-platform.js';
+import { TrainingCreativePlatform } from '../../src/training-agent/v6-creative-platform.js';
+import { TrainingCreativeBuilderPlatform } from '../../src/training-agent/v6-creative-builder-platform.js';
 
 // Valid channels per the enum schema at static/schemas/source/enums/channels.json
 const VALID_CHANNELS = [
@@ -2757,6 +2759,49 @@ describe('create_media_buy handler', () => {
     expect(readyBuy.status).toBe('pending_start');
     expect(readyBuy.packages[0].formats_to_provide).toEqual(selected);
     expect(readyBuy.packages[0].formats_pending).toEqual([]);
+  });
+
+  it('keeps assignment-count readiness on the frozen 3.0 compatibility surface', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptionId = product.pricing_options[0].pricing_option_id;
+    const account = { brand: { domain: 'compat-readiness.example' }, operator: 'compat-readiness.example' };
+    const compatCtx = { ...DEFAULT_CTX, storyboardCompat: { version: '3.0' as const } };
+
+    const { result: created } = await simulateCallTool(createTrainingAgentServer(compatCtx), 'create_media_buy', {
+      account,
+      brand: { domain: 'compat-readiness.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptionId,
+        budget: 50000,
+      }],
+    });
+    const createdPackage = (created.packages as Array<Record<string, any>>)[0];
+    expect(createdPackage.formats_to_provide).toBeUndefined();
+    expect(createdPackage.formats_pending).toBeUndefined();
+
+    await simulateCallTool(createTrainingAgentServer(compatCtx), 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_compat_assignment',
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        assets: {},
+      }],
+      assignments: [{
+        media_buy_id: created.media_buy_id,
+        package_id: createdPackage.package_id,
+        creative_id: 'cr_compat_assignment',
+      }],
+    });
+
+    const { result: ready } = await simulateCallTool(createTrainingAgentServer(compatCtx), 'get_media_buys', {
+      account,
+      media_buy_ids: [created.media_buy_id],
+    });
+    expect((ready.media_buys as Array<Record<string, any>>)[0].status).toBe('pending_start');
   });
 
   it('keeps a unique-kind package pending for a wrong option ref or fixed dimensions', async () => {
@@ -5630,6 +5675,72 @@ describe('canonical creative build capabilities', () => {
       creative_manifest: manifest,
     });
     expect(failure.result.code).toBe('FORMAT_NOT_SUPPORTED');
+  });
+
+  it('preserves implicit preview routing only on the 3.0 storyboard compatibility surface', async () => {
+    const manifest = {
+      format_kind: 'native_in_feed',
+      assets: {
+        headline: { asset_type: 'text', content: 'Compatibility preview' },
+      },
+    };
+
+    const currentServer = createTrainingAgentServer(DEFAULT_CTX);
+    const current = await simulateCallTool(currentServer, 'preview_creative', {
+      request_type: 'single',
+      creative_manifest: manifest,
+    });
+    expect(current.result.code).toBe('FORMAT_NOT_SUPPORTED');
+
+    const compatServer = createTrainingAgentServer({
+      ...DEFAULT_CTX,
+      storyboardCompat: { version: '3.0' },
+    });
+    const compat = await simulateCallTool(compatServer, 'preview_creative', {
+      request_type: 'single',
+      creative_manifest: manifest,
+    });
+    expect(compat.result.response_type).toBe('single');
+
+    const legacyProjection = await simulateCallTool(compatServer, 'preview_creative', {
+      request_type: 'single',
+      creative_manifest: {
+        creative_id: 'inline_not_in_library',
+        format_id: { agent_url: TEST_AGENT_URL, id: 'native_post' },
+        format_kind: 'native_post',
+        assets: {},
+      },
+    });
+    expect(legacyProjection.result.response_type).toBe('single');
+  });
+
+  it('threads 3.0 preview compatibility through both v6 creative adapters', async () => {
+    const request = {
+      request_type: 'single',
+      creative_manifest: {
+        format_kind: 'native_in_feed',
+        assets: {
+          headline: { asset_type: 'text', content: 'Adapter compatibility preview' },
+        },
+      },
+    };
+    const platformContext = {};
+
+    for (const currentPlatform of [
+      new TrainingCreativePlatform(),
+      new TrainingCreativeBuilderPlatform(),
+    ]) {
+      await expect(currentPlatform.creative.previewCreative(request as any, platformContext as any))
+        .rejects.toThrow(/no unique matching advertised preview capability/i);
+    }
+
+    for (const compatPlatform of [
+      new TrainingCreativePlatform({ version: '3.0' }),
+      new TrainingCreativeBuilderPlatform({ version: '3.0' }),
+    ]) {
+      const result = await compatPlatform.creative.previewCreative(request as any, platformContext as any);
+      expect((result as any).response_type).toBe('single');
+    }
   });
 
   it('applies batch preview defaults and lets items override output quality', async () => {
