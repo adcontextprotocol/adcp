@@ -205,154 +205,181 @@
       "type": "array",
       "description": "Array of all assets supported for this format. Each asset is identified by its asset_id, which must be used as the key in creative manifests. Use the 'required' boolean on each asset to indicate whether it's mandatory.",
       "items": {
+        "discriminator": { "propertyName": "item_type" },
         "oneOf": [
           {
-            "title": "IndividualImageAsset",
-            "description": "Image asset",
-            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "type": "object",
+            "description": "Individual asset slot",
             "properties": {
-              "item_type": { "const": "individual" },
-              "asset_type": { "const": "image" },
-              "requirements": { "$ref": "/schemas/core/requirements/image-asset-requirements.json" }
-            }
-          },
-          {
-            "title": "IndividualVideoAsset",
-            "description": "Video asset",
-            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
-            "properties": {
-              "item_type": { "const": "individual" },
-              "asset_type": { "const": "video" },
-              "requirements": { "$ref": "/schemas/core/requirements/video-asset-requirements.json" }
-            }
-          },
-          {
-            "title": "IndividualAudioAsset",
-            "description": "Audio asset",
-            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
-            "properties": {
-              "item_type": { "const": "individual" },
-              "asset_type": { "const": "audio" },
-              "requirements": { "$ref": "/schemas/core/requirements/audio-asset-requirements.json" }
-            }
-          },
-          {
-            "title": "IndividualTextAsset",
-            "description": "Text asset",
-            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
-            "properties": {
-              "item_type": { "const": "individual" },
-              "asset_type": { "const": "text" },
-              "requirements": { "$ref": "/schemas/core/requirements/text-asset-requirements.json" }
-            }
-          },
-          {
-            "title": "IndividualMarkdownAsset",
-            "description": "Markdown asset",
-            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
-            "properties": {
-              "item_type": { "const": "individual" },
-              "asset_type": { "const": "markdown" },
-              "requirements": { "$ref": "/schemas/core/requirements/markdown-asset-requirements.json" }
-            }
-          },
-          {
-            "title": "IndividualHtmlAsset",
-            "description": "HTML asset",
-            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
-            "properties": {
-              "item_type": { "const": "individual" },
-              "asset_type": { "const": "html" },
-              "requirements": { "$ref": "/schemas/core/requirements/html-asset-requirements.json" }
-            }
-          },
-          {
-            "title": "IndividualCssAsset",
-            "description": "CSS asset",
-            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
-            "properties": {
-              "item_type": { "const": "individual" },
-              "asset_type": { "const": "css" },
-              "requirements": { "$ref": "/schemas/core/requirements/css-asset-requirements.json" }
-            }
-          },
-          {
-            "title": "IndividualJavaScriptAsset",
-            "description": "JavaScript asset",
-            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
-            "properties": {
-              "item_type": { "const": "individual" },
-              "asset_type": { "const": "javascript" },
-              "requirements": { "$ref": "/schemas/core/requirements/javascript-asset-requirements.json" }
-            }
-          },
-          {
-            "title": "IndividualZipAsset",
-            "description": "Zip-bundled asset (HTML5 banner bundles, etc.)",
-            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
-            "properties": {
-              "item_type": { "const": "individual" },
-              "asset_type": { "const": "zip" }
-            }
-          },
-          {
-            "title": "IndividualVastAsset",
-            "description": "VAST asset",
-            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
-            "properties": {
-              "item_type": { "const": "individual" },
-              "asset_type": { "const": "vast" },
-              "requirements": { "$ref": "/schemas/core/requirements/vast-asset-requirements.json" }
-            }
-          },
-          {
-            "title": "IndividualDaastAsset",
-            "description": "DAAST asset",
-            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
-            "properties": {
-              "item_type": { "const": "individual" },
-              "asset_type": { "const": "daast" },
-              "requirements": { "$ref": "/schemas/core/requirements/daast-asset-requirements.json" }
-            }
-          },
-          {
-            "title": "IndividualUrlAsset",
-            "description": "URL asset",
-            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
-            "properties": {
-              "item_type": { "const": "individual" },
-              "asset_type": { "const": "url" },
-              "requirements": { "$ref": "/schemas/core/requirements/url-asset-requirements.json" }
-            }
-          },
-          {
-            "title": "IndividualWebhookAsset",
-            "description": "Webhook asset",
-            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
-            "properties": {
-              "item_type": { "const": "individual" },
-              "asset_type": { "const": "webhook" },
-              "requirements": { "$ref": "/schemas/core/requirements/webhook-asset-requirements.json" }
-            }
-          },
-          {
-            "title": "IndividualBriefAsset",
-            "description": "Brief asset",
-            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
-            "properties": {
-              "item_type": { "const": "individual" },
-              "asset_type": { "const": "brief" }
-            }
-          },
-          {
-            "title": "IndividualCatalogAsset",
-            "description": "Catalog asset",
-            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
-            "properties": {
-              "item_type": { "const": "individual" },
-              "asset_type": { "const": "catalog" },
-              "requirements": { "$ref": "/schemas/core/requirements/catalog-requirements.json" }
-            }
+              "item_type": { "type": "string", "const": "individual" }
+            },
+            "required": ["item_type"],
+            "discriminator": { "propertyName": "asset_type" },
+            "oneOf": [
+              {
+                "title": "IndividualImageAsset",
+                "description": "Image asset",
+                "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+                "properties": {
+                  "item_type": { "const": "individual" },
+                  "asset_type": { "const": "image" },
+                  "requirements": { "$ref": "/schemas/core/requirements/image-asset-requirements.json" }
+                },
+                "required": ["asset_type"]
+              },
+              {
+                "title": "IndividualVideoAsset",
+                "description": "Video asset",
+                "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+                "properties": {
+                  "item_type": { "const": "individual" },
+                  "asset_type": { "const": "video" },
+                  "requirements": { "$ref": "/schemas/core/requirements/video-asset-requirements.json" }
+                },
+                "required": ["asset_type"]
+              },
+              {
+                "title": "IndividualAudioAsset",
+                "description": "Audio asset",
+                "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+                "properties": {
+                  "item_type": { "const": "individual" },
+                  "asset_type": { "const": "audio" },
+                  "requirements": { "$ref": "/schemas/core/requirements/audio-asset-requirements.json" }
+                },
+                "required": ["asset_type"]
+              },
+              {
+                "title": "IndividualTextAsset",
+                "description": "Text asset",
+                "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+                "properties": {
+                  "item_type": { "const": "individual" },
+                  "asset_type": { "const": "text" },
+                  "requirements": { "$ref": "/schemas/core/requirements/text-asset-requirements.json" }
+                },
+                "required": ["asset_type"]
+              },
+              {
+                "title": "IndividualMarkdownAsset",
+                "description": "Markdown asset",
+                "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+                "properties": {
+                  "item_type": { "const": "individual" },
+                  "asset_type": { "const": "markdown" },
+                  "requirements": { "$ref": "/schemas/core/requirements/markdown-asset-requirements.json" }
+                },
+                "required": ["asset_type"]
+              },
+              {
+                "title": "IndividualHtmlAsset",
+                "description": "HTML asset",
+                "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+                "properties": {
+                  "item_type": { "const": "individual" },
+                  "asset_type": { "const": "html" },
+                  "requirements": { "$ref": "/schemas/core/requirements/html-asset-requirements.json" }
+                },
+                "required": ["asset_type"]
+              },
+              {
+                "title": "IndividualCssAsset",
+                "description": "CSS asset",
+                "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+                "properties": {
+                  "item_type": { "const": "individual" },
+                  "asset_type": { "const": "css" },
+                  "requirements": { "$ref": "/schemas/core/requirements/css-asset-requirements.json" }
+                },
+                "required": ["asset_type"]
+              },
+              {
+                "title": "IndividualJavaScriptAsset",
+                "description": "JavaScript asset",
+                "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+                "properties": {
+                  "item_type": { "const": "individual" },
+                  "asset_type": { "const": "javascript" },
+                  "requirements": { "$ref": "/schemas/core/requirements/javascript-asset-requirements.json" }
+                },
+                "required": ["asset_type"]
+              },
+              {
+                "title": "IndividualZipAsset",
+                "description": "Zip-bundled asset (HTML5 banner bundles, etc.)",
+                "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+                "properties": {
+                  "item_type": { "const": "individual" },
+                  "asset_type": { "const": "zip" }
+                },
+                "required": ["asset_type"]
+              },
+              {
+                "title": "IndividualVastAsset",
+                "description": "VAST asset",
+                "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+                "properties": {
+                  "item_type": { "const": "individual" },
+                  "asset_type": { "const": "vast" },
+                  "requirements": { "$ref": "/schemas/core/requirements/vast-asset-requirements.json" }
+                },
+                "required": ["asset_type"]
+              },
+              {
+                "title": "IndividualDaastAsset",
+                "description": "DAAST asset",
+                "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+                "properties": {
+                  "item_type": { "const": "individual" },
+                  "asset_type": { "const": "daast" },
+                  "requirements": { "$ref": "/schemas/core/requirements/daast-asset-requirements.json" }
+                },
+                "required": ["asset_type"]
+              },
+              {
+                "title": "IndividualUrlAsset",
+                "description": "URL asset",
+                "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+                "properties": {
+                  "item_type": { "const": "individual" },
+                  "asset_type": { "const": "url" },
+                  "requirements": { "$ref": "/schemas/core/requirements/url-asset-requirements.json" }
+                },
+                "required": ["asset_type"]
+              },
+              {
+                "title": "IndividualWebhookAsset",
+                "description": "Webhook asset",
+                "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+                "properties": {
+                  "item_type": { "const": "individual" },
+                  "asset_type": { "const": "webhook" },
+                  "requirements": { "$ref": "/schemas/core/requirements/webhook-asset-requirements.json" }
+                },
+                "required": ["asset_type"]
+              },
+              {
+                "title": "IndividualBriefAsset",
+                "description": "Brief asset",
+                "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+                "properties": {
+                  "item_type": { "const": "individual" },
+                  "asset_type": { "const": "brief" }
+                },
+                "required": ["asset_type"]
+              },
+              {
+                "title": "IndividualCatalogAsset",
+                "description": "Catalog asset",
+                "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+                "properties": {
+                  "item_type": { "const": "individual" },
+                  "asset_type": { "const": "catalog" },
+                  "requirements": { "$ref": "/schemas/core/requirements/catalog-requirements.json" }
+                },
+                "required": ["asset_type"]
+              }
+            ]
           },
           {
             "title": "RepeatableGroupAsset",
