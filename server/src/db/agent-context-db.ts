@@ -875,7 +875,7 @@ export class AgentContextDatabase {
         secretEncrypted.encrypted,
         secretEncrypted.iv,
         creds.scope || null,
-        Array.isArray(creds.resource) ? `json1:${JSON.stringify(creds.resource)}` : (creds.resource ?? null),
+        Array.isArray(creds.resource) ? `arr_v1:${JSON.stringify(creds.resource)}` : (creds.resource ?? null),
         creds.audience || null,
         creds.auth_method || null,
         id,
@@ -930,9 +930,9 @@ export class AgentContextDatabase {
     };
     if (row.oauth_cc_scope) creds.scope = row.oauth_cc_scope;
     if (row.oauth_cc_resource) {
-      if (row.oauth_cc_resource.startsWith('json1:')) {
+      if (row.oauth_cc_resource.startsWith('arr_v1:')) {
         try {
-          const parsed: unknown = JSON.parse(row.oauth_cc_resource.slice(6));
+          const parsed: unknown = JSON.parse(row.oauth_cc_resource.slice(7));
           creds.resource =
             Array.isArray(parsed) && parsed.every((e): e is string => typeof e === 'string')
               ? parsed

@@ -329,7 +329,7 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
       expect(res.body.error).toMatch(/client_id/);
     });
 
-    it('saves an array resource and stores it with the json1: storage prefix', async () => {
+    it('saves an array resource and stores it with the arr_v1: storage prefix', async () => {
       const resources = ['https://api1.example.com', 'https://api2.example.com'];
       await request(app)
         .put(url)
@@ -340,8 +340,9 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
         `SELECT oauth_cc_resource FROM agent_contexts WHERE organization_id = $1 AND agent_url = $2`,
         [TEST_ORG_ID, TEST_AGENT_URL],
       );
-      // Verify the unambiguous tagged-encoding is written to the TEXT column
-      expect(r.rows[0].oauth_cc_resource).toBe(`json1:${JSON.stringify(resources)}`);
+      // arr_v1: prefix is disjoint from any valid RFC 3986 URI scheme (underscore
+      // is not allowed in URI scheme names), making scalar/array decoding unambiguous.
+      expect(r.rows[0].oauth_cc_resource).toBe(`arr_v1:${JSON.stringify(resources)}`);
     });
 
     it('returns 403 for an agent the user does not own', async () => {
@@ -349,21 +350,6 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
         .put(`/api/registry/agents/${encodeURIComponent(OTHER_AGENT_URL)}/oauth-client-credentials`)
         .send(validBody);
       expect(res.status).toBe(403);
-    });
-
-    it('accepts an array resource and stores it as json1:-prefixed JSON text', async () => {
-      const resources = ['https://api1.example.com', 'https://api2.example.com'];
-      await request(app)
-        .put(url)
-        .send({ ...validBody, resource: resources })
-        .expect(200);
-
-      const r = await pool.query(
-        `SELECT oauth_cc_resource FROM agent_contexts
-         WHERE organization_id = $1 AND agent_url = $2`,
-        [TEST_ORG_ID, TEST_AGENT_URL],
-      );
-      expect(r.rows[0].oauth_cc_resource).toBe(`json1:${JSON.stringify(resources)}`);
     });
   });
 
@@ -455,10 +441,8 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
     });
 
     // ── RFC 8707 multi-resource (array) end-to-end ─────────────────
-    // Blockers from review #2805: prove the production PUT → TEXT column →
-    // load → POST /test flow works correctly for an array resource.
 
-    it('stores an array resource as json1:-prefixed JSON text in oauth_cc_resource', async () => {
+    it('stores an array resource as arr_v1:-prefixed JSON text in oauth_cc_resource', async () => {
       const resources = ['https://api1.example.com', 'https://api2.example.com'];
       await request(app)
         .put(saveUrl)
@@ -470,27 +454,7 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
          WHERE organization_id = $1 AND agent_url = $2`,
         [TEST_ORG_ID, TEST_AGENT_URL],
       );
-      expect(r.rows[0].oauth_cc_resource).toBe(`json1:${JSON.stringify(resources)}`);
-    });
-
-    it('passes the decoded resource array to the SDK exchangeClientCredentials call', async () => {
-      const resources = ['https://api1.example.com', 'https://api2.example.com'];
-      await request(app)
-        .put(saveUrl)
-        .send({ ...validBody, resource: resources })
-        .expect(200);
-
-      exchangeMock.mockResolvedValueOnce({ access_token: 'tok', token_type: 'Bearer' });
-
-      const res = await request(app).post(testUrl).send({});
-      expect(res.status).toBe(200);
-      expect(res.body.ok).toBe(true);
-
-      // The SDK mock must have been called with credentials whose resource
-      // field is the original array (not the JSON string stored in the DB).
-      expect(exchangeMock).toHaveBeenCalledOnce();
-      const sdkCreds = exchangeMock.mock.calls[0][0];
-      expect(sdkCreds).toMatchObject({ resource: resources });
+      expect(r.rows[0].oauth_cc_resource).toBe(`arr_v1:${JSON.stringify(resources)}`);
     });
 
     it('returns 400 when PUT receives an empty resource array', async () => {

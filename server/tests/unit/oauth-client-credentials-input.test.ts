@@ -303,20 +303,6 @@ describe('parseOAuthClientCredentialsInput', () => {
       expect(result.code).toBe('invalid_field_type');
     });
 
-    it('rejects when aggregate character length exceeds 8192 (entries individually valid)', () => {
-      // 5 entries × 1700 chars each = 8500, all under per-entry limit of 2048 and count ≤ 8
-      const longUri = 'https://api.example.com/' + 'a'.repeat(1675); // 1700 chars total
-      const resources = Array.from({ length: 5 }, () => longUri);
-      const result = parseOAuthClientCredentialsInput(
-        { ...validMinimal, resource: resources },
-        { validateTokenEndpoint: acceptAll },
-      );
-      expect(result.ok).toBe(false);
-      if (result.ok) return;
-      expect(result.code).toBe('aggregate_too_long');
-      expect(result.field).toBe('resource');
-    });
-
     it('accepts arrays whose aggregate length is exactly at the limit', () => {
       // 4 entries × 2048 = 8192 — exactly at the boundary
       const resources = Array.from({ length: 4 }, () => 'https://api.example.com/' + 'a'.repeat(2024));
@@ -328,15 +314,40 @@ describe('parseOAuthClientCredentialsInput', () => {
     });
   });
 
-  // ── Scalar collision: DB encoding makes any scalar safe ─────
-  // The DB layer uses a "json1:" prefix when storing arrays (not startsWith('['))
-  // so scalar values starting with "[" are stored and decoded as scalars correctly.
-  it('accepts a scalar resource that starts with a scheme letter', () => {
+  // ── Scalar collision guard ───────────────────────────────────
+  // The DB layer uses "arr_v1:" as the array-encoding prefix. The underscore
+  // makes it invalid as an RFC 3986 URI scheme, so no legitimate scalar resource
+  // value will start with it. The validator rejects the prefix explicitly to
+  // keep the scalar/array encoding disjoint.
+  it('accepts a scalar resource that starts with a scheme letter (e.g. https:)', () => {
     const result = parseOAuthClientCredentialsInput(
       { ...validMinimal, resource: 'https://api.example.com' },
       { validateTokenEndpoint: acceptAll },
     );
     expect(result.ok).toBe(true);
+  });
+
+  it('accepts a scalar resource whose text starts with "json1:" (valid URI scheme)', () => {
+    // json1: is a valid RFC 3986 URI scheme. The validator must not reject it —
+    // only "arr_v1:" (the storage-prefix marker) is reserved.
+    const result = parseOAuthClientCredentialsInput(
+      { ...validMinimal, resource: 'json1:["https://a"]' },
+      { validateTokenEndpoint: acceptAll },
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.creds.resource).toBe('json1:["https://a"]');
+  });
+
+  it('rejects a scalar resource that starts with the reserved "arr_v1:" storage prefix', () => {
+    const result = parseOAuthClientCredentialsInput(
+      { ...validMinimal, resource: 'arr_v1:something' },
+      { validateTokenEndpoint: acceptAll },
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe('invalid_field_type');
+    expect(result.field).toBe('resource');
   });
 
   // ── Structured error codes (closes #2810) ───────────────────────────

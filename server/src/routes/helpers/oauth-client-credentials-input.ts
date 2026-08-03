@@ -195,6 +195,15 @@ function parseResourceField(value: unknown): ResourceFieldResult {
   if (value === undefined || value === null || value === '') return { value: null };
 
   if (typeof value === 'string') {
+    if (value.startsWith('arr_v1:')) {
+      return {
+        error: fail(
+          'invalid_field_type',
+          'resource',
+          'oauth_client_credentials.resource: scalar values may not start with the reserved "arr_v1:" storage prefix.',
+        ),
+      };
+    }
     if (value.length > MAX_RESOURCE_ENTRY_LENGTH) {
       return { error: fail('field_too_long', 'resource', 'oauth_client_credentials.resource exceeds maximum length.') };
     }
