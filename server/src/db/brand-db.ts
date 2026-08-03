@@ -788,7 +788,7 @@ export class BrandDatabase {
        SET relationship_trust = $2,
            relationship_verified_at = $3,
            claimed_house_domain = $4,
-           house_domain = CASE WHEN $5 IS NOT NULL THEN $5 ELSE house_domain END,
+           house_domain = CASE WHEN $5::TEXT IS NOT NULL THEN $5::TEXT ELSE house_domain END,
            relationship_trust_computed_at = NOW()
        WHERE domain = $1`,
       [
