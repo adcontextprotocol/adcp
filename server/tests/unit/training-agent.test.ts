@@ -5294,17 +5294,20 @@ describe('report_usage handler', () => {
     expect(result.rejected).toBeUndefined();
   });
 
-  it('returns error when reporting_period is missing', async () => {
+  it('returns INVALID_REQUEST when reporting_period is missing', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result, isError } = await simulateCallTool(server, 'report_usage', {
       usage: [{ account, vendor_cost: 100, currency: 'USD' }],
     });
 
     expect(isError).toBe(true);
-    expect(result.code).toBe('INVALID_USAGE_DATA');
+    expect(result).toMatchObject({
+      code: 'INVALID_REQUEST',
+      field: 'reporting_period',
+    });
   });
 
-  it('returns error when usage array is empty', async () => {
+  it('returns INVALID_REQUEST when usage array is empty', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result, isError } = await simulateCallTool(server, 'report_usage', {
       reporting_period: period,
@@ -5312,7 +5315,10 @@ describe('report_usage handler', () => {
     });
 
     expect(isError).toBe(true);
-    expect(result.code).toBe('INVALID_USAGE_DATA');
+    expect(result).toMatchObject({
+      code: 'INVALID_REQUEST',
+      field: 'usage',
+    });
   });
 
   it('returns NOT_FOUND for unknown creative_id', async () => {
