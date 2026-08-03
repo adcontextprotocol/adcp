@@ -215,22 +215,58 @@ test('page files belong to only one version', () => {
   }
 });
 
-test('emergency front-door redirects target published snapshot files', () => {
-  const expectedRedirects = new Map([
-    ['/docs/intro', '/dist/docs/3.1.2/intro'],
-    ['/docs/quickstart', '/dist/docs/3.1.2/quickstart']
-  ]);
+// Emergency fallback while Mintlify omits file-backed docs/** routes.
+// Remove this invariant with the temporary redirects once live files publish again.
+test('temporary snapshot redirects cover every available live page', () => {
+  const liveVersion = navigation.versions.find(version => version.default)
+    || navigation.versions[0];
+  const livePages = collectPages(liveVersion.groups)
+    .filter(page => page.startsWith('docs/'));
+  const expectedRedirects = new Map();
+  const uncoveredPages = [];
+
+  for (const page of livePages) {
+    const relativePath = page.slice('docs/'.length);
+    const destination = `/dist/docs/3.1.2/${relativePath}`;
+    const filePath = path.join(rootDir, destination.slice(1));
+    if (fs.existsSync(`${filePath}.mdx`) || fs.existsSync(`${filePath}.md`)) {
+      expectedRedirects.set(`/${page}`, destination);
+    } else {
+      uncoveredPages.push(page);
+    }
+  }
+
+  const expectedUncoveredPages = ['docs/protocol/sync_agent_notification_configs'];
+  if (JSON.stringify(uncoveredPages) !== JSON.stringify(expectedUncoveredPages)) {
+    throw new Error(
+      `Unexpected live pages without a 3.1.2 snapshot: ${uncoveredPages.join(', ')}`
+    );
+  }
+
+  const snapshotRedirects = docsConfig.redirects.filter(redirect =>
+    redirect.destination.startsWith('/dist/docs/3.1.2/')
+  );
+  if (snapshotRedirects.length !== expectedRedirects.size) {
+    throw new Error(
+      `Expected ${expectedRedirects.size} snapshot redirects, found ${snapshotRedirects.length}`
+    );
+  }
 
   for (const [source, destination] of expectedRedirects) {
     const matches = docsConfig.redirects.filter(redirect => redirect.source === source);
     if (matches.length !== 1 || matches[0].destination !== destination) {
       throw new Error(`${source} must redirect exactly once to ${destination}`);
     }
-
-    const filePath = path.join(rootDir, destination.slice(1));
-    if (!fs.existsSync(`${filePath}.mdx`) && !fs.existsSync(`${filePath}.md`)) {
-      throw new Error(`Redirect destination file does not exist: ${destination}`);
+    if (matches[0].permanent !== false) {
+      throw new Error(`${source} snapshot fallback must be temporary`);
     }
+  }
+
+  const generatedApiRedirect = snapshotRedirects.find(redirect =>
+    redirect.source.startsWith('/docs/registry/api-reference/')
+  );
+  if (generatedApiRedirect) {
+    throw new Error(`Generated API route must not be redirected: ${generatedApiRedirect.source}`);
   }
 });
 
