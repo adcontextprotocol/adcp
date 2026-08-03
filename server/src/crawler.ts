@@ -924,6 +924,26 @@ export class CrawlerService {
       if (result.variant === 'house_portfolio' || result.variant === 'brand_canonical') {
         await this.upsertBrandProperties(domain, result.raw_data as Record<string, unknown>);
       }
+
+      // Compute and persist relationship trust. resolveBrand() re-fetches via
+      // its own skipCache path (validateDomain used skipCache:true above so the
+      // validation cache is cold), records any relationship declarations, and
+      // returns the trust verdict. The double-fetch is acceptable for a
+      // background crawler that runs on a schedule.
+      try {
+        const resolved = await this.brandManager.resolveBrand(domain, { skipCache: true });
+        if (resolved?.relationship_trust) {
+          await this.brandDb.updateRelationshipTrust(domain, {
+            relationship_trust: resolved.relationship_trust,
+            relationship_verified_at: resolved.relationship_verified_at
+              ? new Date(resolved.relationship_verified_at)
+              : null,
+            claimed_house_domain: resolved.claimed_house_domain ?? null,
+          });
+        }
+      } catch (err) {
+        log.warn({ domain, err: err instanceof Error ? err.message : err }, 'Trust computation failed during brand scan');
+      }
     }
 
     return {

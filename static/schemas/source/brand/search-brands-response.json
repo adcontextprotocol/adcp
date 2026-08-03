@@ -16,11 +16,11 @@
         },
         "house": {
           "type": "object",
-          "description": "The house (corporate entity) this brand belongs to.",
+          "description": "The house (corporate entity) this brand self-declares affiliation with. Present when the brand claims a parent. The relationship_trust field reports whether this affiliation has been reciprocally verified.",
           "properties": {
             "domain": {
               "type": "string",
-              "description": "House domain (e.g., acme-corp.com)"
+              "description": "Self-declared house domain (e.g., acme-corp.com). For verified relationships (mutual, inline) this is the trusted house_domain; for one-sided claims (leaf_only, unverifiable) see also claimed_house_domain."
             },
             "name": {
               "type": "string",
@@ -32,6 +32,27 @@
             "name"
           ],
           "additionalProperties": true
+        },
+        "relationship_trust": {
+          "type": "string",
+          "enum": [
+            "inline",
+            "mutual",
+            "leaf_only",
+            "house_only",
+            "standalone",
+            "unverifiable"
+          ],
+          "description": "Trust verdict for the brand-to-house relationship, computed from the mutual-assertion model. inline = brand defined inside the house's own document; mutual = both sides publish the relationship (trust-extending); leaf_only = brand claims house but house has not reciprocated or declaration is expired; house_only = house claims brand, brand has not reciprocated; standalone = brand claims no house; unverifiable = claimed house could not be checked. When absent, trust has not yet been computed — absent MUST NOT be interpreted as standalone. Use get_brand_identity or verify_brand_claim for authoritative trust resolution."
+        },
+        "relationship_verified_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the mutual-assertion edge was last confirmed by both sides. Present only when relationship_trust is mutual."
+        },
+        "claimed_house_domain": {
+          "type": "string",
+          "description": "Canonical domain of the house this brand self-declares as its parent. Not trust-extending on its own. Present for leaf_only and unverifiable trust states where the brand has made a claim that could not be or has not been reciprocated."
         },
         "names": {
           "type": "array",
@@ -146,7 +167,6 @@
       },
       "required": [
         "brand_id",
-        "house",
         "names"
       ],
       "additionalProperties": true

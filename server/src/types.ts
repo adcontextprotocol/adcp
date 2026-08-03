@@ -596,6 +596,14 @@ export interface DiscoveredBrand {
   manifest_orphaned?: boolean;
   /** WorkOS organization id that previously owned this brand (set when manifest_orphaned). */
   prior_owner_org_id?: string;
+  /** Cached trust verdict from the last crawler resolution. NULL means not yet computed, not standalone. */
+  relationship_trust?: 'inline' | 'mutual' | 'leaf_only' | 'house_only' | 'standalone' | 'unverifiable';
+  /** When the mutual-assertion edge was last confirmed. Only set when relationship_trust = 'mutual'. */
+  relationship_verified_at?: Date;
+  /** Unilateral parent claim from the brand's own document. Not trust-extending. */
+  claimed_house_domain?: string;
+  /** When relationship_trust was last computed by the crawler. */
+  relationship_trust_computed_at?: Date;
 }
 
 /**
