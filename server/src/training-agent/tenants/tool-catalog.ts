@@ -32,6 +32,7 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   list_accounts: ['sales', 'signals', 'governance', 'creative', 'creative-builder', 'brand', 'si'],
 
   // sales
+  sync_catalogs: ['sales', 'si'],
   get_products: ['sales'],
   create_media_buy: ['sales'],
   update_media_buy: ['sales'],
@@ -70,7 +71,6 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   activate_signal: ['signals'],
 
   // sponsored intelligence
-  sync_catalogs: ['si'],
   si_get_offering: ['si'],
   si_initiate_session: ['si'],
   si_send_message: ['si'],
