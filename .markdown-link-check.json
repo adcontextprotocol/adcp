@@ -16,6 +16,9 @@
       "pattern": "https://adcontextprotocol.org/docs/"
     },
     {
+      "pattern": "^https://docs\\.adcontextprotocol\\.org(?:/|$)"
+    },
+    {
       "pattern": "^https://github.com/adcontextprotocol/adcp$"
     },
     {
