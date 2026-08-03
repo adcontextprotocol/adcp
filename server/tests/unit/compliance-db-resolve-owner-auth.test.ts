@@ -334,7 +334,100 @@ describe('ComplianceDatabase.resolveOwnerAuth', () => {
     expect(auth).toBeUndefined();
   });
 
-  it('decodes a json1:-prefixed array resource into string[]', async () => {
+  // ── v1a: (primary array codec) ────────────────────────────────────────
+  it('decodes a v1a:-prefixed column into string[]', async () => {
+    mockRow({
+      oauth_cc_token_endpoint: 'https://auth.example.com/oauth/token',
+      oauth_cc_client_id: 'client_abc',
+      oauth_cc_client_secret_encrypted: 'enc_cc_secret',
+      oauth_cc_client_secret_iv: 'iv_cc_secret',
+      oauth_cc_resource: 'v1a:["https://api1.example.com","https://api2.example.com"]',
+    });
+    mockedDecrypt.mockReturnValueOnce('cc-secret-plaintext');
+
+    const auth = await db.resolveOwnerAuth('https://agent.example.com');
+    expect(auth).toMatchObject({
+      type: 'oauth_client_credentials',
+      credentials: {
+        resource: ['https://api1.example.com', 'https://api2.example.com'],
+      },
+    });
+  });
+
+  it('falls back to raw string when v1a: JSON is malformed', async () => {
+    mockRow({
+      oauth_cc_token_endpoint: 'https://auth.example.com/oauth/token',
+      oauth_cc_client_id: 'client_abc',
+      oauth_cc_client_secret_encrypted: 'enc_cc_secret',
+      oauth_cc_client_secret_iv: 'iv_cc_secret',
+      oauth_cc_resource: 'v1a:{not-valid-json}',
+    });
+    mockedDecrypt.mockReturnValueOnce('cc-secret-plaintext');
+
+    const auth = await db.resolveOwnerAuth('https://agent.example.com');
+    expect(auth).toMatchObject({
+      type: 'oauth_client_credentials',
+      credentials: { resource: 'v1a:{not-valid-json}' },
+    });
+  });
+
+  it('falls back to raw string when v1a: parse result is not string[]', async () => {
+    mockRow({
+      oauth_cc_token_endpoint: 'https://auth.example.com/oauth/token',
+      oauth_cc_client_id: 'client_abc',
+      oauth_cc_client_secret_encrypted: 'enc_cc_secret',
+      oauth_cc_client_secret_iv: 'iv_cc_secret',
+      oauth_cc_resource: 'v1a:[null,42]',
+    });
+    mockedDecrypt.mockReturnValueOnce('cc-secret-plaintext');
+
+    const auth = await db.resolveOwnerAuth('https://agent.example.com');
+    expect(auth).toMatchObject({
+      type: 'oauth_client_credentials',
+      credentials: { resource: 'v1a:[null,42]' },
+    });
+  });
+
+  // ── v1s: (primary scalar codec) ───────────────────────────────────────
+  it('decodes a v1s:-prefixed column into a plain scalar string', async () => {
+    mockRow({
+      oauth_cc_token_endpoint: 'https://auth.example.com/oauth/token',
+      oauth_cc_client_id: 'client_abc',
+      oauth_cc_client_secret_encrypted: 'enc_cc_secret',
+      oauth_cc_client_secret_iv: 'iv_cc_secret',
+      oauth_cc_resource: 'v1s:https://api.example.com',
+    });
+    mockedDecrypt.mockReturnValueOnce('cc-secret-plaintext');
+
+    const auth = await db.resolveOwnerAuth('https://agent.example.com');
+    expect(auth).toMatchObject({
+      type: 'oauth_client_credentials',
+      credentials: { resource: 'https://api.example.com' },
+    });
+  });
+
+  it('v1s: codec prevents collision: scalar "v1a:[...]" round-trips unchanged', async () => {
+    // A scalar resource that literally starts with "v1a:" would collide if stored
+    // bare. The encoder writes it as "v1s:v1a:[...]"; the decoder strips the v1s:
+    // prefix and returns the original scalar — never tries to JSON-parse it.
+    mockRow({
+      oauth_cc_token_endpoint: 'https://auth.example.com/oauth/token',
+      oauth_cc_client_id: 'client_abc',
+      oauth_cc_client_secret_encrypted: 'enc_cc_secret',
+      oauth_cc_client_secret_iv: 'iv_cc_secret',
+      oauth_cc_resource: 'v1s:v1a:["https://a"]',
+    });
+    mockedDecrypt.mockReturnValueOnce('cc-secret-plaintext');
+
+    const auth = await db.resolveOwnerAuth('https://agent.example.com');
+    expect(auth).toMatchObject({
+      type: 'oauth_client_credentials',
+      credentials: { resource: 'v1a:["https://a"]' },
+    });
+  });
+
+  // ── json1: (backward compat) ──────────────────────────────────────────
+  it('backward compat: decodes a json1:-prefixed column into string[]', async () => {
     mockRow({
       oauth_cc_token_endpoint: 'https://auth.example.com/oauth/token',
       oauth_cc_client_id: 'client_abc',
@@ -353,7 +446,7 @@ describe('ComplianceDatabase.resolveOwnerAuth', () => {
     });
   });
 
-  it('falls back to scalar when stored value starts with json1: but JSON is malformed', async () => {
+  it('backward compat: falls back to raw string when json1: JSON is malformed', async () => {
     mockRow({
       oauth_cc_token_endpoint: 'https://auth.example.com/oauth/token',
       oauth_cc_client_id: 'client_abc',
@@ -370,7 +463,7 @@ describe('ComplianceDatabase.resolveOwnerAuth', () => {
     });
   });
 
-  it('falls back to scalar when stored json1: parse result is not string[]', async () => {
+  it('backward compat: falls back to raw string when json1: parse result is not string[]', async () => {
     mockRow({
       oauth_cc_token_endpoint: 'https://auth.example.com/oauth/token',
       oauth_cc_client_id: 'client_abc',
@@ -387,7 +480,8 @@ describe('ComplianceDatabase.resolveOwnerAuth', () => {
     });
   });
 
-  it('reads legacy scalar resource (no json1: prefix) as a plain string', async () => {
+  // ── legacy bare scalar ────────────────────────────────────────────────
+  it('reads legacy bare scalar resource (no codec prefix) as a plain string', async () => {
     mockRow({
       oauth_cc_token_endpoint: 'https://auth.example.com/oauth/token',
       oauth_cc_client_id: 'client_abc',

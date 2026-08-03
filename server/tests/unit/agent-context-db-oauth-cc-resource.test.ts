@@ -61,8 +61,10 @@ describe('AgentContextDatabase — oauth_cc_resource save/load (RFC 8707 multi-r
 
   // ── Save: TEXT column encoding ────────────────────────
 
+  // ── Save: TEXT column encoding ─────────────────────────────────────────
+
   describe('saveOAuthClientCredentials', () => {
-    it('stores an array resource as json1:-prefixed JSON text in oauth_cc_resource', async () => {
+    it('stores an array resource with the v1a: prefix', async () => {
       mockGetById();
       mockedEncrypt.mockReturnValueOnce({ encrypted: 'enc', iv: 'iv' });
       mockUpdate();
@@ -77,10 +79,10 @@ describe('AgentContextDatabase — oauth_cc_resource save/load (RFC 8707 multi-r
       const updateCall = mockedQuery.mock.calls[1];
       const params = updateCall[1] as unknown[];
       // $6 is the resource parameter (0-indexed: params[5])
-      expect(params[5]).toBe('json1:["https://api1.example.com","https://api2.example.com"]');
+      expect(params[5]).toBe('v1a:["https://api1.example.com","https://api2.example.com"]');
     });
 
-    it('stores a scalar resource as the raw string (no JSON encoding)', async () => {
+    it('stores a scalar resource with the v1s: prefix', async () => {
       mockGetById();
       mockedEncrypt.mockReturnValueOnce({ encrypted: 'enc', iv: 'iv' });
       mockUpdate();
@@ -94,7 +96,7 @@ describe('AgentContextDatabase — oauth_cc_resource save/load (RFC 8707 multi-r
 
       const updateCall = mockedQuery.mock.calls[1];
       const params = updateCall[1] as unknown[];
-      expect(params[5]).toBe('https://api.example.com');
+      expect(params[5]).toBe('v1s:https://api.example.com');
     });
 
     it('stores null when resource is absent', async () => {
@@ -112,13 +114,32 @@ describe('AgentContextDatabase — oauth_cc_resource save/load (RFC 8707 multi-r
       const params = updateCall[1] as unknown[];
       expect(params[5]).toBeNull();
     });
+
+    it('collision: scalar resource starting with "v1a:" is stored as v1s:v1a:...', async () => {
+      // Proves codec is disjoint: a scalar whose text starts with "v1a:" is wrapped
+      // in v1s: so the reader never tries to JSON-parse it.
+      mockGetById();
+      mockedEncrypt.mockReturnValueOnce({ encrypted: 'enc', iv: 'iv' });
+      mockUpdate();
+
+      await db.saveOAuthClientCredentials('ctx_1', {
+        token_endpoint: 'https://auth.example.com/oauth/token',
+        client_id: 'client_abc',
+        client_secret: 'secret',
+        resource: 'v1a:["https://a"]',
+      });
+
+      const updateCall = mockedQuery.mock.calls[1];
+      const params = updateCall[1] as unknown[];
+      expect(params[5]).toBe('v1s:v1a:["https://a"]');
+    });
   });
 
-  // ── Load: TEXT column decoding ────────────────────────
+  // ── Load: TEXT column decoding ──────────────────────────────────────────
 
   describe('getOAuthClientCredentialsByOrgAndUrl', () => {
-    it('decodes a json1:-prefixed JSON array from oauth_cc_resource into a string[]', async () => {
-      mockLoadRow({ oauth_cc_resource: 'json1:["https://api1.example.com","https://api2.example.com"]' });
+    it('decodes v1a:-prefixed column into string[]', async () => {
+      mockLoadRow({ oauth_cc_resource: 'v1a:["https://api1.example.com","https://api2.example.com"]' });
       mockedDecrypt.mockReturnValueOnce('secret-plaintext');
 
       const creds = await db.getOAuthClientCredentialsByOrgAndUrl('org_abc', 'https://agent.example.com');
@@ -126,15 +147,49 @@ describe('AgentContextDatabase — oauth_cc_resource save/load (RFC 8707 multi-r
       expect(creds!.resource).toEqual(['https://api1.example.com', 'https://api2.example.com']);
     });
 
-    it('keeps a scalar resource URI as a string (no json1: prefix)', async () => {
-      mockLoadRow({ oauth_cc_resource: 'https://api.example.com' });
+    it('decodes v1s:-prefixed column into a plain scalar string', async () => {
+      mockLoadRow({ oauth_cc_resource: 'v1s:https://api.example.com' });
       mockedDecrypt.mockReturnValueOnce('secret-plaintext');
 
       const creds = await db.getOAuthClientCredentialsByOrgAndUrl('org_abc', 'https://agent.example.com');
       expect(creds!.resource).toBe('https://api.example.com');
     });
 
-    it('falls back to the raw string when json1: payload is not valid JSON', async () => {
+    it('collision: v1s:v1a:[...] decodes as the scalar "v1a:[...]" (not an array)', async () => {
+      mockLoadRow({ oauth_cc_resource: 'v1s:v1a:["https://a"]' });
+      mockedDecrypt.mockReturnValueOnce('secret-plaintext');
+
+      const creds = await db.getOAuthClientCredentialsByOrgAndUrl('org_abc', 'https://agent.example.com');
+      expect(creds!.resource).toBe('v1a:["https://a"]');
+    });
+
+    it('falls back to raw string when v1a: payload is not valid JSON', async () => {
+      mockLoadRow({ oauth_cc_resource: 'v1a:{not-json' });
+      mockedDecrypt.mockReturnValueOnce('secret-plaintext');
+
+      const creds = await db.getOAuthClientCredentialsByOrgAndUrl('org_abc', 'https://agent.example.com');
+      expect(creds!.resource).toBe('v1a:{not-json');
+    });
+
+    it('falls back to raw string when v1a: payload parses to a non-string-array', async () => {
+      mockLoadRow({ oauth_cc_resource: 'v1a:[1,2,3]' });
+      mockedDecrypt.mockReturnValueOnce('secret-plaintext');
+
+      const creds = await db.getOAuthClientCredentialsByOrgAndUrl('org_abc', 'https://agent.example.com');
+      expect(creds!.resource).toBe('v1a:[1,2,3]');
+    });
+
+    // ── backward compat ──────────────────────────────────────────────────
+
+    it('backward compat: decodes json1:-prefixed column into string[]', async () => {
+      mockLoadRow({ oauth_cc_resource: 'json1:["https://api1.example.com","https://api2.example.com"]' });
+      mockedDecrypt.mockReturnValueOnce('secret-plaintext');
+
+      const creds = await db.getOAuthClientCredentialsByOrgAndUrl('org_abc', 'https://agent.example.com');
+      expect(creds!.resource).toEqual(['https://api1.example.com', 'https://api2.example.com']);
+    });
+
+    it('backward compat: falls back to raw string when json1: payload is invalid', async () => {
       mockLoadRow({ oauth_cc_resource: 'json1:[not-json' });
       mockedDecrypt.mockReturnValueOnce('secret-plaintext');
 
@@ -142,22 +197,12 @@ describe('AgentContextDatabase — oauth_cc_resource save/load (RFC 8707 multi-r
       expect(creds!.resource).toBe('json1:[not-json');
     });
 
-    it('falls back to the raw string when json1: payload parses to a non-string-array', async () => {
-      mockLoadRow({ oauth_cc_resource: 'json1:[1,2,3]' });
+    it('legacy: bare scalar (no codec prefix) passes through unchanged', async () => {
+      mockLoadRow({ oauth_cc_resource: 'https://api.example.com' });
       mockedDecrypt.mockReturnValueOnce('secret-plaintext');
 
       const creds = await db.getOAuthClientCredentialsByOrgAndUrl('org_abc', 'https://agent.example.com');
-      expect(creds!.resource).toBe('json1:[1,2,3]');
-    });
-
-    it('keeps a legacy scalar value starting with "[" as-is (no json1: prefix means scalar path)', async () => {
-      // A scalar stored before the json1: encoding was introduced might start with [.
-      // Without the json1: prefix, the decode layer passes it through unchanged.
-      mockLoadRow({ oauth_cc_resource: '["legacy-scalar"]' });
-      mockedDecrypt.mockReturnValueOnce('secret-plaintext');
-
-      const creds = await db.getOAuthClientCredentialsByOrgAndUrl('org_abc', 'https://agent.example.com');
-      expect(creds!.resource).toBe('["legacy-scalar"]');
+      expect(creds!.resource).toBe('https://api.example.com');
     });
 
     it('omits resource when oauth_cc_resource is null', async () => {

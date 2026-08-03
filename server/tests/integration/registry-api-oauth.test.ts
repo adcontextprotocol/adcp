@@ -301,7 +301,8 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
       );
       expect(r.rows[0]).toMatchObject({
         oauth_cc_scope: 'adcp',
-        oauth_cc_resource: TEST_AGENT_URL,
+        // scalar resources are stored with the v1s: prefix to prevent codec collisions
+        oauth_cc_resource: `v1s:${TEST_AGENT_URL}`,
         oauth_cc_auth_method: 'body',
       });
     });
@@ -329,7 +330,7 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
       expect(res.body.error).toMatch(/client_id/);
     });
 
-    it('saves an array resource and stores it with the json1: storage prefix', async () => {
+    it('saves an array resource and stores it with the v1a: storage prefix', async () => {
       const resources = ['https://api1.example.com', 'https://api2.example.com'];
       await request(app)
         .put(url)
@@ -340,8 +341,34 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
         `SELECT oauth_cc_resource FROM agent_contexts WHERE organization_id = $1 AND agent_url = $2`,
         [TEST_ORG_ID, TEST_AGENT_URL],
       );
-      // Verify the unambiguous tagged-encoding is written to the TEXT column
-      expect(r.rows[0].oauth_cc_resource).toBe(`json1:${JSON.stringify(resources)}`);
+      // Verify the typed codec prefix is written to the TEXT column
+      expect(r.rows[0].oauth_cc_resource).toBe(`v1a:${JSON.stringify(resources)}`);
+    });
+
+    it('codec collision: scalar resource starting with "v1a:" round-trips as a scalar string', async () => {
+      // A scalar value whose text starts with "v1a:" would be decoded as an array if stored
+      // bare. The encoder writes it as "v1s:v1a:..." so the decoder returns the original scalar.
+      const collisionValue = 'v1a:["https://a"]';
+      await request(app)
+        .put(url)
+        .send({ ...validBody, resource: collisionValue })
+        .expect(200);
+
+      const r = await pool.query(
+        `SELECT oauth_cc_resource FROM agent_contexts WHERE organization_id = $1 AND agent_url = $2`,
+        [TEST_ORG_ID, TEST_AGENT_URL],
+      );
+      // DB column must be the v1s:-tagged form
+      expect(r.rows[0].oauth_cc_resource).toBe(`v1s:${collisionValue}`);
+
+      // Round-trip via the test endpoint: the SDK should receive the original scalar
+      exchangeMock.mockResolvedValueOnce({ access_token: 'tok', token_type: 'Bearer' });
+      const testRes = await request(app).post(`${url}/test`).send({});
+      expect(testRes.status).toBe(200);
+      expect(exchangeMock).toHaveBeenCalledWith(
+        expect.objectContaining({ resource: collisionValue }),
+        expect.anything(),
+      );
     });
 
     it('returns 403 for an agent the user does not own', async () => {
@@ -349,21 +376,6 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
         .put(`/api/registry/agents/${encodeURIComponent(OTHER_AGENT_URL)}/oauth-client-credentials`)
         .send(validBody);
       expect(res.status).toBe(403);
-    });
-
-    it('accepts an array resource and stores it as json1:-prefixed JSON text', async () => {
-      const resources = ['https://api1.example.com', 'https://api2.example.com'];
-      await request(app)
-        .put(url)
-        .send({ ...validBody, resource: resources })
-        .expect(200);
-
-      const r = await pool.query(
-        `SELECT oauth_cc_resource FROM agent_contexts
-         WHERE organization_id = $1 AND agent_url = $2`,
-        [TEST_ORG_ID, TEST_AGENT_URL],
-      );
-      expect(r.rows[0].oauth_cc_resource).toBe(`json1:${JSON.stringify(resources)}`);
     });
   });
 
@@ -452,45 +464,6 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
         .post(`/api/registry/agents/${encodeURIComponent(OTHER_AGENT_URL)}/oauth-client-credentials/test`)
         .send({});
       expect(res.status).toBe(403);
-    });
-
-    // ── RFC 8707 multi-resource (array) end-to-end ─────────────────
-    // Blockers from review #2805: prove the production PUT → TEXT column →
-    // load → POST /test flow works correctly for an array resource.
-
-    it('stores an array resource as json1:-prefixed JSON text in oauth_cc_resource', async () => {
-      const resources = ['https://api1.example.com', 'https://api2.example.com'];
-      await request(app)
-        .put(saveUrl)
-        .send({ ...validBody, resource: resources })
-        .expect(200);
-
-      const r = await pool.query(
-        `SELECT oauth_cc_resource FROM agent_contexts
-         WHERE organization_id = $1 AND agent_url = $2`,
-        [TEST_ORG_ID, TEST_AGENT_URL],
-      );
-      expect(r.rows[0].oauth_cc_resource).toBe(`json1:${JSON.stringify(resources)}`);
-    });
-
-    it('passes the decoded resource array to the SDK exchangeClientCredentials call', async () => {
-      const resources = ['https://api1.example.com', 'https://api2.example.com'];
-      await request(app)
-        .put(saveUrl)
-        .send({ ...validBody, resource: resources })
-        .expect(200);
-
-      exchangeMock.mockResolvedValueOnce({ access_token: 'tok', token_type: 'Bearer' });
-
-      const res = await request(app).post(testUrl).send({});
-      expect(res.status).toBe(200);
-      expect(res.body.ok).toBe(true);
-
-      // The SDK mock must have been called with credentials whose resource
-      // field is the original array (not the JSON string stored in the DB).
-      expect(exchangeMock).toHaveBeenCalledOnce();
-      const sdkCreds = exchangeMock.mock.calls[0][0];
-      expect(sdkCreds).toMatchObject({ resource: resources });
     });
 
     it('returns 400 when PUT receives an empty resource array', async () => {

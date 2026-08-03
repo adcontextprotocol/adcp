@@ -188,8 +188,7 @@ const MAX_RESOURCE_AGGREGATE_CHARS = 8192;
  * entry or omit the field entirely.
  *
  * Limits enforced: max 8 entries, max 2048 chars per entry, max 8192 chars
- * aggregate. Arrays are stored with a `json1:` prefix to prevent collisions
- * with scalar strings that begin with `[`.
+ * aggregate.
  */
 function parseResourceField(value: unknown): ResourceFieldResult {
   if (value === undefined || value === null || value === '') return { value: null };

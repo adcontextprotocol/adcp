@@ -1352,18 +1352,33 @@ export class ComplianceDatabase {
         };
         if (row.oauth_cc_scope) credentials.scope = row.oauth_cc_scope;
         if (row.oauth_cc_resource) {
-          if (row.oauth_cc_resource.startsWith('json1:')) {
+          const raw: string = row.oauth_cc_resource;
+          if (raw.startsWith('v1a:')) {
             try {
-              const parsed: unknown = JSON.parse(row.oauth_cc_resource.slice(6));
+              const parsed: unknown = JSON.parse(raw.slice(4));
               credentials.resource =
                 Array.isArray(parsed) && parsed.every((e): e is string => typeof e === 'string')
                   ? parsed
-                  : row.oauth_cc_resource;
+                  : raw;
             } catch {
-              credentials.resource = row.oauth_cc_resource;
+              credentials.resource = raw;
+            }
+          } else if (raw.startsWith('v1s:')) {
+            credentials.resource = raw.slice(4);
+          } else if (raw.startsWith('json1:')) {
+            // backward compat: rows written before the v1a/v1s codec
+            try {
+              const parsed: unknown = JSON.parse(raw.slice(6));
+              credentials.resource =
+                Array.isArray(parsed) && parsed.every((e): e is string => typeof e === 'string')
+                  ? parsed
+                  : raw;
+            } catch {
+              credentials.resource = raw;
             }
           } else {
-            credentials.resource = row.oauth_cc_resource;
+            // legacy: bare scalar written before any codec
+            credentials.resource = raw;
           }
         }
         if (row.oauth_cc_audience) credentials.audience = row.oauth_cc_audience;
