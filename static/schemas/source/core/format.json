@@ -222,7 +222,7 @@
                 "description": "Image asset",
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
-                  "item_type": { "const": "individual" },
+                  "item_type": { "type": "string", "const": "individual" },
                   "asset_type": { "type": "string", "const": "image" },
                   "requirements": { "$ref": "/schemas/core/requirements/image-asset-requirements.json" }
                 },
@@ -233,7 +233,7 @@
                 "description": "Video asset",
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
-                  "item_type": { "const": "individual" },
+                  "item_type": { "type": "string", "const": "individual" },
                   "asset_type": { "type": "string", "const": "video" },
                   "requirements": { "$ref": "/schemas/core/requirements/video-asset-requirements.json" }
                 },
@@ -244,7 +244,7 @@
                 "description": "Audio asset",
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
-                  "item_type": { "const": "individual" },
+                  "item_type": { "type": "string", "const": "individual" },
                   "asset_type": { "type": "string", "const": "audio" },
                   "requirements": { "$ref": "/schemas/core/requirements/audio-asset-requirements.json" }
                 },
@@ -255,7 +255,7 @@
                 "description": "Text asset",
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
-                  "item_type": { "const": "individual" },
+                  "item_type": { "type": "string", "const": "individual" },
                   "asset_type": { "type": "string", "const": "text" },
                   "requirements": { "$ref": "/schemas/core/requirements/text-asset-requirements.json" }
                 },
@@ -266,7 +266,7 @@
                 "description": "Markdown asset",
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
-                  "item_type": { "const": "individual" },
+                  "item_type": { "type": "string", "const": "individual" },
                   "asset_type": { "type": "string", "const": "markdown" },
                   "requirements": { "$ref": "/schemas/core/requirements/markdown-asset-requirements.json" }
                 },
@@ -277,7 +277,7 @@
                 "description": "HTML asset",
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
-                  "item_type": { "const": "individual" },
+                  "item_type": { "type": "string", "const": "individual" },
                   "asset_type": { "type": "string", "const": "html" },
                   "requirements": { "$ref": "/schemas/core/requirements/html-asset-requirements.json" }
                 },
@@ -288,7 +288,7 @@
                 "description": "CSS asset",
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
-                  "item_type": { "const": "individual" },
+                  "item_type": { "type": "string", "const": "individual" },
                   "asset_type": { "type": "string", "const": "css" },
                   "requirements": { "$ref": "/schemas/core/requirements/css-asset-requirements.json" }
                 },
@@ -299,7 +299,7 @@
                 "description": "JavaScript asset",
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
-                  "item_type": { "const": "individual" },
+                  "item_type": { "type": "string", "const": "individual" },
                   "asset_type": { "type": "string", "const": "javascript" },
                   "requirements": { "$ref": "/schemas/core/requirements/javascript-asset-requirements.json" }
                 },
@@ -310,7 +310,7 @@
                 "description": "Zip-bundled asset (HTML5 banner bundles, etc.)",
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
-                  "item_type": { "const": "individual" },
+                  "item_type": { "type": "string", "const": "individual" },
                   "asset_type": { "type": "string", "const": "zip" }
                 },
                 "required": ["asset_type"]
@@ -320,7 +320,7 @@
                 "description": "VAST asset",
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
-                  "item_type": { "const": "individual" },
+                  "item_type": { "type": "string", "const": "individual" },
                   "asset_type": { "type": "string", "const": "vast" },
                   "requirements": { "$ref": "/schemas/core/requirements/vast-asset-requirements.json" }
                 },
@@ -331,7 +331,7 @@
                 "description": "DAAST asset",
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
-                  "item_type": { "const": "individual" },
+                  "item_type": { "type": "string", "const": "individual" },
                   "asset_type": { "type": "string", "const": "daast" },
                   "requirements": { "$ref": "/schemas/core/requirements/daast-asset-requirements.json" }
                 },
@@ -342,7 +342,7 @@
                 "description": "URL asset",
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
-                  "item_type": { "const": "individual" },
+                  "item_type": { "type": "string", "const": "individual" },
                   "asset_type": { "type": "string", "const": "url" },
                   "requirements": { "$ref": "/schemas/core/requirements/url-asset-requirements.json" }
                 },
@@ -353,7 +353,7 @@
                 "description": "Webhook asset",
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
-                  "item_type": { "const": "individual" },
+                  "item_type": { "type": "string", "const": "individual" },
                   "asset_type": { "type": "string", "const": "webhook" },
                   "requirements": { "$ref": "/schemas/core/requirements/webhook-asset-requirements.json" }
                 },
@@ -364,7 +364,7 @@
                 "description": "Brief asset",
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
-                  "item_type": { "const": "individual" },
+                  "item_type": { "type": "string", "const": "individual" },
                   "asset_type": { "type": "string", "const": "brief" }
                 },
                 "required": ["asset_type"]
@@ -374,7 +374,7 @@
                 "description": "Catalog asset",
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
-                  "item_type": { "const": "individual" },
+                  "item_type": { "type": "string", "const": "individual" },
                   "asset_type": { "type": "string", "const": "catalog" },
                   "requirements": { "$ref": "/schemas/core/requirements/catalog-requirements.json" }
                 },
