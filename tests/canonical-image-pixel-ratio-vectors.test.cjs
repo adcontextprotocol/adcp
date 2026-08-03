@@ -131,22 +131,38 @@ test('parameterized legacy display_image ids project without retina-specific nam
   }
 });
 
-test('3.1 legacy 2x catalog formats require paired 1x and 2x assets', () => {
+test('3.1 legacy catalog distinguishes 2x-only from paired 1x/2x contracts', () => {
   const catalog = JSON.parse(fs.readFileSync(
     path.resolve(__dirname, '../server/src/creative-agent/reference-formats.json'),
     'utf8',
   ));
-  const expectedSizes = new Map([
-    ['display_300x250_image_2x', [300, 250]],
-    ['display_728x90_image_2x', [728, 90]],
-    ['display_320x50_image_2x', [320, 50]],
-    ['display_160x600_image_2x', [160, 600]],
-    ['display_336x280_image_2x', [336, 280]],
-    ['display_300x600_image_2x', [300, 600]],
-    ['display_970x250_image_2x', [970, 250]],
-  ]);
+  const expectedSizes = [
+    [300, 250],
+    [728, 90],
+    [320, 50],
+    [160, 600],
+    [336, 280],
+    [300, 600],
+    [970, 250],
+  ];
 
-  for (const [formatId, [width, height]] of expectedSizes) {
+  for (const [width, height] of expectedSizes) {
+    const formatId = `display_${width}x${height}_image_2x`;
+    const format = catalog.find(candidate => candidate.format_id.id === formatId);
+    assert.ok(format, formatId);
+    const imageAssets = format.assets.filter(asset => asset.asset_type === 'image');
+    assert.deepEqual(imageAssets.map(asset => [asset.requirements.width, asset.requirements.height]), [
+      [width * 2, height * 2],
+    ], formatId);
+    assert.deepEqual(format.canonical_parameters.params, {
+      width,
+      height,
+      pixel_ratios: [2],
+    }, formatId);
+  }
+
+  for (const [width, height] of expectedSizes) {
+    const formatId = `display_${width}x${height}_image_1x_2x`;
     const format = catalog.find(candidate => candidate.format_id.id === formatId);
     assert.ok(format, formatId);
     const imageAssets = format.assets.filter(asset => asset.asset_type === 'image');

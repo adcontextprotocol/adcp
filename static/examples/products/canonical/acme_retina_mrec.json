@@ -31,11 +31,7 @@
   "format_ids": [
     {
       "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_300x250_image"
-    },
-    {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_300x250_image_2x"
+      "id": "display_300x250_image_1x_2x"
     }
   ],
   "format_options": [
@@ -46,11 +42,7 @@
       "v1_format_ref": [
         {
           "agent_url": "https://creative.adcontextprotocol.org",
-          "id": "display_300x250_image"
-        },
-        {
-          "agent_url": "https://creative.adcontextprotocol.org",
-          "id": "display_300x250_image_2x"
+          "id": "display_300x250_image_1x_2x"
         }
       ],
       "params": {

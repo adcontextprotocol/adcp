@@ -98,6 +98,139 @@
     }
   },
   {
+    "format_id": { "agent_url": "https://creative.adcontextprotocol.org/", "id": "display_300x250_image_1x_2x" },
+    "name": "Medium Rectangle - Image (1x + 2x)",
+    "description": "300x250 logical display banner requiring both 300x250 1x and 600x500 2x renditions",
+    "type": "display",
+    "renders": [
+      { "role": "primary", "dimensions": { "width": 300, "height": 250, "responsive": { "width": false, "height": false } } }
+    ],
+    "assets": [
+      { "item_type": "individual", "asset_id": "banner_image", "asset_group_id": "image_main", "required": true, "asset_type": "image", "requirements": { "width": 300, "height": 250, "containers": ["jpg", "png", "gif", "webp"] } },
+      { "item_type": "individual", "asset_id": "banner_image_2x", "asset_group_id": "image_main", "required": true, "asset_type": "image", "requirements": { "width": 600, "height": 500, "containers": ["jpg", "png", "gif", "webp"] } },
+      { "item_type": "individual", "asset_id": "click_url", "asset_group_id": "landing_page_url", "required": true, "asset_type": "url", "requirements": { "url_type": "clickthrough", "description": "Clickthrough destination URL" } }
+    ],
+    "canonical": { "kind": "image" },
+    "canonical_parameters": {
+      "format_kind": "image",
+      "params": { "width": 300, "height": 250, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] }
+    }
+  },
+  {
+    "format_id": { "agent_url": "https://creative.adcontextprotocol.org/", "id": "display_728x90_image_1x_2x" },
+    "name": "Leaderboard - Image (1x + 2x)",
+    "description": "728x90 logical display banner requiring both 728x90 1x and 1456x180 2x renditions",
+    "type": "display",
+    "renders": [
+      { "role": "primary", "dimensions": { "width": 728, "height": 90, "responsive": { "width": false, "height": false } } }
+    ],
+    "assets": [
+      { "item_type": "individual", "asset_id": "banner_image", "asset_group_id": "image_main", "required": true, "asset_type": "image", "requirements": { "width": 728, "height": 90, "containers": ["jpg", "png", "gif", "webp"] } },
+      { "item_type": "individual", "asset_id": "banner_image_2x", "asset_group_id": "image_main", "required": true, "asset_type": "image", "requirements": { "width": 1456, "height": 180, "containers": ["jpg", "png", "gif", "webp"] } },
+      { "item_type": "individual", "asset_id": "click_url", "asset_group_id": "landing_page_url", "required": true, "asset_type": "url", "requirements": { "url_type": "clickthrough", "description": "Clickthrough destination URL" } }
+    ],
+    "canonical": { "kind": "image" },
+    "canonical_parameters": {
+      "format_kind": "image",
+      "params": { "width": 728, "height": 90, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] }
+    }
+  },
+  {
+    "format_id": { "agent_url": "https://creative.adcontextprotocol.org/", "id": "display_320x50_image_1x_2x" },
+    "name": "Mobile Banner - Image (1x + 2x)",
+    "description": "320x50 logical mobile banner requiring both 320x50 1x and 640x100 2x renditions",
+    "type": "display",
+    "renders": [
+      { "role": "primary", "dimensions": { "width": 320, "height": 50, "responsive": { "width": false, "height": false } } }
+    ],
+    "assets": [
+      { "item_type": "individual", "asset_id": "banner_image", "asset_group_id": "image_main", "required": true, "asset_type": "image", "requirements": { "width": 320, "height": 50, "containers": ["jpg", "png", "gif", "webp"] } },
+      { "item_type": "individual", "asset_id": "banner_image_2x", "asset_group_id": "image_main", "required": true, "asset_type": "image", "requirements": { "width": 640, "height": 100, "containers": ["jpg", "png", "gif", "webp"] } },
+      { "item_type": "individual", "asset_id": "click_url", "asset_group_id": "landing_page_url", "required": true, "asset_type": "url", "requirements": { "url_type": "clickthrough", "description": "Clickthrough destination URL" } }
+    ],
+    "canonical": { "kind": "image" },
+    "canonical_parameters": {
+      "format_kind": "image",
+      "params": { "width": 320, "height": 50, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] }
+    }
+  },
+  {
+    "format_id": { "agent_url": "https://creative.adcontextprotocol.org/", "id": "display_160x600_image_1x_2x" },
+    "name": "Wide Skyscraper - Image (1x + 2x)",
+    "description": "160x600 logical wide skyscraper requiring both 160x600 1x and 320x1200 2x renditions",
+    "type": "display",
+    "renders": [
+      { "role": "primary", "dimensions": { "width": 160, "height": 600, "responsive": { "width": false, "height": false } } }
+    ],
+    "assets": [
+      { "item_type": "individual", "asset_id": "banner_image", "asset_group_id": "image_main", "required": true, "asset_type": "image", "requirements": { "width": 160, "height": 600, "containers": ["jpg", "png", "gif", "webp"] } },
+      { "item_type": "individual", "asset_id": "banner_image_2x", "asset_group_id": "image_main", "required": true, "asset_type": "image", "requirements": { "width": 320, "height": 1200, "containers": ["jpg", "png", "gif", "webp"] } },
+      { "item_type": "individual", "asset_id": "click_url", "asset_group_id": "landing_page_url", "required": true, "asset_type": "url", "requirements": { "url_type": "clickthrough", "description": "Clickthrough destination URL" } }
+    ],
+    "canonical": { "kind": "image" },
+    "canonical_parameters": {
+      "format_kind": "image",
+      "params": { "width": 160, "height": 600, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] }
+    }
+  },
+  {
+    "format_id": { "agent_url": "https://creative.adcontextprotocol.org/", "id": "display_336x280_image_1x_2x" },
+    "name": "Large Rectangle - Image (1x + 2x)",
+    "description": "336x280 logical large rectangle requiring both 336x280 1x and 672x560 2x renditions",
+    "type": "display",
+    "renders": [
+      { "role": "primary", "dimensions": { "width": 336, "height": 280, "responsive": { "width": false, "height": false } } }
+    ],
+    "assets": [
+      { "item_type": "individual", "asset_id": "banner_image", "asset_group_id": "image_main", "required": true, "asset_type": "image", "requirements": { "width": 336, "height": 280, "containers": ["jpg", "png", "gif", "webp"] } },
+      { "item_type": "individual", "asset_id": "banner_image_2x", "asset_group_id": "image_main", "required": true, "asset_type": "image", "requirements": { "width": 672, "height": 560, "containers": ["jpg", "png", "gif", "webp"] } },
+      { "item_type": "individual", "asset_id": "click_url", "asset_group_id": "landing_page_url", "required": true, "asset_type": "url", "requirements": { "url_type": "clickthrough", "description": "Clickthrough destination URL" } }
+    ],
+    "canonical": { "kind": "image" },
+    "canonical_parameters": {
+      "format_kind": "image",
+      "params": { "width": 336, "height": 280, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] }
+    }
+  },
+  {
+    "format_id": { "agent_url": "https://creative.adcontextprotocol.org/", "id": "display_300x600_image_1x_2x" },
+    "name": "Half Page - Image (1x + 2x)",
+    "description": "300x600 logical half-page banner requiring both 300x600 1x and 600x1200 2x renditions",
+    "type": "display",
+    "renders": [
+      { "role": "primary", "dimensions": { "width": 300, "height": 600, "responsive": { "width": false, "height": false } } }
+    ],
+    "assets": [
+      { "item_type": "individual", "asset_id": "banner_image", "asset_group_id": "image_main", "required": true, "asset_type": "image", "requirements": { "width": 300, "height": 600, "containers": ["jpg", "png", "gif", "webp"] } },
+      { "item_type": "individual", "asset_id": "banner_image_2x", "asset_group_id": "image_main", "required": true, "asset_type": "image", "requirements": { "width": 600, "height": 1200, "containers": ["jpg", "png", "gif", "webp"] } },
+      { "item_type": "individual", "asset_id": "click_url", "asset_group_id": "landing_page_url", "required": true, "asset_type": "url", "requirements": { "url_type": "clickthrough", "description": "Clickthrough destination URL" } }
+    ],
+    "canonical": { "kind": "image" },
+    "canonical_parameters": {
+      "format_kind": "image",
+      "params": { "width": 300, "height": 600, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] }
+    }
+  },
+  {
+    "format_id": { "agent_url": "https://creative.adcontextprotocol.org/", "id": "display_970x250_image_1x_2x" },
+    "name": "Billboard - Image (1x + 2x)",
+    "description": "970x250 logical billboard requiring both 970x250 1x and 1940x500 2x renditions",
+    "type": "display",
+    "renders": [
+      { "role": "primary", "dimensions": { "width": 970, "height": 250, "responsive": { "width": false, "height": false } } }
+    ],
+    "assets": [
+      { "item_type": "individual", "asset_id": "banner_image", "asset_group_id": "image_main", "required": true, "asset_type": "image", "requirements": { "width": 970, "height": 250, "containers": ["jpg", "png", "gif", "webp"] } },
+      { "item_type": "individual", "asset_id": "banner_image_2x", "asset_group_id": "image_main", "required": true, "asset_type": "image", "requirements": { "width": 1940, "height": 500, "containers": ["jpg", "png", "gif", "webp"] } },
+      { "item_type": "individual", "asset_id": "click_url", "asset_group_id": "landing_page_url", "required": true, "asset_type": "url", "requirements": { "url_type": "clickthrough", "description": "Clickthrough destination URL" } }
+    ],
+    "canonical": { "kind": "image" },
+    "canonical_parameters": {
+      "format_kind": "image",
+      "params": { "width": 970, "height": 250, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] }
+    }
+  },
+  {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org/",
       "id": "display_300x250_generative"
@@ -3264,7 +3397,7 @@
       "id": "display_300x250_image_2x"
     },
     "name": "Medium Rectangle - Image (2x)",
-    "description": "300x250 logical display banner supplied as required 300x250 1x and 600x500 2x renditions",
+    "description": "300x250 logical display banner supplied as a 600x500 high-density image",
     "type": "display",
     "renders": [
       { "role": "primary", "dimensions": { "width": 300, "height": 250, "responsive": { "width": false, "height": false } } }
@@ -3273,14 +3406,6 @@
       {
         "item_type": "individual",
         "asset_id": "banner_image",
-        "asset_group_id": "image_main",
-        "required": true,
-        "asset_type": "image",
-        "requirements": { "width": 300, "height": 250, "containers": ["jpg", "png", "gif", "webp"] }
-      },
-      {
-        "item_type": "individual",
-        "asset_id": "banner_image_2x",
         "asset_group_id": "image_main",
         "required": true,
         "asset_type": "image",
@@ -3298,12 +3423,7 @@
     "canonical": { "kind": "image" },
     "canonical_parameters": {
       "format_kind": "image",
-      "params": {
-        "width": 300,
-        "height": 250,
-        "pixel_ratios": [1, 2],
-        "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }]
-      }
+      "params": { "width": 300, "height": 250, "pixel_ratios": [2] }
     }
   },
   {
@@ -3312,7 +3432,7 @@
       "id": "display_728x90_image_2x"
     },
     "name": "Leaderboard - Image (2x)",
-    "description": "728x90 logical display banner supplied as required 728x90 1x and 1456x180 2x renditions",
+    "description": "728x90 logical display banner supplied as a 1456x180 high-density image",
     "type": "display",
     "renders": [
       { "role": "primary", "dimensions": { "width": 728, "height": 90, "responsive": { "width": false, "height": false } } }
@@ -3321,14 +3441,6 @@
       {
         "item_type": "individual",
         "asset_id": "banner_image",
-        "asset_group_id": "image_main",
-        "required": true,
-        "asset_type": "image",
-        "requirements": { "width": 728, "height": 90, "containers": ["jpg", "png", "gif", "webp"] }
-      },
-      {
-        "item_type": "individual",
-        "asset_id": "banner_image_2x",
         "asset_group_id": "image_main",
         "required": true,
         "asset_type": "image",
@@ -3346,12 +3458,7 @@
     "canonical": { "kind": "image" },
     "canonical_parameters": {
       "format_kind": "image",
-      "params": {
-        "width": 728,
-        "height": 90,
-        "pixel_ratios": [1, 2],
-        "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }]
-      }
+      "params": { "width": 728, "height": 90, "pixel_ratios": [2] }
     }
   },
   {
@@ -3360,7 +3467,7 @@
       "id": "display_320x50_image_2x"
     },
     "name": "Mobile Banner - Image (2x)",
-    "description": "320x50 logical mobile banner supplied as required 320x50 1x and 640x100 2x renditions",
+    "description": "320x50 logical mobile banner supplied as a 640x100 high-density image",
     "type": "display",
     "renders": [
       { "role": "primary", "dimensions": { "width": 320, "height": 50, "responsive": { "width": false, "height": false } } }
@@ -3369,14 +3476,6 @@
       {
         "item_type": "individual",
         "asset_id": "banner_image",
-        "asset_group_id": "image_main",
-        "required": true,
-        "asset_type": "image",
-        "requirements": { "width": 320, "height": 50, "containers": ["jpg", "png", "gif", "webp"] }
-      },
-      {
-        "item_type": "individual",
-        "asset_id": "banner_image_2x",
         "asset_group_id": "image_main",
         "required": true,
         "asset_type": "image",
@@ -3394,12 +3493,7 @@
     "canonical": { "kind": "image" },
     "canonical_parameters": {
       "format_kind": "image",
-      "params": {
-        "width": 320,
-        "height": 50,
-        "pixel_ratios": [1, 2],
-        "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }]
-      }
+      "params": { "width": 320, "height": 50, "pixel_ratios": [2] }
     }
   },
   {
@@ -3408,7 +3502,7 @@
       "id": "display_160x600_image_2x"
     },
     "name": "Wide Skyscraper - Image (2x)",
-    "description": "160x600 logical wide skyscraper supplied as required 160x600 1x and 320x1200 2x renditions",
+    "description": "160x600 logical wide skyscraper supplied as a 320x1200 high-density image",
     "type": "display",
     "renders": [
       { "role": "primary", "dimensions": { "width": 160, "height": 600, "responsive": { "width": false, "height": false } } }
@@ -3417,14 +3511,6 @@
       {
         "item_type": "individual",
         "asset_id": "banner_image",
-        "asset_group_id": "image_main",
-        "required": true,
-        "asset_type": "image",
-        "requirements": { "width": 160, "height": 600, "containers": ["jpg", "png", "gif", "webp"] }
-      },
-      {
-        "item_type": "individual",
-        "asset_id": "banner_image_2x",
         "asset_group_id": "image_main",
         "required": true,
         "asset_type": "image",
@@ -3442,12 +3528,7 @@
     "canonical": { "kind": "image" },
     "canonical_parameters": {
       "format_kind": "image",
-      "params": {
-        "width": 160,
-        "height": 600,
-        "pixel_ratios": [1, 2],
-        "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }]
-      }
+      "params": { "width": 160, "height": 600, "pixel_ratios": [2] }
     }
   },
   {
@@ -3456,7 +3537,7 @@
       "id": "display_336x280_image_2x"
     },
     "name": "Large Rectangle - Image (2x)",
-    "description": "336x280 logical large rectangle supplied as required 336x280 1x and 672x560 2x renditions",
+    "description": "336x280 logical large rectangle supplied as a 672x560 high-density image",
     "type": "display",
     "renders": [
       { "role": "primary", "dimensions": { "width": 336, "height": 280, "responsive": { "width": false, "height": false } } }
@@ -3465,14 +3546,6 @@
       {
         "item_type": "individual",
         "asset_id": "banner_image",
-        "asset_group_id": "image_main",
-        "required": true,
-        "asset_type": "image",
-        "requirements": { "width": 336, "height": 280, "containers": ["jpg", "png", "gif", "webp"] }
-      },
-      {
-        "item_type": "individual",
-        "asset_id": "banner_image_2x",
         "asset_group_id": "image_main",
         "required": true,
         "asset_type": "image",
@@ -3490,12 +3563,7 @@
     "canonical": { "kind": "image" },
     "canonical_parameters": {
       "format_kind": "image",
-      "params": {
-        "width": 336,
-        "height": 280,
-        "pixel_ratios": [1, 2],
-        "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }]
-      }
+      "params": { "width": 336, "height": 280, "pixel_ratios": [2] }
     }
   },
   {
@@ -3504,7 +3572,7 @@
       "id": "display_300x600_image_2x"
     },
     "name": "Half Page - Image (2x)",
-    "description": "300x600 logical half-page banner supplied as required 300x600 1x and 600x1200 2x renditions",
+    "description": "300x600 logical half-page banner supplied as a 600x1200 high-density image",
     "type": "display",
     "renders": [
       { "role": "primary", "dimensions": { "width": 300, "height": 600, "responsive": { "width": false, "height": false } } }
@@ -3513,14 +3581,6 @@
       {
         "item_type": "individual",
         "asset_id": "banner_image",
-        "asset_group_id": "image_main",
-        "required": true,
-        "asset_type": "image",
-        "requirements": { "width": 300, "height": 600, "containers": ["jpg", "png", "gif", "webp"] }
-      },
-      {
-        "item_type": "individual",
-        "asset_id": "banner_image_2x",
         "asset_group_id": "image_main",
         "required": true,
         "asset_type": "image",
@@ -3538,12 +3598,7 @@
     "canonical": { "kind": "image" },
     "canonical_parameters": {
       "format_kind": "image",
-      "params": {
-        "width": 300,
-        "height": 600,
-        "pixel_ratios": [1, 2],
-        "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }]
-      }
+      "params": { "width": 300, "height": 600, "pixel_ratios": [2] }
     }
   },
   {
@@ -3552,7 +3607,7 @@
       "id": "display_970x250_image_2x"
     },
     "name": "Billboard - Image (2x)",
-    "description": "970x250 logical billboard supplied as required 970x250 1x and 1940x500 2x renditions",
+    "description": "970x250 logical billboard supplied as a 1940x500 high-density image",
     "type": "display",
     "renders": [
       { "role": "primary", "dimensions": { "width": 970, "height": 250, "responsive": { "width": false, "height": false } } }
@@ -3561,14 +3616,6 @@
       {
         "item_type": "individual",
         "asset_id": "banner_image",
-        "asset_group_id": "image_main",
-        "required": true,
-        "asset_type": "image",
-        "requirements": { "width": 970, "height": 250, "containers": ["jpg", "png", "gif", "webp"] }
-      },
-      {
-        "item_type": "individual",
-        "asset_id": "banner_image_2x",
         "asset_group_id": "image_main",
         "required": true,
         "asset_type": "image",
@@ -3586,12 +3633,7 @@
     "canonical": { "kind": "image" },
     "canonical_parameters": {
       "format_kind": "image",
-      "params": {
-        "width": 970,
-        "height": 250,
-        "pixel_ratios": [1, 2],
-        "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }]
-      }
+      "params": { "width": 970, "height": 250, "pixel_ratios": [2] }
     }
   },
   {

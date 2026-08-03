@@ -82,12 +82,26 @@ describe('v1 canonical literal mapping vectors', () => {
     expect(mapping).not.toHaveProperty('parameters.height');
   });
 
-  it('projects 3.1 reference-catalog 2x ids to required 1x and 2x canonical rendition sets', () => {
+  it('projects 3.1 reference-catalog 2x-only ids to canonical 2x acceptance', () => {
     const retinaMappings = literalMappings.filter(mapping =>
       mapping.v1_pattern.format_id_glob.endsWith('_image_2x'),
     );
     expect(retinaMappings).toHaveLength(7);
     for (const mapping of retinaMappings) {
+      expect(mapping.v2.canonical, mapping.v1_pattern.format_id_glob).toBe('image');
+      expect(mapping.v2.parameters, mapping.v1_pattern.format_id_glob).toMatchObject({
+        pixel_ratios: [2],
+      });
+      expect(mapping.v2.parameters, mapping.v1_pattern.format_id_glob).not.toHaveProperty('slots');
+    }
+  });
+
+  it('projects paired 1x/2x legacy ids to required canonical rendition sets', () => {
+    const pairedMappings = literalMappings.filter(mapping =>
+      mapping.v1_pattern.format_id_glob.endsWith('_image_1x_2x'),
+    );
+    expect(pairedMappings).toHaveLength(7);
+    for (const mapping of pairedMappings) {
       expect(mapping.v2.canonical, mapping.v1_pattern.format_id_glob).toBe('image');
       expect(mapping.v2.parameters, mapping.v1_pattern.format_id_glob).toMatchObject({
         pixel_ratios: [1, 2],
@@ -102,6 +116,12 @@ describe('v1 canonical literal mapping vectors', () => {
         }],
       });
     }
+  });
+
+  it('projects mapped rendition sets before generic asset-group collision handling', () => {
+    expect(registry.description).toContain('Image rendition-set exception (normative)');
+    expect(registry.description).toContain('MUST NOT');
+    expect(registry.description).toContain('generic alias-collision rule');
   });
 
   it('treats small NxN tokens as aspect ratios rather than pixel dimensions', () => {
