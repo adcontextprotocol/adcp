@@ -316,6 +316,23 @@ describe('Registry publisher endpoint — brand.json hydration', () => {
             display_name: 'Community Site Square',
             format_kind: 'image',
             params: { width: 1080, height: 1080 },
+            sample_render_url: ' https://samples.community.example/formats/site-square ',
+            applies_to_property_ids: ['community-site'],
+          },
+          {
+            format_option_id: 'community_site_rectangle',
+            display_name: 'Community Site Rectangle',
+            format_kind: 'image',
+            params: { width: 1200, height: 628 },
+            sample_render_url: 'http://samples.community.example/formats/site-rectangle',
+            applies_to_property_ids: ['community-site'],
+          },
+          {
+            format_option_id: 'community_site_banner',
+            display_name: 'Community Site Banner',
+            format_kind: 'image',
+            params: { width: 728, height: 90 },
+            sample_render_url: 'https://user:secret@samples.community.example/formats/site-banner',
             applies_to_property_ids: ['community-site'],
           },
           {
@@ -339,8 +356,13 @@ describe('Registry publisher endpoint — brand.json hydration', () => {
     expect(new URL(res.body.files.adagents_json.registry_url).pathname).toBe(`/api/creative-agent/translated/${COMMUNITY_PLATFORM}/adagents.json`);
     expect(res.body.hosting.mode).toBe('none');
     expect(res.body.hosting.last_validated).toBeNull();
-    expect(res.body.formats).toHaveLength(1);
+    expect(res.body.formats).toHaveLength(3);
     expect(res.body.formats[0].format_option_id).toBe('community_site_square');
+    expect(res.body.formats[0].sample_render_url).toBe('https://samples.community.example/formats/site-square');
+    expect(res.body.formats[1].format_option_id).toBe('community_site_rectangle');
+    expect(res.body.formats[1].sample_render_url).toBeUndefined();
+    expect(res.body.formats[2].format_option_id).toBe('community_site_banner');
+    expect(res.body.formats[2].sample_render_url).toBeUndefined();
   });
 
   it('does NOT auto-crawl when validateCrawlDomain rejects (SSRF gate)', async () => {
