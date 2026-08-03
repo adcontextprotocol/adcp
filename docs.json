@@ -2839,6 +2839,11 @@
       "permanent": false
     },
     {
+      "source": "/docs/aao/aao-admins",
+      "destination": "/dist/docs/3.1.2/aao/aao-admins",
+      "permanent": false
+    },
+    {
       "source": "/docs/aao/users",
       "destination": "/dist/docs/3.1.2/aao/users",
       "permanent": false
