@@ -79,6 +79,15 @@ const defaultVersion = (navigation.versions.find(v => v.default) || navigation.v
 const pageOwners = new Map();
 const crossVersionDuplicates = [];
 
+test('default version is first in the versions array', () => {
+  if (navigation.versions[0].version !== defaultVersion) {
+    throw new Error(
+      `Default version "${defaultVersion}" must be first; Mintlify can omit its ` +
+      `file-backed routes when an archived version precedes it.`
+    );
+  }
+});
+
 for (const versionEntry of navigation.versions) {
   const { version, groups } = versionEntry;
   log(`Version: ${version}`);
