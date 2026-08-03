@@ -3669,7 +3669,7 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
   return response;
 }
 
-export async function handleListCreativeFormats(args: ToolArgs, _ctx: TrainingContext): Promise<object> {
+export async function handleListCreativeFormats(args: ToolArgs, ctx: TrainingContext): Promise<object> {
   const req = args as unknown as ListCreativeFormatsRequest & { channels?: string[] };
 
   // When comply_test_controller.seed_creative_format has pre-populated formats,
@@ -3709,6 +3709,21 @@ export async function handleListCreativeFormats(args: ToolArgs, _ctx: TrainingCo
   if (req.format_ids?.length) {
     const requestedIds = new Set(req.format_ids.map(f => f.id));
     formats = formats.filter(f => requestedIds.has(f.format_id.id));
+  }
+
+  // The 3.0 FormatIDParameter enum predates pixel-density negotiation. Keep
+  // the template available to compatibility runners, but do not advertise an
+  // enum member their pinned response schema cannot represent.
+  if (ctx.storyboardCompat?.version === '3.0') {
+    formats = formats.map(format => format.accepts_parameters?.includes('pixel_ratio')
+      ? {
+          ...format,
+          accepts_parameters: format.accepts_parameters.filter(parameter => parameter !== 'pixel_ratio'),
+          description: format.format_id.id === 'display_image'
+            ? 'Static image display ad. Provide logical width and height in format_id.'
+            : format.description,
+        }
+      : format);
   }
 
   const totalMatching = formats.length;

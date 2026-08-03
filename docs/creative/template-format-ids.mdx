@@ -5,7 +5,7 @@ description: "Template format IDs in AdCP let a single format definition support
 ---
 
 
-Template formats allow a single format definition to support multiple dimension or duration variants without creating separate format definitions for each variant. This eliminates format explosion when publishers support many similar variants.
+Template formats allow a single format definition to support multiple dimension, pixel-density, or duration variants without creating separate format definitions for each variant. This eliminates format explosion when publishers support many similar variants.
 
 ## The Problem: Format Explosion
 
@@ -23,7 +23,9 @@ Without template formats, each dimension variant requires a separate format defi
 
 ## The Solution: Template Formats with Parameters
 
-A single template format definition (`display_static`) accepts dimension fields in the format_id object, allowing creatives to specify their exact dimensions.
+A single template format definition (`display_image`) accepts logical dimension and pixel-density fields in the format_id object, allowing creatives to specify an exact 1x, 2x, or other density variant without a retina-specific format name.
+
+The legacy format model did not standardize `format_id.pixel_ratio` or canonical pixel-density fields. The unversioned reference catalog therefore provides distinct concrete contracts for the seven standard fixed display sizes: the existing `_image` ID is 1x-only, `_image_2x` is 2x-only, and `_image_1x_2x` requires both assets for systems such as GAM. Additive IDs become discoverable to dynamically querying clients across 3.x when the catalog deploys; no 3.0.x or 3.1.x protocol backport is required. Their density and required-coverage values under `canonical_parameters` are opaque forward-projection metadata for 3.2-aware SDKs, not pre-3.2 canonical semantics. The parameterized examples below are the 3.2 replacement and avoid adding another concrete ID for every future size.
 
 ## Format Types and Format IDs
 
@@ -38,7 +40,7 @@ There are **two types of format definitions**, which produce **three types of fo
 
 2. **Template formats** - Accept parameters in format_id
    - Have `accepts_parameters` array listing accepted parameters
-   - Example: `display_static` can be any dimensions
+   - Example: `display_image` can be any logical dimensions and pixel density
    - Can be used with or without parameters
 
 ### Format IDs
@@ -52,7 +54,7 @@ There are **two types of format definitions**, which produce **three types of fo
    - Used in placements to accept any dimensions
 
 3. **Parameterized format_id** - Template format with parameters
-   - Example: `{id: "display_static", width: 300, height: 250}`
+   - Example: `{id: "display_image", width: 300, height: 250, pixel_ratio: 2}`
    - Used in creatives to specify exact dimensions (in pixels)
 
 ### Template Format Definition
@@ -63,11 +65,11 @@ Format definition that accepts parameters:
 {
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org"
-    "id": "display_static"
+    "id": "display_image"
   }
   "name": "Static Display Banner"
   "type": "display"
-  "accepts_parameters": ["dimensions"]
+  "accepts_parameters": ["dimensions", "pixel_ratio"]
   "renders": [
     {
       "role": "primary"
@@ -80,9 +82,7 @@ Format definition that accepts parameters:
       "asset_id": "banner_image"
       "asset_type": "image"
       "required": true
-      "requirements": {
-        "parameters_from_format_id": true
-      }
+      "requirements": { "parameters_from_format_id": true }
     }
     {
       "item_type": "individual"
@@ -95,9 +95,9 @@ Format definition that accepts parameters:
 ```
 
 **Key fields:**
-- `accepts_parameters: ["dimensions"]` - Format accepts dimensions (width/height in pixels) in format_id
-- `renders[].parameters_from_format_id: true` - Render parameters come from format_id
-- `requirements.parameters_from_format_id: true` - Asset parameters must match format_id
+- `accepts_parameters: ["dimensions", "pixel_ratio"]` - Format accepts logical width/height and optional intrinsic-pixel density in format_id
+- `renders[].parameters_from_format_id: true` - Logical render dimensions come from format_id
+- `requirements.parameters_from_format_id: true` - Intrinsic image dimensions must equal logical dimensions multiplied by `pixel_ratio` (default 1)
 
 ### Parameterized Format ID (Creative Manifest)
 
@@ -107,16 +107,18 @@ Creative specifies exact dimensions in format_id to use the template format:
 {
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org"
-    "id": "display_static"
+    "id": "display_image"
     "width": 300
     "height": 250
+    "pixel_ratio": 2
   }
   "assets": {
     "banner_image": {
       "asset_type": "image"
-      "url": "https://cdn.example.com/banner-300x250.png"
-      "width": 300
-      "height": 250
+      "url": "https://cdn.example.com/banner-300x250@2x.png"
+      "width": 600
+      "height": 500
+      "pixel_ratio": 2
     }
     "clickthrough_url": {
       "asset_type": "url"
@@ -126,7 +128,7 @@ Creative specifies exact dimensions in format_id to use the template format:
 }
 ```
 
-**This format_id is parameterized:** Same dimensions always produce the same format_id object, enabling deduplication and caching.
+**This format_id is parameterized:** logical dimensions plus density identify the variant. The creative still renders at 300×250; 600×500 is the intrinsic asset size, not another placement size.
 
 ### Placement Constraints
 
@@ -143,15 +145,16 @@ Publishers specify supported dimensions by listing all supported variants:
   "format_ids": [
     {
       "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_static",
+      "id": "display_image",
       "width": 300,
       "height": 250
     },
     {
       "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_static",
-      "width": 728,
-      "height": 90
+      "id": "display_image",
+      "width": 300,
+      "height": 250,
+      "pixel_ratio": 2
     }
   ]
 }
@@ -182,6 +185,7 @@ Publishers specify supported dimensions by listing all supported variants:
 **Fields:**
 - `width` (integer, minimum: 1) - Width in pixels
 - `height` (integer, minimum: 1) - Height in pixels
+- `pixel_ratio` (number, exclusive minimum: 0) - Intrinsic pixels per logical pixel; requires width and height and defaults to 1 when omitted
 
 **Example:**
 ```json

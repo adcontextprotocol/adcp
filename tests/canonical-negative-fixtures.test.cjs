@@ -252,6 +252,154 @@ const NEGATIVE_CASES = {
       expected: true,
       doc: {},
     },
+    {
+      label: 'fixed image accepts a non-empty unique pixel-ratio set',
+      expected: true,
+      doc: { width: 300, height: 250, pixel_ratios: [1, 1.5, 2] },
+    },
+    {
+      label: 'pixel-ratio set rejects zero',
+      expected: false,
+      doc: { width: 300, height: 250, pixel_ratios: [0] },
+    },
+    {
+      label: 'pixel-ratio set rejects duplicates',
+      expected: false,
+      doc: { width: 300, height: 250, pixel_ratios: [2, 2] },
+    },
+    {
+      label: 'pixel-ratio set rejects an empty acceptance set',
+      expected: false,
+      doc: { width: 300, height: 250, pixel_ratios: [] },
+    },
+  ],
+  '/schemas/core/assets/image-asset.json': [
+    {
+      label: 'image asset accepts positive pixel_ratio metadata',
+      expected: true,
+      doc: { asset_type: 'image', url: 'https://cdn.example/retina.png', width: 600, height: 500, pixel_ratio: 2 },
+    },
+    {
+      label: 'image asset keeps pixel_ratio optional for inference and backward compatibility',
+      expected: true,
+      doc: { asset_type: 'image', url: 'https://cdn.example/legacy.png', width: 300, height: 250 },
+    },
+    {
+      label: 'image asset rejects zero pixel_ratio',
+      expected: false,
+      doc: { asset_type: 'image', url: 'https://cdn.example/bad.png', width: 300, height: 250, pixel_ratio: 0 },
+    },
+  ],
+  '/schemas/core/format-id.json': [
+    {
+      label: 'legacy parameterized image accepts dimensions plus pixel_ratio',
+      expected: true,
+      doc: { agent_url: 'https://creative.adcontextprotocol.org', id: 'display_image', width: 300, height: 250, pixel_ratio: 2 },
+    },
+    {
+      label: 'legacy pixel_ratio requires dimensions',
+      expected: false,
+      doc: { agent_url: 'https://creative.adcontextprotocol.org', id: 'display_image', pixel_ratio: 2 },
+    },
+    {
+      label: 'legacy pixel_ratio rejects zero',
+      expected: false,
+      doc: { agent_url: 'https://creative.adcontextprotocol.org', id: 'display_image', width: 300, height: 250, pixel_ratio: 0 },
+    },
+  ],
+  '/schemas/formats/canonical/_base.json': [
+    {
+      label: 'any canonical image slot accepts pixel-ratio constraints',
+      expected: true,
+      doc: {
+        slots: [
+          { asset_group_id: 'main_image', asset_type: 'image', required: true, pixel_ratios: [1, 2] },
+        ],
+      },
+    },
+    {
+      label: 'non-image canonical slots reject pixel-ratio constraints',
+      expected: false,
+      doc: {
+        slots: [
+          { asset_group_id: 'headline', asset_type: 'text', required: true, pixel_ratios: [2] },
+        ],
+      },
+    },
+    {
+      label: 'carousel card slots accept pixel ratios for nested image media',
+      expected: true,
+      doc: {
+        slots: [
+          { asset_group_id: 'cards', asset_type: 'card', required: true, min: 2, max: 10, pixel_ratios: [1, 2] },
+        ],
+      },
+    },
+    {
+      label: 'canonical image slots reject invalid density sets',
+      expected: false,
+      doc: {
+        slots: [
+          { asset_group_id: 'main_image', asset_type: 'image', required: true, pixel_ratios: [] },
+        ],
+      },
+    },
+    {
+      label: 'image slots accept required rendition coverage',
+      expected: true,
+      doc: {
+        slots: [
+          {
+            asset_group_id: 'main_image',
+            asset_type: 'image',
+            required: true,
+            min: 2,
+            max: 3,
+            pixel_ratios: [1, 1.5, 2],
+            required_pixel_ratios: [1, 2],
+          },
+        ],
+      },
+    },
+    {
+      label: 'required rendition coverage requires an accepted density set',
+      expected: false,
+      doc: {
+        slots: [
+          { asset_group_id: 'main_image', asset_type: 'image', required: true, required_pixel_ratios: [1, 2] },
+        ],
+      },
+    },
+    {
+      label: 'required rendition coverage rejects duplicate densities',
+      expected: false,
+      doc: {
+        slots: [
+          {
+            asset_group_id: 'main_image',
+            asset_type: 'image',
+            required: true,
+            pixel_ratios: [1, 2],
+            required_pixel_ratios: [1, 1],
+          },
+        ],
+      },
+    },
+    {
+      label: 'card slots cannot require a multi-rendition image set',
+      expected: false,
+      doc: {
+        slots: [
+          {
+            asset_group_id: 'cards',
+            asset_type: 'card',
+            required: true,
+            pixel_ratios: [1, 2],
+            required_pixel_ratios: [1, 2],
+          },
+        ],
+      },
+    },
   ],
   '/schemas/core/assets/pixel-tracker-asset.json': [
     {

@@ -146,7 +146,7 @@ export function handleListCreativeFormats(args: Record<string, unknown>, formats
 
 interface PreviewRequest {
   creative_manifest: Record<string, unknown>;
-  format_id?: { agent_url?: string; id?: string; width?: number; height?: number };
+  format_id?: { agent_url?: string; id?: string; width?: number; height?: number; pixel_ratio?: number };
   inputs?: Array<{ name: string; macros?: Record<string, string>; context_description?: string }>;
   output_format?: 'url' | 'html' | 'both';
   template_id?: string;
@@ -159,7 +159,7 @@ function renderSinglePreview(
   baseUrl: string,
 ): { previews: unknown[]; expires_at: string } {
   const manifest = req.creative_manifest;
-  const formatId = req.format_id || manifest.format_id as { id?: string } | undefined;
+  const formatId = req.format_id || manifest.format_id as PreviewRequest['format_id'];
   const format = formatId?.id ? formats.find(f => getFormatId(f).id === formatId.id) : undefined;
 
   // Merge format_id into manifest for the renderer
@@ -181,8 +181,11 @@ function renderSinglePreview(
       role: 'primary',
     };
 
-    // Add dimensions if known
-    if (format) {
+    // Parameterized legacy ids carry logical render dimensions directly. Pixel
+    // ratio changes intrinsic asset pixels, never the preview box size.
+    if (formatId?.width && formatId?.height) {
+      render.dimensions = { width: formatId.width, height: formatId.height };
+    } else if (format) {
       const renders = format.renders as Array<{ dimensions?: { width?: number; height?: number } }> | undefined;
       if (renders?.[0]?.dimensions?.width && renders?.[0]?.dimensions?.height) {
         render.dimensions = {
