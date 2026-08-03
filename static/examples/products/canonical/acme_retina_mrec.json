@@ -1,0 +1,66 @@
+{
+  "$schema": "/schemas/core/product.json",
+  "product_id": "acme_homepage_retina_mrec",
+  "name": "Acme homepage high-density medium rectangle",
+  "description": "A logical 300×250 image placement accepting either a standard 300×250 asset or a 600×500 asset rendered at 2x density. Both canonical and parameterized legacy declarations identify one placement size; density does not create a logical 600×500 placement.",
+  "publisher_properties": [
+    {
+      "publisher_domain": "acme.example",
+      "selection_type": "by_id",
+      "property_ids": ["acme_homepage"]
+    }
+  ],
+  "channels": ["display"],
+  "delivery_type": "guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "acme_retina_mrec_cpm",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "fixed_price": 12
+    }
+  ],
+  "reporting_capabilities": {
+    "available_reporting_frequencies": ["daily"],
+    "expected_delay_minutes": 60,
+    "timezone": "UTC",
+    "supports_webhooks": false,
+    "available_metrics": ["impressions", "clicks", "spend"],
+    "date_range_support": "date_range"
+  },
+  "format_ids": [
+    {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "display_300x250_image"
+    },
+    {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "display_300x250_image_2x"
+    }
+  ],
+  "format_options": [
+    {
+      "format_kind": "image",
+      "format_option_id": "acme_homepage_mrec_image",
+      "display_name": "Acme homepage image — 1x or 2x",
+      "v1_format_ref": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "display_300x250_image"
+        },
+        {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "display_300x250_image_2x"
+        }
+      ],
+      "params": {
+        "width": 300,
+        "height": 250,
+        "pixel_ratios": [1, 2],
+        "max_file_size_kb": 400,
+        "image_formats": ["jpg", "png", "webp"],
+        "ssl_required": true
+      }
+    }
+  ]
+}

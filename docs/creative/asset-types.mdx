@@ -119,6 +119,7 @@ Static image assets for banners, logos, and visual content.
 
 **Properties:**
 - `width` / `height`: Dimensions in pixels
+- `pixel_ratio`: Optional intrinsic pixels per logical render pixel (for example, `2` for a 600×500 asset rendered into a logical 300×250 slot). SDKs infer it when the target format's dimensions are sufficient.
 - `min_width` / `min_height`: Minimum dimensions (px; typically used by responsive/sizeless formats)
 - `aspect_ratio`: Required aspect ratio
 - `acceptable_formats`: Image formats (jpg, png, gif, webp, svg)
@@ -128,6 +129,7 @@ Static image assets for banners, logos, and visual content.
 - `notes`: Additional requirements (e.g., "Must be free of text")
 
 **Use Cases:**
+- High-density delivery in any canonical: declare accepted densities with `slots[].pixel_ratios`; use top-level `params.pixel_ratios` for the `image` canonical's `image_main` slot.
 - Fixed layout: provide `width` and `height`. Do not include `min_width`, `min_height`, or `aspect_ratio`.
 - Responsive (fixed image aspect ratio): provide `min_width`, `min_height` and `aspect_ratio`. Do not include `width` or `height`.
 - Responsive (any image aspect ratio): provide `min_width` and `min_height` only. Do not include `width`, `height`, or `aspect_ratio`.

@@ -94,7 +94,7 @@ describe('training agent formats', () => {
 describe('reference formats', () => {
   it('loads reference formats and rewrites agent_url', () => {
     const formats = buildReferenceFormats(TEST_AGENT_URL);
-    expect(formats.length).toBe(62);
+    expect(formats.length).toBe(69);
     for (const f of formats) {
       const fid = f.format_id as { agent_url: string; id: string };
       expect(fid.agent_url).toBe(TEST_AGENT_URL);
@@ -134,6 +134,45 @@ describe('reference formats', () => {
     expect(ids).toContain('format_card_standard');
   });
 
+  it('publishes pixel density on the parameterized legacy display template', () => {
+    const formats = buildReferenceFormats(TEST_AGENT_URL);
+    const displayImage = formats.find(f => (f.format_id as { id: string }).id === 'display_image');
+    expect(displayImage?.accepts_parameters).toEqual(['dimensions', 'pixel_ratio']);
+    expect(displayImage?.renders).toEqual([{ role: 'primary', parameters_from_format_id: true }]);
+  });
+
+  it('publishes 3.1-compatible 2x formats with lossless canonical projections', () => {
+    const formats = buildReferenceFormats(TEST_AGENT_URL);
+    const retinaFormats = formats.filter(f =>
+      ((f.format_id as { id: string }).id).endsWith('_image_2x'),
+    );
+    expect(retinaFormats).toHaveLength(7);
+
+    for (const format of retinaFormats) {
+      const id = (format.format_id as { id: string }).id;
+      const match = id.match(/^display_(\d+)x(\d+)_image_2x$/);
+      expect(match, id).not.toBeNull();
+      const logicalWidth = Number(match![1]);
+      const logicalHeight = Number(match![2]);
+      const image = (format.assets as any[]).find(asset => asset.asset_type === 'image');
+      const projection = format.canonical_parameters as any;
+
+      expect((format.canonical as any).kind, id).toBe('image');
+      expect((format.renders as any[])[0].dimensions, id).toMatchObject({
+        width: logicalWidth,
+        height: logicalHeight,
+      });
+      expect(image.requirements, id).toMatchObject({
+        width: logicalWidth * 2,
+        height: logicalHeight * 2,
+      });
+      expect(projection, id).toEqual({
+        format_kind: 'image',
+        params: { width: logicalWidth, height: logicalHeight, pixel_ratios: [2] },
+      });
+    }
+  });
+
   it('all format IDs are unique', () => {
     const formats = buildReferenceFormats(TEST_AGENT_URL);
     const ids = formats.map(f => (f.format_id as { id: string }).id);
@@ -160,7 +199,7 @@ describe('handleListCreativeFormats', () => {
   it('returns all formats when no filters provided', () => {
     const result = handleListCreativeFormats({}, formats);
     const returned = result.formats as unknown[];
-    expect(returned.length).toBe(62);
+    expect(returned.length).toBe(69);
   });
 
   it('response structure matches schema: { formats: [...] }', () => {
@@ -327,6 +366,53 @@ describe('handlePreviewCreative', () => {
       creative_manifest: {
         format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250_image' },
         assets: {},
+      },
+    }, formats, TEST_BASE_URL);
+
+    const renders = ((result.previews as any[])[0].renders as any[]);
+    expect(renders[0].dimensions).toEqual({ width: 300, height: 250 });
+  });
+
+  it('renders a parameterized 2x image at logical dimensions', () => {
+    const result = handlePreviewCreative({
+      request_type: 'single',
+      creative_manifest: {
+        format_id: {
+          agent_url: TEST_AGENT_URL,
+          id: 'display_image',
+          width: 300,
+          height: 250,
+          pixel_ratio: 2,
+        },
+        assets: {
+          banner_image: {
+            asset_type: 'image',
+            url: 'https://example.com/ad-2x.jpg',
+            width: 600,
+            height: 500,
+            pixel_ratio: 2,
+          },
+        },
+      },
+    }, formats, TEST_BASE_URL);
+
+    const renders = ((result.previews as any[])[0].renders as any[]);
+    expect(renders[0].dimensions).toEqual({ width: 300, height: 250 });
+  });
+
+  it('renders a concrete 3.1 2x catalog format at logical dimensions', () => {
+    const result = handlePreviewCreative({
+      request_type: 'single',
+      creative_manifest: {
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250_image_2x' },
+        assets: {
+          banner_image: {
+            asset_type: 'image',
+            url: 'https://example.com/ad-2x.jpg',
+            width: 600,
+            height: 500,
+          },
+        },
       },
     }, formats, TEST_BASE_URL);
 
@@ -625,14 +711,14 @@ describe('MCP tool responses include structuredContent', () => {
     expect(JSON.parse(content[0].text)).toEqual(structured);
   });
 
-  it('list_creative_formats structuredContent has 54 formats with proposal cards', async () => {
+  it('list_creative_formats structuredContent includes all 69 reference and UI formats', async () => {
     const result = await client.callTool({
       name: 'list_creative_formats',
       arguments: {},
     });
 
     const structured = result.structuredContent as { formats: unknown[] };
-    expect(structured.formats.length).toBe(62);
+    expect(structured.formats.length).toBe(69);
   });
 
   it('preview_creative batch mode returns structuredContent', async () => {

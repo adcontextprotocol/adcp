@@ -84,12 +84,12 @@
     "width": {
       "type": "integer",
       "minimum": 1,
-      "description": "Required image width in pixels — use for fixed-size slots (e.g., a 300×250 IAB MREC). For multi-size flexible slots (publisher MREC slot that accepts 300×250 OR 728×90 OR 970×250), use `sizes[]` instead; for responsive slots that adapt to viewport, use `min_width`/`max_width`/`min_height`/`max_height`. The three modes are mutually exclusive — set exactly one of `(width+height)`, `sizes[]`, or `min/max_width` + `min/max_height` ranges."
+      "description": "Logical render width in pixels — use for fixed-size slots (e.g., a 300×250 IAB MREC). When `pixel_ratios` is absent, the required image asset width is the same value (1x). When `pixel_ratios` is present, an accepted asset's intrinsic width is `width × pixel_ratio`. For multi-size flexible slots, use `sizes[]`; for responsive slots, use the min/max fields. The three size modes are mutually exclusive."
     },
     "height": {
       "type": "integer",
       "minimum": 1,
-      "description": "Required image height in pixels. See `width` for size-mode mutual exclusion."
+      "description": "Logical render height in pixels. Intrinsic asset height is `height × pixel_ratio`, where the ratio defaults to 1 when `pixel_ratios` is absent. See `width` for size-mode mutual exclusion."
     },
     "sizes": {
       "type": "array",
@@ -103,7 +103,17 @@
         },
         "additionalProperties": false
       },
-      "description": "List of accepted (width, height) pairs for a multi-size flexible slot. Buyer ships an asset matching one of the listed sizes; SDK validates `assets.image_main.{width,height}` against the list (any-match). Mirrors OpenRTB `banner.format[]` semantics — one declaration with N accepted sizes is cleaner than N format_options entries. Mutually exclusive with `(width, height)` and with `min/max_width` + `min/max_height` ranges."
+      "description": "List of accepted logical (width, height) render pairs for a multi-size flexible slot. The buyer ships an asset matching one logical size multiplied by one accepted `pixel_ratios` entry (or by 1 when `pixel_ratios` is absent). SDKs MUST treat size and density as separate axes: a 600×500 intrinsic asset at 2x satisfies a logical 300×250 size; it does not create a logical 600×500 placement. Mirrors OpenRTB `banner.format[]` semantics. Mutually exclusive with `(width, height)` and with responsive ranges."
+    },
+    "pixel_ratios": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "number",
+        "exclusiveMinimum": 0
+      },
+      "description": "Accepted intrinsic-pixel densities for image assets, expressed as intrinsic pixels per logical render pixel (for example `[1, 2]` accepts both standard and Retina renditions). Absence means `[1]` for backward compatibility. This is an acceptance set, not a requirement to submit every rendition: one `image_main` asset satisfying any listed ratio is sufficient unless the product overrides the slot with separate required assets. SDKs determine the effective ratio from `asset.pixel_ratio` when supplied, otherwise infer it from intrinsic asset dimensions divided by the matched logical size. Width and height ratios MUST agree."
     },
     "min_width": {
       "type": "integer",

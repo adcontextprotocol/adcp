@@ -82,6 +82,19 @@ describe('v1 canonical literal mapping vectors', () => {
     expect(mapping).not.toHaveProperty('parameters.height');
   });
 
+  it('projects 3.1 reference-catalog 2x images to logical canonical dimensions', () => {
+    const retinaMappings = literalMappings.filter(mapping =>
+      mapping.v1_pattern.format_id_glob.endsWith('_image_2x'),
+    );
+    expect(retinaMappings).toHaveLength(7);
+    for (const mapping of retinaMappings) {
+      expect(mapping.v2.canonical, mapping.v1_pattern.format_id_glob).toBe('image');
+      expect(mapping.v2.parameters, mapping.v1_pattern.format_id_glob).toMatchObject({
+        pixel_ratios: [2],
+      });
+    }
+  });
+
   it('treats small NxN tokens as aspect ratios rather than pixel dimensions', () => {
     for (const mapping of literalMappings) {
       const match = mapping.v1_pattern.format_id_glob.match(/(?:^|_)(\d+)x(\d+)(?:_|$)/);

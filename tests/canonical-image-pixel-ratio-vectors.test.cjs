@@ -1,0 +1,100 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const test = require('node:test');
+
+const fixture = JSON.parse(fs.readFileSync(
+  path.resolve(__dirname, '../static/test-vectors/canonical-image-pixel-ratio.json'),
+  'utf8',
+));
+
+function inRange(value, min, max) {
+  return (min === undefined || value >= min) && (max === undefined || value <= max);
+}
+
+/** Reference algorithm consumed independently by each SDK's own test suite. */
+function validateImageDensity(params, asset) {
+  const acceptedRatios = params.pixel_ratios ?? [1];
+
+  if (asset.pixel_ratio !== undefined && !acceptedRatios.includes(asset.pixel_ratio)) {
+    return { valid: false, violation: 'pixel_ratio_not_accepted' };
+  }
+
+  const ratios = asset.pixel_ratio === undefined ? acceptedRatios : [asset.pixel_ratio];
+  const matches = [];
+  const hasFixed = params.width !== undefined && params.height !== undefined;
+  const hasSizes = params.sizes !== undefined;
+  const hasRange = params.min_width !== undefined || params.max_width !== undefined ||
+    params.min_height !== undefined || params.max_height !== undefined;
+
+  for (const ratio of ratios) {
+    const logicalWidth = asset.width / ratio;
+    const logicalHeight = asset.height / ratio;
+    if (!Number.isInteger(logicalWidth) || !Number.isInteger(logicalHeight)) continue;
+
+    const sizeMatches = hasFixed
+      ? logicalWidth === params.width && logicalHeight === params.height
+      : hasSizes
+        ? params.sizes.some(size => size.width === logicalWidth && size.height === logicalHeight)
+        : hasRange
+          ? inRange(logicalWidth, params.min_width, params.max_width) &&
+            inRange(logicalHeight, params.min_height, params.max_height)
+          : asset.pixel_ratio !== undefined ||
+            (acceptedRatios.length === 1 && acceptedRatios[0] === 1);
+
+    if (sizeMatches) matches.push({ ratio, width: logicalWidth, height: logicalHeight });
+  }
+
+  if (matches.length > 1 && asset.pixel_ratio === undefined) {
+    return { valid: false, violation: 'pixel_ratio_ambiguous' };
+  }
+
+  if (matches.length === 1) {
+    const match = matches[0];
+    return {
+      valid: true,
+      pixel_ratio: match.ratio,
+      logical_width: match.width,
+      logical_height: match.height,
+    };
+  }
+
+  if (!hasFixed && !hasSizes && !hasRange && asset.pixel_ratio === undefined) {
+    return { valid: false, violation: 'pixel_ratio_not_inferable' };
+  }
+
+  if (asset.pixel_ratio !== undefined && hasFixed) {
+    const inferredWidthRatio = asset.width / params.width;
+    const inferredHeightRatio = asset.height / params.height;
+    if (inferredWidthRatio === inferredHeightRatio && inferredWidthRatio !== asset.pixel_ratio) {
+      return { valid: false, violation: 'pixel_ratio_metadata_mismatch' };
+    }
+  }
+
+  if (hasFixed && asset.width / params.width !== asset.height / params.height) {
+    return { valid: false, violation: 'pixel_ratio_dimension_mismatch' };
+  }
+
+  return { valid: false, violation: 'image_dimensions_not_accepted' };
+}
+
+for (const vector of fixture.vectors) {
+  test(`canonical image pixel ratio: ${vector.id}`, () => {
+    assert.deepEqual(validateImageDensity(vector.params, vector.asset), vector.expected);
+  });
+}
+
+test('parameterized legacy display_image ids project without retina-specific names', () => {
+  for (const vector of fixture.legacy_projection_vectors) {
+    const { width, height, pixel_ratio: pixelRatio } = vector.format_id;
+    const projected = {
+      format_kind: 'image',
+      params: {
+        width,
+        height,
+        ...(pixelRatio === undefined ? {} : { pixel_ratios: [pixelRatio] }),
+      },
+    };
+    assert.deepEqual(projected, vector.expected, vector.id);
+  }
+});

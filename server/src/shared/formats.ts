@@ -24,6 +24,7 @@ interface AssetRequirements {
   max_duration_ms?: number;
   min_resolution_dpi?: number;
   catalog_type?: string;
+  parameters_from_format_id?: boolean;
 }
 
 interface IndividualAsset {
@@ -74,12 +75,12 @@ export function buildFormats(agentUrl: string): TrainingFormat[] {
     {
       format_id: { agent_url: agentUrl, id: 'display_static' },
       name: 'Static display',
-      description: 'Static image display ad. Provide width and height in format_id to specify dimensions (e.g., 300x250, 728x90, 160x600, 320x50).',
-      accepts_parameters: ['dimensions'],
+      description: 'Static image display ad. Provide logical width and height plus optional pixel_ratio in format_id (for example, 300x250 at 2x uses a 600x500 asset).',
+      accepts_parameters: ['dimensions', 'pixel_ratio'],
       renders: [{ role: 'primary', parameters_from_format_id: true }],
       assets: [
         { item_type: 'individual', asset_id: 'image', asset_type: 'image', asset_role: 'hero_image', required: true,
-          requirements: { mime_types: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], max_file_size_bytes: 200000 } },
+          requirements: { parameters_from_format_id: true, mime_types: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], max_file_size_bytes: 200000 } },
         { item_type: 'individual', asset_id: 'click_url', asset_type: 'url', asset_role: 'click_through', required: true,
           requirements: { url_type: 'click_through' } },
         { item_type: 'individual', asset_id: 'impression_tracker', asset_type: 'url', asset_role: 'third_party_tracking', required: false,

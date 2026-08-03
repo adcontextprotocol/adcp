@@ -1,0 +1,167 @@
+{
+  "version": "1.0.0",
+  "description": "SDK reference vectors for canonical image pixel-density validation. Format dimensions are logical render pixels; image asset dimensions are intrinsic pixels. When pixel_ratios is absent the accepted set is [1]. One asset satisfying one accepted ratio is sufficient.",
+  "vectors": [
+    {
+      "id": "backward-compatible-1x",
+      "params": { "width": 300, "height": 250 },
+      "asset": { "width": 300, "height": 250 },
+      "expected": { "valid": true, "pixel_ratio": 1, "logical_width": 300, "logical_height": 250 }
+    },
+    {
+      "id": "2x-rejected-when-density-is-undeclared",
+      "params": { "width": 300, "height": 250 },
+      "asset": { "width": 600, "height": 500 },
+      "expected": { "valid": false, "violation": "image_dimensions_not_accepted" }
+    },
+    {
+      "id": "explicit-2x-retina",
+      "params": { "width": 300, "height": 250, "pixel_ratios": [2] },
+      "asset": { "width": 600, "height": 500, "pixel_ratio": 2 },
+      "expected": { "valid": true, "pixel_ratio": 2, "logical_width": 300, "logical_height": 250 }
+    },
+    {
+      "id": "infer-2x-from-intrinsic-dimensions",
+      "params": { "width": 300, "height": 250, "pixel_ratios": [2] },
+      "asset": { "width": 600, "height": 500 },
+      "expected": { "valid": true, "pixel_ratio": 2, "logical_width": 300, "logical_height": 250 }
+    },
+    {
+      "id": "accepted-density-set-chooses-1x",
+      "params": { "width": 300, "height": 250, "pixel_ratios": [1, 2] },
+      "asset": { "width": 300, "height": 250 },
+      "expected": { "valid": true, "pixel_ratio": 1, "logical_width": 300, "logical_height": 250 }
+    },
+    {
+      "id": "accepted-density-set-chooses-2x",
+      "params": { "width": 300, "height": 250, "pixel_ratios": [1, 2] },
+      "asset": { "width": 600, "height": 500 },
+      "expected": { "valid": true, "pixel_ratio": 2, "logical_width": 300, "logical_height": 250 }
+    },
+    {
+      "id": "density-not-in-accepted-set",
+      "params": { "width": 300, "height": 250, "pixel_ratios": [2] },
+      "asset": { "width": 300, "height": 250, "pixel_ratio": 1 },
+      "expected": { "valid": false, "violation": "pixel_ratio_not_accepted" }
+    },
+    {
+      "id": "declared-density-disagrees-with-intrinsic-dimensions",
+      "params": { "width": 300, "height": 250, "pixel_ratios": [1, 2] },
+      "asset": { "width": 600, "height": 500, "pixel_ratio": 1 },
+      "expected": { "valid": false, "violation": "pixel_ratio_metadata_mismatch" }
+    },
+    {
+      "id": "width-and-height-must-scale-uniformly",
+      "params": { "width": 300, "height": 250, "pixel_ratios": [2] },
+      "asset": { "width": 600, "height": 250 },
+      "expected": { "valid": false, "violation": "pixel_ratio_dimension_mismatch" }
+    },
+    {
+      "id": "multi-size-and-density-are-independent-axes",
+      "params": {
+        "sizes": [
+          { "width": 300, "height": 250 },
+          { "width": 728, "height": 90 }
+        ],
+        "pixel_ratios": [2]
+      },
+      "asset": { "width": 1456, "height": 180 },
+      "expected": { "valid": true, "pixel_ratio": 2, "logical_width": 728, "logical_height": 90 }
+    },
+    {
+      "id": "retina-intrinsic-size-is-not-a-logical-size",
+      "params": {
+        "sizes": [
+          { "width": 300, "height": 250 },
+          { "width": 600, "height": 500 }
+        ],
+        "pixel_ratios": [2]
+      },
+      "asset": { "width": 600, "height": 500 },
+      "expected": { "valid": true, "pixel_ratio": 2, "logical_width": 300, "logical_height": 250 }
+    },
+    {
+      "id": "fractional-1-5x-density",
+      "params": { "width": 300, "height": 250, "pixel_ratios": [1.5] },
+      "asset": { "width": 450, "height": 375 },
+      "expected": { "valid": true, "pixel_ratio": 1.5, "logical_width": 300, "logical_height": 250 }
+    },
+    {
+      "id": "responsive-range-2x",
+      "params": { "min_width": 300, "max_width": 500, "min_height": 200, "max_height": 300, "pixel_ratios": [2] },
+      "asset": { "width": 800, "height": 500 },
+      "expected": { "valid": true, "pixel_ratio": 2, "logical_width": 400, "logical_height": 250 }
+    },
+    {
+      "id": "unconstrained-image-remains-backward-compatible-1x",
+      "params": {},
+      "asset": { "width": 600, "height": 500 },
+      "expected": { "valid": true, "pixel_ratio": 1, "logical_width": 600, "logical_height": 500 }
+    },
+    {
+      "id": "ambiguous-size-and-density-requires-asset-metadata",
+      "params": {
+        "sizes": [
+          { "width": 300, "height": 250 },
+          { "width": 600, "height": 500 }
+        ],
+        "pixel_ratios": [1, 2]
+      },
+      "asset": { "width": 600, "height": 500 },
+      "expected": { "valid": false, "violation": "pixel_ratio_ambiguous" }
+    },
+    {
+      "id": "asset-metadata-resolves-size-and-density-ambiguity",
+      "params": {
+        "sizes": [
+          { "width": 300, "height": 250 },
+          { "width": 600, "height": 500 }
+        ],
+        "pixel_ratios": [1, 2]
+      },
+      "asset": { "width": 600, "height": 500, "pixel_ratio": 2 },
+      "expected": { "valid": true, "pixel_ratio": 2, "logical_width": 300, "logical_height": 250 }
+    },
+    {
+      "id": "density-only-requires-explicit-asset-metadata",
+      "params": { "pixel_ratios": [2] },
+      "asset": { "width": 600, "height": 500 },
+      "expected": { "valid": false, "violation": "pixel_ratio_not_inferable" }
+    },
+    {
+      "id": "density-only-with-explicit-asset-metadata",
+      "params": { "pixel_ratios": [2] },
+      "asset": { "width": 600, "height": 500, "pixel_ratio": 2 },
+      "expected": { "valid": true, "pixel_ratio": 2, "logical_width": 300, "logical_height": 250 }
+    }
+  ],
+  "legacy_projection_vectors": [
+    {
+      "id": "parameterized-display-image-2x",
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "display_image",
+        "width": 300,
+        "height": 250,
+        "pixel_ratio": 2
+      },
+      "expected": {
+        "format_kind": "image",
+        "params": { "width": 300, "height": 250, "pixel_ratios": [2] }
+      }
+    },
+    {
+      "id": "parameterized-display-image-defaults-to-1x",
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "display_image",
+        "width": 300,
+        "height": 250
+      },
+      "expected": {
+        "format_kind": "image",
+        "params": { "width": 300, "height": 250 }
+      }
+    }
+  ]
+}

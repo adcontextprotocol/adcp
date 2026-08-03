@@ -2255,10 +2255,17 @@
       "id": "display_image"
     },
     "name": "Display Banner - Image",
-    "description": "Static image banner (supports any dimensions)",
+    "description": "Static image banner with parameterized logical dimensions and pixel density",
     "type": "display",
     "accepts_parameters": [
-      "dimensions"
+      "dimensions",
+      "pixel_ratio"
+    ],
+    "renders": [
+      {
+        "role": "primary",
+        "parameters_from_format_id": true
+      }
     ],
     "assets": [
       {
@@ -2267,6 +2274,7 @@
         "required": true,
         "asset_type": "image",
         "requirements": {
+          "parameters_from_format_id": true,
           "containers": [
             "jpg",
             "png",
@@ -2337,6 +2345,7 @@
         "required": true,
         "asset_type": "image",
         "requirements": {
+          "parameters_from_format_id": true,
           "containers": [
             "jpg",
             "png",
@@ -3247,6 +3256,251 @@
     ],
     "canonical": {
       "kind": "image"
+    }
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "display_300x250_image_2x"
+    },
+    "name": "Medium Rectangle - Image (2x)",
+    "description": "300x250 logical display banner supplied as a 600x500 high-density image",
+    "type": "display",
+    "renders": [
+      { "role": "primary", "dimensions": { "width": 300, "height": 250, "responsive": { "width": false, "height": false } } }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "banner_image",
+        "asset_group_id": "image_main",
+        "required": true,
+        "asset_type": "image",
+        "requirements": { "width": 600, "height": 500, "containers": ["jpg", "png", "gif", "webp"] }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_url",
+        "asset_group_id": "landing_page_url",
+        "required": true,
+        "asset_type": "url",
+        "requirements": { "url_type": "clickthrough", "description": "Clickthrough destination URL" }
+      }
+    ],
+    "canonical": { "kind": "image" },
+    "canonical_parameters": {
+      "format_kind": "image",
+      "params": { "width": 300, "height": 250, "pixel_ratios": [2] }
+    }
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "display_728x90_image_2x"
+    },
+    "name": "Leaderboard - Image (2x)",
+    "description": "728x90 logical display banner supplied as a 1456x180 high-density image",
+    "type": "display",
+    "renders": [
+      { "role": "primary", "dimensions": { "width": 728, "height": 90, "responsive": { "width": false, "height": false } } }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "banner_image",
+        "asset_group_id": "image_main",
+        "required": true,
+        "asset_type": "image",
+        "requirements": { "width": 1456, "height": 180, "containers": ["jpg", "png", "gif", "webp"] }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_url",
+        "asset_group_id": "landing_page_url",
+        "required": true,
+        "asset_type": "url",
+        "requirements": { "url_type": "clickthrough", "description": "Clickthrough destination URL" }
+      }
+    ],
+    "canonical": { "kind": "image" },
+    "canonical_parameters": {
+      "format_kind": "image",
+      "params": { "width": 728, "height": 90, "pixel_ratios": [2] }
+    }
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "display_320x50_image_2x"
+    },
+    "name": "Mobile Banner - Image (2x)",
+    "description": "320x50 logical mobile banner supplied as a 640x100 high-density image",
+    "type": "display",
+    "renders": [
+      { "role": "primary", "dimensions": { "width": 320, "height": 50, "responsive": { "width": false, "height": false } } }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "banner_image",
+        "asset_group_id": "image_main",
+        "required": true,
+        "asset_type": "image",
+        "requirements": { "width": 640, "height": 100, "containers": ["jpg", "png", "gif", "webp"] }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_url",
+        "asset_group_id": "landing_page_url",
+        "required": true,
+        "asset_type": "url",
+        "requirements": { "url_type": "clickthrough", "description": "Clickthrough destination URL" }
+      }
+    ],
+    "canonical": { "kind": "image" },
+    "canonical_parameters": {
+      "format_kind": "image",
+      "params": { "width": 320, "height": 50, "pixel_ratios": [2] }
+    }
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "display_160x600_image_2x"
+    },
+    "name": "Wide Skyscraper - Image (2x)",
+    "description": "160x600 logical wide skyscraper supplied as a 320x1200 high-density image",
+    "type": "display",
+    "renders": [
+      { "role": "primary", "dimensions": { "width": 160, "height": 600, "responsive": { "width": false, "height": false } } }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "banner_image",
+        "asset_group_id": "image_main",
+        "required": true,
+        "asset_type": "image",
+        "requirements": { "width": 320, "height": 1200, "containers": ["jpg", "png", "gif", "webp"] }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_url",
+        "asset_group_id": "landing_page_url",
+        "required": true,
+        "asset_type": "url",
+        "requirements": { "url_type": "clickthrough", "description": "Clickthrough destination URL" }
+      }
+    ],
+    "canonical": { "kind": "image" },
+    "canonical_parameters": {
+      "format_kind": "image",
+      "params": { "width": 160, "height": 600, "pixel_ratios": [2] }
+    }
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "display_336x280_image_2x"
+    },
+    "name": "Large Rectangle - Image (2x)",
+    "description": "336x280 logical large rectangle supplied as a 672x560 high-density image",
+    "type": "display",
+    "renders": [
+      { "role": "primary", "dimensions": { "width": 336, "height": 280, "responsive": { "width": false, "height": false } } }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "banner_image",
+        "asset_group_id": "image_main",
+        "required": true,
+        "asset_type": "image",
+        "requirements": { "width": 672, "height": 560, "containers": ["jpg", "png", "gif", "webp"] }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_url",
+        "asset_group_id": "landing_page_url",
+        "required": true,
+        "asset_type": "url",
+        "requirements": { "url_type": "clickthrough", "description": "Clickthrough destination URL" }
+      }
+    ],
+    "canonical": { "kind": "image" },
+    "canonical_parameters": {
+      "format_kind": "image",
+      "params": { "width": 336, "height": 280, "pixel_ratios": [2] }
+    }
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "display_300x600_image_2x"
+    },
+    "name": "Half Page - Image (2x)",
+    "description": "300x600 logical half-page banner supplied as a 600x1200 high-density image",
+    "type": "display",
+    "renders": [
+      { "role": "primary", "dimensions": { "width": 300, "height": 600, "responsive": { "width": false, "height": false } } }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "banner_image",
+        "asset_group_id": "image_main",
+        "required": true,
+        "asset_type": "image",
+        "requirements": { "width": 600, "height": 1200, "containers": ["jpg", "png", "gif", "webp"] }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_url",
+        "asset_group_id": "landing_page_url",
+        "required": true,
+        "asset_type": "url",
+        "requirements": { "url_type": "clickthrough", "description": "Clickthrough destination URL" }
+      }
+    ],
+    "canonical": { "kind": "image" },
+    "canonical_parameters": {
+      "format_kind": "image",
+      "params": { "width": 300, "height": 600, "pixel_ratios": [2] }
+    }
+  },
+  {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org/",
+      "id": "display_970x250_image_2x"
+    },
+    "name": "Billboard - Image (2x)",
+    "description": "970x250 logical billboard supplied as a 1940x500 high-density image",
+    "type": "display",
+    "renders": [
+      { "role": "primary", "dimensions": { "width": 970, "height": 250, "responsive": { "width": false, "height": false } } }
+    ],
+    "assets": [
+      {
+        "item_type": "individual",
+        "asset_id": "banner_image",
+        "asset_group_id": "image_main",
+        "required": true,
+        "asset_type": "image",
+        "requirements": { "width": 1940, "height": 500, "containers": ["jpg", "png", "gif", "webp"] }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_url",
+        "asset_group_id": "landing_page_url",
+        "required": true,
+        "asset_type": "url",
+        "requirements": { "url_type": "clickthrough", "description": "Clickthrough destination URL" }
+      }
+    ],
+    "canonical": { "kind": "image" },
+    "canonical_parameters": {
+      "format_kind": "image",
+      "params": { "width": 970, "height": 250, "pixel_ratios": [2] }
     }
   },
   {
