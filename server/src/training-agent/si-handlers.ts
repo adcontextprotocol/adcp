@@ -34,6 +34,8 @@ interface SiSandboxSession {
   turns: number;
   status: 'active' | 'terminated';
   principal: string;
+  // Updated on every si_send_message call; used to evict abandoned active sessions.
+  last_activity_at: number;
   // Stored on first termination so repeated calls return the identical result.
   terminalResult?: unknown;
   // Set when first terminated; used by the cleanup sweep.
@@ -44,9 +46,9 @@ interface SiSandboxSession {
 // path in si_send_message is reachable (si_terminate_session must not delete).
 const sessions = new Map<string, SiSandboxSession>();
 
-// Sweep terminated sessions older than 30 minutes every 5 minutes.
-// Active sessions are untouched; only completed/terminated entries are evicted.
-const TERMINATED_TTL_MS = 30 * 60 * 1000;
+// Evict both terminated and abandoned-active sessions after 30 minutes of
+// inactivity. This matches the session_ttl_seconds: 1800 advertised to callers.
+const SESSION_TTL_MS = 30 * 60 * 1000;
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 
 let cleanupTimer: ReturnType<typeof setInterval> | null = null;
@@ -54,9 +56,13 @@ let cleanupTimer: ReturnType<typeof setInterval> | null = null;
 function startSiSessionCleanup(): void {
   if (cleanupTimer !== null) return;
   cleanupTimer = setInterval(() => {
-    const cutoff = Date.now() - TERMINATED_TTL_MS;
+    const cutoff = Date.now() - SESSION_TTL_MS;
     for (const [id, session] of sessions) {
-      if (session.status === 'terminated' && session.terminated_at !== undefined && session.terminated_at < cutoff) {
+      const staleActive = session.status === 'active' && session.last_activity_at < cutoff;
+      const staleTerminated = session.status === 'terminated'
+        && session.terminated_at !== undefined
+        && session.terminated_at < cutoff;
+      if (staleActive || staleTerminated) {
         sessions.delete(id);
       }
     }
@@ -307,6 +313,7 @@ export async function handleSiInitiateSession(args: ToolArgs, ctx: TrainingConte
     turns: 0,
     status: 'active',
     principal: ctx.principal ?? 'anonymous',
+    last_activity_at: Date.now(),
   });
 
   const greeting = (resolvedOfferingId && BRAND_GREETINGS[resolvedOfferingId]) ?? DEFAULT_GREETING;
@@ -459,6 +466,7 @@ export async function handleSiSendMessage(args: ToolArgs, _ctx: TrainingContext)
   }
 
   session.turns += 1;
+  session.last_activity_at = Date.now();
   const turnIndex = Math.min(session.turns - 1, TURN_RESPONSES.length - 1);
   const turnResponse = TURN_RESPONSES[turnIndex];
 
