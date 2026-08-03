@@ -379,4 +379,91 @@ describe('BrandDatabase.getAllBrandsForRegistry', () => {
       expect(b.total).toBe(1);
     });
   });
+
+  describe('relationship trust fields', () => {
+    it('returns relationship_trust when set', async () => {
+      await insertBrand({
+        domain: 'leaf-trust.example.com',
+        brand_name: 'Leaf Brand',
+        is_public: true,
+        source_type: 'brand_json',
+        house_domain: 'house.example.com',
+      });
+      await pool.query(
+        `UPDATE brands
+         SET relationship_trust = 'leaf_only',
+             claimed_house_domain = 'house.example.com',
+             relationship_trust_computed_at = NOW()
+         WHERE domain = 'leaf-trust.example.com'`,
+      );
+
+      const result = await brandDb.getAllBrandsForRegistry({ search: 'leaf-trust' });
+      const row = result.find((b) => b.domain === 'leaf-trust.example.com');
+      expect(row).toBeDefined();
+      expect(row!.relationship_trust).toBe('leaf_only');
+      expect(row!.claimed_house_domain).toBe('house.example.com');
+      expect(row!.relationship_verified_at).toBeUndefined();
+    });
+
+    it('returns relationship_verified_at for mutual trust', async () => {
+      await insertBrand({
+        domain: 'mutual-trust.example.com',
+        brand_name: 'Mutual Brand',
+        is_public: true,
+        source_type: 'brand_json',
+        house_domain: 'house.example.com',
+      });
+      const verifiedAt = new Date('2026-01-15T12:00:00Z');
+      await pool.query(
+        `UPDATE brands
+         SET relationship_trust = 'mutual',
+             relationship_verified_at = $2,
+             relationship_trust_computed_at = NOW()
+         WHERE domain = $1`,
+        ['mutual-trust.example.com', verifiedAt.toISOString()],
+      );
+
+      const result = await brandDb.getAllBrandsForRegistry({ search: 'mutual-trust' });
+      const row = result.find((b) => b.domain === 'mutual-trust.example.com');
+      expect(row).toBeDefined();
+      expect(row!.relationship_trust).toBe('mutual');
+      expect(row!.relationship_verified_at).toBeDefined();
+    });
+
+    it('returns undefined relationship_trust when not yet computed', async () => {
+      await insertBrand({
+        domain: 'no-trust.example.com',
+        brand_name: 'Uncomputed Brand',
+        is_public: true,
+        source_type: 'brand_json',
+      });
+
+      const result = await brandDb.getAllBrandsForRegistry({ search: 'no-trust' });
+      const row = result.find((b) => b.domain === 'no-trust.example.com');
+      expect(row).toBeDefined();
+      // Absent trust must not be assumed to mean standalone.
+      expect(row!.relationship_trust).toBeUndefined();
+    });
+
+    it('updateRelationshipTrust persists all trust fields', async () => {
+      await insertBrand({
+        domain: 'update-trust.example.com',
+        brand_name: 'Trust Update Test',
+        is_public: true,
+        source_type: 'brand_json',
+      });
+
+      await brandDb.updateRelationshipTrust('update-trust.example.com', {
+        relationship_trust: 'mutual',
+        relationship_verified_at: new Date('2026-02-01T00:00:00Z'),
+        claimed_house_domain: null,
+      });
+
+      const result = await brandDb.getAllBrandsForRegistry({ search: 'update-trust' });
+      const row = result.find((b) => b.domain === 'update-trust.example.com');
+      expect(row!.relationship_trust).toBe('mutual');
+      expect(row!.relationship_verified_at).toBeDefined();
+      expect(row!.claimed_house_domain).toBeUndefined();
+    });
+  });
 });
