@@ -66,9 +66,9 @@ BEGIN
       ex := jsonb_set(ex, '{description}',
         '"Explore the SI Chat Protocol by calling si_initiate_session against the /si training tenant. si_initiate_session is the AdCP protocol task that starts a brand conversation session — the buyer-side entry point into Sponsored Intelligence."');
       ex := jsonb_set(ex, '{success_criteria}', '[
-        "Successfully calls si_initiate_session and receives a session_id and brand agent welcome message",
-        "Can explain how the SI Chat Protocol differs from traditional display or video advertising",
-        "Can distinguish si_initiate_session (AdCP buyer protocol task) from connect_to_si_agent (Addie host-side tool for end-user product experiences)"
+        {"id": "c3_ex2_sc_session_initiation", "text": "Successfully calls si_initiate_session and receives a session_id and brand agent welcome message"},
+        {"id": "c3_ex2_sc_protocol_difference", "text": "Can explain how the SI Chat Protocol differs from traditional display or video advertising"},
+        {"id": "c3_ex2_sc_tool_distinction", "text": "Can distinguish si_initiate_session (AdCP buyer protocol task) from connect_to_si_agent (Addie host-side tool for end-user product experiences)"}
       ]'::jsonb);
     END IF;
 

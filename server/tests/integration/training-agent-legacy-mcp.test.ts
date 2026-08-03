@@ -165,7 +165,7 @@ describe('Tenant routes via host-based dispatch (no /api/training-agent prefix)'
     expect(names.has('activate_signal')).toBe(true);
   });
 
-  it('exposes all six tenants via _training_agent_tenants in adagents.json', async () => {
+  it('exposes all seven tenants via _training_agent_tenants in adagents.json', async () => {
     const res = await request(app).get('/.well-known/adagents.json');
     expect(res.status).toBe(200);
     const body = res.body as {
@@ -183,15 +183,17 @@ describe('Tenant routes via host-based dispatch (no /api/training-agent prefix)'
     expect(body.authorized_agents.find(a => a.url.endsWith('/signals/mcp'))?.authorization_type).toBe('signal_tags');
     // Discovery extension lists every tenant with its specialism declaration.
     const ids = body._training_agent_tenants.map(t => t.tenant_id).sort();
-    expect(ids).toEqual(['brand', 'creative', 'creative-builder', 'governance', 'sales', 'signals']);
+    expect(ids).toEqual(['brand', 'creative', 'creative-builder', 'governance', 'sales', 'si', 'signals']);
     expect(body._training_agent_tenants.find(t => t.tenant_id === 'brand')?.specialisms).toContain('brand-rights');
     expect(body._training_agent_tenants.find(t => t.tenant_id === 'governance')?.specialisms).toContain('content-standards');
+    expect(body._training_agent_tenants.find(t => t.tenant_id === 'si')?.specialisms).toContain('sponsored-intelligence');
     // Tools surface so a developer can pick the right URL without trial.
     expect(body._training_agent_tenants.find(t => t.tenant_id === 'sales')?.tools).toContain('get_products');
     expect(body._training_agent_tenants.find(t => t.tenant_id === 'signals')?.tools).toContain('get_signals');
     expect(body._training_agent_tenants.find(t => t.tenant_id === 'creative-builder')?.tools).toContain('build_creative');
     expect(body._training_agent_tenants.find(t => t.tenant_id === 'creative-builder')?.tools).not.toContain('get_products');
     expect(body._training_agent_tenants.find(t => t.tenant_id === 'governance')?.tools).toContain('check_governance');
+    expect(body._training_agent_tenants.find(t => t.tenant_id === 'si')?.tools).toContain('si_initiate_session');
   });
 
   it('routes /brand/mcp to the brand tenant', async () => {
