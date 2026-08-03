@@ -40,10 +40,14 @@ interface TrainingCreativeBuilderConfig {
   strict: boolean;
 }
 
-function buildTrainingCtx(account: { authInfo?: { principal?: string } } | undefined): TrainingContext {
+function buildTrainingCtx(
+  account: { authInfo?: { principal?: string } } | undefined,
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): TrainingContext {
   return {
     mode: 'open',
     principal: account?.authInfo?.principal ?? 'anonymous',
+    ...(storyboardCompat && { storyboardCompat }),
   };
 }
 
@@ -147,7 +151,7 @@ export class TrainingCreativeBuilderPlatform
       return translateV5Result(result);
     },
     listCreativeFormats: async (req, ctx) => {
-      const result = await handleListCreativeFormats(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleListCreativeFormats(req as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
       return translateV5Result(result);
     },
     syncCreatives: async (creatives, ctx) => {
