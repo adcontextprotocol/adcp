@@ -37,7 +37,7 @@ jobs:
 
       - name: Mint App token (for the workflow-mod gate comment)
         id: app-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v3.2.0
         with:
           app-id: ${{ secrets.SECRETARIAT_APP_ID }}
           private-key: ${{ secrets.SECRETARIAT_APP_PRIVATE_KEY }}
