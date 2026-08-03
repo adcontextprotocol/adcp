@@ -721,7 +721,7 @@ export class BrandDatabase {
       ON CONFLICT (domain) DO UPDATE SET
         brand_id = COALESCE(EXCLUDED.brand_id, brands.brand_id),
         canonical_domain = EXCLUDED.canonical_domain,
-        house_domain = EXCLUDED.house_domain,
+        house_domain = COALESCE(EXCLUDED.house_domain, brands.house_domain),
         brand_name = EXCLUDED.brand_name,
         brand_names = EXCLUDED.brand_names,
         keller_type = EXCLUDED.keller_type,
