@@ -236,6 +236,12 @@ test('temporary snapshot redirects cover every available live page', () => {
     }
   }
 
+  // This file is linked by Addie but intentionally omitted from navigation.
+  expectedRedirects.set(
+    '/docs/aao/aao-admins',
+    '/dist/docs/3.1.2/aao/aao-admins'
+  );
+
   const expectedUncoveredPages = ['docs/protocol/sync_agent_notification_configs'];
   if (JSON.stringify(uncoveredPages) !== JSON.stringify(expectedUncoveredPages)) {
     throw new Error(
