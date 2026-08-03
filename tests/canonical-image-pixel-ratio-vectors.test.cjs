@@ -7,6 +7,10 @@ const fixture = JSON.parse(fs.readFileSync(
   path.resolve(__dirname, '../static/test-vectors/canonical-image-pixel-ratio.json'),
   'utf8',
 ));
+const mappingRegistry = JSON.parse(fs.readFileSync(
+  path.resolve(__dirname, '../static/schemas/source/registries/v1-canonical-mapping.json'),
+  'utf8',
+));
 
 function inRange(value, min, max) {
   return (min === undefined || value >= min) && (max === undefined || value <= max);
@@ -128,6 +132,28 @@ function validateImageRenditionSet(params, slot, assets) {
   return { valid: true, pixel_ratios: resolvedRatios.sort((a, b) => a - b) };
 }
 
+function projectParameterizedFormat(mapping, formatId) {
+  const params = { ...(mapping.v2.parameters ?? {}) };
+
+  for (const rule of mapping.v2.parameter_mappings ?? []) {
+    const sourceValue = formatId[rule.source_field];
+    if (sourceValue === undefined) continue;
+
+    switch (rule.transform ?? 'identity') {
+      case 'identity':
+        params[rule.target_parameter] = sourceValue;
+        break;
+      case 'singleton_array':
+        params[rule.target_parameter] = [sourceValue];
+        break;
+      default:
+        throw new Error(`Unsupported parameter mapping transform: ${rule.transform}`);
+    }
+  }
+
+  return { format_kind: mapping.v2.canonical, params };
+}
+
 for (const vector of fixture.vectors) {
   test(`canonical image pixel ratio: ${vector.id}`, () => {
     const actual = vector.assets
@@ -138,16 +164,13 @@ for (const vector of fixture.vectors) {
 }
 
 test('parameterized legacy display_image ids project without retina-specific names', () => {
+  const mapping = mappingRegistry.mappings.find(candidate =>
+    candidate.v1_pattern.format_id_glob === 'display_image'
+  );
+  assert.ok(mapping, 'display_image registry mapping');
+
   for (const vector of fixture.legacy_projection_vectors) {
-    const { width, height, pixel_ratio: pixelRatio } = vector.format_id;
-    const projected = {
-      format_kind: 'image',
-      params: {
-        width,
-        height,
-        ...(pixelRatio === undefined ? {} : { pixel_ratios: [pixelRatio] }),
-      },
-    };
+    const projected = projectParameterizedFormat(mapping, vector.format_id);
     assert.deepEqual(projected, vector.expected, vector.id);
   }
 });

@@ -6,6 +6,11 @@ import { describe, expect, it } from 'vitest';
 type V2Mapping = {
   canonical: string;
   parameters?: Record<string, unknown>;
+  parameter_mappings?: Array<{
+    source_field: string;
+    target_parameter: string;
+    transform?: 'identity' | 'singleton_array';
+  }>;
 };
 
 type RegistryMapping = {

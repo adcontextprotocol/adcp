@@ -548,7 +548,7 @@ describe('tenant routing smoke', () => {
       const url = `${baseUrl}/creative/mcp`;
       await initializeTenant(url);
       const body = await callTenantTool(url, 2, 'list_creative_formats', {
-        format_ids: [{ agent_url: baseUrl, id: 'display_static' }],
+        format_ids: [{ agent_url: baseUrl, id: 'display_image' }],
       }) as {
         result?: { structuredContent?: { formats?: Array<{ accepts_parameters?: string[] }> } };
       };

@@ -1,14 +1,21 @@
 {
   "version": 2,
   "registry": "/schemas/registries/v1-canonical-mapping.json",
-  "registry_version": "1.4.0",
+  "registry_version": "1.5.0",
   "description": "Reference vectors for literal v1 format-id projection and the normative v2-narrows-v1 comparison. Resolution uses the first exact format_id_glob match; these vectors do not provide a format definition for structural fallback. Narrowing vectors express the registry-expanded v1 baseline as exact, range, or set constraints so every SDK can apply the same parameter-by-parameter subsumption rules.",
   "vectors": [
     {
       "id": "parameterized-display-image-template",
       "format_id": "display_image",
-      "expected_v2": { "canonical": "image" },
-      "notes": "Width, height, and pixel_ratio are copied from the full structured format_id by the parameter projection rules exercised in canonical-image-pixel-ratio.json."
+      "expected_v2": {
+        "canonical": "image",
+        "parameter_mappings": [
+          { "source_field": "width", "target_parameter": "width" },
+          { "source_field": "height", "target_parameter": "height" },
+          { "source_field": "pixel_ratio", "target_parameter": "pixel_ratios", "transform": "singleton_array" }
+        ]
+      },
+      "notes": "SDKs consume these machine-readable rules to copy width, height, and pixel_ratio from the full structured format_id."
     },
     {
       "id": "static-display-with-no-size-constraint",

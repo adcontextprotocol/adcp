@@ -73,7 +73,7 @@ export function buildFormats(agentUrl: string): TrainingFormat[] {
   return [
     // ── Display ──────────────────────────────────────────────
     {
-      format_id: { agent_url: agentUrl, id: 'display_static' },
+      format_id: { agent_url: agentUrl, id: 'display_image' },
       name: 'Static display',
       description: 'Static image display ad. Provide logical width and height plus optional pixel_ratio in format_id (for example, 300x250 at 2x uses a 600x500 asset).',
       accepts_parameters: ['dimensions', 'pixel_ratio'],
@@ -599,7 +599,7 @@ export function buildFormats(agentUrl: string): TrainingFormat[] {
  * Used by the product factory to assign appropriate formats to products.
  */
 export const FORMAT_CHANNEL_MAP: Record<string, string[]> = {
-  display_static: ['display'],
+  display_image: ['display'],
   display_300x250: ['display'],
   display_728x90: ['display'],
   display_320x50: ['display'],

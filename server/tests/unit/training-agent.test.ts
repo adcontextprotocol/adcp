@@ -1667,20 +1667,22 @@ describe('list_creative_formats handler', () => {
   it('omits post-3.0 format parameters from 3.0 compatibility responses', async () => {
     const currentServer = createTrainingAgentServer(DEFAULT_CTX);
     const { result: current } = await simulateCallTool(currentServer, 'list_creative_formats', {
-      format_ids: [{ agent_url: TEST_AGENT_URL, id: 'display_static' }],
+      format_ids: [{ agent_url: TEST_AGENT_URL, id: 'display_image' }],
     });
     const currentFormat = (current.formats as Array<Record<string, unknown>>)[0];
     expect(currentFormat.accepts_parameters).toEqual(['dimensions', 'pixel_ratio']);
+    expect(currentFormat.description).toContain('pixel_ratio');
 
     const compatServer = createTrainingAgentServer({
       ...DEFAULT_CTX,
       storyboardCompat: { version: '3.0' },
     });
     const { result: compat } = await simulateCallTool(compatServer, 'list_creative_formats', {
-      format_ids: [{ agent_url: TEST_AGENT_URL, id: 'display_static' }],
+      format_ids: [{ agent_url: TEST_AGENT_URL, id: 'display_image' }],
     });
     const compatFormat = (compat.formats as Array<Record<string, unknown>>)[0];
     expect(compatFormat.accepts_parameters).toEqual(['dimensions']);
+    expect(compatFormat.description).not.toContain('pixel_ratio');
   });
 
   it('filters by channels', async () => {

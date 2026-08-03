@@ -3719,6 +3719,9 @@ export async function handleListCreativeFormats(args: ToolArgs, ctx: TrainingCon
       ? {
           ...format,
           accepts_parameters: format.accepts_parameters.filter(parameter => parameter !== 'pixel_ratio'),
+          description: format.format_id.id === 'display_image'
+            ? 'Static image display ad. Provide logical width and height in format_id.'
+            : format.description,
         }
       : format);
   }
