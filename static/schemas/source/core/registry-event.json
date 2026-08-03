@@ -497,7 +497,7 @@
       "items": { "type": "string" },
       "minItems": 1,
       "uniqueItems": true,
-      "description": "Advisory list of changed top-level field names. For publisher.adagents_changed, producers SHOULD enumerate every changed semantic field, explicitly including formats and placements for catalog-only revisions. Consumers MAY use this for targeted index refresh but MUST re-resolve every depended-on field when reading an older retained event that lacks this list."
+      "description": "Advisory list of changed top-level field names from the source document. Example values for publisher.adagents_changed include \"formats\", \"placements\", and \"authorized_agents\"; for agent.profile_updated these are profile field names such as \"channels\" or \"format_kinds\". Producers SHOULD enumerate every changed semantic field, explicitly including formats and placements for catalog-only revisions (additive from 3.2). Consumers MAY use this for targeted index refresh but MUST re-resolve every depended-on field when reading an older retained event that lacks this list."
     },
     "classification": {
       "type": "string",
