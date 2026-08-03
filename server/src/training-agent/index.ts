@@ -1,8 +1,8 @@
 /**
  * Training agent route setup — multi-tenant.
  *
- * Mounts six per-specialism tenants under `/api/training-agent/`:
- *   /sales, /signals, /governance, /creative, /creative-builder, /brand
+ * Mounts seven per-specialism tenants under `/api/training-agent/`:
+ *   /sales, /signals, /governance, /creative, /creative-builder, /brand, /si
  *
  * Each tenant exposes its own MCP endpoint (`/<tenant>/mcp`) with bearer
  * auth + rate limiting. Health, JWKS, and adagents.json discovery live
@@ -313,7 +313,7 @@ const TENANT_SPECIALISMS: Record<typeof TENANT_IDS[number], readonly string[]> =
   creative: ['creative-ad-server'],
   'creative-builder': ['creative-template', 'creative-generative'],
   brand: ['brand-rights'],
-  si: [],
+  si: ['sponsored-intelligence'],
 };
 
 /** Maps each tenant to its brand-agent type for brand.json `agents[]`.

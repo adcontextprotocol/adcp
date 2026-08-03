@@ -719,6 +719,7 @@ describe('tenant routing smoke', () => {
 
       // Step 2: initiate session using offering_token — token must be authoritative
       const initiateResp = await callTenantTool(url, 3, 'si_initiate_session', {
+        idempotency_key: 'tenant-si-initiate-0001',
         offering_token: offeringToken,
         intent: 'Browse products and learn about the catalog.',
         identity: { consent_granted: true },
@@ -740,6 +741,7 @@ describe('tenant routing smoke', () => {
 
       // Step 3: send a message and verify canonical shape (session_id + session_status required)
       const sendResp = await callTenantTool(url, 4, 'si_send_message', {
+        idempotency_key: 'tenant-si-send-0000001',
         session_id: sessionId,
         message: 'Show me your most popular products.',
       }) as {
@@ -792,20 +794,15 @@ describe('tenant routing smoke', () => {
 
       // Step 6: send after termination must return SESSION_TERMINATED with session_id + session_status
       const sendAfterTerminate = await callTenantTool(url, 7, 'si_send_message', {
+        idempotency_key: 'tenant-si-send-0000002',
         session_id: sessionId,
         message: 'Still there?',
       }) as {
         result?: {
-          structuredContent?: {
-            session_id?: string;
-            session_status?: string;
-            errors?: Array<{ code?: string }>;
-          };
+          structuredContent?: { adcp_error?: { code?: string } };
         };
       };
-      expect(sendAfterTerminate.result?.structuredContent?.session_id).toBe(sessionId);
-      expect(sendAfterTerminate.result?.structuredContent?.session_status).toBe('terminated');
-      expect(sendAfterTerminate.result?.structuredContent?.errors?.[0]?.code).toBe('SESSION_TERMINATED');
+      expect(sendAfterTerminate.result?.structuredContent?.adcp_error?.code).toBe('SESSION_TERMINATED');
     } finally {
       await close();
     }

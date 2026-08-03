@@ -29,6 +29,7 @@ import type { ToolArgs, TrainingContext } from './types.js';
 interface SiSandboxSession {
   session_id: string;
   brand_name: string;
+  brand_domain: string;
   offering_id?: string;
   turns: number;
   status: 'active' | 'terminated';
@@ -60,6 +61,38 @@ function offeringIdFromToken(token: string): string | undefined {
 // ---------------------------------------------------------------------------
 
 const SANDBOX_OFFERINGS: Record<string, Record<string, unknown>> = {
+  'novamotors_conversational_v1': {
+    offering_id: 'novamotors_conversational_v1',
+    title: 'Nova Motors Volta EV Advisor',
+    summary: 'A conversational vehicle-shopping experience for drivers researching the Nova Motors Volta EV.',
+    tagline: 'Performance meets sustainability.',
+    brand: { name: 'Nova Motors', domain: 'novamotors.example' },
+    availability_status: 'available',
+    price_hint: 'Vehicles from $44,900',
+    products: [
+      {
+        product_id: 'volta_ev_touring',
+        name: 'Volta EV Touring',
+        price: '$44,900',
+        url: 'https://novamotors.example/volta/touring',
+        availability_summary: 'Available for test drives',
+      },
+      {
+        product_id: 'volta_ev_grand_touring',
+        name: 'Volta EV Grand Touring',
+        price: '$51,900',
+        url: 'https://novamotors.example/volta/grand-touring',
+        availability_summary: 'Available for reservation',
+      },
+    ],
+    supported_capabilities: {
+      rich_cards: true,
+      product_carousels: true,
+      action_buttons: true,
+      commerce_handoff: true,
+    },
+    expires_at: new Date(Date.now() + 3600_000).toISOString(),
+  },
   'offer_sandbox_001': {
     offering_id: 'offer_sandbox_001',
     title: 'BrandCo AI Chat Experience',
@@ -135,6 +168,7 @@ export async function handleSiGetOffering(args: ToolArgs, _ctx: TrainingContext)
   const matchingProducts = includeProducts && Array.isArray(offeringData['products'])
     ? (offeringData['products'] as unknown[]).slice(0, productLimit)
     : undefined;
+  const brand = brandIdentity(offeringId, a.intent as string | undefined ?? '');
 
   return {
     available: true,
@@ -143,6 +177,7 @@ export async function handleSiGetOffering(args: ToolArgs, _ctx: TrainingContext)
     checked_at: new Date().toISOString(),
     offering,
     ...(matchingProducts && { matching_products: matchingProducts }),
+    sponsored_context: sponsoredContext(brand.name, brand.domain),
     sandbox: true,
   };
 }
@@ -152,11 +187,48 @@ export async function handleSiGetOffering(args: ToolArgs, _ctx: TrainingContext)
 // ---------------------------------------------------------------------------
 
 const BRAND_GREETINGS: Record<string, string> = {
+  'novamotors_conversational_v1': "Welcome to Nova Motors. I can help you compare Volta EV trims, range, charging, and long-distance features. What matters most for your driving?",
   'offer_sandbox_001': "Hi! I'm the BrandCo AI assistant. I'm here to help you explore our product lineup and answer any questions. What are you looking for today?",
   'offer_sandbox_002': "Welcome to SportsCo! I can help you find the perfect athletic gear. Tell me about your sport or activity and I'll show you our top picks.",
 };
 
 const DEFAULT_GREETING = "Welcome! I'm a sandbox AI brand agent demonstrating the SI Chat Protocol. I can show you product cards, answer questions about our catalog, and help with checkout. How can I help you today?";
+
+function brandIdentity(offeringId: string | undefined, intent: string): {
+  name: string;
+  domain: string;
+} {
+  if (offeringId === 'novamotors_conversational_v1' || /nova motors|electric vehicle/i.test(intent)) {
+    return { name: 'Nova Motors', domain: 'novamotors.example' };
+  }
+  if (/tent|backpack|outdoor|sleeping pad|headlamp/i.test(intent)) {
+    return { name: 'Acme Outdoor', domain: 'acmeoutdoor.example' };
+  }
+  if (offeringId === 'offer_sandbox_002') {
+    return { name: 'SportsCo', domain: 'sportsco.sandbox.example' };
+  }
+  return { name: 'BrandCo', domain: 'brandco.sandbox.example' };
+}
+
+function sponsoredContext(brandName: string, brandDomain: string): Record<string, unknown> {
+  return {
+    paying_principal: {
+      brand: { domain: brandDomain },
+      display_name: brandName,
+    },
+    context_use: 'presentation_only',
+    disclosure_obligation: {
+      required: false,
+      label_text: `Sponsored by ${brandName}`,
+      timing: 'at_first_influenced_output',
+      proximity: 'near_influenced_output',
+    },
+    declared_at: new Date().toISOString(),
+    declared_by: {
+      role: 'brand_agent',
+    },
+  };
+}
 
 export async function handleSiInitiateSession(args: ToolArgs, ctx: TrainingContext): Promise<unknown> {
   const a = args as ToolArgs & Record<string, unknown>;
@@ -194,11 +266,12 @@ export async function handleSiInitiateSession(args: ToolArgs, ctx: TrainingConte
   }
 
   const sessionId = makeSessionId();
-  const brandName = resolvedOfferingId === 'offer_sandbox_002' ? 'SportsCo' : 'BrandCo';
+  const brand = brandIdentity(resolvedOfferingId, intent);
 
   sessions.set(sessionId, {
     session_id: sessionId,
-    brand_name: brandName,
+    brand_name: brand.name,
+    brand_domain: brand.domain,
     offering_id: resolvedOfferingId,
     turns: 0,
     status: 'active',
@@ -216,7 +289,7 @@ export async function handleSiInitiateSession(args: ToolArgs, ctx: TrainingConte
         {
           type: 'text',
           data: {
-            message: `${brandName} is a sponsor. This conversation is an AI-powered brand experience.`,
+            message: `${brand.name} is a sponsor. This conversation is an AI-powered brand experience.`,
           },
         },
       ],
@@ -225,8 +298,9 @@ export async function handleSiInitiateSession(args: ToolArgs, ctx: TrainingConte
       rich_cards: true,
       product_carousels: true,
       action_buttons: true,
-      commerce_handoff: brandName === 'BrandCo',
+      commerce_handoff: brand.name !== 'SportsCo',
     },
+    sponsored_context: sponsoredContext(brand.name, brand.domain),
     session_ttl_seconds: 1800,
     sandbox: true,
   };
@@ -300,6 +374,45 @@ export async function handleSiSendMessage(args: ToolArgs, _ctx: TrainingContext)
     return { errors: [{ code: 'MISSING_REQUIRED', message: 'Either message or action_response is required', recovery: 'correctable' }] };
   }
 
+  const receipt = a.sponsored_context_receipt as {
+    sponsored_context?: {
+      context_use?: unknown;
+      disclosure_obligation?: { required?: unknown };
+    };
+    host_receipt?: {
+      status?: unknown;
+      accepted_context_use?: unknown;
+      disclosure_commitment?: { status?: unknown };
+    };
+  } | undefined;
+  if (receipt?.host_receipt?.status === 'accepted') {
+    const declaredUse = receipt.sponsored_context?.context_use;
+    const acceptedUse = receipt.host_receipt.accepted_context_use;
+    if (declaredUse !== acceptedUse) {
+      return {
+        errors: [{
+          code: 'INVALID_REQUEST',
+          message: 'sponsored_context_receipt accepted_context_use does not match the declared context_use; silent downgrade forbidden',
+          field: 'sponsored_context_receipt.host_receipt.accepted_context_use',
+          recovery: 'correctable',
+        }],
+      };
+    }
+    if (
+      receipt.sponsored_context?.disclosure_obligation?.required === true &&
+      receipt.host_receipt.disclosure_commitment?.status !== 'accepted'
+    ) {
+      return {
+        errors: [{
+          code: 'INVALID_REQUEST',
+          message: 'An accepted sponsored context with a required disclosure must include an accepted disclosure commitment',
+          field: 'sponsored_context_receipt.host_receipt.disclosure_commitment.status',
+          recovery: 'correctable',
+        }],
+      };
+    }
+  }
+
   const session = sessions.get(sessionId);
   if (!session) {
     return { errors: [{ code: 'NOT_FOUND', message: `Session "${sessionId}" not found. Use si_initiate_session to start a session.`, field: 'session_id', recovery: 'correctable' }] };
@@ -342,6 +455,7 @@ export async function handleSiSendMessage(args: ToolArgs, _ctx: TrainingContext)
       message: turnResponse?.message ?? 'Thank you! Is there anything else I can help you with?',
       ui_elements: turnResponse?.ui_elements ?? [],
     },
+    sponsored_context: sponsoredContext(session.brand_name, session.brand_domain),
     ...(handoff && { handoff }),
     sandbox: true,
   };
