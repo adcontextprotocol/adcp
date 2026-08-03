@@ -427,7 +427,12 @@ export class CrawlerService {
             relationship_verified_at: resolved.relationship_verified_at
               ? new Date(resolved.relationship_verified_at)
               : null,
+            // For one-sided states the leaf document's unverified claim is the
+            // meaningful artifact; for fully-verified states it is not.
             claimed_house_domain: isMutualOrInline ? null : (resolved.claimed_house_domain ?? null),
+            // For mutual/inline, persist the resolver-verified house edge so that
+            // list endpoints surface the trusted domain without an extra resolve call.
+            house_domain: isMutualOrInline ? (resolved.house_domain ?? null) : null,
           });
         }
         // If resolved but trust is absent, leave stale trust and computed_at

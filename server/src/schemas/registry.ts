@@ -636,6 +636,20 @@ export const CompanySearchResultSchema = z
         description:
           "Trust verdict for the brand-to-house relationship. Absent means not yet computed — absent MUST NOT be interpreted as `standalone`.",
       }),
+    relationship_verified_at: z
+      .string()
+      .datetime()
+      .optional()
+      .openapi({
+        description: "When the mutual-assertion edge was last confirmed by both sides. Present only when relationship_trust is `mutual`.",
+      }),
+    claimed_house_domain: z
+      .string()
+      .optional()
+      .openapi({
+        description:
+          "Unilateral parent claim from the brand's own document. Not trust-extending. Present for `leaf_only` and `unverifiable`.",
+      }),
   })
   .openapi("CompanySearchResult");
 
