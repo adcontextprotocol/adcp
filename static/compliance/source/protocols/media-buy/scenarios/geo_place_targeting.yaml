@@ -637,3 +637,78 @@ phases:
           - check: error_code
             expected: "INVALID_REQUEST"
             description: "Cross-version same-value include/exclude overlap is rejected"
+
+  - id: brief_mode_place_filter_coverage
+    title: "Verify filters.places intersection semantics in brief mode"
+    depends_on: [discover_capability_and_product]
+    steps:
+      - id: get_products_brief_covered_place
+        title: "Brief-mode filter with a covered place returns at least one product"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        expected: |
+          Return at least one product because the seller's coverage intersects
+          Amsterdam (GeoNames 2759794). Verifies ANY/intersection semantics:
+          a single matched value is sufficient for a product to appear.
+        sample_request:
+          buying_mode: "brief"
+          brief: "Display campaign reaching Amsterdam, Netherlands"
+          filters:
+            channels: ["display"]
+            places:
+              - country: "NL"
+                system: "geonames"
+                place_type: "city"
+                values: ["2759794"]
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          context:
+            correlation_id: "geo_place_targeting--get_products_brief_covered_place"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json"
+          - check: field_present
+            path: "products[0].product_id"
+            description: "At least one product covering the requested NL/geonames/city place is returned"
+
+      - id: get_products_brief_uncovered_place
+        title: "Brief-mode filter for a place outside seller coverage returns no products and no error"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        expected: |
+          Return an empty products list — not an error. The seller has no products
+          declared for Berlin, Germany (GeoNames 2950158), so intersection yields
+          zero matches. Verifies filter-not-fail: unmatched places in filters.places
+          produce empty results, not INVALID_REQUEST.
+        sample_request:
+          buying_mode: "brief"
+          brief: "Display campaign reaching Berlin, Germany"
+          filters:
+            channels: ["display"]
+            places:
+              - country: "DE"
+                system: "geonames"
+                place_type: "city"
+                values: ["2950158"]
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          context:
+            correlation_id: "geo_place_targeting--get_products_brief_uncovered_place"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json"
+          - check: field_absent
+            path: "products[0].product_id"
+            description: "No products match a place outside the seller's declared coverage"

@@ -766,6 +766,8 @@ Accepted place targeting is pinned to the echoed `system_version` for the life o
 
 Place forecast and delivery breakdown rows are intentionally not part of this release: `geo_level: "place"` remains invalid on reporting surfaces. Package-state echo provides configuration auditability, but not delivery-by-place verification. Place-level forecast, delivery, pacing, and reconciliation require a follow-up reporting RFC.
 
+Product-level `forecast` and `pricing_options` returned from `get_products` are not revised to reflect `targeting_overlay.geo_places`. Firm pricing is unconditional on overlay granularity, following the same precedent as `geo_metros` and `geo_postal_areas`. Delivery risk for overlay-narrowed execution sits with the buyer.
+
 ### geo_places_exclude
 
 - **Description**: Exclude catalog-backed named places

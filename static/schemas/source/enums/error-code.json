@@ -47,6 +47,7 @@
     "NOT_CANCELLABLE",
     "PACKAGE_NOT_FOUND",
     "PLACE_TARGET_UNAVAILABLE",
+    "TARGETING_TOO_NARROW",
     "CREATIVE_NOT_FOUND",
     "SIGNAL_NOT_FOUND",
     "SIGNAL_TARGETING_INCOMPATIBLE",
@@ -202,7 +203,9 @@
     "ITEM_VALIDATION_FAILED": "One or more catalog items failed schema validation during sync_catalogs. Recovery: correctable (check item_issues for per-item rejection reasons and fix the offending items).",
     "CATALOG_LIMIT_EXCEEDED": "The account has reached its maximum catalog count. Recovery: correctable (remove unused catalogs, or contact the seller to raise the limit).",
     "INVALID_PRICING_OPTION": "A `pricing_option_id` referenced in the request does not exist on the target account or product. Returned per-record in `report_usage` responses and at the request level for `create_media_buy` when the submitted pricing option cannot be resolved. `error.field` SHOULD point at the offending record path (e.g., `usage[1].pricing_option_id` or `packages[0].pricing_option_id`). Distinct from `PRODUCT_NOT_FOUND` (the product itself is unknown) by being narrowly about a pricing option within a known product or account. Recovery: correctable (verify `pricing_option_id` against the product's `pricing_options` from `get_products` or the vendor's discovery response, then resubmit with a valid ID).",
-    "INVALID_USAGE_DATA": "A usage record in `report_usage` has missing or invalid fields — required fields absent, values out of range, or type mismatches. Returned per-record in the `report_usage` response `errors[]` array. `error.field` SHOULD point at the offending field path (e.g., `usage[0].vendor_cost`, `usage[0].currency`). Distinct from `INVALID_REQUEST` (top-level request malformed) by being scoped to individual usage records within an otherwise well-formed request. Recovery: correctable (check required fields for the vendor type — at minimum `vendor_cost`, `currency`, and `account` — fix the offending values, and resubmit)."
+    "INVALID_PRICING_OPTION": "A `pricing_option_id` referenced in the request does not exist on the target account or product. Returned per-record in `report_usage` responses and at the request level for `create_media_buy` when the submitted pricing option cannot be resolved. `error.field` SHOULD point at the offending record path (e.g., `usage[1].pricing_option_id` or `packages[0].pricing_option_id`). Distinct from `PRODUCT_NOT_FOUND` (the product itself is unknown) by being narrowly about a pricing option within a known product or account. Recovery: correctable (verify `pricing_option_id` against the product's `pricing_options` from `get_products` or the vendor's discovery response, then resubmit with a valid ID).",
+    "INVALID_USAGE_DATA": "A usage record in `report_usage` has missing or invalid fields — required fields absent, values out of range, or type mismatches. Returned per-record in the `report_usage` response `errors[]` array. `error.field` SHOULD point at the offending field path (e.g., `usage[0].vendor_cost`, `usage[0].currency`). Distinct from `INVALID_REQUEST` (top-level request malformed) by being scoped to individual usage records within an otherwise well-formed request. Recovery: correctable (check required fields for the vendor type — at minimum `vendor_cost`, `currency`, and `account` — fix the offending values, and resubmit).",
+    "TARGETING_TOO_NARROW": "The targeting_overlay constrains the requested product to zero executable inventory — the overlay combination eliminates all eligible supply. Recovery: correctable (relax one or more overlay constraints or select a product whose coverage encompasses the intended targets)."
   },
   "enumMetadata": {
     "$comment": "Structured recovery classification and remediation hints for each error code. SDKs MUST consume this block instead of parsing 'Recovery: X' from enumDescriptions prose. Each entry is { recovery, suggestion }. recovery is one of: correctable (caller can fix and retry), transient (retry with backoff), terminal (no autonomous recovery - operator intervention required). enumDescriptions is retained for human readability and will continue to carry the canonical narrative; the recovery classification embedded in that prose is normative and MUST match the value here.",
@@ -597,6 +600,10 @@
     "INVALID_USAGE_DATA": {
       "recovery": "correctable",
       "suggestion": "check required fields for the vendor type (vendor_cost, currency, account at minimum), fix invalid values, and resubmit"
+    },
+    "TARGETING_TOO_NARROW": {
+      "recovery": "correctable",
+      "suggestion": "relax targeting_overlay constraints or select a product whose coverage encompasses the intended targets"
     }
   }
 }
