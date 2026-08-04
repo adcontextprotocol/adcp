@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased experimental-surface notices
+
+- Cross-role governance enforcement: the experimental `governance.campaign` surface will add typed `target_agent`, task-scoped `adcp.governance_enforcement`, critical task/payload/commitment JWS bindings, intent-only conditions negotiation, and governance-authoritative settlement. The implementation may not merge until six weeks after this notice merges.
+
 ## 3.1.10
 
 ### Patch Changes
