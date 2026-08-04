@@ -1,0 +1,133 @@
+id: governance/property_list_change_webhook_signing
+version: "1.0.0"
+introduced_in: "3.2"
+title: "Property-list change webhook signing"
+category: governance
+summary: "Property-list change notifications use the RFC 9421 webhook profile and match the published payload contract."
+track: governance
+required_tools:
+  - create_property_list
+  - update_property_list
+
+narrative: |
+  The runner creates a property list, updates it with an RFC 9421 receiver URL,
+  validates the resulting payload and idempotency key, and verifies its HTTP
+  signature with the shared webhook verifier.
+
+  The payload schema retains the deprecated body-level signature as optional
+  for receiver compatibility. Reference-agent integration coverage separately
+  verifies that new senders omit it. Negative receiver behavior is exercised
+  by the executable webhook-signing vectors: negative/002-expired-signature.json
+  requires stale-window rejection and negative/009-content-digest-mismatch.json
+  requires tamper rejection.
+
+agent:
+  interaction_model: governance_agent
+  capabilities:
+    - property_lists
+    - emits_webhooks
+
+caller:
+  role: compliance_runner
+  example: "AdCP Verified runner with webhook receiver capability"
+
+prerequisites:
+  description: |
+    The runner needs the Acme Outdoor identity fixture and the
+    webhook_receiver_runner contract. Steps requiring the receiver grade
+    not_applicable when that contract is unavailable.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: property_list_change
+    title: "Sign a property-list change"
+    steps:
+      - id: create_property_list_for_webhook
+        title: "Create the property list"
+        task: create_property_list
+        schema_ref: "property/create-property-list-request.json"
+        response_schema_ref: "property/create-property-list-response.json"
+        doc_ref: "/governance/property/tasks/property_lists"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          name: "Acme Outdoor webhook properties"
+          base_properties:
+            - selection_type: "identifiers"
+              identifiers:
+                - type: "domain"
+                  value: "outdoormagazine.example"
+          idempotency_key: "$generate:uuid_v4#governance_list_webhook_create_property"
+          context:
+            correlation_id: "governance_list_webhook--create_property"
+        context_outputs:
+          - path: "list.list_id"
+            key: "webhook_property_list_id"
+        validations:
+          - check: response_schema
+            description: "Created property list matches its response schema"
+
+      - id: update_property_list_for_webhook
+        title: "Update the property list and register the receiver"
+        task: update_property_list
+        schema_ref: "property/update-property-list-request.json"
+        response_schema_ref: "property/update-property-list-response.json"
+        doc_ref: "/governance/property/tasks/property_lists"
+        requires_contract: webhook_receiver_runner
+        stateful: true
+        sample_request:
+          list_id: "$context.webhook_property_list_id"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          webhook_url: "{{runner.webhook_url:update_property_list_for_webhook}}"
+          base_properties:
+            - selection_type: "identifiers"
+              identifiers:
+                - type: "domain"
+                  value: "outdoormagazine.example"
+                - type: "domain"
+                  value: "hikingtrails.example"
+          idempotency_key: "$generate:uuid_v4#governance_list_webhook_update_property"
+          context:
+            correlation_id: "governance_list_webhook--update_property"
+        validations:
+          - check: response_schema
+            description: "Updated property list matches its response schema"
+
+      - id: expect_property_list_payload
+        title: "Validate the property-list change payload"
+        task: expect_webhook
+        triggered_by: update_property_list_for_webhook
+        filter:
+          body:
+            event: "property_list_changed"
+            list_id: "$context.webhook_property_list_id"
+        timeout_seconds: 30
+        expect_idempotency_key: true
+        webhook_payload_schema_ref: "property/property-list-changed-webhook.json"
+        requires_contract: webhook_receiver_runner
+        stateful: true
+        expected: |
+          The property_list_changed payload matches its published schema and
+          carries a present, pattern-valid idempotency_key.
+
+      - id: expect_property_list_signature
+        title: "Verify the property-list change signature"
+        task: expect_webhook_signature_valid
+        triggered_by: update_property_list_for_webhook
+        filter:
+          body:
+            event: "property_list_changed"
+            list_id: "$context.webhook_property_list_id"
+        timeout_seconds: 30
+        require_tag: "adcp/webhook-signing/v1"
+        requires_contract: webhook_receiver_runner
+        stateful: true
+        expected: |
+          The property_list_changed delivery verifies under the RFC 9421
+          webhook profile.

@@ -234,6 +234,62 @@ export async function emitAccountNotificationWebhook(opts: {
   });
 }
 
+export type GovernanceListChangedWebhookParams =
+  | {
+      kind: 'property';
+      url: string;
+      listId: string;
+      listName: string;
+      operationId: string;
+      resolvedAt: string;
+      cacheValidUntil: string;
+      changeSummary: {
+        properties_added?: number;
+        properties_removed?: number;
+        total_properties: number;
+      };
+    }
+  | {
+      kind: 'collection';
+      url: string;
+      listId: string;
+      listName: string;
+      operationId: string;
+      resolvedAt: string;
+      cacheValidUntil: string;
+      changeSummary: {
+        collections_added?: number;
+        collections_removed?: number;
+        total_collections: number;
+      };
+    };
+
+/** Emit an RFC 9421-only governance list-change notification.
+ *
+ * Property/collection list registrations expose only `webhook_url`, not an
+ * authentication-mode selector. These deliveries therefore never pass the
+ * SDK's legacy `authentication` override. The emitter adds a stable
+ * `idempotency_key`; the payload intentionally contains no body signature. */
+export function emitGovernanceListChangedWebhook(opts: GovernanceListChangedWebhookParams): void {
+  const payload: Record<string, unknown> = {
+    event: opts.kind === 'property' ? 'property_list_changed' : 'collection_list_changed',
+    list_id: opts.listId,
+    list_name: opts.listName,
+    change_summary: opts.changeSummary,
+    resolved_at: opts.resolvedAt,
+    cache_valid_until: opts.cacheValidUntil,
+  };
+
+  void getWebhookEmitter().emit({
+    url: opts.url,
+    payload,
+    operation_id: opts.operationId,
+  }).catch(err => logger.warn(
+    { err, kind: opts.kind, listId: opts.listId, url: opts.url },
+    'Governance list-change webhook emission failed',
+  ));
+}
+
 const ENV_KEY = 'WEBHOOK_SIGNING_KEY_JWK';
 const KMS_WEBHOOK_ENV = 'GCP_KMS_WEBHOOK_KEY_VERSION';
 
@@ -276,13 +332,20 @@ function loadConfiguredKey(raw: string): { signer: SignerKey; publicJwk: AdcpJso
   if (!jwk.kid || !jwk.kty || !jwk.d || !jwk.x) {
     throw new Error(`${ENV_KEY} must be a full private JWK with kid, kty, x, d fields`);
   }
+  if (jwk.adcp_use !== undefined && jwk.adcp_use !== 'request-signing' && jwk.adcp_use !== 'webhook-signing') {
+    throw new Error(`${ENV_KEY} adcp_use must be request-signing or webhook-signing`);
+  }
+  // Preserve the declared purpose for stable configured kids. Missing purpose
+  // means a pre-migration key; retain the historical webhook-only authority
+  // rather than silently expanding it to signed requests.
+  const keyPurpose = jwk.adcp_use ?? 'webhook-signing';
   const signer: SignerKey = {
     keyid: jwk.kid,
     alg: 'ed25519',
     privateKey: {
       ...jwk,
       alg: 'EdDSA',
-      adcp_use: 'request-signing',
+      adcp_use: keyPurpose,
       key_ops: ['sign'],
     },
   };
@@ -291,7 +354,7 @@ function loadConfiguredKey(raw: string): { signer: SignerKey; publicJwk: AdcpJso
   const pubJwk: AdcpJsonWebKey = {
     ...publicOnly,
     alg: 'EdDSA',
-    adcp_use: 'request-signing',
+    adcp_use: keyPurpose,
     key_ops: ['verify'],
     use: 'sig',
   };
@@ -300,7 +363,7 @@ function loadConfiguredKey(raw: string): { signer: SignerKey; publicJwk: AdcpJso
 
 /**
  * Synchronous SigningProvider wrapper around the lazy KMS-backed
- * webhook-delivery provider. The wire identity (`keyid`, `algorithm`,
+ * webhook-signing provider. The wire identity (`keyid`, `algorithm`,
  * `fingerprint`) is known statically from committed constants, so we
  * hand a fully-shaped provider to `createWebhookEmitter` without
  * blocking on a KMS round-trip at startup. The first `sign()` call
@@ -335,7 +398,7 @@ function publicJwkFromPem(pem: string, kid: string): AdcpJsonWebKey {
     x: raw.x,
     kid,
     alg: 'EdDSA',
-    adcp_use: 'request-signing',
+    adcp_use: 'webhook-signing',
     key_ops: ['verify'],
     use: 'sig',
   } as AdcpJsonWebKey;
@@ -382,10 +445,10 @@ export function getWebhookSigningMaterial():
 
 /** Return the only training-agent webhook emitter.
  *
- * Future collection/property list-change notifications must route through
- * this emitter (or use `createTrainingWebhookFetch` directly). Storage-time
- * URL validation is not sufficient: this fetch policy repeats validation at
- * delivery time and pins the public address at connect time. */
+ * Completion and governance list-change notifications route through this
+ * emitter. Storage-time URL validation is not sufficient: this fetch policy
+ * repeats validation at delivery time and pins the public address at connect
+ * time. */
 export function getWebhookEmitter(): WebhookEmitter {
   if (emitter) return emitter;
   const m = ensureMaterial();

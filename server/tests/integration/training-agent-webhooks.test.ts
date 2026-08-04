@@ -13,7 +13,7 @@ import request from 'supertest';
 import type { Response as SupertestResponse } from 'supertest';
 import http from 'node:http';
 import { AddressInfo } from 'node:net';
-import { randomUUID } from 'node:crypto';
+import { generateKeyPairSync, randomUUID } from 'node:crypto';
 import { verifyWebhookSignature, StaticJwksResolver, InMemoryReplayStore, InMemoryRevocationStore } from '@adcp/sdk/signing';
 import type { AdcpJsonWebKey } from '@adcp/sdk/signing';
 import { buildCatalog } from '../../src/training-agent/product-factory.js';
@@ -29,9 +29,11 @@ vi.mock('../../src/logger.js', () => ({
 }));
 
 const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
-const { stopSessionCleanup, clearSessions } = await import('../../src/training-agent/state.js');
+const { stopSessionCleanup, clearSessions, getSession, runWithSessionContext, sessionKeyFromArgs } = await import('../../src/training-agent/state.js');
 const { clearAccountStore } = await import('../../src/training-agent/account-handlers.js');
 const { resetWebhookSigning, getPublicJwks, emitFrameworkTaskWebhook } = await import('../../src/training-agent/webhooks.js');
+const { handleCreatePropertyList, handleUpdatePropertyList } = await import('../../src/training-agent/property-handlers.js');
+const { handleCreateCollectionList, handleUpdateCollectionList } = await import('../../src/training-agent/inventory-governance-handlers.js');
 
 const AUTH = 'Bearer test-token-webhook';
 const BILLABLE_AUTH = 'Bearer demo-billing-agent-billable-v1';
@@ -64,6 +66,15 @@ function structuredToolResult(response: SupertestResponse): Record<string, unkno
   }
   const text = result?.content?.[0]?.text;
   return text ? JSON.parse(text) as Record<string, unknown> : {};
+}
+
+function webhookRequest(delivery: CapturedDelivery, body = delivery.body) {
+  return {
+    method: 'POST',
+    url: delivery.url,
+    headers: delivery.headers as Record<string, string>,
+    body,
+  };
 }
 
 describe('Training Agent webhook emission', () => {
@@ -272,7 +283,7 @@ describe('Training Agent webhook emission', () => {
     }
   }, 15000);
 
-  it('publishes its webhook delivery key under the canonical request-signing purpose', async () => {
+  it('publishes newly generated webhook keys under the canonical request-signing purpose', async () => {
     const response = await request(app).get('/api/training-agent/.well-known/jwks.json');
     expect(response.status).toBe(200);
     const jwks = response.body as { keys: AdcpJsonWebKey[] };
@@ -284,6 +295,181 @@ describe('Training Agent webhook emission', () => {
     expect(key.kid).toBeTruthy();
     expect(key.d).toBeUndefined(); // never publish the private scalar
   });
+
+  it('preserves the purpose of an existing configured webhook kid', () => {
+    const original = process.env.WEBHOOK_SIGNING_KEY_JWK;
+    const { privateKey } = generateKeyPairSync('ed25519');
+    const configured = privateKey.export({ format: 'jwk' }) as Record<string, unknown>;
+    process.env.WEBHOOK_SIGNING_KEY_JWK = JSON.stringify({
+      ...configured,
+      kid: 'existing-webhook-kid',
+      adcp_use: 'webhook-signing',
+    });
+    resetWebhookSigning();
+
+    try {
+      expect(getPublicJwks().keys[0]).toMatchObject({
+        kid: 'existing-webhook-kid',
+        adcp_use: 'webhook-signing',
+      });
+    } finally {
+      if (original === undefined) delete process.env.WEBHOOK_SIGNING_KEY_JWK;
+      else process.env.WEBHOOK_SIGNING_KEY_JWK = original;
+      resetWebhookSigning();
+    }
+  });
+
+  it.each([
+    {
+      kind: 'property',
+      createArgs: {
+        name: 'Property webhook list',
+        base_properties: [{
+          selection_type: 'identifiers',
+          identifiers: [{ type: 'domain', value: 'first.example' }],
+        }],
+      },
+      updateField: 'base_properties',
+      updateValue: [{
+        selection_type: 'identifiers',
+        identifiers: [
+          { type: 'domain', value: 'first.example' },
+          { type: 'domain', value: 'second.example' },
+        ],
+      }],
+      expectedEvent: 'property_list_changed',
+      expectedSummary: { properties_added: 1, properties_removed: 0, total_properties: 2 },
+    },
+    {
+      kind: 'collection',
+      createArgs: {
+        name: 'Collection webhook list',
+        base_collections: [{
+          selection_type: 'distribution_ids',
+          identifiers: [{ type: 'imdb_id', value: 'tt9999901' }],
+        }],
+      },
+      updateField: 'base_collections',
+      updateValue: [{
+        selection_type: 'distribution_ids',
+        identifiers: [
+          { type: 'imdb_id', value: 'tt9999901' },
+          { type: 'imdb_id', value: 'tt9999902' },
+        ],
+      }],
+      expectedEvent: 'collection_list_changed',
+      expectedSummary: { collections_added: 1, collections_removed: 0, total_collections: 2 },
+    },
+  ])('emits and verifies an RFC 9421-only $kind list-change webhook', async testCase => {
+    const deliveries: CapturedDelivery[] = [];
+    let resolveDelivery: (() => void) | undefined;
+    const delivered = new Promise<void>(resolve => { resolveDelivery = resolve; });
+    let srv: http.Server | undefined;
+
+    try {
+      srv = await startReceiver((delivery, res) => {
+        deliveries.push(delivery);
+        res.writeHead(200); res.end();
+        resolveDelivery?.();
+      });
+      const addr = srv.address() as AddressInfo;
+      const webhookUrl = `http://127.0.0.1:${addr.port}/hook/${testCase.kind}-list`;
+      const account = {
+        brand: { domain: `${testCase.kind}-webhook.example` },
+        operator: 'pinnacle-agency.example',
+      };
+      const createArgs = {
+        ...testCase.createArgs,
+        account,
+        idempotency_key: randomUUID(),
+      };
+      const ctx = { mode: 'open' as const };
+      let listId = '';
+      await runWithSessionContext(async () => {
+        const created = testCase.kind === 'property'
+          ? await handleCreatePropertyList(createArgs, ctx)
+          : await handleCreateCollectionList(createArgs, ctx);
+        listId = (created.list as { list_id: string }).list_id;
+
+        // Storage-time SSRF tests deliberately reject loopback. Seed the
+        // already-validated target directly so this integration test can probe
+        // the delivery/signature boundary against an ephemeral local receiver.
+        const session = await getSession(sessionKeyFromArgs(createArgs, ctx.mode));
+        if (testCase.kind === 'property') {
+          session.propertyLists.get(listId)!.webhookUrl = webhookUrl;
+        } else {
+          session.collectionLists.get(listId)!.webhook_url = webhookUrl;
+        }
+
+        const updateArgs = {
+          list_id: listId,
+          account,
+          idempotency_key: randomUUID(),
+          [testCase.updateField]: testCase.updateValue,
+        };
+        if (testCase.kind === 'property') {
+          await handleUpdatePropertyList(updateArgs, ctx);
+        } else {
+          await handleUpdateCollectionList(updateArgs, ctx);
+        }
+      });
+
+      await Promise.race([
+        delivered,
+        new Promise((_, reject) => setTimeout(() => reject(new Error(`${testCase.kind} list webhook never arrived`)), 5000)),
+      ]);
+
+      expect(deliveries).toHaveLength(1);
+      const delivery = deliveries[0];
+      const body = JSON.parse(delivery.body) as Record<string, unknown>;
+      expect(body).toMatchObject({
+        event: testCase.expectedEvent,
+        list_id: listId,
+        change_summary: testCase.expectedSummary,
+      });
+      expect(body.signature).toBeUndefined();
+      expect(body.idempotency_key).toMatch(/^[A-Za-z0-9_.:-]{16,255}$/);
+      expect(delivery.headers['signature-input']).toBeDefined();
+      expect(delivery.headers.signature).toBeDefined();
+      expect(delivery.headers['content-digest']).toBeDefined();
+      expect(delivery.headers['x-adcp-signature']).toBeUndefined();
+
+      const jwks = new StaticJwksResolver(getPublicJwks().keys as AdcpJsonWebKey[]);
+      const verificationOptions = () => ({
+        jwks,
+        replayStore: new InMemoryReplayStore(),
+        revocationStore: new InMemoryRevocationStore(),
+      });
+      await expect(verifyWebhookSignature(
+        webhookRequest(delivery),
+        verificationOptions(),
+      )).resolves.toMatchObject({ status: 'verified' });
+
+      const tamperedBody = JSON.stringify({ ...body, signature: 'attacker-controlled-body-value' });
+      await expect(verifyWebhookSignature(
+        webhookRequest(delivery, tamperedBody),
+        verificationOptions(),
+      )).rejects.toMatchObject({ code: 'webhook_signature_digest_mismatch' });
+
+      const bodyOnlyHeaders = { ...delivery.headers };
+      delete bodyOnlyHeaders.signature;
+      delete bodyOnlyHeaders['signature-input'];
+      await expect(verifyWebhookSignature({
+        ...webhookRequest(delivery),
+        headers: bodyOnlyHeaders as Record<string, string>,
+      }, verificationOptions())).rejects.toMatchObject({ code: 'webhook_signature_header_malformed' });
+
+      await expect(verifyWebhookSignature(
+        webhookRequest(delivery),
+        { ...verificationOptions(), now: () => Math.floor(Date.now() / 1000) + 1_000 },
+      )).rejects.toMatchObject({ code: 'webhook_signature_window_invalid' });
+    } finally {
+      if (srv) {
+        srv.closeAllConnections?.();
+        await new Promise<void>(resolve => srv!.close(() => resolve()));
+      }
+    }
+  }, 15000);
 
   it('does not emit when push_notification_config is absent', async () => {
     // Nothing to receive — just verify the MCP call succeeds without webhook plumbing.

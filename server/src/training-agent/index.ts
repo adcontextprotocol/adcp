@@ -577,7 +577,8 @@ export function createTrainingAgentRouter(options: { storyboardCompat?: Training
   // JWKS for webhook-signature verification by buyers (RFC 7517).
   // Public keys only — the emitter holds the private half.
   // JWKS aggregates every signing purpose the training agent publishes:
-  //   - shared webhook-delivery key (adcp_use: 'request-signing')
+  //   - shared webhook-delivery key (adcp_use: 'webhook-signing', deprecated
+  //     but retained for the existing key's 3.x compatibility window)
   //   - per-tenant signing keys (request-signing plus specialism purposes)
   //   - governance signing key (adcp_use: 'governance-signing')
   // Buyer verifiers filter by adcp_use + kid to find the right one.
