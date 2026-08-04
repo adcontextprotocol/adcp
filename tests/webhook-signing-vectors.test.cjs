@@ -90,4 +90,51 @@ describe('RFC 9421 webhook-signing vectors', () => {
     assert.deepEqual(vector.jwks_ref, ['test-response-purpose-2026']);
     verifyVectorSignature(vector, relativePath);
   });
+
+  for (const [relativePath, errorCode] of [
+    ['negative/002-expired-signature.json', 'webhook_signature_window_invalid'],
+    ['negative/009-content-digest-mismatch.json', 'webhook_signature_digest_mismatch'],
+  ]) {
+    it(`executes ${relativePath} through the reference verifier`, async () => {
+      const {
+        verifyWebhookSignature,
+        StaticJwksResolver,
+        InMemoryReplayStore,
+        InMemoryRevocationStore,
+      } = await import('@adcp/sdk/signing');
+      const vector = readVector(relativePath);
+      const vectorKeys = vector.jwks_ref.map((kid) => keysByKid.get(kid));
+      assert.ok(vectorKeys.every(Boolean), `${relativePath}: every jwks_ref must resolve`);
+
+      await assert.rejects(
+        verifyWebhookSignature(vector.request, {
+          jwks: new StaticJwksResolver(vectorKeys),
+          replayStore: new InMemoryReplayStore(),
+          revocationStore: new InMemoryRevocationStore(),
+          now: () => vector.reference_now,
+        }),
+        (error) => error?.code === errorCode,
+        `${relativePath}: reference verifier must reject with ${errorCode}`,
+      );
+    });
+  }
+});
+
+describe('property-list webhook signature compatibility', () => {
+  it('keeps the deprecated property-list body marker required through 3.x', () => {
+    const schema = JSON.parse(fs.readFileSync(path.join(
+      __dirname,
+      '..',
+      'static',
+      'schemas',
+      'source',
+      'property/property-list-changed-webhook.json',
+    ), 'utf8'));
+
+    assert.equal(schema.required.includes('signature'), true);
+    assert.equal(schema.properties.signature.deprecated, true);
+    assert.equal(schema.properties.signature.const, undefined);
+    assert.match(schema.properties.signature.description, /MUST ignore it when authenticating/);
+    assert.match(schema.description, /RFC 9421 webhook profile/);
+  });
 });
