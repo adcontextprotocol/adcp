@@ -43,13 +43,16 @@ interface AudienceInput {
   consent_basis?: string;
 }
 
+export type TrainingAudienceStatus = 'processing' | 'ready' | 'too_small' | 'suspended';
+
 interface AudienceState {
   audienceId: string;
   name: string;
   sellerId: string;
   uploadedCount: number;
   matchedCount: number;
-  status: 'processing' | 'ready' | 'too_small';
+  status: TrainingAudienceStatus;
+  statusReason?: string;
   audienceType: string;
   createdAt: string;
   lastSyncedAt: string;
@@ -84,6 +87,23 @@ export function findAudienceAnywhere(audienceId: string): AudienceState | undefi
  *  rather than silently accepting phantom ids. */
 export function findAudienceInSession(sessionKey: string, audienceId: string): AudienceState | undefined {
   return audienceStore.get(sessionKey)?.get(audienceId) ?? findAudienceAnywhere(audienceId);
+}
+
+/** Apply a deterministic lifecycle transition for comply_test_controller.
+ * Returns the prior state, or undefined when the audience is unknown. */
+export function forceAudienceStatusInSession(
+  sessionKey: string,
+  audienceId: string,
+  status: TrainingAudienceStatus,
+  reason?: string,
+): { previous: TrainingAudienceStatus; current: TrainingAudienceStatus } | undefined {
+  const audience = findAudienceInSession(sessionKey, audienceId);
+  if (!audience) return undefined;
+  const previous = audience.status;
+  audience.status = status;
+  audience.statusReason = status === 'suspended' ? reason : undefined;
+  audience.lastSyncedAt = new Date().toISOString();
+  return { previous, current: status };
 }
 
 /** Exported for testing */
@@ -170,6 +190,7 @@ export async function handleSyncAudiences(args: ToolArgs, ctx: TrainingContext) 
       seller_id: a.sellerId,
       action: 'unchanged',
       status: a.status,
+      ...(a.statusReason && { reason: a.statusReason }),
       uploaded_count: 0,
       total_uploaded_count: a.uploadedCount,
       matched_count: a.matchedCount,
