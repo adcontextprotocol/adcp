@@ -24,7 +24,7 @@ Discover a seller's protocol support and capabilities across all AdCP protocols.
 </Note>
 
 **Request Schema**: [`/schemas/v3/protocol/get-adcp-capabilities-request.json`](https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-request.json)
-**Response Schema**: [`/schemas/v3/protocol/get-adcp-capabilities-response.json`](https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-response.json)
+**Response Schema**: [`/schemas/latest/protocol/get-adcp-capabilities-response.json`](https://adcontextprotocol.org/schemas/latest/protocol/get-adcp-capabilities-response.json)
 
 ## Tool-Based Discovery
 
@@ -275,6 +275,47 @@ Declares the seller's tenant-wide creative approval posture after creatives are 
 | `require_human` | One or more products/accounts may require manual review before creatives become eligible to serve. Treat this as a tenant-wide worst-case ceiling until a product-level override exists. |
 
 Sellers with mixed approval policies SHOULD declare `require_human` unless every product/account that can be reached by the advertised agent supports automatic eligibility after automated validation. When the field is absent, approval behavior is legacy-unspecified; runners SHOULD NOT treat omission as an affirmative `auto_approve` claim. `ai_assisted` is intentionally not a value until the protocol defines what assistance changes in observable behavior.
+
+#### supported_insight_types and insight_notifications
+
+Lists the seller interpretations available on media-buy resource relationships.
+
+```json
+{
+  "media_buy": {
+    "supported_insight_types": [
+      "creative_fatigue",
+      "creative_quality_opportunity",
+      "creative_diversity_low",
+      "audience_saturation",
+      "inventory_shortfall_forecast",
+      "pacing_risk",
+      "budget_constrained"
+    ],
+    "insight_notifications": {
+      "supported": true,
+      "registration_task": "sync_accounts",
+      "event_types": ["insights.changed", "creative.assignment_changed"],
+      "repair_tasks": ["get_media_buys", "list_creatives"],
+      "supports_webhook_activity": true
+    }
+  },
+  "webhook_signing": {
+    "supported": true,
+    "profile": "adcp/webhook-signing/v1",
+    "algorithms": ["ed25519"],
+    "legacy_hmac_fallback": false
+  }
+}
+```
+
+Insight meaning follows the negotiated AdCP release rather than an independent version. This capability does not promise complete upstream coverage. Each present array names exact type coverage in `insight_types_evaluated`.
+
+The two media-buy fields are paired: a seller declaring `supported_insight_types` also declares `insight_notifications`, and vice versa. Every declaration contains `insights.changed` and `get_media_buys`; this is sufficient for inline-only sellers and for buy/package-only insight catalogs. Sellers with a creative-library reverse projection additionally include the paired `creative.assignment_changed` event and `list_creatives` repair task. Those sellers mirror relationship identity, scoped approval, and evaluated insight state on every `list_creatives` assignment row. Because the capability advertises outbound invalidations, `webhook_signing.supported` MUST be `true`.
+
+Subscriptions are prospective: activation does not replay current conditions, so buyers establish a baseline with an unfiltered declared repair read. Sellers then fire the applicable invalidation after observing a semantic change. See [Insights, Warnings, and Recommendations](/docs/media-buy/media-buys/insights).
+
+An inline-only declaration is therefore valid with `event_types: ["insights.changed"]` and `repair_tasks: ["get_media_buys"]`. The creative event and repair task are all-or-nothing; declaring either without the other is invalid.
 
 #### features
 
@@ -611,7 +652,7 @@ Compliance testing is sandbox-only at the deployment level — production deploy
 
 ### webhook_signing
 
-Declares a seller's webhook-signing posture. Any seller whose capability surface advertises mutating-webhook emission — including but not limited to `media_buy.reporting_delivery_methods` containing `webhook`, `media_buy.content_standards.supports_webhook_delivery: true`, `wholesale_feed_webhooks.supported: true`, `adcp.capability_changes.notifications.supported: true`, or `account.notifications.supported: true` — MUST include this block with `supported: true`. A seller that emits no webhooks at all MAY omit the block entirely; the absence of both mutating-webhook emission in other capabilities and this block is an unambiguous "does not emit webhooks" posture. Buyers read the block at onboarding to determine which algorithms to expect per the [AdCP webhook-signing profile](/docs/building/by-layer/L1/security#webhook-callbacks). Buyers integrating with a seller that advertises mutating-webhook emission while advertising `supported: false` or omitting this block MUST fail onboarding with a user-actionable error; silent integration with a non-signing-but-webhook-emitting seller is unsafe for any mutating-webhook use case.
+Declares a seller's webhook-signing posture. Any seller whose capability surface advertises mutating-webhook emission — including but not limited to `media_buy.reporting_delivery_methods` containing `webhook`, `media_buy.content_standards.supports_webhook_delivery: true`, `media_buy.insight_notifications.supported: true`, `wholesale_feed_webhooks.supported: true`, `adcp.capability_changes.notifications.supported: true`, or `account.notifications.supported: true` — MUST include this block with `supported: true`. A seller that emits no webhooks at all MAY omit the block entirely; the absence of both mutating-webhook emission in other capabilities and this block is an unambiguous "does not emit webhooks" posture. Buyers read the block at onboarding to determine which algorithms to expect per the [AdCP webhook-signing profile](/docs/building/by-layer/L1/security#webhook-callbacks). Buyers integrating with a seller that advertises mutating-webhook emission while advertising `supported: false` or omitting this block MUST fail onboarding with a user-actionable error; silent integration with a non-signing-but-webhook-emitting seller is unsafe for any mutating-webhook use case.
 
 | Field | Type | Description |
 |-------|------|-------------|

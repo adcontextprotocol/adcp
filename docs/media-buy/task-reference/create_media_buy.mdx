@@ -15,7 +15,7 @@ Supports two modes:
 **Response Time**: Instant to days (returns `completed`, `working` < 120s, or `submitted` for hours/days)
 
 **Request Schema**: [`/schemas/v3/media-buy/create-media-buy-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-request.json)
-**Response Schema**: [`/schemas/v3/media-buy/create-media-buy-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-response.json)
+**Response Schema**: [`/schemas/latest/media-buy/create-media-buy-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/create-media-buy-response.json)
 
 ## Quick Start
 
@@ -220,6 +220,7 @@ When executing a proposal, `proposal_status` on the returned proposal determines
 | `creative_deadline` | ISO 8601 timestamp for creative upload deadline |
 | `revision` | Initial media-buy revision. Use this value as the `revision` token on the next `update_media_buy` call intended to change state. |
 | `packages` | Array of created packages with complete state. Packages may include per-package `creative_deadline` when different from the media buy deadline, and SHOULD echo every format selector field supplied on create (`format_option_refs`, `format_ids`, and/or `format_kind`/`params`) so read surfaces are lossless even when one selector wins precedence. |
+| `warnings` | Structured non-blocking observations. The buy was still created. A continuing condition also appears on `get_media_buys`; see [Insights, Warnings, and Recommendations](/docs/media-buy/media-buys/insights). |
 
 `confirmed_at` is seller commitment time, not a delivery-status timestamp. Do not update it when a buy later pauses, resumes, starts delivery, completes, or reports performance. A committed synchronous create stamps it immediately. Use the `submitted` response branch when no `media_buy_id` is being returned to the buyer. Sellers MAY instead return synchronous success with `media_buy_id`, `packages`, and `confirmed_at: null` for a provisional buy; such buys MUST be retrievable via `get_media_buys` and MUST transition by setting `confirmed_at` exactly once on commitment. A provisional buy with `confirmed_at: null` MUST NOT be `active` and MUST NOT include `packages[].committed_metrics`.
 
@@ -264,6 +265,8 @@ When `confirmed_at` is `null`, sellers MUST omit `packages[].committed_metrics`.
 | Field | Description |
 |-------|-------------|
 | `errors` | Array of error objects explaining failure |
+
+Terminal and submitted responses never include `warnings`. Each success warning carries typed `affected_resource` identity; codes follow the negotiated AdCP release.
 
 ### Submitted Response
 

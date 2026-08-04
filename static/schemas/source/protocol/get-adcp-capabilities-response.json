@@ -10,6 +10,29 @@
     },
     {
       "$ref": "/schemas/core/protocol-envelope.json"
+    },
+    {
+      "if": {
+        "properties": {
+          "media_buy": {
+            "required": ["insight_notifications"]
+          }
+        },
+        "required": ["media_buy"]
+      },
+      "then": {
+        "required": ["webhook_signing"],
+        "properties": {
+          "webhook_signing": {
+            "properties": {
+              "supported": {
+                "const": true
+              }
+            },
+            "required": ["supported"]
+          }
+        }
+      }
     }
   ],
   "properties": {
@@ -438,6 +461,94 @@
           "type": "string",
           "description": "Tenant-wide applicability signal for media-buy creative approval behavior. This is not a notification or new approval workflow. `auto_approve` means human review does not block serving eligibility after creatives are assigned and automated validation passes. `require_human` means one or more products/accounts may require manual review before creatives become eligible to serve; buyers and compliance runners MUST treat this as a worst-case ceiling across this seller's portfolio unless a future product-level override says otherwise. Compliance runners use this mainly to decide whether auto-approval-dependent storyboards apply. When absent, approval behavior is legacy-unspecified; runners SHOULD NOT treat omission as an affirmative auto-approval claim. `ai_assisted` is intentionally not part of the enum until a behavioral contract is defined.",
           "enum": ["auto_approve", "require_human"]
+        },
+        "supported_insight_types": {
+          "type": "array",
+          "description": "Insight types this seller can expose on get_media_buys media-buy/package/creative-assignment snapshots. Each type's meaning is defined by the negotiated AdCP release; insight types do not carry independent sub-versions. This is availability, not complete upstream coverage. Sellers declaring this capability MUST also declare insight_notifications. Creative-library sellers may additionally advertise list_creatives as a repair task and creative.assignment_changed as an event; inline-only sellers are not required to implement that reverse projection.",
+          "items": {
+            "$ref": "/schemas/enums/insight-type.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "insight_notifications": {
+          "type": "object",
+          "description": "Durable account-level invalidations for insight changes and, when declared, creative-assignment changes. Every insight-capable seller supports insights.changed with get_media_buys as the universal repair read. A seller with a creative-library reverse projection additionally declares the paired creative.assignment_changed event and list_creatives repair task. Presence means the seller accepts the declared subscriptions through sync_accounts notification_configs. Timestamp-only reevaluation does not fire. Poll-based upstream integrations fire when they detect a change; this declaration does not promise upstream detection latency.",
+          "properties": {
+            "supported": {
+              "type": "boolean",
+              "const": true,
+              "description": "Discriminator. True means the declared invalidation event types are supported."
+            },
+            "registration_task": {
+              "type": "string",
+              "const": "sync_accounts",
+              "description": "Task buyers call to register account-level subscribers."
+            },
+            "event_types": {
+              "type": "array",
+              "description": "Invalidation events supported by this seller. insights.changed is mandatory. creative.assignment_changed is optional and paired with list_creatives for sellers exposing the reverse creative-library projection.",
+              "items": {
+                "type": "string",
+                "enum": ["insights.changed", "creative.assignment_changed"]
+              },
+              "minItems": 1,
+              "maxItems": 2,
+              "uniqueItems": true
+            },
+            "repair_tasks": {
+              "type": "array",
+              "description": "Authoritative snapshot reads used after an invalidation. get_media_buys is mandatory. list_creatives is optional and paired with creative.assignment_changed.",
+              "items": {
+                "type": "string",
+                "enum": ["get_media_buys", "list_creatives"]
+              },
+              "minItems": 1,
+              "maxItems": 2,
+              "uniqueItems": true
+            },
+            "supports_webhook_activity": {
+              "type": "boolean",
+              "description": "Whether the declared repair tasks can return recent delivery attempts for these account-level invalidations when include_webhook_activity is true.",
+              "default": false
+            }
+          },
+          "required": ["supported", "registration_task", "event_types", "repair_tasks"],
+          "allOf": [
+            {
+              "properties": {
+                "event_types": { "contains": { "const": "insights.changed" } },
+                "repair_tasks": { "contains": { "const": "get_media_buys" } }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "event_types": { "contains": { "const": "creative.assignment_changed" } }
+                },
+                "required": ["event_types"]
+              },
+              "then": {
+                "properties": {
+                  "repair_tasks": { "contains": { "const": "list_creatives" } }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "repair_tasks": { "contains": { "const": "list_creatives" } }
+                },
+                "required": ["repair_tasks"]
+              },
+              "then": {
+                "properties": {
+                  "event_types": { "contains": { "const": "creative.assignment_changed" } }
+                }
+              }
+            }
+          ],
+          "additionalProperties": false
         },
         "features": {
           "$ref": "/schemas/core/media-buy-features.json"
@@ -902,6 +1013,10 @@
           },
           "required": ["publisher_domains"]
         }
+      },
+      "dependencies": {
+        "supported_insight_types": ["insight_notifications"],
+        "insight_notifications": ["supported_insight_types"]
       }
     },
     "signals": {
@@ -1387,7 +1502,7 @@
       "properties": {
         "supported": {
           "type": "boolean",
-          "description": "Whether this agent signs outbound webhooks with the AdCP RFC 9421 webhook profile. When false or absent, webhooks are delivered with legacy Bearer or HMAC-SHA256 auth only and receivers MUST NOT expect a Signature header. When the seller advertises mutating-webhook emission (i.e., `media_buy.reporting_delivery_methods` includes `webhook`, `media_buy.content_standards.supports_webhook_delivery` is true, `wholesale_feed_webhooks.supported` is true, `adcp.capability_changes.notifications.supported` is true, or `account.notifications.supported` is true), this MUST be `true` — emitting state-changing webhooks unsigned is a downgrade vector that lets an on-path attacker forge delivery callbacks. See `x-adcp-validation`.",
+          "description": "Whether this agent signs outbound webhooks with the AdCP RFC 9421 webhook profile. When false or absent, webhooks are delivered with legacy Bearer or HMAC-SHA256 auth only and receivers MUST NOT expect a Signature header. When the seller advertises mutating-webhook emission (i.e., `media_buy.reporting_delivery_methods` includes `webhook`, `media_buy.content_standards.supports_webhook_delivery` is true, `media_buy.insight_notifications.supported` is true, `wholesale_feed_webhooks.supported` is true, `adcp.capability_changes.notifications.supported` is true, or `account.notifications.supported` is true), this MUST be `true` — emitting state-changing webhooks unsigned is a downgrade vector that lets an on-path attacker forge delivery callbacks. See `x-adcp-validation`.",
           "x-adcp-validation": {
             "verifier_constraints": {
               "must_equal_when": {
@@ -1411,6 +1526,10 @@
                   },
                   {
                     "field": "account.notifications.supported",
+                    "equals": true
+                  },
+                  {
+                    "field": "media_buy.insight_notifications.supported",
                     "equals": true
                   }
                 ]
@@ -1440,7 +1559,20 @@
           "default": false
         }
       },
-      "required": ["supported"]
+      "required": ["supported"],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "supported": { "const": true }
+            },
+            "required": ["supported"]
+          },
+          "then": {
+            "required": ["profile", "algorithms", "legacy_hmac_fallback"]
+          }
+        }
+      ]
     },
     "identity": {
       "type": "object",

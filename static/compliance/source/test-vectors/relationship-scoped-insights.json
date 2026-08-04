@@ -1,0 +1,175 @@
+{
+  "description": "Conformance vectors for insight snapshot semantics and invalidation lifecycle behavior.",
+  "insight_snapshot_cases": [
+    {
+      "name": "valid-contained-scope",
+      "valid": true,
+      "snapshot": {
+        "insight_types_evaluated": ["creative_fatigue"],
+        "insights_as_of": "2026-08-04T12:00:00Z",
+        "insights_evaluated_scope": [{ "publisher_domain": "publisher-a.example" }],
+        "insights": [{
+          "type": "creative_fatigue",
+          "scope": [{ "publisher_domain": "publisher-a.example", "placement_id": "feed" }]
+        }]
+      }
+    },
+    {
+      "name": "type-not-evaluated",
+      "valid": false,
+      "snapshot": {
+        "insight_types_evaluated": ["creative_quality_opportunity"],
+        "insights_as_of": "2026-08-04T12:00:00Z",
+        "insights": [{ "type": "creative_fatigue" }]
+      }
+    },
+    {
+      "name": "assertion-outside-evaluated-publisher",
+      "valid": false,
+      "snapshot": {
+        "insight_types_evaluated": ["creative_fatigue"],
+        "insights_as_of": "2026-08-04T12:00:00Z",
+        "insights_evaluated_scope": [{ "publisher_domain": "publisher-a.example" }],
+        "insights": [{
+          "type": "creative_fatigue",
+          "scope": [{ "publisher_domain": "publisher-b.example" }]
+        }]
+      }
+    },
+    {
+      "name": "duplicate-logical-key-after-scope-normalization",
+      "valid": false,
+      "snapshot": {
+        "insight_types_evaluated": ["creative_fatigue"],
+        "insights_as_of": "2026-08-04T12:00:00Z",
+        "insights": [
+          {
+            "type": "creative_fatigue",
+            "scope": [
+              { "publisher_domain": "publisher-a.example", "placement_id": "feed" },
+              { "publisher_domain": "publisher-b.example", "placement_id": "feed" }
+            ]
+          },
+          {
+            "type": "creative_fatigue",
+            "scope": [
+              { "publisher_domain": "publisher-b.example", "placement_id": "feed" },
+              { "publisher_domain": "publisher-a.example", "placement_id": "feed" }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "webhook_lifecycle_cases": [
+    {
+      "name": "subscription-is-prospective",
+      "event": "subscriber_activated",
+      "expected_fires": [],
+      "buyer_action": "baseline_unfiltered_read"
+    },
+    {
+      "name": "semantic-assertion-change",
+      "event": "assertion_set_changed",
+      "expected_fires": ["insights.changed"],
+      "buyer_action": "unfiltered_repair_read"
+    },
+    {
+      "name": "timestamp-only-reevaluation",
+      "event": "insights_as_of_only_changed",
+      "expected_fires": [],
+      "buyer_action": "none"
+    },
+    {
+      "name": "material-creative-update",
+      "event": "creative_content_materially_changed",
+      "expected_fires": ["insights.changed"],
+      "change_kind": "invalidated",
+      "buyer_action": "unfiltered_repair_read"
+    },
+    {
+      "name": "assignment-removal-with-insights",
+      "event": "assignment_removed",
+      "expected_fires": ["insights.changed", "creative.assignment_changed"],
+      "order": "any",
+      "buyer_action": "unfiltered_repair_read"
+    }
+  ],
+  "warning_capability_cases": [
+    {
+      "name": "inventory-warning-with-readback-capability",
+      "warning_code": "inventory_shortfall_forecast",
+      "supported_insight_types": ["inventory_shortfall_forecast"],
+      "valid": true
+    },
+    {
+      "name": "inventory-warning-without-readback-capability",
+      "warning_code": "inventory_shortfall_forecast",
+      "supported_insight_types": ["budget_constrained"],
+      "valid": false
+    },
+    {
+      "name": "operation-local-warning-needs-no-insight",
+      "warning_code": "fields_ignored_due_to_precedence",
+      "supported_insight_types": [],
+      "valid": true
+    }
+  ],
+  "approval_scope_cases": [
+    {
+      "name": "disjoint-publisher-outcomes",
+      "valid": true,
+      "approval_scopes": [
+        { "scope": { "publisher_domain": "publisher-a.example" }, "approval_status": "approved" },
+        { "scope": { "publisher_domain": "publisher-b.example" }, "approval_status": "rejected", "rejection_reason": "Local policy restriction." }
+      ]
+    },
+    {
+      "name": "duplicate-conflicting-publisher-outcome",
+      "valid": false,
+      "approval_scopes": [
+        { "scope": { "publisher_domain": "publisher-a.example" }, "approval_status": "approved" },
+        { "scope": { "publisher_domain": "publisher-a.example" }, "approval_status": "rejected", "rejection_reason": "Contradiction." }
+      ]
+    },
+    {
+      "name": "publisher-wide-and-placement-overlap",
+      "valid": false,
+      "approval_scopes": [
+        { "scope": { "publisher_domain": "publisher-a.example" }, "approval_status": "approved" },
+        { "scope": { "publisher_domain": "publisher-a.example", "placement_id": "feed" }, "approval_status": "rejected", "rejection_reason": "No implicit override." }
+      ]
+    },
+    {
+      "name": "disjoint-placement-outcomes",
+      "valid": true,
+      "approval_scopes": [
+        { "scope": { "publisher_domain": "publisher-a.example", "placement_id": "feed" }, "approval_status": "approved" },
+        { "scope": { "publisher_domain": "publisher-a.example", "placement_id": "stories" }, "approval_status": "pending_review" }
+      ]
+    }
+  ],
+  "delivery_identity_cases": [
+    {
+      "name": "transport-retry",
+      "mode": "retry",
+      "prior": { "idempotency_key": "whk_fire_00000001", "notification_id": "change_1" },
+      "next": { "idempotency_key": "whk_fire_00000001", "notification_id": "change_1" },
+      "valid": true
+    },
+    {
+      "name": "logical-reemission",
+      "mode": "reemission",
+      "prior": { "idempotency_key": "whk_fire_00000001", "notification_id": "change_1" },
+      "next": { "idempotency_key": "whk_fire_00000002", "notification_id": "change_1" },
+      "valid": true
+    },
+    {
+      "name": "retry-must-not-change-fire-id",
+      "mode": "retry",
+      "prior": { "idempotency_key": "whk_fire_00000001", "notification_id": "change_1" },
+      "next": { "idempotency_key": "whk_fire_00000002", "notification_id": "change_1" },
+      "valid": false
+    }
+  ]
+}

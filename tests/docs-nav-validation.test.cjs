@@ -242,7 +242,10 @@ test('temporary snapshot redirects cover every available live page', () => {
     '/dist/docs/3.1.2/aao/aao-admins'
   );
 
-  const expectedUncoveredPages = ['docs/protocol/sync_agent_notification_configs'];
+  const expectedUncoveredPages = [
+    'docs/protocol/sync_agent_notification_configs',
+    'docs/media-buy/media-buys/insights'
+  ];
   if (JSON.stringify(uncoveredPages) !== JSON.stringify(expectedUncoveredPages)) {
     throw new Error(
       `Unexpected live pages without a 3.1.2 snapshot: ${uncoveredPages.join(', ')}`

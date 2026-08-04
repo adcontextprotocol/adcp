@@ -11,8 +11,8 @@ Sync advertiser accounts with a seller for one or more brand/operator pairs, or 
 
 **Response Time**: ~1s. Account provisioning is synchronous; credit and legal review may require human action (indicated by `status: "pending_approval"` with a `setup.url`).
 
-**Request Schema**: [`/schemas/v3/account/sync-accounts-request.json`](https://adcontextprotocol.org/schemas/v3/account/sync-accounts-request.json)
-**Response Schema**: [`/schemas/v3/account/sync-accounts-response.json`](https://adcontextprotocol.org/schemas/v3/account/sync-accounts-response.json)
+**Request Schema**: [`/schemas/latest/account/sync-accounts-request.json`](https://adcontextprotocol.org/schemas/latest/account/sync-accounts-request.json)
+**Response Schema**: [`/schemas/latest/account/sync-accounts-response.json`](https://adcontextprotocol.org/schemas/latest/account/sync-accounts-response.json)
 
 ## Quick start
 
@@ -176,7 +176,9 @@ Schema enforces the exclusivity via `oneOf` — sending both shapes on the same 
 
 ## Account-level webhook subscriptions
 
-`notification_configs[]` carries account-level webhook subscribers for notifications whose lifecycle outlives any single media buy — `creative.status_changed`, `creative.purged`, `account.status_changed`, wholesale feed change webhooks (`product.*`, `signal.*`, `wholesale_feed.bulk_change`), and future account-anchored resource events after those event types are added to `notification-type.json`.
+`notification_configs[]` carries account-level webhook subscribers for creative lifecycle and assignment changes, `insights.changed`, account status, wholesale feed changes, and future account-anchored events.
+
+Insight and assignment subscriptions are prospective: activation or reactivation does not replay conditions that were already current. After activation, buyers perform an unfiltered baseline read using the repair tasks declared in `media_buy.insight_notifications` before relying on later invalidations.
 
 `account.status_changed` is the durable account lifecycle event. Use it for status transitions after the initial `sync_accounts` result, such as `pending_approval → active`, `pending_approval → rejected`, `active → payment_required`, `active → suspended`, recovery back to `active`, or terminal `closed`. It is not a replacement for the one-shot `push_notification_config` on this task: that channel can report the async result of the original provisioning operation, while `notification_configs[]` subscribers outlive the task.
 
@@ -198,7 +200,7 @@ Each entry has:
 
 - `subscriber_id` — buyer-supplied identifier, unique within the account; echoed on every fire so multi-subscriber accounts can route by endpoint
 - `url` — HTTPS endpoint URL. Sellers MUST complete an endpoint activation challenge or equivalent proof-of-control before treating a new or changed active subscriber as active.
-- `event_types[]` — types the subscriber wants. Only account-anchored types are permitted (today: `creative.status_changed`, `creative.purged`, `account.status_changed`, `product.created`, `product.updated`, `product.priced`, `product.removed`, `signal.created`, `signal.updated`, `signal.priced`, `signal.removed`, `wholesale_feed.bulk_change`). Sellers MUST reject any media-buy-anchored type (`scheduled`, `final`, `delayed`, `adjusted`, `impairment`) or agent-anchored type (`capabilities.changed`) as a per-account validation failure with `INVALID_REQUEST` or `VALIDATION_ERROR` in `accounts[].errors[]`, and `error.field` MUST point at the invalid `event_types` entry.
+- `event_types[]` — account-anchored types include `creative.status_changed`, `creative.assignment_changed`, `insights.changed`, `creative.purged`, `account.status_changed`, product/signal changes, and `wholesale_feed.bulk_change`. Media-buy delivery types and agent-level `capabilities.changed` are invalid here.
 - `authentication` (optional) — legacy Bearer or HMAC-SHA256. Omit to use the default RFC 9421 webhook profile. When present, the same signed-registration downgrade-resistance rules as `push_notification_config.authentication` apply. Credentials are write-only — sellers omit them on reads.
 - `active` (default `true`) — set `false` to pause a subscriber without removing the registration. Sellers MAY skip only the outbound proof challenge while `active: false`; they MUST still enforce HTTPS parsing, hostname normalization, and reserved-range rejection on write. Paused subscribers MUST NOT receive fires until reactivated. Reactivation MUST repeat full SSRF validation with connect pinning plus proof-of-control for any tuple without current valid proof.
 

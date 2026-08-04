@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/get-media-buys-response.json",
   "title": "Get Media Buys Response",
-  "description": "Response payload for get_media_buys task. Returns media buy configuration, creative approval state, and optional delivery snapshots.",
+  "description": "Response payload for get_media_buys task. Returns media buy configuration, creative approval state, current seller insights at buy/package/assignment scope, and optional delivery snapshots.",
   "type": "object",
   "allOf": [
     {
@@ -151,7 +151,7 @@
           },
           "webhook_activity": {
             "type": "array",
-            "description": "Recent reporting and health webhook fires for the calling principal, most-recent first. Present only when `include_webhook_activity` was true in the request AND the seller surfaces this debug capability for this buy. Three-state semantics: (a) field omitted — seller does not surface webhook activity (either does not persist fire history, or `capabilities.media_buy.propagation_surfaces` excludes webhook surfaces, or the buy has no registered `push_notification_config` for this principal); (b) empty array `[]` — seller persists fire history but has fired nothing recent for this principal; (c) non-empty array — actual fire records. Sellers whose declared `propagation_surfaces` does not include `webhook` MUST omit the field. **Retention (normative):** sellers that surface this field MUST retain records for at least 30 days from each record's `completed_at` (for records still in `pending` status the clock runs from `fired_at` until the attempt terminates, then resets to 30 days from `completed_at` — so retry trails do not age out mid-flight). Sellers that cannot honor the 30-day floor MUST omit the field entirely rather than return a shorter window. Sellers MAY return fewer than `webhook_activity_limit` records when fewer fire records exist within the retention window. Sellers MUST emit one record per attempt — single-attempt successes appear as a single record with `attempt: 1`. Record shape is canonical across resources: see [`/schemas/core/webhook-activity-record.json`](/schemas/v3/core/webhook-activity-record.json) and snapshot-and-log.mdx § Webhook activity log pattern.",
+            "description": "Recent webhook fires relevant to this buy for the calling principal, most-recent first. Includes per-buy delivery/health fires and account-anchored insights.changed or creative.assignment_changed invalidations whose payload names this media_buy_id. Present only when include_webhook_activity was true and the seller surfaces this debug capability. Account-anchored records MUST include subscriber_id. Three-state presence and the 30-day retention floor follow snapshot-and-log.mdx § Webhook activity log pattern.",
             "items": {
               "$ref": "/schemas/core/webhook-activity-record.json"
             },
@@ -343,11 +343,147 @@
                       "rejection_reason": {
                         "type": "string",
                         "description": "Human-readable explanation of why the creative was rejected. Present only when approval_status is 'rejected'."
+                      },
+                      "approval_scopes": {
+                        "type": "array",
+                        "description": "Complete, disjoint publisher/placement approval partition when approval_status is partially_approved. A normalized scope appears once. For one publisher, use either one publisher-wide row or placement-specific rows, never both. Omit when one approval_status applies uniformly to the whole assignment. The same scoped outcomes are mirrored on list_creatives.",
+                        "items": {
+                          "$ref": "/schemas/core/creative-approval-scope.json"
+                        },
+                        "minItems": 2,
+                        "uniqueItems": true,
+                        "x-adcp-validation": {
+                          "verifier_constraints": {
+                            "unique_by_normalized_scope": true,
+                            "forbid_publisher_wide_and_placement_overlap": true
+                          },
+                          "spec": "specs/relationship-scoped-insights.md#placement-and-reverse-projection"
+                        }
+                      },
+                      "insights": {
+                        "type": "array",
+                        "description": "Current seller insights that are true for this creative in this package. The enclosing media buy, package, and creative approval supply the default delivery scope; an insight may narrow further with scope. Omitted means unknown or not evaluated. A present empty array means the seller completed the evaluation identified by insights_evaluated_scope at insights_as_of and asserts no current insight in that evaluated scope.",
+                        "items": {
+                          "$ref": "/schemas/core/insight.json"
+                        },
+                        "uniqueItems": true
+                      },
+                      "insight_types_evaluated": {
+                        "type": "array",
+                        "description": "Insight types covered by this assignment snapshot. Required whenever insights is present; omitted types remain unknown.",
+                        "items": {
+                          "$ref": "/schemas/enums/insight-type.json"
+                        },
+                        "minItems": 1,
+                        "uniqueItems": true
+                      },
+                      "insights_as_of": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "When the seller last completed the evaluation represented by insights for this relationship. Required whenever insights is present, including an empty array."
+                      },
+                      "insights_evaluated_scope": {
+                        "type": "array",
+                        "description": "Optional publisher or placement scopes covered by this evaluation. Omit when insights covers the whole package–creative assignment. When present, scopes not listed remain unknown; every returned insight.scope entry MUST be contained by this set.",
+                        "items": {
+                          "$ref": "/schemas/core/insight-scope.json"
+                        },
+                        "minItems": 1,
+                        "uniqueItems": true
                       }
                     },
                     "required": [
                       "creative_id",
                       "approval_status"
+                    ],
+                    "dependencies": {
+                      "insights": [
+                        "insight_types_evaluated",
+                        "insights_as_of"
+                      ],
+                      "insight_types_evaluated": [
+                        "insights",
+                        "insights_as_of"
+                      ],
+                      "insights_as_of": [
+                        "insights",
+                        "insight_types_evaluated"
+                      ],
+                      "insights_evaluated_scope": [
+                        "insights",
+                        "insight_types_evaluated",
+                        "insights_as_of"
+                      ]
+                    },
+                    "allOf": [
+                      {
+                        "$ref": "/schemas/core/insight-bearing.json"
+                      },
+                      {
+                        "properties": {
+                          "insight_types_evaluated": {
+                            "items": {
+                              "enum": [
+                                "creative_fatigue",
+                                "creative_quality_opportunity"
+                              ]
+                            }
+                          },
+                          "insights": {
+                            "items": {
+                              "properties": {
+                                "type": {
+                                  "enum": [
+                                    "creative_fatigue",
+                                    "creative_quality_opportunity"
+                                  ]
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "if": {
+                          "required": [
+                            "insights_evaluated_scope"
+                          ]
+                        },
+                        "then": {
+                          "properties": {
+                            "insights": {
+                              "items": {
+                                "required": [
+                                  "scope"
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "if": {
+                          "properties": {
+                            "approval_status": { "const": "partially_approved" }
+                          },
+                          "required": ["approval_status"]
+                        },
+                        "then": {
+                          "required": ["approval_scopes"],
+                          "properties": {
+                            "approval_scopes": {
+                              "allOf": [
+                                { "contains": { "properties": { "approval_status": { "const": "approved" } } } },
+                                { "contains": { "properties": { "approval_status": { "enum": ["pending_review", "rejected"] } } } }
+                              ]
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "if": { "required": ["approval_scopes"] },
+                        "then": { "properties": { "approval_status": { "const": "partially_approved" } } }
+                      }
                     ],
                     "additionalProperties": true
                   }
@@ -434,6 +570,41 @@
               "required": [
                 "package_id"
               ],
+              "allOf": [
+                {
+                  "$ref": "/schemas/core/insight-bearing.json"
+                },
+                {
+                  "properties": {
+                    "insight_types_evaluated": {
+                      "items": {
+                        "enum": [
+                          "creative_diversity_low",
+                          "audience_saturation",
+                          "inventory_shortfall_forecast",
+                          "pacing_risk",
+                          "budget_constrained"
+                        ]
+                      }
+                    },
+                    "insights": {
+                      "items": {
+                        "properties": {
+                          "type": {
+                            "enum": [
+                              "creative_diversity_low",
+                              "audience_saturation",
+                              "inventory_shortfall_forecast",
+                              "pacing_risk",
+                              "budget_constrained"
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              ],
               "dependencies": {
                 "params": ["format_kind"]
               },
@@ -445,6 +616,31 @@
           }
         },
         "allOf": [
+          {
+            "$ref": "/schemas/core/insight-bearing.json"
+          },
+          {
+            "properties": {
+              "insight_types_evaluated": {
+                "items": {
+                  "enum": [
+                    "budget_constrained"
+                  ]
+                }
+              },
+              "insights": {
+                "items": {
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "budget_constrained"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
           {
             "$comment": "When get_media_buys gains canonical media_buy_status during the 3.1 -> 3.2 status migration, extend this provisional-buy guard to reject media_buy_status: active alongside legacy status: active.",
             "if": {

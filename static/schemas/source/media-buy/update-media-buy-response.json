@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/update-media-buy-response.json",
   "title": "Update Media Buy Response",
-  "description": "Response payload for update_media_buy task. Exactly one of three shapes: (1) synchronous success — media_buy_id and updated state are issued in-line; (2) terminal failure — an errors array with no changes applied; (3) submitted task envelope — status 'submitted' with task_id when the update is queued for async processing (e.g., awaiting operator re-approval for mid-flight changes). The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. These three shapes are mutually exclusive — a response has exactly one.",
+  "description": "Response payload for update_media_buy task. Exactly one of three shapes: (1) synchronous success — media_buy_id and updated state are issued in-line, and optional warnings[] reports non-blocking observations; (2) terminal failure — an errors array with no changes applied; (3) submitted task envelope — status 'submitted' with task_id when the update is queued for async processing (e.g., awaiting operator re-approval for mid-flight changes). The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. A continuing condition first surfaced as a synchronous success warning MUST also appear on its authoritative read surface. These three shapes are mutually exclusive — a response has exactly one.",
   "type": "object",
   "allOf": [
     {
@@ -81,6 +81,14 @@
           },
           "uniqueItems": true
         },
+        "warnings": {
+          "type": "array",
+          "description": "Optional non-blocking observations accompanying this successful update. The requested update was still applied. Continuing conditions also appear on get_media_buys as current resource state.",
+          "items": {
+            "$ref": "/schemas/core/warning.json"
+          },
+          "uniqueItems": true
+        },
         "sandbox": {
           "type": "boolean",
           "description": "When true, this response contains simulated data from sandbox mode."
@@ -147,6 +155,11 @@
             ]
           },
           {
+            "required": [
+              "warnings"
+            ]
+          },
+          {
             "properties": {
               "status": {
                 "const": "submitted"
@@ -200,8 +213,13 @@
       ],
       "additionalProperties": true,
       "not": {
-        "required": [
-          "media_buy_id"
+        "anyOf": [
+          {
+            "required": ["media_buy_id"]
+          },
+          {
+            "required": ["warnings"]
+          }
         ]
       }
     }

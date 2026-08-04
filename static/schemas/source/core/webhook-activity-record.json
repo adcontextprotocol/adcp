@@ -25,7 +25,7 @@
     },
     "notification_type": {
       "$ref": "/schemas/enums/notification-type.json",
-      "description": "Notification type carried by this fire, verbatim from the webhook payload. Includes both delivery-report types (`scheduled`, `final`, `delayed`, `adjusted`) and health-notification types (`impairment`). All share the same persistent-channel webhook contract and the same buyer-side debug need."
+    "description": "Notification type carried by this fire, verbatim from the webhook payload. Includes delivery-report, health, insight, and creative-assignment invalidation types. All share the same persistent-channel webhook contract and the same buyer-side debug need."
     },
     "sequence_number": {
       "type": "integer",

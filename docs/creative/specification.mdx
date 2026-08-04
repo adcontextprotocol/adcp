@@ -337,7 +337,7 @@ Generate preview renderings of creative manifests.
 
 ### list_creatives
 
-**Schema**: [`creative/list-creatives-request.json`](https://adcontextprotocol.org/schemas/v3/creative/list-creatives-request.json) / [`creative/list-creatives-response.json`](https://adcontextprotocol.org/schemas/v3/creative/list-creatives-response.json)
+**Schema**: [`creative/list-creatives-request.json`](https://adcontextprotocol.org/schemas/latest/creative/list-creatives-request.json) / [`creative/list-creatives-response.json`](https://adcontextprotocol.org/schemas/latest/creative/list-creatives-response.json)
 
 **Reference**: [`list_creatives` task](/docs/creative/task-reference/list_creatives)
 
@@ -350,6 +350,10 @@ Browse and filter creative assets in a creative library. Implemented by any agen
 - Agents SHOULD support filtering by `concept_ids` and `format_ids` when the platform organizes creatives into concepts
 - Agents MAY include dynamic content variable definitions when `include_variables=true`
 - Agents MAY include a lightweight delivery snapshot when `include_snapshot=true`. The snapshot provides lifetime impressions and last-served date for operational use — detailed analytics belong in `get_creative_delivery`.
+- Sales agents declaring `list_creatives` in `media_buy.insight_notifications.repair_tasks` MUST scope creative insights to `assignments.assigned_packages[].insights[]`; they MUST NOT place package- or publisher-specific fatigue on the creative as a global property.
+- Those sellers MUST include `media_buy_id` and `approval_status` on every assignment row, including rows whose insight state is unknown. `rejection_reason` and `approval_scopes` mirror the media-buy projection. `insight_types_evaluated` declares exact type coverage; `insights_evaluated_scope` declares partial publisher/placement coverage.
+- When the same relationship is visible through both reads, approval state, rejection reason, insight types, scopes, detection times, evaluation coverage, and `insights_as_of` MUST agree.
+- Every insight-capable seller accepts `insights.changed`; sellers declaring the reverse projection additionally accept `creative.assignment_changed`. These are prospective invalidations; receivers establish a baseline and reread rather than treating payloads as relationship state.
 - When `account` and `include_pricing=true` are provided, agents that charge MUST include `pricing_options` on each creative — an array of [`vendor-pricing-option`](https://adcontextprotocol.org/schemas/v3/core/vendor-pricing-option.json) objects. Vendors may offer multiple options per creative (volume tiers, context-specific rates, different pricing models).
 
 **Account requirements:**
