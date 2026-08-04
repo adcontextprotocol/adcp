@@ -286,6 +286,98 @@ phases:
             value: "TERMS_REJECTED"
             description: "Seller enforces the single media-buy currency before mutation"
 
+  - id: reject_package_minimum_exceeds_budget
+    title: "Reject a package minimum-spend target that exceeds its own budget"
+    steps:
+      - id: create_oversubscribed_package_minimum
+        title: "Reject min_spend_target greater than the package budget"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: false
+        expect_error: true
+        negative_path: payload_well_formed
+        expected: |
+          Reject before mutation because the prospecting package carries a
+          min_spend_target (80000) that exceeds its own budget (70000).
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          total_budget:
+            amount: 100000
+            currency: "USD"
+          budget_allocation:
+            mode: "seller_optimized"
+            optimization_goals:
+              - kind: "metric"
+                metric: "clicks"
+                priority: 1
+          packages:
+            - product_id: "shared_budget_prospecting"
+              pricing_option_id: "prospecting_cpm"
+              budget: 70000
+              min_spend_target: 80000
+            - product_id: "shared_budget_retargeting"
+              pricing_option_id: "retargeting_cpm"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#seller_optimized_budget_min_exceeds_package"
+        validations:
+          - check: error_code
+            value: "INVALID_REQUEST"
+            description: "Seller rejects a min_spend_target that exceeds the package budget before mutation"
+
+  - id: reject_aggregate_minimum_exceeds_total
+    title: "Reject package minimums that collectively exceed the total budget"
+    steps:
+      - id: create_oversubscribed_aggregate_minimum
+        title: "Reject sum(min_spend_target) greater than total_budget"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: false
+        expect_error: true
+        negative_path: payload_well_formed
+        expected: |
+          Reject before mutation because the package minimum-spend targets
+          (60000 + 50000 = 110000) collectively exceed total_budget (100000).
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          total_budget:
+            amount: 100000
+            currency: "USD"
+          budget_allocation:
+            mode: "seller_optimized"
+            optimization_goals:
+              - kind: "metric"
+                metric: "clicks"
+                priority: 1
+          packages:
+            - product_id: "shared_budget_prospecting"
+              pricing_option_id: "prospecting_cpm"
+              min_spend_target: 60000
+            - product_id: "shared_budget_retargeting"
+              pricing_option_id: "retargeting_cpm"
+              min_spend_target: 50000
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#seller_optimized_budget_aggregate_min_exceeds_total"
+        validations:
+          - check: error_code
+            value: "INVALID_REQUEST"
+            description: "Seller rejects over-subscribed aggregate minimum-spend targets before mutation"
+
   - id: bind_media_buy_cost_to_allocation_goal
     title: "Bind a shared cost control to the allocation goal"
     requires_capability:

@@ -1220,7 +1220,7 @@ Seller-optimized allocation is a nested optimization:
 
 All package constraints and canonical bidding amounts in a seller-optimized buy use `total_budget.currency`, and every selected pricing option MUST declare that currency. This one-currency rule also applies to fixed AdCP-authored buys; packages requiring another denomination belong in a separate media buy. Every participating product MUST support the primary cross-package optimization goal. Sellers reject incompatible product combinations, currencies, pricing terms, or delivery constraints with `TERMS_REJECTED` or `BIDDING_PLACEMENT_CONFLICT` and identify the incompatible package.
 
-Package caps may sum above the media-buy total; that headroom is what permits dynamic allocation. Minimum-spend targets must sum to no more than the total. If package caps cannot collectively spend the total, the seller rejects the request as infeasible. Sellers advertising this behavior declare `media_buy.features.seller_optimized_budget: true` in `get_adcp_capabilities`.
+Package caps may sum above the media-buy total; that headroom is what permits dynamic allocation. Minimum-spend targets must sum to no more than the total; sellers MUST reject over-subscribed aggregate minimums with `INVALID_REQUEST` before any provider mutation. If package caps cannot collectively spend the total, the seller rejects the request as infeasible. Sellers advertising this behavior declare `media_buy.features.seller_optimized_budget: true` in `get_adcp_capabilities`.
 
 Continuous allocation decisions inside an accepted seller-optimized buy are delivery behavior. They do not mutate package caps, increment the media-buy revision, create history entries, or constitute separate `reallocate_budget` actions.
 
