@@ -254,14 +254,14 @@ function generateEphemeralKey(): { signer: SignerKey; publicJwk: AdcpJsonWebKey 
     ...privateJwkRaw as AdcpJsonWebKey,
     kid,
     alg: 'EdDSA',
-    adcp_use: 'webhook-signing',
+    adcp_use: 'request-signing',
     key_ops: ['sign'],
   };
   const pubJwk: AdcpJsonWebKey = {
     ...publicJwkRaw as AdcpJsonWebKey,
     kid,
     alg: 'EdDSA',
-    adcp_use: 'webhook-signing',
+    adcp_use: 'request-signing',
     key_ops: ['verify'],
     use: 'sig',
   };
@@ -282,7 +282,7 @@ function loadConfiguredKey(raw: string): { signer: SignerKey; publicJwk: AdcpJso
     privateKey: {
       ...jwk,
       alg: 'EdDSA',
-      adcp_use: 'webhook-signing',
+      adcp_use: 'request-signing',
       key_ops: ['sign'],
     },
   };
@@ -291,7 +291,7 @@ function loadConfiguredKey(raw: string): { signer: SignerKey; publicJwk: AdcpJso
   const pubJwk: AdcpJsonWebKey = {
     ...publicOnly,
     alg: 'EdDSA',
-    adcp_use: 'webhook-signing',
+    adcp_use: 'request-signing',
     key_ops: ['verify'],
     use: 'sig',
   };
@@ -300,7 +300,7 @@ function loadConfiguredKey(raw: string): { signer: SignerKey; publicJwk: AdcpJso
 
 /**
  * Synchronous SigningProvider wrapper around the lazy KMS-backed
- * webhook-signing provider. The wire identity (`keyid`, `algorithm`,
+ * webhook-delivery provider. The wire identity (`keyid`, `algorithm`,
  * `fingerprint`) is known statically from committed constants, so we
  * hand a fully-shaped provider to `createWebhookEmitter` without
  * blocking on a KMS round-trip at startup. The first `sign()` call
@@ -335,7 +335,7 @@ function publicJwkFromPem(pem: string, kid: string): AdcpJsonWebKey {
     x: raw.x,
     kid,
     alg: 'EdDSA',
-    adcp_use: 'webhook-signing',
+    adcp_use: 'request-signing',
     key_ops: ['verify'],
     use: 'sig',
   } as AdcpJsonWebKey;

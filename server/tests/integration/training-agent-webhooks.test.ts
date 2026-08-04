@@ -272,14 +272,14 @@ describe('Training Agent webhook emission', () => {
     }
   }, 15000);
 
-  it('publishes its webhook-signing public key at /.well-known/jwks.json', async () => {
+  it('publishes its webhook delivery key under the canonical request-signing purpose', async () => {
     const response = await request(app).get('/api/training-agent/.well-known/jwks.json');
     expect(response.status).toBe(200);
     const jwks = response.body as { keys: AdcpJsonWebKey[] };
     expect(Array.isArray(jwks.keys)).toBe(true);
     expect(jwks.keys.length).toBeGreaterThan(0);
     const key = jwks.keys[0];
-    expect(key.adcp_use).toBe('webhook-signing');
+    expect(key.adcp_use).toBe('request-signing');
     expect(key.key_ops).toContain('verify');
     expect(key.kid).toBeTruthy();
     expect(key.d).toBeUndefined(); // never publish the private scalar

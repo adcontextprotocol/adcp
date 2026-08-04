@@ -91,3 +91,28 @@ describe('RFC 9421 webhook-signing vectors', () => {
     verifyVectorSignature(vector, relativePath);
   });
 });
+
+describe('governance list webhook signature compatibility', () => {
+  const schemaPaths = [
+    'property/property-list-changed-webhook.json',
+    'collection/collection-list-changed-webhook.json',
+  ];
+
+  for (const relativePath of schemaPaths) {
+    it(`${relativePath} makes the deprecated body signature optional`, () => {
+      const schema = JSON.parse(fs.readFileSync(path.join(
+        __dirname,
+        '..',
+        'static',
+        'schemas',
+        'source',
+        relativePath,
+      ), 'utf8'));
+
+      assert.equal(schema.required.includes('signature'), false);
+      assert.equal(schema.properties.signature.deprecated, true);
+      assert.match(schema.properties.signature.description, /Receivers MUST ignore/);
+      assert.match(schema.description, /RFC 9421 webhook profile/);
+    });
+  }
+});

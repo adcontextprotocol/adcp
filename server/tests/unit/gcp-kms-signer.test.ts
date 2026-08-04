@@ -135,11 +135,11 @@ describe('getPublicSigningJwks', () => {
     resetJwksForTests();
   });
 
-  it('publishes two JWKs — one per AdCP signing purpose', () => {
+  it('publishes isolated request and webhook keys under the canonical request-signing purpose', () => {
     const jwks = getPublicSigningJwks();
     expect(jwks.keys).toHaveLength(2);
     const purposes = jwks.keys.map(k => k.adcp_use).sort();
-    expect(purposes).toEqual(['request-signing', 'webhook-signing']);
+    expect(purposes).toEqual(['request-signing', 'request-signing']);
   });
 
   it('request-signing JWK shape', () => {
@@ -154,8 +154,8 @@ describe('getPublicSigningJwks', () => {
     expect(jwk.x).toBe(pemDerived.x);
   });
 
-  it('webhook-signing JWK shape', () => {
-    const jwk = getPublicSigningJwks().keys.find(k => k.adcp_use === 'webhook-signing')!;
+  it('webhook delivery JWK shape', () => {
+    const jwk = getPublicSigningJwks().keys.find(k => k.kid === WEBHOOK_SIGNING_KID)!;
     expect(jwk.kty).toBe('OKP');
     expect(jwk.crv).toBe('Ed25519');
     expect(jwk.alg).toBe('EdDSA');
@@ -168,8 +168,8 @@ describe('getPublicSigningJwks', () => {
 
   it('request and webhook keys have distinct material (per AdCP key-separation)', () => {
     const jwks = getPublicSigningJwks();
-    const req = jwks.keys.find(k => k.adcp_use === 'request-signing')!;
-    const webhook = jwks.keys.find(k => k.adcp_use === 'webhook-signing')!;
+    const req = jwks.keys.find(k => k.kid === REQUEST_SIGNING_KID)!;
+    const webhook = jwks.keys.find(k => k.kid === WEBHOOK_SIGNING_KID)!;
     expect(req.x).not.toBe(webhook.x);
     expect(req.kid).not.toBe(webhook.kid);
   });

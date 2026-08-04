@@ -283,12 +283,11 @@ When a collection list's resolved collections change (new programs matched, rati
     "total_collections": 249
   },
   "resolved_at": "2026-04-08T10:00:00Z",
-  "cache_valid_until": "2026-04-15T10:00:00Z",
-  "signature": "..."
+  "cache_valid_until": "2026-04-15T10:00:00Z"
 }
 ```
 
-Webhooks contain a summary only — recipients must call `get_collection_list` for the updated entries. Recipients MUST verify the `signature` before processing and MUST dedupe by `idempotency_key` so retried deliveries of the same change event are ignored.
+Webhooks contain a summary only — recipients must call `get_collection_list` for the updated entries. Recipients MUST verify the delivery's RFC 9421 `Signature`, `Signature-Input`, and `Content-Digest` HTTP headers before processing, following the [webhook profile](/docs/building/by-layer/L1/security#webhook-callbacks). New senders omit the deprecated body-level `signature` field; receivers ignore it if an older 3.x sender includes it. Recipients MUST also dedupe by `idempotency_key` so retried deliveries of the same change event are ignored.
 
 ## Live sports
 

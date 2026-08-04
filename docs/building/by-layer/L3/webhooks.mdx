@@ -337,6 +337,8 @@ Content-Digest: sha-256=:<base64url-unpadded>:
 
 Covered components are fixed: `@method`, `@target-uri`, `@authority`, `content-type`, `content-digest`. `content-digest` is REQUIRED — the body is the event; a signature that doesn't cover it isn't protecting the attack surface that matters.
 
+Property-list and collection-list change payloads may carry a deprecated body-level `signature` field from older 3.x implementations. It is optional in 3.2 and receivers MUST ignore it for authentication. New senders omit it and authenticate only through the HTTP signature headers above. The compatibility field is removed in 4.0.
+
 **Verification** follows the 14-step [request verifier checklist](/docs/building/by-layer/L1/security#verifier-checklist-requests) with three webhook substitutions:
 
 - Error codes use the `webhook_signature_*` prefix (see [Webhook error taxonomy](/docs/building/by-layer/L1/security#webhook-error-taxonomy)).

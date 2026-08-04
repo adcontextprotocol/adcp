@@ -1,10 +1,11 @@
 /**
  * Public JWKS for Addie's signing keys.
  *
- * Two entries — one per AdCP signing purpose. AdCP receivers enforce key
- * purpose at the JWK's `adcp_use` field (`docs/guides/SIGNING-GUIDE.md` §
- * Key separation), so request-signing and webhook-signing keys must
- * appear as distinct JWK entries with their respective `adcp_use` values.
+ * Two request-signing entries with distinct key material and kids: one for
+ * outbound AdCP requests and one isolated for webhook delivery. RFC 9421's
+ * profile tag provides cross-surface domain separation; new webhook signers
+ * use `adcp_use: request-signing` rather than the deprecated
+ * `webhook-signing` purpose.
  *
  * Both derived from the committed PEM constants so the published JWKS
  * and each signer's tripwire reference the same source of truth —
@@ -38,13 +39,13 @@ export function getPublicSigningJwks(): { keys: PublicJwk[] } {
   cached = {
     keys: [
       pemToAdcpJwk(REQUEST_SIGNING_PUBLIC_KEY_PEM, REQUEST_SIGNING_KID, 'request-signing'),
-      pemToAdcpJwk(WEBHOOK_SIGNING_PUBLIC_KEY_PEM, WEBHOOK_SIGNING_KID, 'webhook-signing'),
+      pemToAdcpJwk(WEBHOOK_SIGNING_PUBLIC_KEY_PEM, WEBHOOK_SIGNING_KID, 'request-signing'),
     ],
   };
   return cached;
 }
 
-function pemToAdcpJwk(pem: string, kid: string, adcpUse: 'request-signing' | 'webhook-signing'): PublicJwk {
+function pemToAdcpJwk(pem: string, kid: string, adcpUse: 'request-signing'): PublicJwk {
   const raw = createPublicKey(pem).export({ format: 'jwk' }) as {
     kty?: string;
     crv?: string;
