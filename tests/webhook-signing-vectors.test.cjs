@@ -120,27 +120,21 @@ describe('RFC 9421 webhook-signing vectors', () => {
   }
 });
 
-describe('governance list webhook signature compatibility', () => {
-  const schemaPaths = [
-    'property/property-list-changed-webhook.json',
-    'collection/collection-list-changed-webhook.json',
-  ];
+describe('property-list webhook signature compatibility', () => {
+  it('keeps the deprecated property-list body marker required through 3.x', () => {
+    const schema = JSON.parse(fs.readFileSync(path.join(
+      __dirname,
+      '..',
+      'static',
+      'schemas',
+      'source',
+      'property/property-list-changed-webhook.json',
+    ), 'utf8'));
 
-  for (const relativePath of schemaPaths) {
-    it(`${relativePath} makes the deprecated body signature optional`, () => {
-      const schema = JSON.parse(fs.readFileSync(path.join(
-        __dirname,
-        '..',
-        'static',
-        'schemas',
-        'source',
-        relativePath,
-      ), 'utf8'));
-
-      assert.equal(schema.required.includes('signature'), false);
-      assert.equal(schema.properties.signature.deprecated, true);
-      assert.match(schema.properties.signature.description, /Receivers MUST ignore/);
-      assert.match(schema.description, /RFC 9421 webhook profile/);
-    });
-  }
+    assert.equal(schema.required.includes('signature'), true);
+    assert.equal(schema.properties.signature.deprecated, true);
+    assert.equal(schema.properties.signature.const, undefined);
+    assert.match(schema.properties.signature.description, /MUST ignore it when authenticating/);
+    assert.match(schema.description, /RFC 9421 webhook profile/);
+  });
 });

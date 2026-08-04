@@ -2,4 +2,4 @@
 "adcontextprotocol": minor
 ---
 
-Standardize property-list and collection-list change notifications on the RFC 9421 webhook profile. Deprecate and make optional the legacy body-level `signature` field while preserving acceptance of existing 3.x payloads.
+Standardize property-list change notifications on the RFC 9421 webhook profile. Keep the undefined legacy body-level `signature` field as a required, deprecated compatibility marker through 3.x; remove it in 4.0.

@@ -12,7 +12,6 @@ import { getSession, sessionKeyFromArgs } from './state.js';
 import { ACCOUNT_REF_SCHEMA } from './account-handlers.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import { validateWebhookUrl } from './webhook-fetch.js';
-import { emitGovernanceListChangedWebhook } from './webhooks.js';
 
 const MAX_ARRAY_INPUT = 100;
 
@@ -131,7 +130,6 @@ interface UpdateCollectionListInput extends ToolArgs {
   filters?: Record<string, unknown>;
   webhook_url?: string;
   brand?: { domain: string };
-  idempotency_key?: string;
 }
 
 interface ListInput extends ToolArgs {
@@ -221,11 +219,6 @@ export async function handleUpdateCollectionList(args: ToolArgs, ctx: TrainingCo
     if (webhookError) return { errors: [webhookError] };
   }
 
-  const previousCollectionCount = list.collection_count;
-  const resolvedContentChanged = input.base_collections !== undefined
-    || input.filters !== undefined
-    || input.brand !== undefined;
-
   if (input.name !== undefined) list.name = input.name;
   if (input.description !== undefined) list.description = input.description;
   if (input.base_collections !== undefined) {
@@ -237,23 +230,6 @@ export async function handleUpdateCollectionList(args: ToolArgs, ctx: TrainingCo
   if (input.webhook_url !== undefined) list.webhook_url = input.webhook_url === '' ? undefined : input.webhook_url;
   if (input.brand !== undefined) list.brand = input.brand;
   list.updated_at = new Date().toISOString();
-
-  if (resolvedContentChanged && list.webhook_url) {
-    emitGovernanceListChangedWebhook({
-      kind: 'collection',
-      url: list.webhook_url,
-      listId: list.list_id,
-      listName: list.name,
-      operationId: `collection_list_changed:${list.list_id}:${input.idempotency_key ?? list.updated_at}`,
-      resolvedAt: list.updated_at,
-      cacheValidUntil: new Date(Date.now() + 168 * 60 * 60 * 1000).toISOString(),
-      changeSummary: {
-        collections_added: Math.max(0, list.collection_count - previousCollectionCount),
-        collections_removed: Math.max(0, previousCollectionCount - list.collection_count),
-        total_collections: list.collection_count,
-      },
-    });
-  }
 
   return { list };
 }

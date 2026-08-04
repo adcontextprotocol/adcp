@@ -12,7 +12,7 @@ import { getSession, sessionKeyFromArgs, MAX_PROPERTY_LISTS_PER_SESSION } from '
 import { ACCOUNT_REF_SCHEMA } from './account-handlers.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import { validateWebhookUrl } from './webhook-fetch.js';
-import { emitGovernanceListChangedWebhook } from './webhooks.js';
+import { emitPropertyListChangedWebhook } from './webhooks.js';
 
 const MAX_PROPERTIES_PER_LIST = 10_000;
 
@@ -365,8 +365,7 @@ export async function handleUpdatePropertyList(
       changeSummary.properties_added = [...nextDomains].filter(domain => !priorDomains.has(domain)).length;
       changeSummary.properties_removed = [...priorDomains].filter(domain => !nextDomains.has(domain)).length;
     }
-    emitGovernanceListChangedWebhook({
-      kind: 'property',
+    emitPropertyListChangedWebhook({
       url: state.webhookUrl,
       listId: state.listId,
       listName: state.name,

@@ -234,50 +234,35 @@ export async function emitAccountNotificationWebhook(opts: {
   });
 }
 
-export type GovernanceListChangedWebhookParams =
-  | {
-      kind: 'property';
-      url: string;
-      listId: string;
-      listName: string;
-      operationId: string;
-      resolvedAt: string;
-      cacheValidUntil: string;
-      changeSummary: {
-        properties_added?: number;
-        properties_removed?: number;
-        total_properties: number;
-      };
-    }
-  | {
-      kind: 'collection';
-      url: string;
-      listId: string;
-      listName: string;
-      operationId: string;
-      resolvedAt: string;
-      cacheValidUntil: string;
-      changeSummary: {
-        collections_added?: number;
-        collections_removed?: number;
-        total_collections: number;
-      };
-    };
+export interface PropertyListChangedWebhookParams {
+  url: string;
+  listId: string;
+  listName: string;
+  operationId: string;
+  resolvedAt: string;
+  cacheValidUntil: string;
+  changeSummary: {
+    properties_added?: number;
+    properties_removed?: number;
+    total_properties: number;
+  };
+}
 
-/** Emit an RFC 9421-only governance list-change notification.
+/** Emit an RFC 9421-only property-list change notification.
  *
- * Property/collection list registrations expose only `webhook_url`, not an
- * authentication-mode selector. These deliveries therefore never pass the
- * SDK's legacy `authentication` override. The emitter adds a stable
- * `idempotency_key`; the payload intentionally contains no body signature. */
-export function emitGovernanceListChangedWebhook(opts: GovernanceListChangedWebhookParams): void {
+ * Property-list registration exposes only `webhook_url`, not an
+ * authentication-mode selector. The deprecated body `signature` remains a
+ * required literal marker through 3.x for schema compatibility; it has no
+ * authentication semantics. */
+export function emitPropertyListChangedWebhook(opts: PropertyListChangedWebhookParams): void {
   const payload: Record<string, unknown> = {
-    event: opts.kind === 'property' ? 'property_list_changed' : 'collection_list_changed',
+    event: 'property_list_changed',
     list_id: opts.listId,
     list_name: opts.listName,
     change_summary: opts.changeSummary,
     resolved_at: opts.resolvedAt,
     cache_valid_until: opts.cacheValidUntil,
+    signature: 'rfc9421',
   };
 
   void getWebhookEmitter().emit({
@@ -285,8 +270,8 @@ export function emitGovernanceListChangedWebhook(opts: GovernanceListChangedWebh
     payload,
     operation_id: opts.operationId,
   }).catch(err => logger.warn(
-    { err, kind: opts.kind, listId: opts.listId, url: opts.url },
-    'Governance list-change webhook emission failed',
+    { err, listId: opts.listId, url: opts.url },
+    'Property-list change webhook emission failed',
   ));
 }
 
@@ -445,7 +430,7 @@ export function getWebhookSigningMaterial():
 
 /** Return the only training-agent webhook emitter.
  *
- * Completion and governance list-change notifications route through this
+ * Completion and property-list change notifications route through this
  * emitter. Storage-time URL validation is not sufficient: this fetch policy
  * repeats validation at delivery time and pins the public address at connect
  * time. */

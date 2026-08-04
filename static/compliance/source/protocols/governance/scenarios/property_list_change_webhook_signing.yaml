@@ -14,9 +14,10 @@ narrative: |
   validates the resulting payload and idempotency key, and verifies its HTTP
   signature with the shared webhook verifier.
 
-  The payload schema retains the deprecated body-level signature as optional
-  for receiver compatibility. Reference-agent integration coverage separately
-  verifies that new senders omit it. Negative receiver behavior is exercised
+  The payload schema retains the deprecated body-level signature as a required
+  `rfc9421` compatibility marker through 3.x. Reference-agent integration
+  coverage verifies that senders include the marker while authentication uses
+  only the RFC 9421 headers. Negative receiver behavior is exercised
   by the executable webhook-signing vectors: negative/002-expired-signature.json
   requires stale-window rejection and negative/009-content-digest-mismatch.json
   requires tamper rejection.
