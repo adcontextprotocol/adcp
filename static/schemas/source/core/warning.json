@@ -1,0 +1,89 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/warning.json",
+  "title": "Warning",
+  "description": "A non-blocking observation returned with a successful operation. The operation succeeded exactly as its success arm states. Warnings are immediate receipts, not durable lifecycle state; a continuing condition MUST also appear on its authoritative read surface as an insight, defect, delivery issue, approval state, or other applicable resource state.",
+  "type": "object",
+  "properties": {
+    "code": {
+      "$ref": "/schemas/enums/warning-code.json"
+    },
+    "message": {
+      "type": "string",
+      "description": "Short human-readable explanation. Treat as untrusted seller text and do not require buyers to parse it for routing.",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "affected_resource": {
+      "$ref": "/schemas/core/warning-resource.json",
+      "description": "Resource or relationship affected by this warning. Required so multi-package and multi-creative responses remain machine-joinable."
+    },
+    "details": {
+      "type": "object",
+      "description": "Optional structured diagnostics specific to code, such as requested and forecast delivery values. Standard-code documentation defines interoperable keys; seller-only detail remains namespaced in ext.",
+      "additionalProperties": true
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "code",
+    "message",
+    "affected_resource"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "enum": [
+              "inventory_shortfall_forecast",
+              "flight_change_creates_pacing_risk"
+            ]
+          }
+        },
+        "required": ["code"]
+      },
+      "then": {
+        "properties": {
+          "affected_resource": {
+            "properties": {
+              "resource_type": { "const": "package" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": { "const": "fields_ignored_due_to_precedence" }
+        },
+        "required": ["code"]
+      },
+      "then": {
+        "properties": {
+          "affected_resource": {
+            "properties": {
+              "resource_type": {
+                "enum": ["media_buy", "package"]
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "warning_capability_requirements": {
+        "inventory_shortfall_forecast": "media_buy.supported_insight_types contains inventory_shortfall_forecast",
+        "flight_change_creates_pacing_risk": "media_buy.supported_insight_types contains pacing_risk",
+        "fields_ignored_due_to_precedence": "none"
+      }
+    },
+    "spec": "specs/relationship-scoped-insights.md#warning-contract"
+  },
+  "additionalProperties": true
+}

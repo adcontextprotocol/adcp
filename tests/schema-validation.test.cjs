@@ -764,7 +764,7 @@ async function runTests() {
     return true;
   });
 
-  await test('list_creatives accepts exactly one legacy or canonical creative identity', async () => {
+  await test('list_creatives sparse projection may omit format identity but never emits both identities', async () => {
     const responseSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'creative/list-creatives-response.json'));
     const testAjv = new Ajv({
       allErrors: true,
@@ -798,15 +798,15 @@ async function runTests() {
     };
     const canonicalIdentity = { format_kind: 'image' };
 
-    for (const identity of [legacyIdentity, canonicalIdentity]) {
+    for (const identity of [{}, legacyIdentity, canonicalIdentity]) {
       if (!validate({ ...baseResponse, creatives: [{ ...creative, ...identity }] })) {
         return `valid creative identity was rejected: ${testAjv.errorsText(validate.errors)}`;
       }
     }
 
-    for (const identity of [{}, { ...legacyIdentity, ...canonicalIdentity }]) {
+    for (const identity of [{ ...legacyIdentity, ...canonicalIdentity }]) {
       if (validate({ ...baseResponse, creatives: [{ ...creative, ...identity }] })) {
-        return 'creative identity must contain exactly one of format_id or format_kind';
+        return 'creative identity may contain at most one of format_id or format_kind';
       }
     }
 

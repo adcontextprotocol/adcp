@@ -269,7 +269,7 @@ Use these canonical sources instead:
 
 ### create_media_buy
 
-**Schema**: [`media-buy/create-media-buy-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-request.json) / [`media-buy/create-media-buy-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-response.json)
+**Schema**: [`media-buy/create-media-buy-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/create-media-buy-request.json) / [`media-buy/create-media-buy-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/create-media-buy-response.json)
 
 **Reference**: [`create_media_buy` task](/docs/media-buy/task-reference/create_media_buy)
 
@@ -287,7 +287,7 @@ Create a media buy from selected packages or execute a proposal.
 
 ### update_media_buy
 
-**Schema**: [`media-buy/update-media-buy-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/update-media-buy-request.json) / [`media-buy/update-media-buy-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/update-media-buy-response.json)
+**Schema**: [`media-buy/update-media-buy-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/update-media-buy-request.json) / [`media-buy/update-media-buy-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/update-media-buy-response.json)
 
 **Reference**: [`update_media_buy` task](/docs/media-buy/task-reference/update_media_buy)
 
@@ -313,7 +313,7 @@ Modify an existing media buy's budget, targeting, or settings.
 - Orchestrators MAY cancel individual packages by setting `canceled: true` on a package update
 - Sales agents MUST reject creative changes to packages past their `creative_deadline` with error code `CREATIVE_DEADLINE_EXCEEDED`
 - Orchestrators MAY add new packages to an existing media buy via `new_packages`. Sales agents that support this MUST advertise `add_packages` in `valid_actions`. Sales agents that do not support adding packages MUST reject with `UNSUPPORTED_FEATURE`.
-- When `canceled: true` is present alongside other fields in an update request, sales agents MUST apply cancellation and MUST ignore all other fields except `cancellation_reason`. Cancellation takes precedence over concurrent mutations. Sales agents SHOULD include a warning in the response `context` when non-cancellation fields were present and ignored.
+- When `canceled: true` is present alongside other fields in an update request, sales agents MUST apply cancellation and MUST ignore all other fields except `cancellation_reason`. Cancellation takes precedence over concurrent mutations. Sales agents SHOULD include a structured success `warnings[]` entry when non-cancellation fields were ignored; warnings no longer belong in opaque `context`.
 - Sales agents MUST return `affected_packages` containing the state of each directly modified package after the update is applied (or the proposed state if pending approval); an empty array is valid when only campaign-level fields (e.g., `paused`, `start_time`) are updated
 - When manual approval is required, sales agents MUST persist the pending update request, MUST return `implementation_date: null`, and MUST NOT return empty `affected_packages`
 - Sales agents SHOULD return the updated media buy state
@@ -347,7 +347,7 @@ Synchronize catalogs (products, inventory, stores, and vertical feeds) on a sell
 
 ### get_media_buys
 
-**Schema**: [`media-buy/get-media-buys-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buys-request.json) / [`media-buy/get-media-buys-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buys-response.json)
+**Schema**: [`media-buy/get-media-buys-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/get-media-buys-request.json) / [`media-buy/get-media-buys-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/get-media-buys-response.json)
 
 **Reference**: [`get_media_buys` task](/docs/media-buy/task-reference/get_media_buys)
 
