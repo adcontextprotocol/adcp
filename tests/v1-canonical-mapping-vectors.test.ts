@@ -27,7 +27,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const registry = JSON.parse(fs.readFileSync(
   path.join(root, 'static/schemas/source/registries/v1-canonical-mapping.json'),
   'utf8',
-)) as { version: string; mappings: RegistryMapping[] };
+)) as { version: string; description: string; mappings: RegistryMapping[] };
 const fixture = JSON.parse(fs.readFileSync(
   path.join(root, 'static/test-vectors/v1-canonical-mapping.json'),
   'utf8',
@@ -80,6 +80,46 @@ describe('v1 canonical literal mapping vectors', () => {
     expect(mapping).toEqual({ canonical: 'image' });
     expect(mapping).not.toHaveProperty('parameters.width');
     expect(mapping).not.toHaveProperty('parameters.height');
+  });
+
+  it('projects legacy 2x-only ids to canonical 2x acceptance', () => {
+    const retinaMappings = literalMappings.filter(mapping =>
+      mapping.v1_pattern.format_id_glob.endsWith('_image_2x'),
+    );
+    expect(retinaMappings).toHaveLength(7);
+    for (const mapping of retinaMappings) {
+      expect(mapping.v2.canonical, mapping.v1_pattern.format_id_glob).toBe('image');
+      expect(mapping.v2.parameters, mapping.v1_pattern.format_id_glob).toMatchObject({
+        pixel_ratios: [2],
+      });
+      expect(mapping.v2.parameters, mapping.v1_pattern.format_id_glob).not.toHaveProperty('slots');
+    }
+  });
+
+  it('projects paired 1x/2x ids to required rendition sets', () => {
+    const pairedMappings = literalMappings.filter(mapping =>
+      mapping.v1_pattern.format_id_glob.endsWith('_image_1x_2x'),
+    );
+    expect(pairedMappings).toHaveLength(7);
+    for (const mapping of pairedMappings) {
+      expect(mapping.v2.canonical, mapping.v1_pattern.format_id_glob).toBe('image');
+      expect(mapping.v2.parameters, mapping.v1_pattern.format_id_glob).toMatchObject({
+        pixel_ratios: [1, 2],
+        slots: [{
+          asset_group_id: 'image_main',
+          asset_type: 'image',
+          required: true,
+          min: 2,
+          max: 2,
+          pixel_ratios: [1, 2],
+          required_pixel_ratios: [1, 2],
+        }],
+      });
+    }
+  });
+
+  it('documents rendition sets before generic asset-group collision handling', () => {
+    expect(registry.description).toContain('Image rendition-set exception (normative)');
   });
 
   it('treats small NxN tokens as aspect ratios rather than pixel dimensions', () => {
