@@ -18,7 +18,7 @@
     },
     "placement_refs": {
       "type": "array",
-      "description": "Optional array of structured placement references where this creative should run within the already-purchased package inventory. New senders SHOULD use this field for placement-level creative routing because placement IDs are publisher-scoped. This field does not narrow the purchased package inventory by itself; use product refinement or seller-supported package targeting to buy only one placement. When omitted, the creative runs on all buyer-targetable placements in the package. References entries from the product's `placements[]` array by `{ publisher_domain, placement_id }`; if `publisher_domain` is omitted in the ref, receivers MAY interpret it relative to the seller agent's own publisher domain in legacy single-publisher contexts. If both `placement_refs` and legacy `placement_ids` are present, `placement_refs` wins and receivers MUST ignore `placement_ids`.",
+      "description": "Optional structured refs routing this creative within already-purchased package inventory. This field never narrows purchased inventory; use targeting_overlay.placement_selection for that. Every ref MUST fall within the package's committed placement selection. When omitted, the creative runs across the purchased placements compatible with its format. New senders SHOULD include publisher_domain because placement IDs are publisher-scoped. If both placement_refs and legacy placement_ids are present, placement_refs wins.",
       "items": {
         "$ref": "/schemas/core/placement-ref.json"
       },
@@ -26,15 +26,13 @@
     },
     "placement_ids": {
       "type": "array",
-      "description": "Legacy shorthand array of placement IDs where this creative should run within the already-purchased package inventory. New senders SHOULD use `placement_refs` because placement IDs are publisher-scoped and strings are ambiguous in multi-publisher products. This field does not narrow the purchased package inventory by itself; use product refinement or seller-supported package targeting to buy only one placement. When omitted, the creative runs on all buyer-targetable placements in the package. Receivers MAY interpret string IDs relative to the seller agent's own publisher domain in legacy single-publisher contexts. If `placement_refs` is also present, receivers MUST ignore this field.",
+      "description": "Legacy shorthand routing IDs within already-purchased inventory. This field never narrows purchased inventory; use targeting_overlay.placement_selection. New senders SHOULD use placement_refs because IDs are publisher-scoped. If placement_refs is also present, receivers MUST ignore this field.",
       "items": {
         "type": "string"
       },
       "minItems": 1
     }
   },
-  "required": [
-    "creative_id"
-  ],
+  "required": ["creative_id"],
   "additionalProperties": true
 }

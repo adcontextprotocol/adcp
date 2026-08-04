@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/get-products-request.json",
   "title": "Get Products Request",
-  "description": "Request parameters for discovering or refining advertising products. buying_mode declares the buyer's intent: 'brief' for curated discovery, 'wholesale' for raw wholesale product feed access, or 'refine' to iterate on known products and proposals.",
+  "description": "Request parameters for discovering or refining advertising products. Buyers SHOULD express every campaign constraint that has a structured field in that field rather than relying on prose: structured input is cheaper to transmit, deterministic to process, and avoids lossy inference. Buyers may provide exact targeting_overlay values that returned products, pricing, and forecasts must account for, plus required_overlay_support for targeting dimensions whose values will be supplied on packages later. Explicit hard targeting stated only in a brief remains binding on the seller. buying_mode declares curation/feed behavior independently of targeting.",
   "type": "object",
   "allOf": [
     {
@@ -13,14 +13,10 @@
       "if": {
         "anyOf": [
           {
-            "required": [
-              "if_wholesale_feed_version"
-            ]
+            "required": ["if_wholesale_feed_version"]
           },
           {
-            "required": [
-              "if_pricing_version"
-            ]
+            "required": ["if_pricing_version"]
           }
         ]
       },
@@ -30,25 +26,19 @@
             "const": "wholesale"
           }
         },
-        "required": [
-          "buying_mode"
-        ]
+        "required": ["buying_mode"]
       }
     }
   ],
   "properties": {
     "buying_mode": {
       "type": "string",
-      "enum": [
-        "brief",
-        "wholesale",
-        "refine"
-      ],
+      "enum": ["brief", "wholesale", "refine"],
       "description": "Declares buyer intent for this request. 'brief': publisher curates product recommendations from the provided brief. 'wholesale': buyer requests raw product inventory to apply their own audiences — brief must not be provided, and proposals are omitted. 'refine': iterate on products and proposals from a previous get_products response using the refine array of change requests. v3 clients MUST include buying_mode. Sellers receiving requests from pre-v3 clients without buying_mode SHOULD default to 'brief'. Timing semantics: 'wholesale' is a wholesale product feed read — sellers SHOULD return a synchronous response and MUST NOT route a 'wholesale' request through the async/Submitted arm; partial completion is signalled via the response's incomplete[] field (with optional estimated_wait), not via a task-handoff envelope. 'brief' and 'refine' MAY complete synchronously, or MAY return a Submitted envelope (see get-products-async-response-submitted.json) when curation requires upstream-system queries or HITL review the seller cannot complete inside time_budget. Buyers needing predictable fast wholesale product feed access MUST use 'wholesale'; buyers open to slower curation use 'brief' or 'refine'."
     },
     "brief": {
       "type": "string",
-      "description": "Natural language description of campaign requirements. Required when buying_mode is 'brief'. Must not be provided when buying_mode is 'wholesale' or 'refine'."
+      "description": "Natural language description of campaign requirements. Required when buying_mode is 'brief'. Must not be provided when buying_mode is 'wholesale' or 'refine'. Buyers SHOULD use structured fields for every requirement that can be expressed structurally, and reserve brief prose for goals, context, preferences, and requirements without a structured representation. Sellers MUST apply explicit hard requirements stated in the brief even when the buyer did not duplicate them in a structured field. When hard targeting is inferred from prose, sellers SHOULD confirm their structured interpretation once in GetProductsResponse.targeting_resolution.brief_targeting. If hard prose contradicts a structured field, sellers MUST reject the request with INVALID_REQUEST rather than choose one interpretation or return an unexplained empty result."
     },
     "refine": {
       "type": "array",
@@ -73,10 +63,7 @@
                 "description": "What the buyer is asking for at the request level (e.g., 'more video options and less display', 'suggest how to combine these products')."
               }
             },
-            "required": [
-              "scope",
-              "ask"
-            ],
+            "required": ["scope", "ask"],
             "additionalProperties": false
           },
           {
@@ -93,11 +80,7 @@
               },
               "action": {
                 "type": "string",
-                "enum": [
-                  "include",
-                  "omit",
-                  "more_like_this"
-                ],
+                "enum": ["include", "omit", "more_like_this"],
                 "default": "include",
                 "description": "'include' (default): return this product with updated pricing and data. 'omit': exclude this product from the response. 'more_like_this': find additional products similar to this one (the original is also returned). Optional — when omitted, the seller treats the entry as action: 'include'."
               },
@@ -107,10 +90,7 @@
                 "description": "What the buyer is asking for on this product. For 'include': specific changes to request (e.g., 'add 16:9 format'). For 'more_like_this': what 'similar' means (e.g., 'same audience but video format'). Ignored when action is 'omit'."
               }
             },
-            "required": [
-              "scope",
-              "product_id"
-            ],
+            "required": ["scope", "product_id"],
             "additionalProperties": false
           },
           {
@@ -127,11 +107,7 @@
               },
               "action": {
                 "type": "string",
-                "enum": [
-                  "include",
-                  "omit",
-                  "finalize"
-                ],
+                "enum": ["include", "omit", "finalize"],
                 "default": "include",
                 "description": "'include' (default): return this proposal with updated allocations and pricing. 'omit': exclude this proposal from the response. 'finalize': request firm pricing and inventory hold — transitions a draft proposal to committed with an expires_at hold window. May trigger seller-side approval (HITL). The buyer should not set a time_budget for finalize requests — they represent a commitment to wait for the result. Optional — when omitted, the seller treats the entry as action: 'include'.\n\nFinalize is exclusive within the parent `refine[]` array: see the array-level description for the finalize-exclusivity rule (mixing finalize with non-finalize entries is rejected) and multi-finalize atomicity contract."
               },
@@ -141,10 +117,7 @@
                 "description": "What the buyer is asking for on this proposal (e.g., 'shift more budget toward video', 'reduce total by 10%'). Ignored when action is 'omit'."
               }
             },
-            "required": [
-              "scope",
-              "proposal_id"
-            ],
+            "required": ["scope", "proposal_id"],
             "additionalProperties": false
           }
         ]
@@ -172,15 +145,25 @@
       "uniqueItems": true
     },
     "filters": {
-      "$ref": "/schemas/core/product-filters.json"
+      "$ref": "/schemas/core/product-filters.json",
+      "description": "Offer filters. Valid in brief, wholesale, and refine modes. In every mode, sellers MUST exclude products that do not satisfy them: brief controls curation, wholesale controls feed behavior, and refine controls iteration, but none changes filter semantics. On refine, presence is the complete replacement filter state; when omitted, each referenced product's bound discovery constraints remain in force. Targeting-like legacy fields remain accepted during migration but are deprecated in favor of targeting_overlay and required_overlay_support."
+    },
+    "targeting_overlay": {
+      "$ref": "/schemas/core/targeting.json",
+      "description": "Concrete delivery constraints the buyer expects to carry into create_media_buy. Buyers SHOULD use this field instead of putting equivalent exact targeting only in brief prose. Sellers evaluate these constraints during discovery and scope returned pricing and forecasts to the effective targeting. If a product cannot honor the request exactly, the seller may omit it or return a request-scoped configured product with Product targeting_resolution modifications. Absence of Product targeting_resolution means exact acceptance of this structured overlay; it does not confirm how targeting in the brief was interpreted. On refine, presence is complete replacement state for returned configurations; when omitted, each referenced product's bound targeting remains in force."
+    },
+    "required_overlay_support": {
+      "$ref": "/schemas/core/targeting-overlay-requirements.json",
+      "description": "Minimum product-scoped targeting dimensions the buyer must be able to set independently on packages later. This requests selectable capability, not current targeting values and not one product per possible value. Returned products MUST declare overlay_support that covers every requested boolean/capability and every requested system-array subset. Missing or unknown requirement fields do not match. Seller limit fields are response-only and cannot be requested here. On refine, presence is complete replacement state; when omitted, each referenced product's bound future-support requirements remain in force."
     },
     "property_list": {
       "$ref": "/schemas/core/property-list-ref.json",
-      "description": "[AdCP 3.0] Reference to an externally managed property list. When provided, the sales agent should filter products to only those available on properties in the list."
+      "description": "DEPRECATED discovery-only property filter. Use targeting_overlay.property_list when the list is a concrete delivery constraint, or required_overlay_support.property_list when the list will be supplied later.",
+      "deprecated": true
     },
     "fields": {
       "type": "array",
-      "description": "Specific product fields to include in the response. When omitted, all fields are returned. Use for lightweight discovery calls where only a subset of product data is needed (e.g., just IDs and pricing for comparison). Required fields (product_id, name) are always included regardless of selection.",
+      "description": "Specific product fields to include in the response. When omitted, all fields are returned. product_id and name are always included. Safety-critical request-specific product fields override projection: Product.targeting_resolution and expires_at MUST be included whenever the seller returns modifications, and overlay_support MUST be included when required_overlay_support was requested. Response-level brief targeting confirmation is not a projected product field.",
       "minItems": 1,
       "items": {
         "type": "string",
@@ -214,12 +197,15 @@
           "signal_targeting_options",
           "signal_targeting_rules",
           "demographic_targeting",
+          "overlay_support",
+          "targeting_resolution",
           "max_optimization_goals",
           "catalog_match",
           "collections",
           "collection_targeting_allowed",
           "installments",
           "brief_relevance",
+          "is_custom",
           "expires_at",
           "product_card",
           "product_card_detailed",
@@ -246,7 +232,7 @@
     },
     "if_wholesale_feed_version": {
       "type": "string",
-      "description": "Opaque wholesale_feed_version token returned by a prior wholesale-mode get_products response from this agent. Only valid when buying_mode is wholesale. When provided, the seller compares against its current wholesale product feed version for the buyer's cache_scope and MAY return an unchanged: true response (with products omitted) if nothing has changed. The token is scope-keyed: buyers cache `(cache_scope, wholesale_feed_version)` pairs. Scoping dimensions: (agent, buying_mode, filters, property_list, catalog) for cache_scope: 'public'; that tuple plus account_id for cache_scope: 'account'. pagination.cursor is NOT part of the scoping tuple. Backward-compatible: pre-v3.1 agents that ignore this field simply return the full payload, same as the unchanged-server path. See specs/wholesale-feed-webhooks.md for the full sync pattern."
+      "description": "Opaque wholesale_feed_version token returned by a prior wholesale-mode get_products response from this agent. Only valid when buying_mode is wholesale. When provided, the seller compares against its current wholesale product feed version for the buyer's cache_scope and MAY return an unchanged: true response (with products omitted) if nothing has changed. The token is scope-keyed: buyers cache `(cache_scope, wholesale_feed_version)` pairs. Scoping dimensions: (agent, buying_mode, filters, targeting_overlay, required_overlay_support, deprecated property_list, catalog) for cache_scope: 'public'; that tuple plus account identity for cache_scope: 'account'. pagination.cursor is NOT part of the scoping tuple. Backward-compatible: pre-v3.1 agents that ignore this field simply return the full payload, same as the unchanged-server path. See specs/wholesale-feed-webhooks.md for the full sync pattern."
     },
     "if_pricing_version": {
       "type": "string",
@@ -266,16 +252,10 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": [
-    "buying_mode"
-  ],
+  "required": ["buying_mode"],
   "dependencies": {
-    "catalog": [
-      "brand"
-    ],
-    "if_pricing_version": [
-      "if_wholesale_feed_version"
-    ]
+    "catalog": ["brand"],
+    "if_pricing_version": ["if_wholesale_feed_version"]
   },
   "additionalProperties": true
 }

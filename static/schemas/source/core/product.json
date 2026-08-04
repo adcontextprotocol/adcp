@@ -7,7 +7,7 @@
   "properties": {
     "product_id": {
       "type": "string",
-      "description": "Unique identifier for the product",
+      "description": "Opaque identifier for this buyable product configuration. Sellers MUST keep it stable and resolvable throughout the discovery/refinement context that issued it, including refine calls and purchase before expires_at. Buyers MUST NOT assume cross-context stability or use it as permanent catalog identity. Sellers MUST use a distinguishable product_id whenever effective targeting, disclosed targeting modifications, pricing, forecast assumptions, or overlay support differ. Selecting this ID in create_media_buy accepts the configuration returned with it.",
       "x-entity": "product"
     },
     "name": {
@@ -54,7 +54,7 @@
     },
     "placements": {
       "type": "array",
-      "description": "Optional array of specific public placements within this product. Placement IDs are scoped by publisher domain. Product placements declare `kind` to distinguish publisher-referenced placements (`publisher_ref`) from seller-defined inline placements (`seller_inline`). Publisher-referenced placements carry `publisher_domain` plus `placement_id` and may omit `name` because buyers resolve the name from the publisher's adagents.json placement declarations. Seller-inline placements carry buyer-facing `name` directly; when `publisher_domain` is omitted, buyers MAY interpret the placement ID relative to the seller agent's own publisher domain only during the legacy single-publisher transition. Community-maintained fallback files are resolver/source metadata, not a distinct placement kind. Each placement MUST declare `mode: 'targetable'` (buyer may select the placement by PlacementRef, for example in creative assignments) or `mode: 'included'` (part of the public product composition but not buyer-selectable). Placement-level format declarations narrow the product-level creative contract and MUST NOT broaden it. Seller-private delivery objects, source/origin details, and ad-server mappings MUST NOT be exposed here.",
+      "description": "Optional array of specific public placements within this product. Placement IDs are scoped by publisher domain. Product placements declare `kind` to distinguish publisher-referenced placements (`publisher_ref`) from seller-defined inline placements (`seller_inline`). Publisher-referenced placements carry `publisher_domain` plus `placement_id` and may omit `name` because buyers resolve the name from the publisher's adagents.json placement declarations. Seller-inline placements carry buyer-facing `name` directly; when `publisher_domain` is omitted, buyers MAY interpret the placement ID relative to the seller agent's own publisher domain only during the legacy single-publisher transition. Community-maintained fallback files are resolver/source metadata, not a distinct placement kind. Each placement MUST declare `mode: 'targetable'` (buyer may purchase it through targeting_overlay.placement_selection) or `mode: 'included'` (part of fixed/default product composition and not independently selectable). Creative assignments route creatives only after placement inventory is purchased. Placement-level format declarations narrow the product-level creative contract and MUST NOT broaden it. Seller-private delivery objects, source/origin details, and ad-server mappings MUST NOT be exposed here.",
       "items": {
         "$ref": "/schemas/core/placement.json"
       },
@@ -174,12 +174,12 @@
     },
     "is_custom": {
       "type": "boolean",
-      "description": "Whether this is a custom product"
+      "description": "Whether this product is a request-specific configured offer rather than a reusable baseline product. Sellers MUST set true when targeting, disclosed resolution, pricing, forecast assumptions, inventory, or terms are bound for a particular discovery/refinement lineage. Custom products require expires_at, including exact configured products that omit targeting_resolution."
     },
     "property_targeting_allowed": {
       "type": "boolean",
       "default": false,
-      "description": "Whether buyers can filter this product to a subset of its publisher_properties. When false (default), the product is 'all or nothing' - buyers must accept all properties or the product is excluded from property_list filtering results."
+      "description": "Whether buyers can select a subset of this product's publisher_properties through targeting_overlay.property_list. When false, the product is fixed inventory: it matches requested property targeting only when its inherent property set already satisfies the request, or when a configured product discloses additional inventory through targeting_resolution."
     },
     "data_provider_signals": {
       "type": "array",
@@ -218,6 +218,14 @@
       "$ref": "/schemas/core/demographic-targeting-capability.json",
       "description": "Exact demographic execution available for this product. Buyers MUST use this product-scoped declaration, not the seller-wide get_adcp_capabilities rollup, to preflight a demographic predicate."
     },
+    "overlay_support": {
+      "$ref": "/schemas/core/targeting-overlay-support.json",
+      "description": "Binding product-scoped targeting dimensions the buyer may set independently on packages after discovery. Presence means selectable support; targeting satisfied only through inherent product scope does not appear here. Returned products MUST cover every field requested through get_products.required_overlay_support."
+    },
+    "targeting_resolution": {
+      "$ref": "/schemas/core/product-targeting-resolution.json",
+      "description": "Discovery-time targeting resolution bound to this configured product. modifications sparsely disclose product-specific differences from get_products.targeting_overlay. Request-level brief interpretation is returned once on GetProductsResponse.targeting_resolution. Exact structured overlay values are not repeated. Selecting product_id accepts the disclosed modifications; product forecast and pricing MUST reflect them."
+    },
     "catalog_types": {
       "type": "array",
       "description": "Catalog types this product supports for catalog-driven campaigns. A sponsored product listing declares [\"product\"], a job board declares [\"job\", \"offering\"]. Buyers match synced catalogs to products via this field.",
@@ -236,7 +244,19 @@
           "description": "Metric kinds this product can optimize for. Buyers should only request metric goals for kinds listed here. **DEPRECATED values** (slated for removal at next major): `attention_seconds` and `attention_score` — declare vendor-attested attention/quality metrics via `vendor_metric_optimization.supported_metrics[]` with an explicit vendor binding instead. Sellers MAY reject the deprecated values with `TERMS_REJECTED` and a suggestion to use the `vendor_metric` kind.",
           "items": {
             "type": "string",
-            "enum": ["clicks", "views", "completed_views", "viewed_seconds", "attention_seconds", "attention_score", "engagements", "follows", "saves", "profile_visits", "reach"]
+            "enum": [
+              "clicks",
+              "views",
+              "completed_views",
+              "viewed_seconds",
+              "attention_seconds",
+              "attention_score",
+              "engagements",
+              "follows",
+              "saves",
+              "profile_visits",
+              "reach"
+            ]
           },
           "minItems": 1
         },
@@ -298,11 +318,7 @@
           "description": "Target kinds available for event goals on this product. Values match target.kind on the optimization goal. cost_per: target cost per conversion event. per_ad_spend: target return on ad spend (requires value_field on event sources). maximize_value: maximize total conversion value without a specific ratio target (requires value_field). Only these target kinds are accepted — goals with unlisted target kinds will be rejected. A goal without a target implicitly maximizes conversion count within budget — no declaration needed for that mode. When omitted, buyers can still set target-less event goals.",
           "items": {
             "type": "string",
-            "enum": [
-              "cost_per",
-              "per_ad_spend",
-              "maximize_value"
-            ]
+            "enum": ["cost_per", "per_ad_spend", "maximize_value"]
           },
           "minItems": 1
         },
@@ -352,7 +368,7 @@
     "expires_at": {
       "type": "string",
       "format": "date-time",
-      "description": "Expiration timestamp. After this time, the product may no longer be available for purchase and create_media_buy may reject packages referencing it."
+      "description": "Expiration timestamp. Required for request-specific configured products whose targeting resolution, price, forecast, inventory, or terms are time-bound. After this time, create_media_buy rejects the product with PRODUCT_EXPIRED and the buyer re-runs get_products."
     },
     "product_card": {
       "type": "object",
@@ -441,7 +457,7 @@
     "collection_targeting_allowed": {
       "type": "boolean",
       "default": false,
-      "description": "Whether buyers can target a subset of this product's collections. When false (default), the product is a bundle — buyers get all listed collections. When true, buyers can select specific collections in the media buy."
+      "description": "Whether buyers can select a subset of this product's collections through targeting_overlay.collection_list. When false, the product is a fixed bundle; when true, collection selection is a product-scoped overlay capability."
     },
     "installments": {
       "type": "array",
@@ -594,6 +610,126 @@
           "signal_targeting_allowed": {
             "const": true
           }
+        },
+        "required": ["signal_targeting_allowed"]
+      }
+    },
+    {
+      "description": "A configured product with request-specific targeting resolution is time-bound so the seller cannot apply stale targeting, price, or forecast assumptions indefinitely.",
+      "if": {
+        "required": ["targeting_resolution"]
+      },
+      "then": {
+        "properties": { "is_custom": { "const": true } },
+        "required": ["is_custom", "expires_at"]
+      }
+    },
+    {
+      "description": "Request-specific custom products are time-bound, including exact configured products that do not need a targeting-resolution echo.",
+      "if": {
+        "properties": { "is_custom": { "const": true } },
+        "required": ["is_custom"]
+      },
+      "then": { "required": ["expires_at"] }
+    },
+    {
+      "description": "Property inclusion support requires selectable product properties.",
+      "if": {
+        "properties": {
+          "overlay_support": { "required": ["property_list"] }
+        },
+        "required": ["overlay_support"]
+      },
+      "then": {
+        "properties": {
+          "property_targeting_allowed": { "const": true }
+        },
+        "required": ["property_targeting_allowed"]
+      }
+    },
+    {
+      "description": "Selectable placement products cannot also contain unavoidable included placements because placement_selection is the complete purchased set.",
+      "if": {
+        "properties": {
+          "overlay_support": { "required": ["placement_selection"] }
+        },
+        "required": ["overlay_support"]
+      },
+      "then": {
+        "properties": {
+          "placements": {
+            "not": {
+              "contains": {
+                "properties": { "mode": { "const": "included" } },
+                "required": ["mode"]
+              }
+            }
+          }
+        },
+        "required": ["placements"]
+      }
+    },
+    {
+      "description": "Collection inclusion support requires selectable product collections.",
+      "if": {
+        "properties": {
+          "overlay_support": { "required": ["collection_list"] }
+        },
+        "required": ["overlay_support"]
+      },
+      "then": {
+        "properties": {
+          "collection_targeting_allowed": { "const": true }
+        },
+        "required": ["collection_targeting_allowed"]
+      }
+    },
+    {
+      "description": "Placement selection support requires at least one targetable product placement.",
+      "if": {
+        "properties": {
+          "overlay_support": { "required": ["placement_selection"] }
+        },
+        "required": ["overlay_support"]
+      },
+      "then": {
+        "properties": {
+          "placements": {
+            "contains": {
+              "type": "object",
+              "properties": {
+                "mode": { "const": "targetable" }
+              },
+              "required": ["mode"]
+            }
+          }
+        },
+        "required": ["placements"]
+      }
+    },
+    {
+      "description": "Demographic overlay support requires the product-scoped demographic compiler declaration.",
+      "if": {
+        "properties": {
+          "overlay_support": { "required": ["demographics"] }
+        },
+        "required": ["overlay_support"]
+      },
+      "then": {
+        "required": ["demographic_targeting"]
+      }
+    },
+    {
+      "description": "Signal overlay support requires the product signal targeting surface.",
+      "if": {
+        "properties": {
+          "overlay_support": { "required": ["signal_targeting_groups"] }
+        },
+        "required": ["overlay_support"]
+      },
+      "then": {
+        "properties": {
+          "signal_targeting_allowed": { "const": true }
         },
         "required": ["signal_targeting_allowed"]
       }

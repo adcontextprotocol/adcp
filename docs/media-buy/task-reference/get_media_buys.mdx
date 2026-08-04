@@ -92,8 +92,8 @@ Returns an array of media buys with current status, creative approval state, and
 | `format_option_refs` | Structured 3.1+ format option references supplied on `create_media_buy`, echoed whenever the original request included them. |
 | `format_kind` | Direct canonical selector supplied on `create_media_buy`, echoed whenever the original request included it, including informational-echo cases where another selector won precedence. |
 | `params` | Parameters for the direct canonical selector in `format_kind`, echoed whenever the original request included them; requires `format_kind`. |
-| `targeting_overlay` | Targeting currently applied to the package. Demographic targeting preserves the buyer's age predicate and accepted determination bases. |
-| `demographic_targeting_resolution` | Lossless demographic readback containing `requested`, `applied`, exact-only `equivalent: true`, execution mechanism, and effective `applied_bases` / `applied_verification_methods` when the buyer constrained determination. Required whenever demographics were requested or applied. Sellers reject non-equivalent predicates, unsupported bases, and empty compliance intersections. |
+| `targeting_overlay` | Complete effective targeting currently applied to the package, including configured-product constraints and later buyer additions. Property, collection, and placement selection are represented here alongside audience and geography. |
+| `targeting_resolution` | Generic targeting execution readback. When demographics were requested or applied, `targeting_resolution.demographics` contains the exact-only `equivalent: true` predicate, execution mechanism, and effective determination bases. Other targeting dimensions can evolve inside the same envelope. |
 | `start_time` | Flight start time (ISO 8601). Check this before interpreting delivery status. |
 | `end_time` | Flight end time (ISO 8601) |
 | `paused` | Whether buyer has paused this package |

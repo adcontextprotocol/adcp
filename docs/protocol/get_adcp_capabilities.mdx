@@ -420,6 +420,7 @@ Buyers discover AXE support via `get_adcp_capabilities` and filter products to A
 | `collection_list_exclude` | boolean | Collection list exclusion targeting. Presence indicates support for `targeting_overlay.collection_list_exclude`. |
 | `property_list` | boolean | Property list inclusion targeting. Presence indicates support for `targeting_overlay.property_list`. |
 | `property_list_exclude` | boolean | Property list exclusion targeting (brand-safety blocklists). Presence indicates support for `targeting_overlay.property_list_exclude`. |
+| `placement_selection` | boolean | Placement selection targeting. Seller-wide rollup only; inspect each product's targetable placements and `overlay_support`. |
 | `geo_proximity` | object | Proximity targeting from arbitrary coordinates (see below) |
 
 Device platform and device type targeting are implied by `media_buy` support. Audience include/exclude targeting is implied by the presence of the `audience_targeting` capabilities object.
@@ -936,7 +937,9 @@ const sellers = await findCompatibleSellers(
 
 ### Use Capabilities to Build Targeting
 
-Capabilities tell you what you CAN specify in create_media_buy targeting. Use `required_geo_targeting` to filter products to sellers that support specific geo targeting levels and systems:
+Seller capabilities are a routing rollup. Use `required_overlay_support` to
+request the product-scoped targeting surface that must be selectable later, and
+`targeting_overlay` for concrete constraints that must affect discovery:
 
 ```javascript
 // First, check capabilities
@@ -952,16 +955,10 @@ const postalSupport = mediaBuy.execution?.targeting?.geo_postal_areas;
 // Filter products to sellers with specific geo targeting capabilities
 const products = await client.getProducts({
   brief: "Premium video inventory in US for ZIP-targeted campaign",
-  filters: {
-    channels: ['olv', 'ctv'],
-    countries: ['US'],
-    // Require seller supports ZIP targeting (capability filter - no actual ZIPs needed)
-    // level = granularity, system = classification taxonomy
-    required_geo_targeting: [
-      { level: 'postal_area', country: 'US', system: 'zip' }
-    ],
-    // Only include if seller supports this AXE (legacy — new integrations use TMP)
-    required_axe_integrations: ['https://axe.example.com']
+  filters: { channels: ['olv', 'ctv'] },
+  targeting_overlay: { geo_countries: ['US'] },
+  required_overlay_support: {
+    geo_postal_areas: { US: ['zip'] }
   }
 });
 
@@ -973,7 +970,8 @@ const buy = await client.createMediaBuy({
     product_id: products.products[0].product_id,
     pricing_option_id: products.products[0].pricing_options[0].id,
     budget: 10000,
-    // Targeting overlay refines delivery within product coverage
+    // The configured product already represents US targeting. Add the ZIP
+    // selection the buyer deferred during discovery.
     targeting_overlay: {
       geo_countries: ['US'],
       // Only specify ZIP targeting if seller supports it

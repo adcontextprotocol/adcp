@@ -241,7 +241,13 @@ Publishers typically omit proposals in `wholesale` mode, where the buyer is dire
 
 ## Statelessness
 
-Each `get_products` request with `buying_mode: "refine"` is self-contained. The `refine` array and `filters` on each request fully specify the refinement intent. Sales agents MUST NOT depend on transport-level session state (e.g., remembering what was sent in a previous request).
+Each `get_products` request with `buying_mode: "refine"` is self-contained. The
+opaque product and proposal IDs carry the configurations being refined; they do
+not identify a transport session. Top-level `filters`, `targeting_overlay`, and
+`required_overlay_support`, when present, are complete replacement state for
+the refined results rather than deltas. When omitted, the configuration already
+bound to each referenced product ID remains in force. Sales agents MUST NOT
+depend on unreferenced transport-level or conversational state.
 
 Sellers still maintain their own product and proposal registries — "stateless" means the *protocol exchange* carries no implicit state between calls.
 
@@ -257,6 +263,11 @@ Orchestrators should validate refinement requests before sending:
 - **Non-empty refine** — The `refine` array requires at least one entry. An empty `[]` is rejected by schema validation.
 - **Valid entries** — Each product entry requires `scope` and `product_id`. Each proposal entry requires `scope` and `proposal_id`. Request-level entries require `scope` and `ask`. `action` is optional on product and proposal entries (defaults to `"include"`); valid values are `include` / `omit` / `more_like_this` for products and `include` / `omit` / `finalize` for proposals.
 - **Filters are absolute** — Send the full filter set you want applied, not a delta from the previous request.
+- **Targeting and future support are absolute when present** — Send the complete
+  desired `targeting_overlay` and `required_overlay_support`. Changed effective
+  targeting, price, forecast assumptions, terms, resolution, or overlay support
+  produces a new configured `product_id`; otherwise the seller keeps the prior
+  ID stable until expiration.
 
 Client implementations should validate refinement requests against the [request schema](/docs/building/schemas-and-sdks) before sending.
 
@@ -264,7 +275,8 @@ Client implementations should validate refinement requests against the [request 
 
 | Error Code | When | Resolution |
 |------------|------|------------|
-| `PRODUCT_NOT_FOUND` | One or more referenced product IDs are unknown or expired | Remove invalid IDs and retry, or re-discover with a `brief` request |
+| `PRODUCT_NOT_FOUND` | One or more referenced product IDs are unknown | Remove invalid IDs and retry, or re-discover with a `brief` request |
+| `PRODUCT_EXPIRED` | One or more referenced configured products passed `expires_at` | Re-discover with a new `brief` or `wholesale` request |
 | `PROPOSAL_EXPIRED` | A referenced proposal ID has passed its `expires_at` | Re-discover with a new `brief` or `wholesale` request |
 | `PROPOSAL_NOT_FOUND` | The referenced `proposal_id` is unknown to the seller (never finalized, wrong tenant, or evicted from cache) | Re-issue `get_products` in `refine` mode with `action: 'finalize'` to obtain a current proposal_id |
 | `MULTI_FINALIZE_UNSUPPORTED` | `refine[]` carried multiple `action: 'finalize'` entries but the seller cannot guarantee atomic multi-proposal commit | Sequence single-proposal finalize calls (one finalize per `get_products` call) |

@@ -1,0 +1,190 @@
+---
+title: Targeting-aware product discovery
+description: Migrate get_products targeting filters and stable product-ID assumptions to targeting overlays, future overlay support, sparse resolution, and configured products.
+---
+
+# Targeting-aware product discovery
+
+AdCP 3.2 aligns targeting across discovery and purchase. Buyers provide concrete
+delivery constraints in `get_products.targeting_overlay`, and sellers return
+configured products whose pricing and forecasts already account for those
+constraints.
+
+## What changed
+
+- `get_products` accepts `targeting_overlay`.
+- `required_overlay_support` declares targeting dimensions whose values will be
+  supplied on packages later.
+- Products declare selectable dimensions through `overlay_support`.
+- Products disclose non-exact discovery alternatives through sparse
+  `targeting_resolution.modifications`.
+- Responses may confirm hard targeting inferred from natural-language briefs
+  once through `GetProductsResponse.targeting_resolution.brief_targeting`.
+- Product discovery and booked packages use lifecycle-specific schemas under
+  the shared `targeting_resolution` field; demographic package execution moves
+  to `targeting_resolution.demographics`.
+- `product_id` is opaque and remains stable within one discovery/refinement
+  context, but buyers no longer assume it is a cross-session catalog identifier.
+- `placement_selection` joins property and collection lists as purchased-
+  inventory targeting inside the overlay.
+- Legacy targeting-like product filters are deprecated.
+
+## Filter migration
+
+| Legacy discovery field           | Replacement                                 |
+| -------------------------------- | ------------------------------------------- |
+| `filters.countries`              | `targeting_overlay.geo_countries`           |
+| `filters.regions`                | `targeting_overlay.geo_regions`             |
+| `filters.metros`                 | `targeting_overlay.geo_metros`              |
+| `filters.postal_areas`           | `targeting_overlay.geo_postal_areas`        |
+| `filters.geo_proximity`          | `targeting_overlay.geo_proximity`           |
+| `filters.keywords`               | `targeting_overlay.keyword_targets`         |
+| `filters.signal_targeting`       | `targeting_overlay.signal_targeting_groups` |
+| `filters.required_geo_targeting` | `required_overlay_support`                  |
+| top-level `property_list`        | `targeting_overlay.property_list`           |
+
+Keep channel, format, delivery type, pricing, reporting, and other product
+characteristics in `filters`.
+
+## Briefs versus structured fields
+
+Move any requirement with a structured AdCP representation out of prose and
+into that field. For targeting, this means using `targeting_overlay`. Structured
+input is more compact, deterministic, and lossless. Briefs remain appropriate
+for goals, context, semantic intent, preferences, and requirements without a
+structured representation.
+
+Hard targeting stated only in a brief remains binding. Sellers SHOULD expose
+the predicate they inferred once as response-level `targeting_resolution.brief_targeting` so buyers
+can verify it. Do not use that field to echo an unchanged structured overlay.
+
+## Known values versus future selection
+
+Known values are real targeting and participate in forecasts:
+
+```json
+{
+  "targeting_overlay": {
+    "geo_countries": ["US"]
+  }
+}
+```
+
+Use future support when the buyer needs package-level control but does not know
+the eventual values:
+
+```json
+{
+  "required_overlay_support": {
+    "geo_metros": {
+      "systems": ["nielsen_dma"]
+    },
+    "placement_selection": true,
+    "property_list": true,
+    "collection_list": true
+  }
+}
+```
+
+This does not request one product per DMA, placement, property, or collection.
+It filters to products that allow those dimensions to be selected later.
+
+## Accepting targeting modifications
+
+Exact acceptance produces no structured-overlay echo. A product with no Product
+`targeting_resolution` accepts the discovery overlay exactly, but does not
+confirm how prose was interpreted. Brief-derived hard targeting may therefore
+produce a response-level `targeting_resolution.brief_targeting` even when no
+overlay was sent.
+An exact request-specific configured product still returns `is_custom: true`
+and `expires_at`; absence of a resolution echo does not make its price,
+forecast, or inventory assumptions permanent.
+
+A seller offering an alternative returns only the changed paths:
+
+```json
+{
+  "product_id": "prod_configured_age_456",
+  "is_custom": true,
+  "expires_at": "2026-08-05T12:00:00Z",
+  "targeting_resolution": {
+    "modifications": [
+      {
+        "operation": "replace",
+        "path": "/demographics/age",
+        "applied": {
+          "min": 25,
+          "max": 34,
+          "include_unknown": false
+        },
+        "reason": "This product executes seller-defined age intervals."
+      }
+    ]
+  }
+}
+```
+
+Selecting this `product_id` in `create_media_buy` accepts the modification. A
+fresh unsupported overlay sent directly at creation is still rejected; sellers
+never store a knowingly non-equivalent package execution.
+
+## Product identity
+
+Do not cache or join configured products across independent discovery lineages
+on an assumption that `product_id` is permanent. Within the context that
+issued it, the ID remains stable for refinement and purchase and identifies the
+complete buyable configuration, including targeting resolution, price,
+forecast assumptions, and overlay support.
+
+The lineage is explicit in referenced `product_id` and `proposal_id` values,
+not a transport session. On refine, top-level filters, targeting, and future
+support replace prior values when present; omitted values remain bound through
+the referenced product. Any changed buyable configuration receives a new ID.
+
+Use the configured `product_id` throughout its discovery/refinement context.
+Request-specific products carry `expires_at`; an expired ID returns
+`PRODUCT_EXPIRED` and requires rediscovery. This change deliberately does not
+introduce a second “catalog product” identity that could be confused with AdCP
+creative catalogs.
+
+## Placement selection
+
+Placement selection is purchased-inventory targeting:
+
+```json
+{
+  "targeting_overlay": {
+    "placement_selection": {
+      "mode": "selected",
+      "placement_refs": [
+        {
+          "publisher_domain": "pinnacle-media.example",
+          "placement_id": "short_video"
+        }
+      ]
+    }
+  }
+}
+```
+
+Do not use creative assignment refs to purchase placement inventory.
+`creative_assignments[].placement_refs` route a creative only within the
+already-purchased set. Placement selection is a complete set: products with
+fixed `mode: included` placements use the product default and do not advertise
+selectable placement support. Placement, property, and collection changes all
+use the existing `update_targeting` action.
+
+## Compatibility window
+
+Sellers may translate a legacy targeting filter into its overlay equivalent.
+When a request contains both forms, the seller accepts them only when they are
+semantically identical; conflicting forms are rejected as ambiguous.
+
+New schema surfaces are available through the development alias:
+
+- [`get-products-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/get-products-request.json)
+- [`targeting-overlay-support.json`](https://adcontextprotocol.org/schemas/latest/core/targeting-overlay-support.json)
+- [`targeting-overlay-requirements.json`](https://adcontextprotocol.org/schemas/latest/core/targeting-overlay-requirements.json)
+- [`product-targeting-resolution.json`](https://adcontextprotocol.org/schemas/latest/core/product-targeting-resolution.json)
+- [`package-targeting-resolution.json`](https://adcontextprotocol.org/schemas/latest/core/package-targeting-resolution.json)
+- [`placement-selection.json`](https://adcontextprotocol.org/schemas/latest/core/placement-selection.json)

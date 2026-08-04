@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/product-filters.json",
   "title": "Product Filters",
-  "description": "Structured filters for product discovery",
+  "description": "Structured offer filters for discovery. Filters decide which products may be returned based on metadata, commercial fit, availability assumptions, dates, budget, and reporting support; they do not become package delivery targeting. targeting_overlay constrains eligible delivery. Legacy targeting-like fields remain accepted during migration but are deprecated.",
   "type": "object",
   "properties": {
     "delivery_type": {
@@ -75,26 +75,21 @@
           "pattern": "^[A-Z]{3}$"
         }
       },
-      "required": [
-        "currency"
-      ],
+      "required": ["currency"],
       "anyOf": [
         {
-          "required": [
-            "min"
-          ]
+          "required": ["min"]
         },
         {
-          "required": [
-            "max"
-          ]
+          "required": ["max"]
         }
       ],
       "additionalProperties": true
     },
     "countries": {
       "type": "array",
-      "description": "Filter by country coverage using ISO 3166-1 alpha-2 codes (e.g., ['US', 'CA', 'GB']). Works for all inventory types.",
+      "description": "DEPRECATED. Use get_products.targeting_overlay.geo_countries so returned pricing and forecasts are scoped to the concrete delivery constraint.",
+      "deprecated": true,
       "items": {
         "type": "string",
         "pattern": "^[A-Z]{2}$"
@@ -103,7 +98,8 @@
     },
     "regions": {
       "type": "array",
-      "description": "Filter by region coverage using ISO 3166-2 codes (e.g., ['US-NY', 'US-CA', 'GB-SCT']). Use for locally-bound inventory (regional OOH, local TV) where products have region-specific coverage.",
+      "description": "DEPRECATED. Use get_products.targeting_overlay.geo_regions. Sellers resolve the requested outcome through inherent product scope or selectable targeting.",
+      "deprecated": true,
       "items": {
         "type": "string",
         "pattern": "^[A-Z]{2}-[A-Z0-9]+$"
@@ -112,7 +108,8 @@
     },
     "metros": {
       "type": "array",
-      "description": "Filter by metro coverage for locally-bound inventory (radio, DOOH, local TV). Use when products have DMA/metro-specific coverage. For digital inventory where products have broad coverage, use required_geo_targeting instead to filter by seller capability.",
+      "description": "DEPRECATED. Use get_products.targeting_overlay.geo_metros for known values or required_overlay_support.geo_metros when values will be supplied on packages later.",
+      "deprecated": true,
       "items": {
         "type": "object",
         "properties": {
@@ -140,7 +137,7 @@
     },
     "video_placement_types": {
       "type": "array",
-      "description": "Filter video products by acceptable declared video placement types, using IAB Tech Lab/OpenRTB 2.6 video.plcmt definitions with AdCP-native names. Sellers SHOULD return only products they can satisfy with at least one requested type. Products whose only available delivery is a mixed, non-targetable bundle that includes unrequested video placement types SHOULD NOT match unless the seller can constrain delivery to the requested type during planning or purchase. This filter has set semantics for wholesale feed canonicalization.",
+      "description": "Filter product metadata by declared video placement types, using IAB Tech Lab/OpenRTB 2.6 video.plcmt definitions with AdCP-native names. A product matches when its declared array intersects the requested array. This is discovery classification only and does not promise delivery exclusively on a requested type; buyers needing exact placement inventory use targeting_overlay.placement_selection against targetable placements. This filter has set semantics for wholesale feed canonicalization.",
       "items": {
         "$ref": "/schemas/enums/video-placement-type.json"
       },
@@ -150,7 +147,7 @@
     },
     "audio_distribution_types": {
       "type": "array",
-      "description": "Filter audio products by acceptable declared audio distribution types, using IAB Tech Lab/OpenRTB 2.6 audio.feed definitions with AdCP-native names. Sellers SHOULD return only products they can satisfy with at least one requested type. Products whose only available delivery is a mixed, non-targetable bundle that includes unrequested audio distribution types SHOULD NOT match unless the seller can constrain delivery to the requested type during planning or purchase. This filter has set semantics for wholesale feed canonicalization.",
+      "description": "Filter product metadata by declared audio distribution types, using IAB Tech Lab/OpenRTB 2.6 audio.feed definitions with AdCP-native names. A product matches when its declared array intersects the requested array. This is discovery classification only and does not promise delivery exclusively on a requested type. This filter has set semantics for wholesale feed canonicalization.",
       "items": {
         "$ref": "/schemas/enums/audio-distribution-type.json"
       },
@@ -160,7 +157,7 @@
     },
     "sponsored_placement_types": {
       "type": "array",
-      "description": "Filter retail-media products by acceptable declared sponsored-placement types (sponsored search, sponsored display, or sponsored native). Sellers SHOULD return only products they can satisfy with at least one requested type. Products whose only available delivery is a mixed, non-targetable bundle that includes unrequested sponsored-placement types SHOULD NOT match unless the seller can constrain delivery to the requested type during planning or purchase. This filter has set semantics for wholesale feed canonicalization.",
+      "description": "Filter retail-media product metadata by declared sponsored-placement types (sponsored search, sponsored display, or sponsored native). A product matches when its declared array intersects the requested array. This is discovery classification only and does not promise delivery exclusively on a requested type. This filter has set semantics for wholesale feed canonicalization.",
       "items": {
         "$ref": "/schemas/enums/sponsored-placement-type.json"
       },
@@ -170,7 +167,7 @@
     },
     "social_placement_surfaces": {
       "type": "array",
-      "description": "Filter social products by acceptable declared social-placement surfaces (feed, stories, short_video, explore, or search). Sellers SHOULD return only products they can satisfy with at least one requested surface. Products whose only available delivery is a mixed, non-targetable bundle that includes unrequested surfaces SHOULD NOT match unless the seller can constrain delivery to the requested surface during planning or purchase. This filter has set semantics for wholesale feed canonicalization.",
+      "description": "Filter social-product metadata by declared placement surfaces (feed, stories, short_video, explore, or search). A product matches when its declared array intersects the requested array. This is discovery classification only and does not promise delivery exclusively on a requested surface; buyers needing an exact public placement use targeting_overlay.placement_selection. This filter has set semantics for wholesale feed canonicalization.",
       "items": {
         "$ref": "/schemas/enums/social-placement-surface.json"
       },
@@ -234,7 +231,8 @@
     },
     "required_geo_targeting": {
       "type": "array",
-      "description": "Filter to products from sellers supporting specific geo targeting capabilities. Each entry specifies a targeting level (country, region, metro, postal_area) and optionally a system for levels that have multiple classification systems. For native postal_area filters, include country plus the country-local postal system.",
+      "description": "DEPRECATED. Use get_products.required_overlay_support, which is product-scoped and applies consistently to geographic and non-geographic targeting dimensions.",
+      "deprecated": true,
       "items": {
         "type": "object",
         "properties": {
@@ -308,7 +306,9 @@
                 },
                 {
                   "properties": {
-                    "system": { "$ref": "/schemas/enums/legacy-postal-system.json" }
+                    "system": {
+                      "$ref": "/schemas/enums/legacy-postal-system.json"
+                    }
                   },
                   "required": ["system"],
                   "not": { "required": ["country"] }
@@ -323,7 +323,8 @@
     },
     "signal_targeting": {
       "type": "array",
-      "description": "Filter to products where the requested signals are buyer-selectable and jointly composable: the signals are available through inline signal_targeting_options and/or through get_signals for wholesale products that allow signal targeting but omit inline options, signal_targeting_allowed is true, and the requested set can coexist under the product's signal_targeting_rules. Each filter entry uses signal_ref, with deprecated signal_id accepted during the SignalRef migration window, and may include targeting_mode='include' or 'exclude' to require the product option or product rules to support that use. When targeting_mode is omitted, include is assumed. SignalRef scope 'product' is seller-local exact option matching only, not a portable semantic identifier across products or sellers; buyers wanting portable discovery should use scope 'data_provider' or get_signals. included_signals and deprecated bundled/non-selectable data_provider_signals do not satisfy this filter because they cannot be selected on create_media_buy.",
+      "description": "DEPRECATED. Use get_products.targeting_overlay.signal_targeting_groups for known selections or required_overlay_support.signal_targeting_groups when selection will happen later. Legacy entries remain accepted during migration.",
+      "deprecated": true,
       "items": {
         "type": "object",
         "allOf": [
@@ -335,10 +336,7 @@
           "targeting_mode": {
             "type": "string",
             "description": "Desired use of this signal on the product. 'include' requires the product option to allow use in an any group. 'exclude' requires the product option to allow use in a none group.",
-            "enum": [
-              "include",
-              "exclude"
-            ],
+            "enum": ["include", "exclude"],
             "default": "include"
           }
         }
@@ -347,7 +345,8 @@
     },
     "postal_areas": {
       "type": "array",
-      "description": "Filter by postal area coverage for locally-bound inventory (direct mail, DOOH, local campaigns). Prefer the native country + postal system form. Deprecated legacy country-fused postal-system tokens remain accepted for compatibility. For digital inventory where products have broad coverage, use required_geo_targeting instead to filter by seller capability.",
+      "description": "DEPRECATED. Use get_products.targeting_overlay.geo_postal_areas for known values or required_overlay_support.geo_postal_areas when values will be supplied later.",
+      "deprecated": true,
       "items": {
         "$ref": "/schemas/core/postal-area.json"
       },
@@ -355,7 +354,8 @@
     },
     "geo_proximity": {
       "type": "array",
-      "description": "Filter by proximity to geographic points. Returns products with inventory coverage near these locations. Follows the same format as the targeting overlay — each entry uses exactly one method: travel_time + transport_mode, radius, or geometry. For locally-bound inventory (DOOH, radio), filters to products with coverage in the area. For digital inventory, filters to products from sellers supporting geo_proximity targeting.",
+      "description": "DEPRECATED. Use get_products.targeting_overlay.geo_proximity. Sellers resolve the requested outcome through inherent product scope or selectable targeting and forecast the resulting inventory.",
+      "deprecated": true,
       "items": {
         "type": "object",
         "properties": {
@@ -500,22 +500,28 @@
             "description": "Pin to an exact metric identifier within a vendor's vocabulary. Optional — omit to match any metric from the pinned vendor. Cross-vendor identifier matching only works after vendors converge on identifiers (typically post-standardization)."
           }
         },
-        "anyOf": [
-          { "required": ["vendor"] },
-          { "required": ["metric_id"] }
-        ],
+        "anyOf": [{ "required": ["vendor"] }, { "required": ["metric_id"] }],
         "additionalProperties": false
       },
       "minItems": 1,
       "examples": [
         [{ "vendor": { "domain": "attentionvendor.example" } }],
-        [{ "vendor": { "domain": "panelmeasurement.example" }, "metric_id": "demographic_reach" }],
-        [{ "vendor": { "domain": "attentionvendor.example" } }, { "vendor": { "domain": "secondattentionvendor.example" } }]
+        [
+          {
+            "vendor": { "domain": "panelmeasurement.example" },
+            "metric_id": "demographic_reach"
+          }
+        ],
+        [
+          { "vendor": { "domain": "attentionvendor.example" } },
+          { "vendor": { "domain": "secondattentionvendor.example" } }
+        ]
       ]
     },
     "keywords": {
       "type": "array",
-      "description": "Filter by keyword relevance for search and retail media platforms. Returns products that support keyword targeting for these terms. Allows the sell-side agent to assess keyword availability and recommend appropriate products. Use match_type to indicate the desired precision.",
+      "description": "DEPRECATED. Use get_products.targeting_overlay.keyword_targets for concrete terms or required_overlay_support.keyword_targets when terms will be supplied later. Broad thematic intent remains in brief.",
+      "deprecated": true,
       "items": {
         "type": "object",
         "properties": {

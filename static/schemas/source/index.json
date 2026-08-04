@@ -73,6 +73,30 @@
           "$ref": "/schemas/core/targeting.json",
           "description": "Audience targeting criteria"
         },
+        "targeting-overlay-support": {
+          "$ref": "/schemas/core/targeting-overlay-support.json",
+          "description": "Product-scoped targeting dimensions whose values may be supplied on packages later"
+        },
+        "targeting-overlay-requirements": {
+          "$ref": "/schemas/core/targeting-overlay-requirements.json",
+          "description": "Buyer requirements for product-scoped targeting dimensions that must remain selectable on packages"
+        },
+        "product-targeting-resolution": {
+          "$ref": "/schemas/core/product-targeting-resolution.json",
+          "description": "Discovery-time targeting modifications bound to a configured product"
+        },
+        "package-targeting-resolution": {
+          "$ref": "/schemas/core/package-targeting-resolution.json",
+          "description": "Execution details for targeting accepted on a booked package"
+        },
+        "targeting-modification": {
+          "$ref": "/schemas/core/targeting-modification.json",
+          "description": "One buyer-reviewable targeting modification on a configured product"
+        },
+        "placement-selection": {
+          "$ref": "/schemas/core/placement-selection.json",
+          "description": "Purchased placement inventory selection within a product"
+        },
         "demographic-age-range": {
           "$ref": "/schemas/core/demographic-age-range.json",
           "description": "Canonical inclusive age interval with explicit unknown-age membership"

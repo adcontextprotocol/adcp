@@ -20,6 +20,10 @@
         "$ref": "/schemas/core/product.json"
       }
     },
+    "targeting_resolution": {
+      "$ref": "/schemas/media-buy/get-products-targeting-resolution.json",
+      "description": "Request-level confirmation of structured hard targeting inferred from the brief. Sellers SHOULD include this when hard targeting appeared only in prose. Omitted when no hard targeting was inferred from the brief."
+    },
     "extensions": {
       "type": "object",
       "description": "Bundled platform-extension definitions referenced by any product in `products`. Keyed by `<extension_uri>@<digest>` (e.g., `https://creative.adcontextprotocol.org/translated/meta/extensions/meta_pixel@sha256:abc...`). When present, lets buyers resolve `platform_extensions` references on product format declarations without a separate fetch. Buyer SDKs cache by URI@digest; subsequent get_products responses MAY omit definitions the buyer already has cached and rely on the digest match. Each value is an extension definition with `extends` (the canonical concept it extends, e.g., `tracking`), `fields` (the schema for additional fields the extension contributes), `version`, and optional `description`.",

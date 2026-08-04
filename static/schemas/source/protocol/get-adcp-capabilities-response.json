@@ -146,9 +146,7 @@
                       "description": "Agent-level notification types this seller can emit for capability changes. Currently only `capabilities.changed` is defined.",
                       "items": {
                         "type": "string",
-                        "enum": [
-                          "capabilities.changed"
-                        ]
+                        "enum": ["capabilities.changed"]
                       },
                       "minItems": 1,
                       "uniqueItems": true
@@ -160,11 +158,7 @@
                       "maximum": 86400
                     }
                   },
-                  "required": [
-                    "supported",
-                    "registration_task",
-                    "event_types"
-                  ],
+                  "required": ["supported", "registration_task", "event_types"],
                   "additionalProperties": true
                 },
                 {
@@ -176,20 +170,14 @@
                       "description": "Discriminator. False means consumers must rely on TTL refresh, manual refresh, or registry polling for capability changes."
                     }
                   },
-                  "required": [
-                    "supported"
-                  ],
+                  "required": ["supported"],
                   "not": {
                     "anyOf": [
                       {
-                        "required": [
-                          "registration_task"
-                        ]
+                        "required": ["registration_task"]
                       },
                       {
-                        "required": [
-                          "event_types"
-                        ]
+                        "required": ["event_types"]
                       }
                     ]
                   },
@@ -208,20 +196,13 @@
                         "const": true
                       }
                     },
-                    "required": [
-                      "supported"
-                    ]
+                    "required": ["supported"]
                   }
                 },
-                "required": [
-                  "notifications"
-                ]
+                "required": ["notifications"]
               },
               "then": {
-                "required": [
-                  "cache_ttl_seconds",
-                  "capabilities_version"
-                ]
+                "required": ["cache_ttl_seconds", "capabilities_version"]
               }
             }
           ],
@@ -409,9 +390,7 @@
                   "description": "Account lifecycle notification types this seller can emit. Currently only `account.status_changed` is defined.",
                   "items": {
                     "type": "string",
-                    "enum": [
-                      "account.status_changed"
-                    ]
+                    "enum": ["account.status_changed"]
                   },
                   "minItems": 1,
                   "uniqueItems": true
@@ -439,25 +418,17 @@
                   "description": "Discriminator. False means buyers must rely on `sync_accounts` results, `push_notification_config` for one-shot provisioning callbacks, and polling `list_accounts` for later status changes."
                 }
               },
-              "required": [
-                "supported"
-              ],
+              "required": ["supported"],
               "not": {
                 "anyOf": [
                   {
-                    "required": [
-                      "registration_task"
-                    ]
+                    "required": ["registration_task"]
                   },
                   {
-                    "required": [
-                      "read_task"
-                    ]
+                    "required": ["read_task"]
                   },
                   {
-                    "required": [
-                      "event_types"
-                    ]
+                    "required": ["event_types"]
                   }
                 ]
               },
@@ -709,6 +680,26 @@
                     }
                   },
                   "required": ["supported_match_types"]
+                },
+                "placement_selection": {
+                  "type": "boolean",
+                  "description": "Seller-wide rollup indicating at least one product supports targeting_overlay.placement_selection. Product.overlay_support and Product.placements remain authoritative for a selected product."
+                },
+                "property_list": {
+                  "type": "boolean",
+                  "description": "Seller-wide rollup for targeting_overlay.property_list inclusion targeting. Product.overlay_support is authoritative."
+                },
+                "property_list_exclude": {
+                  "type": "boolean",
+                  "description": "Seller-wide rollup for targeting_overlay.property_list_exclude targeting. Product.overlay_support is authoritative."
+                },
+                "collection_list": {
+                  "type": "boolean",
+                  "description": "Seller-wide rollup for targeting_overlay.collection_list inclusion targeting. Product.overlay_support is authoritative."
+                },
+                "collection_list_exclude": {
+                  "type": "boolean",
+                  "description": "Seller-wide rollup for targeting_overlay.collection_list_exclude targeting. Product.overlay_support is authoritative."
                 },
                 "geo_proximity": {
                   "type": "object",

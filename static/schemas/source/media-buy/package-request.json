@@ -40,7 +40,7 @@
   "properties": {
     "product_id": {
       "type": "string",
-      "description": "Product ID for this package. Sellers MUST echo this value on every response package object that represents this requested package.",
+      "description": "Opaque configured product ID returned by get_products. Selecting it accepts the product's disclosed targeting_resolution, pricing, forecast assumptions, and terms. Sellers MUST echo this value on every response package object that represents this requested package.",
       "x-entity": "product"
     },
     "format_ids": {
@@ -137,7 +137,8 @@
       "minItems": 1
     },
     "targeting_overlay": {
-      "$ref": "/schemas/core/targeting.json"
+      "$ref": "/schemas/core/targeting.json",
+      "description": "Optional package-specific targeting that further constrains targeting already bound to the configured product. It cannot broaden or remove configured-product targeting. Fields supplied here MUST be declared in the product's overlay_support unless they were already accepted during discovery. The seller applies the intersection exactly or rejects the package; package readback echoes the complete effective targeting."
     },
     "measurement_terms": {
       "$ref": "/schemas/core/measurement-terms.json",
