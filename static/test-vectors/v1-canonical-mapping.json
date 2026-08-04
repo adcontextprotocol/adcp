@@ -1,7 +1,7 @@
 {
   "version": 1,
   "registry": "/schemas/registries/v1-canonical-mapping.json",
-  "registry_version": "1.2.0",
+  "registry_version": "1.3.0",
   "description": "Reference vectors for literal v1 format-id projection. Resolution uses the first exact format_id_glob match; these vectors do not provide a format definition for structural fallback.",
   "vectors": [
     {
@@ -69,6 +69,76 @@
       "id": "display-320-by-250",
       "format_id": "display_320x250",
       "expected_v2": { "canonical": "image", "parameters": { "width": 320, "height": 250 } }
+    },
+    {
+      "id": "display-300-by-250-2x",
+      "format_id": "display_300x250_image_2x",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 300, "height": 250, "pixel_ratios": [2] } }
+    },
+    {
+      "id": "display-728-by-90-2x",
+      "format_id": "display_728x90_image_2x",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 728, "height": 90, "pixel_ratios": [2] } }
+    },
+    {
+      "id": "display-320-by-50-2x",
+      "format_id": "display_320x50_image_2x",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 320, "height": 50, "pixel_ratios": [2] } }
+    },
+    {
+      "id": "display-160-by-600-2x",
+      "format_id": "display_160x600_image_2x",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 160, "height": 600, "pixel_ratios": [2] } }
+    },
+    {
+      "id": "display-336-by-280-2x",
+      "format_id": "display_336x280_image_2x",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 336, "height": 280, "pixel_ratios": [2] } }
+    },
+    {
+      "id": "display-300-by-600-2x",
+      "format_id": "display_300x600_image_2x",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 300, "height": 600, "pixel_ratios": [2] } }
+    },
+    {
+      "id": "display-970-by-250-2x",
+      "format_id": "display_970x250_image_2x",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 970, "height": 250, "pixel_ratios": [2] } }
+    },
+    {
+      "id": "display-300-by-250-1x-2x",
+      "format_id": "display_300x250_image_1x_2x",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 300, "height": 250, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] } }
+    },
+    {
+      "id": "display-728-by-90-1x-2x",
+      "format_id": "display_728x90_image_1x_2x",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 728, "height": 90, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] } }
+    },
+    {
+      "id": "display-320-by-50-1x-2x",
+      "format_id": "display_320x50_image_1x_2x",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 320, "height": 50, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] } }
+    },
+    {
+      "id": "display-160-by-600-1x-2x",
+      "format_id": "display_160x600_image_1x_2x",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 160, "height": 600, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] } }
+    },
+    {
+      "id": "display-336-by-280-1x-2x",
+      "format_id": "display_336x280_image_1x_2x",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 336, "height": 280, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] } }
+    },
+    {
+      "id": "display-300-by-600-1x-2x",
+      "format_id": "display_300x600_image_1x_2x",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 300, "height": 600, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] } }
+    },
+    {
+      "id": "display-970-by-250-1x-2x",
+      "format_id": "display_970x250_image_1x_2x",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 970, "height": 250, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] } }
     },
     {
       "id": "hosted-video-30-seconds",

@@ -46,7 +46,7 @@ describe('training agent formats', () => {
 describe('reference formats', () => {
   it('loads reference formats and rewrites agent_url', () => {
     const formats = buildReferenceFormats(TEST_AGENT_URL);
-    expect(formats.length).toBe(57);
+    expect(formats.length).toBe(71);
     for (const f of formats) {
       const fid = f.format_id as { agent_url: string; id: string };
       expect(fid.agent_url).toBe(TEST_AGENT_URL);
@@ -86,6 +86,86 @@ describe('reference formats', () => {
     expect(ids).toContain('format_card_standard');
   });
 
+  it('publishes legacy 2x-only formats with lossless canonical projections', () => {
+    const formats = buildReferenceFormats(TEST_AGENT_URL);
+    const retinaFormats = formats.filter(f =>
+      ((f.format_id as { id: string }).id).endsWith('_image_2x'),
+    );
+    expect(retinaFormats).toHaveLength(7);
+
+    for (const format of retinaFormats) {
+      const id = (format.format_id as { id: string }).id;
+      const match = id.match(/^display_(\d+)x(\d+)_image_2x$/);
+      expect(match, id).not.toBeNull();
+      const logicalWidth = Number(match![1]);
+      const logicalHeight = Number(match![2]);
+      const images = (format.assets as any[]).filter(asset => asset.asset_type === 'image');
+      const projection = format.canonical_parameters as any;
+
+      expect((format.canonical as any).kind, id).toBe('image');
+      expect((format.renders as any[])[0].dimensions, id).toMatchObject({
+        width: logicalWidth,
+        height: logicalHeight,
+      });
+      expect(images.map(image => image.requirements), id).toMatchObject([
+        { width: logicalWidth * 2, height: logicalHeight * 2 },
+      ]);
+      expect(projection, id).toEqual({
+        format_kind: 'image',
+        params: {
+          width: logicalWidth,
+          height: logicalHeight,
+          pixel_ratios: [2],
+        },
+      });
+    }
+  });
+
+  it('publishes separate paired 1x/2x formats for GAM-style requirements', () => {
+    const formats = buildReferenceFormats(TEST_AGENT_URL);
+    const pairedFormats = formats.filter(f =>
+      ((f.format_id as { id: string }).id).endsWith('_image_1x_2x'),
+    );
+    expect(pairedFormats).toHaveLength(7);
+
+    for (const format of pairedFormats) {
+      const id = (format.format_id as { id: string }).id;
+      const match = id.match(/^display_(\d+)x(\d+)_image_1x_2x$/);
+      expect(match, id).not.toBeNull();
+      const logicalWidth = Number(match![1]);
+      const logicalHeight = Number(match![2]);
+      const images = (format.assets as any[]).filter(asset => asset.asset_type === 'image');
+      const projection = format.canonical_parameters as any;
+
+      expect((format.canonical as any).kind, id).toBe('image');
+      expect((format.renders as any[])[0].dimensions, id).toMatchObject({
+        width: logicalWidth,
+        height: logicalHeight,
+      });
+      expect(images.map(image => image.requirements), id).toMatchObject([
+        { width: logicalWidth, height: logicalHeight },
+        { width: logicalWidth * 2, height: logicalHeight * 2 },
+      ]);
+      expect(projection, id).toEqual({
+        format_kind: 'image',
+        params: {
+          width: logicalWidth,
+          height: logicalHeight,
+          pixel_ratios: [1, 2],
+          slots: [{
+            asset_group_id: 'image_main',
+            asset_type: 'image',
+            required: true,
+            min: 2,
+            max: 2,
+            pixel_ratios: [1, 2],
+            required_pixel_ratios: [1, 2],
+          }],
+        },
+      });
+    }
+  });
+
   it('all format IDs are unique', () => {
     const formats = buildReferenceFormats(TEST_AGENT_URL);
     const ids = formats.map(f => (f.format_id as { id: string }).id);
@@ -112,7 +192,7 @@ describe('handleListCreativeFormats', () => {
   it('returns all formats when no filters provided', () => {
     const result = handleListCreativeFormats({}, formats);
     const returned = result.formats as unknown[];
-    expect(returned.length).toBe(57);
+    expect(returned.length).toBe(71);
   });
 
   it('response structure matches schema: { formats: [...] }', () => {
@@ -577,14 +657,14 @@ describe('MCP tool responses include structuredContent', () => {
     expect(JSON.parse(content[0].text)).toEqual(structured);
   });
 
-  it('list_creative_formats structuredContent has 54 formats with proposal cards', async () => {
+  it('list_creative_formats structuredContent includes all reference and UI formats', async () => {
     const result = await client.callTool({
       name: 'list_creative_formats',
       arguments: {},
     });
 
     const structured = result.structuredContent as { formats: unknown[] };
-    expect(structured.formats.length).toBe(57);
+    expect(structured.formats.length).toBe(71);
   });
 
   it('preview_creative batch mode returns structuredContent', async () => {
