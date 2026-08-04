@@ -66,6 +66,15 @@
       "description": "Impression goal for this package",
       "minimum": 0
     },
+    "daily_budget_cap": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Optional hard ceiling on spend per calendar day for this package, in the media buy's currency. Independent of `pacing`: the cap bounds the daily maximum while `pacing` governs within-day distribution — `pacing: \"asap\"` plus a cap is valid and coherent (spend fast, but never past the ceiling on any single day). The day boundary is the seller's billing timezone (`get_account_financials.timezone`), so cap resets align with invoice periods; DST transition days count as one local calendar day carrying the full cap. Requires seller support: sellers advertise `media_buy.budget_capping` in `get_adcp_capabilities` and MUST reject a `daily_budget_cap` they cannot enforce with `UNSUPPORTED_FEATURE` rather than silently dropping it."
+    },
+    "budget_cap_timezone": {
+      "type": "string",
+      "description": "Optional IANA timezone override for the `daily_budget_cap` day boundary (e.g., 'America/Chicago'). Valid only when the seller advertises `media_buy.budget_capping.buyer_timezone_override: true`; otherwise the seller MUST reject it with `UNSUPPORTED_FEATURE`. When omitted, the cap resets on the seller's billing-day boundary (`media_buy.budget_capping.effective_timezone`, which equals `get_account_financials.timezone` when financials are available)."
+    },
     "start_time": {
       "type": "string",
       "format": "date-time",

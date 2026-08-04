@@ -20,6 +20,15 @@
       "description": "Budget allocation for this package in the currency specified by the pricing option",
       "minimum": 0
     },
+    "daily_budget_cap": {
+      "type": "number",
+      "minimum": 0,
+      "description": "The hard per-calendar-day spend ceiling the seller is enforcing on this package, in the currency specified by the pricing option. Sellers MUST echo this whenever a `daily_budget_cap` was accepted on create_media_buy or update_media_buy, so buyers can verify the cap took effect and reconcile enforced-vs-requested. See `media_buy.budget_capping` in get_adcp_capabilities for enforcement strength and the resetting timezone."
+    },
+    "budget_cap_timezone": {
+      "type": "string",
+      "description": "The IANA timezone the seller resolved for this package's `daily_budget_cap` day boundary — the buyer-requested override when honored, otherwise the seller's effective billing timezone (`media_buy.budget_capping.effective_timezone`). Sellers MUST echo this whenever `daily_budget_cap` is set so buyers can confirm which calendar-day boundary the cap resets on."
+    },
     "pacing": {
       "$ref": "/schemas/enums/pacing.json"
     },
