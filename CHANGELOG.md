@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.1.10
+
+### Patch Changes
+
+- 30f10f1: Add audience dependency-impairment conformance coverage and clarify `list_accounts` as the recommended cold-start recovery read for buyer-declared accounts.
+- 648b820: Publish additive legacy Retina creative formats for seven standard display sizes. Each size now has a 2x-only format and a paired 1x-plus-2x rendition format, with registry mappings and shared vectors so current SDKs can discover and project the new catalog IDs while the canonical pixel-density protocol remains targeted at 3.2.
+
 ## 3.1.9
 
 ### Patch Changes
