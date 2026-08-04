@@ -115,12 +115,12 @@ Brand agents MUST declare `brand` in `supported_protocols`.
 | Task | Requirement | Notes |
 |------|------------|-------|
 | `sync_accounts` | Conditional | Buyer-declared accounts (`require_operator_auth: false`) — buyer declares brand/operator pairs; account-id namespaces may use this only for settings updates unless a future explicit capability declares provisioning |
-| `list_accounts` | Conditional | Account-id namespaces (`require_operator_auth: true`) — buyer discovers seller-assigned accounts; singleton credentials SHOULD still return one row so SDKs can auto-select |
+| `list_accounts` | Conditional / recommended | Account-id namespaces (`require_operator_auth: true`) MUST expose it when a credential can access multiple accounts and SHOULD return a singleton otherwise. Buyer-declared-account sellers (`require_operator_auth: false`) SHOULD expose it as the cold-start recovery read for stateless buyers. |
 | `sync_governance` | Conditional | Required when the buyer uses campaign governance |
 | `report_usage` | Conditional | Required when the agent charges for services |
 | `get_account_financials` | Optional | Financial summary per account |
 
-Agents MUST implement at least one of `sync_accounts` or `list_accounts` depending on their account model. An agent MAY implement both (e.g., ad networks that use buyer-declared accounts on the buyer side and account-id namespaces with underlying platforms).
+Agents MUST implement at least one of `sync_accounts` or `list_accounts` depending on their account model. An agent MAY implement both. Buyer-declared-account sellers SHOULD implement both: `sync_accounts` establishes the relationship, while `list_accounts` lets a stateless buyer recover the seller's acknowledged `(brand, operator, sandbox)` portfolio without already possessing the natural keys it lost.
 
 **Reference**: [Accounts Protocol](/docs/accounts/overview)
 
