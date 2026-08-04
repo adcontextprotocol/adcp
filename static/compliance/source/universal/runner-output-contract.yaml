@@ -604,6 +604,21 @@ validation_result:
                               # capability v{expires_after_version};
                               # promoted at v{runner_capability_version}]".
 
+session_lifecycle:
+  description: |
+    Transport session hygiene for streamable-HTTP MCP agents. Runners SHOULD
+    establish one MCP session per storyboard and reuse it across that
+    storyboard's steps, matching how production buyer agents operate: a fresh
+    session per call spends 4-5 protocol round trips on handshake alone
+    (initialize, initialized, tools/list, call, close), multiplying per-step
+    wall time ~5x and attributing runner-side session overhead to the agent
+    under test. Runners SHOULD close sessions gracefully at storyboard end,
+    and SHOULD treat an HTTP 404 on a known-terminated session id as terminal
+    rather than retryable — the streamable-HTTP session layer answers
+    expired-session requests 404 without an agent-visible error, so reconnect
+    loops against dead sessions generate silent 4xx volume that is easily
+    misread as rate limiting.
+
 request:
   description: |
     Exact request the runner sent, per transport. Runners MUST redact secrets
