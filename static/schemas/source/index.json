@@ -245,6 +245,14 @@
           "$ref": "/schemas/core/proposal.json",
           "description": "A proposed media plan with budget allocations across products - actionable via create_media_buy"
         },
+        "budget-allocation": {
+          "$ref": "/schemas/core/budget-allocation.json",
+          "description": "Fixed or seller-optimized allocation of a media-buy total budget across packages"
+        },
+        "bidding-policy": {
+          "$ref": "/schemas/core/bidding-policy.json",
+          "description": "Buyer-authored bidding, average-cost, or return policy at media-buy or package scope"
+        },
         "insertion-order": {
           "$ref": "/schemas/core/insertion-order.json",
           "description": "A formal insertion order attached to a committed proposal for agreement signing"

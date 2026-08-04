@@ -111,6 +111,11 @@
           "pricing_model": {
             "$ref": "/schemas/enums/pricing-model.json"
           },
+          "pacing_index": {
+            "type": "number",
+            "description": "Aggregate media-buy delivery pace relative to the media-buy pacing plan. Authoritative for seller-optimized buys.",
+            "minimum": 0
+          },
           "totals": {
             "allOf": [
               {
@@ -149,6 +154,7 @@
                     },
                     "pacing_index": {
                       "type": "number",
+                      "description": "Subordinate package pacing diagnostic. May be absent for seller-optimized packages without package-level pacing.",
                       "minimum": 0
                     },
                     "pricing_model": {

@@ -45,13 +45,14 @@ This shows the recommended order. In practice, media buys can be created before 
 
 An event source represents a channel through which conversion or marketing events are collected — a website pixel, mobile SDK, server-to-server integration, CRM import, or seller- or platform-native owned property such as a channel, profile, feed, podcast, or newsletter list.
 
-Configure event sources with [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources). You provide an `event_source_id`, optional `name`, `event_types`, `action_source`, `surface`, and `allowed_domains`. The response includes additional fields for each source:
+Configure event sources with [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources). You provide an `event_source_id`, optional `name`, `event_types`, `value_currencies`, `action_source`, `surface`, and `allowed_domains`. `value_currencies` is required when the source will feed canonical ROAS. A multi-currency source may list several currencies; each buy consumes only records matching its media-buy currency, with no conversion. The response includes additional fields for each source:
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `seller_id` | string | Seller-assigned identifier in their ad platform |
 | `action` | string | What happened: `created`, `updated`, `unchanged`, `deleted`, `failed` |
 | `managed_by` | string | `buyer` (you configured it) or `seller` (always-on, seller-managed) |
+| `value_currencies` | string[] | Currencies accepted for monetary event values and eligible for canonical ROAS |
 | `action_source` | [ActionSource](#action-sources) | Flat source type for legacy and broad compatibility (website pixel, app SDK, in-store, etc.) |
 | `surface` | [EventSurface](#event-surfaces) | Optional structured surface, such as an owned channel, profile, feed, podcast, newsletter list, website, app, or store |
 | `setup` | object | Implementation details — snippet code, snippet type, instructions |
@@ -148,7 +149,7 @@ Send multiple identifier types when available. The seller uses the best availabl
 
 ## Custom data
 
-Event-specific data for attribution and reporting. For purchase events, always include `value` and `currency` to enable ROAS reporting.
+Event-specific data for attribution and reporting. Sources used for canonical ROAS declare `value_currencies`; monetary records from those sources require `currency` from that list. Legacy sources without the contract remain valid for non-ROAS use.
 
 ```json
 {
@@ -444,7 +445,9 @@ A `maximize_value` target steers spend toward higher-value conversions without c
 | `target.kind` | `"cost_per"` \| `"per_ad_spend"` \| `"maximize_value"` | No | Target type. When omitted, the seller maximizes conversion count within budget (see [default behavior](#default-behavior-for-event-goals)). |
 | `target.value` | number | Yes (if target set) | Cost per event in buy currency, or return ratio (e.g., 4.0 = \$4 per \$1 spent) |
 | `attribution_window` | object | No | Click-through and view-through windows. When omitted, the seller uses their default. |
-| `priority` | integer | No | 1 = highest priority. When omitted, sellers use array position. |
+| `priority` | integer | No | Lower values rank first. Ties use array order; unprioritized goals follow explicitly prioritized goals. |
+
+For canonical `bidding.roas`, every value-bearing source must declare the media-buy currency in `value_currencies` before buy creation. Monetary `log_event` records require `custom_data.currency` from the source's declared list. A USD buy uses only USD records; EUR records from the same source remain available to EUR buys. Sellers never convert value currencies.
 
 ### kind: metric
 

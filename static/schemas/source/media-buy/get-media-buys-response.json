@@ -62,13 +62,31 @@
           },
           "currency": {
             "type": "string",
-            "description": "ISO 4217 currency code (e.g., USD, EUR, GBP) for monetary values at this media buy level. total_budget is always denominated in this currency. Package-level fields may override with package.currency.",
+            "description": "Single ISO 4217 denomination for total_budget, package budget constraints, and canonical BiddingPolicy monetary fields. Every selected pricing option on an AdCP-authored media buy MUST declare this currency. Legacy or externally-created mixed-currency buys must not expose canonical bidding until normalized or split.",
             "pattern": "^[A-Z]{3}$"
           },
           "total_budget": {
             "type": "number",
-            "description": "Total budget amount across all packages, denominated in media_buy.currency",
+            "description": "Hard aggregate lifetime budget, denominated in media_buy.currency",
             "minimum": 0
+          },
+          "budget_allocation": {
+            "allOf": [
+              {
+                "$ref": "/schemas/core/budget-allocation.json"
+              }
+            ],
+            "description": "Current cross-package allocation configuration. Omitted means fixed allocation for legacy buys."
+          },
+          "pacing": {
+            "$ref": "/schemas/enums/pacing.json",
+            "description": "Aggregate pacing strategy for the media-buy budget."
+          },
+          "bidding": {
+            "allOf": [
+              { "$ref": "/schemas/core/bidding-policy.json" }
+            ],
+            "description": "Current media-buy-authored bidding policy with scope-specific goal binding and media-buy-currency denomination. Package entries omit bidding when they inherit this block; explicit package automatic overrides remain visible as `{automatic:true}`."
           },
           "start_time": {
             "type": "string",
@@ -223,18 +241,38 @@
                 },
                 "budget": {
                   "type": "number",
-                  "description": "Package budget amount, denominated in package.currency when present, otherwise media_buy.currency",
+                  "description": "Hard lifetime package spend cap denominated in media_buy.currency. In seller-optimized mode this is not a current allocation.",
+                  "minimum": 0
+                },
+                "min_spend_target": {
+                  "type": "number",
+                  "description": "Accepted soft lifetime spend target for this package under seller-optimized allocation.",
                   "minimum": 0
                 },
                 "currency": {
                   "type": "string",
-                  "description": "ISO 4217 currency code for monetary values at this package level (budget, bid_price, snapshot.spend). When absent, inherit media_buy.currency.",
+                  "description": "Legacy/readback package denomination for buys created outside the canonical 3.2 path. For AdCP-authored media buys this MUST equal media_buy.currency; canonical package budget and BiddingPolicy values always use media_buy.currency. Snapshot currency may still identify externally reported spend denomination.",
                   "pattern": "^[A-Z]{3}$"
                 },
                 "bid_price": {
                   "type": "number",
-                  "description": "Current bid price for auction-based packages. Denominated in package.currency when present, otherwise media_buy.currency. Relevant for automated price optimization loops.",
+                  "deprecated": true,
+                  "description": "DEPRECATED legacy bid representation. 3.2 sellers SHOULD normalize and echo package.bidding instead.",
                   "minimum": 0
+                },
+                "bidding": {
+                  "allOf": [
+                    { "$ref": "/schemas/core/bidding-policy.json" }
+                  ],
+                  "description": "Package-authored bidding override. `{automatic:true}` explicitly overrides media_buy.bidding with provider automatic delivery. Omitted when this package inherits; sellers MUST NOT copy an inherited block here. Monetary fields use media_buy.currency."
+                },
+                "optimization_goals": {
+                  "type": "array",
+                  "description": "Current package objective functions. Currency-bearing execution controls are returned separately in package.bidding or inherited from media_buy.bidding.",
+                  "items": {
+                    "$ref": "/schemas/core/optimization-goal.json"
+                  },
+                  "minItems": 1
                 },
                 "format_ids": {
                   "type": "array",
@@ -265,6 +303,10 @@
                   "type": "number",
                   "description": "Goal impression count for impression-based packages",
                   "minimum": 0
+                },
+                "pacing": {
+                  "$ref": "/schemas/enums/pacing.json",
+                  "description": "Package-level pacing preference. Under seller-optimized allocation this is subordinate to the media-buy aggregate pacing."
                 },
                 "targeting_overlay": {
                   "$ref": "/schemas/core/targeting.json",
@@ -433,6 +475,35 @@
               },
               "required": [
                 "package_id"
+              ],
+              "allOf": [
+                {
+                  "not": {
+                    "required": ["bidding", "bid_price"]
+                  }
+                },
+                {
+                  "if": { "required": ["bidding"] },
+                  "then": {
+                    "properties": {
+                      "optimization_goals": {
+                        "not": {
+                          "contains": {
+                            "properties": {
+                              "target": {
+                                "properties": {
+                                  "kind": { "enum": ["cost_per", "per_ad_spend"] }
+                                },
+                                "required": ["kind"]
+                              }
+                            },
+                            "required": ["target"]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
               ],
               "dependencies": {
                 "params": ["format_kind"]

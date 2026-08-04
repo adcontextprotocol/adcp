@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/proposal.json",
   "title": "Proposal",
-  "description": "A proposed media plan with budget allocations across products. Represents the publisher's strategic recommendation for how to structure a campaign based on the brief. Proposals are actionable: committed proposals can be executed directly via create_media_buy by providing the proposal_id; draft proposals must first be finalized via get_products refine action 'finalize'.",
+  "description": "A proposed media plan with fixed or seller-optimized budget allocation across products. Represents the publisher's strategic recommendation for how to structure a campaign based on the brief. Proposals are actionable: committed proposals can be executed directly via create_media_buy by providing the proposal_id; draft proposals must first be finalized via get_products refine action 'finalize'.",
   "type": "object",
   "properties": {
     "proposal_id": {
@@ -22,11 +22,23 @@
     },
     "allocations": {
       "type": "array",
-      "description": "Budget allocations across products. Allocation percentages MUST sum to 100. Publishers are responsible for ensuring the sum equals 100; buyers SHOULD validate this before execution.",
+      "description": "Products and budget constraints in this plan. Fixed proposals require allocation_percentage on every entry and percentages MUST sum to 100. Seller-optimized proposals forbid exact allocation_percentage and may instead supply min_spend_target_percentage and max_spend_percentage. Publishers are responsible for validating cross-entry sums; buyers SHOULD validate them before execution.",
       "items": {
         "$ref": "/schemas/core/product-allocation.json"
       },
       "minItems": 1
+    },
+    "budget_allocation": {
+      "allOf": [
+        {
+          "$ref": "/schemas/core/budget-allocation.json"
+        }
+      ],
+      "description": "How the executed total budget is allocated across proposal products. Omit for legacy fixed proposals."
+    },
+    "pacing": {
+      "$ref": "/schemas/enums/pacing.json",
+      "description": "Recommended aggregate pacing for the executed media-buy budget. On a committed proposal this is part of the firm delivery terms."
     },
     "proposal_status": {
       "$ref": "/schemas/enums/proposal-status.json",
@@ -84,6 +96,65 @@
     "proposal_id",
     "name",
     "allocations"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "budget_allocation": {
+            "properties": {
+              "mode": {
+                "const": "seller_optimized"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          }
+        },
+        "required": [
+          "budget_allocation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "allocations": {
+            "items": {
+              "not": {
+                "required": [
+                  "allocation_percentage"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "allocations": {
+            "items": {
+              "required": [
+                "allocation_percentage"
+              ],
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "min_spend_target_percentage"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "max_spend_percentage"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
   ],
   "additionalProperties": true
 }
