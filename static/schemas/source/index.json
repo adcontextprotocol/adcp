@@ -63,7 +63,7 @@
         },
         "locale-tag": {
           "$ref": "/schemas/core/locale-tag.json",
-          "description": "Canonical BCP 47 locale tag for provider-neutral localization"
+          "description": "Canonical BCP 47 locale tag for creative localization"
         },
         "creative-localization": {
           "$ref": "/schemas/core/creative-localization.json",
@@ -71,7 +71,7 @@
         },
         "creative-localization-readback": {
           "$ref": "/schemas/core/creative-localization-readback.json",
-          "description": "Exact provider-backed locale assets, identities, review, and launch state"
+          "description": "Exact materialized locale assets, buyer-assigned identities, and matching policy"
         },
         "account": {
           "$ref": "/schemas/core/account.json",

@@ -204,11 +204,10 @@ The response provides creative data with optional enrichment:
 | `name` | string | Human-readable name |
 | `format_id` | object | Structured format reference |
 | `status` | string | Approval status |
-| `platform_id` | string | Stable creative ID assigned by the seller's execution platform, such as its ad server or decisioning platform; required for localized creatives. |
 | `created_date` | string | Creation timestamp |
 | `updated_date` | string | Last modified timestamp |
 | `assets` | object | Creative assets (images, text, URLs, etc.) |
-| `localization` | object | Exact provider-backed materialized locale assets, buyer/provider variant identities, and default/unmatched policy for localized creatives. |
+| `localization` | object | Exact materialized locale assets, buyer-assigned variant identities, and default/unmatched policy for localized creatives. |
 | `localization_unavailable` | object | Fail-closed per-item errors and retryability when exact localization readback cannot be constructed. Mutually exclusive with `localization`. |
 | `tags` | string[] | Tags for categorization |
 | `concept_id` | string | Creative concept ID |
@@ -222,31 +221,31 @@ The response provides creative data with optional enrichment:
 
 ### Localized creative readback
 
-For a localized creative, top-level `platform_id` plus `localization` are the
-authoritative round trip. `platform_id` is the single provider creative ID;
-`localization` never duplicates it. The localization object lists exactly one
-source plus every materialized target variant; source-only monolingual topology
-therefore contains one variant. It preserves the originating
-request's exact source ID/locale, target ID/locale set, default ID, unmatched
-action, and any explicit locale fallback rules. Each entry returns complete
-resolved assets and provider variant identity. The top-level creative `status`
-is the single review lifecycle for the complete locale set.
+For a localized creative, top-level `creative_id` identifies the creative and
+`localization` is the authoritative locale-topology round trip. The localization
+object lists exactly one source plus every materialized target variant;
+source-only monolingual topology therefore contains one variant. It preserves
+the originating request's exact source ID/locale, target ID/locale set, default
+ID, unmatched action, and any explicit locale fallback rules. Each entry
+returns complete resolved assets under its buyer-assigned `locale_variant_id`; no seller- or
+platform-assigned variant ID is required. The top-level creative `status` is the
+single review lifecycle for the complete locale set.
 
-Verifiers enforce unique locale, buyer locale-variant ID, and provider-variant
-ID values, exactly one source role, a default ID that references one variant,
-unique fallback language ranges whose IDs reference stored variants, and
+Verifiers enforce unique locale and buyer locale-variant ID values, exactly one
+source role, a default ID that references one variant, unique fallback language
+ranges whose IDs reference stored variants, and
 equality between source readback assets and top-level creative assets.
 These rules are machine-readable in `x-adcp-validation` because draft-07
 `uniqueItems` compares whole objects and cannot express uniqueness or reference
 integrity by property.
 
-This object is atomic. If the provider omits a requested locale, normalizes it
+This object is atomic. If the seller omits a requested locale, normalizes it
 to a different locale, or loses an asset or identity, the seller returns
 `localization_unavailable` instead of a partial `localization` object. The item
 remains in the current page and counts toward `query_summary.returned` and
 pagination. Buyers may use its base metadata but MUST NOT infer locale
 eligibility. Selecting `fields: ["localization"]` automatically includes the
-creative ID, platform ID, status, assets, format identity, and unavailable state
+creative ID, status, assets, format identity, and unavailable state
 needed to interpret this result.
 
 At delivery, sellers apply strict RFC 4647 Lookup: progressively truncate the

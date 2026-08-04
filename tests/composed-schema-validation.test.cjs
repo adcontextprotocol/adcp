@@ -260,7 +260,7 @@ function selectLocalizedVariant(localization, preferences, localePolicy) {
 function validateLocalizationReadbackSemantics(localization, enclosingAssets) {
   const errors = [];
   const variants = localization.variants || [];
-  for (const property of ['locale_variant_id', 'locale', 'provider_variant_id']) {
+  for (const property of ['locale_variant_id', 'locale']) {
     if (duplicateValues(variants, property).length > 0) {
       errors.push(`variant ${property} values must be unique`);
     }
@@ -360,17 +360,10 @@ function validateLocalizationRoundTrip(requestLocalization, syncItem, listItem) 
     ['list', listItem]
   ]) {
     if (!item?.status) errors.push(`${label} creative status is required`);
-    if (!item?.platform_id) errors.push(`${label} top-level platform_id is required`);
-    if (item?.localization?.platform_id !== undefined) {
-      errors.push(`${label} localization must not duplicate top-level platform_id`);
-    }
     errors.push(...validateLocalizationAgainstRequest(requestLocalization, item?.localization, label));
     if (item?.localization) {
       errors.push(...validateLocalizationReadbackSemantics(item.localization, item.assets));
     }
-  }
-  if (syncItem.platform_id && listItem?.platform_id && syncItem.platform_id !== listItem.platform_id) {
-    errors.push('sync and list top-level platform_id must match');
   }
   return errors;
 }
@@ -3282,7 +3275,7 @@ async function runTests() {
       localization_replacement: {
         scope: 'top_level_assets_and_complete_localization',
         on_failure: 'prior_state_unchanged',
-        orphan_provider_variants: 'must_not_be_visible'
+        orphan_locale_variants: 'must_not_be_visible'
       }
     },
     'sync_creatives exposes machine-readable fail-closed localized source upsert rules'
@@ -3435,8 +3428,7 @@ async function runTests() {
         locale_variant_id: 'loc_en_us',
         locale: 'en-US',
         role: 'source',
-        assets: localizedCreative.assets,
-        provider_variant_id: 'provider_variant_en'
+        assets: localizedCreative.assets
       },
       {
         locale_variant_id: 'loc_es_es',
@@ -3449,8 +3441,7 @@ async function runTests() {
             content: 'El verano empieza aquí',
             language: 'es-ES'
           }
-        },
-        provider_variant_id: 'provider_variant_es'
+        }
       }
     ]
   };
@@ -3470,8 +3461,7 @@ async function runTests() {
         locale_variant_id: 'loc_fr_ca',
         locale: 'fr-CA',
         role: 'source',
-        assets: frenchSourceOnlyCreative.assets,
-        provider_variant_id: 'provider_variant_fr_ca'
+        assets: frenchSourceOnlyCreative.assets
       }
     ]
   };
@@ -3542,11 +3532,7 @@ async function runTests() {
   testValidationAnnotation(
     '/schemas/core/creative-localization-readback.json',
     {
-      unique_variant_properties: [
-        'locale_variant_id',
-        'locale',
-        'provider_variant_id'
-      ],
+      unique_variant_properties: ['locale_variant_id', 'locale'],
       exact_role_counts: { source: 1 },
       default_locale_variant_id: 'must_reference_exactly_one_variant',
       source_assets: 'must_equal_enclosing_creative.assets',
@@ -3572,7 +3558,6 @@ async function runTests() {
   );
 
   const syncRoundTripConstraints = {
-    platform_id_source: 'enclosing_creative.platform_id',
     lifecycle_source: 'enclosing_creative.status',
     source_assets: 'must_equal_request_creative.assets'
   };
@@ -3586,7 +3571,6 @@ async function runTests() {
     '/schemas/creative/list-creatives-response.json',
     ['properties', 'creatives', 'items', 'properties', 'localization'],
     {
-      platform_id_source: 'enclosing_creative.platform_id',
       lifecycle_source: 'enclosing_creative.status',
       source_assets: 'must_equal_enclosing_creative.assets'
     },
@@ -3609,7 +3593,7 @@ async function runTests() {
     );
   }
 
-  for (const property of ['locale_variant_id', 'locale', 'provider_variant_id']) {
+  for (const property of ['locale_variant_id', 'locale']) {
     const duplicateReadback = structuredClone(localizationReadback);
     duplicateReadback.variants[1][property] = duplicateReadback.variants[0][property];
     testSemanticValidation(
@@ -3706,7 +3690,6 @@ async function runTests() {
     creative_id: localizedCreative.creative_id,
     action: 'created',
     status: 'pending_review',
-    platform_id: 'provider_creative_4821',
     localization: localizationReadback
   };
   const localizedListItem = {
@@ -3717,7 +3700,6 @@ async function runTests() {
       id: 'localized_image'
     },
     status: 'pending_review',
-    platform_id: 'provider_creative_4821',
     created_date: '2026-07-19T10:00:00Z',
     updated_date: '2026-07-19T10:00:00Z',
     assets: localizedCreative.assets,
@@ -3776,13 +3758,6 @@ async function runTests() {
         listItem.localization.locale_fallbacks[0].locale_variant_id = 'loc_en_us';
       },
       'list locale_fallbacks must exactly equal request'
-    ],
-    [
-      'top-level provider identity',
-      (_syncItem, listItem) => {
-        listItem.platform_id = 'provider_creative_drifted';
-      },
-      'sync and list top-level platform_id must match'
     ]
   ]) {
     const syncItem = structuredClone(localizedSyncItem);
@@ -3794,14 +3769,6 @@ async function runTests() {
       `Localization verifier rejects ${surface} drift`
     );
   }
-
-  const nestedPlatformId = structuredClone(localizationReadback);
-  nestedPlatformId.platform_id = 'duplicate_provider_creative_4821';
-  await testSchemaRejection(
-    '/schemas/core/creative-localization-readback.json',
-    nestedPlatformId,
-    'Localization readback rejects a duplicate nested platform_id'
-  );
 
   await testSchemaValidation(
     '/schemas/creative/sync-creatives-response.json',
@@ -3842,7 +3809,7 @@ async function runTests() {
       pagination: { has_more: false },
       creatives: [localizedListItem]
     },
-    'list_creatives returns complete localized state with one provider creative ID'
+    'list_creatives returns complete localized state using buyer-assigned identities'
   );
 
   const unavailableLocalizedListItem = structuredClone(localizedListItem);
@@ -3904,19 +3871,6 @@ async function runTests() {
       creatives: [localizedCanonicalListItem]
     },
     'Localized list readback composes with canonical format identity'
-  );
-
-  const localizedListWithoutPlatformId = structuredClone(localizedListItem);
-  delete localizedListWithoutPlatformId.platform_id;
-  await testSchemaRejection(
-    '/schemas/creative/list-creatives-response.json',
-    {
-      status: 'completed',
-      query_summary: { total_matching: 1, returned: 1 },
-      pagination: { has_more: false },
-      creatives: [localizedListWithoutPlatformId]
-    },
-    'Localized list result without top-level provider identity is rejected'
   );
 
   testSemanticValidation(

@@ -176,7 +176,7 @@ support, RFC 4647 Lookup, and an optional target ceiling. Locale, format, and
 account support is validated against each request. A seller MUST reject an
 unsupported locale/format pair, duplicate target locale/ID, target locale/ID
 that reuses the source value, missing materialized assets, or invalid default
-reference before provider or library mutation. JSON Schema `uniqueItems`
+reference before mutating seller systems or the creative library. JSON Schema `uniqueItems`
 compares whole objects and is not sufficient for those property-level rules;
 conformance verifiers consume the schema's `x-adcp-validation` constraints.
 
@@ -280,27 +280,26 @@ The seller runs this check independently for every placement where the
 assignment may serve. If one placement fails, the assignment is rejected unless
 the buyer narrows its placement scope to compatible placements.
 
-Accepted localized results include a top-level `platform_id` as the single
-creative ID assigned by the seller's execution platform (for example, its ad
-server or decisioning platform) and `localization` as a complete
-source-plus-target variant list. The response preserves the request's exact source ID/locale,
-target ID/locale set, fallback-rule set, default ID, and unmatched action. Each
-variant returns complete resolved assets and `provider_variant_id`. The enclosing creative's
-single `status` governs the complete set. If the provider cannot read back any
-one of those values exactly, the item fails rather than silently falling back
-to the source language.
+Accepted localized results include `localization` as a complete
+source-plus-target variant list. The response preserves the request's exact
+source ID/locale, target ID/locale set, fallback-rule set, default ID, and unmatched action. Each
+variant returns complete resolved assets under the same buyer-assigned
+`locale_variant_id`; no seller- or platform-assigned variant ID is required.
+The enclosing creative's single `status` governs the complete set. If the
+seller cannot read back any one of those values exactly, the item fails rather
+than silently falling back to the source language.
 
 Every accepted localized result (`created`, `updated`, or `unchanged`) MUST
-carry top-level aggregate `status`, top-level `platform_id`, and complete
-`localization`; `failed` and `deleted` results MUST omit localization. A later
-`list_creatives` read preserves the same top-level `platform_id` and exact
-source/target identities.
+carry top-level aggregate `status` and complete `localization`; `failed` and
+`deleted` results MUST omit localization. A later
+`list_creatives` read preserves the exact source/target identities.
 
 `delete_missing` remains creative-scoped. If it archives a creative, every
 locale variant follows the whole creative lifecycle, and omitted target locales
 are never treated as missing creatives. A non-null `localization` object
 transactionally replaces top-level source assets and the complete locale set;
-failure leaves the prior state unchanged and must not expose provider orphans.
+failure leaves the prior state unchanged and must not expose orphaned locale
+variants.
 Null removes localization. Omission preserves localization only when top-level
 source assets exactly equal the prior source assets. The normal active-delivery
 update protection applies to all three operations.
@@ -407,7 +406,7 @@ The final per-creative `creatives` array lands on the task completion artifact, 
 - `platform_id` - Platform's internal ID (when `action` is not `failed`)
 - `action` - Lifecycle operation performed by this sync: `created`, `updated`, `unchanged`, `failed`, `deleted`
 - `status` - **Advisory** review-lifecycle state ([`CreativeStatus`](https://adcontextprotocol.org/schemas/v3/enums/creative-status.json)): `processing`, `pending_review`, `approved`, `suspended`, `rejected`, `archived`. A UI hint and polling-scheduling signal — **not** a spend-authorization gate. Orthogonal to `action` — `action` describes what the sync did, `status` describes where the creative is in the review lifecycle. Values come from `CreativeStatus` only, never from `CreativeAction` (never put `created`/`updated`/`failed` in `status`). Sellers with async review return `processing` or `pending_review`; sellers with synchronous review MAY return a terminal value (`approved`/`rejected`) or `suspended` when a recoverable dependency/authorization gate prevents serving. **Buyers MUST NOT gate downstream spend or package activation on `status: approved` from this response** — reconcile via `list_creatives` or a signed review webhook before committing spend. Authoritative state is always via `list_creatives`. **MUST be omitted** when `action` is `failed` or `deleted` — failed items have no meaningful review state (see `errors`); deleted items are gone from the library. The schema enforces the omission rule via a conditional constraint.
-- `localization` - Exact provider-backed materialized source/target locale state. Required with top-level `status` and `platform_id` on every accepted localized item, omitted on failed/deleted/unlocalized items. The top-level status is the single creative-wide review state.
+- `localization` - Exact materialized source/target locale state. Required with top-level `status` on every accepted localized item, omitted on failed/deleted/unlocalized items. The top-level status is the single creative-wide review state.
 - `errors` - Array of error messages (only when `action: "failed"`)
 - `warnings` - Array of non-fatal warnings (optional)
 

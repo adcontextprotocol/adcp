@@ -216,7 +216,7 @@ phases:
         expected: |
           Return a per-item failed action because default_locale_variant_id does
           not identify the source or target. The prior source assets and Spanish
-          target remain unchanged; no partially-created French provider variant
+          target remain unchanged; no partially-created French locale variant
           becomes visible.
         sample_request:
           account:

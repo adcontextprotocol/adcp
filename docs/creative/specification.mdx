@@ -184,7 +184,8 @@ Locale tags MUST use the canonical representation from
 [RFC 5646](https://www.rfc-editor.org/rfc/rfc5646): lower-case language and
 variants, title-case script, and upper-case region (for example `en-US` and
 `zh-Hant-TW`). A receiver MUST reject malformed, duplicate, non-canonical,
-unsupported, or lossily mapped locales before any provider or library mutation.
+unsupported, or lossily mapped locales before mutating seller systems or the
+creative library.
 After source inheritance, each fully resolved variant MUST satisfy the selected
 creative format.
 
@@ -220,16 +221,15 @@ fallback.
 
 `locale_variant_id` is scoped to the parent creative. It is not a
 `build_variant_id` (a `build_creative` output leaf) and not the `variant_id`
-used for a provider's served execution in `get_creative_delivery`. A successful
+used for a seller's served execution in `get_creative_delivery`. A successful
 localized sync and every later `list_creatives` read MUST preserve the exact
 source ID/locale, target ID/locale set, default ID, and unmatched action from
-the request, plus the exact optional fallback-rule set. Readback adds a
-`provider_variant_id` to each variant. The single
-execution-platform creative identity is the enclosing creative's top-level `platform_id`;
-it is never duplicated inside `localization`.
+the request, plus the exact optional fallback-rule set. Readback returns fully
+resolved assets under those same buyer-assigned `locale_variant_id` values; it
+does not add a separate seller- or platform-assigned variant identity.
 
 Localized readback is atomic. The seller returns complete resolved assets,
-provider creative/variant identities, default policy, and matching mode for the
+buyer-assigned variant identities, default policy, and matching mode for the
 source and every target. Review remains creative-wide: the enclosing creative's
 single `status` applies to the complete locale set and normal
 `creative.status_changed` webhooks report its changes. If exact localization
@@ -241,7 +241,7 @@ eligibility from the base creative fields.
 On upsert, a non-null `localization` object replaces the creative's complete
 locale set and top-level source assets transactionally; failure leaves the
 prior source assets and complete localization state unchanged, and orphaned
-provider variants MUST NOT become visible. `localization: null` removes the
+locale variants MUST NOT become visible. `localization: null` removes the
 locale topology. Omission preserves existing localization only when top-level
 source assets exactly equal the prior source assets. `delete_missing` still
 operates only at creative scope.

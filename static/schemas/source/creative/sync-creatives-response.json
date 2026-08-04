@@ -47,20 +47,18 @@
               },
               "platform_id": {
                 "type": "string",
-                "minLength": 1,
-                "description": "Stable creative ID assigned by the seller's execution platform, such as its ad server or decisioning platform. This is the single execution-platform creative ID for localized results; localization carries only per-variant execution-platform IDs in provider_variant_id."
+                "description": "Platform-specific ID assigned to the creative"
               },
               "localization": {
                 "$ref": "/schemas/core/creative-localization-readback.json",
-                "description": "Exact provider-backed materialized locale-variant state. Required for every accepted creative whose request included a non-null localization object; omitted for unlocalized, failed, or deleted items. The enclosing creative status is the single review lifecycle for all variants.",
+                "description": "Exact materialized locale-variant state. Required for every accepted creative whose request included a non-null localization object; omitted for unlocalized, failed, or deleted items. The enclosing creative status is the single review lifecycle for all variants.",
                 "x-adcp-validation": {
                   "verifier_constraints": {
-                    "platform_id_source": "enclosing_creative.platform_id",
                     "lifecycle_source": "enclosing_creative.status",
                     "source_assets": "must_equal_request_creative.assets",
                     "accepted_localized_request": {
                       "actions": ["created", "updated", "unchanged"],
-                      "required_response_fields": ["status", "platform_id", "localization"],
+                      "required_response_fields": ["status", "localization"],
                       "source_equal_properties": ["locale_variant_id", "locale"],
                       "target_match_key": "locale_variant_id",
                       "target_set": "exact",
@@ -160,7 +158,7 @@
                   "required": ["localization"]
                 },
                 "then": {
-                  "required": ["status", "platform_id"]
+                  "required": ["status"]
                 }
               }
             ]

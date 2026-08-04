@@ -71,11 +71,6 @@
             "$ref": "/schemas/core/account.json",
             "description": "Account that owns this creative"
           },
-          "platform_id": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Stable creative ID assigned by the seller's execution platform, such as its ad server or decisioning platform. This is the single execution-platform creative ID for localized and unlocalized readback; localization carries only per-variant execution-platform IDs in provider_variant_id."
-          },
           "name": {
             "type": "string",
             "description": "Human-readable creative name"
@@ -129,10 +124,9 @@
           },
           "localization": {
             "$ref": "/schemas/core/creative-localization-readback.json",
-            "description": "Authoritative exact provider-backed materialized locale-variant state. Present for localized creatives when complete. The enclosing creative status is the single review lifecycle for all variants.",
+            "description": "Authoritative exact materialized locale-variant state. Present for localized creatives when complete. The enclosing creative status is the single review lifecycle for all variants.",
             "x-adcp-validation": {
               "verifier_constraints": {
-                "platform_id_source": "enclosing_creative.platform_id",
                 "lifecycle_source": "enclosing_creative.status",
                 "source_assets": "must_equal_enclosing_creative.assets",
                 "sync_list_round_trip": {
@@ -354,7 +348,7 @@
               "required": ["localization"]
             },
             "then": {
-              "required": ["platform_id", "status", "assets"],
+              "required": ["status", "assets"],
               "not": { "required": ["localization_unavailable"] }
             }
           },
@@ -363,7 +357,7 @@
               "required": ["localization_unavailable"]
             },
             "then": {
-              "required": ["platform_id", "status"],
+              "required": ["status"],
               "not": { "required": ["localization"] }
             }
           }
