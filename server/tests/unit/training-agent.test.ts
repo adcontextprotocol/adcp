@@ -40,6 +40,7 @@ import {
 } from '../../src/training-agent/governance-handlers.js';
 import { clearAccountStore } from '../../src/training-agent/account-handlers.js';
 import { TrainingSalesPlatform } from '../../src/training-agent/v6-sales-platform.js';
+import { clearAudienceStore } from '../../src/training-agent/audience-handlers.js';
 
 // Valid channels per the enum schema at static/schemas/source/enums/channels.json
 const VALID_CHANNELS = [
@@ -2529,10 +2530,12 @@ describe('create_media_buy handler', () => {
   beforeEach(() => {
     invalidateCache();
     clearSessions();
+    clearAudienceStore();
   });
 
   afterEach(() => {
     clearSessions();
+    clearAudienceStore();
   });
 
   function getFirstProductAndPricing(): { productId: string; pricingOptionId: string } {
@@ -3487,6 +3490,90 @@ describe('create_media_buy handler', () => {
 
     expect(result.errors).toBeUndefined();
     expect(typeof result.media_buy_id).toBe('string');
+  });
+
+  it('propagates a forced audience suspension to media-buy health and clears it on recovery', async () => {
+    const { productId, pricingOptionId } = getFirstProductAndPricing();
+    const account = {
+      brand: { domain: 'audience-impairment.example' },
+      operator: 'pinnacle-agency.example',
+      sandbox: true,
+    };
+    const audienceId = 'audience_impairment_test';
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    await simulateCallTool(server, 'sync_audiences', {
+      account,
+      audiences: [{
+        audience_id: audienceId,
+        name: 'Audience impairment test',
+        audience_type: 'crm',
+        add: [{
+          external_id: 'audience-member-1',
+          hashed_email: 'a000000000000000000000000000000000000000000000000000000000000201',
+        }],
+      }],
+    });
+
+    const { result: baselineReady } = await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'force_audience_status',
+      params: { audience_id: audienceId, status: 'ready' },
+    });
+    expect(baselineReady).toMatchObject({ success: true, current_state: 'ready' });
+
+    const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'audience-impairment.example' },
+      start_time: 'asap',
+      end_time: '2099-11-30T23:59:59Z',
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 5000,
+        targeting_overlay: { audience_include: [audienceId] },
+      }],
+    });
+    const mediaBuyId = created.media_buy_id as string;
+    const packageId = (created.packages as Array<Record<string, unknown>>)[0].package_id as string;
+
+    const { result: suspended } = await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'force_audience_status',
+      params: { audience_id: audienceId, status: 'suspended', reason: 'consent_expired' },
+    });
+    expect(suspended).toMatchObject({ success: true, current_state: 'suspended' });
+
+    const { result: impairedRead } = await simulateCallTool(server, 'get_media_buys', {
+      account,
+      media_buy_ids: [mediaBuyId],
+    });
+    const impairedBuy = (impairedRead.media_buys as Array<Record<string, unknown>>)[0];
+    expect(impairedBuy.health).toBe('impaired');
+    expect(impairedBuy.impairments).toEqual([
+      expect.objectContaining({
+        resource_type: 'audience',
+        resource_id: audienceId,
+        package_ids: [packageId],
+        transition: { from: 'ready', to: 'suspended' },
+        reason_code: 'consent_expired',
+      }),
+    ]);
+
+    const { result: restored } = await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'force_audience_status',
+      params: { audience_id: audienceId, status: 'ready' },
+    });
+    expect(restored).toMatchObject({ success: true, current_state: 'ready' });
+
+    const { result: recoveredRead } = await simulateCallTool(server, 'get_media_buys', {
+      account,
+      media_buy_ids: [mediaBuyId],
+    });
+    const recoveredBuy = (recoveredRead.media_buys as Array<Record<string, unknown>>)[0];
+    expect(recoveredBuy.health).toBe('ok');
+    expect(recoveredBuy.impairments).toEqual([]);
   });
 
   it('rejects targeting_overlay.audience_exclude referencing an unregistered audience_id', async () => {
@@ -9214,6 +9301,7 @@ describe('get_adcp_capabilities handler', () => {
     const scenarios = complianceTesting.scenarios as string[];
     expect(scenarios).toEqual(expect.arrayContaining([
       'force_creative_status',
+      'force_audience_status',
       'force_account_status',
       'force_media_buy_status',
       'force_create_media_buy_arm',

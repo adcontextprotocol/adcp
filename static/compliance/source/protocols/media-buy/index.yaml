@@ -22,6 +22,7 @@ requires_scenarios:
   - media_buy_seller/inline_creatives_without_sync
   - media_buy_seller/create_media_buy_async
   - media_buy_seller/dependency_impairment
+  - media_buy_seller/dependency_impairment_audience
   - media_buy_seller/dependency_impairment_cardinality
 
 narrative: |

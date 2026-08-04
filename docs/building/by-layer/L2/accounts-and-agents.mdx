@@ -385,6 +385,8 @@ Some sellers use `account_id` without exposing an account discovery surface. In 
 
 The agent manages the buying relationship. It calls `sync_accounts` to tell the seller who's advertising, who's operating on the brand's behalf, and who's paying. The seller provisions accounts and responds with status — the account IDs are a byproduct of the declaration, not something the buyer needs to know upfront.
 
+Buyer-declared-account sellers SHOULD also expose `list_accounts` as the recovery read for stateless buyers. Replaying `sync_accounts` is not a cold-start recovery mechanism when the buyer has lost the `(brand, operator, sandbox)` natural keys required to compose that replay. `list_accounts` returns the relationships the seller already acknowledged; it does not change the natural-key contract or make the seller-issued `account_id` mandatory on later calls.
+
 **Typical sellers:** Traditional publishers, retail media networks, DSPs — anywhere the buying relationship is established programmatically.
 
 `sync_accounts` is the declaration tool. Each entry is a set of flags that tells the seller what the buyer needs:
@@ -419,6 +421,7 @@ On individual media buys, an `invoice_recipient` can override the account defaul
    - **Sandbox (buyer-declared)**: pass the natural key with `sandbox: true` (declared via `sync_accounts`)
    - **Sandbox (account-id namespace)**: pass `{ "account_id": "test_acc_001" }` (pre-existing test account, discovered via `list_accounts` or supplied out-of-band)
 4. When anything changes (billing model, new brand, new operator), call `sync_accounts` again
+5. After a cold start, call `list_accounts` to recover previously acknowledged relationships when the seller exposes the recommended read surface
 
 The agent may be directly responsible for billing when `billing` is `"agent"`. When `billing` is `"operator"` or `"advertiser"`, the agent facilitates but is not the invoiced party. The seller may require human approval before activating accounts.
 
