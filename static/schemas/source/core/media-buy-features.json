@@ -23,7 +23,7 @@
     },
     "seller_optimized_budget": {
       "type": "boolean",
-      "description": "Supports media-buy-level shared budgets with budget_allocation.mode `seller_optimized`. Sellers declaring true MUST accept eligible explicit-package and proposal executions, enforce the aggregate budget and package constraints, apply media-buy-level pacing, and echo the allocation configuration on buy read surfaces. Product combinations may still be rejected when their currencies, optimization capabilities, pricing terms, or delivery constraints are incompatible."
+      "description": "Supports media-buy-level shared budgets with budget_allocation.mode `seller_optimized`. Sellers declaring true MUST accept eligible explicit-package and proposal executions, enforce the aggregate budget and package constraints, apply media-buy-level pacing, and echo the allocation configuration on buy read surfaces. Product combinations may still be rejected when their currencies, optimization capabilities, pricing terms, or delivery constraints are incompatible. Sellers that do not declare this feature MUST reject any request carrying `budget_allocation.mode: 'seller_optimized'` with `UNSUPPORTED_FEATURE` before any provider mutation, and MUST NOT coerce the request to fixed allocation."
     },
     "bidding_policy": {
       "allOf": [
