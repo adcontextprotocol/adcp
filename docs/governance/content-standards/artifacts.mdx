@@ -209,57 +209,42 @@ This is separate from assets because it's about the artifact container, not the 
 
 ## Secured Asset Access
 
-Many assets aren't publicly accessible - AI-generated images, private conversations, paywalled content. The artifact schema supports authenticated access.
+Many assets aren't publicly accessible—AI-generated images, private conversations, and paywalled content are common examples. The artifact schema supports three access methods without requiring every consumer to understand cloud IAM.
 
-### Pre-Configuration (Recommended)
+### Choosing an access method
 
-For ongoing partnerships, configure access once during onboarding rather than per-request:
+Use the simplest method that fits the relationship:
 
-1. **Service account sharing** - Grant the verification agent access to your cloud storage
-2. **OAuth client credentials** - Set up machine-to-machine authentication
-3. **API key exchange** - Share long-lived API keys during setup
+1. **Use `signed_url` by default** for one-off asset delivery. The consumer performs an ordinary HTTPS `GET`; no additional authentication integration is required.
+2. **Use `service_account` for established, higher-volume relationships** where the asset origin has already authorized a workload identity controlled by the consumer.
+3. **Use `bearer_token` only when the origin cannot support either option.** Tokens must be short-lived and scoped to the individual asset.
 
-This happens during the activation phase when the seller first receives content standards from a buyer.
+Never place long-lived API keys, service-account private keys, cloud access keys, or other standing credentials in an artifact payload.
 
-### Per-Asset Authentication
+### Signed URLs (recommended)
 
-When pre-configured identity access isn't possible, attach a short-lived, asset-scoped token to individual assets:
+For one-off access, place the complete pre-signed URL in the asset's `url` and mark the access method:
 
 ```json
 {
-  "type": "image",
-  "url": "https://cdn.openai.com/secured/img_abc123.png",
+  "type": "video",
+  "url": "https://assets.streamhaus.example/video/scene-14.mp4?expires=...&signature=...",
   "access": {
-    "method": "bearer_token",
-    "token": "eyJhbGciOiJIUzI1NiIs..."
+    "method": "signed_url"
   }
 }
 ```
 
-**Note on token size**: For artifacts with many assets, per-asset tokens can significantly increase payload size. Consider:
+The URL itself is a bearer capability. Producers should scope it to one asset and the shortest practical access window. Consumers must redact the complete URL from logs, traces, error messages, and model context because providers may place credential material in either its path or query string.
 
-1. **Pre-configured access** - Set up service account access once during onboarding
-2. **Shared token reference** - Define tokens at the artifact level and reference by ID
-3. **Signed URLs** - Use pre-signed URLs where the URL itself is the credential
+### Workload identity
 
-The `url` field is the access URL - it may differ from the artifact's canonical/published URL. For example, a published article at `https://news.example.com/article/123` might have assets served from `https://cdn.example.com/secured/...`.
-
-### Access Methods
-
-| Method | Use Case |
-|--------|----------|
-| `bearer_token` | Short-lived, asset-scoped OAuth2 token in the Authorization header. The only method that carries a live secret in the payload — treat it as a secret (never log it or place it in model context). |
-| `service_account` | Identity-based access. The seller pre-authorizes the caller's own service account; **no credentials are transmitted**. |
-| `signed_url` | Pre-signed URL — the URL itself is the (time-limited) credential. |
-
-### Service Account Access
-
-`service_account` is **identity-based** — no credentials are sent in the response. During onboarding the seller grants the buyer's (or verification agent's) own service account read access to the asset store; at fetch time the client authenticates with that identity using the cloud provider's normal credential chain (GCP Application Default Credentials, AWS SigV4).
-
-For GCP:
+For ongoing partnerships, the asset origin can authorize an identity already controlled by the consumer. At fetch time, the consumer uses its normal cloud credential chain, such as GCP Application Default Credentials or AWS SigV4. No credential is sent in the artifact.
 
 ```json
 {
+  "type": "audio",
+  "url": "https://storage.streamhaus.example/episodes/42/segment-3.mp3",
   "access": {
     "method": "service_account",
     "provider": "gcp"
@@ -267,34 +252,38 @@ For GCP:
 }
 ```
 
-For AWS:
+The `service_account.credentials` field is deprecated in AdCP 3.2 and removed in 4.0. Existing 3.x consumers must continue accepting the field during the compatibility window, treat any value as secret, and keep it out of logs and model context. New producers must omit it.
+
+### Bearer tokens
+
+When neither signed URLs nor pre-configured workload identity is available, attach a short-lived, asset-scoped token:
 
 ```json
 {
+  "type": "image",
+  "url": "https://assets.streamhaus.example/images/frame-382.png",
   "access": {
-    "method": "service_account",
-    "provider": "aws"
+    "method": "bearer_token",
+    "token": "short-lived-asset-token"
   }
 }
 ```
 
-**Never place service-account keys, private keys, or access secrets in a response payload** — they would travel across agent transport, logs, and model context. Identity-based access keeps secrets off the wire entirely.
+Send the token only in the `Authorization` header when fetching that asset. Never log it, retain it beyond the access window, or place it in model context.
 
-### Pre-Signed URLs
+For artifacts with many assets, prefer signed URLs or pre-configured workload identity rather than repeating bearer tokens throughout the payload.
 
-For one-off access without sharing credentials:
+The asset `url` may differ from the artifact's canonical or published URL. For example, a published article at `https://news.pinnacle.example/article/123` might have assets served from `https://assets.pinnacle.example/secured/...`.
 
-```json
-{
-  "type": "video",
-  "url": "https://storage.googleapis.com/bucket/video.mp4?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=...&X-Goog-Signature=...",
-  "access": {
-    "method": "signed_url"
-  }
-}
-```
+### Access methods at a glance
 
-The URL itself contains the credentials - no additional authentication needed.
+| Method | Use Case |
+|--------|----------|
+| `signed_url` | Recommended default for one-off access. Ordinary HTTPS fetch; the complete URL is a time-limited secret. |
+| `service_account` | Credential-free workload identity for a pre-configured relationship. No keys or access secrets appear in the payload. |
+| `bearer_token` | Compatibility path for origins requiring an Authorization header. The token must be short-lived, asset-scoped, and handled as a secret. |
+
+See [Migrating secured asset access for AdCP 3.2](/docs/reference/migration/asset-access) for producer and consumer changes.
 
 ## Property Identifier Types
 

@@ -283,26 +283,26 @@
   "$defs": {
     "asset_access": {
       "type": "object",
-      "description": "Authentication for accessing secured asset URLs",
+      "description": "Access instructions for a secured asset URL. Producers SHOULD use `signed_url` for one-off delivery unless the parties already have an identity-based access relationship. New producers MUST NOT carry long-lived credentials in this object; consumers continue accepting the deprecated legacy field during the 3.x compatibility window.",
       "discriminator": {
         "propertyName": "method"
       },
       "oneOf": [
         {
           "type": "object",
-          "description": "Bearer token authentication",
+          "description": "Short-lived bearer-token access for origins that cannot use signed URLs or pre-configured workload identity. The token is a live secret and must be scoped to the asset.",
           "properties": {
             "method": { "type": "string", "const": "bearer_token" },
             "token": {
               "type": "string",
-              "description": "OAuth2 bearer token for Authorization header"
+              "description": "Short-lived, asset-scoped bearer token for the Authorization header. Producers MUST NOT issue a standing or broadly scoped credential here. Consumers MUST treat the token as a secret and MUST NOT log it, persist it beyond the access window, or place it in model context."
             }
           },
           "required": ["method", "token"]
         },
         {
           "type": "object",
-          "description": "Service account authentication (GCP, AWS)",
+          "description": "Credential-free workload-identity access. The asset origin authorizes an identity already controlled by the consumer, such as a GCP service account or AWS IAM role, through out-of-band onboarding. No provider key or access secret crosses the AdCP payload.",
           "properties": {
             "method": { "type": "string", "const": "service_account" },
             "provider": {
@@ -312,7 +312,8 @@
             },
             "credentials": {
               "type": "object",
-              "description": "Service account credentials",
+              "deprecated": true,
+              "description": "Deprecated in AdCP 3.2 and removed in 4.0. Legacy integrations may still supply provider credentials here during the compatibility window, but new producers MUST omit this field. Consumers MUST treat any value as secret and MUST NOT log it, persist it beyond the access window, or place it in model context. Use the consumer's pre-authorized workload identity or `signed_url` instead.",
               "additionalProperties": true
             }
           },
@@ -320,7 +321,7 @@
         },
         {
           "type": "object",
-          "description": "Pre-signed URL (credentials embedded in URL)",
+          "description": "Recommended default for one-off access. The asset `url` is a time-limited bearer capability and requires no additional authentication. Producers SHOULD scope it to one asset and the shortest practical access window. Consumers MUST treat the complete URL as a secret and MUST NOT place it in logs or model context.",
           "properties": {
             "method": { "type": "string", "const": "signed_url" }
           },

@@ -105,6 +105,7 @@
                   "docs/reference/migration/audiences",
                   "docs/reference/migration/attribution",
                   "docs/reference/migration/media-buy-status",
+                  "docs/reference/migration/asset-access",
                   "docs/reference/migration/cross-role-governance-enforcement"
                 ]
               },
