@@ -1860,6 +1860,7 @@ async function handleForceGetProductsArm(session: SessionState, principal: strin
     rawSuggestions !== undefined
     && (
       !Array.isArray(rawSuggestions)
+      || rawSuggestions.length === 0
       || rawSuggestions.length > 20
       || rawSuggestions.some(item => typeof item !== 'string' || item.length === 0 || item.length > 1000)
     )
@@ -1867,7 +1868,7 @@ async function handleForceGetProductsArm(session: SessionState, principal: strin
     return {
       success: false,
       error: 'INVALID_PARAMS',
-      error_detail: 'suggestions must contain at most 20 non-empty strings up to 1000 characters each',
+      error_detail: 'suggestions must contain between 1 and 20 non-empty strings up to 1000 characters each',
     };
   }
 
@@ -1937,11 +1938,12 @@ function forcedCompletionValidationIssues(
       result.suggestions !== undefined
       && (
         !Array.isArray(result.suggestions)
+        || result.suggestions.length === 0
         || result.suggestions.length > 20
         || result.suggestions.some(value => typeof value !== 'string' || value.length === 0 || value.length > 1000)
       )
     ) {
-      issues.push({ path: 'suggestions', message: 'must contain at most 20 non-empty strings up to 1000 characters each' });
+      issues.push({ path: 'suggestions', message: 'must contain between 1 and 20 non-empty strings up to 1000 characters each' });
     }
     for (const field of [
       'products', 'proposals', 'errors', 'adcp_error', 'incomplete', 'cache_scope',

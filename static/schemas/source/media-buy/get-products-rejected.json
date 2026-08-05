@@ -27,6 +27,7 @@
     "suggestions": {
       "type": "array",
       "description": "Actionable alternatives the buyer can try, such as changing budget, dates, or channel. If present, the buyer MAY submit a revised brief, but the suggestions do not guarantee acceptance. If absent, the seller is not offering a protocol-level alternative for this brief.",
+      "minItems": 1,
       "maxItems": 20,
       "items": {
         "type": "string",

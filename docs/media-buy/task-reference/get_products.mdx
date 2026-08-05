@@ -42,12 +42,19 @@ if (!result.success) {
 
 // Validate response against schema
 const validated = GetProductsResponseSchema.parse(result.data);
-console.log(`Found ${validated.products.length} products`);
+if (validated.status === 'rejected') {
+  console.log(`Seller declined the brief: ${validated.reason}`);
+  for (const suggestion of validated.suggestions ?? []) {
+    console.log(`- ${suggestion}`);
+  }
+} else {
+  console.log(`Found ${validated.products.length} products`);
 
-// Access validated product fields
-for (const product of validated.products) {
-  console.log(`- ${product.name} (${product.delivery_type})`);
-  console.log(`  Formats: ${product.format_ids.map(f => f.id).join(', ')}`);
+  // Access validated product fields
+  for (const product of validated.products) {
+    console.log(`- ${product.name} (${product.delivery_type})`);
+    console.log(`  Formats: ${product.format_ids.map(f => f.id).join(', ')}`);
+  }
 }
 ```
 
@@ -63,7 +70,12 @@ async def discover_products():
             'domain': 'acmecorp.com'
         }
     )
-    print(f"Found {len(result.products)} products")
+    if result.status == 'rejected':
+        print(f"Seller declined the brief: {result.reason}")
+        for suggestion in result.suggestions or []:
+            print(f"- {suggestion}")
+    else:
+        print(f"Found {len(result.products)} products")
 
 asyncio.run(discover_products())
 ```

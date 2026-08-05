@@ -251,6 +251,7 @@
             "suggestions": {
               "type": "array",
               "description": "Echo of the optional deterministic alternatives registered for a rejected get_products response.",
+              "minItems": 1,
               "maxItems": 20,
               "items": {
                 "type": "string",

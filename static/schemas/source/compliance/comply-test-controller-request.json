@@ -887,6 +887,7 @@
         "suggestions": {
           "type": "array",
           "description": "Optional deterministic alternatives the seller MUST emit on the next get_products rejection. Used only by force_get_products_arm with arm 'rejected'.",
+          "minItems": 1,
           "maxItems": 20,
           "items": {
             "type": "string",

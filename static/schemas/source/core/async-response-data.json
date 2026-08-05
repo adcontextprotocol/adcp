@@ -2,24 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/async-response-data.json",
   "title": "AdCP Async Response Data",
-  "description": "Union of all possible data payloads for async task webhook responses. For completed/failed statuses, use the main task response schema. For rejected get_products outcomes and working/input-required/submitted statuses, use the status-specific schemas.",
-  "allOf": [
-    {
-      "if": {
-        "properties": {
-          "status": {
-            "const": "rejected"
-          }
-        },
-        "required": [
-          "status"
-        ]
-      },
-      "then": {
-        "$ref": "/schemas/media-buy/get-products-rejected.json"
-      }
-    }
-  ],
+  "description": "Union of all possible data payloads for async task webhook responses. For completed/failed statuses, use the main task response schema. For rejected get_products outcomes and working/input-required/submitted statuses, use the status-specific schemas. Because this shared union is not tagged with the originating task type, callers MUST also validate a terminal result against that task's response schema.",
   "anyOf": [
     {
       "title": "GetProductsResponse",

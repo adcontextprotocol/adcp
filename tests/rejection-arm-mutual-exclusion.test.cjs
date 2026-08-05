@@ -39,12 +39,20 @@ function log(message, type = 'info') {
   console.log(`${colors[type]}${message}\x1b[0m`);
 }
 
+const validatorPromises = new Map();
+
 async function compile(schemaId) {
+  if (validatorPromises.has(schemaId)) {
+    return validatorPromises.get(schemaId);
+  }
+
   const ajv = new Ajv({ allErrors: true, strict: false, discriminator: true, loadSchema: loadExternalSchema });
   addFormats(ajv);
   const schemaPath = path.join(SCHEMA_BASE_DIR, schemaId.replace('/schemas/', ''));
   const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
-  return ajv.compileAsync(schema);
+  const validatorPromise = ajv.compileAsync(schema);
+  validatorPromises.set(schemaId, validatorPromise);
+  return validatorPromise;
 }
 
 async function expectAccept(schemaId, data, label) {
@@ -114,6 +122,74 @@ async function runTests() {
   await expectAccept('/schemas/media-buy/get-products-response.json', productsRejected, 'canonical get_products response accepts the rejected arm');
   await expectAccept('/schemas/core/async-response-data.json', productsRejected, 'GetProductsRejected is included in the task-result union');
 
+  await expectAccept('/schemas/core/async-response-data.json', {
+    status: 'rejected',
+    media_buy_id: 'mb_rejected',
+    confirmed_at: '2026-08-05T00:00:00Z',
+    revision: 1,
+    packages: []
+  }, 'task-result union preserves legacy create_media_buy rejected lifecycle status');
+
+  const taskResultEnvelope = {
+    task_id: 'task_get_products_rejected',
+    task_type: 'get_products',
+    protocol: 'media-buy',
+    status: 'completed',
+    created_at: '2026-08-05T00:00:00Z',
+    updated_at: '2026-08-05T00:00:01Z',
+    result: productsRejected
+  };
+  await expectAccept('/schemas/core/tasks-get-response.json', taskResultEnvelope, 'tasks/get accepts a canonical get_products rejection');
+  await expectAccept('/schemas/protocol/get-task-status-response.json', taskResultEnvelope, 'get_task_status accepts a canonical get_products rejection');
+
+  const mixedRejectedResult = {
+    ...productsRejected,
+    products: [],
+    cache_scope: 'public'
+  };
+  await expectReject('/schemas/core/tasks-get-response.json', {
+    ...taskResultEnvelope,
+    result: mixedRejectedResult
+  }, 'tasks/get rejects a mixed get_products rejection result');
+  await expectReject('/schemas/protocol/get-task-status-response.json', {
+    ...taskResultEnvelope,
+    result: mixedRejectedResult
+  }, 'get_task_status rejects a mixed get_products rejection result');
+
+  const createMediaBuyRejected = {
+    status: 'rejected',
+    media_buy_id: 'mb_rejected',
+    confirmed_at: '2026-08-05T00:00:00Z',
+    revision: 1,
+    packages: []
+  };
+  await expectAccept('/schemas/core/tasks-get-response.json', {
+    ...taskResultEnvelope,
+    task_type: 'create_media_buy',
+    result: createMediaBuyRejected
+  }, 'tasks/get preserves legacy create_media_buy rejected lifecycle status');
+
+  const webhookEnvelope = {
+    idempotency_key: 'whk_01HW9D2T3VXQ5M7K9N1P3R5S7U',
+    operation_id: 'op_get_products_rejected',
+    task_id: taskResultEnvelope.task_id,
+    task_type: 'get_products',
+    protocol: 'media-buy',
+    status: 'completed',
+    timestamp: '2026-08-05T00:00:01Z',
+    result: productsRejected
+  };
+  await expectAccept('/schemas/core/mcp-webhook-payload.json', webhookEnvelope, 'MCP webhook accepts a canonical get_products rejection');
+  await expectReject('/schemas/core/mcp-webhook-payload.json', {
+    ...webhookEnvelope,
+    result: mixedRejectedResult
+  }, 'MCP webhook rejects a mixed get_products rejection result');
+  await expectAccept('/schemas/core/mcp-webhook-payload.json', {
+    ...webhookEnvelope,
+    task_type: 'create_media_buy',
+    result: createMediaBuyRejected
+  }, 'MCP webhook preserves legacy create_media_buy rejected lifecycle status');
+
   await expectReject('/schemas/media-buy/get-products-rejected.json', {
     ...productsRejected,
     products: []
@@ -123,11 +199,6 @@ async function runTests() {
     products: [],
     cache_scope: 'public'
   }, 'canonical get_products response rejects a mixed rejected/products arm');
-  await expectReject('/schemas/core/async-response-data.json', {
-    ...productsRejected,
-    products: [],
-    cache_scope: 'public'
-  }, 'task-result union rejects a mixed rejected/products arm');
   await expectReject('/schemas/media-buy/get-products-response.json', {
     status: 'completed',
     products: [],
@@ -153,6 +224,10 @@ async function runTests() {
     ...productsRejected,
     suggestions: Array.from({ length: 21 }, (_, index) => `Alternative ${index + 1}`)
   }, 'GetProductsRejected with more than 20 suggestions — schema MUST reject');
+  await expectReject('/schemas/media-buy/get-products-rejected.json', {
+    ...productsRejected,
+    suggestions: []
+  }, 'GetProductsRejected with empty suggestions — schema MUST reject');
 
   const forbiddenRejectedFields = {
     incomplete: [{ scope: 'products', description: 'Partial' }],
@@ -207,6 +282,13 @@ async function runTests() {
       suggestions: Array.from({ length: 21 }, (_, index) => `Alternative ${index + 1}`)
     }
   }, 'force_get_products_arm rejected directive with more than 20 suggestions — schema MUST reject');
+  await expectReject('/schemas/compliance/comply-test-controller-request.json', {
+    ...forceRejectedRequest,
+    params: {
+      ...forceRejectedRequest.params,
+      suggestions: []
+    }
+  }, 'force_get_products_arm rejected directive with empty suggestions — schema MUST reject');
   await expectReject('/schemas/compliance/comply-test-controller-request.json', {
     ...forceRejectedRequest,
     scenario: 'force_create_media_buy_arm',
