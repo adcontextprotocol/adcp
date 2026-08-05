@@ -107,13 +107,18 @@ export function salesCapabilityProjection() {
 
 /** Build a TrainingContext from the v6 request context auth bridge. */
 function buildTrainingCtx(
-  ctx: { account?: { authInfo?: { principal?: string } }; authInfo?: { clientId?: string } } | undefined,
+  ctx: {
+    account?: { authInfo?: { principal?: string } };
+    authInfo?: { clientId?: string };
+    agent?: { agent_url: string };
+  } | undefined,
   storyboardCompat?: TrainingContext['storyboardCompat'],
 ): TrainingContext {
   return {
     mode: 'open',
     tenantId: 'sales',
     principal: ctx?.authInfo?.clientId ?? ctx?.account?.authInfo?.principal ?? 'anonymous',
+    ...(ctx?.agent?.agent_url && { authenticatedAgentUrl: ctx.agent.agent_url }),
     ...(storyboardCompat && { storyboardCompat }),
   };
 }

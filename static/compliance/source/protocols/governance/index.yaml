@@ -390,12 +390,12 @@ phases:
             - code: SPENDING_AUTHORITY_EXCEEDED
             - message: explains the agent's authority limit and how much the buy exceeds it
             - escalation: instructions for human review
-          - governance_context: token/ID the buyer passes to the next check after escalation
           - plan_id: the governance plan that triggered the denial
 
         sample_request:
           plan_id: "$context.plan_id"
           caller: "https://pinnacle-agency.example"
+          target_agent: "https://seller.example.com"
           tool: "create_media_buy"
           payload:
             idempotency_key: "$generate:uuid_v4#media_buy_governance_escalation_check_governance_denied_payload"
@@ -420,8 +420,6 @@ phases:
         context_outputs:
           - name: check_id
             path: 'check_id'
-          - name: governance_context
-            path: 'governance_context'
         validations:
           - check: response_schema
             description: "Response matches check-governance-response.json schema"
@@ -440,22 +438,20 @@ phases:
             value: "media_buy_governance_escalation--check_governance_denied"
             description: "Context correlation_id returned unchanged"
   - id: human_escalation
-    title: "Human escalation — conditional approval"
+    title: "Human escalation — approval"
     narrative: |
       The governance denial triggers human escalation. A human reviewer at the agency
       reviews the proposed buy, the denial reason, and the governance plan. The human
-      approves the buy with conditions — for example, requiring weekly reporting. The
-      buyer calls check_governance again with the human's approval, and this time
-      the check returns approved with conditions.
+      approves the buy. The buyer calls check_governance again with the human's
+      approval, and this time the check returns approved with an authorization context.
 
     steps:
       - id: check_governance_approved
-        title: "Re-check governance after human approval (approved with conditions)"
+        title: "Re-check governance after human approval"
         narrative: |
           After the human reviewer approves the buy, the buyer calls check_governance
-          again with the governance_context from the prior denial and the human's
-          approval. The governance agent returns approved with conditions that the
-          buyer must honor during the campaign.
+          again with the plan and the human's approval. A denial never supplies
+          authorization context; the successful re-check does.
         task: check_governance
         schema_ref: "governance/check-governance-request.json"
         response_schema_ref: "governance/check-governance-response.json"
@@ -463,11 +459,8 @@ phases:
         comply_scenario: governance_spend_authority
         stateful: true
         expected: |
-          Return an approved governance decision with conditions:
+          Return an approved governance decision:
           - decision: approved
-          - conditions: array of requirements the buyer must honor
-            - e.g., "Weekly delivery reporting required"
-            - e.g., "Human review required for any budget increase"
           - governance_context: updated token the buyer passes to create_media_buy
           - approved_by: identifier of the human who approved
           - approved_at: timestamp of approval
@@ -475,7 +468,7 @@ phases:
         sample_request:
           plan_id: "$context.plan_id"
           caller: "https://pinnacle-agency.example"
-          governance_context: "$context.governance_context"
+          target_agent: "https://seller.example.com"
           ext:
             human_approval:
               approved_by: "human-reviewer-1"
@@ -505,16 +498,14 @@ phases:
         context_outputs:
           - name: check_id
             path: 'check_id'
+          - name: governance_context
+            path: 'governance_context'
         validations:
           - check: response_schema
             description: "Response matches check-governance-response.json schema"
           - check: field_present
             path: "verdict"
             description: "Response contains an approved governance verdict"
-          - check: field_present
-            path: "conditions"
-            description: "Approval includes conditions"
-
           - check: field_present
             path: "context"
             description: "Response echoes back the context object"
@@ -562,7 +553,7 @@ phases:
             operator: "pinnacle-agency.example"
           brand:
             domain: "acmeoutdoor.example"
-          governance_context: "gov_ctx_acme_q2_approved"
+          governance_context: "$context.governance_context"
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
           packages:
@@ -624,7 +615,8 @@ phases:
 
         sample_request:
           plan_id: "$context.plan_id"
-          governance_context: "gov_ctx_acme_q2_approved"
+          check_id: "$context.check_id"
+          governance_context: "$context.governance_context"
           outcome: "completed"
           seller_response:
             seller_reference: "$context.media_buy_id"

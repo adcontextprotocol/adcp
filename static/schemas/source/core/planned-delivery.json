@@ -5,6 +5,12 @@
   "description": "The seller's interpreted delivery parameters for a media buy. Represents what the seller will actually run, which may differ from what the buyer requested (e.g., the seller may apply additional targeting, frequency caps, or adjust geo to match their inventory). Used for authorization verification and audit.",
   "type": "object",
   "properties": {
+    "media_buy_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Seller-assigned media buy identifier. Optional on a purchase-phase prepare/check because the service may not assign the identifier until commit; required on modification and delivery lifecycle checks.",
+      "x-entity": "media_buy"
+    },
     "geo": {
       "type": "object",
       "description": "Geographic targeting the seller will apply.",
@@ -60,7 +66,7 @@
     },
     "currency": {
       "type": "string",
-      "description": "ISO 4217 currency code for the budget.",
+      "description": "ISO 4217 currency code for the budget. Governance execution checks require it whenever total_budget is present and require it to match the intent-authorized currency.",
       "pattern": "^[A-Z]{3}$"
     },
     "budget_allocation": {

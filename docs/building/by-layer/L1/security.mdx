@@ -573,14 +573,14 @@ The one exception in the spec is `si_terminate_session`: `session_id` plus the "
 **Roles:**
 - **Governance agents** sign the token. They are the only party that signs.
 - **Buyers** attach the token they received from their governance agent to the protocol envelope and forward to the seller. Buyers MUST NOT construct, modify, or re-sign the token. Buyers SHOULD retain the `jti` and `check_id` for their own audit record.
-- **Sellers** persist the token as received and include it verbatim on all subsequent governance calls. Sellers that implement verification MUST verify per the checklist below before acting on the token. Sellers that have not yet implemented verification MUST still persist and forward the token unchanged so that verification-capable parties downstream (auditors, regulators) can act on it later.
+- **Services** persist the token as received and include it verbatim on all subsequent governance calls. A service advertising `adcp.governance_enforcement` for a task MUST verify per the checklist below before acting. Legacy forward-only services may retain and forward tokens for audit continuity, but MUST NOT advertise enforcement for that task.
 - **Auditors and regulators** verify independently using the governance agent's published keys — this is the accountability property the signed format exists to deliver.
 
-The same string is also the primary correlation key for the governance lifecycle. The governance agent decodes its own token to look up internal state (buyer correlation IDs, policy decision log, etc.) — sellers and buyers never need to parse the payload.
+The same string is also the primary correlation key for the governance lifecycle. The governance agent decodes its own token to look up internal state. Services parse only the standard claims required by the verification checklist, including task, payload-hash, and commitment bindings; they never interpret `sub`, `plan_hash`, or other embedded governance state as business data.
 
 #### Scope and dependencies
 
-- **In scope (3.0)**: buy-side governance. The `governance_context` token authorizes spend commitments made via AdCP tasks (`create_media_buy`, `acquire_rights`, `activate_signal`, `creative_services`). Sellers that run their own compliance policies (e.g., CTV political-ad rules, publisher brand-safety gates) express those via `conditions` responses on their own governance workflows; they do not issue signed tokens under this profile.
+- **In scope (3.0)**: buy-side governance. The `governance_context` token authorizes governed commitments made via AdCP tasks whose request schemas carry an `x-governed-commitment` annotation. A service's own compliance or commercial rejection remains separate from the buyer-governance decision.
 - **Out of scope (3.0)**: seller-side governance authorities. A future RFC may extend this profile to cover seller-side signed decisions declared via `adagents.json`.
 - **Out of scope (ever)**: OpenRTB bid streams. Governance attestation terminates at the AdCP media buy boundary. Threading a signed attestation through per-impression bid requests is operationally infeasible (one token, many recipients, broadcast-fan-out) and unnecessary (spend authorization happens at media buy time, not per-impression).
 
@@ -594,30 +594,35 @@ This profile applies to `governance_context` (#2306) and to any future AdCP arti
 - `alg`: `EdDSA` (Ed25519) RECOMMENDED on server-side runtimes. `ES256` (ECDSA P-256) RECOMMENDED on edge runtimes (Cloudflare Workers, Vercel Edge, Deno Deploy) where Ed25519 may require explicit runtime configuration. Verifiers MUST reject `none`, `HS*`, and any `RS*` variant below 2048-bit. Verifiers MUST enforce the allowlist on the token header; they MUST NOT rely solely on library defaults.
 - `kid`: REQUIRED. Identifies the signing key in the issuer's JWKS.
 - `typ`: REQUIRED. MUST be exactly `adcp-gov+jws` (byte-for-byte match; verifiers MUST NOT normalize or strip the `+jws` structured suffix per RFC 6838 §4.2.8). The typed header prevents a governance signing key from being tricked into validating a generic JWT for another purpose.
-- `crit`: REQUIRED if any `crit`-listed claim is present. Per RFC 7515 §4.1.11, `crit` is an array of header/claim names that MUST be understood by the verifier. Verifiers MUST reject the token if any name in `crit` is not recognized. Governance agents MUST list in `crit` any claim whose omission or misinterpretation would change authorization semantics (e.g., a future `budget_cap` claim). This prevents silent downgrade attacks when the profile adds claims in later versions.
+- `crit`: REQUIRED for authorization-changing profile extensions. Per RFC 7515 §4.1.11, `crit` lists protected-header parameter names that MUST be understood by the verifier. Claims `authorized_commitment`, `authorized_task`, and `authorized_payload_hash` each require a same-named boolean protected-header marker and `crit` entry. Verifiers MUST recognize and process every listed extension or reject the token. This prevents older verifiers from silently ignoring a ceiling or action constraint.
 
 **Claims**
 
 | Claim | Required | Description |
 |-------|----------|-------------|
 | `iss` | Yes | Governance agent identifier. MUST be an HTTPS URL that byte-for-byte matches the `url` of a governance-typed entry in the buyer's brand.json, including any path component. Path-level matching is required so multi-tenant SaaS governance agents (e.g., `https://gov.vendor.com/tenant/acme`) cannot be spoofed by sibling tenants sharing the same origin. |
-| `sub` | Yes | `plan_id` the token authorizes. Note: `sub` is used here as a resource identifier rather than a user or authenticated agent. Implementations that log `sub` as a user ID should be aware of this. |
+| `sub` | Yes | Issuer-generated opaque governance binding for this governed action. It MUST be stable across that action's lifecycle, unique per action and target audience, and MUST NOT contain or be derived reversibly from `plan_id`. The governance agent maps it to the internal plan; services compare it only for lifecycle continuity and never interpret it as a plan or user identifier. |
 | `plan_hash` | Yes | Audit-layer binding of the attestation to the evaluated plan state. Not part of the seller verification checklist — sellers treat it as opaque cargo. Semantics, canonicalization, and verification paths are defined in [Plan binding and audit](/docs/governance/campaign/specification#plan-binding-and-audit). |
 | `aud` | Yes | Target seller identifier. MUST be the exact URL string from the seller's `adagents.json` entry that authorized this seller for the property being purchased, byte-for-byte including scheme, host, port, and path. Case-sensitive; no path-prefix match. For intent tokens where the buyer is evaluating multiple sellers, the buyer MUST request one token per target seller (see [Intent-phase disclosure](#intent-phase-disclosure) for the privacy trade-off). |
 | `iat` | Yes | Issued-at timestamp (seconds since epoch). |
 | `nbf` | No | Not-before timestamp. When present, verifiers MUST reject if now < nbf (with ±60 s skew). |
 | `exp` | Yes | Expiration timestamp. Intent tokens SHOULD expire within 15 minutes. Execution-phase tokens (`purchase`, `modification`, `delivery`) MUST expire within 30 days; governance agents refresh longer lifecycles by issuing a new token on each lifecycle check. |
 | `jti` | Yes | Unique token identifier. Used by sellers for replay detection and by auditors for correlation. RECOMMENDED format: UUID v7 or ULID for time-orderability. |
-| `phase` | Yes | `intent` (pre-seller), `purchase`, `modification`, or `delivery`. Matches the governance check phase this token authorizes. The operation the seller is performing determines the required phase: `create_media_buy` → `purchase`; `update_media_buy` → `modification`; delivery-reporting callbacks → `delivery`. |
+| `phase` | Yes | `intent`, `purchase`, `modification`, or `delivery`. It identifies the authorization stage, not merely the task name. A buyer-supplied token entering any governed service request is `intent`. When the service advertises `online_execution_check`, the service then obtains `purchase` before committing a create, `modification` before committing an update, or `delivery` for a delivery check. |
 | `caller` | Yes | URL of the party that requested the governance check that produced this token. In intent phase, this is the orchestrator/buyer; in execution phases, this is typically the seller itself (as callbacks arrive with the seller as caller). |
 | `check_id` | Yes | Governance agent's `check_id` for this decision; correlates to `report_plan_outcome` and `get_plan_audit_logs`. |
-| `media_buy_id` | Conditional | Seller-assigned media buy ID. MUST be present on `purchase`, `modification`, and `delivery` phase tokens. MUST be null or absent on `intent` phase tokens. |
+| `media_buy_id` | Conditional | Seller-assigned media buy ID. MUST be present on `modification` and `delivery` tokens, MAY be present on `purchase` when the service provisionally assigns an ID during prepare, and MUST be absent on `intent`. The opaque `sub` binds a purchase action before a durable media-buy ID exists. |
+| `authorized_commitment` | Conditional | Signed `{ amount, currency }` ceiling approved by governance. REQUIRED whenever the check authorizes a numeric monetary commitment, including an explicit `{amount: 0, currency}` ceiling for a verified zero-cost action; omitted only for non-monetary actions. Its matching protected-header marker is critical as defined above. The receiving service compares the price it will commit with this claim, so an indirectly priced payload cannot be authorized with an understated buyer declaration. This reveals only the price already relevant to that service, not plan budget or allocation. |
+| `authorized_task` | Conditional | Exact AdCP task name authorized by an intent check. REQUIRED with `authorized_payload_hash` on action-authorizing tokens and listed in `crit`. A service rejects a token minted for another task even when audience and monetary ceiling match. |
+| `authorized_payload_hash` | Conditional | `base64url_no_pad(SHA-256(JCS(payload_without_governance_metadata)))`, REQUIRED with `authorized_task` and listed in `crit`. The excluded top-level fields are exactly `governance_context` and `context`; `target_agent` lives on the governance check rather than in the downstream payload. Every business field, including `idempotency_key`, remains bound. The service recomputes this value over the received task request before committing. |
 | `policy_decisions` | No | Compact array of `{ policy_id, outcome }` entries (may include `confidence`). Visible to the seller. Governance agents SHOULD omit this in privacy-sensitive deployments (see [Privacy considerations](#privacy-considerations)) and use `policy_decision_hash` instead. |
 | `policy_decision_hash` | No | SHA-256 hash of the canonicalized decision log, hex-encoded. When present, sellers treat it as an opaque integrity anchor; full log is retrievable by auditors via `audit_log_pointer`. Governance agents MUST include either `policy_decisions` or `policy_decision_hash` (both is permitted). |
 | `audit_log_pointer` | No | HTTPS URL consumable by `get_plan_audit_logs` for the full decision evidence. When present, auditors can fetch the full log using the pointer; access control is governed by the governance agent. |
 | `status` | No | Optional forward-compatibility hook. When present, MUST be a JSON object conforming to a future IETF JWT Status List mechanism (draft-ietf-oauth-status-list). Verifiers that do not understand `status` MUST NOT reject solely on its presence unless it appears in `crit`. |
 
-**Unknown-claim handling**: verifiers MUST ignore claims whose names they do not recognize *unless* those claim names appear in the token's `crit` header, in which case the token MUST be rejected. This asymmetric rule — ignore unknown, but reject unknown-and-critical — is how future versions of the profile add semantically meaningful claims without breaking backward compatibility for verifiers that haven't updated yet.
+Cross-language implementations SHOULD validate payload canonicalization and the task, payload, amount, currency, and critical-marker acceptance rules against the published [`governance-authorization.json` vectors](https://github.com/adcontextprotocol/adcp/blob/main/static/compliance/source/test-vectors/governance-authorization.json). The vectors pin `idempotency_key` into the business hash while excluding only top-level `governance_context` and `context`. The same file publishes 27 byte-exact Ed25519 compact-JWS cases covering positive verification, critical-extension failures, binding mismatches, malformed or widened commitments, time bounds, replay identifiers, signature tampering, and explicit zero-cost authorization. Its private key component is deliberately public test material and MUST NOT be installed as a production trust anchor.
+
+**Unknown-extension handling**: verifiers ignore unknown non-critical claims. When a claim changes authorization semantics, the issuer also emits the same-named protected-header marker and lists it in `crit`; verifiers that do not recognize that header extension MUST reject. Verifiers MUST also reject when the critical marker and its corresponding claim do not appear together.
 
 **Size**: a typical token with `policy_decision_hash` fits comfortably under the 4096-character envelope limit. Implementations MUST NOT put large evidence payloads in the token; use `audit_log_pointer` instead.
 
@@ -651,25 +656,25 @@ Sellers and auditors resolve the governance agent's public keys via JWKS (RFC 75
 
 #### Seller verification checklist
 
-Before treating a request as governance-approved, sellers MUST perform these checks in order, short-circuiting on the first failure:
+Services apply this checklist to two distinct authorization gates. On an inbound governed request they verify the buyer-supplied `intent` token. When the advertised task mode includes `online_execution_check`, that token permits preparation and the execution check but not the side effect; the service applies the checklist again to the execution token returned by its governance call before commit. Checks run in order and short-circuit on the first failure:
 
 1. Parse the compact JWS. Reject if malformed.
 2. Reject if header `alg` is `none` or not in the allowed list (EdDSA, ES256). Library defaults MUST NOT be relied upon.
 3. Reject if header `typ` is not exactly `adcp-gov+jws` (no normalization).
-4. Reject if the header contains a `crit` array and any listed name is not recognized by the verifier.
+4. Reject if the header contains a `crit` array and any listed protected-header extension is not recognized by the verifier. For `authorized_commitment`, `authorized_task`, and `authorized_payload_hash`, require each boolean protected-header marker, its `crit` entry, and its payload claim to appear together. Require `authorized_task` and `authorized_payload_hash` as a pair.
 5. Resolve `iss` to a JWKS via the discovery rules above. Reject if the JWKS cannot be fetched (after SSRF validation) or the `kid` is not present after one refetch.
 6. Verify the JWKS entry's `use` is `"sig"` and `key_ops` includes `"verify"`. Reject keys marked for other uses.
 7. Cryptographically verify the signature.
 8. Reject if `aud` does not byte-for-byte equal the seller's own canonical URL as declared in the relevant `adagents.json` entry.
 9. Reject if `exp` is in the past or `iat` is more than 60 seconds in the future (±60 s clock-skew tolerance, symmetric on both bounds). If `nbf` is present, reject if `now < nbf − 60 s`.
-10. Reject if `sub` does not equal the `plan_id` in the governance call this token is attached to (prevents plan swap).
-11. Reject if `phase` does not match the operation: `purchase` for `create_media_buy`; `modification` for `update_media_buy`; `delivery` for delivery-reporting callbacks; `intent` only for pre-seller buyer-side evaluation.
-12. For non-intent tokens, reject if `media_buy_id` does not equal the media buy ID in the request.
+10. Reject if `sub` is absent or empty. On a continuation for an already-bound action, reject if it differs from the opaque `sub` retained from the prior accepted token. The seller never compares it to `plan_id`; the issuing governance agent prevents plan swap by validating and resolving its own signed context.
+11. Reject if `phase` does not match the authorization gate. The buyer-supplied token on an inbound governed request MUST be `intent`. For a task advertising `online_execution_check`, the token returned to the service by its own pre-commit governance call MUST be `purchase` for a create, `modification` for an update, or `delivery` for a delivery check. A service MUST NOT substitute the inbound intent token for that required execution token.
+12. Validate action binding. For an inbound intent token, reject unless `authorized_task` equals the invoked task and `authorized_payload_hash` equals the JCS/SHA-256 hash recomputed over the received request after removing exactly `governance_context` and `context`. For `modification` and `delivery`, reject if `media_buy_id` is absent or does not equal the request's media buy ID. For `purchase`, compare it when present; absence is valid because prepare may precede durable ID assignment. For `intent`, reject if it is present. When the action has a monetary commitment, reject if `authorized_commitment` is absent, its currency differs, or the service's computed commitment exceeds its amount. A service that cannot bind the task and payload or compute the price before commit MUST NOT advertise governance enforcement for that task.
 13. Cross-check: the token's `iss` MUST appear as a governance-typed agent in the buyer's current brand.json (established via [Buyer identity resolution](#buyer-identity-resolution)). Sellers SHOULD cache brand.json with reasonable TTLs (recommend 1 hour) and refresh on verification failure.
 14. Check the revocation list (see [Revocation](#revocation)). Reject if `jti` ∈ `revoked_jtis` or if the token header's `kid` ∈ `revoked_kids`. This check runs on every verification, not only on cache miss.
 15. Reject if `jti` has been seen before for this `(iss, aud)` tuple. See [Replay dedup](#replay-dedup) for storage guidance.
 
-Only after all 15 checks pass does the seller treat the request as governance-approved. Note that sellers do not verify `plan_hash` — that claim is bound at the governance-agent / auditor layer (see [Plan-state binding](#plan-state-binding)).
+Only after all 15 checks pass may the service proceed through the gate represented by that token. For `signed_context`, a valid inbound intent token is the task authorization. For `online_execution_check`, it authorizes prepare/check only; commit additionally requires the valid execution token. Services do not verify `plan_hash` — that claim is bound at the governance-agent / auditor layer (see [Plan-state binding](#plan-state-binding)).
 
 #### Replay dedup
 
@@ -738,11 +743,11 @@ Sellers and client libraries SHOULD surface verification failures with these cod
 | JWKS fetch fails SSRF validation | No | `governance_jwks_untrusted` | Permanent. Indicates misconfigured `jwks_uri` or an attack. |
 | `kid` not in JWKS after refetch | No | `governance_key_unknown` | Reject. Possibly indicates rotation lag or key revocation. |
 | Signature invalid, `typ` mismatch, `alg` not allowed, `crit` unknown | No | `governance_token_invalid` | Reject. Indicates tampering or implementation bug. |
-| `exp` in past, `jti` replayed, `nbf` in future | No | `governance_token_expired` / `_replayed` / `_not_yet_valid` | Reject. Tokens cannot be healed by retry. |
+| `exp` in past, `jti` replayed, or `iat` / `nbf` in future beyond allowed skew | No | `governance_token_expired` / `_replayed` / `_not_yet_valid` | Reject. Tokens cannot be healed by retry. |
 | `jti` ∈ `revoked_jtis` or `kid` ∈ `revoked_kids` | No | `governance_token_revoked` | Reject. |
 | `iss` not in buyer brand.json | No | `governance_issuer_not_authorized` | Reject. Possibly indicates a spoofing attempt. |
 | Revocation list not refreshed within grace | No (block new) | `governance_revocation_stale` | Reject new tokens until revocation list refreshes. Existing fully-verified tokens may continue to be trusted within their existing grace. |
-| `aud` mismatch, `sub` mismatch, `phase` mismatch, `media_buy_id` mismatch | No | `governance_token_not_applicable` | Reject. Token valid but not for this operation. |
+| `aud`, authenticated `caller`, opaque action-binding (`sub`), `phase`, `media_buy_id`, `authorized_task`, `authorized_payload_hash`, or `authorized_commitment` currency/ceiling mismatch | No | `governance_token_not_applicable` | Reject. Token valid but not for this operation. Missing or malformed required claims use `governance_token_invalid`; a well-formed token whose bindings do not match the attempted operation uses this code. |
 
 Servers MUST NOT echo internal verification details (e.g., which specific claim mismatched) to the counterparty. Return the stable code above; log the detail server-side.
 
@@ -763,15 +768,19 @@ Header:
 {
   "alg": "EdDSA",
   "kid": "gov-2026-04",
-  "typ": "adcp-gov+jws"
+  "typ": "adcp-gov+jws",
+  "crit": ["authorized_commitment", "authorized_task", "authorized_payload_hash"],
+  "authorized_commitment": true,
+  "authorized_task": true,
+  "authorized_payload_hash": true
 }
 ```
 
 Payload:
 ```json
 {
-  "iss": "https://gov.scope3.com",
-  "sub": "plan_q1_2026_launch",
+  "iss": "https://governance.example.com",
+  "sub": "gb_01HWZXABCDEFG1234567890",
   "plan_hash": "EiCW8FkxgZ2wKqGv3Z9XuT4n2LwcJm1fK7vRaTpQ0sU",
   "aud": "https://seller.example.com/adcp",
   "iat": 1744934400,
@@ -780,8 +789,11 @@ Payload:
   "phase": "intent",
   "caller": "https://orchestrator.example.com",
   "check_id": "chk_001",
+  "authorized_commitment": { "amount": 25000, "currency": "USD" },
+  "authorized_task": "create_media_buy",
+  "authorized_payload_hash": "grD8ZKqJa7KJuLX_EJ4iZ5tCVGfOnJrL-o9Q_qXl7xU",
   "policy_decision_hash": "9b2a...f41c",
-  "audit_log_pointer": "https://gov.scope3.com/plans/plan_q1_2026_launch/logs/01HWZXABCDEFG1234567890"
+  "audit_log_pointer": "https://governance.example.com/audit/01HWZXABCDEFG1234567890"
 }
 ```
 
@@ -806,7 +818,8 @@ function jwksFor(jwksUri: string) {
 }
 
 export async function verifyGovernanceContext(token: string, ctx: {
-  sellerId: string; planId: string; mediaBuyId?: string; phase: "intent" | "purchase" | "modification" | "delivery";
+  sellerId: string; priorBindingId?: string; mediaBuyId?: string; phase: "intent" | "purchase" | "modification" | "delivery";
+  task: string; governedPayloadHash: string; commitment?: { amount: number; currency: string };
   resolveBrandJsonGovernanceAgent: (iss: string) => Promise<{ jwks_uri: string } | null>;
   seenJti: (iss: string, aud: string, jti: string) => Promise<boolean>;
   isRevoked: (iss: string, jti: string, kid: string) => Promise<boolean>;
@@ -822,10 +835,21 @@ export async function verifyGovernanceContext(token: string, ctx: {
   const { payload } = await jwtVerify(token, jwksFor(agent.jwks_uri), {
     issuer: iss as string, audience: ctx.sellerId, typ: "adcp-gov+jws",
     algorithms: ["EdDSA", "ES256"], clockTolerance: 60,
+    crit: { authorized_commitment: true, authorized_task: true, authorized_payload_hash: true },
   }).catch(() => { throw new GovTokenError("governance_token_invalid"); });
 
-  if (payload.sub !== ctx.planId) throw new GovTokenError("governance_token_not_applicable");
+  if (typeof payload.sub !== "string" || payload.sub.length === 0)
+    throw new GovTokenError("governance_token_not_applicable");
+  if (ctx.priorBindingId && payload.sub !== ctx.priorBindingId)
+    throw new GovTokenError("governance_token_not_applicable");
   if (payload.phase !== ctx.phase) throw new GovTokenError("governance_token_not_applicable");
+  if (payload.authorized_task !== ctx.task || payload.authorized_payload_hash !== ctx.governedPayloadHash)
+    throw new GovTokenError("governance_token_not_applicable");
+  if (ctx.commitment) {
+    const ceiling = payload.authorized_commitment as { amount?: number; currency?: string } | undefined;
+    if (!ceiling || ceiling.currency !== ctx.commitment.currency || typeof ceiling.amount !== "number" || ctx.commitment.amount > ceiling.amount)
+      throw new GovTokenError("governance_token_not_applicable");
+  }
   if (ctx.phase !== "intent" && payload.media_buy_id !== ctx.mediaBuyId)
     throw new GovTokenError("governance_token_not_applicable");
   if (!(await ctx.revocationFresh(iss as string))) throw new GovTokenError("governance_revocation_stale");

@@ -792,6 +792,7 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
       const defaultFlightEnd = new Date(Date.now() + 90 * 86_400_000).toISOString();
       session.governancePlans.set(planId, {
         planId,
+        ownerAgentUrl: existing?.ownerAgentUrl ?? principal ?? 'https://agenticadvertising.org/training-controller',
         version: (fx.version as number | undefined) ?? existing?.version ?? 1,
         status: (fx.status as GovernancePlanState['status']) ?? existing?.status ?? 'active',
         brand: (fx.brand as BrandReference) ?? existing?.brand ?? { domain: 'acmeoutdoor.example' },

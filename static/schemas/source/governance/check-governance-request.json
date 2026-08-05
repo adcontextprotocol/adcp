@@ -2,29 +2,207 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/governance/check-governance-request.json",
   "title": "Check Governance Request",
-  "description": "Universal governance check for campaign actions. The governance agent infers the check type from the fields present: tool+payload = intent check (proposed, orchestrator-side). planned_delivery = execution check (committed, seller-side). governance_context maintains lifecycle continuity across either check type — its presence alone does not determine binding. To check budget availability without a specific action, omit tool and payload.",
+  "description": "Universal governance check for campaign actions. The governance agent infers the check type from the fields present: tool+payload = intent check (proposed, orchestrator-side); planned_delivery or delivery_metrics with governance_context = execution or lifecycle check (committed, service-side). For update_media_buy, the buyer supplies a proposed positive-delta ceiling and the seller supplies its independently computed execution delta. The first check is addressed by plan_id. Subsequent service-side checks use the opaque governance_context as the authoritative plan binding and do not require the service to receive or interpret plan_id. To check budget availability without a specific action, send plan_id and omit tool and payload.",
   "type": "object",
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "anyOf": [
+        { "required": ["plan_id"] },
+        {
+          "allOf": [
+            { "required": ["governance_context"] },
+            {
+              "anyOf": [
+                { "required": ["planned_delivery"] },
+                { "required": ["delivery_metrics"] }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "if": { "required": ["tool"] },
+      "then": {
+        "required": ["plan_id", "payload", "target_agent"],
+        "not": { "required": ["governance_context"] }
+      }
+    },
+    {
+      "if": { "required": ["payload"] },
+      "then": {
+        "required": ["plan_id", "tool", "target_agent"],
+        "not": { "required": ["governance_context"] }
+      }
+    },
+    {
+      "if": { "required": ["consultation_context"] },
+      "then": {
+        "required": ["plan_id", "tool", "payload"],
+        "not": {
+          "anyOf": [
+            { "required": ["governance_context"] },
+            { "required": ["planned_delivery"] },
+            { "required": ["delivery_metrics"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": { "required": ["proposed_commitment"] },
+      "then": {
+        "required": ["plan_id", "tool", "payload"],
+        "not": {
+          "anyOf": [
+            { "required": ["governance_context"] },
+            { "required": ["planned_delivery"] },
+            { "required": ["delivery_metrics"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": { "required": ["execution_commitment"] },
+      "then": {
+        "required": ["governance_context", "planned_delivery"],
+        "not": {
+          "anyOf": [
+            { "required": ["tool"] },
+            { "required": ["payload"] },
+            { "required": ["proposed_commitment"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "tool": { "enum": ["update_media_buy", "acquire_rights", "update_rights", "activate_signal", "build_creative"] }
+        },
+        "required": ["tool", "payload"]
+      },
+      "then": { "required": ["proposed_commitment"] }
+    },
+    {
+      "if": {
+        "anyOf": [
+          { "required": ["planned_delivery"] },
+          { "required": ["delivery_metrics"] }
+        ]
+      },
+      "then": { "required": ["governance_context"] }
+    },
+    {
+      "if": {
+        "properties": {
+          "planned_delivery": { "required": ["total_budget"] }
+        },
+        "required": ["planned_delivery"]
+      },
+      "then": {
+        "properties": {
+          "planned_delivery": { "required": ["currency"] }
+        }
+      }
+    },
+    {
+      "if": { "required": ["delivery_metrics"] },
+      "then": { "required": ["governance_context", "planned_delivery"] }
+    },
+    {
+      "if": {
+        "allOf": [
+          { "required": ["planned_delivery"] },
+          {
+            "anyOf": [
+              {
+                "properties": { "phase": { "enum": ["modification", "delivery"] } },
+                "required": ["phase"]
+              },
+              {
+                "properties": { "governance_phase": { "enum": ["modification", "delivery"] } },
+                "required": ["governance_phase"]
+              }
+            ]
+          }
+        ]
+      },
+      "then": {
+        "properties": {
+          "planned_delivery": { "required": ["media_buy_id"] }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "phase": { "const": "delivery" } },
+        "required": ["phase"]
+      },
+      "then": { "required": ["governance_context", "planned_delivery", "delivery_metrics"] }
+    },
+    {
+      "not": {
+        "allOf": [
+          {
+            "anyOf": [
+              { "required": ["tool"] },
+              { "required": ["payload"] }
+            ]
+          },
+          {
+            "anyOf": [
+              { "required": ["planned_delivery"] },
+              { "required": ["delivery_metrics"] }
+            ]
+          }
+        ]
+      }
     }
   ],
   "x-status": "experimental",
   "properties": {
     "plan_id": {
       "type": "string",
-      "description": "Campaign governance plan identifier. The plan uniquely scopes the account and operator; do not include a separate `account` field — the governance agent resolves account from the plan. Governance agents MUST treat any sibling `account` field as a contract violation and reject the request.",
+      "description": "Campaign governance plan identifier. Required on the initial intent or availability check, before a governance_context exists. Optional on subsequent checks: the governance agent derives the plan from its own signed governance_context. If both are present, the governance agent MUST reject the request when plan_id does not match the token's plan binding. Services MUST treat governance_context as authoritative and MUST NOT require a buyer to disclose plan_id. A plan is owned by the authenticated buyer principal that synchronized it; plan_id is an identifier, not an account credential.",
       "x-entity": "governance_plan"
     },
     "caller": {
       "type": "string",
       "format": "uri",
-      "description": "URL of the agent making the request."
+      "description": "Claimed URL of the agent making the request. The transport credential MUST resolve to an agent URL; the governance agent requires an exact match and uses only that resolved URL for authorization, audit, and signed context issuance. On intent checks the authenticated buyer must be the plan owner or hold an active delegation, while approved_sellers is evaluated against the target service that becomes the token audience. On execution checks the authenticated caller MUST equal that preserved audience. An unresolved body assertion never grants plan access or authorization."
     },
     "purchase_type": {
       "$ref": "/schemas/enums/purchase-type.json",
       "description": "The type of financial commitment being checked. Determines which budget allocation (if any) to validate against. Defaults to 'media_buy' when omitted.",
       "default": "media_buy"
+    },
+    "target_agent": {
+      "type": "string",
+      "format": "uri",
+      "description": "Exact agent URL of the downstream service that will receive the governed task. Required on intent checks and copied byte-for-byte into the signed governance_context aud claim. This routing and authorization field is not part of payload: payload remains exactly the downstream task arguments. A consultation re-check MUST use the same target_agent."
+    },
+    "proposed_commitment": {
+      "type": "object",
+      "description": "Task-neutral monetary amount the intent would authorize. For update_media_buy this is the buyer-computed positive incremental commitment, not the post-update total. It is also required for acquire_rights, commitment-increasing update_rights, activate_signal, and build_creative because those task payloads identify pricing indirectly; amount 0 explicitly represents a verified no-cost action. The governance agent persists this value as authoritative check state; report_plan_outcome cannot increase it or restore headroom by reporting less.",
+      "properties": {
+        "amount": { "type": "number", "minimum": 0 },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+      },
+      "required": ["amount", "currency"],
+      "additionalProperties": false
+    },
+    "execution_commitment": {
+      "type": "object",
+      "description": "Seller-computed positive incremental commitment for an update_media_buy execution check. The seller MUST derive this atomically from its authoritative current revision and the requested update, and the governance agent MUST reject it when it exceeds the prior intent ceiling or uses another currency.",
+      "properties": {
+        "amount": { "type": "number", "minimum": 0 },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+      },
+      "required": ["amount", "currency"],
+      "additionalProperties": false
     },
     "tool": {
       "type": "string",
@@ -32,20 +210,27 @@
     },
     "payload": {
       "type": "object",
-      "description": "The full tool arguments as they would be sent to the seller. Present on intent checks. The governance agent can inspect any field to validate against the plan.",
+      "description": "The full downstream tool arguments exactly as they will be sent to target_agent. Present on intent checks. Governance routing metadata is carried by target_agent, never injected into this object. The governance agent can inspect any field to validate against the plan.",
       "x-adcp-open-payload": true,
       "additionalProperties": true
     },
     "governance_context": {
       "type": "string",
-      "description": "Governance context token from a prior check_governance response. Pass this on subsequent checks for the same governed action so the governance agent can maintain continuity across the lifecycle. In 3.0 governance agents MUST emit a compact JWS per the AdCP JWS profile (see Security — Signed Governance Context); callers persist and forward the value verbatim.",
+      "description": "Opaque authorization context from a prior approved check_governance response. Services pass it verbatim on execution and lifecycle checks; the issuing governance agent derives the plan and prior decision from the token. Intermediaries MUST NOT parse it for business logic. Governance agents MUST emit a compact JWS per the AdCP JWS profile.",
       "minLength": 1,
       "maxLength": 4096,
       "pattern": "^[\\x20-\\x7E]+$"
     },
+    "consultation_context": {
+      "type": "string",
+      "description": "Opaque, non-authorizing handle returned with an intent conditions verdict. Pass it only when re-checking the adjusted intent so the governance agent can correlate negotiation attempts. The governance agent MUST resolve it under the authenticated principal and reject the re-check unless principal, caller, plan_id, tool, purchase_type, and target audience match the original conditions check. Services MUST NOT receive or accept this value as authorization.",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]+$"
+    },
     "phase": {
       "$ref": "/schemas/enums/governance-phase.json",
-      "description": "The phase of the governed action's lifecycle. 'purchase': initial commitment (create_media_buy, acquire_rights, activate_signal). 'modification': update to existing commitment. 'delivery': periodic delivery or usage reporting. Defaults to 'purchase' if omitted.",
+      "description": "The phase of an execution-shaped governed action. Ignored for intent-shaped tool+payload requests. 'purchase': initial commitment; 'modification': update to an existing commitment; 'delivery': periodic delivery reporting. Defaults to purchase if omitted. planned_delivery.media_buy_id is optional for purchase and required for modification/delivery.",
       "default": "purchase"
     },
     "planned_delivery": {
@@ -191,7 +376,6 @@
     }
   },
   "required": [
-    "plan_id",
     "caller"
   ],
   "additionalProperties": true

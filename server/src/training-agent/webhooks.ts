@@ -42,7 +42,7 @@ export type WebhookTaskType =
   | 'list_property_lists' | 'delete_property_list' | 'sync_accounts'
   | 'get_account_financials' | 'get_creative_delivery' | 'sync_event_sources'
   | 'sync_audiences' | 'sync_catalogs' | 'log_event' | 'get_brand_identity'
-  | 'get_rights' | 'acquire_rights';
+  | 'get_rights' | 'acquire_rights' | 'update_rights';
 
 export const TOOL_TO_TASK_TYPE = {
   get_products: 'get_products',
@@ -67,12 +67,8 @@ export const TOOL_TO_TASK_TYPE = {
   get_brand_identity: 'get_brand_identity',
   get_rights: 'get_rights',
   acquire_rights: 'acquire_rights',
+  update_rights: 'update_rights',
 } as const satisfies Record<string, WebhookTaskType>;
-
-// update_rights accepts push_notification_config in the experimental request
-// schema, but task-type.json does not yet contain update_rights. The sandbox
-// rejects that combination in brand-handlers.ts rather than emitting an
-// unrouteable webhook task_type or silently dropping the requested callback.
 
 type WebhookEmittingTool = keyof typeof TOOL_TO_TASK_TYPE;
 
@@ -108,6 +104,7 @@ export const TOOL_TO_PROTOCOL: Readonly<Record<WebhookEmittingTool, WebhookProto
   get_brand_identity: 'brand',
   get_rights: 'brand',
   acquire_rights: 'brand',
+  update_rights: 'brand',
 };
 
 function extractWebhookUrl(args: Record<string, unknown>): string | undefined {
